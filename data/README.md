@@ -15,3 +15,11 @@ The original-screen pool retains the original reported-value thresholds and 250-
 Queries use read-only connections and check core input files, calculation code, and the price-directory timestamp without scanning every price file. Preparation checks the full per-price-file size/timestamp manifest. After editing an existing price file, run preparation to incorporate and validate the change; queries are reads of the last prepared snapshot. The `.building` database is temporary; a failed preparation preserves the previous completed database. Fingerprints are local freshness checks, not cryptographic verification of downloaded data.
 
 `latest_snapshots` stores prospective picks with no holding return. Latest-date metadata records the actual cached session and coverage. The canonical report's saved Through date constrains historical snapshots independently of newer latest-session prices. After extending price data, run preparation then rebuild the website; an open HTML file is a saved snapshot, not a live data feed.
+
+Schema 4 stores `screening_metrics`: ready-to-rank multiple/yield pairs keyed
+by mode, pool, year, symbol and catalog metric ID. Latest observations use year
+0. Preparation computes all formulas, including screening-date EV divided by
+three-year average EBITDA, and preserves the default metric's exact existing
+values. Missing history omits a pair. Consumers join or export these values;
+they never reconstruct formulas. Catalog and calculator code in
+`scripts/metrics.py` participates in freshness checks.

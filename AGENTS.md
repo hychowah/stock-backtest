@@ -84,3 +84,16 @@ Yearly attribution uses `website/contributions.js` for browser calculations and 
 Schema version 2 prepares `latest_snapshots` separately from historical snapshots. Latest date means the latest cached SPY session. Require an exact-session dividend-adjusted price and cached `listed=True`; never reuse old stopped prices in the latest screen. Use the same 90-day lag, strict availability-before-date rule and 800-day report-age limit. No future return or contribution is stored for latest picks. `research.latest_screen()` and `StockScreener.latestScreen()` must agree. The website opens in latest mode; historical mode retains year controls.
 
 Historical preparation is bounded by the canonical report's Through date and historical ASOF, while latest preparation can advance independently. The reference report participates in freshness checks. Refresh prepared data and rebuild the HTML after cache updates; the website does not fetch market data. Tests include exact-date exclusion, unavailable/stale reports, cached listing status, unchanged historical periods when latest prices advance, both SQL/browser screen modes and latest CSV output.
+
+## Ranking metric catalog
+
+Schema version 4 stores uniform `screening_metrics` pairs (multiple and yield)
+for each mode, pool, year and symbol; `scripts/metrics.py` owns the display
+catalog, calculator registry and all metric calculations. Both website modes and SQL selection accept a metric
+ID, with the catalog embedded by `website/dataset.py`. Keep filtering/ranking
+and rendering generic: consumers read prepared pairs without interpreting formulas
+or calculator types. Three-year metric means current EV divided by mean EBITDA from three
+consecutive annual reports, excluding incomplete histories; current
+EV/EBITDA remains the default. Original-pool membership still comes from the
+single-year buffer. Add temporal/missing-year and SQL/browser parity checks for
+new metrics. Calculation/catalog changes require offline prepare and rebuild.

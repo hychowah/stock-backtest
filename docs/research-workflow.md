@@ -45,7 +45,7 @@ python3 scripts/research.py screen --top 100 --output results/experiments/top100
 python3 scripts/research.py status
 ```
 
-Caps and EV are in nominal USD; minimum yield is a fraction (`0.15` means 15%). Sector and exchange filters match the cached text exactly. Filters apply before ranking; rank 1 has the highest entry EBITDA/EV within the matching pool. Stocks are selected each January and equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
+Caps and EV are in nominal USD; minimum yield is a fraction (`0.15` means 15%). Sector and exchange filters match the cached text exactly. Filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). Stocks are selected each January and equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
 `legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: all pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides. This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
@@ -59,7 +59,7 @@ If a filter leaves fewer names than requested, the result states which years are
 python3 website/build.py
 ```
 
-The website builder queries the prepared database and embeds both historical and latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for the year-based results. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum EBITDA/EV, maximum EV/EBITDA, sector, exchange, pool and year filters. Click Run backtest to apply financial filters. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. Each year also has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
+The website builder queries the prepared database and embeds both historical and latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for the year-based results. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange, pool and year filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. Each year also has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
 
 The original `scripts/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
 
@@ -74,7 +74,7 @@ python3 tests/test_attribution.py
 python3 tests/check_screener.py
 ```
 
-The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across eight configurations; real browser visual QA remains unavailable in the current environment.
+The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across nine historical and seven latest configurations; real browser visual QA remains unavailable in the current environment.
 
 ## Measured performance
 
@@ -87,3 +87,37 @@ The original 1996 pre-price buffer yields only 61 usable holdings, so it cannot 
 Schema version 2 adds `latest_snapshots` and latest-date metadata. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `research.latest_screen()` exposes the same SQL filters and rank semantics without return fields.
 
 Historical preparation is capped at the saved canonical report's Through date (and the configured historical ASOF). Latest preparation can advance beyond that date without silently extending the historical backtest. The reference report is included in the freshness signature. Updating a database and rebuilding HTML are separate from fetching missing or new market data.
+
+### Select a ranking metric
+
+Both website modes and `research.py screen --metric ev_ebitda_3y` support
+current EV divided by three-year average EBITDA. The denominator is the arithmetic mean of positive annual
+EBITDA for three consecutive fiscal calendar years ending
+at the selected report. EV is valued at the screening date.
+Missing years exclude a stock. Reports after the selected fiscal end are never
+used; the selected report still obeys the strict 90-day availability lag and
+800-day age limit. The original metric remains current-date EV/EBITDA.
+
+Rank 1 has the lowest selected multiple. Minimum yield is its reciprocal;
+maximum multiple applies to the selected metric. Tables and selected-holdings
+CSV exports include the selected metric values. The original pool retains its
+single-year top-250 pre-screen; use the cached pool to compare signals across
+the broader available price universe. Neither pool represents full coverage.
+
+`scripts/metrics.py` owns the display catalog, calculator registry and metric
+preparation. `screening_metrics` stores ready-to-rank multiple/yield pairs by
+mode, pool, year, symbol and metric ID (year 0 represents latest mode). Thus
+screening-date values remain separate even when observations use the same fiscal
+report. Preparation preserves both default EV/EBITDA values exactly.
+`website/dataset.py` exports the display catalog and prepared pairs; SQL and
+JavaScript consume the same values without interpreting calculation types.
+
+To add a metric, register its display metadata in `METRICS` and its calculation
+in `CALCULATORS`. A calculator receives the valued observation and company report
+history, returns a multiple/yield pair, or returns `None` for missing data. It
+must only use history eligible for that observation. The selected fiscal report
+bounds the existing three-year calculation. Catalog/registry mismatches fail
+preparation. Add temporal/missing-history tests and SQL/browser parity cases;
+selection and UI code do not need new formula branches. Calculation/catalog
+changes invalidate prepared data. Rebuild once from the raw cache; changing the
+selector never downloads or reparses price history.

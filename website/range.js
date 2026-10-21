@@ -2,7 +2,7 @@ const allReturns=data.slice();
 const screeningData=JSON.parse(document.getElementById('screening-data').textContent);
 const rankFrom=document.getElementById('rank-from'),rankTo=document.getElementById('rank-to');
 const fromYear=document.getElementById('from-year'),toYear=document.getElementById('to-year');
-const fields={pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
+const fields={metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
 let currentScreen=null,currentLatest=null;
 let screeningMode='latest';
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
@@ -17,6 +17,7 @@ function initializeFilters(){
     const values=[...new Set(Object.values(screeningData.companies).map(c=>c[index]))].sort();
     document.getElementById(field).innerHTML='<option value="">All</option>'+values.map(v=>`<option value="${safe(v)}">${safe(v)}</option>`).join('');
   }
+  document.getElementById('ranking-metric').innerHTML=Object.entries(screeningData.metrics).map(([key,m])=>`<option value="${safe(key)}">${safe(m.label)}</option>`).join('');
   resetFilters();
 }
 function resetFilters(){
@@ -29,13 +30,19 @@ function readOptions(){
   const o={first:+fromYear.value,last:+toYear.value,rank_from:+rankFrom.value,rank_to:+rankTo.value};
   for(const [key,id] of Object.entries(fields)){
     const text=document.getElementById(id).value.trim();
-    if(['pool','sector','exchange'].includes(key))o[key]=text||null;
+    if(['metric','pool','sector','exchange'].includes(key))o[key]=text||null;
     else{
       if(!text && ['min_cap','min_ev','min_yield'].includes(key))throw Error('Fill in each minimum, or enter 0.');
       o[key]=text===''?null:Number(text)*(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1);
     }
   }
   return o;
+}
+function updateMetricLabels(o){
+  const label=screeningData.metrics[o.metric].label;
+  document.querySelectorAll('[data-metric-multiple]').forEach(el=>el.textContent=label+' (×)');
+  document.querySelectorAll('[data-metric-yield]').forEach(el=>el.textContent='Selected metric yield');
+  document.getElementById('strategy-heading').textContent='Lowest '+label;
 }
 function drawMarketCaps(){
   const values=data.map(d=>medianMarketCap(d.year)).filter(v=>v!==null);
@@ -75,7 +82,7 @@ function renderStockTable(year){
   renderContributions(year);
   const stocks=selectedHoldings(year);
   document.getElementById('holding-body-'+year).innerHTML=stocks.map(h=>{
-    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,(h.ebitda_yield*100).toFixed(2)+'%',h.ev_ebitda.toFixed(2)+'×',money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,pct(h.return_value),pp(h.return_value/stocks.length)+' pp',h.status];
+    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,(h.metric_yield*100).toFixed(2)+'%',h.metric_multiple.toFixed(2)+'×',money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,pct(h.return_value),pp(h.return_value/stocks.length)+' pp',h.status];
     return `<tr>${vals.map(v=>'<td>'+safe(v)+'</td>').join('')}</tr>`;
   }).join('')||'<tr><td colspan="15">No stocks match these filters.</td></tr>';
 }
@@ -118,12 +125,13 @@ function applyLatest(){
   catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
   document.getElementById('screen-error').textContent='';
   const r=currentLatest,o=r.options;
+  updateMetricLabels(o);
   document.getElementById('latest-date').textContent=r.asof;
   document.getElementById('latest-count').textContent=String(r.stocks.length);
   document.getElementById('latest-median-cap').textContent=money(r.median_market_cap);
   document.getElementById('latest-median-yield').textContent=r.median_yield===null?'—':(r.median_yield*100).toFixed(2)+'%';
   document.getElementById('latest-body').innerHTML=r.stocks.map(h=>{
-    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,h.price.toFixed(2),money(h.market_cap),money(h.enterprise_value),(h.ebitda_yield*100).toFixed(2)+'%',h.ev_ebitda.toFixed(2)+'×',h.fiscal,h.known,h.price_date];
+    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,h.price.toFixed(2),money(h.market_cap),money(h.enterprise_value),(h.metric_yield*100).toFixed(2)+'%',h.metric_multiple.toFixed(2)+'×',h.fiscal,h.known,h.price_date];
     return '<tr>'+vals.map(v=>'<td>'+safe(v)+'</td>').join('')+'</tr>';
   }).join('')||'<tr><td colspan="13">No stocks match these latest-date filters.</td></tr>';
   const meta=screeningData.latest.metadata;
@@ -146,8 +154,9 @@ function applyRange(changed){
   }catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
   document.getElementById('screen-error').textContent='';
   data=currentScreen.years.map(y=>({year:y.year,portfolio:y.portfolio,spy:y.spy,names:y.names}));
+  updateMetricLabels(currentScreen.options);
   const {first,last,rank_from,rank_to}=currentScreen.options;
-  document.getElementById('strategy-legend').textContent=`EBITDA/EV ranks ${rank_from}–${rank_to}`;
+  document.getElementById('strategy-legend').textContent=`${screeningData.metrics[currentScreen.options.metric].label} ranks ${rank_from}–${rank_to}`;
   draw();drawMarketCaps();
   document.getElementById('rows').innerHTML=data.map(d=>`<tr><td>${d.year}${d.year===2026?'*':''}</td><td>${d.names}</td><td class="${d.portfolio>=0?'positive':'negative'}">${d.portfolio===null?'—':pct(d.portfolio)}</td><td class="${d.spy>=0?'positive':'negative'}">${pct(d.spy)}</td><td>${d.portfolio===null?'—':pp(d.portfolio-d.spy)}</td></tr>`).join('');
   const active=document.getElementById('holding-year').value;
@@ -181,8 +190,8 @@ function applyRange(changed){
 }
 function downloadLatest(){
   if(!currentLatest)return;
-  const keys=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','known','price_date'];
-  const rows=[keys,...currentLatest.stocks.map(h=>keys.map(k=>h[k]))];
+  const keys=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','metric','metric_yield','metric_multiple','fiscal','known','price_date'];
+  const rows=[keys,...currentLatest.stocks.map(h=>keys.map(k=>k==='metric'?currentLatest.options.metric:h[k]))];
   const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='latest-picks-'+currentLatest.asof+'.csv';a.click();URL.revokeObjectURL(url);
@@ -191,8 +200,8 @@ function downloadSelection(kind){
   if(!currentScreen)return;
   let rows;
   if(kind==='holdings'){
-    const keys=['year','rank','symbol','name','exchange','sector','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','entry','exit','return_value','weight','contribution_pp','status'];
-    rows=[keys,...currentScreen.years.flatMap(y=>y.holdings.map(h=>keys.map(k=>k==='weight'?1/y.names:k==='contribution_pp'?h.return_value/y.names*100:h[k])))];
+    const keys=['year','rank','symbol','name','exchange','sector','market_cap','enterprise_value','ebitda_yield','ev_ebitda','metric','metric_yield','metric_multiple','fiscal','entry','exit','return_value','weight','contribution_pp','status'];
+    rows=[keys,...currentScreen.years.flatMap(y=>y.holdings.map(h=>keys.map(k=>k==='metric'?currentScreen.options.metric:k==='weight'?1/y.names:k==='contribution_pp'?h.return_value/y.names*100:h[k])))];
   }else rows=[['year','names','portfolio','spy','median_market_cap'],...currentScreen.years.map(y=>[y.year,y.names,y.portfolio??'',y.spy,y.median_market_cap??''])];
   const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));

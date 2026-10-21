@@ -5,8 +5,8 @@ Open `dist/index.html` directly in Chrome or Edge. The page is self-contained: n
 ## Basic workflow
 
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
-2. Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum EBITDA/EV in **percent**, and optionally a maximum EV/EBITDA multiple, sector or exchange.
-3. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the highest EBITDA/EV after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
+2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
+3. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the lowest selected valuation multiple after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
 4. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
 
 In historical mode, the strategy reselects and equally weights stocks every January. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
@@ -33,7 +33,7 @@ node tests/check-range.cjs
 python3 tests/check_screener.py
 ```
 
-The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across eight configurations, including short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
+The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across nine historical and seven latest configurations, including short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
 
 A private Sites project is registered in `.openai/hosting.json`. Hosted publication remains blocked by source-host access from this environment. Preserve the project ID when retrying.
 
@@ -65,3 +65,14 @@ Latest mode has separate prepared records for the original 250-candidate pool an
 Click **Screen latest**, **Top 50**, or **Top 100**. Download latest picks exports the currently selected stocks, including valuation date, adjusted price, estimated market cap/EV, ratios, fiscal date, and assumed availability date. `dist/latest-picks.csv` is the default-settings fallback export generated at build time; browser downloads reflect the current filters. The latest table is also embedded as a no-JavaScript fallback.
 
 Updating source caches does not update an already-open standalone HTML file. Run `python3 scripts/research.py prepare` and `python3 website/build.py`, then reload the page. These commands never download data. Future latest sessions are prepared independently of the canonical backtest's saved Through date, so new current prices do not silently extend the old report.
+
+## Ranking metrics
+
+Choose **EV / EBITDA** (current-date valuation) or **EV / 3-year average EBITDA**
+(current EV divided by mean EBITDA from three consecutive annual reports). Lower multiples rank first;
+minimum selected yield is the reciprocal of the multiple. A missing annual
+report excludes the stock from the three-year metric. Both latest and historical
+modes use only reports eligible at their screening date. Selected stock tables
+and CSV exports show the chosen signal. For a broader comparison, use all stocks
+with cached prices: the original candidate set retains its single-year pre-screen.
+See `../docs/research-workflow.md` for calculation and extension details.

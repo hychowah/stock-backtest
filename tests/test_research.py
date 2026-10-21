@@ -28,11 +28,47 @@ class ResearchTests(unittest.TestCase):
                     # EBITDA/EV ranking intentionally disagrees with subsequent returns.
                     self.db.execute('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',(pool,year,symbol,i,'2014-01-01',f'{year}-01-02',f'{year+1}-01-02',i*100e6,200e6,40e6,.5/i,2*i,.5/i-.02,(-.9 if i==1 else i*.1),'Scheduled exit'))
 
+        r.metrics.prepare_metrics(self.db)
+
     def test_shared_selection_validation(self):
         for select in (r.screen, r.latest_screen):
             for options in ({'rank_to':1.5}, {'rank_to':5001}, {'min_yield':float('nan')}, {'min_cap':1e9,'max_cap':100}):
                 with self.subTest(select=select.__name__,options=options), self.assertRaises(ValueError):
                     select(self.db,**options)
+
+    def test_three_year_metric_and_missing_history(self):
+        rows=[dict(fiscal=f'{y}-12-31',known=f'{y+1}-03-31',enterprise_value=999,ebitda=v) for y,v in [(2011,3),(2012,6),(2013,12),(2014,999)]]
+        self.assertEqual(r.metrics.annual_average(rows,'2013-12-31',3),7)
+        self.assertIsNone(r.metrics.annual_average(rows[1:],'2013-12-31',3))
+        # The alternate metric must drive both ranking and filter thresholds.
+        self.db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)', [('historical','legacy',2015,'S1','ev_ebitda_3y',20,.05),('historical','legacy',2015,'S2','ev_ebitda_3y',3,.3333333333333333)])
+        selected=r.screen(self.db,first=2015,last=2015,metric='ev_ebitda_3y',max_multiple=5)
+        self.assertEqual([row['symbol'] for row in selected],['S2'])
+        self.assertEqual(selected[0]['metric_multiple'],3)
+        summary=r.aggregate(selected)[2015]
+        self.assertEqual(summary['median_multiple'],3)
+        self.assertEqual(summary['median_yield'],1/3)
+        with self.assertRaises(ValueError):
+            r.latest_screen(self.db,metric='unknown')
+
+    def test_preparation_owns_calculations_and_exact_default_values(self):
+        for year,ebitda in [(2012,10e6),(2013,20e6),(2014,30e6)]:
+            self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('S1',f'{year}-01-01',f'{year}-04-01',100e6,200e6,ebitda,.1))
+        r.metrics.prepare_metrics(self.db)
+        row=r.screen(self.db,first=2015,last=2015,metric='ev_ebitda_3y')[0]
+        self.assertEqual(row['metric_multiple'],10)
+        self.assertEqual(row['metric_yield'],.1)
+        # Same history, different screening-date EV must produce a different value.
+        self.db.execute("UPDATE snapshots SET enterprise_value=400e6 WHERE year=2016")
+        r.metrics.prepare_metrics(self.db)
+        self.assertEqual(r.screen(self.db,first=2016,last=2016,metric='ev_ebitda_3y')[0]['metric_multiple'],20)
+        for row in r.screen(self.db):
+            self.assertEqual(row['metric_multiple'],row['ev_ebitda'])
+            self.assertEqual(row['metric_yield'],row['ebitda_yield'])
+        # A different formula needs only registration, without selector changes.
+        with patch.dict(r.metrics.METRICS,{'test_signal':dict(label='Test signal')}), patch.dict(r.metrics.CALCULATORS,{'test_signal':lambda observation,history:(2.,.5)}):
+            r.metrics.prepare_metrics(self.db)
+            self.assertEqual(len(r.screen(self.db,first=2015,last=2015,metric='test_signal')),3)
 
     def tearDown(self):
         self.db.close()
@@ -88,6 +124,7 @@ class ResearchTests(unittest.TestCase):
     def test_latest_filters_before_ranking_without_future_returns(self):
         for i in range(1,4):
             self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',('cached',f'S{i}',None,'2025-12-31','2026-03-31','2026-10-20',10.,i*100e6,200e6,.5/i,2*i,.5/i-.02))
+        r.metrics.prepare_metrics(self.db)
         rows=r.latest_screen(self.db,pool='cached',min_cap=150e6,rank_to=1)
         self.assertEqual([h['symbol'] for h in rows],['S2'])
         self.assertEqual(rows[0]['price_date'],'2026-10-20')

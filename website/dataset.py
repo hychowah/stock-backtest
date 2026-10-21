@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import json
 from research import connect
+from metrics import METRICS
 
 FIELDS = ['year','symbol','candidate_rank','fiscal','entry','exit',
           'market_cap','enterprise_value','ebitda_yield','ev_ebitda',
@@ -24,6 +25,11 @@ def load_screening_data():
         latest_fields=['symbol','candidate_rank','fiscal','known','price_date','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','spread']
         latest={pool:[list(row) for row in db.execute('SELECT '+','.join(latest_fields)+' FROM latest_snapshots WHERE pool=? ORDER BY symbol',(pool,))] for pool in ['legacy','cached']}
         latest['metadata']=json.loads(db.execute("SELECT value FROM metadata WHERE key='latest'").fetchone()[0])
-        return dict(companies=companies, periods=periods, pools=pools, latest=latest)
+        metric_values={}
+        for r in db.execute('SELECT * FROM screening_metrics'):
+            key=f"{r['mode']}:{r['pool']}:{r['year']}:{r['symbol']}"
+            metric_values.setdefault(key,{})[r['metric']]=[r['multiple'],r['yield_value']]
+        return dict(companies=companies, periods=periods, pools=pools, latest=latest,
+                    metrics=METRICS, metric_values=metric_values)
     finally:
         db.close()

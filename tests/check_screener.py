@@ -18,12 +18,13 @@ CASES = [
     dict(first=2015, last=2020, sector='No matching sector'),
     dict(first=1996, last=1996, rank_to=100),
     dict(first=2026, last=2026, rank_from=10, rank_to=10),
+    dict(first=2015,last=2020,pool='cached',metric='ev_ebitda_3y',max_multiple=8),
 ]
 
 def main():
     db = research.connect()
     try:
-        latest_cases=[{},dict(pool='cached',rank_to=100),dict(pool='cached',min_cap=500e6,max_cap=5e9,min_yield=.15),dict(pool='cached',sector='Technology',exchange='NASDAQ',max_multiple=8),dict(rank_from=10,rank_to=20),dict(sector='No matching sector')]
+        latest_cases=[{},dict(pool='cached',rank_to=100),dict(pool='cached',min_cap=500e6,max_cap=5e9,min_yield=.15),dict(pool='cached',sector='Technology',exchange='NASDAQ',max_multiple=8),dict(rank_from=10,rank_to=20),dict(sector='No matching sector'),dict(pool='cached',metric='ev_ebitda_3y',rank_to=100,max_multiple=8)]
         expected = dict(historical=[research.screen(db, **options) for options in CASES],latest=[research.latest_screen(db,**options) for options in latest_cases])
     finally:
         db.close()
