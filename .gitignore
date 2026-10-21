@@ -21,3 +21,8 @@ raw/archive/*
 
 # Sites maintains its own repository metadata; project source is tracked here.
 website/.git/
+
+# Rebuildable prepared research database.
+data/*.sqlite
+data/*.sqlite-*
+data/*.building*

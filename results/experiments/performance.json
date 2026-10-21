@@ -1,0 +1,12 @@
+{
+  "description": "Measured local end-to-end wall time after preparing the database; includes Python startup. Hardware and filesystem cache affect timings.",
+  "database_bytes": 16920576,
+  "snapshot_rows": 39468,
+  "prepared_companies_with_price_files": 1999,
+  "preparation_seconds": 62.11,
+  "top100_2015_2020_seconds": 0.454,
+  "filtered_2015_2020_seconds": 0.589,
+  "website_rebuild_seconds": 1.802,
+  "baseline_holdings_checked": 1550,
+  "baseline_years_checked": 31
+}

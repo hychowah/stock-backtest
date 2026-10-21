@@ -11,10 +11,13 @@ Open [website/dist/index.html](website/dist/index.html) in Chrome or Edge. No se
 Python 3.10 or newer is required. Python scripts use only the standard library.
 
 ```bash
-# Recompute the current backtest, without downloading data
-python3 scripts/revalue.py
+# Prepare the local database once (no downloads)
+python3 scripts/research.py prepare
 
-# Rebuild the website from the current result and cached holdings
+# Run a fast screen; change --top, years, or filters freely
+python3 scripts/research.py screen --top 100
+
+# Rebuild the website from prepared holdings
 python3 website/build.py
 
 # Check year/rank filtering and performance calculations (requires Node.js)
@@ -24,12 +27,13 @@ node tests/check-range.cjs
 python3 tests/check_paths.py
 ```
 
-Commands above run from the project folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the project when moving it. Rebuilding the website reconstructs holdings from roughly 1.2 GB of cached price files and can take several minutes.
+Commands above run from the project folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the project when moving it. Initial database preparation reads roughly 1.2 GB of cached price files. Subsequent screens and website builds query compact prepared records. The independent `scripts/revalue.py` reference run still reads raw prices.
 
 ## Project layout
 
 ```text
-scripts/             Backtest, selection, exit analysis, and shared paths
+scripts/             Data preparation, screening, backtest, exit analysis, and paths
+data/                Prepared local SQLite database (generated; ignored by Git)
 website/             Website source, builder, hosting identity, and built output
   dist/              Ready-to-open HTML, CSV exports, and valuation data
 results/
@@ -43,6 +47,8 @@ tools/              API probes, download experiments, and market-data repair
 tests/              Calculation and path checks
 docs/               Methodology, assumptions, and limitations
 ```
+
+See [fast screening and backtesting](docs/research-workflow.md) for parameter examples, coverage limits, and the preparation/query separation.
 
 ## Current result
 

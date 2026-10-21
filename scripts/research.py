@@ -1,0 +1,330 @@
+"""Offline January research database and configurable equal-weight backtests."""
+from __future__ import annotations
+
+import argparse
+from bisect import bisect_left, bisect_right
+import csv
+from datetime import date
+import json
+from pathlib import Path
+import sqlite3
+import statistics
+import time
+
+import run
+import revalue
+from paths import ROOT, RAW, RESULTS
+
+DATABASE = ROOT / 'data' / 'research.sqlite'
+SCHEMA_VERSION = 1
+SCHEMA = '''
+CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
+CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
+CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
+CREATE TABLE snapshots (
+ pool TEXT, year INTEGER, symbol TEXT, candidate_rank INTEGER,
+ fiscal TEXT, entry TEXT, exit TEXT, market_cap REAL, enterprise_value REAL,
+ ebitda REAL, ebitda_yield REAL, ev_ebitda REAL, spread REAL,
+ return_value REAL, status TEXT, PRIMARY KEY(pool,year,symbol));
+CREATE INDEX screen_lookup ON snapshots(pool,year,ebitda_yield DESC);
+'''
+
+
+def signature():
+    paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
+    paths += [RAW/'px', Path(__file__), Path(run.__file__), Path(revalue.__file__)]
+    return {str(p.relative_to(ROOT)): [p.stat().st_size,p.stat().st_mtime_ns] for p in paths}
+
+
+def price_sources():
+    return {p.name: [p.stat().st_size,p.stat().st_mtime_ns] for p in sorted((RAW/'px').glob('*.json'))}
+
+
+def connect(path=DATABASE, check=True, full_prices=False):
+    path=Path(path)
+    if not path.exists():
+        raise ValueError('Prepared database missing. Run: python3 scripts/research.py prepare')
+    db=sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)
+    db.row_factory=sqlite3.Row
+    try:
+        meta={r['key']:json.loads(r['value']) for r in db.execute('SELECT * FROM metadata')}
+        if meta.get('version') != SCHEMA_VERSION:
+            raise ValueError('Database version changed; run research.py prepare')
+        if check and (meta.get('inputs')!=signature() or (full_prices and meta.get('prices')!=price_sources())):
+            raise ValueError('Cached inputs changed. Run: python3 scripts/research.py prepare')
+    except Exception:
+        db.close()
+        raise
+    return db
+
+
+def bars(payload, key):
+    result=[]
+    for row in payload:
+        value=run.num(row.get(key))
+        try:
+            day=date.fromisoformat(str(row.get('date',''))[:10])
+        except ValueError:
+            continue
+        if value is not None and value>0:
+            result.append((day,value))
+    return sorted(result)
+
+
+def before(series, day, slack):
+    i=bisect_right(series,(day,float('inf')))-1
+    return series[i] if i>=0 and (day-series[i][0]).days<=slack else None
+
+
+def after(series, day, slack):
+    i=bisect_left(series,(day,0))
+    return series[i] if i<len(series) and (series[i][0]-day).days<=slack else None
+
+
+def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
+    fiscal_px=before(light or div,statement['fiscal'],7)
+    entry_px=after(light or div,entry_day,4)
+    if fiscal_px is None or entry_px is None:
+        return None
+    cap=statement['market_cap']*(entry_px[1]/fiscal_px[1])
+    ev=cap+(statement['enterprise']-statement['market_cap'])
+    if ev<=0 or cap<=0:
+        return None
+    ebitda=statement['yield']*statement['enterprise']
+    start=after(div,entry_px[0],4)
+    if start is None:
+        return None
+    end=before(div,exit_day,10)
+    status='Scheduled exit' if exit_day.year>entry_day.year else 'Marked to date'
+    if end is None:
+        end=before(div,exit_day,100000)
+        if end is None or end[0]<start[0]:
+            return None
+        status='Last available price'
+    ret=-1. if bankruptcy else end[1]/start[1]-1
+    if bankruptcy:
+        status='Bankruptcy'
+    return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,ebitda/ev,ev/ebitda,ret,status]
+
+
+def prepare(path=DATABASE, force=False):
+    started=time.perf_counter()
+    path=Path(path)
+    if path.exists() and not force:
+        try:
+            db=connect(path,full_prices=True)
+        except ValueError:
+            pass
+        else:
+            db.close()
+            print(f'Database already current ({time.perf_counter()-started:.2f}s); no JSON prices parsed.')
+            return
+    inputs, sources=signature(),price_sources()
+    universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
+    # Reuse the current selection semantics, including the 250-name pre-price buffer.
+    book=run.build_statements(universe)
+    spy=run.load_bars(RAW/'spy-div.json','adjClose')
+    sessions=[d for d,_ in spy]
+    yields=[]
+    for r in json.loads((RAW/'treasury.json').read_text()):
+        day,value=run.parse_day(r.get('date')),run.num(r.get('month3'))
+        if day is not None and value is not None:
+            yields.append((day,value/100))
+    yields.sort()
+    legacy=run.screen(book,yields,sessions)
+    ranks={y:{r['symbol']:i for i,r in enumerate(rs,1)} for y,rs in legacy.items()}
+    broad={}
+    financials=[]
+    with (RAW/'metrics.jsonl').open() as handle:
+        for line in handle:
+            record=json.loads(line); symbol=record['symbol']
+            if symbol not in universe:
+                continue
+            rows=[]
+            for r in record['rows']:
+                fiscal=run.parse_day(r.get('date'))
+                cap,ev,multiple=map(run.num,[r.get('marketCap'),r.get('enterpriseValue'),r.get('evToEBITDA')])
+                if fiscal is None or any(v is None or v<=0 for v in [cap,ev,multiple]) or str(r.get('reportedCurrency') or 'USD').upper()!='USD':
+                    continue
+                row=dict(fiscal=fiscal,known=fiscal+run.LAG,market_cap=cap,enterprise=ev,yield_=1/multiple)
+                row['yield']=row.pop('yield_')
+                rows.append(row)
+                financials.append((symbol,str(fiscal),str(row['known']),cap,ev,ev/multiple,1/multiple))
+            if rows:
+                broad[symbol]=sorted(rows,key=lambda r:r['fiscal'])
+    periods={}
+    for year in legacy:
+        entry=run.session_on_or_after(sessions,date(year,1,1))
+        end=run.session_on_or_after(sessions,date(year+1,1,1)) if year<run.LAST_YEAR else sessions[-1]
+        a,b=after(spy,entry,4),before(spy,end,4)
+        periods[year]=(entry,end,b[1]/a[1]-1,run.asof_yield(yields,entry))
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temporary=path.with_name(path.name+'.building')
+    if temporary.exists():
+        temporary.unlink()
+    db=sqlite3.connect(temporary)
+    db.row_factory=sqlite3.Row
+    try:
+        db.executescript(SCHEMA)
+        db.executemany('INSERT INTO companies VALUES(?,?,?,?)',[(s,r.get('name') or 'Unavailable',r.get('exchange') or 'Unavailable',r.get('sector') or 'Unavailable') for s,r in universe.items()])
+        db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
+        for year,(entry,end,spy_return,treasury) in periods.items():
+            count=sum(run.latest_statement(rs,entry) is not None for rs in broad.values())
+            db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,str(entry),str(end),spy_return,treasury,len(legacy[year]),count))
+        cached_symbols=sorted(s for s in broad if run.cache_path_for(s).name in sources)
+        total=0
+        for number,symbol in enumerate(cached_symbols,1):
+            payload=json.loads(run.cache_path_for(symbol).read_text())
+            light=[]
+            for r in payload.get('light') or []:
+                value=r.get('price') if r.get('price') is not None else r.get('close')
+                light.extend(bars([dict(date=r.get('date'),value=value)],'value'))
+            light.sort()
+            div=bars(payload.get('div') or [],'adjClose')
+            inserts=[]
+            for year,(entry,end,_,treasury) in periods.items():
+                for pool,statements in [('legacy',book.get(symbol,[])),('cached',broad[symbol])]:
+                    candidate=ranks[year].get(symbol)
+                    if pool=='legacy' and candidate is None:
+                        continue
+                    statement=run.latest_statement(statements,entry)
+                    if statement is None:
+                        continue
+                    row=snapshot(statement,entry,end,light,div,(year,symbol) in revalue.BANKRUPT)
+                    if row is None:
+                        continue
+                    fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,ret,status=row
+                    # Original rescale rejects buy-date caps before ranking.
+                    if pool=='legacy' and (cap<run.MIN_MARKET_CAP or ev<run.MIN_EV):
+                        continue
+                    inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
+            db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',inserts)
+            total+=len(inserts)
+            if number%200==0 or number==len(cached_symbols):
+                print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} January snapshots',flush=True)
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources).items():
+            db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
+        # Reject changing inputs and keep an existing database intact on failure.
+        if inputs!=signature() or sources!=price_sources():
+            raise ValueError('Inputs changed during preparation; retry.')
+        db.commit()
+        verify_reference(db)
+        db.close()
+        temporary.replace(path)
+    except BaseException:
+        db.close()
+        temporary.unlink(missing_ok=True)
+        raise
+    print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
+
+
+def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
+    if first>last or rank_from<1 or rank_to<rank_from:
+        raise ValueError('Years and ranks must be in increasing order; ranks start at 1.')
+    if pool not in ['legacy','cached']:
+        raise ValueError('Pool must be legacy or cached')
+    clauses=['s.pool=?','s.year BETWEEN ? AND ?','s.market_cap>=?','s.enterprise_value>=?','s.ebitda_yield>=?']
+    values=[pool,first,last,min_cap,min_ev,min_yield]
+    for clause,value in [('s.market_cap<=?',max_cap),('s.ev_ebitda<=?',max_multiple),('c.sector=?',sector),('c.exchange=?',exchange)]:
+        if value is not None:
+            clauses.append(clause);values.append(value)
+    sql='''WITH ranked AS (
+    SELECT s.*,c.name,c.sector,c.exchange,
+      ROW_NUMBER() OVER(PARTITION BY year ORDER BY ebitda_yield DESC,candidate_rank ASC,s.symbol ASC) AS rank
+    FROM snapshots s JOIN companies c USING(symbol) WHERE '''+' AND '.join(clauses)+''')
+    SELECT * FROM ranked WHERE rank BETWEEN ? AND ? ORDER BY year,rank'''
+    cursor=db.execute(sql,values+[rank_from,rank_to])
+    fields=[c[0] for c in cursor.description]
+    return [dict(zip(fields,row)) for row in cursor]
+
+
+def aggregate(rows):
+    groups={}
+    for r in rows:
+        groups.setdefault(r['year'],[]).append(r)
+    return {year:dict(holdings=stocks,median_market_cap=statistics.median(r['market_cap'] for r in stocks),median_yield=statistics.median(r['ebitda_yield'] for r in stocks),median_multiple=statistics.median(r['ev_ebitda'] for r in stocks),portfolio=statistics.mean(r['return_value'] for r in stocks)) for year,stocks in groups.items()}
+
+
+def verify_reference(db):
+    import io
+    text=(RESULTS/'summary-exits.txt').read_text()
+    reference=list(csv.DictReader(io.StringIO(text[text.index('year,portfolio,spy,'):])) )
+    actual=aggregate(screen(db))
+    for r in reference:
+        group=actual.get(int(r['year']))
+        if group is None or len(group['holdings'])!=int(r['names']) or abs(group['portfolio']-float(r['portfolio']))>.000051:
+            raise ValueError('Prepared data does not reproduce the current result for '+r['year'])
+    print('Verified all 31 baseline holding counts and annual returns against the current report.',flush=True)
+
+
+def website_holdings(path=DATABASE):
+    with connect(path) as db:
+        return aggregate(screen(db))
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--database',type=Path,default=DATABASE)
+    commands=parser.add_subparsers(dest='command',required=True)
+    p=commands.add_parser('prepare',help='Prepare January snapshots from saved JSON; never downloads')
+    p.add_argument('--force',action='store_true')
+    p=commands.add_parser('screen',help='Run a fast parameterized January backtest')
+    p.add_argument('--first',type=int,default=1996);p.add_argument('--last',type=int,default=2026)
+    p.add_argument('--rank-from',type=int,default=1);p.add_argument('--rank-to',type=int,default=50)
+    p.add_argument('--top',type=int,help='Shortcut for ranks 1 through N')
+    p.add_argument('--pool',choices=['legacy','cached'],default='legacy')
+    p.add_argument('--min-cap',type=float,default=100e6);p.add_argument('--max-cap',type=float)
+    p.add_argument('--min-ev',type=float,default=50e6);p.add_argument('--min-yield',type=float,default=0.)
+    p.add_argument('--max-multiple',type=float);p.add_argument('--sector');p.add_argument('--exchange')
+    p.add_argument('--output',type=Path,help='Optional JSON result path; the current report is never overwritten')
+    commands.add_parser('status',help='Show database size and price-coverage limits')
+    args=parser.parse_args()
+    if args.command=='prepare':
+        prepare(args.database,args.force);return
+    started=time.perf_counter()
+    with connect(args.database) as db:
+        if args.command=='status':
+            print(f'Database: {args.database.stat().st_size/1e6:.1f} MB')
+            print('year,eligible_financials,price_valued_cached,legacy_price_valued')
+            for p in db.execute('SELECT * FROM periods ORDER BY year'):
+                counts={row[0]:row[1] for row in db.execute('SELECT pool,COUNT(*) FROM snapshots WHERE year=? GROUP BY pool',(p['year'],))}
+                print(f"{p['year']},{p['cached_candidates']},{counts.get('cached',0)},{counts.get('legacy',0)}")
+            return
+        options={k:getattr(args,k) for k in ['first','last','rank_from','rank_to','pool','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange']}
+        if args.top is not None:
+            options.update(rank_from=1,rank_to=args.top)
+        rows=screen(db,**options)
+        grouped=aggregate(rows)
+        periods={r['year']:dict(r) for r in db.execute('SELECT * FROM periods')}
+        print('year,names,strategy,spy,median_market_cap,last_price_exits')
+        wealth=spy_wealth=1.
+        for year in range(args.first,args.last+1):
+            if year not in periods:
+                continue
+            g=grouped.get(year)
+            if not g:
+                print(f'{year},0,NA,NA,NA,0');continue
+            wealth*=1+g['portfolio'];spy_wealth*=1+periods[year]['spy']
+            stops=sum(r['status']=='Last available price' for r in g['holdings'])
+            print(f"{year},{len(g['holdings'])},{g['portfolio']:.4%},{periods[year]['spy']:.4%},{g['median_market_cap']:.0f},{stops}")
+        requested=options['rank_to']-options['rank_from']+1
+        incomplete=[y for y in periods if args.first<=y<=args.last and len(grouped.get(y,{}).get('holdings',[]))!=requested]
+        print(f'Growth of $1 over populated books: strategy ${wealth:.4f}; SPY ${spy_wealth:.4f}')
+        print(f'Query and validation time: {time.perf_counter()-started:.3f}s')
+        print('Coverage: '+('original 250-candidate buffer; report-compatible selection.' if args.pool=='legacy' else 'cached-price companies only; not the full universe. Sector/exchange are cached metadata, not historical classifications.'))
+        if incomplete:
+            print('Insufficient matching names in: '+', '.join(map(str,incomplete)))
+        print('Early exits outside the original top 50 have not received the prior manual bankruptcy review.')
+        if args.output:
+            if args.output.resolve()==(RESULTS/'summary-exits.txt').resolve():
+                raise ValueError('Choose a separate experiment output; the reference report is preserved.')
+            args.output.parent.mkdir(parents=True,exist_ok=True)
+            args.output.write_text(json.dumps(dict(parameters=options,years=grouped,periods=periods,incomplete_years=incomplete),indent=2))
+
+
+if __name__=='__main__':
+    try:
+        main()
+    except (ValueError,sqlite3.Error) as error:
+        raise SystemExit(str(error))

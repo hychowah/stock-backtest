@@ -7,6 +7,7 @@ The chart and CSV use the current `../results/summary-exits.txt`, including the 
 To refresh the chart and CSV after recomputing results:
 
 ```
+python3 scripts/research.py prepare
 python3 website/build.py
 ```
 
@@ -16,7 +17,7 @@ A private Sites project is registered in `.openai/hosting.json`. Publication did
 
 ## Valuations and holdings
 
-The build reconstructs each year's selected holdings from the cached universe, metrics and prices, using `scripts/run.py` selection helpers and the current `scripts/revalue.py` exit rules. It checks the holding counts and mean returns against `results/summary-exits.txt` before writing the page. It never reads the older `picks.csv`.
+The build queries `data/research.sqlite` for each year's selected holdings. Prepare that database once with `python3 scripts/research.py prepare`; the builder no longer reparses raw price histories. It checks the holding counts and mean returns against `results/summary-exits.txt` before writing the page. It never reads the older `picks.csv`.
 
 The median chart and expandable year summaries show market capitalization at purchase in nominal US dollars. The median is the average of the middle two market caps for the 50 holdings. Individual rows also include EBITDA/EV and EV/EBITDA. Basic company metadata comes from the cached universe and is not point-in-time; absent sectors are marked unavailable. `dist/holdings.csv` exports all holdings and `dist/valuations.json` contains the underlying valuation data. The chart and expandable tables are embedded in HTML and work without JavaScript; the year selector and return-chart toggles require JavaScript.
 
