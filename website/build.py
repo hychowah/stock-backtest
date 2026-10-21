@@ -8,6 +8,7 @@ import math
 import statistics
 from holdings import load
 from dataset import load_screening_data
+from attribution import render as render_attribution
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -72,13 +73,13 @@ for i, (year, group) in enumerate(holdings.items()):
     vs.append(f'<rect x="{x}" y="{vy(median)}" width="{step-10}" height="{330-vy(median)}" fill="#20775e"><title>{year}: ${median/1e6:,.1f}m median market cap</title></rect><text transform="translate({x+step/2-5},353) rotate(-55)" text-anchor="end" font-size="11">{year}</text>')
     trs = []
     for h in group['holdings']:
-        vals = [h['rank'],h['symbol'],h['name'],h['exchange'],h['sector'],f"{h['ebitda_yield']:.2%}",f"{h['ev_ebitda']:.2f}×",f"${h['market_cap']/1e6:,.1f}m",f"${h['enterprise_value']/1e6:,.1f}m",h['fiscal'],h['entry'],h['exit'],pct(h['return_value']),h['status']]
+        vals = [h['rank'],h['symbol'],h['name'],h['exchange'],h['sector'],f"{h['ebitda_yield']:.2%}",f"{h['ev_ebitda']:.2f}×",f"${h['market_cap']/1e6:,.1f}m",f"${h['enterprise_value']/1e6:,.1f}m",h['fiscal'],h['entry'],h['exit'],pct(h['return_value']),f"{h['return_value']/len(group['holdings'])*100:+.2f} pp",h['status']]
         trs.append(f'<tr id="stock-{year}-{h["rank"]}">'+''.join('<td>'+esc(v)+'</td>' for v in vals)+'</tr>')
-    heads = ['Rank','Symbol','Company','Exchange','Sector','EBITDA/EV','EV/EBITDA','Market cap','Enterprise value','Fiscal year-end','Entry','Exit / mark','Return','Exit basis']
-    sections.append(f'<details id="holdings-{year}"><summary id="holding-summary-{year}">{year} · {len(group["holdings"])} stocks · Median market cap ${median/1e6:,.1f}m</summary><div class="scroll"><table><thead><tr>'+''.join('<th>'+h+'</th>' for h in heads)+f'</tr></thead><tbody id="holding-body-{year}">'+''.join(trs)+'</tbody></table></div></details>')
+    heads = ['Rank','Symbol','Company','Exchange','Sector','EBITDA/EV','EV/EBITDA','Market cap','Enterprise value','Fiscal year-end','Entry','Exit / mark','Return','Contribution (pp)','Exit basis']
+    sections.append(f'<details id="holdings-{year}"'+(' open' if year==2025 else '')+f'><summary id="holding-summary-{year}">{year} · {len(group["holdings"])} stocks · Median market cap ${median/1e6:,.1f}m</summary><div id="contributions-{year}">{render_attribution(group["holdings"],year)}</div><h3 class="all-holdings-label">All selected stocks</h3><div class="scroll"><table><thead><tr>'+''.join('<th>'+h+'</th>' for h in heads)+f'</tr></thead><tbody id="holding-body-{year}">'+''.join(trs)+'</tbody></table></div></details>')
 options = ''.join(f'<option value="{yr}">{yr}</option>' for yr in holdings)
 extra = '<section class="panel"><h2>Median market cap at each January purchase</h2><p class="hint">Median equity market value of the selected stocks at purchase, in nominal US dollars. The middle two market caps are averaged. Axis shown in billions of dollars.</p><div class="scroll"><svg id="market-cap-chart" viewBox="0 0 1200 400" role="img" aria-label="Median stock market capitalization by book year">'+''.join(vs)+'</svg></div></section>'
-extra += '<section class="panel"><h2>Explore the selected stocks</h2><p class="hint">Choose a year or expand it below. Market cap and enterprise value are estimates at purchase; sector and company names come from cached universe metadata, not historical profiles. Unavailable sectors are left unclassified. Prices used for valuation and returns are dividend-adjusted.</p><label for="holding-year">Book year </label><select id="holding-year"><option value="">Choose year…</option>'+options+'</select> <a id="download-holdings" href="holdings.csv" download>Download selected holdings ↓</a><div class="holding-years">'+''.join(sections)+'</div></section>'
+extra += '<section class="panel"><h2>Explore the selected stocks</h2><p class="hint">Choose a year to see contribution pies, the top 10 contributors, and the full stock list. Market cap and enterprise value are estimates at purchase; sector and company names come from cached universe metadata, not historical profiles. Unavailable sectors are left unclassified. Prices used for valuation and returns are dividend-adjusted.</p><label for="holding-year">Book year </label><select id="holding-year"><option value="">Choose year…</option>'+options+'</select> <a id="download-holdings" href="holdings.csv" download>Download selected holdings ↓</a><div class="holding-years">'+''.join(sections)+'</div></section>'
 extra += """<style>details{border-top:1px solid #dce1d9;margin-top:12px}summary{cursor:pointer;padding:16px 0;color:#244f43}details table{min-width:1600px}details td:nth-child(3){text-align:left;min-width:220px}select{padding:8px;border:1px solid #ccd5d0;border-radius:5px}</style>"""
 page = page.replace('<div class="method">', extra+'<div class="method">')
 # Static options also keep the period controls understandable in previews.
@@ -90,7 +91,8 @@ screening_data = load_screening_data()
 packed = json.dumps(screening_data,separators=(',', ':')).replace('<', chr(92)+'u003c')
 range_script = 'const holdingsData='+json.dumps(holdings).replace('<', chr(92)+'u003c')+';'+(ROOT/'range.js').read_text()
 scripts = '<script id="screening-data" type="application/json">'+packed+'</script>'
-scripts += '<script>'+(ROOT/'screener.js').read_text()+'</script><script>'+range_script+'</script>'
+scripts += '<script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+range_script+'</script>'
+page = page.replace('</head>', '<style>'+(ROOT/'contributions.css').read_text()+'</style></head>')
 page = page.replace('</body>', scripts+'</body>')
 (ROOT / 'dist/index.html').write_text(page)
 with (ROOT / 'dist/holdings.csv').open('w',newline='') as handle:

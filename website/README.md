@@ -36,3 +36,20 @@ python3 tests/check_screener.py
 The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across eight configurations, including short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
 
 A private Sites project is registered in `.openai/hosting.json`. Hosted publication remains blocked by source-host access from this environment. Preserve the project ID when retrying.
+
+## Per-year return contributions
+
+The latest selected year opens automatically in Explore the selected stocks. Choose another year or expand its entry to see gain/loss contribution pies, the top 10 contributors, and the full stock table. These views update with the current screen and rank range.
+
+Contribution equals stock holding return divided by the actual number of selected stocks, expressed in percentage points of portfolio return. Contributions sum to the year's strategy return. Top 10 means the ten stocks with the highest signed contributions, regardless of portfolio size. If fewer than ten stocks are selected, all of them are shown. In an all-loss book, these are the smallest losses. This is historical attribution, not a new picking rule.
+
+Gains and losses use separate pie charts so no negative slice is implied. Each pie is normalized to that side's total; it is not a percentage of the net portfolio return. Named slices are the top contributors; remaining gainers and losers are grouped separately. Zero-return stocks have no slice. The facts above the charts reconcile top contributors and other stocks to net return.
+
+The full table includes a contribution column. Browser holdings CSV exports add fractional initial weight and `contribution_pp`. Static original-book pies and top-contributor tables are included for previews without JavaScript; baseline CSV files retain their original columns. Attribution is calculated when a year's stock table opens.
+
+```bash
+node tests/check-contributions.cjs
+python3 tests/test_attribution.py
+```
+
+These cover signed contributions, the top-10 stock limit, positive/negative/zero/empty books, deterministic ties, input preservation, and the static fallback. Existing range/control tests also check year switching and attribution updates.

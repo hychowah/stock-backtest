@@ -83,3 +83,25 @@ assert.equal(downloadName,'returns-1996-1996.csv');
 assert.equal(savedCsv.split('\r\n').length,2);
 assert(savedCsv.includes('"1996","61"'));
 console.log('Passed: downloaded CSV files use selected years, ranks, and stock counts.');
+// The most recent selected year opens with return attribution, and filters refresh it.
+assert.equal(el('holding-year').value,'1996');
+assert.equal(el('holdings-1996').open,true);
+assert(el('contributions-1996').innerHTML.includes('Top 10 contributors · 10 stocks'));
+assert(el('contributions-1996').innerHTML.includes('conic-gradient('));
+assert(!el('contributions-1996').innerHTML.includes('NaN'));
+assert(savedCsv.includes('"median_market_cap"'));
+el('download-holdings').handlers.click({preventDefault(){}});
+assert(savedCsv.includes('"weight","contribution_pp"'));
+el('from-year').value='2015';el('to-year').value='2020';el('reset-ranks').handlers.click();
+assert.equal(el('holding-year').value,'2020');assert.equal(el('holdings-2020').open,true);
+assert(el('contributions-2020').innerHTML.includes('Top 10 contributors · 10 stocks'));
+for(let year=2015;year<=2020;year++){
+ const group=run(`ReturnContributions.analyze(selectedHoldings(${year}))`);
+ assert(Math.abs(group.net-run(`data.find(y=>y.year===${year}).portfolio`))<1e-12);
+ assert.equal(group.top.length,10);
+}
+el('holding-year').value='2015';el('holding-year').handlers.change();
+assert.equal(el('holdings-2015').open,true);assert(el('contributions-2015').innerHTML.includes('2015 return contributions'));
+el('sector-filter').value='No matching sector';run('applyRange()');
+assert(el('contributions-2015').innerHTML.includes('No selected stocks'));
+console.log('Passed: per-year contribution charts, latest-year opening, top-10 stock counts, reconciliation, year switching, CSV fields, and empty results.');

@@ -51,12 +51,32 @@ function drawMarketCaps(){
   });
   document.getElementById('market-cap-chart').innerHTML=markup;
 }
+function contributionPie(slices,total,sign){
+  const colors=sign>0?['#20775e','#359671','#549e7b','#77b38f','#95c8a6','#16745b','#428b76','#66b6a0','#88c9b7','#b1dbc8']:['#ae4d40','#c96957','#db8a70','#e3a38d','#edc0ac'];
+  let cursor=0;
+  const parts=slices.map((slice,i)=>{
+    const share=total>0?slice.value/total*100:0,color=slice.other?(sign>0?'#d8e3dc':'#e8cbc3'):colors[i%colors.length];
+    const start=cursor;cursor+=share;
+    return {...slice,share,color,gradient:color+' '+start+'% '+cursor+'%'};
+  });
+  const heading=sign>0?'Gains':'Losses';
+  const description=total>0?heading+' contribution '+pp(total*sign)+' percentage points. '+parts.map(p=>p.label+': '+p.share.toFixed(1)+'% of '+heading.toLowerCase()).join('; '):'No '+heading.toLowerCase()+' in this book.';
+  return `<figure><h4>${heading}</h4><div class="contribution-pie" role="img" aria-label="${safe(description)}" style="background:${parts.length?'conic-gradient('+parts.map(p=>p.gradient).join(',')+')':'#e5eae4'}"><div class="contribution-pie-center">${pp(total*sign)} pp<small>portfolio impact</small></div></div>${parts.length?'<ul class="contribution-legend">'+parts.map(p=>`<li><i style="background:${p.color}"></i>${safe(p.label)} · ${p.share.toFixed(1)}% · ${pp(p.contribution)} pp</li>`).join('')+'</ul>':'<p class="hint">No '+heading.toLowerCase()+' this year.</p>'}</figure>`;
+}
+function renderContributions(year){
+  const group=ReturnContributions.analyze(selectedHoldings(year));
+  const target=document.getElementById('contributions-'+year);
+  if(!group.count){target.innerHTML='<p class="contribution-empty">No selected stocks to attribute for this year.</p>';return;}
+  const rows=group.top.map(h=>`<tr><td>${safe(h.symbol)}</td><td>${safe(h.name)}</td><td>${pct(h.return_value)}</td><td class="${h.contribution>=0?'positive':'negative'}">${pp(h.contribution)} pp</td></tr>`).join('');
+  target.innerHTML=`<div class="contribution-panel"><h3>${year} return contributions${year===2026?' · partial year':''}</h3><p class="hint">Each contribution is the stock return ÷ ${group.count}, in percentage points (pp) of portfolio return. Showing the top ${group.top_count} of ${group.count} stocks, capped at 10 and ranked by signed contribution.</p><div class="contribution-facts"><span>Portfolio return<strong>${pct(group.net)}</strong></span><span>Top ${group.top_count} contribution<strong>${pp(group.top_total)} pp</strong></span><span>Other ${group.count-group.top_count} contribution<strong>${pp(group.other_total)} pp</strong></span></div><div class="contribution-layout"><div><div class="contribution-pies">${contributionPie(group.gain_slices,group.gains,1)}${contributionPie(group.loss_slices,group.losses,-1)}</div><p class="hint">Each pie shows shares of gains or losses separately. Gains minus losses equals the portfolio return. Named slices are top contributors; other stocks are grouped.</p></div><div class="top-contributors"><h3>Top 10 contributors · ${group.top_count} stocks</h3><div class="scroll"><table><thead><tr><th>Stock</th><th>Company</th><th>Stock return</th><th>Contribution</th></tr></thead><tbody>${rows}</tbody></table></div><p class="hint">If all stocks lost money, the top contributors are the smallest losses. Contributions describe this historical book, not the selection signal.</p></div></div></div>`;
+}
 function renderStockTable(year){
+  renderContributions(year);
   const stocks=selectedHoldings(year);
   document.getElementById('holding-body-'+year).innerHTML=stocks.map(h=>{
-    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,(h.ebitda_yield*100).toFixed(2)+'%',h.ev_ebitda.toFixed(2)+'×',money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,pct(h.return_value),h.status];
+    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,(h.ebitda_yield*100).toFixed(2)+'%',h.ev_ebitda.toFixed(2)+'×',money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,pct(h.return_value),pp(h.return_value/stocks.length)+' pp',h.status];
     return `<tr>${vals.map(v=>'<td>'+safe(v)+'</td>').join('')}</tr>`;
-  }).join('')||'<tr><td colspan="14">No stocks match these filters.</td></tr>';
+  }).join('')||'<tr><td colspan="15">No stocks match these filters.</td></tr>';
 }
 function showHoldingYear(){
   const selected=document.getElementById('holding-year').value;
@@ -101,10 +121,16 @@ function applyRange(changed){
     if(el.hidden)el.open=false;
     document.getElementById('holding-summary-'+year).textContent=`${year} · ${stocks.length} stocks · Ranks ${rank_from}–${rank_to} · Median market cap ${money(medianMarketCap(year))}`;
     document.getElementById('holding-body-'+year).innerHTML='';
+    document.getElementById('contributions-'+year).innerHTML='';
     if(el.open)renderStockTable(year);
   });
   document.getElementById('holding-year').innerHTML='<option value="">Choose year…</option>'+data.map(d=>`<option value="${d.year}">${d.year}</option>`).join('');
   if(active && +active>=first && +active<=last)document.getElementById('holding-year').value=active;
+  else{
+    document.getElementById('holding-year').value=String(last);
+    renderStockTable(last);
+    document.getElementById('holdings-'+last).open=true;
+  }
   const stats=document.querySelectorAll('.stat strong'),notes=document.querySelectorAll('.stat small');
   stats[0].textContent=currentScreen.cagr===null?'—':(currentScreen.cagr*100).toFixed(2)+'%';
   stats[1].textContent=(currentScreen.spy_cagr*100).toFixed(2)+'%';
@@ -121,8 +147,8 @@ function downloadSelection(kind){
   if(!currentScreen)return;
   let rows;
   if(kind==='holdings'){
-    const keys=['year','rank','symbol','name','exchange','sector','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','entry','exit','return_value','status'];
-    rows=[keys,...currentScreen.years.flatMap(y=>y.holdings.map(h=>keys.map(k=>h[k])))];
+    const keys=['year','rank','symbol','name','exchange','sector','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','entry','exit','return_value','weight','contribution_pp','status'];
+    rows=[keys,...currentScreen.years.flatMap(y=>y.holdings.map(h=>keys.map(k=>k==='weight'?1/y.names:k==='contribution_pp'?h.return_value/y.names*100:h[k])))];
   }else rows=[['year','names','portfolio','spy','median_market_cap'],...currentScreen.years.map(y=>[y.year,y.names,y.portfolio??'',y.spy,y.median_market_cap??''])];
   const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));

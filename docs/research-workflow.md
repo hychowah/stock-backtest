@@ -58,7 +58,7 @@ If a filter leaves fewer names than requested, the result states which years are
 python3 website/build.py
 ```
 
-The website builder queries the prepared database and embeds both candidate pools in self-contained HTML. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum EBITDA/EV, maximum EV/EBITDA, sector, exchange, pool and year filters. Click Run backtest to apply financial filters. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
+The website builder queries the prepared database and embeds both candidate pools in self-contained HTML. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum EBITDA/EV, maximum EV/EBITDA, sector, exchange, pool and year filters. Click Run backtest to apply financial filters. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. Each year also has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
 
 The original `scripts/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
 
@@ -68,6 +68,8 @@ The original `scripts/revalue.py` remains a slower, independent cache-based refe
 python3 tests/test_research.py
 python3 tests/check_paths.py
 node tests/check-range.cjs
+node tests/check-contributions.cjs
+python3 tests/test_attribution.py
 python3 tests/check_screener.py
 ```
 
