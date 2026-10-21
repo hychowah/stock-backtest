@@ -7,6 +7,7 @@ import html
 import math
 import statistics
 from holdings import load
+from dataset import load_screening_data
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -40,7 +41,7 @@ for i, row in enumerate(data):
     cells = []
     for value, suffix in [(row['portfolio'], '%'), (row['spy'], '%'), (row['portfolio']-row['spy'], '')]:
         cells.append(f'<td class="{"positive" if value >= 0 else "negative"}">{value*100:+.2f}{suffix}</td>')
-    table.append(f'<tr><td>{year}</td>{"".join(cells)}</tr>')
+    table.append(f'<tr><td>{year}</td><td>50</td>{"".join(cells)}</tr>')
 page = (ROOT / 'template.html').read_text().replace('__DATA__', json.dumps(data))
 page = re.sub(r'(<svg id="chart"[^>]*>).*?(</svg>)', lambda m: m[1]+''.join(svg)+m[2], page, count=1, flags=re.S)
 page = page.replace('<tbody id="rows"></tbody>', '<tbody id="rows">'+''.join(table)+'</tbody>')
@@ -74,27 +75,23 @@ for i, (year, group) in enumerate(holdings.items()):
         vals = [h['rank'],h['symbol'],h['name'],h['exchange'],h['sector'],f"{h['ebitda_yield']:.2%}",f"{h['ev_ebitda']:.2f}×",f"${h['market_cap']/1e6:,.1f}m",f"${h['enterprise_value']/1e6:,.1f}m",h['fiscal'],h['entry'],h['exit'],pct(h['return_value']),h['status']]
         trs.append(f'<tr id="stock-{year}-{h["rank"]}">'+''.join('<td>'+esc(v)+'</td>' for v in vals)+'</tr>')
     heads = ['Rank','Symbol','Company','Exchange','Sector','EBITDA/EV','EV/EBITDA','Market cap','Enterprise value','Fiscal year-end','Entry','Exit / mark','Return','Exit basis']
-    sections.append(f'<details id="holdings-{year}"><summary id="holding-summary-{year}">{year} · {len(group["holdings"])} stocks · Median market cap ${median/1e6:,.1f}m</summary><div class="scroll"><table><thead><tr>'+''.join('<th>'+h+'</th>' for h in heads)+'</tr></thead><tbody>'+''.join(trs)+'</tbody></table></div></details>')
+    sections.append(f'<details id="holdings-{year}"><summary id="holding-summary-{year}">{year} · {len(group["holdings"])} stocks · Median market cap ${median/1e6:,.1f}m</summary><div class="scroll"><table><thead><tr>'+''.join('<th>'+h+'</th>' for h in heads)+f'</tr></thead><tbody id="holding-body-{year}">'+''.join(trs)+'</tbody></table></div></details>')
 options = ''.join(f'<option value="{yr}">{yr}</option>' for yr in holdings)
-extra = '<section class="panel"><h2>Median market cap at each January purchase</h2><p class="hint">Median equity market value of the 50 selected stocks at purchase, in nominal US dollars. The middle two market caps are averaged. Axis shown in billions of dollars.</p><div class="scroll"><svg id="market-cap-chart" viewBox="0 0 1200 400" role="img" aria-label="Median stock market capitalization by book year">'+''.join(vs)+'</svg></div></section>'
-extra += '<section class="panel"><h2>Explore the selected stocks</h2><p class="hint">Choose a year or expand it below. Market cap and enterprise value are estimates at purchase; sector and company names come from cached universe metadata, not historical profiles. Unavailable sectors are left unclassified. Prices used for valuation and returns are dividend-adjusted.</p><label for="holding-year">Book year </label><select id="holding-year"><option value="">Choose year…</option>'+options+'</select> <a href="holdings.csv" download>Download all holdings CSV ↓</a><div class="holding-years">'+''.join(sections)+'</div></section>'
-extra += """<style>details{border-top:1px solid #dce1d9;margin-top:12px}summary{cursor:pointer;padding:16px 0;color:#244f43}details table{min-width:1600px}details td:nth-child(3){text-align:left;min-width:220px}select{padding:8px;border:1px solid #ccd5d0;border-radius:5px}</style><script>document.getElementById('holding-year').addEventListener('change',function(){if(!this.value)return;document.querySelectorAll('.holding-years details').forEach(d=>d.open=false);const d=document.getElementById('holdings-'+this.value);d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});});</script>"""
+extra = '<section class="panel"><h2>Median market cap at each January purchase</h2><p class="hint">Median equity market value of the selected stocks at purchase, in nominal US dollars. The middle two market caps are averaged. Axis shown in billions of dollars.</p><div class="scroll"><svg id="market-cap-chart" viewBox="0 0 1200 400" role="img" aria-label="Median stock market capitalization by book year">'+''.join(vs)+'</svg></div></section>'
+extra += '<section class="panel"><h2>Explore the selected stocks</h2><p class="hint">Choose a year or expand it below. Market cap and enterprise value are estimates at purchase; sector and company names come from cached universe metadata, not historical profiles. Unavailable sectors are left unclassified. Prices used for valuation and returns are dividend-adjusted.</p><label for="holding-year">Book year </label><select id="holding-year"><option value="">Choose year…</option>'+options+'</select> <a id="download-holdings" href="holdings.csv" download>Download selected holdings ↓</a><div class="holding-years">'+''.join(sections)+'</div></section>'
+extra += """<style>details{border-top:1px solid #dce1d9;margin-top:12px}summary{cursor:pointer;padding:16px 0;color:#244f43}details table{min-width:1600px}details td:nth-child(3){text-align:left;min-width:220px}select{padding:8px;border:1px solid #ccd5d0;border-radius:5px}</style>"""
 page = page.replace('<div class="method">', extra+'<div class="method">')
-for token, chosen in [('__RANK_FROM__', 1), ('__RANK_TO__', 50)]:
-    page = page.replace(token, ''.join(f'<option value="{rank}"'+(' selected' if rank==chosen else '')+f'>{rank}</option>' for rank in range(1,51)))
 # Static options also keep the period controls understandable in previews.
 for token, chosen in [('__FROM_OPTIONS__', 1996), ('__TO_OPTIONS__', 2025)]:
     opts = ''.join(f'<option value="{d["year"]}"'+(' selected' if d['year']==chosen else '')+f'>{d["year"]}</option>' for d in data)
     page = page.replace(token, opts)
-book_exits = {}
-for year in holdings:
-    if year == 2026:
-        book_exits[year] = re.search(r'Through (\d{4}-\d{2}-\d{2})',text)[1]
-    else:
-        # Next book starts at the scheduled January session; early stops do not shorten the book.
-        book_exits[year] = min(h['entry'] for h in holdings[year+1]['holdings'])
-range_script = 'const holdingsData='+json.dumps(holdings)+';const bookExits='+json.dumps(book_exits)+';'+(ROOT/'range.js').read_text()
-page = page.replace('</body>', '<script>'+range_script+'</script></body>')
+screening_data = load_screening_data()
+# Escape script delimiters in vendor-supplied text without changing parsed JSON.
+packed = json.dumps(screening_data,separators=(',', ':')).replace('<', chr(92)+'u003c')
+range_script = 'const holdingsData='+json.dumps(holdings).replace('<', chr(92)+'u003c')+';'+(ROOT/'range.js').read_text()
+scripts = '<script id="screening-data" type="application/json">'+packed+'</script>'
+scripts += '<script>'+(ROOT/'screener.js').read_text()+'</script><script>'+range_script+'</script>'
+page = page.replace('</body>', scripts+'</body>')
 (ROOT / 'dist/index.html').write_text(page)
 with (ROOT / 'dist/holdings.csv').open('w',newline='') as handle:
     fields = ['year']+list(next(iter(holdings.values()))['holdings'][0])

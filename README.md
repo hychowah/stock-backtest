@@ -4,7 +4,7 @@ A standalone US stock backtest and interactive results website. Each January, bu
 
 ## Open the website
 
-Open [website/dist/index.html](website/dist/index.html) in Chrome or Edge. No server, API key, or internet connection is needed. Select a range of book years and ranks within each year's top 50 to explore returns, median market cap, and individual holdings.
+Open [website/dist/index.html](website/dist/index.html) in Chrome or Edge. No server, API key, or internet connection is needed. Use the strategy builder to filter by market cap, valuation, sector and exchange; choose years and ranks or Top 100, then run the backtest. Returns, median market cap and individual holdings update in the browser.
 
 ## Run from the saved data
 
@@ -22,6 +22,7 @@ python3 website/build.py
 
 # Check year/rank filtering and performance calculations (requires Node.js)
 node tests/check-range.cjs
+python3 tests/check_screener.py
 
 # Check project paths, imports, and cache-only operation
 python3 tests/check_paths.py

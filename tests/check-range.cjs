@@ -1,10 +1,12 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const html=fs.readFileSync(require('path').join(__dirname,'../website/dist/index.html'),'utf8');
 const els=new Map();
+const embedded=html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1];
 function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:false,open:false,handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(){},querySelectorAll(){return []},scrollIntoView(){}});return els.get(id)}
 const stats=[el('s0'),el('s1'),el('s2')],notes=[el('n0'),el('n1'),el('n2')];
 const details=Array.from({length:31},(_,i)=>el('holdings-'+(1996+i)));
 const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:s=>s==='.stat strong'?stats:s==='.stat small'?notes:s==='.holding-years details'?details:[]};
+el('screening-data').textContent=embedded;
 const ctx=vm.createContext({document,console,Date,Math});
 for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[1],ctx);
 const run=code=>vm.runInContext(code,ctx);
@@ -33,12 +35,11 @@ for(let year=2015;year<=2020;year++){
   assert(Math.abs(run(`data.find(d=>d.year===${year}).portfolio`)-mean)<1e-12);
   const caps=stocks.map(h=>h.market_cap).sort((a,b)=>a-b);
   assert.equal(run(`medianMarketCap(${year})`),caps[5]);
-  assert.equal(el('stock-'+year+'-9').hidden,true);
-  assert.equal(el('stock-'+year+'-10').hidden,false);
-  assert.equal(el('stock-'+year+'-20').hidden,false);
-  assert.equal(el('stock-'+year+'-21').hidden,true);
+  run(`renderStockTable(${year})`);
+  assert.equal((el('holding-body-'+year).innerHTML.match(/<tr>/g)||[]).length,11);
+  assert(el('holding-body-'+year).innerHTML.includes(stocks[0].symbol));
   assert(el('holding-summary-'+year).textContent.includes('11 stocks'));
-  assert.equal(run(`data.find(d=>d.year===${year}).spy`),run(`allReturns.find(d=>d.year===${year}).spy`));
+  assert.equal(run(`data.find(d=>d.year===${year}).spy`),run(`screeningData.periods[${year}].spy`));
 }
 const growth=Object.entries(cached).filter(([y])=>+y>=2015&&+y<=2020).reduce((w,[,g])=>w*(1+g.holdings.filter(h=>h.rank>=10&&h.rank<=20).reduce((s,h)=>s+h.return_value,0)/11),1);
 assert.equal(stats[2].textContent,'$'+growth.toFixed(2));
@@ -51,3 +52,34 @@ assert.equal(run('selectedHoldings(2015).length'),50);
 const caps=cached[2015].holdings.map(h=>h.market_cap).sort((a,b)=>a-b);
 assert.equal(run('medianMarketCap(2015)'),(caps[24]+caps[25])/2);
 console.log('Passed: ranks 10–20 independent annual means, medians, compounded wealth, visible stocks, unchanged SPY, single ranks, reversed bounds, and all-50 reset.');
+
+// Exercise real input controls and error/empty-result presentation.
+el('top100').handlers.click();assert.equal(run('selectedHoldings(2015).length'),100);
+el('stock-pool').value='cached';el('min-cap').value='500';el('max-cap').value='5000';el('min-yield').value='15';
+el('strategy-form').handlers.submit({preventDefault(){}});
+assert.equal(el('screen-error').textContent,'');
+assert(run('selectedHoldings(2015).every(h=>h.market_cap>=500e6 && h.market_cap<=5e9 && h.ebitda_yield>=.15)'));
+el('min-cap').value='6000';run('applyRange()');assert(el('screen-error').textContent.includes('Maximum market cap'));
+el('reset-strategy').handlers.click();assert.equal(run('selectedHoldings(2015).length'),50);
+el('sector-filter').value='No matching sector';run('applyRange()');
+assert.equal(run('selectedHoldings(2015).length'),0);assert.equal(stats[0].textContent,'—');assert.equal(stats[2].textContent,'—');
+assert(el('screen-status').textContent.includes('No matches'));
+assert(!el('chart').innerHTML.includes('NaN'));assert(!el('market-cap-chart').innerHTML.includes('NaN'));
+run('renderStockTable(2015)');assert(el('holding-body-2015').innerHTML.includes('No stocks match'));
+el('reset-strategy').handlers.click();el('from-year').value='1996';el('to-year').value='1996';el('top100').handlers.click();
+assert.equal(run('selectedHoldings(1996).length'),61);assert(el('screen-status').textContent.includes('Fewer than 100'));
+console.log('Passed: strategy controls, top 100, cap/yield filters, invalid-input recovery, reset, empty-state rendering, and insufficient coverage.');
+// CSV download links must export the active strategy rather than baseline files.
+let savedCsv='',downloadName='';
+ctx.Blob=class{constructor(parts){this.parts=parts;}};
+ctx.URL={createObjectURL(blob){savedCsv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}};
+document.createElement=()=>({click(){downloadName=this.download;}});
+el('download-holdings').handlers.click({preventDefault(){}});
+assert.equal(downloadName,'holdings-1996-1996.csv');
+assert.equal(savedCsv.split('\r\n').length,62);
+assert(savedCsv.includes('"year","rank","symbol"'));
+el('download-returns').handlers.click({preventDefault(){}});
+assert.equal(downloadName,'returns-1996-1996.csv');
+assert.equal(savedCsv.split('\r\n').length,2);
+assert(savedCsv.includes('"1996","61"'));
+console.log('Passed: downloaded CSV files use selected years, ranks, and stock counts.');

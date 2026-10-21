@@ -1,34 +1,38 @@
-# Annual return website
+# January strategy screener
 
-Open `dist/index.html` directly in a browser. The page is self-contained and makes no market-data or external library requests.
+Open `dist/index.html` directly in Chrome or Edge. The page is self-contained: no server, API key, library downloads, or market-data requests are needed.
 
-The chart and CSV use the current `../results/summary-exits.txt`, including the last-price exit rule. The 2026 row is partial through 20 October 2026. Each other row represents the January-to-January book, not a calendar-year return.
+## Basic workflow
 
-To refresh the chart and CSV after recomputing results:
+1. Choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
+2. Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum EBITDA/EV in **percent**, and optionally a maximum EV/EBITDA multiple, sector or exchange.
+3. Choose inclusive book years and ranks. Rank 1 has the highest EBITDA/EV after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
+4. Click **Run backtest**. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
 
-```
+The strategy reselects and equally weights stocks every January. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
+
+If fewer stocks match than requested, the available picks receive equal weights and short years are listed. A year with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a period containing an empty book. SPY continues to show the full selected period. This is distinct from the CLI's explicitly labelled populated-book compounding. Early stops outside the original top-50 review are flagged when selected.
+
+## Rebuild from saved data
+
+```bash
 python3 scripts/research.py prepare
 python3 website/build.py
 ```
 
-The headline 30-year statistics and methodology in `template.html` describe the current saved pass; update those if the backtest assumptions or headline results change.
+Preparation is only needed after changing data or calculation code. The builder queries the compact SQLite database, exports both pools as compact tuples, and embeds them in HTML. Changing screen parameters runs locally in JavaScript without reparsing prices. Stock tables are rendered when a year is opened to avoid creating thousands of hidden rows for large portfolios.
 
-A private Sites project is registered in `.openai/hosting.json`. Publication did not complete because this environment could not resolve the source hosting server. Reuse that project ID when retrying; do not create another Site.
+The original top-50 result and tables remain embedded as a fallback for previews that block JavaScript. Interactive screening requires JavaScript. `dist/returns.csv`, `dist/holdings.csv`, and `dist/valuations.json` retain the baseline exports; browser-generated CSV downloads contain the selected strategy. The original canonical report remains `../results/summary-exits.txt` and is never overwritten by screening.
 
-## Valuations and holdings
+The 2026 book is partial through 20 October 2026. Other book years are January-to-January, not calendar-year returns. Strategy and SPY returns in the interactive screener use full-precision prepared values.
 
-The build queries `data/research.sqlite` for each year's selected holdings. Prepare that database once with `python3 scripts/research.py prepare`; the builder no longer reparses raw price histories. It checks the holding counts and mean returns against `results/summary-exits.txt` before writing the page. It never reads the older `picks.csv`.
+## Checks
 
-The median chart and expandable year summaries show market capitalization at purchase in nominal US dollars. The median is the average of the middle two market caps for the 50 holdings. Individual rows also include EBITDA/EV and EV/EBITDA. Basic company metadata comes from the cached universe and is not point-in-time; absent sectors are marked unavailable. `dist/holdings.csv` exports all holdings and `dist/valuations.json` contains the underlying valuation data. The chart and expandable tables are embedded in HTML and work without JavaScript; the year selector and return-chart toggles require JavaScript.
+```bash
+node tests/check-range.cjs
+python3 tests/check_screener.py
+```
 
-`scripts/run.py` now reads the FMP key only when an API request is made, so cache-only builds no longer require a key file.
+The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across eight configurations, including short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
 
-## Selected periods
-
-Use From and To to choose inclusive book years. The default is 1996–2025, the 30 completed January books; 2026 is available as a partial book. Selecting 2015–2020 shows six books, from January 2015 to January 2021. Controls update both charts, return rows, visible holding years, CAGR and growth of $1. Strategy statistics compound the full-precision selected stock returns; SPY uses rounded annual returns from the saved summary. Small differences from original headline totals are possible. CSV links continue to download all years.
-
-Check range calculations and DOM updates with `node tests/check-range.cjs` from the project folder. This check uses a simulated DOM; it does not replace a real browser appearance check.
-
-## Selected ranks
-
-Ranks controls select an inclusive slice of each year's original top 50, ordered by EBITDA/EV at purchase. For example, 10–20 means 11 stocks, equally weighted and reselected each January. Rank 1 is the highest EBITDA/EV. Both charts, annual strategy returns, compounded performance, median market caps and visible stock rows update for the selected slice and years. SPY remains the benchmark for the same period. Strategy statistics use full-precision cached stock returns; SPY uses rounded saved annual returns. “All 50” resets ranks independently of the year range. CSV downloads retain all ranks and years.
+A private Sites project is registered in `.openai/hosting.json`. Hosted publication remains blocked by source-host access from this environment. Preserve the project ID when retrying.

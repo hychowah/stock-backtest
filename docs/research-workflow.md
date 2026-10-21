@@ -58,7 +58,7 @@ If a filter leaves fewer names than requested, the result states which years are
 python3 website/build.py
 ```
 
-The existing website now queries the prepared database for its top-50 holdings instead of loading the large price cache again. It retains offline HTML, year/rank controls, the market-cap chart, and CSV exports. This change does not add arbitrary filter controls to the website; broader screening and top-100 experiments currently use the command line. No backend or hosting service is required for the HTML.
+The website builder queries the prepared database and embeds both candidate pools in self-contained HTML. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum EBITDA/EV, maximum EV/EBITDA, sector, exchange, pool and year filters. Click Run backtest to apply financial filters. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
 
 The original `scripts/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
 
@@ -68,9 +68,10 @@ The original `scripts/revalue.py` remains a slower, independent cache-based refe
 python3 tests/test_research.py
 python3 tests/check_paths.py
 node tests/check-range.cjs
+python3 tests/check_screener.py
 ```
 
-The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank controls and calculations using a simulated DOM; real browser visual QA remains unavailable in the current environment.
+The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across eight configurations; real browser visual QA remains unavailable in the current environment.
 
 ## Measured performance
 
