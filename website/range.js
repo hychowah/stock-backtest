@@ -3,7 +3,8 @@ const screeningData=JSON.parse(document.getElementById('screening-data').textCon
 const rankFrom=document.getElementById('rank-from'),rankTo=document.getElementById('rank-to');
 const fromYear=document.getElementById('from-year'),toYear=document.getElementById('to-year');
 const fields={pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
-let currentScreen=null;
+let currentScreen=null,currentLatest=null;
+let screeningMode='latest';
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function selectedHoldings(year){return currentScreen?.years.find(y=>y.year===+year)?.holdings??[];}
@@ -99,11 +100,46 @@ function updateWarnings(){
   status.textContent=warnings.join(' ')||'Backtest updated. Every selected year has the requested number of stocks.';
   status.className=warnings.length?'screen-message warning':'screen-message';
 }
+function setModeVisibility(){
+  const latest=screeningMode==='latest';
+  document.getElementById('backtest-view').hidden=latest;
+  document.getElementById('latest-view').hidden=!latest;
+  document.getElementById('year-controls').hidden=latest;
+  document.getElementById('historical-help').hidden=latest;
+  document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
+  document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
+  document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
+}
+function switchMode(mode){
+  screeningMode=mode;setModeVisibility();applyRange();
+}
+function applyLatest(){
+  try{currentLatest=StockScreener.latestScreen(screeningData,readOptions());}
+  catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
+  document.getElementById('screen-error').textContent='';
+  const r=currentLatest,o=r.options;
+  document.getElementById('latest-date').textContent=r.asof;
+  document.getElementById('latest-count').textContent=String(r.stocks.length);
+  document.getElementById('latest-median-cap').textContent=money(r.median_market_cap);
+  document.getElementById('latest-median-yield').textContent=r.median_yield===null?'—':(r.median_yield*100).toFixed(2)+'%';
+  document.getElementById('latest-body').innerHTML=r.stocks.map(h=>{
+    const vals=[h.rank,h.symbol,h.name,h.exchange,h.sector,h.price.toFixed(2),money(h.market_cap),money(h.enterprise_value),(h.ebitda_yield*100).toFixed(2)+'%',h.ev_ebitda.toFixed(2)+'×',h.fiscal,h.known,h.price_date];
+    return '<tr>'+vals.map(v=>'<td>'+safe(v)+'</td>').join('')+'</tr>';
+  }).join('')||'<tr><td colspan="13">No stocks match these latest-date filters.</td></tr>';
+  const meta=screeningData.latest.metadata;
+  document.getElementById('screen-coverage').textContent=`Latest cached session: ${r.asof}. Only cached currently-listed names with a price on that exact date are eligible. ${screeningData.latest.cached.length} valued names out of ${meta.eligible_financials} active names with eligible financials; coverage is incomplete.`+(o.pool==='legacy'?' Original candidate set keeps the pre-price 250-name buffer and report-level size floors.':'');
+  const status=document.getElementById('screen-status');
+  status.textContent=r.stocks.length<r.requested?`Only ${r.stocks.length} picks are available for the requested ${r.requested} ranks after filtering on ${r.asof}.`:`Showing ${r.stocks.length} picks valued at the ${r.asof} cached close, re-ranked from ${r.matches} matching names.`;
+  status.className=r.stocks.length<r.requested?'screen-message warning':'screen-message';
+  document.getElementById('range-note').textContent=`Latest picks · ${r.asof} · ranks ${o.rank_from}–${o.rank_to} after filters. No January holding returns or future performance are used in this list.`;
+  document.querySelector('.pill').textContent=r.asof;
+}
 function applyRange(changed){
   if(+fromYear.value>+toYear.value){if(changed==='from')toYear.value=fromYear.value;else fromYear.value=toYear.value;}
   if(+rankFrom.value>+rankTo.value && ['rank-from','rank-to'].includes(changed)){
     if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
   }
+  if(screeningMode==='latest'){applyLatest();return;}
   try{
     const next=StockScreener.screen(screeningData,readOptions());
     currentScreen=next;
@@ -143,6 +179,14 @@ function applyRange(changed){
   document.querySelector('.pill').textContent=`${first} — ${last}${last===2026?'*':''}`;
   updateWarnings();
 }
+function downloadLatest(){
+  if(!currentLatest)return;
+  const keys=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','known','price_date'];
+  const rows=[keys,...currentLatest.stocks.map(h=>keys.map(k=>h[k]))];
+  const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download='latest-picks-'+currentLatest.asof+'.csv';a.click();URL.revokeObjectURL(url);
+}
 function downloadSelection(kind){
   if(!currentScreen)return;
   let rows;
@@ -155,6 +199,10 @@ function downloadSelection(kind){
   const a=document.createElement('a');a.href=url;a.download=kind+'-'+currentScreen.options.first+'-'+currentScreen.options.last+'.csv';a.click();URL.revokeObjectURL(url);
 }
 initializeFilters();
+setModeVisibility();
+document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
+document.getElementById('mode-backtest').addEventListener('click',()=>switchMode('backtest'));
+document.getElementById('download-latest').addEventListener('click',e=>{e.preventDefault();downloadLatest();});
 fromYear.addEventListener('change',()=>applyRange('from'));
 toYear.addEventListener('change',()=>applyRange('to'));
 rankFrom.addEventListener('change',()=>applyRange('rank-from'));

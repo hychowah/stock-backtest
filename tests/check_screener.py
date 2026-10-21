@@ -23,7 +23,8 @@ CASES = [
 def main():
     db = research.connect()
     try:
-        expected = [research.screen(db, **options) for options in CASES]
+        latest_cases=[{},dict(pool='cached',rank_to=100),dict(pool='cached',min_cap=500e6,max_cap=5e9,min_yield=.15),dict(pool='cached',sector='Technology',exchange='NASDAQ',max_multiple=8),dict(rank_from=10,rank_to=20),dict(sector='No matching sector')]
+        expected = dict(historical=[research.screen(db, **options) for options in CASES],latest=[research.latest_screen(db,**options) for options in latest_cases])
     finally:
         db.close()
     with tempfile.TemporaryDirectory() as folder:

@@ -4,12 +4,12 @@ Open `dist/index.html` directly in Chrome or Edge. The page is self-contained: n
 
 ## Basic workflow
 
-1. Choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
+1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
 2. Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum EBITDA/EV in **percent**, and optionally a maximum EV/EBITDA multiple, sector or exchange.
-3. Choose inclusive book years and ranks. Rank 1 has the highest EBITDA/EV after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
-4. Click **Run backtest**. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
+3. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the highest EBITDA/EV after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
+4. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
 
-The strategy reselects and equally weights stocks every January. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
+In historical mode, the strategy reselects and equally weights stocks every January. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
 
 If fewer stocks match than requested, the available picks receive equal weights and short years are listed. A year with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a period containing an empty book. SPY continues to show the full selected period. This is distinct from the CLI's explicitly labelled populated-book compounding. Early stops outside the original top-50 review are flagged when selected.
 
@@ -53,3 +53,15 @@ python3 tests/test_attribution.py
 ```
 
 These cover signed contributions, the top-10 stock limit, positive/negative/zero/empty books, deterministic ties, input preservation, and the static fallback. Existing range/control tests also check year switching and attribution updates.
+
+## Latest stock picks
+
+The website opens in **Latest stock picks** mode. Historical backtest remains available in the view switch. The same size, valuation, sector, exchange, universe and rank controls apply in either mode. The latest view shows a current selection, with no holding returns or attribution charts because those outcomes do not exist yet.
+
+The displayed date comes from the latest cached SPY session, not a hard-coded January date or a relative “yesterday” label. As of this build it is **2026-10-20**. Only companies marked currently listed in the cached universe, with a dividend-adjusted price on that exact session, are included. Earlier last-trade prices are not carried forward. The annual figure must be available under the existing strict 90-day lag and no more than 800 days old. Market cap and EV are revalued at the latest price using report net debt and the same adjusted-price method as the historical model.
+
+Latest mode has separate prepared records for the original 250-candidate pool and all eligible cached-price companies. Both remain incomplete representations of the full market. The coverage line shows how many active names have financials and how many can be valued from current cached prices. Available-from dates are assumptions based on fiscal year-end, not verified filing dates. Listing status, sector and exchange are cached metadata.
+
+Click **Screen latest**, **Top 50**, or **Top 100**. Download latest picks exports the currently selected stocks, including valuation date, adjusted price, estimated market cap/EV, ratios, fiscal date, and assumed availability date. `dist/latest-picks.csv` is the default-settings fallback export generated at build time; browser downloads reflect the current filters. The latest table is also embedded as a no-JavaScript fallback.
+
+Updating source caches does not update an already-open standalone HTML file. Run `python3 scripts/research.py prepare` and `python3 website/build.py`, then reload the page. These commands never download data. Future latest sessions are prepared independently of the canonical backtest's saved Through date, so new current prices do not silently extend the old report.

@@ -6,6 +6,7 @@ from bisect import bisect_left, bisect_right
 import csv
 from datetime import date
 import json
+import re
 from pathlib import Path
 import sqlite3
 import statistics
@@ -16,7 +17,7 @@ import revalue
 from paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -28,12 +29,17 @@ CREATE TABLE snapshots (
  ebitda REAL, ebitda_yield REAL, ev_ebitda REAL, spread REAL,
  return_value REAL, status TEXT, PRIMARY KEY(pool,year,symbol));
 CREATE INDEX screen_lookup ON snapshots(pool,year,ebitda_yield DESC);
+CREATE TABLE latest_snapshots (
+ pool TEXT, symbol TEXT, candidate_rank INTEGER, fiscal TEXT, known TEXT,
+ price_date TEXT, price REAL, market_cap REAL, enterprise_value REAL,
+ ebitda_yield REAL, ev_ebitda REAL, spread REAL, PRIMARY KEY(pool,symbol));
+CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
 '''
 
 
 def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px', Path(__file__), Path(run.__file__), Path(revalue.__file__)]
+    paths += [RAW/'px', RESULTS/'summary-exits.txt', Path(__file__), Path(run.__file__), Path(revalue.__file__)]
     return {str(p.relative_to(ROOT)): [p.stat().st_size,p.stat().st_mtime_ns] for p in paths}
 
 
@@ -108,6 +114,23 @@ def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
     return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,ebitda/ev,ev/ebitda,ret,status]
 
 
+def latest_snapshot(statement, day, light, div):
+    """Value at this exact session; never carry a stopped stock's old price."""
+    if statement['known'] >= day or day-statement['fiscal'] > run.MAX_AGE:
+        return None
+    adjusted=before(div,day,0)
+    fiscal_px=before(light or div,statement['fiscal'],7)
+    current_px=before(light or div,day,0)
+    if adjusted is None or fiscal_px is None or current_px is None:
+        return None
+    cap=statement['market_cap']*(current_px[1]/fiscal_px[1])
+    ev=cap+(statement['enterprise']-statement['market_cap'])
+    ebitda=statement['yield']*statement['enterprise']
+    if cap<=0 or ev<=0 or ebitda<=0:
+        return None
+    return [str(statement['fiscal']),str(statement['known']),str(adjusted[0]),adjusted[1],cap,ev,ebitda/ev,ev/ebitda]
+
+
 def prepare(path=DATABASE, force=False):
     started=time.perf_counter()
     path=Path(path)
@@ -124,7 +147,13 @@ def prepare(path=DATABASE, force=False):
     universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
     # Reuse the current selection semantics, including the 250-name pre-price buffer.
     book=run.build_statements(universe)
-    spy=run.load_bars(RAW/'spy-div.json','adjClose')
+    all_spy=run.load_bars(RAW/'spy-div.json','adjClose')
+    reference=(RESULTS/'summary-exits.txt').read_text()
+    match=re.search(r'^Through (\d{4}-\d{2}-\d{2})$',reference,re.MULTILINE)
+    if match is None:
+        raise ValueError('Current reference report is missing its Through date.')
+    historical_end=min(run.ASOF,date.fromisoformat(match[1]))
+    spy=[row for row in all_spy if row[0]<=historical_end]
     sessions=[d for d,_ in spy]
     yields=[]
     for r in json.loads((RAW/'treasury.json').read_text()):
@@ -159,6 +188,13 @@ def prepare(path=DATABASE, force=False):
         end=run.session_on_or_after(sessions,date(year+1,1,1)) if year<run.LAST_YEAR else sessions[-1]
         a,b=after(spy,entry,4),before(spy,end,4)
         periods[year]=(entry,end,b[1]/a[1]-1,run.asof_yield(yields,entry))
+    latest_day=all_spy[-1][0]
+    active={s for s,r in universe.items() if r.get('listed') is True}
+    latest_statements={pool:{s:statement for s,rs in source.items() if s in active and (statement:=run.latest_statement(rs,latest_day)) is not None} for pool,source in [('legacy',book),('cached',broad)]}
+    latest_order=sorted(latest_statements['legacy'],key=lambda s:latest_statements['legacy'][s]['yield'],reverse=True)
+    latest_ranks={s:i for i,s in enumerate(latest_order[:run.BUFFER],1)}
+    latest_meta=dict(asof=str(latest_day),active_universe=len(active),eligible_financials=len(latest_statements['cached']),legacy_candidates=len(latest_ranks))
+    latest_treasury=run.asof_yield(yields,latest_day)
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
     if temporary.exists():
@@ -201,9 +237,19 @@ def prepare(path=DATABASE, force=False):
                     inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
             db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',inserts)
             total+=len(inserts)
+            if symbol in active:
+                for pool in ['legacy','cached']:
+                    statement=latest_statements[pool].get(symbol)
+                    candidate=latest_ranks.get(symbol)
+                    if statement is None or (pool=='legacy' and candidate is None):
+                        continue
+                    row=latest_snapshot(statement,latest_day,light,div)
+                    if row is None or (pool=='legacy' and (row[4]<run.MIN_MARKET_CAP or row[5]<run.MIN_EV)):
+                        continue
+                    db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
             if number%200==0 or number==len(cached_symbols):
                 print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} January snapshots',flush=True)
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources).items():
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
         if inputs!=signature() or sources!=price_sources():
@@ -219,24 +265,44 @@ def prepare(path=DATABASE, force=False):
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
 
 
-def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
-    if first>last or rank_from<1 or rank_to<rank_from:
-        raise ValueError('Years and ranks must be in increasing order; ranks start at 1.')
-    if pool not in ['legacy','cached']:
+def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
+    """Filter and rank either snapshot type using one selection policy."""
+    import math
+    if any(type(v) is not int for v in (rank_from,rank_to)) or not 1 <= rank_from <= rank_to <= 5000:
+        raise ValueError('Choose increasing integer ranks between 1 and 5000.')
+    if pool not in ('legacy','cached'):
         raise ValueError('Pool must be legacy or cached')
-    clauses=['s.pool=?','s.year BETWEEN ? AND ?','s.market_cap>=?','s.enterprise_value>=?','s.ebitda_yield>=?']
-    values=[pool,first,last,min_cap,min_ev,min_yield]
+    for value in (min_cap,max_cap,min_ev,min_yield,max_multiple):
+        if value is not None and (not math.isfinite(value) or value < 0):
+            raise ValueError('Financial filters must be non-negative numbers.')
+    if max_cap is not None and max_cap < min_cap:
+        raise ValueError('Maximum market cap must be at least the minimum.')
+    clauses=['s.pool=?','s.market_cap>=?','s.enterprise_value>=?','s.ebitda_yield>=?']
+    values=[pool,min_cap,min_ev,min_yield]
     for clause,value in [('s.market_cap<=?',max_cap),('s.ev_ebitda<=?',max_multiple),('c.sector=?',sector),('c.exchange=?',exchange)]:
         if value is not None:
             clauses.append(clause);values.append(value)
-    sql='''WITH ranked AS (
-    SELECT s.*,c.name,c.sector,c.exchange,
-      ROW_NUMBER() OVER(PARTITION BY year ORDER BY ebitda_yield DESC,candidate_rank ASC,s.symbol ASC) AS rank
-    FROM snapshots s JOIN companies c USING(symbol) WHERE '''+' AND '.join(clauses)+''')
-    SELECT * FROM ranked WHERE rank BETWEEN ? AND ? ORDER BY year,rank'''
+    table,partition,ordering='latest_snapshots','','rank'
+    if period is not None:
+        table,partition,ordering='snapshots','PARTITION BY year ','year,rank'
+        clauses.append('s.year BETWEEN ? AND ?');values.extend(period)
+    sql=f"""WITH ranked AS (
+      SELECT s.*,c.name,c.sector,c.exchange,
+        ROW_NUMBER() OVER({partition}ORDER BY ebitda_yield DESC,candidate_rank ASC,s.symbol ASC) AS rank
+      FROM {table} s JOIN companies c USING(symbol) WHERE """+' AND '.join(clauses)+f') SELECT * FROM ranked WHERE rank BETWEEN ? AND ? ORDER BY {ordering}'
     cursor=db.execute(sql,values+[rank_from,rank_to])
     fields=[c[0] for c in cursor.description]
     return [dict(zip(fields,row)) for row in cursor]
+
+
+def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
+    if any(type(v) is not int for v in (first,last)) or not 1996 <= first <= last <= 2026:
+        raise ValueError('Choose increasing integer years within 1996–2026.')
+    return _select(db,period=(first,last),rank_from=rank_from,rank_to=rank_to,pool=pool,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange)
+
+
+def latest_screen(db, *, rank_from=1,rank_to=50,pool='legacy',min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
+    return _select(db,rank_from=rank_from,rank_to=rank_to,pool=pool,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange)
 
 
 def aggregate(rows):

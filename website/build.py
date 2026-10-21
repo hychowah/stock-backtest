@@ -9,6 +9,7 @@ import statistics
 from holdings import load
 from dataset import load_screening_data
 from attribution import render as render_attribution
+from research import connect, latest_screen
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -87,6 +88,29 @@ for token, chosen in [('__FROM_OPTIONS__', 1996), ('__TO_OPTIONS__', 2025)]:
     opts = ''.join(f'<option value="{d["year"]}"'+(' selected' if d['year']==chosen else '')+f'>{d["year"]}</option>' for d in data)
     page = page.replace(token, opts)
 screening_data = load_screening_data()
+latest_db = connect()
+try:
+    latest_stocks = latest_screen(latest_db)
+finally:
+    latest_db.close()
+latest_asof = screening_data['latest']['metadata']['asof']
+latest_heads = ['Rank','Symbol','Company','Exchange','Sector','Adj. price (USD)','Market cap','Enterprise value','EBITDA/EV','EV/EBITDA','Fiscal year-end','Available from (assumed)','Price date']
+latest_rows = []
+for h in latest_stocks:
+    vals = [h['rank'],h['symbol'],h['name'],h['exchange'],h['sector'],f"{h['price']:.2f}",f"${h['market_cap']/1e6:,.1f}m",f"${h['enterprise_value']/1e6:,.1f}m",f"{h['ebitda_yield']:.2%}",f"{h['ev_ebitda']:.2f}×",h['fiscal'],h['known'],h['price_date']]
+    latest_rows.append('<tr>'+''.join('<td>'+esc(v)+'</td>' for v in vals)+'</tr>')
+latest_cap = f"${statistics.median(h['market_cap'] for h in latest_stocks)/1e6:,.1f}m" if latest_stocks else '—'
+latest_yield = f"{statistics.median(h['ebitda_yield'] for h in latest_stocks):.2%}" if latest_stocks else '—'
+latest_panel = f'''<section id="latest-view" class="panel"><div class="toolbar"><div><span class="eyebrow">Latest cached close</span><h2>Stock picks · <span id="latest-date">{latest_asof}</span></h2></div><a id="download-latest" href="latest-picks.csv" download>Download latest picks ↓</a></div>
+<p class="hint">Re-ranked using prices on this exact session and available annual financials, with a 90-day reporting lag and 800-day report-age limit. Stocks without a price on this date, including old trading stops, are excluded. Cached listing status and price coverage limit the universe. This is a saved-data screen, not a live quote feed.</p>
+<div class="latest-facts"><span>Selected stocks<strong id="latest-count">{len(latest_stocks)}</strong></span><span>Median market cap<strong id="latest-median-cap">{latest_cap}</strong></span><span>Median EBITDA / EV<strong id="latest-median-yield">{latest_yield}</strong></span></div>
+<div class="latest-table"><table><thead><tr>{''.join('<th>'+h+'</th>' for h in latest_heads)}</tr></thead><tbody id="latest-body">{''.join(latest_rows) if latest_rows else '<tr><td colspan="13">No stocks match these filters.</td></tr>'}</tbody></table></div><p class="hint">Market cap and EV are estimates at the displayed date using dividend-adjusted prices and report net debt. “Available from” is the assumed fiscal year-end plus 90 days, not a verified publication date. No holding return or contribution exists yet for these picks.</p></section>'''
+page = page.replace('__LATEST_PANEL__', latest_panel)
+with (ROOT/'dist/latest-picks.csv').open('w',newline='') as handle:
+    latest_fields=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','known','price_date']
+    writer=csv.DictWriter(handle,fieldnames=latest_fields,extrasaction='ignore')
+    writer.writeheader();writer.writerows(latest_stocks)
+
 # Escape script delimiters in vendor-supplied text without changing parsed JSON.
 packed = json.dumps(screening_data,separators=(',', ':')).replace('<', chr(92)+'u003c')
 range_script = 'const holdingsData='+json.dumps(holdings).replace('<', chr(92)+'u003c')+';'+(ROOT/'range.js').read_text()

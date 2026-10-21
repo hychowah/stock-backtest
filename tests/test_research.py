@@ -28,6 +28,12 @@ class ResearchTests(unittest.TestCase):
                     # EBITDA/EV ranking intentionally disagrees with subsequent returns.
                     self.db.execute('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',(pool,year,symbol,i,'2014-01-01',f'{year}-01-02',f'{year+1}-01-02',i*100e6,200e6,40e6,.5/i,2*i,.5/i-.02,(-.9 if i==1 else i*.1),'Scheduled exit'))
 
+    def test_shared_selection_validation(self):
+        for select in (r.screen, r.latest_screen):
+            for options in ({'rank_to':1.5}, {'rank_to':5001}, {'min_yield':float('nan')}, {'min_cap':1e9,'max_cap':100}):
+                with self.subTest(select=select.__name__,options=options), self.assertRaises(ValueError):
+                    select(self.db,**options)
+
     def tearDown(self):
         self.db.close()
 
@@ -64,6 +70,30 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(r.snapshot(statement,date(2015,1,2),date(2016,1,4),[],prices,True)[-2],-1.)
         self.assertIsNone(r.snapshot(statement,date(2015,2,2),date(2016,1,4),[],prices,False))
 
+    def test_latest_uses_exact_date_and_available_reports(self):
+        day=date(2026,10,20)
+        statement=dict(fiscal=date(2025,12,31),known=date(2026,3,31),market_cap=100e6,enterprise=150e6)
+        statement['yield']=.2
+        prices=[(date(2025,12,31),10.),(date(2026,10,19),20.),(date(2026,10,21),100.)]
+        self.assertIsNone(r.latest_snapshot(statement,day,[],prices))
+        prices=sorted(prices+[(day,30.)])
+        row=r.latest_snapshot(statement,day,[],prices)
+        self.assertEqual(row[2],'2026-10-20')
+        self.assertEqual(row[3],30.)
+        self.assertEqual(row[4],300e6)
+        self.assertEqual(row[5],350e6)
+        self.assertIsNone(r.latest_snapshot(dict(statement,known=day),day,[],prices))
+        self.assertIsNone(r.latest_snapshot(dict(statement,fiscal=date(2023,1,1),known=date(2023,4,1)),day,[],prices))
+
+    def test_latest_filters_before_ranking_without_future_returns(self):
+        for i in range(1,4):
+            self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',('cached',f'S{i}',None,'2025-12-31','2026-03-31','2026-10-20',10.,i*100e6,200e6,.5/i,2*i,.5/i-.02))
+        rows=r.latest_screen(self.db,pool='cached',min_cap=150e6,rank_to=1)
+        self.assertEqual([h['symbol'] for h in rows],['S2'])
+        self.assertEqual(rows[0]['price_date'],'2026-10-20')
+        self.assertNotIn('return_value',rows[0])
+        self.assertEqual(r.latest_screen(self.db,pool='cached',sector='Unknown'),[])
+
     def test_invalidation_and_readonly(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'research.sqlite'
@@ -91,8 +121,10 @@ class PreparationTests(unittest.TestCase):
         raw = root / 'raw'
         (raw / 'px').mkdir(parents=True)
         self.path = root / 'data' / 'research.sqlite'
+        results=root/'results';results.mkdir()
+        (results/'summary-exits.txt').write_text('Through 2015-10-20\n')
         (raw / 'universe.json').write_text(json.dumps([
-            dict(symbol='TEST', name='Test Company', exchange='NYSE', sector='Technology')]))
+            dict(symbol='TEST', name='Test Company', exchange='NYSE', sector='Technology', listed=True)]))
         (raw / 'metrics.jsonl').write_text(json.dumps(dict(symbol='TEST', rows=[
             dict(date='2014-06-30', marketCap=100e6, enterpriseValue=150e6,
                  evToEBITDA=5, reportedCurrency='USD')])) + '\n')
@@ -106,7 +138,7 @@ class PreparationTests(unittest.TestCase):
             dict(date='2015-01-02', adjClose=20),
             dict(date='2015-10-20', adjClose=22)])))
         for owner, key, value in [(r, 'ROOT', root), (r, 'RAW', raw),
-                                  (r.run, 'RAW', raw), (r.run, 'FIRST_YEAR', 2015),
+                                  (r, 'RESULTS', results), (r.run, 'RAW', raw), (r.run, 'FIRST_YEAR', 2015),
                                   (r.run, 'LAST_YEAR', 2015)]:
             self.context.enter_context(patch.object(owner, key, value))
         self.context.enter_context(patch.object(r, 'signature', return_value={'fixture': 1}))
@@ -128,6 +160,41 @@ class PreparationTests(unittest.TestCase):
         try:
             self.verify_fixture(db)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0], 2)
+        finally:
+            db.close()
+
+    def test_new_latest_prices_do_not_extend_historical_reference(self):
+        spy=r.RAW/'spy-div.json'
+        rows=json.loads(spy.read_text())+[dict(date='2016-01-04',adjClose=120)]
+        spy.write_text(json.dumps(rows))
+        path=r.RAW/'px/TEST.json'
+        prices=json.loads(path.read_text());prices['div'].append(dict(date='2016-01-04',adjClose=24))
+        path.write_text(json.dumps(prices))
+        r.prepare(self.path)
+        db=r.connect(self.path)
+        try:
+            self.verify_fixture(db)
+            self.assertEqual(db.execute('SELECT exit FROM periods').fetchone()[0],'2015-10-20')
+            self.assertEqual(r.latest_screen(db)[0]['price_date'],'2016-01-04')
+            self.assertEqual(r.latest_screen(db)[0]['price'],24.)
+        finally:
+            db.close()
+
+    def test_prepare_latest_excludes_unlisted_names(self):
+        r.prepare(self.path)
+        db=r.connect(self.path)
+        self.assertEqual(len(r.latest_screen(db)),1)
+        self.assertEqual(r.latest_screen(db)[0]['price_date'],'2015-10-20')
+        self.assertEqual(r.latest_screen(db)[0]['price'],22.)
+        db.close()
+        universe=r.RAW/'universe.json'
+        rows=json.loads(universe.read_text());rows[0]['listed']=False
+        universe.write_text(json.dumps(rows))
+        r.prepare(self.path,force=True)
+        db=r.connect(self.path)
+        try:
+            self.assertEqual(r.latest_screen(db),[])
+            self.verify_fixture(db)
         finally:
             db.close()
 

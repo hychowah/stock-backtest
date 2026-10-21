@@ -10,6 +10,11 @@ el('screening-data').textContent=embedded;
 const ctx=vm.createContext({document,console,Date,Math});
 for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[1],ctx);
 const run=code=>vm.runInContext(code,ctx);
+assert.equal(run('screeningMode'),'latest');
+assert.equal(el('latest-view').hidden,false);assert.equal(el('backtest-view').hidden,true);
+assert.equal(run('currentLatest.asof'),'2026-10-20');
+assert.equal(run('currentLatest.stocks.length'),50);
+run("switchMode('backtest')");
 assert.equal(run('data.length'),30);
 assert.equal(el('from-year').value,'1996');
 el('from-year').value='2015';el('to-year').value='2020';run('applyRange()');
@@ -105,3 +110,25 @@ assert.equal(el('holdings-2015').open,true);assert(el('contributions-2015').inne
 el('sector-filter').value='No matching sector';run('applyRange()');
 assert(el('contributions-2015').innerHTML.includes('No selected stocks'));
 console.log('Passed: per-year contribution charts, latest-year opening, top-10 stock counts, reconciliation, year switching, CSV fields, and empty results.');
+
+// Latest view applies the same controls to exact latest-date valuations.
+el('reset-strategy').handlers.click();el('mode-latest').handlers.click();
+assert.equal(el('latest-view').hidden,false);assert.equal(el('backtest-view').hidden,true);
+assert.equal(el('year-controls').hidden,true);assert.equal(el('run-screen').textContent,'Screen latest');
+assert.equal(el('latest-date').textContent,'2026-10-20');
+assert.equal((el('latest-body').innerHTML.match(/<tr>/g)||[]).length,50);
+assert(run("currentLatest.stocks.every(h=>h.price_date==='2026-10-20' && !('return_value' in h))"));
+el('top100').handlers.click();assert.equal(run('currentLatest.stocks.length'),100);
+el('stock-pool').value='cached';el('min-cap').value='500';el('max-cap').value='5000';
+el('strategy-form').handlers.submit({preventDefault(){}});
+assert(run('currentLatest.stocks.every(h=>h.market_cap>=500e6 && h.market_cap<=5e9)'));
+el('download-latest').handlers.click({preventDefault(){}});
+assert.equal(downloadName,'latest-picks-2026-10-20.csv');
+assert(savedCsv.includes('"price_date"'));assert(!savedCsv.includes('return_value'));
+el('sector-filter').value='No matching sector';run('applyRange()');
+assert.equal(run('currentLatest.stocks.length'),0);assert(el('latest-body').innerHTML.includes('No stocks match'));
+assert.equal(el('latest-median-cap').textContent,'—');
+el('reset-strategy').handlers.click();el('mode-backtest').handlers.click();
+assert.equal(el('backtest-view').hidden,false);assert.equal(el('latest-view').hidden,true);
+assert.equal(el('year-controls').hidden,false);assert.equal(el('run-screen').textContent,'Run backtest');
+console.log('Passed: default latest mode, exact-date picks, shared filters and ranks, current CSV, empty latest screen, and switching back to historical results.');

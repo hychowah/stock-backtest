@@ -4,7 +4,7 @@ A standalone US stock backtest and interactive results website. Each January, bu
 
 ## Open the website
 
-Open [website/dist/index.html](website/dist/index.html) in Chrome or Edge. No server, API key, or internet connection is needed. Use the strategy builder to filter by market cap, valuation, sector and exchange; choose years and ranks or Top 100, then run the backtest. Returns, median market cap and individual holdings update in the browser.
+Open [website/dist/index.html](website/dist/index.html) in Chrome or Edge. No server, API key, or internet connection is needed. The website opens with Latest stock picks, valued at the latest cached close. Filter by market cap, valuation, sector and exchange, and choose Top 50/100 or custom ranks. Switch to Historical backtest to choose years and inspect returns and contributions. Both modes work offline.
 
 ## Run from the saved data
 
