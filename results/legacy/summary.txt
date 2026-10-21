@@ -1,0 +1,56 @@
+US stocks on NYSE, Nasdaq, and NYSE American.
+Each January, equal-weight the 50 highest EBITDA/EV minus the 3-month Treasury yield.
+EBITDA and the filing lag use the annual figure known 90 days after fiscal year-end.
+Enterprise value is rebuilt at the buy date from that report's debt and cash and the buy-date price.
+That price is dividend-adjusted, so a dividend between the fiscal year-end and the buy date nudges the value slightly.
+Market cap at the buy date at least $100 million. Enterprise value at least $50 million. Currency USD.
+The 3-month yield does not change the rank. It is the same number for every stock that day.
+Returns use dividend-adjusted prices. No commissions. A name that stops trading is sold at its last price.
+Compared with SPY over the same buy and sell dates, also dividend-adjusted.
+
+30-year window 1996-01-02 to 2026-01-02
+strategy growth of $1: 146.47
+SPY growth of $1: 18.51
+strategy CAGR: 18.08%
+SPY CAGR: 10.22%
+strategy annual-path drawdown: -14.6%
+SPY annual-path drawdown: -34.9%
+
+Through 2026-10-20
+strategy growth of $1: 182.87
+SPY growth of $1: 21.00
+strategy CAGR: 18.43%
+SPY CAGR: 10.39%
+
+year,portfolio,spy,names,early_exit
+1996,0.2984,0.2149,50,0
+1997,0.4541,0.3380,50,0
+1998,0.0503,0.2775,50,0
+1999,-0.0084,0.1950,50,0
+2000,0.2340,-0.1051,50,0
+2001,0.4478,-0.0915,50,0
+2002,-0.0445,-0.1992,50,0
+2003,0.8125,0.2411,50,0
+2004,0.4346,0.1024,50,0
+2005,0.1855,0.0718,50,0
+2006,0.2207,0.1366,50,0
+2007,0.0428,0.0439,50,0
+2008,-0.1461,-0.3431,50,0
+2009,0.8127,0.2474,50,0
+2010,0.3713,0.1431,50,0
+2011,-0.0931,0.0246,50,0
+2012,0.1547,0.1711,50,0
+2013,0.4338,0.2777,50,0
+2014,0.0738,0.1450,50,0
+2015,-0.1128,-0.0013,50,0
+2016,0.2864,0.1446,48,0
+2017,0.1538,0.2164,46,0
+2018,-0.0987,-0.0515,47,0
+2019,0.0918,0.3231,50,0
+2020,-0.0409,0.1564,50,0
+2021,0.9211,0.3126,49,0
+2022,-0.1280,-0.1899,43,0
+2023,0.1750,0.2600,43,0
+2024,0.1624,0.2528,43,0
+2025,0.1428,0.1823,46,0
+2026,0.2485,0.1345,48,0

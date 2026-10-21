@@ -1,0 +1,372 @@
+[
+ {
+  "year": 2016,
+  "symbol": "AMTG",
+  "entry": "2016-01-04",
+  "exit": "2017-01-03",
+  "last": "2016-08-31",
+  "last_px": 13.64,
+  "listed": false,
+  "name": "Apollo Residential Mortgage, In"
+ },
+ {
+  "year": 2016,
+  "symbol": "HTS",
+  "entry": "2016-01-04",
+  "exit": "2017-01-03",
+  "last": "2016-07-11",
+  "last_px": 16.29,
+  "listed": false,
+  "name": "Hatteras Financial Corp Hattera"
+ },
+ {
+  "year": 2017,
+  "symbol": "SIVBO",
+  "entry": "2017-01-04",
+  "exit": "2018-01-02",
+  "last": "2017-12-21",
+  "last_px": 25.3,
+  "listed": false,
+  "name": "SVB Capital II, 7.00% Cumulative Trust Preferred Securities"
+ },
+ {
+  "year": 2017,
+  "symbol": "FRP",
+  "entry": "2017-01-03",
+  "exit": "2018-01-02",
+  "last": "2017-07-03",
+  "last_px": 15.95,
+  "listed": false,
+  "name": "FairPoint Communications Inc."
+ },
+ {
+  "year": 2017,
+  "symbol": "KCG",
+  "entry": "2017-01-03",
+  "exit": "2018-01-02",
+  "last": "2017-07-19",
+  "last_px": 20.0,
+  "listed": false,
+  "name": "Keystone Global Financial Group"
+ },
+ {
+  "year": 2017,
+  "symbol": "SCE",
+  "entry": "2017-01-03",
+  "exit": "2018-01-02",
+  "last": "2017-07-25",
+  "last_px": 4.14,
+  "listed": false,
+  "name": "Southern California Edison Company"
+ },
+ {
+  "year": 2018,
+  "symbol": "UHN",
+  "entry": "2018-01-02",
+  "exit": "2019-01-02",
+  "last": "2018-09-11",
+  "last_px": 20.6,
+  "listed": false,
+  "name": "United States Diesel-Heating Oil"
+ },
+ {
+  "year": 2018,
+  "symbol": "OA",
+  "entry": "2018-01-02",
+  "exit": "2019-01-02",
+  "last": "2018-06-06",
+  "last_px": 134.5,
+  "listed": false,
+  "name": "Orbital ATK, Inc."
+ },
+ {
+  "year": 2018,
+  "symbol": "AHGP",
+  "entry": "2018-01-02",
+  "exit": "2019-01-02",
+  "last": "2018-06-08",
+  "last_px": 28.37,
+  "listed": false,
+  "name": "Alliance Holdings GP, L.P."
+ },
+ {
+  "year": 2021,
+  "symbol": "UZA",
+  "entry": "2021-01-04",
+  "exit": "2022-01-03",
+  "last": "2021-08-31",
+  "last_px": 25.35,
+  "listed": false,
+  "name": "United States Cellular Corporation CALL SR NT 60"
+ },
+ {
+  "year": 2022,
+  "symbol": "MUDS",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-09-12",
+  "last_px": 10.16,
+  "listed": false,
+  "name": "Mudrick Capital Acquisition Corporation II"
+ },
+ {
+  "year": 2022,
+  "symbol": "MUDSW",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-09-12",
+  "last_px": 0.0035,
+  "listed": false,
+  "name": "Mudrick Capital Acquisition Corporation II"
+ },
+ {
+  "year": 2022,
+  "symbol": "IEAWW",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-10-06",
+  "last_px": 1.65,
+  "listed": false,
+  "name": "Infrastructure and Energy Alternatives Inc"
+ },
+ {
+  "year": 2022,
+  "symbol": "IEA",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-10-06",
+  "last_px": 13.72,
+  "listed": false,
+  "name": "Infrastructure and Energy Alternatives, Inc."
+ },
+ {
+  "year": 2022,
+  "symbol": "PZN",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-10-28",
+  "last_px": 9.65,
+  "listed": false,
+  "name": "Pzena Investment Management, Inc."
+ },
+ {
+  "year": 2022,
+  "symbol": "GWB",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-01-31",
+  "last_px": 30.88,
+  "listed": false,
+  "name": "Great Western Bancorp, Inc."
+ },
+ {
+  "year": 2022,
+  "symbol": "LEVLP",
+  "entry": "2022-01-03",
+  "exit": "2023-01-03",
+  "last": "2022-03-31",
+  "last_px": 26.24,
+  "listed": false,
+  "name": "Level One Bancorp, Inc."
+ },
+ {
+  "year": 2023,
+  "symbol": "GSQB",
+  "entry": "2023-01-03",
+  "exit": "2024-01-02",
+  "last": "2023-06-15",
+  "last_px": 10.44,
+  "listed": false,
+  "name": "G Squared Ascend II Inc."
+ },
+ {
+  "year": 2023,
+  "symbol": "DLCAU",
+  "entry": "2023-01-03",
+  "exit": "2024-01-02",
+  "last": "2023-01-09",
+  "last_px": 10.12,
+  "listed": false,
+  "name": "Deep Lake Capital Acquisition Corp."
+ },
+ {
+  "year": 2023,
+  "symbol": "DLCA",
+  "entry": "2023-01-03",
+  "exit": "2024-01-02",
+  "last": "2023-01-13",
+  "last_px": 10.12,
+  "listed": false,
+  "name": "Deep Lake Capital Acquisition Corp."
+ },
+ {
+  "year": 2023,
+  "symbol": "COWNL",
+  "entry": "2023-01-03",
+  "exit": "2024-01-02",
+  "last": "2023-02-28",
+  "last_px": 25.22,
+  "listed": false,
+  "name": "Cowen Inc. - 7.75% Senior Notes"
+ },
+ {
+  "year": 2023,
+  "symbol": "SCPL",
+  "entry": "2023-01-03",
+  "exit": "2024-01-02",
+  "last": "2023-10-24",
+  "last_px": 22.94,
+  "listed": false,
+  "name": "SciPlay Corporation"
+ },
+ {
+  "year": 2023,
+  "symbol": "CHKEZ",
+  "entry": "2023-01-05",
+  "exit": "2024-01-02",
+  "last": "2023-12-19",
+  "last_px": 63.05,
+  "listed": false,
+  "name": "Chesapeake Energy Corporation"
+ },
+ {
+  "year": 2023,
+  "symbol": "IGICW",
+  "entry": "2023-01-03",
+  "exit": "2024-01-02",
+  "last": "2023-10-04",
+  "last_px": 1.05,
+  "listed": false,
+  "name": "International General Insurance Holdings Ltd."
+ },
+ {
+  "year": 2024,
+  "symbol": "BKCC",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-03-18",
+  "last_px": 3.68,
+  "listed": false,
+  "name": "BlackRock Capital Investment Corporation"
+ },
+ {
+  "year": 2024,
+  "symbol": "AEL",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-05-02",
+  "last_px": 56.47,
+  "listed": false,
+  "name": "American Equity Investment Life Holding Company"
+ },
+ {
+  "year": 2024,
+  "symbol": "TRMR",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-02-05",
+  "last_px": 5.03,
+  "listed": false,
+  "name": "Tremor International Ltd"
+ },
+ {
+  "year": 2024,
+  "symbol": "ADTH",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-06-21",
+  "last_px": 3.2,
+  "listed": false,
+  "name": "AdTheorent Holding Company, Inc."
+ },
+ {
+  "year": 2024,
+  "symbol": "AAN",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-10-03",
+  "last_px": 10.09,
+  "listed": false,
+  "name": "The Aaron's Company, Inc."
+ },
+ {
+  "year": 2024,
+  "symbol": "CHKEL",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-10-01",
+  "last_px": 62.5,
+  "listed": false,
+  "name": "Chesapeake Energy Corporation"
+ },
+ {
+  "year": 2024,
+  "symbol": "CPE",
+  "entry": "2024-01-02",
+  "exit": "2025-01-02",
+  "last": "2024-04-11",
+  "last_px": 35.76,
+  "listed": false,
+  "name": "Callon Petroleum Company"
+ },
+ {
+  "year": 2025,
+  "symbol": "SCCC",
+  "entry": "2025-01-02",
+  "exit": "2026-01-02",
+  "last": "2025-09-29",
+  "last_px": 24.99,
+  "listed": false,
+  "name": "Sachem Capital Corp. 7.75% Note"
+ },
+ {
+  "year": 2025,
+  "symbol": "VTLE",
+  "entry": "2025-01-02",
+  "exit": "2026-01-02",
+  "last": "2025-12-19",
+  "last_px": 17.92,
+  "listed": false,
+  "name": "Vital Energy, Inc."
+ },
+ {
+  "year": 2025,
+  "symbol": "HPKEW",
+  "entry": "2025-01-02",
+  "exit": "2026-01-02",
+  "last": "2025-08-21",
+  "last_px": 0.0498,
+  "listed": false,
+  "name": "HighPeak Energy, Inc."
+ },
+ {
+  "year": 2025,
+  "symbol": "SBBA",
+  "entry": "2025-01-02",
+  "exit": "2026-01-02",
+  "last": "2025-02-28",
+  "last_px": 25.29,
+  "listed": false,
+  "name": "Scorpio Tankers Inc. 7.00% Seni"
+ },
+ {
+  "year": 2026,
+  "symbol": "CIVI",
+  "entry": "2026-01-02",
+  "exit": "2026-10-20",
+  "last": "2026-01-29",
+  "last_px": 27.38,
+  "listed": false,
+  "name": "Civitas Resources, Inc."
+ },
+ {
+  "year": 2026,
+  "symbol": "RZB",
+  "entry": "2026-01-02",
+  "exit": "2026-10-20",
+  "last": "2026-06-16",
+  "last_px": 25.34,
+  "listed": false,
+  "name": "Reinsurance Group of America, Incorporated"
+ }
+]

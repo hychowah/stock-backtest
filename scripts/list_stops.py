@@ -1,0 +1,70 @@
+"""List holdings whose price stops more than 10 days before the January sale."""
+
+from __future__ import annotations
+
+import json
+from datetime import timedelta
+
+import run
+
+from paths import RAW, STOPS
+
+
+def main() -> None:
+    STOPS.mkdir(parents=True, exist_ok=True)
+    universe = {row["symbol"]: row for row in json.loads((RAW / "universe.json").read_text(encoding="utf-8"))}
+    book = run.build_statements(universe)
+    spy = run.load_bars(RAW / "spy-div.json", "adjClose")
+    sessions = [day for day, _ in spy]
+    treasury = json.loads((RAW / "treasury.json").read_text(encoding="utf-8"))
+    yields = []
+    for row in treasury:
+        day = run.parse_day(row.get("date"))
+        value = run.num(row.get("month3"))
+        if day is not None and value is not None:
+            yields.append((day, value / 100.0))
+    yields.sort()
+    picks = run.screen(book, yields, sessions)
+    symbols = sorted({row["symbol"] for rows in picks.values() for row in rows})
+    prices = {symbol: run.load_price_pair(symbol) for symbol in symbols}
+    stops = []
+    for year, rows in picks.items():
+        if not rows:
+            continue
+        if year < run.LAST_YEAR:
+            exit_day = run.session_on_or_after(sessions, run.date(year + 1, 1, 1))
+        else:
+            exit_day = sessions[-1]
+        refreshed = []
+        for row in rows:
+            light, div_bars = prices.get(row["symbol"], ([], []))
+            scaled = run.rescale(row, light or div_bars)
+            if scaled is not None:
+                refreshed.append(scaled)
+        refreshed.sort(key=lambda item: item["spread"], reverse=True)
+        for row in refreshed[: run.HOLD]:
+            _light, div = prices.get(row["symbol"], ([], []))
+            result = run.holding_return(div, row["entry_day"], exit_day)
+            last = None
+            for day, price in div:
+                if row["entry_day"] <= day <= exit_day:
+                    last = (day, price)
+            if result is None:
+                stops.append({
+                    "year": year,
+                    "symbol": row["symbol"],
+                    "entry": row["entry_day"].isoformat(),
+                    "exit": exit_day.isoformat(),
+                    "last": last[0].isoformat() if last else "",
+                    "last_px": last[1] if last else None,
+                    "listed": bool(universe.get(row["symbol"], {}).get("listed")),
+                    "name": universe.get(row["symbol"], {}).get("name", ""),
+                })
+    (STOPS / "stops.json").write_text(json.dumps(stops, indent=1), encoding="utf-8")
+    print(f"stops {len(stops)}", flush=True)
+    for row in stops:
+        print(f"{row['year']} {row['symbol']:8} last={row['last'] or 'none':10} listed={row['listed']} {row['name'][:40]}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

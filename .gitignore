@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+
+# Large downloaded data stays local; retain cache documentation.
+raw/*
+!raw/README.md
+!raw/archive/
+raw/archive/*
+!raw/archive/README.md
+
+# Repository metadata fallback for environments with a read-only .git mount.
+.git-local/
+
+# Sites maintains its own repository metadata; project source is tracked here.
+website/.git/
