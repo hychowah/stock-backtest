@@ -109,6 +109,71 @@ class BacktestTests(unittest.TestCase):
         self.assertTrue(result['periods'][0]['is_final_period'])
         with self.assertRaises(ValueError):s.backtest(self.db,start='2015-01-01',end='2015-07-01',min_yield=-1)
 
+    def test_only_requested_pool_then_switch_and_reuse(self):
+        # C is outside the original report-size screen, but belongs in the
+        # broader pool when the user lowers the screen's market-cap floor.
+        self.db.execute("INSERT INTO companies VALUES('C','C','NYSE','Energy')")
+        self.db.execute("INSERT INTO statements VALUES('C','2014-06-30','2014-09-28',50000000,75000000,60000000,.8)")
+        for day in ('2014-06-30','2015-01-02','2015-04-01','2015-07-01'):
+            self.db.execute("INSERT INTO prices VALUES('C',?,10,10)",(day,))
+        self.db.commit()
+        options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1,min_cap=0,min_ev=0)
+        original=s.backtest(self.db,pool='legacy',**options)
+        self.assertEqual([p['holdings'][0]['symbol'] for p in original['periods']],['A','A'])
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM snapshots WHERE pool='cached'").fetchone()[0],0)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM screening_metrics WHERE pool='cached'").fetchone()[0],0)
+        saved=[tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")]
+        periods=[tuple(row) for row in self.db.execute('SELECT * FROM periods ORDER BY year')]
+        with patch.object(s,'price',wraps=s.price) as lookup:
+            wider=s.backtest(self.db,pool='cached',**options)
+        self.assertGreater(lookup.call_count,0)
+        self.assertEqual([p['holdings'][0]['symbol'] for p in wider['periods']],['C','C'])
+        self.assertEqual(wider['growth'],1.)
+        self.assertEqual([tuple(row) for row in self.db.execute('SELECT * FROM periods ORDER BY year')],periods)
+        self.assertEqual([tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")],saved)
+        self.assertEqual([tuple(row) for row in self.db.execute('SELECT pool,COUNT(*) FROM period_pools GROUP BY pool')],[('cached',2),('legacy',2)])
+        # A new connection must recognize both pools, including after changing
+        # rank/filter/metric parameters. No reports or daily prices are reread.
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'daily.sqlite';copy=sqlite3.connect(path)
+            self.db.backup(copy);copy.close()
+            reopened=sqlite3.connect(path);reopened.row_factory=sqlite3.Row
+            try:
+                with patch.object(s,'price',side_effect=AssertionError('Completed pool')),patch.object(s,'histories',side_effect=AssertionError('Completed pool')):
+                    for pool in ('cached','legacy'):
+                        repeat=s.backtest(reopened,pool=pool,**options)
+                        expected=wider if pool=='cached' else original
+                        self.assertEqual(repeat['periods'],expected['periods'])
+                        s.backtest(reopened,pool=pool,metric='ev_ebitda_3y',**options)
+                        s.backtest(reopened,pool=pool,sector='Missing',**options)
+            finally:reopened.close()
+
+    def test_cached_pool_can_be_prepared_before_legacy(self):
+        options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
+        first=s.backtest(self.db,pool='cached',**options)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM snapshots WHERE pool='legacy'").fetchone()[0],0)
+        second=s.backtest(self.db,pool='legacy',**options)
+        for period in first['periods']:
+            for stock in period['holdings']:
+                self.assertEqual(stock['pool'],'cached')
+                stock['pool']='legacy'
+        self.assertEqual(first['periods'],second['periods'])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],2)
+
+    def test_empty_pool_is_complete_and_other_pool_can_be_added(self):
+        self.db.execute('UPDATE statements SET market_cap=50000000');self.db.commit()
+        options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1,min_cap=0,min_ev=0)
+        empty=s.backtest(self.db,pool='legacy',**options)
+        self.assertIsNone(empty['cagr'])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0],0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],2)
+        with patch.object(s,'price',side_effect=AssertionError('Empty completed pool')),patch.object(s,'histories',side_effect=AssertionError('Empty completed pool')):
+            repeat=s.backtest(self.db,pool='legacy',**options)
+        self.assertEqual(repeat['periods'],empty['periods'])
+        populated=s.backtest(self.db,pool='cached',**options)
+        self.assertTrue(all(p['names']==1 for p in populated['periods']))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],2)
+
 
 class ShutdownTests(unittest.TestCase):
     def setUp(self):
@@ -119,11 +184,22 @@ class ShutdownTests(unittest.TestCase):
 
     def counts(self,db):
         return {table:db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
-                for table in ('prices','statements','periods','snapshots','screening_metrics')}
+                for table in ('prices','statements','periods','snapshots','screening_metrics','period_pools')}
 
     def contents(self,db):
         return {table:sorted([tuple(row) for row in db.execute('SELECT * FROM '+table)],key=repr)
-                for table in ('prices','statements','periods','snapshots','screening_metrics')}
+                for table in ('prices','statements','periods','snapshots','screening_metrics','period_pools')}
+
+    def test_interrupted_second_pool_preserves_completed_first_pool(self):
+        before=self.contents(self.db)
+        with patch.object(s.metrics,'evaluate',side_effect=KeyboardInterrupt()):
+            with self.assertRaises(KeyboardInterrupt):
+                s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=12,pool='cached',rank_to=1)
+        self.assertEqual(self.contents(self.db),before)
+        retry=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=12,pool='cached',rank_to=1)
+        self.assertEqual(retry['growth'],.75)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],1)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],2)
 
     def test_keyboard_interrupt_rolls_back_and_retry_succeeds(self):
         before=self.counts(self.db);rows=self.contents(self.db);original=s.prepare_period
@@ -219,6 +295,58 @@ class PreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'bad fixture'):s.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
+
+    def version_one_cache(self):
+        s.prepare(self.path,self.source)
+        previous=dict(version=1,inputs={'raw':'unchanged'},engine=[10,20])
+        current=dict(version=2,inputs=previous['inputs'],engine=[30,40])
+        db=sqlite3.connect(self.path)
+        db.execute('DROP TABLE period_pools')
+        db.execute("INSERT INTO periods VALUES(1,'2015-01-02','2015-07-01',.1,0,1,1)")
+        # Version 1 also regarded empty pools as complete.
+        db.execute("INSERT INTO periods VALUES(2,'2015-07-01','2015-12-31',.1,0,0,0)")
+        for pool in ('cached','legacy'):
+            db.execute('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                       (pool,1,'A',1,'2014-06-30','2015-01-02','2015-07-01',100e6,150e6,30e6,.2,5.,.2,.5,'Scheduled exit'))
+            db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('historical',pool,1,'A','ev_ebitda',5.,.2))
+        db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),))
+        db.commit();db.close()
+        return previous,current
+
+    def test_version_one_upgrade_preserves_prices_books_and_empty_pools(self):
+        previous,current=self.version_one_cache()
+        def contents():
+            db=sqlite3.connect(self.path)
+            try:return {table:db.execute('SELECT * FROM '+table).fetchall() for table in
+                        ('prices','companies','statements','sessions','treasuries','periods','snapshots','screening_metrics')}
+            finally:db.close()
+        before=contents()
+        with patch.object(s,'fingerprint',return_value=current),patch.object(s.r,'bars',side_effect=AssertionError('Migration must not parse prices')):
+            with self.assertRaises(ValueError):s.connect(self.path)
+            s.prepare(self.path,self.source)
+            db=s.connect(self.path)
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],4)
+            self.assertEqual(s.prepared_period(db,date(2015,7,1),date(2015,12,31),'cached'),2)
+            self.assertEqual(json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0]),current)
+            db.close()
+        self.assertEqual(contents(),before)
+
+    def test_upgrade_rejects_changed_inputs_without_modifying_cache(self):
+        previous,current=self.version_one_cache();before=self.path.read_bytes()
+        current['inputs']={'raw':'changed'}
+        self.assertFalse(s.upgrade_daily_cache(self.path,current))
+        self.assertEqual(self.path.read_bytes(),before)
+
+    def test_upgrade_rolls_back_schema_and_markers_if_metadata_update_fails(self):
+        previous,current=self.version_one_cache()
+        db=sqlite3.connect(self.path)
+        db.execute("CREATE TRIGGER fail_upgrade BEFORE UPDATE ON metadata BEGIN SELECT RAISE(ABORT,'interrupted upgrade'); END")
+        db.commit();db.close();before=self.path.read_bytes()
+        with self.assertRaisesRegex(sqlite3.IntegrityError,'interrupted upgrade'):
+            s.upgrade_daily_cache(self.path,current)
+        self.assertEqual(self.path.read_bytes(),before)
+        db=sqlite3.connect(self.path);db.execute('DROP TRIGGER fail_upgrade');db.commit();db.close()
+        self.assertTrue(s.upgrade_daily_cache(self.path,current))
 
 
 class ServiceTests(unittest.TestCase):

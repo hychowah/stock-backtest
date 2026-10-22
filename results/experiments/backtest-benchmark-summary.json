@@ -1,0 +1,139 @@
+{
+  "recorded_utc": "2026-10-22T01:23:03.827980+00:00",
+  "execution": "Native Windows Python 3.12.1, matching start.cmd",
+  "scope": "Original candidate pool, top 50, annual random-date rebalances, 1996-01-01 through 2026-10-20; seed 20261022",
+  "comparisons": {
+    "full": [
+      {
+        "mode": "sqlite_128mb",
+        "fresh_total_seconds": 36.40515760006383,
+        "initialization_seconds": 7.0999376475811005e-06,
+        "calculation_seconds": 36.38909249997232,
+        "cached_replay_seconds": 0.4695323999039829,
+        "persisted_books": 248,
+        "snapshots": 323439,
+        "complete": 8,
+        "array_bytes": null,
+        "speedup": 1.0
+      },
+      {
+        "mode": "sqlite_512mb",
+        "fresh_total_seconds": 33.44449469994288,
+        "initialization_seconds": 8.00006091594696e-06,
+        "calculation_seconds": 33.42704439989757,
+        "cached_replay_seconds": 0.43648999999277294,
+        "persisted_books": 248,
+        "snapshots": 323439,
+        "complete": 8,
+        "array_bytes": null,
+        "speedup": 1.0885246713004162
+      },
+      {
+        "mode": "sqlite_mmap",
+        "fresh_total_seconds": 33.113643200020306,
+        "initialization_seconds": 8.09994526207447e-06,
+        "calculation_seconds": 33.096916700014845,
+        "cached_replay_seconds": 0.43025780003517866,
+        "persisted_books": 248,
+        "snapshots": 323439,
+        "complete": 8,
+        "array_bytes": null,
+        "speedup": 1.0994005516143723
+      },
+      {
+        "mode": "selected_pool",
+        "fresh_total_seconds": 10.913769599981606,
+        "initialization_seconds": 3.160000778734684e-05,
+        "calculation_seconds": 10.8979943000013,
+        "cached_replay_seconds": 0.43688419996760786,
+        "persisted_books": 248,
+        "snapshots": 43425,
+        "complete": 8,
+        "array_bytes": null,
+        "speedup": 3.3357088278760427
+      },
+      {
+        "mode": "arrays_shared_reports",
+        "fresh_total_seconds": 37.02480629994534,
+        "initialization_seconds": 12.922910499968566,
+        "calculation_seconds": 24.085802700021304,
+        "cached_replay_seconds": 0.4337932999478653,
+        "persisted_books": 248,
+        "snapshots": 323439,
+        "complete": 8,
+        "array_bytes": 237236952,
+        "speedup": 0.983263958361818
+      }
+    ],
+    "100": [
+      {
+        "mode": "sqlite_128mb",
+        "fresh_total_seconds": 467.040229300037,
+        "initialization_seconds": 5.799927748739719e-06,
+        "calculation_seconds": 467.02421150007285,
+        "cached_replay_seconds": 5.736216700053774,
+        "persisted_books": 3082,
+        "snapshots": 4010439,
+        "complete": 100,
+        "array_bytes": null,
+        "speedup": 1.0
+      },
+      {
+        "mode": "selected_pool",
+        "fresh_total_seconds": 132.05090029991698,
+        "initialization_seconds": 2.829998265951872e-05,
+        "calculation_seconds": 132.03492499992717,
+        "cached_replay_seconds": 5.621300099999644,
+        "persisted_books": 3082,
+        "snapshots": 537906,
+        "complete": 100,
+        "array_bytes": null,
+        "speedup": 3.536819728144865
+      },
+      {
+        "mode": "arrays_selected_pool",
+        "fresh_total_seconds": 105.91292120004073,
+        "initialization_seconds": 12.55483679997269,
+        "calculation_seconds": 93.34258990001399,
+        "cached_replay_seconds": 5.639292299980298,
+        "persisted_books": 3082,
+        "snapshots": 537906,
+        "complete": 100,
+        "array_bytes": 237236952,
+        "speedup": 4.409662428420088
+      }
+    ]
+  },
+  "verification": {
+    "exact_holding_values_returns_and_statuses": true,
+    "cached_replay_matches_fresh_results": true,
+    "price_adapter_sql_checks_passed": 4680,
+    "existing_backtest_and_robustness_tests_passed_for_selected_pool": 14
+  },
+  "recommendation": "Requested-pool preparation is applied. Shared in-memory data remains an optional benchmark prototype.",
+  "default_24_trial_prefix": {
+    "sqlite_128mb": 101.15019309998024,
+    "selected_pool": 31.91702469997108,
+    "arrays_selected_pool": 34.910683699999936
+  },
+  "source_cache_unchanged": true,
+  "source_hashes": {
+    "tools/bench_backtest.py": "22e076b9ef0d9e8b80c579193d4162611055bff4e0849a440559f559556862d1",
+    "scripts/schedules.py": "861643ec998dcca5919469f349d63175a85af79e1484068ac467ceac4c637db1",
+    "scripts/robustness.py": "a67774a115d8c7f5a5b031c7c5d878651909c752b4fcdc0e563fea2125b6323c",
+    "scripts/books.py": "b3d6f41adc8ebf6ae332b8c8a255548ef32208e7c791cf74f5e0393d6bfcbb55",
+    "scripts/metrics.py": "49eeb7ac9ecf69bb75a56f78cdbedd9dd432b978696bcce85a44a3b5c167714f",
+    "scripts/research.py": "6d0ab6f845ffa43fb701cb0db9fc34ba7b10f1226233f8b7fdd6cdab61d566c7"
+  },
+  "source_hashes_describe": "Initial benchmark state before applying requested-pool preparation.",
+  "implementation": {
+    "status": "applied",
+    "verified_utc": "2026-10-22T01:49:36.291626+00:00",
+    "verification_report": "backtest-benchmark-applied.json",
+    "fresh_100_trial_seconds": 133.08229610009585,
+    "speedup_vs_original": 3.509409162498667,
+    "exact_result_parity": true,
+    "daily_schema_version": 2,
+    "existing_books_preserved": 300
+  }
+}

@@ -108,6 +108,25 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(result['completed'],3)
         self.assertGreaterEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],retained)
 
+    def test_pool_switch_commits_each_trial_and_preserves_original_pool(self):
+        original=self.config(trials=3,seed=11,pool='legacy')
+        first=r.run(self.db,original)
+        periods=self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0]
+        legacy=[tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")]
+        wider=self.config(trials=3,seed=11,pool='cached')
+        def interrupt(event):
+            if event['completed']==1:raise KeyboardInterrupt()
+        with self.assertRaises(KeyboardInterrupt):r.run(self.db,wider,interrupt)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM period_pools WHERE pool='cached'").fetchone()[0],2)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],periods)
+        self.assertEqual([tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")],legacy)
+        with patch.object(s,'price',side_effect=AssertionError('Original pool remains complete')),patch.object(s,'histories',side_effect=AssertionError('Original pool remains complete')):
+            replay=r.run(self.db,original)
+        self.assertEqual([row['cagr'] for row in replay['trials']],[row['cagr'] for row in first['trials']])
+        retry=r.run(self.db,wider)
+        self.assertEqual([row['cagr'] for row in retry['trials']],[row['cagr'] for row in first['trials']])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],2*periods)
+
     def test_ndjson_handler_contract(self):
         handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO()
         statuses=[];handler.send_response=statuses.append

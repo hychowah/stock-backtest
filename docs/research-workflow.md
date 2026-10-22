@@ -160,19 +160,33 @@ books. `data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
 calculation code change. Repeated preparation validates source freshness without
 parsing prices. Newly requested entry/exit pairs are computed once and persisted;
 filter, metric or rank changes reuse those books and shared SQL selection.
+Only the requested stock pool is prepared. Switching between the original and
+broader pools fills the missing pool once for each existing dated period; it
+does not recompute the completed pool. Empty pools are recorded as complete too.
+Daily schema version 2 tracks this in `period_pools`. Compatible version-1 caches
+upgrade automatically at startup without reparsing prices or discarding books.
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves only the built website and a loopback JSON calculation
 endpoint; no keys, remote services or market-data downloads are involved.
 `website/schedule.js` renders dated periods without assuming one book per year.
 Run `python3 tests/test_schedules.py` in addition to the existing checks.
 
-Observed in this workspace: the one-time daily index took 174 seconds and
+Before requested-pool preparation, observed in this workspace: the one-time daily index took 174 seconds and
 occupied 430 MB. Building a previously unseen 20-period quarterly schedule took
 52 seconds in a direct engine run; changing its metric and rank bounds reused
 the books in 1.4 seconds. A 31-period January schedule through October 2026
 matched every prepared baseline selection and annual return. The local service
 uses a larger SQLite page cache for new-book calculations. Timings depend on disk
 and schedule length; new dates can require additional book preparation.
+
+The applied requested-pool engine was verified on native Windows Python 3.12:
+100 annual random-date trials over the full cached history took 133.1 seconds,
+versus 467.0 seconds for the saved eager reference (3.5× faster). The original
+candidate pool, top 50 and seed 20261022 were used, ending on 2026-10-20. Loading
+and per-trial saving were included; test-only cloning/reset was excluded. Every
+selected holding, valuation, exit status and trial outcome matched exactly.
+See `results/experiments/backtest-benchmark-applied.json`. The real daily cache
+upgraded in place, retaining all 300 existing books without parsing JSON prices.
 
 ### Running and interrupted backtests
 

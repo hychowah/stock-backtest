@@ -67,6 +67,33 @@ Backtest entry points live in `scripts/`, with shared paths in `scripts/paths.py
 
 The website source and ready-to-open output live in `website/` and `website/dist/`. Rebuild with `python3 website/build.py`. Verify path handling with `python3 tests/check_paths.py` and website calculations with `node tests/check-range.cjs`. Python uses the standard library; the JavaScript check needs Node.js. Cache-only workflows require no API key.
 
+## Keep the user architecture guide current
+
+Before every commit, compare the full commit diff with
+`docs/architecture-guide/dist/index.html`. This is the human-facing guide to how
+the program works. Update affected explanations, diagrams, setting examples,
+cache rules and file maps in the same commit as the change they describe.
+Check changes to preparation, selection, metrics, exits, schedules, random trials,
+startup, website controls, cache schemas and file locations. If the commit does
+not affect the guide, leave its content and checked date unchanged and state
+that no guide update was needed in the completion report.
+
+Use ASD-STE100 principles: short sentences, one main idea per sentence, consistent
+names and definitions for technical terms. Explain the user-visible behavior
+before the implementation details. Distinguish current source, a running server,
+and benchmark-only prototypes. Keep measured timings tied to their original
+settings and reference engine; do not present old measurements as new tests.
+Change the guide's checked date only after checking its claims against the code.
+
+When the guide changes, run `node docs/architecture-guide/check.cjs`. Update that
+check when guide controls change. Keep the guide self-contained and usable by
+opening its HTML file directly. Review affected diagrams and responsive layouts
+when browser tools are available; report any unverified browser checks.
+Preserve the guide's existing Site identity if hosted publishing is retried.
+Publication failures must not prevent the local guide update from being included
+in the implementation commit. Do not create an empty documentation change just
+to satisfy this rule.
+
 ## Fast research workflow
 
 `scripts/research.py prepare` creates the offline `data/research.sqlite` January data layer from the raw cache. It verifies the baseline against `results/summary-exits.txt`; repeated preparation skips parsing when inputs are current. Use `scripts/research.py screen --top 100` or other flags for experiments, rather than editing `HOLD` and reparsing daily history. The website uses the prepared database. `scripts/revalue.py` remains the independent slower reference calculation.
@@ -111,6 +138,13 @@ books independently of filters and reuse `research._select` and
 charts show dated period returns; don't label monthly/quarterly books as annual
 returns. Keep canonical January reports untouched. Verify with
 `python3 tests/test_schedules.py` and existing research/website checks.
+
+Daily schema version 2 prepares only the requested pool. `period_pools` records
+completion independently of snapshot counts, including empty pools. A pool switch
+fills the missing pool in the same dated period; filters, ranks and metrics reuse
+its prepared rows. Keep completion markers and rows in the same transaction.
+Startup upgrades compatible version-1 caches in place, retaining daily prices
+and existing two-pool books; changed research inputs still require preparation.
 
 ## Automatic local launcher
 

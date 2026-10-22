@@ -30,3 +30,14 @@ cached price histories plus research financials, SPY sessions, Treasury yields
 and reusable entry/exit books. The local website service computes missing books
 and persists them here; original `research.sqlite` remains read-only. Daily-cache
 freshness includes the schedule engine and research calculation fingerprints.
+
+Daily schema version 2 adds `period_pools(period_id,pool)`. A completed period can
+contain one or both pools. The service prepares only the requested pool, and
+fills the other on demand while retaining the same period ID. Completion markers
+also cover empty pools; do not infer readiness from the presence of snapshots.
+Markers, snapshots and metrics commit together, once per schedule/trial.
+
+The launcher upgrades compatible version-1 caches in place: it marks both pools
+complete for every existing period and retains prices, financials and dated
+results. Changed research inputs or financial calculation code still trigger an
+offline rebuild. No market data is downloaded during either path.

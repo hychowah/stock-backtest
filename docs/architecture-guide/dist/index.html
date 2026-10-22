@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A plain-language guide to the EBITDA/EV backtest: data, stock selection, saved books, website modes and tested speed improvements.">
+<meta name="theme-color" content="#173f36">
+<title>How your backtest works · A plain-language guide</title>
+<style>
+:root{--paper:#f7f7f0;--white:#fff;--ink:#20352e;--muted:#617268;--green:#173f36;--accent:#cbea8b;--line:#dbe1d6;--soft:#edf1e7;--orange:#a85728;--orange-soft:#fbf0e4;--radius:16px}*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:30px}body{margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:16px;line-height:1.65}a{color:var(--green);text-underline-offset:4px}button,select{font:inherit}button,a,select{touch-action:manipulation}button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #719d2d;outline-offset:4px}button{cursor:pointer}button:disabled{cursor:default}.skip{position:absolute;left:20px;top:-100px;background:var(--accent);padding:12px;z-index:10}.skip:focus{top:10px}.sidebar{position:fixed;inset:0 auto 0 0;width:250px;padding:35px 26px;background:var(--green);color:#fff;display:flex;flex-direction:column;z-index:3}.brand{display:flex;align-items:center;gap:12px;color:#fff;text-decoration:none;font-weight:650;line-height:1.35;letter-spacing:-.3px}.brand svg{width:39px;height:39px;flex-shrink:0}.brand small{display:block;font-size:11px;text-transform:uppercase;letter-spacing:1.8px;color:#b5c6bd;margin-top:4px}.sidebar nav{margin-top:48px;display:grid;gap:5px}.sidebar nav a{display:flex;gap:13px;padding:9px 11px;border-radius:8px;color:#d0dfd6;text-decoration:none;font-size:13px}.sidebar nav a span{font-size:11px;opacity:.6;align-self:center}.sidebar nav a:hover,.sidebar nav a[aria-current="location"]{background:#2d5549;color:#fff}.side-bottom{margin-top:auto;padding-top:22px;font-size:11px;color:#b5c6bd}.side-bottom strong{display:block;color:#e9f2e4;font-size:12px;font-weight:500;margin-bottom:7px}.print-button{border:1px solid #6d8a7b;background:transparent;color:#fff;border-radius:8px;padding:8px 12px;width:100%;margin-top:15px;font-size:12px}.print-button:hover{background:#2d5549}main{max-width:1330px;margin-left:250px;padding:43px 58px 30px}.topline{display:flex;justify-content:space-between;gap:15px;align-items:center;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding-bottom:26px;border-bottom:1px solid var(--line)}.tag{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:5px 10px;font-size:10px;letter-spacing:1px;line-height:1.5}.tag::before{content:"";width:6px;height:6px;border-radius:50%;background:#719d2d}.hero{padding:55px 0 44px;max-width:850px}.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;color:var(--muted);margin:0 0 15px}h1,h2,h3,p{margin-top:0}h1,h2{font-family:Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-1.9px;line-height:1.09}h1{font-size:clamp(40px,5.2vw,69px);max-width:760px;margin-bottom:22px}h1 em{font-style:normal;color:#5a7651}h2{font-size:clamp(30px,3vw,43px);margin-bottom:18px;letter-spacing:-1px}h3{font-size:17px;letter-spacing:-.3px;line-height:1.4;margin-bottom:10px}p{margin-bottom:14px}.lead{font-size:18px;line-height:1.65;color:var(--muted);max-width:710px}.hero-facts{display:flex;gap:9px;flex-wrap:wrap;margin-top:25px}.hero-facts span{padding:5px 11px;background:var(--soft);border-radius:5px;font-size:12px}.section{padding:45px 0;border-top:1px solid var(--line);scroll-margin-top:25px}.section-head{max-width:760px;margin-bottom:25px}.section-head p{color:var(--muted);max-width:690px}.label{font-size:10px;text-transform:uppercase;letter-spacing:1.6px;font-weight:700;margin-bottom:10px;color:var(--muted)}.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.flow-step{position:relative;background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:22px 18px;min-height:178px;text-align:left;color:var(--ink)}.flow-step:not(:last-child)::after{content:"→";position:absolute;right:-15px;top:43%;z-index:1;background:var(--paper);color:var(--muted);font-size:19px;width:18px;text-align:center}.flow-step[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:white}.step-number{display:block;font-size:11px;color:var(--muted);margin-bottom:17px}.flow-step[aria-pressed="true"] .step-number,.flow-step[aria-pressed="true"] .step-desc{color:#c1d5c6}.step-name{display:block;font-weight:650;font-size:16px;margin-bottom:7px}.step-desc{display:block;font-size:12px;line-height:1.6;color:var(--muted)}.flow-detail{padding:21px 24px;background:var(--soft);border-radius:10px;margin-top:14px;min-height:103px}.flow-detail h3{font-size:15px;margin-bottom:5px}.flow-detail p{font-size:14px;margin:0}.caption{font-size:12px;color:var(--muted);margin-top:13px;margin-bottom:0}.split{display:grid;grid-template-columns:1fr 1fr;gap:20px}.panel{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:25px}.panel p,.panel li{font-size:14px}.panel p:last-child{margin-bottom:0}.panel ul{padding-left:19px;margin-bottom:0}.panel li+li{margin-top:8px}.mode-tabs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}.mode-tabs button{border:1px solid var(--line);border-radius:99px;padding:8px 15px;background:transparent;color:var(--muted);font-size:13px}.mode-tabs button[aria-pressed="true"]{background:var(--green);color:white;border-color:var(--green)}.mode-content{background:var(--white);border:1px solid var(--line);border-radius:var(--radius);padding:28px}.mode-status{font-size:10px;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}.mode-content h3{font-size:24px;font-family:Georgia,serif;font-weight:400}.route{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:22px 0;font-size:12px}.route span{background:var(--soft);padding:9px 12px;border-radius:6px}.route b{font-weight:400;color:var(--muted)}.mode-content>p{font-size:14px;max-width:730px}.mode-panels{margin-bottom:16px}.mode-content[hidden]{display:none}.recipe{counter-reset:recipe;list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:0 30px}.recipe li{counter-increment:recipe;position:relative;padding:23px 0 23px 43px;border-bottom:1px solid var(--line)}.recipe li::before{content:counter(recipe,decimal-leading-zero);position:absolute;left:0;top:23px;font-size:12px;color:#678355;font-weight:650}.recipe h3{font-size:16px;margin-bottom:7px}.recipe p{font-size:14px;color:var(--muted);margin:0}.note{border-left:3px solid #84a960;background:var(--soft);padding:17px 20px;margin-top:24px;font-size:14px}.note p:last-child{margin:0}.note.orange{border-color:#be8658;background:var(--orange-soft)}.formula{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--green);color:#e6efdf;padding:16px 20px;border-radius:9px;font-size:13px;overflow-wrap:anywhere;margin-top:20px}.settings{background:var(--green);color:#fff;border-radius:var(--radius);padding:26px;margin-top:24px}.settings .label{color:#c3d5c5}.settings-grid{display:grid;grid-template-columns:1.3fr .7fr 1.2fr;gap:14px}.settings label{font-size:12px;display:block}.settings select{display:block;width:100%;margin-top:7px;padding:10px 9px;border:1px solid #567566;background:#254f43;color:white;border-radius:7px;font-size:13px}.settings select option{color:var(--ink);background:white}.settings-explanation{margin:20px 0 0;font-size:14px;color:#e1ecdf;min-height:77px}.settings-explanation strong{color:var(--accent)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}th{background:var(--soft);font-size:11px;font-weight:600;color:var(--muted)}td,th{padding:14px 18px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}td:first-child{font-weight:550}td:last-child{color:var(--muted)}.cache-tip{display:flex;align-items:flex-start;gap:14px;margin-top:20px;padding:20px 23px;border:1px dashed #a7b69d;border-radius:12px}.cache-icon{font-size:24px;color:#6a8552;line-height:1.3}.cache-tip h3{font-size:15px;margin-bottom:5px}.cache-tip p{font-size:13px;color:var(--muted);margin:0}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:25px}.comparison .panel{padding:22px}.comparison .label{margin-bottom:15px}.mini-flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px}.mini-flow span{padding:7px 9px;border:1px solid var(--line);border-radius:5px;background:var(--soft)}.mini-flow .unused{background:var(--orange-soft);border-color:#e4c6a9;color:var(--orange)}.mini-flow .selected{background:#e5f0d3;border-color:#c8dda6}.comparison p{font-size:13px;color:var(--muted);margin-top:16px}.bench{border:1px solid var(--line);border-radius:var(--radius);background:white;padding:27px}.bench-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:24px}.bench-top h3{margin:0;font-size:16px}.prototype{font-size:10px;letter-spacing:1px;text-transform:uppercase;background:var(--orange-soft);color:var(--orange);border-radius:5px;padding:4px 8px;white-space:nowrap}.bench-row{display:grid;grid-template-columns:190px 1fr 83px;align-items:center;gap:16px;margin:20px 0;font-size:13px}.bench-row .bar-track{height:30px;background:var(--soft);border-radius:5px;overflow:hidden}.bar{height:100%;background:#aab7a0;border-radius:5px}.bar.green{background:var(--green)}.bar.lime{background:#91b25f}.bench-time{text-align:right;font-variant-numeric:tabular-nums;font-weight:650}.bench-row small{display:block;color:var(--muted);font-size:10px;font-weight:400}.bench .caption{line-height:1.75}.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:22px}.status-grid p{font-size:13px;color:var(--muted)}.status-grid strong{color:var(--ink)}details{border-bottom:1px solid var(--line);padding:15px 0}summary{cursor:pointer;font-size:14px;font-weight:600;padding-right:10px}details p,details ul{font-size:14px;color:var(--muted);margin-top:12px;margin-bottom:5px}details li{margin-bottom:7px}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.88em;background:var(--soft);padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}.files td:first-child{width:33%}.files code{display:block;font-size:11px;margin-top:5px;line-height:1.8;background:none;padding:0;color:var(--muted)}.glossary{display:grid;grid-template-columns:1fr 1fr;gap:0 28px;margin:0}.glossary div{padding:16px 0;border-bottom:1px solid var(--line)}dt{font-size:14px;font-weight:650;margin-bottom:5px}dd{font-size:13px;color:var(--muted);margin:0}.footer{border-top:1px solid var(--line);padding:25px 0 10px;display:flex;justify-content:space-between;gap:20px;font-size:11px;color:var(--muted)}.footer a{color:inherit}.readable-width{max-width:760px}
+@media(min-width:1500px){main{margin-left:calc(250px + (100vw - 1500px)/2)}}@media(max-width:1100px){.sidebar{width:215px;padding:28px 18px}main{margin-left:215px;padding:32px}.flow{gap:9px}.flow-step{padding:18px 12px}.settings-grid{grid-template-columns:1fr 1fr}.settings-grid label:last-child{grid-column:1/-1}.bench-row{grid-template-columns:150px 1fr 75px}}@media(max-width:760px){html{scroll-padding-top:20px}.sidebar{position:relative;width:auto;padding:20px;display:block}.brand svg{width:32px;height:32px}.brand small{font-size:9px}.sidebar nav{display:flex;gap:4px;overflow:auto;margin-top:20px;padding-bottom:3px}.sidebar nav a{white-space:nowrap;font-size:12px;padding:7px 9px}.sidebar nav a span{display:none}.side-bottom{display:none}main{margin:0;padding:25px 21px}.topline{font-size:9px;letter-spacing:1px;padding-bottom:20px}.hero{padding:35px 0}.hero .lead{font-size:16px}.section{padding:34px 0}.flow{grid-template-columns:1fr 1fr;gap:10px}.flow-step{min-height:145px;padding:17px}.flow-step::after{display:none}.step-number{margin-bottom:11px}.split,.comparison,.status-grid,.recipe,.glossary{grid-template-columns:1fr}.recipe{gap:0}.settings-grid{grid-template-columns:1fr}.settings-grid label:last-child{grid-column:auto}.settings{padding:21px}.bench{padding:20px 17px}.bench-top{align-items:flex-start}.bench-row{grid-template-columns:1fr 72px;gap:8px;margin:22px 0}.bench-row .bar-track{grid-row:2;grid-column:1/-1;height:23px}.bench-time{grid-row:1;grid-column:2}.mode-content{padding:22px}.table-wrap{font-size:12px}td,th{padding:12px}.footer{display:block}.footer p{margin-bottom:8px}h2{font-size:32px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}@media print{body{background:white;font-size:11pt}.sidebar,.topline,.settings,.mode-tabs,.skip{display:none}main{margin:0;padding:0;max-width:none}h1{font-size:34pt}h2{font-size:24pt}.hero,.section{padding:20px 0}.mode-content[hidden]{display:block!important}.mode-content{margin-bottom:12px}.section,.panel,.bench,.mode-content{break-inside:avoid}.flow-step{min-height:120px}.flow-step[aria-pressed="true"]{background:white;color:var(--ink)}.flow-step[aria-pressed="true"] .step-number,.flow-step[aria-pressed="true"] .step-desc{color:var(--muted)}.flow-detail{display:none}.recipe{grid-template-columns:1fr 1fr}.footer{font-size:9pt}.bar{print-color-adjust:exact;-webkit-print-color-adjust:exact}.caption{font-size:9pt}details{break-inside:avoid}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the guide</a>
+<aside class="sidebar" aria-label="Guide navigation">
+  <a class="brand" href="#overview"><svg viewBox="0 0 40 40" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="10" fill="none" stroke="#668b70"/><path d="M10 28V18m10 10V11m10 17V20" stroke="#cbea8b" stroke-width="3" stroke-linecap="round"/></svg><span>Inside the backtest<small>EBITDA / EV · User guide</small></span></a>
+  <nav aria-label="Contents">
+    <a href="#overview" aria-current="location"><span>01</span>The whole system</a>
+    <a href="#modes"><span>02</span>Four ways to use it</a>
+    <a href="#one-book"><span>03</span>One holding period</a>
+    <a href="#settings"><span>04</span>Groups, filters and counts</a>
+    <a href="#cache"><span>05</span>What gets reused</a>
+    <a href="#speed"><span>06</span>Why new trials take time</a>
+    <a href="#files"><span>07</span>Where each part lives</a>
+    <a href="#terms"><span>08</span>Words used in this guide</a>
+  </nav>
+  <div class="side-bottom"><strong>A guide to the current program.</strong>Checked 22 October 2026.<br>Requested-pool preparation is in the source.<button class="print-button" type="button" id="print-guide">Print / Save as PDF ↗</button></div>
+</aside>
+<main id="main">
+  <div class="topline"><span>Your stock research workspace</span><span class="tag">Architecture, in plain language</span></div>
+  <header class="hero" id="overview">
+    <p class="eyebrow">01 / The whole system</p>
+    <h1>How your<br><em>backtest works.</em></h1>
+    <p class="lead">The program uses saved company data and prices to select stocks. It then checks how those stocks performed.</p>
+    <p class="readable-width">This guide explains each part, how the parts connect, and why some runs take longer. You do not need to read the code.</p>
+    <div class="hero-facts"><span>Saved data</span><span>One set of selection rules</span><span>Four ways to use it</span><span>No downloads during a backtest</span></div>
+  </header>
+  <section class="section" aria-labelledby="flow-title">
+    <div class="section-head"><p class="label">The main data flow</p><h2 id="flow-title">Save once. Prepare once.<br>Select many times.</h2><p>A <a href="#term-cache">cache</a> is saved data that the program can use again. Select a step to see its job.</p></div>
+    <div class="flow" role="group" aria-label="Data flow steps">
+      <button type="button" class="flow-step" data-stage="0" aria-pressed="true" aria-controls="flow-detail"><span class="step-number">01 / INPUT</span><span class="step-name">Saved source data</span><span class="step-desc">Company lists, annual figures, stock prices and SPY prices.</span></button>
+      <button type="button" class="flow-step" data-stage="1" aria-pressed="false" aria-controls="flow-detail"><span class="step-number">02 / PREPARE</span><span class="step-name">Prepared data</span><span class="step-desc">Local database files make the saved data easier to use.</span></button>
+      <button type="button" class="flow-step" data-stage="2" aria-pressed="false" aria-controls="flow-detail"><span class="step-number">03 / SELECT</span><span class="step-name">Your strategy</span><span class="step-desc">Choose a stock group. Apply filters. Rank and select stocks.</span></button>
+      <button type="button" class="flow-step" data-stage="3" aria-pressed="false" aria-controls="flow-detail"><span class="step-number">04 / OUTPUT</span><span class="step-name">Results</span><span class="step-desc">View stocks, returns, charts and CSV downloads.</span></button>
+    </div>
+    <div class="flow-detail" id="flow-detail" aria-live="polite"><h3>1. The source data stays on your computer.</h3><p>The raw folder holds the saved inputs. Ordinary preparation and backtests read these files. They do not contact the data supplier.</p></div>
+    <p class="caption">The browser and Python use the same selection rules. They use different prepared records for different dates.</p>
+  </section>
+
+  <section class="section" id="modes" aria-labelledby="modes-title">
+    <div class="section-head"><p class="eyebrow">02 / Four ways to use it</p><h2 id="modes-title">The date choice sets the path.</h2><p>Latest picks and January backtests work in the saved HTML page. Custom dates and random dates need the local Python service.</p></div>
+    <div class="mode-tabs" role="group" aria-label="Choose a program mode">
+      <button type="button" data-mode="january" aria-pressed="true" aria-controls="mode-january">January backtest</button>
+      <button type="button" data-mode="latest" aria-pressed="false" aria-controls="mode-latest">Latest stock picks</button>
+      <button type="button" data-mode="custom" aria-pressed="false" aria-controls="mode-custom">Custom dates</button>
+      <button type="button" data-mode="random" aria-pressed="false" aria-controls="mode-random">Random dates</button>
+    </div>
+    <div class="mode-panels">
+      <article class="mode-content" id="mode-january"><p class="mode-status">Prepared in advance · Runs in the browser</p><h3>A saved January-to-January test.</h3><div class="route" aria-label="January data path"><span>Prepared January records</span><b aria-hidden="true">→</b><span>Data inside the HTML</span><b aria-hidden="true">→</b><span>Browser selection</span><b aria-hidden="true">→</b><span>Results</span></div><p>The program buys stocks each January. It sells them at the next January date. The last book can cover part of a year.</p><p>Change the group, filters, metric or stock count in the browser. The page uses records already inside the HTML. It does not prepare new daily books.</p></article>
+      <article class="mode-content" id="mode-latest" hidden><p class="mode-status">Prepared in advance · Runs in the browser</p><h3>A screen for the latest saved session.</h3><div class="route" aria-label="Latest data path"><span>Prepared latest records</span><b aria-hidden="true">→</b><span>Data inside the HTML</span><b aria-hidden="true">→</b><span>Browser selection</span><b aria-hidden="true">→</b><span>Stock list</span></div><p>Latest means the latest SPY session in the saved data. It does not mean a live market feed.</p><p>A company needs a price on that exact session. The saved company list must mark it as listed. Old stopped prices are excluded. These picks have no future holding return.</p></article>
+      <article class="mode-content" id="mode-custom" hidden><p class="mode-status">Prepared when needed · Uses the local Python service</p><h3>A test on your chosen calendar.</h3><div class="route" aria-label="Custom date path"><span>Browser request</span><b aria-hidden="true">→</b><span>Local Python service</span><b aria-hidden="true">→</b><span>Saved or new dated books</span><b aria-hidden="true">→</b><span>Results in the browser</span></div><p>Choose the start date, end date and rebalance interval. Supported intervals are 1, 3, 6, 12 and 24 months.</p><p>Trade dates move forward to a saved SPY session. The end mark moves back to a session. A new buy/sell date pair usually needs a new book. A saved pair can be reused.</p></article>
+      <article class="mode-content" id="mode-random" hidden><p class="mode-status">Many dated tests · Uses the local Python service</p><h3>The same strategy on different trade dates.</h3><div class="route" aria-label="Random date path"><span>Sample trade dates</span><b aria-hidden="true">→</b><span>Run each trial in order</span><b aria-hidden="true">→</b><span>Save each completed trial</span><b aria-hidden="true">→</b><span>Compare trial results</span></div><p>For each trial, the program selects one trading session from each frequency block. The last partial block also participates. Actual holding periods can have different lengths.</p><p>Trials use the same start and end window. Strategy and SPY hold cash until the first trade. More trials usually create more new date pairs and more work.</p><p>New runs use fresh dates by default. A seed is a number that lets you repeat the date choices. Use the same saved settings and seed to replay a batch.</p></article>
+    </div>
+    <div class="note"><strong>What happens when you double-click start.cmd?</strong><p>Windows starts Python. Python checks the data caches and the website build. It prepares stale files, starts the local service, then opens the browser. It opens a new port if the default port is in use.</p></div>
+  </section>
+
+  <section class="section" id="one-book" aria-labelledby="book-title">
+    <div class="section-head"><p class="eyebrow">03 / One holding period</p><h2 id="book-title">From a report to a portfolio.</h2><p>A <a href="#term-book">book</a> describes one buy date and one sell or mark date. The dated engine prepares the requested stock group before it applies your final filters.</p></div>
+    <ol class="recipe">
+      <li><h3>Choose a usable annual report.</h3><p>The report becomes available 90 days after its year-end. Availability must be before the buy date. A report older than 800 days is excluded.</p></li>
+      <li><h3>Prepare the requested stock group.</h3><p>The original group keeps the original 250-name screen. The broader group uses companies with saved prices. Only the requested group is prepared. Neither group covers the full market.</p></li>
+      <li><h3>Estimate values at the buy date.</h3><p>The program uses saved prices to update report market cap. It adds report net debt to estimate enterprise value. A missing buy price excludes a stock.</p></li>
+      <li><h3>Prepare metrics and holding returns.</h3><p>The program calculates both supported EBITDA metrics for the requested group. It uses dividend-adjusted prices for holding returns. It saves these records for the date pair.</p></li>
+      <li><h3>Filter, rank, then select.</h3><p>The program reads your chosen group. It applies your filters before ranking. Lower selected EV/EBITDA multiples rank first. It takes the ranks you request.</p></li>
+      <li><h3>Calculate the portfolio result.</h3><p>Each selected stock starts with the same weight. The program averages their holding returns. It joins the periods and compares the result with SPY.</p></li>
+    </ol>
+    <div class="formula">Period return = sum of selected stock returns ÷ actual selected stock count</div>
+    <details><summary>What if a stock stops trading?</summary><p>The historical engine uses its last available price. The proceeds stay as cash until the next rebalance. A listed bankruptcy override gives a total loss. The override list is currently empty.</p><p>A later delisting does not change an earlier sale price. The original review covered 37 early stops. Additional stops in expanded or dated tests have not all received that review.</p></details>
+    <details><summary>What if too few stocks pass the screen?</summary><p>The program uses the stocks that pass. If 80 stocks pass a top-100 request, each starts with a weight of 1/80.</p><p>An empty holding period makes full-window strategy growth and CAGR unavailable. Random-date summaries keep incomplete trials visible. They exclude these trials from both paired distributions.</p></details>
+    <details><summary>Which financial values are used?</summary><p>The saved annual record includes market cap, enterprise value and EV/EBITDA. The program derives EBITDA and net debt from those values.</p><p>Estimated EV equals estimated market cap plus report net debt. The three-year metric uses mean EBITDA from three consecutive annual reports. Missing years exclude the stock from that metric.</p><p>The 90-day delay is an availability assumption. It is not proof of the actual filing date. Supplier data can include later revisions.</p></details>
+  </section>
+
+  <section class="section" id="settings" aria-labelledby="settings-title">
+    <div class="section-head"><p class="eyebrow">04 / Groups, filters and counts</p><h2 id="settings-title">Three choices. Three different jobs.</h2><p>The stock group sets where to look. Filters set which stocks can pass. The stock count sets how many to take.</p></div>
+    <div class="split">
+      <article class="panel"><p class="label">The stock group / Pool</p><h3>Where should the program look?</h3><p><strong>Original candidate set:</strong> the original 250-name screen, with its report-size rules. Missing prices can reduce the usable count.</p><p><strong>All stocks with cached prices:</strong> a broader saved-price group. It is still a partial market universe.</p></article>
+      <article class="panel"><p class="label">Filters and stock count</p><h3>Which stocks, and how many?</h3><p><strong>Filters:</strong> market-cap bounds, minimum EV, selected metric yield, maximum multiple, sector and exchange.</p><p><strong>Count:</strong> top 50, top 100, or a rank range. Top 100 does not expand the original 250-name screen.</p></article>
+    </div>
+    <div class="settings" aria-label="Setting explanation tool">
+      <p class="label">Explore a setting change · Explanation only</p>
+      <div class="settings-grid">
+        <label for="example-pool">Stock group<select id="example-pool"><option value="legacy">Original candidate set</option><option value="cached">All stocks with cached prices</option></select></label>
+        <label for="example-count">Stock count<select id="example-count"><option value="50">Top 50</option><option value="100">Top 100</option></select></label>
+        <label for="example-filter">Example filter<select id="example-filter"><option value="none">No extra filter</option><option value="cap">Raise minimum market cap</option><option value="pb">P/B below 1 — not available</option></select></label>
+      </div>
+      <p class="settings-explanation" id="settings-explanation" aria-live="polite">Use the original candidate set. Apply your filters, rank the matching stocks, then take up to <strong>50 stocks</strong>. Saved books for the same dates can be reused.</p>
+    </div>
+    <div class="note orange"><strong>P/B below 1 is not a current filter.</strong><p>The prepared data has no P/B field. First add suitable historical book values and prepared P/B values. Use values available at each buy date. A P/B filter would run before ranking. It must not use today’s P/B for past dates.</p></div>
+    <p class="caption">The controls above explain the architecture. They do not select real stocks or run a backtest.</p>
+  </section>
+
+  <section class="section" id="cache" aria-labelledby="cache-title">
+    <div class="section-head"><p class="eyebrow">05 / What gets reused</p><h2 id="cache-title">A new setting is not always a new book.</h2><p>The dated engine saves each buy/sell date pair. It tracks completed stock groups separately. Your final filters and ranks use that group’s prepared records.</p></div>
+    <div class="table-wrap"><table><caption class="label" style="text-align:left;padding:17px 18px 0">Current source · Requested-pool preparation</caption><thead><tr><th scope="col">Your change</th><th scope="col">What the program does</th></tr></thead><tbody>
+      <tr><td>Top 50 → Top 100</td><td>Reuse the same dated books. Select a wider rank range.</td></tr>
+      <tr><td>Change an existing filter</td><td>Reuse the books. Filter and rank the saved records again.</td></tr>
+      <tr><td>Choose the other EBITDA metric</td><td>Reuse the books. Both supported metrics are already prepared.</td></tr>
+      <tr><td>Choose the other stock group</td><td>Reuse that group if it is complete. Otherwise prepare its records for the same dates. Keep the first group’s records.</td></tr>
+      <tr><td>Use a new buy/sell date pair</td><td>Prepare that book if it is not saved.</td></tr>
+      <tr><td>Run a new seed</td><td>Generate new trade dates. Prepare date pairs that are not saved.</td></tr>
+      <tr><td>Change source data or calculation code</td><td>Refresh the affected caches. Rebuild the saved website when needed.</td></tr>
+    </tbody></table></div>
+    <div class="cache-tip"><span class="cache-icon" aria-hidden="true">↻</span><div><h3>Replay can be fast because the work is already saved.</h3><p>In the reference Windows test, 100 fresh trials took 467 seconds. A replay of those saved books took 5.7 seconds. These are different jobs.</p></div></div>
+    <details><summary>What happens to books from the earlier engine?</summary><p>The startup upgrade keeps saved prices and completed books when the research inputs are unchanged. Earlier books already contain both groups. The upgrade marks both as complete, including empty groups.</p><p>If other source inputs changed, the ordinary offline rebuild is still needed. The completion marker is saved with the group’s records. An interrupted write cannot mark a half-built group as complete.</p></details>
+    <details><summary>What happens if I stop a run?</summary><p>A fixed-date request saves its new books together. A random batch saves after each completed trial.</p><p>Unfinished writes roll back. Previously saved books remain. Restart the launcher and replay the saved settings and seed. Completed books can be reused. A stopped request does not resume by itself.</p></details>
+  </section>
+
+  <section class="section" id="speed" aria-labelledby="speed-title">
+    <div class="section-head"><p class="eyebrow">06 / Why new trials take time</p><h2 id="speed-title">Prepare the group<br>you actually request.</h2><p>The earlier engine prepared both stock groups for every new date pair. The current source prepares only the requested group. Each group still gets both supported metrics and holding returns.</p></div>
+    <div class="comparison">
+      <article class="panel"><p class="label">Earlier engine / Benchmark reference</p><div class="mini-flow"><span>New dates</span><b aria-hidden="true">→</b><span class="selected">Original group</span><span class="unused">Broader group</span><b aria-hidden="true">→</b><span>Select stocks</span></div><p>The earlier engine prepared the broader group for an original-group request. New trials created many extra records.</p></article>
+      <article class="panel"><p class="label">Requested-pool method / In current source</p><div class="mini-flow"><span>New dates</span><b aria-hidden="true">→</b><span class="selected">Requested group only</span><b aria-hidden="true">→</b><span>Select stocks</span></div><p>Prepare only the group you chose. A completion table tracks each group. Prepare the other group when needed. An empty group also counts as complete.</p></article>
+    </div>
+    <div class="bench">
+      <div class="bench-top"><h3>100 trials on native Windows Python</h3><span class="prototype">Measured test</span></div>
+      <div class="bench-row"><div>Earlier engine<small>Both stock groups</small></div><div class="bar-track"><div class="bar" style="width:100%"></div></div><div class="bench-time">7m 47s</div></div>
+      <div class="bench-row"><div>Requested group only<small>3.5× faster</small></div><div class="bar-track"><div class="bar green" style="width:28.27%"></div></div><div class="bench-time">2m 12s</div></div>
+      <div class="bench-row"><div>Group + shared data<small>4.4× faster · More memory</small></div><div class="bar-track"><div class="bar lime" style="width:22.68%"></div></div><div class="bench-time">1m 46s</div></div>
+      <p class="caption">Test: original candidate set, top 50, annual random rebalances, 1996–2026. The end date was 20 October 2026. Seed: 20261022. Loading and per-trial saving are included. Common test-only cloning is excluded. The OS file cache was not cleared.</p>
+      <p class="caption">All selected holdings, prices, returns and exit statuses matched exactly. The measured gain applies to the original group. Selecting the broader group avoids much less work. Top 100 and P/B-filtered runs were not benchmarked.</p>
+    </div>
+    <div class="status-grid"><div><p><strong>Why fewer records help.</strong><br>The reference test prepared 4,010,439 stock records. The requested-group test prepared 537,906. These are records across periods, not unique companies.</p></div><div><p><strong>Why shared data is optional.</strong><br>It added about 12.6 seconds of loading in the 100-trial test. At 24 trials, group-only took 32 seconds. The combined version took 35 seconds.</p></div></div>
+    <div class="note"><strong>Source code and a running server can differ.</strong><p>The requested-pool change is now in the source. These timings came from the benchmark prototypes, not a new test of that source version. Shared in-memory data remains a prototype. Relaunch start.cmd and use its new browser tab to load changed server code.</p></div>
+  </section>
+
+  <section class="section" id="files" aria-labelledby="files-title">
+    <div class="section-head"><p class="eyebrow">07 / Where each part lives</p><h2 id="files-title">A map of the main parts.</h2><p>Python handles preparation and dated backtests. JavaScript handles browser selection and display. SQLite stores data in local files.</p></div>
+    <div class="table-wrap"><table class="files"><thead><tr><th scope="col">Part</th><th scope="col">Its job</th></tr></thead><tbody>
+      <tr><td>Saved inputs<code>raw/</code></td><td>Holds company lists, annual metrics, stock prices, SPY prices and Treasury yields. Normal backtests read the saved data.</td></tr>
+      <tr><td>Research preparation<code>scripts/research.py<br>data/research.sqlite</code></td><td>Prepares January and latest records. Checks the January baseline against the current reference report. Owns the shared SQL selection rules.</td></tr>
+      <tr><td>Financial rules<code>scripts/books.py<br>scripts/metrics.py</code></td><td>Choose reports, form stock groups, estimate values and calculate holding returns. Define the supported metrics and their formulas.</td></tr>
+      <tr><td>Dated backtests<code>scripts/schedules.py<br>data/schedules.sqlite</code></td><td>Stores daily prices. Sets trade calendars. Prepares the requested group and saves its completion marker. Uses the shared financial rules and SQL selector.</td></tr>
+      <tr><td>Random-date tests<code>scripts/robustness.py</code></td><td>Samples trade dates, runs trials in order, saves each trial’s books, and summarizes the trial results.</td></tr>
+      <tr><td>Website build<code>website/dataset.py<br>website/build.py<br>website/dist/index.html</code></td><td>Places prepared January and latest data inside the HTML. Keeps baseline exports and a static fallback.</td></tr>
+      <tr><td>Browser logic<code>website/screener.js<br>website/range.js<br>website/schedule.js<br>website/robustness.js</code></td><td>Selects prepared records, connects controls and draws results. Sends custom and random requests to the local service.</td></tr>
+      <tr><td>Local launcher and service<code>start.cmd<br>website/serve.py<br>website/build_state.py</code></td><td>Checks caches and the build. Starts the local website. Handles dated requests through /api/schedule and /api/robustness. Runs one calculation request at a time.</td></tr>
+      <tr><td>Independent reference<code>scripts/revalue.py<br>results/summary-exits.txt</code></td><td>Recomputes the current January result from saved raw data. This is the independent reference calculation.</td></tr>
+      <tr><td>Performance experiments<code>tools/bench_backtest.py<br>results/experiments/backtest-benchmark-summary.json</code></td><td>Holds the speed-test experiments. Compares results on temporary copies. The reported timings come from the earlier reference and test prototypes.</td></tr>
+    </tbody></table></div>
+    <details><summary>Which report is the current reference?</summary><p>Use <code>results/summary-exits.txt</code>. It keeps a stock at its last price when trading stops.</p><p><code>scripts/run.py</code> still uses the older exit rule and writes to <code>results/legacy/</code>. Those files are not the current reference.</p></details>
+    <details><summary>What do the charts and downloads show?</summary><p>Browser downloads reflect the current selection. Baseline export files remain separate. Historical views show period returns and the growth of an equal-weight portfolio.</p><p>A stock’s contribution is its holding return divided by the actual stock count. Gain and loss pies are scaled separately. Their slices are not shares of net return.</p><p>The average random-trial CAGR is an average of trial results. It is not one portfolio return. Trial percentiles are not confidence intervals.</p></details>
+    <details><summary>Which limits should I keep in mind?</summary><ul><li>The strategy uses equal starting weights and no commissions.</li><li>The saved-price group does not cover the full market.</li><li>Sector, exchange and listing status come from saved company metadata.</li><li>The 90-day report delay is an assumption. It is not a verified filing date.</li><li>Some supplier figures can include later revisions.</li><li>New early stops outside the original review can need further checks.</li></ul></details>
+  </section>
+
+  <section class="section" id="terms" aria-labelledby="terms-title">
+    <div class="section-head"><p class="eyebrow">08 / Words used in this guide</p><h2 id="terms-title">The terms, without the code.</h2></div>
+    <dl class="glossary">
+      <div id="term-cache"><dt>Cache</dt><dd>Saved data that the program can use again.</dd></div>
+      <div id="term-book"><dt>Book</dt><dd>The stock records for one buy date and one sell or mark date.</dd></div>
+      <div><dt>Pool / Stock group</dt><dd>The set of candidate stocks used for selection. It is separate from the final stock count.</dd></div>
+      <div><dt>Snapshot</dt><dd>A saved stock record for a particular date or holding period.</dd></div>
+      <div><dt>Filter</dt><dd>A condition that a stock must meet before ranking.</dd></div>
+      <div><dt>Rank</dt><dd>A stock’s position after filtering and sorting by the selected metric.</dd></div>
+      <div><dt>Rebalance</dt><dd>Select stocks again and give each selected stock the same starting weight.</dd></div>
+      <div><dt>Trial</dt><dd>One complete backtest with one set of sampled trade dates.</dd></div>
+      <div><dt>Seed / Date-set number</dt><dd>A number used to repeat random date choices with the same saved data and settings.</dd></div>
+      <div><dt>SQLite</dt><dd>A database engine that reads and writes local files. It does not need a separate database server.</dd></div>
+      <div><dt>Market cap</dt><dd>The estimated market value of the company’s equity.</dd></div>
+      <div><dt>EV / Enterprise value</dt><dd>In this model, estimated market cap plus report net debt.</dd></div>
+      <div><dt>EBITDA</dt><dd>Earnings before interest, taxes, depreciation and amortization. The model derives it from saved annual metrics.</dd></div>
+      <div><dt>EBITDA/EV and EV/EBITDA</dt><dd>Reciprocal ratios. A higher positive EBITDA/EV means a lower positive EV/EBITDA.</dd></div>
+      <div><dt>P/B</dt><dd>Price divided by book value. This filter is not available in the current prepared data.</dd></div>
+      <div><dt>CAGR</dt><dd>The constant annual growth rate that would produce the same total growth over the test window.</dd></div>
+      <div><dt>SPY</dt><dd>The S&amp;P 500 ETF used for comparison. Its saved return series includes dividends.</dd></div>
+      <div><dt>API / Local service</dt><dd>The browser’s way to ask Python for a dated calculation. These requests use saved data on your computer.</dd></div>
+    </dl>
+  </section>
+  <footer class="footer"><p>EBITDA / EV · Architecture guide<br>Checked against the project on 22 October 2026.</p><p>Short sentences. Defined technical terms.<br><a href="#overview">Back to the start ↑</a></p></footer>
+</main>
+<script>
+(()=>{
+'use strict';
+const stages=[
+ ['1. The source data stays on your computer.','The raw folder holds the saved inputs. Ordinary preparation and backtests read these files. They do not contact the data supplier.'],
+ ['2. Preparation turns saved files into useful records.','The research database holds January and latest records. The daily database holds prices and dated books. Unchanged data is reused.'],
+ ['3. Your settings select from the prepared records.','Choose a stock group. Apply filters. Rank by the selected metric. Take the requested ranks. Custom dates first need a saved or new dated book.'],
+ ['4. The website shows the current selection.','Historical views show returns, stocks and contributions. Latest picks have no future holding returns. Browser CSV downloads reflect the current selection.']
+];
+document.querySelectorAll('[data-stage]').forEach(button=>button.addEventListener('click',()=>{
+ document.querySelectorAll('[data-stage]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+ const detail=document.getElementById('flow-detail');const record=stages[Number(button.dataset.stage)];
+ detail.querySelector('h3').textContent=record[0];detail.querySelector('p').textContent=record[1];
+}));
+document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{
+ document.querySelectorAll('[data-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+ document.querySelectorAll('.mode-content').forEach(panel=>panel.hidden=panel.id!=='mode-'+button.dataset.mode);
+}));
+const explain=()=>{
+ const pool=document.getElementById('example-pool').value;
+ const count=document.getElementById('example-count').value;
+ const filter=document.getElementById('example-filter').value;
+ const name=pool==='legacy'?'the original candidate set':'the broader saved-price group';
+ const output=document.getElementById('settings-explanation');
+ output.replaceChildren();
+ if(filter==='pb'){
+  output.textContent='P/B below 1 is not available now. First add historical book values and prepared P/B values. Then apply the filter before ranking. Today’s P/B must not be used for past dates.';
+  return;
+ }
+ output.append('Use '+name+'. '+(filter==='cap'?'Apply the higher market-cap limit before ranking. ':'Apply your filters, rank the matching stocks, then '));
+ const strong=document.createElement('strong');strong.textContent='take up to '+count+' stocks';output.append(strong);
+ output.append('. Saved books for the same dates can be reused. '+(pool==='legacy'&&count==='100'?'Top 100 does not expand the original 250-name screen. ':'' )+'If fewer stocks pass, use the actual count.');
+};
+document.querySelectorAll('.settings select').forEach(select=>select.addEventListener('change',explain));
+document.getElementById('print-guide').addEventListener('click',()=>window.print());
+let closedDetails=[];
+window.addEventListener('beforeprint',()=>{closedDetails=[...document.querySelectorAll('details:not([open])')];closedDetails.forEach(item=>item.open=true);});
+window.addEventListener('afterprint',()=>{closedDetails.forEach(item=>item.open=false);closedDetails=[];});
+if('IntersectionObserver'in window){
+ const links=[...document.querySelectorAll('.sidebar nav a')];
+ const observer=new IntersectionObserver(entries=>{
+  const visible=entries.filter(entry=>entry.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top);
+  if(!visible.length)return;
+  const href='#'+visible[0].target.id;
+  links.forEach(link=>{if(link.getAttribute('href')===href)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});
+ },{rootMargin:'-10% 0px -65% 0px'});
+ links.forEach(link=>{const target=document.querySelector(link.getAttribute('href'));if(target)observer.observe(target);});
+}
+})();
+</script>
+<noscript><style>.flow-detail{display:none}.mode-content[hidden]{display:block!important}.mode-content{margin-bottom:15px}.mode-tabs,.settings{display:none}</style></noscript>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "old_version": 1,
+  "new_version": 2,
+  "existing_books_preserved": 300,
+  "completed_pools": 600,
+  "period_records_unchanged": true,
+  "existing_table_roots_unchanged": true,
+  "cached_symbols_unchanged": true,
+  "json_prices_reparsed": false
+}

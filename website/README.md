@@ -91,6 +91,9 @@ the last period can be partial. The chart and stock explorer use dated holding
 periods, with contribution pies and CSV downloads for the current schedule.
 Prices, financial availability, filters and valuation calculations use the saved
 cache. Dated books are persisted, so changing filters does not reparse prices.
+Each run prepares only its selected stock universe. Switching universes can take
+longer the first time because it prepares the other pool; later runs reuse it.
+The launcher retains existing completed books when upgrading the daily cache.
 
 Custom schedules require the local service; opening the HTML directly continues
 to support January backtests and latest picks. Daily preparation can take longer
