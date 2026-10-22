@@ -4,7 +4,17 @@ A standalone US stock backtest and interactive results website. Each January, bu
 
 ## Open the website
 
-Open [website/dist/index.html](website/dist/index.html) in Chrome or Edge. No server, API key, or internet connection is needed. The website opens with Latest stock picks, valued at the latest cached close. Filter by market cap, valuation, sector and exchange, and choose Top 50/100 or custom ranks. Switch to Historical backtest to choose years and inspect returns and contributions. Both modes work offline.
+On Windows, double-click **`start.cmd`**. It prepares stale local caches in order,
+rebuilds the website when needed, starts the local service, and opens your browser.
+On other systems, run `python3 website/serve.py`. No API key or market-data
+download is needed; unchanged caches are reused. The first refresh can take a
+few minutes. Keep the launcher running while using custom dates and frequency.
+
+The website opens with Latest stock picks. Switch to Historical backtest for
+January books or custom trade dates with monthly, quarterly, half-yearly or
+yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)
+directly for the saved latest/January views; custom schedules use the local service.
+
 
 ## Run from the saved data
 

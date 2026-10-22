@@ -26,3 +26,7 @@ website/.git/
 data/*.sqlite
 data/*.sqlite-*
 data/*.building*
+
+# Local website build freshness stamp.
+website/dist/.build-state.json
+website/dist/.build-state.tmp

@@ -23,3 +23,10 @@ three-year average EBITDA, and preserves the default metric's exact existing
 values. Missing history omits a pair. Consumers join or export these values;
 they never reconstruct formulas. Catalog and calculator code in
 `scripts/metrics.py` participates in freshness checks.
+
+`schedules.sqlite` is the separate rebuildable daily-price index and dated-book
+cache, prepared by `python3 scripts/schedules.py prepare`. It stores only existing
+cached price histories plus research financials, SPY sessions, Treasury yields
+and reusable entry/exit books. The local website service computes missing books
+and persists them here; original `research.sqlite` remains read-only. Daily-cache
+freshness includes the schedule engine and research calculation fingerprints.

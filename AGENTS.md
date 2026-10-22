@@ -97,3 +97,48 @@ consecutive annual reports, excluding incomplete histories; current
 EV/EBITDA remains the default. Original-pool membership still comes from the
 single-year buffer. Add temporal/missing-year and SQL/browser parity checks for
 new metrics. Calculation/catalog changes require offline prepare and rebuild.
+
+## Custom dated schedules
+
+`scripts/schedules.py prepare` builds a separate ignored daily SQLite cache from
+saved prices after research preparation. `website/serve.py` serves the built page
+and a loopback custom-schedule API. January and latest views remain standalone;
+custom dates use `website/schedule.js` and the local service. Dates are anchored
+to the original starting day, clamp month ends, and roll forward to SPY sessions;
+end marks roll back. Supported intervals are 1, 3, 6, 12 and 24 months. Persist dated
+books independently of filters and reuse `research._select` and
+`metrics.evaluate` rather than duplicating filtering or metric formulas. Custom
+charts show dated period returns; don't label monthly/quarterly books as annual
+returns. Keep canonical January reports untouched. Verify with
+`python3 tests/test_schedules.py` and existing research/website checks.
+
+## Automatic local launcher
+
+`start.cmd` (Windows) and `python3 website/serve.py` own startup. The daily
+preparer first ensures the research cache, then the server checks the website
+build stamp and rebuilds if needed. Open the browser only after successful
+preparation and binding; `--no-browser` supports headless use. Keep dependency
+repair automatic rather than making users chain preparation commands. Source
+fingerprints use POSIX relative keys and exclude platform-specific directory
+sizes. `website/build_state.py` tracks normalized source contents and the prepared
+database generation. Test with `python3 tests/test_startup.py`.
+
+## Random-date sensitivity
+
+`scripts/robustness.py` samples one SPY trading session independently in every
+nominal frequency block for each seeded trial. Trial count is configurable
+(1–100, default 24). `schedules.backtest_dates` shares the dated-book evaluator
+with fixed schedules. All trial CAGRs use a common window with zero-return cash
+before the first trade for both strategy and paired SPY. Keep incomplete trials
+visible and exclude them from both paired distributions. Average trial CAGR is
+not one portfolio return; percentiles are not confidence intervals. Stream real
+completed-trial counts through `/api/robustness`; commit per trial so retrying a
+seed reuses books after interruption. Inspect trials using the ordinary schedule
+API with explicit dates. Check `python3 tests/test_robustness.py` and
+`node tests/check-robustness.cjs` alongside existing checks.
+
+Random date batches draw fresh dates by default; an omitted seed is generated
+server-side and recorded for replay. An explicit seed remains deterministic,
+exposed through an advanced repeat option rather than the main strategy controls.
+If the default port is occupied, open a new loopback instance on an available
+port rather than reusing a possibly outdated API process.

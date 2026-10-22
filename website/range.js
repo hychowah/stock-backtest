@@ -18,6 +18,14 @@ function initializeFilters(){
     document.getElementById(field).innerHTML='<option value="">All</option>'+values.map(v=>`<option value="${safe(v)}">${safe(v)}</option>`).join('');
   }
   document.getElementById('ranking-metric').innerHTML=Object.entries(screeningData.metrics).map(([key,m])=>`<option value="${safe(key)}">${safe(m.label)}</option>`).join('');
+  document.getElementById('schedule-kind').value='january';
+  document.getElementById('trade-start').value='2015-01-01';
+  document.getElementById('trade-end').value=screeningData.latest.metadata.asof;
+  document.getElementById('trade-end').max=screeningData.latest.metadata.asof;
+  document.getElementById('rebalance-months').value='12';
+  document.getElementById('date-testing').value='single';
+  document.getElementById('random-trials').value='24';
+  document.getElementById('random-seed').value='42';
   resetFilters();
 }
 function resetFilters(){
@@ -108,11 +116,15 @@ function updateWarnings(){
   status.className=warnings.length?'screen-message warning':'screen-message';
 }
 function setModeVisibility(){
-  const latest=screeningMode==='latest';
-  document.getElementById('backtest-view').hidden=latest;
+  const latest=screeningMode==='latest',custom=!latest && document.getElementById('schedule-kind').value==='custom';
+  if(!custom)ScheduleView.cancel();
+  document.getElementById('schedule-choice').hidden=latest;
+  document.getElementById('schedule-controls').hidden=!custom;
+  document.getElementById('custom-view').hidden=!custom;
+  document.getElementById('backtest-view').hidden=latest||custom;
   document.getElementById('latest-view').hidden=!latest;
-  document.getElementById('year-controls').hidden=latest;
-  document.getElementById('historical-help').hidden=latest;
+  document.getElementById('year-controls').hidden=latest||custom;
+  document.getElementById('historical-help').hidden=latest||custom;
   document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
   document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
@@ -148,6 +160,14 @@ function applyRange(changed){
     if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
   }
   if(screeningMode==='latest'){applyLatest();return;}
+  if(document.getElementById('schedule-kind').value==='custom'){
+    document.getElementById('range-note').textContent='Custom schedule: trade dates and interval determine holding periods. Results and CSV exports below use this schedule.';
+    document.getElementById('screen-coverage').textContent='Custom dates use the local daily-cache service. Original candidate-set restrictions and cached-price coverage still apply.';
+    document.getElementById('screen-status').textContent='Apply the current stock filters to the custom schedule.';
+    document.getElementById('screen-status').className='screen-message';
+    try{ScheduleView.run(readOptions());}catch(error){document.getElementById('screen-error').textContent=error.message;}
+    return;
+  }
   try{
     const next=StockScreener.screen(screeningData,readOptions());
     currentScreen=next;
@@ -208,6 +228,8 @@ function downloadSelection(kind){
   const a=document.createElement('a');a.href=url;a.download=kind+'-'+currentScreen.options.first+'-'+currentScreen.options.last+'.csv';a.click();URL.revokeObjectURL(url);
 }
 initializeFilters();
+ScheduleView.init();
+document.getElementById('schedule-kind').addEventListener('change',()=>{setModeVisibility();applyRange();});
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
 document.getElementById('mode-backtest').addEventListener('click',()=>switchMode('backtest'));

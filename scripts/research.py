@@ -14,6 +14,7 @@ import time
 
 import run
 import metrics
+import books
 import revalue
 from paths import ROOT, RAW, RESULTS
 
@@ -41,8 +42,8 @@ CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
 
 def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px', RESULTS/'summary-exits.txt', Path(__file__), Path(metrics.__file__), Path(run.__file__), Path(revalue.__file__)]
-    return {str(p.relative_to(ROOT)): [p.stat().st_size,p.stat().st_mtime_ns] for p in paths}
+    paths += [RAW/'px', RESULTS/'summary-exits.txt', Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(run.__file__), Path(revalue.__file__)]
+    return {p.relative_to(ROOT).as_posix(): ['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths}
 
 
 def price_sources():
@@ -91,29 +92,10 @@ def after(series, day, slack):
 
 
 def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
-    fiscal_px=before(light or div,statement['fiscal'],7)
-    entry_px=after(light or div,entry_day,4)
-    if fiscal_px is None or entry_px is None:
-        return None
-    cap=statement['market_cap']*(entry_px[1]/fiscal_px[1])
-    ev=cap+(statement['enterprise']-statement['market_cap'])
-    if ev<=0 or cap<=0:
-        return None
-    ebitda=statement['yield']*statement['enterprise']
-    start=after(div,entry_px[0],4)
-    if start is None:
-        return None
-    end=before(div,exit_day,10)
-    status='Scheduled exit' if exit_day.year>entry_day.year else 'Marked to date'
-    if end is None:
-        end=before(div,exit_day,100000)
-        if end is None or end[0]<start[0]:
-            return None
-        status='Last available price'
-    ret=-1. if bankruptcy else end[1]/start[1]-1
-    if bankruptcy:
-        status='Bankruptcy'
-    return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,ebitda/ev,ev/ebitda,ret,status]
+    def lookup(day,column,forward,slack):
+        series=(light or div) if column=='price' else div
+        return (after if forward else before)(series,day,slack)
+    return books.snapshot(statement,entry_day,exit_day,lookup,bankruptcy)
 
 
 def latest_snapshot(statement, day, light, div):
@@ -148,7 +130,7 @@ def prepare(path=DATABASE, force=False):
     inputs, sources=signature(),price_sources()
     universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
     # Reuse the current selection semantics, including the 250-name pre-price buffer.
-    book=run.build_statements(universe)
+    book={}
     all_spy=run.load_bars(RAW/'spy-div.json','adjClose')
     reference=(RESULTS/'summary-exits.txt').read_text()
     match=re.search(r'^Through (\d{4}-\d{2}-\d{2})$',reference,re.MULTILINE)
@@ -163,8 +145,8 @@ def prepare(path=DATABASE, force=False):
         if day is not None and value is not None:
             yields.append((day,value/100))
     yields.sort()
-    legacy=run.screen(book,yields,sessions)
-    ranks={y:{r['symbol']:i for i,r in enumerate(rs,1)} for y,rs in legacy.items()}
+    legacy={}
+    ranks={}
     broad={}
     financials=[]
     with (RAW/'metrics.jsonl').open() as handle:
@@ -184,6 +166,12 @@ def prepare(path=DATABASE, force=False):
                 financials.append((symbol,str(fiscal),str(row['known']),cap,ev,ev/multiple,1/multiple))
             if rows:
                 broad[symbol]=sorted(rows,key=lambda r:r['fiscal'])
+    broad,book=books.pools(broad)
+    for year in range(run.FIRST_YEAR,run.LAST_YEAR+1):
+        entry=run.session_on_or_after(sessions,date(year,1,1))
+        if entry is not None and entry<=run.ASOF and run.asof_yield(yields,entry) is not None:
+            _,ranks[year]=books.candidates((broad,book),entry)
+            legacy[year]=ranks[year]
     periods={}
     for year in legacy:
         entry=run.session_on_or_after(sessions,date(year,1,1))
@@ -192,9 +180,7 @@ def prepare(path=DATABASE, force=False):
         periods[year]=(entry,end,b[1]/a[1]-1,run.asof_yield(yields,entry))
     latest_day=all_spy[-1][0]
     active={s for s,r in universe.items() if r.get('listed') is True}
-    latest_statements={pool:{s:statement for s,rs in source.items() if s in active and (statement:=run.latest_statement(rs,latest_day)) is not None} for pool,source in [('legacy',book),('cached',broad)]}
-    latest_order=sorted(latest_statements['legacy'],key=lambda s:latest_statements['legacy'][s]['yield'],reverse=True)
-    latest_ranks={s:i for i,s in enumerate(latest_order[:run.BUFFER],1)}
+    latest_statements,latest_ranks=books.candidates(tuple({s:rows for s,rows in pool.items() if s in active} for pool in (broad,book)),latest_day)
     latest_meta=dict(asof=str(latest_day),active_universe=len(active),eligible_financials=len(latest_statements['cached']),legacy_candidates=len(latest_ranks))
     latest_treasury=run.asof_yield(yields,latest_day)
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -234,7 +220,7 @@ def prepare(path=DATABASE, force=False):
                         continue
                     fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,ret,status=row
                     # Original rescale rejects buy-date caps before ranking.
-                    if pool=='legacy' and (cap<run.MIN_MARKET_CAP or ev<run.MIN_EV):
+                    if not books.eligible(pool,cap,ev):
                         continue
                     inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
             db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',inserts)

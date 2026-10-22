@@ -121,3 +121,120 @@ preparation. Add temporal/missing-history tests and SQL/browser parity cases;
 selection and UI code do not need new formula branches. Calculation/catalog
 changes invalidate prepared data. Rebuild once from the raw cache; changing the
 selector never downloads or reparses price history.
+
+### Custom trade dates and rebalance intervals
+
+For the full website, double-click `start.cmd` on Windows or run:
+
+```bash
+python3 website/serve.py
+```
+
+The launcher prepares stale research and daily caches in dependency order,
+rebuilds changed website sources and opens the browser automatically. Unchanged
+outputs are reused. `--no-browser` suppresses browser opening.
+Select **Historical backtest**, choose **Custom trade
+date and frequency**, enter a starting date and final mark date, and choose
+monthly, quarterly, half-yearly or yearly. The original January view and latest
+picks still work by opening the HTML directly; custom schedules need the local
+service because daily histories are kept out of the embedded page.
+
+Each target is anchored to the original starting calendar day. Invalid month
+ends clamp to that month's last day; holidays/weekends roll forward to the next
+cached SPY session. The final inclusive mark date rolls back to a session. The
+last holding period may be shorter than the requested interval. Adjacent periods
+share their exit/entry session, with no duplicated return interval. Annual
+financial availability, age, valuation, cache coverage and original-pool buffer
+rules remain the same at each new entry. Every period reselects and equally
+weights stocks. Stopped holdings use the last price and hold cash proceeds until
+the next rebalance; transaction costs remain zero.
+
+The custom chart shows returns **per holding period**, not annualized period
+returns. Full-period CAGR uses actual elapsed days. Empty books make strategy
+CAGR and growth unavailable. Choose any period to see its stocks, valuations,
+return contributions and top-10 gain/loss pies. CSV exports include period dates,
+actual stock entry/exit dates, selected metrics, weights and contributions.
+
+`scripts/schedules.py` owns the anchored calendar, daily SQLite index and dated
+books. `data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
+calculation code change. Repeated preparation validates source freshness without
+parsing prices. Newly requested entry/exit pairs are computed once and persisted;
+filter, metric or rank changes reuse those books and shared SQL selection.
+`metrics.evaluate()` is the common preparation boundary for all metric formulas.
+`website/serve.py` serves only the built website and a loopback JSON calculation
+endpoint; no keys, remote services or market-data downloads are involved.
+`website/schedule.js` renders dated periods without assuming one book per year.
+Run `python3 tests/test_schedules.py` in addition to the existing checks.
+
+Observed in this workspace: the one-time daily index took 174 seconds and
+occupied 430 MB. Building a previously unseen 20-period quarterly schedule took
+52 seconds in a direct engine run; changing its metric and rank bounds reused
+the books in 1.4 seconds. A 31-period January schedule through October 2026
+matched every prepared baseline selection and annual return. The local service
+uses a larger SQLite page cache for new-book calculations. Timings depend on disk
+and schedule length; new dates can require additional book preparation.
+
+### Running and interrupted backtests
+
+The custom-backtest page shows an indeterminate spinner and elapsed time while
+awaiting the server. It does not invent a completion percentage. Controls are
+locked against duplicate submissions, previous results remain labelled, and
+completion or failure restores the controls. Switching views clears the visible
+loading state and ignores the old response; it does not stop server computation.
+
+Dated books for a request are written inside a SQLite transaction. Closing the
+server before commit rolls those writes back on recovery. Previously committed
+books and input prices/financials remain unchanged. Restart `start.cmd` and rerun
+the schedule; unfinished requests are not resumed. `tests/test_schedules.py`
+checks rollback after `KeyboardInterrupt`, then forcibly kills a real SQLite
+writer while a new period is uncommitted, reopens the file, runs
+`PRAGMA integrity_check`, verifies prior row counts, and retries the schedule.
+`tests/check-range.cjs` checks loading/timer state, duplicate suppression,
+completion, server/connection failures and mode-switch cleanup.
+
+### Random independent rebalances
+
+`scripts/robustness.py` owns seeded date sampling and distribution summaries.
+It divides the requested calendar window into nominal frequency blocks anchored
+to the lower bound and independently samples one cached SPY session in each
+nonempty block for each trial. The final partial block participates, and the end
+mark is fixed. Samples across trials may coincide; the UI reports the number of
+distinct schedules. Trial count is configurable from 1 to 100 (default 24).
+Schedules support 24 months as well as 1, 3, 6 and 12.
+
+`schedules.backtest_dates()` validates the sampled sessions and delegates to the
+same dated-book evaluator as regular schedules. All trial CAGRs use a common
+elapsed window, with zero-return cash before the first trade for both strategy
+and paired SPY. Average CAGR is the arithmetic average of complete-trial CAGRs;
+there is no compounding of the average. P10/P25/P75/P90 use linear interpolation
+on ordered values; standard deviation is the population dispersion of the sampled
+scenarios. Empty-book trials stay in the table and are excluded from both sides
+of paired averages. Percentiles are scenario descriptions, not confidence limits.
+
+The loopback `/api/robustness` endpoint streams NDJSON trial progress and a final
+summary. Each individual trial commits its books through the ordinary engine,
+so a disconnected/stopped batch can be repeated with the same seed and reuse
+completed work. The frontend shows real completed-trial counts and exports dates,
+seed, frequency and trial outcomes. Inspection calls the existing schedule API
+with that trial's exact dates rather than implementing another selection engine.
+Test sampling, statistics, interruption and the stream contract with
+`python3 tests/test_robustness.py`; test incremental decoding and distribution
+rendering with `node tests/check-robustness.cjs`.
+
+Random batches choose a fresh system-generated seed by default; the actual key
+is recorded in results and CSV exports. Advanced repeat mode supplies an explicit
+seed so comparisons or interrupted requests can reproduce the sampled dates.
+On an occupied port the launcher binds an available loopback port and opens the
+new server's URL, leaving the older process untouched. Missing API routes in old
+tabs instruct the user to relaunch and use the newly opened tab.
+
+Dated financial policy is shared in `scripts/books.py`: report-pool eligibility,
+candidate buffering, entry valuation and holding returns. January preparation
+and the daily engine supply array and SQL price adapters respectively;
+`revalue.py` remains the independent baseline.
+
+Random streams publish their resolved configuration before executing trials.
+The browser saves that configuration locally immediately. **Replay saved date
+test** repeats the window, filters, frequency, trial count and seed after a
+disconnection or launcher restart; completed books are reused. Fresh runs still
+generate a new seed by default.

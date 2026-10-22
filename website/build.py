@@ -115,7 +115,7 @@ with (ROOT/'dist/latest-picks.csv').open('w',newline='') as handle:
 packed = json.dumps(screening_data,separators=(',', ':')).replace('<', chr(92)+'u003c')
 range_script = 'const holdingsData='+json.dumps(holdings).replace('<', chr(92)+'u003c')+';'+(ROOT/'range.js').read_text()
 scripts = '<script id="screening-data" type="application/json">'+packed+'</script>'
-scripts += '<script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+range_script+'</script>'
+scripts += '<script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+(ROOT/'robustness.js').read_text()+'</script><script>'+(ROOT/'schedule.js').read_text()+'</script><script>'+range_script+'</script>'
 page = page.replace('</head>', '<style>'+(ROOT/'contributions.css').read_text()+'</style></head>')
 page = page.replace('</body>', scripts+'</body>')
 (ROOT / 'dist/index.html').write_text(page)
@@ -130,3 +130,6 @@ with (ROOT / 'dist/holdings.csv').open('w',newline='') as handle:
 print('Verified every annual holding count and return against summary-exits.txt.')
 (ROOT / 'dist/returns.csv').write_text(csv_text)
 print(f'Built {len(data)} years with static chart and table, plus optional interactions.')
+
+from build_state import record_build
+record_build()

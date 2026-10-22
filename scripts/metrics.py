@@ -53,6 +53,14 @@ CALCULATORS = {
 }
 
 
+def evaluate(observation, history):
+    """Resolve every registered metric into ready-to-rank values or omit it."""
+    if METRICS.keys()!=CALCULATORS.keys():
+        raise ValueError('Every catalog metric must have exactly one calculator.')
+    return {metric:pair for metric,calculate in CALCULATORS.items()
+            if (pair:=calculate(observation,history)) is not None}
+
+
 def prepare_metrics(db):
     """Publish ready-to-rank values for each mode, pool, date and company.
 
@@ -70,8 +78,6 @@ def prepare_metrics(db):
         values=[]
         for row in db.execute('SELECT * FROM '+table):
             observation=dict(row)
-            for metric,calculate in CALCULATORS.items():
-                pair=calculate(observation,histories.get(row['symbol'],[]))
-                if pair is not None:
-                    values.append((mode,row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
+            for metric,pair in evaluate(observation,histories.get(row['symbol'],[])).items():
+                values.append((mode,row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
         db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',values)

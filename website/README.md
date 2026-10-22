@@ -1,6 +1,6 @@
 # January strategy screener
 
-Open `dist/index.html` directly in Chrome or Edge. The page is self-contained: no server, API key, library downloads, or market-data requests are needed.
+Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. Opening `dist/index.html` directly still supports the saved latest and January views.
 
 ## Basic workflow
 
@@ -9,7 +9,7 @@ Open `dist/index.html` directly in Chrome or Edge. The page is self-contained: n
 3. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the lowest selected valuation multiple after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
 4. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
 
-In historical mode, the strategy reselects and equally weights stocks every January. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
+The saved January view reselects and equally weights stocks every January. Custom calendars rebalance on the selected fixed or random schedule. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
 
 If fewer stocks match than requested, the available picks receive equal weights and short years are listed. A year with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a period containing an empty book. SPY continues to show the full selected period. This is distinct from the CLI's explicitly labelled populated-book compounding. Early stops outside the original top-50 review are flagged when selected.
 
@@ -76,3 +76,71 @@ modes use only reports eligible at their screening date. Selected stock tables
 and CSV exports show the chosen signal. For a broader comparison, use all stocks
 with cached prices: the original candidate set retains its single-year pre-screen.
 See `../docs/research-workflow.md` for calculation and extension details.
+
+## Custom trade dates and frequency
+
+Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
+chain is automatic; no separate preparation commands are needed. The browser
+opens at the successfully bound local address. Port 8765 is the default; `--port` selects another port, and an occupied default port uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **Custom trade date
+and frequency**. Set the first trade date, end/mark date, and monthly, quarterly,
+half-yearly or yearly rebalance interval, then click **Run backtest**.
+
+Rebalances stay anchored to the starting day, clamp invalid month ends, and roll
+to the next cached SPY session. The final mark rolls back to an available session;
+the last period can be partial. The chart and stock explorer use dated holding
+periods, with contribution pies and CSV downloads for the current schedule.
+Prices, financial availability, filters and valuation calculations use the saved
+cache. Dated books are persisted, so changing filters does not reparse prices.
+
+Custom schedules require the local service; opening the HTML directly continues
+to support January backtests and latest picks. Daily preparation can take longer
+than January preparation and adds a local SQLite index; it never downloads data.
+See `../docs/research-workflow.md` for timing and calculation semantics.
+
+While a custom backtest runs, the page shows a spinner, elapsed time and the
+requested date range. Strategy controls are temporarily disabled to prevent
+repeat submissions. Existing results are explicitly labelled as previous results
+until the new run completes. Success, server errors and connection failures clear
+the loading state and restore the controls.
+
+You can close the server during a backtest. Restart the launcher and run the
+schedule again: unfinished cache writes roll back, while previously committed
+books and original price/financial data remain intact. The unfinished request is
+not resumed automatically. Shutdown coverage in `tests/test_schedules.py` includes
+both a `KeyboardInterrupt` and killing a subprocess with an uncommitted SQLite
+period, followed by integrity checks and a successful retry.
+
+## Random-date sensitivity
+
+In custom historical mode, select **Random date at every rebalance**. Choose
+**Random trials** (1–100, default 24). Each run draws fresh random dates by default.
+Under **Advanced**, optionally enable **Repeat the same dates** to use a fixed
+date-set number (seed), or replay a number from earlier results. Every trial draws
+one trading session independently from each frequency-sized block, including
+the last partial block. Yearly means blocks of 12 months; **Every 2 years** uses
+24-month blocks. Holding intervals therefore vary around the nominal frequency.
+In repeat mode, the same date-set number, window and frequency reproduce the
+same trade dates when comparing metrics or filters.
+
+All trials use a common start/end window. Strategy and paired SPY hold zero-return
+cash until that trial's first sampled trade. The screen reports mean and median
+CAGR, paired SPY, percentiles, range, population standard deviation, total-return
+and ending-value distributions. Incomplete trials remain visible and are excluded
+from both paired summary distributions. These overlapping historical scenarios
+are not independent observations or confidence intervals; mean CAGR describes
+trial CAGRs, not one investment portfolio.
+
+The progress bar counts completed trials; the current trial may take longer when
+its books have not been prepared before. Results include each trial's actual
+trade dates in the CSV. Select a trial and click **Show stocks and period returns**
+to inspect its usual stock tables and contribution charts. Completed trial books
+survive an interrupted batch; restart the launcher and rerun the same seed.
+
+If an older server still occupies the default port, the launcher starts a fresh
+local instance on an available port and opens its own browser tab. Use that new
+tab; refreshing an old tab does not reload Python server code. Unsupported API
+routes now display this instruction rather than only “Unknown endpoint”.
+
+After a random batch completes, Advanced remembers its date-set number. Checking
+**Repeat the same dates** then replays that batch's dates with the same window
+and frequency. Leaving it unchecked draws fresh dates, without needing a number.
