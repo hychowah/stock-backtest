@@ -17,6 +17,7 @@ from cache_assets import read_json, write_json, series
 import schedules
 import research as r
 import run
+import fmp_download
 
 ROOT=r.ROOT
 RAW=r.RAW
@@ -25,8 +26,7 @@ KINDS=('universe','financials','prices','spy','treasury')
 
 
 
-class Cancelled(Exception):
-    pass
+Cancelled=fmp_download.Cancelled
 
 
 
@@ -71,7 +71,7 @@ def financial_records():
 
 def spans(start,end,monthly=False):
     while start<=end:
-        stop=min(end,date(start.year,start.month,monthrange(start.year,start.month)[1]) if monthly else date(start.year,12,31))
+        stop=min(end,date(start.year,start.month,monthrange(start.year,start.month)[1]) if monthly else date(min(start.year+9,end.year),12,31))
         yield str(start),str(stop)
         start=stop+timedelta(days=1)
 
@@ -160,30 +160,59 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
                 unavailable_metrics=['P/E: saved cache lacks earnings','P/B: saved cache lacks book values'])
 
 
-def request_json(endpoint,params,stop):
-    stop()
-    status,payload=run.get_json(endpoint,params,paced=False)
-    stop()
-    if status!=200 or not isinstance(payload,list):
-        raise ValueError(f'Data provider request failed (status {status}). Saved files were kept. Check your key, subscription or connection, then retry.')
-    return payload
+def request_json(endpoint,params,stop,client=None):
+    if client is not None:return client.request(endpoint,params)
+    with fmp_download.Client(stop) as session:return session.request(endpoint,params)
 
 
 def fill_series(file,field,endpoint,o,ledger,emit,stop,symbol=None):
-    path=run.cache_path_for(symbol) if symbol else RAW/file
-    asset=cache_assets.SeriesAsset(path,field,stock=bool(symbol))
-    asset.repair(ledger,COVERAGE)
-    gaps=asset.missing(date.fromisoformat(o['start']),date.fromisoformat(o['end']),ledger)
-    for start,end in gaps:
-        for a,b in spans(start,end,monthly=field=='month3'):
-            stop();emit(message=f'Downloading {symbol or file}: {a} to {b}')
-            params={'from':a,'to':b}
-            if symbol or field=='adjClose':params['symbol']=symbol or 'SPY'
-            batch=request_json(endpoint,params,stop)
-            asset.publish(batch,a,b,ledger,COVERAGE)
+    specs=[(file,field,endpoint,symbol)]
+    with fmp_download.Client(stop,emit) as client:
+        download_series(specs,o,ledger,emit,stop,client)
+
+
+def download_series(specs,o,ledger,emit,stop,client):
+    """Plan lazily, fetch at most eight windows, and publish on this thread.
+
+    The original saved span plus individual completed windows defines coverage.
+    Out-of-order results cannot hide unfinished windows inside an expanded span.
+    Only the writer owns asset objects and the completion ledger.
+    """
+    saved=0;finished=0;total=len(specs)
+    def progress():
+        emit(message=f'Saved {saved} price/yield windows; {finished}/{total} histories complete · up to {client.workers} parallel requests.',
+             completed=finished,total=total,workers=client.workers,requests_saved=saved)
+    def tasks():
+        nonlocal finished
+        for file,field,endpoint,symbol in specs:
+            stop()
+            path=run.cache_path_for(symbol) if symbol else RAW/file
+            asset=cache_assets.SeriesAsset(path,field,stock=bool(symbol))
+            asset.repair(ledger,COVERAGE)
+            windows=[window for a,b in asset.missing(date.fromisoformat(o['start']),date.fromisoformat(o['end']),ledger)
+                     for window in spans(a,b,monthly=field=='month3')]
+            owner=dict(asset=asset,left=len(windows))
+            if not windows:
+                finished+=1
+                if finished%50==0 or finished==total:progress()
+            for a,b in windows:
+                params={'from':a,'to':b}
+                if symbol or field=='adjClose':params['symbol']=symbol or 'SPY'
+                yield owner,a,b,endpoint,params
+    for task,batch in client.map(tasks(),lambda task:request_json(task[3],task[4],stop,client)):
+        stop();owner,a,b,_,_=task
+        owner['asset'].publish(batch,a,b,ledger,COVERAGE)
+        saved+=1;owner['left']-=1
+        if not owner['left']:finished+=1
+        progress()
 
 
 def download(o,emit,stop):
+    with fmp_download.Client(stop,emit) as client:
+        return _download(o,emit,stop,client)
+
+
+def _download(o,emit,stop,client):
     selected=o['datasets'];ledger=read_json(COVERAGE,{})
     # A no-op download must not require a key. It is read only at a request.
     try:universe=universe_rows()
@@ -194,7 +223,7 @@ def download(o,emit,stop):
         # Reuse stock eligibility rules; fail on provider errors before publishing.
         for exchange in ('NYSE','NASDAQ','AMEX'):
             for page in range(30):
-                rows=request_json('company-screener',dict(exchange=exchange,isEtf='false',isFund='false',isActivelyTrading='true',limit=1000,page=page),stop)
+                rows=request_json('company-screener',dict(exchange=exchange,isEtf='false',isFund='false',isActivelyTrading='true',limit=1000,page=page),stop,client)
                 for row in rows:
                     symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '')
                     ex=str(row.get('exchangeShortName') or row.get('exchange') or exchange)
@@ -203,7 +232,7 @@ def download(o,emit,stop):
                 if len(rows)<1000:break
             else:raise ValueError('US stock universe exceeded the page limit. No partial universe was saved.')
         for page in range(1000):
-            rows=request_json('delisted-companies',dict(page=page,limit=100),stop)
+            rows=request_json('delisted-companies',dict(page=page,limit=100),stop,client)
             for row in rows:
                 symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '');ex=str(row.get('exchange') or '')
                 if run.common_stock(symbol,name) and run.us_exchange(ex):
@@ -230,9 +259,8 @@ def download(o,emit,stop):
         unknown=set(wanted)-universe.keys()
         if unknown:raise ValueError('A requested symbol is absent from the saved US universe.')
         pending=[s for s in wanted if s not in records]
-        for i,symbol in enumerate(pending,1):
-            emit(message=f'Downloading annual financials {i}/{len(pending)}: {symbol}',completed=i-1,total=len(pending))
-            rows=request_json('key-metrics',dict(symbol=symbol,period='annual',limit=40),stop)
+        for completed,(symbol,rows) in enumerate(client.map(pending,lambda symbol:request_json('key-metrics',dict(symbol=symbol,period='annual',limit=40),stop,client)),1):
+            stop()
             record=run.slim_metrics(symbol,rows)
             path=RAW/'metrics.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
             # A valid final JSONL record need not end with a newline.
@@ -241,18 +269,17 @@ def download(o,emit,stop):
                 with path.open('rb') as handle:handle.seek(-1,2);needs_newline=handle.read(1)!=b'\n'
             with path.open('a',encoding='utf-8') as handle:handle.write(('\n' if needs_newline else '')+json.dumps(record)+'\n')
             records[symbol]=record
-            emit(completed=i,total=len(pending))
-    if 'spy' in selected:fill_series('spy-div.json','adjClose','historical-price-eod/dividend-adjusted',o,ledger,emit,stop)
-    if 'treasury' in selected:fill_series('treasury.json','month3','treasury-rates',o,ledger,emit,stop)
+            emit(message=f'Saved annual financials {completed}/{len(pending)} · up to {client.workers} parallel requests.',completed=completed,total=len(pending),workers=client.workers)
+    market=[]
+    if 'spy' in selected:market.append(('spy-div.json','adjClose','historical-price-eod/dividend-adjusted',None))
+    if 'treasury' in selected:market.append(('treasury.json','month3','treasury-rates',None))
+    if market:download_series(market,o,ledger,emit,stop,client)
     if 'prices' in selected:
         if not universe or not records:raise ValueError('Download the universe and annual financials before stock prices.')
         if o['scope']=='baseline' and not series(read_json(RAW/'spy-div.json',[]),'adjClose'):
             raise ValueError('Download SPY prices before the original candidate set.')
         targets=target_symbols(o,universe,records)
-        for i,symbol in enumerate(targets,1):
-            emit(message=f'Checking stock {i}/{len(targets)}: {symbol}',completed=i-1,total=len(targets))
-            fill_series(None,'adjClose','historical-price-eod/dividend-adjusted',o,ledger,emit,stop,symbol=symbol)
-            emit(completed=i,total=len(targets))
+        download_series([(None,'adjClose','historical-price-eod/dividend-adjusted',symbol) for symbol in targets],o,ledger,emit,stop,client)
     return inspect(o,emit,stop)
 
 

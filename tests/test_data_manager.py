@@ -79,11 +79,21 @@ class CacheTests(unittest.TestCase):
         self.assertFalse(d.COVERAGE.exists())
 
     def test_partial_download_resumes_from_last_saved_window(self):
-        self.o.update(start='2019-01-01',end='2020-12-31');ledger={}
-        with patch.object(d,'request_json',side_effect=[self.prices([('2019-01-02',10)]),ValueError('offline')]),self.assertRaises(ValueError):
+        self.o.update(start='2010-01-01',end='2020-12-31');ledger={}
+        published=Event();publish=d.cache_assets.SeriesAsset.publish
+        def save(asset,*args,**kwargs):
+            result=publish(asset,*args,**kwargs)
+            published.set()
+            return result
+        def fetch(endpoint,params,*args):
+            if params['from']=='2010-01-01':return self.prices([('2019-01-02',10)])
+            self.assertTrue(published.wait(5),'The first window must be saved before the failure.')
+            raise ValueError('offline')
+        with patch.object(d.cache_assets.SeriesAsset,'publish',save),patch.object(d,'request_json',side_effect=fetch),self.assertRaisesRegex(ValueError,'offline'):
             d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         with patch.object(d,'request_json',return_value=[]) as get:
             d.fill_series(None,'adjClose','prices',self.o,d.read_json(d.COVERAGE),self.emit,self.stop,symbol='A')
+        self.assertEqual(get.call_count,1)
         self.assertEqual(get.call_args.args[1]['from'],'2020-01-01')
 
     def test_corrupt_price_repair_keeps_backup(self):
@@ -136,6 +146,55 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(invalid,0);self.assertEqual(records['A']['rows'],[good])
         self.assertEqual(d.r.books.statements(records,d.universe_rows())['A'][0]['ebitda'],20e6)
 
+    def test_out_of_order_publication_leaves_internal_window_missing(self):
+        path=self.raw/'px/A.json';asset=d.cache_assets.SeriesAsset(path,'adjClose',stock=True);ledger={}
+        asset.publish(self.prices([('2020-01-02',12)]),'2020-01-01','2020-12-31',ledger,d.COVERAGE)
+        asset.publish(self.prices([('2000-01-03',6)]),'2000-01-01','2009-12-31',ledger,d.COVERAGE)
+        resumed=d.cache_assets.SeriesAsset(path,'adjClose',stock=True)
+        self.assertEqual(resumed.missing(date(2000,1,1),date(2020,12,31),ledger),[(date(2010,1,1),date(2019,12,31))])
+
+    def test_failed_asset_replace_retains_previous_coverage_and_holes(self):
+        path=self.raw/'px/A.json';asset=d.cache_assets.SeriesAsset(path,'adjClose',stock=True);ledger={}
+        asset.publish(self.prices([('2000-01-03',6)]),'2000-01-01','2009-12-31',ledger,d.COVERAGE)
+        asset.publish(self.prices([('2020-01-02',12)]),'2020-01-01','2020-12-31',ledger,d.COVERAGE)
+        replace=Path.replace
+        def fail_asset(source,target):
+            if target==path:raise OSError('Interrupted publication')
+            return replace(source,target)
+        with patch.object(Path,'replace',fail_asset),self.assertRaises(OSError):
+            asset.publish(self.prices([('2010-01-04',9)]),'2010-01-01','2019-12-31',ledger,d.COVERAGE)
+        resumed=d.cache_assets.SeriesAsset(path,'adjClose',stock=True)
+        self.assertEqual(resumed.missing(date(2000,1,1),date(2020,12,31),d.read_json(d.COVERAGE)),[(date(2010,1,1),date(2019,12,31))])
+
+    def test_price_fetches_are_parallel_and_publication_has_one_writer(self):
+        import threading
+        self.o.update(start='2000-01-01',end='2020-12-31')
+        writers=[];fetchers=[];lock=threading.Lock();gate=threading.Barrier(3)
+        store=d.cache_assets.SeriesAsset._store
+        def record(asset,*args):writers.append(threading.get_ident());return store(asset,*args)
+        def fetch(endpoint,params,stop,client):
+            with lock:fetchers.append(threading.get_ident())
+            gate.wait(3)
+            return self.prices([(params['from'],10)])
+        with patch.object(d,'request_json',side_effect=fetch),patch.object(d.cache_assets.SeriesAsset,'_store',record):
+            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+        self.assertEqual(len(set(fetchers)),3)
+        self.assertEqual(set(writers),{threading.get_ident()})
+        self.assertEqual(d.inspect(self.o)['prices'][0]['windows'],0)
+
+    def test_close_during_download_joins_fetchers_and_stops_submission(self):
+        import threading
+        self.o.update(start='1990-01-01',end='2020-12-31')
+        entered=threading.Event();release=threading.Event();calls=[];jobs=d.Jobs()
+        def fetch(endpoint,params,stop,client):
+            calls.append(params);entered.set();release.wait(3);stop();return []
+        with patch.object(d,'request_json',side_effect=fetch):
+            jobs.start('download',dict(scope='symbols',symbols='A',start=self.o['start'],end=self.o['end'],datasets=['prices']))
+            self.assertTrue(entered.wait(3));jobs.cancel.set();release.set();jobs.close()
+        self.assertFalse(jobs.thread.is_alive());self.assertIn('Cancelled',jobs.snapshot()['job']['message'])
+        self.assertLessEqual(len(calls),d.fmp_download.WORKERS)
+        self.assertFalse(any(t.name.startswith('fmp') and t.is_alive() for t in threading.enumerate()))
+
     def test_metrics_append_handles_missing_final_newline(self):
         self.o.update(scope='symbols',symbols=['B'],datasets=['financials'])
         with patch.object(d,'request_json',return_value=[]):d.download(self.o,self.emit,self.stop)
@@ -158,7 +217,7 @@ class CacheTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'absent'):d.inspect(self.o)
 
     def test_provider_failure_does_not_expose_payload_or_url(self):
-        with patch.object(d.run,'get_json',return_value=(403,{'error':'https://provider/?apikey=secret'})),self.assertRaises(ValueError) as error:
+        with patch.object(d.fmp_download.Client,'_once',return_value=(403,b'sensitive response',None)),self.assertRaises(ValueError) as error:
             d.request_json('key-metrics',{},self.stop)
         self.assertNotIn('secret',str(error.exception));self.assertNotIn('https:',str(error.exception))
 

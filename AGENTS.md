@@ -229,7 +229,11 @@ open it when required raw files are missing or invalid.
 `scripts/cache_assets.py` owns normalized annual records, series validation,
 atomic series publication and completion evidence. Preparation and data-group
 inspection share `books.statements()` for financial eligibility. Completion
-entries in `raw/download-coverage.json` use `sha256` and `windows`. Reuse windows
+entries in `raw/download-coverage.json` use `sha256`, `windows`, `base_span` and
+one `previous` receipt. Bind either receipt to its exact valid asset. Keep the
+original base span separate from managed completed windows, so out-of-order
+results cannot hide unfinished middle windows. Publish expected-content receipts
+before replacing the asset; retain the earlier receipt for interrupted writes. Reuse windows
 only for the exact valid saved asset. Missing, corrupt, replaced or legacy
 unbound files must not inherit completion evidence. Preserve usable rows and
 back up invalid originals before repair. Empty provider responses can be reused
@@ -248,3 +252,24 @@ thread lock; multiple local server instances share the same cache.
 Focused checks: `python3 tests/test_data_manager.py`,
 `python3 tests/test_cache_access.py`, and `node tests/check-data-panel.cjs`.
 Run the cache-access and data-manager checks on native Windows too.
+
+
+## Parallel FMP downloads
+
+`scripts/fmp_download.py` owns the data panel transport. Use eight request
+workers with reusable connections, a shared four-starts-per-second default cap,
+and one publishing owner. At most eight tasks may be submitted at once. Workers
+must not write raw files or completion receipts. Retain completed windows after
+cancellation; do not release cache ownership before in-flight workers finish.
+
+Use up to ten-year windows for adjusted stock and SPY histories. Keep Treasury
+windows monthly. Respect shared Retry-After cooldowns, reduce the start rate on
+429, and bound retries to three attempts. Retry waits must be cancellable. Socket
+timeout is 15 seconds; the read deadline is 30 seconds. Close each exhausted HTTP
+response explicitly before connection reuse, including Python 3.12 read1 EOF.
+
+The native Windows experiment and its limitations are recorded in
+`results/experiments/fmp-download-benchmark.json`. Temporary API responses and
+experiment caches live in ignored `tmp/`. Do not reuse old timings as a new
+measurement. Test `python3 tests/test_fmp_download.py` and the data-manager and
+cache-access checks, including native Windows.

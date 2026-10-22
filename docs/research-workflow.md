@@ -354,15 +354,17 @@ fill ranges outside the existing saved date span. They do not refresh existing
 values or repair internal session gaps. Short histories can reflect listings
 or trading stops. The provider may have no additional data.
 
-Stock and SPY requests use annual windows. Treasury uses monthly windows.
+Stock and SPY requests use windows of up to ten years. Treasury uses monthly windows. Up to eight requests run concurrently. The default shared start-rate cap is four per second. Each worker reuses its HTTP connection. A 429 response applies a shared Retry-After cooldown and reduces the start rate. There are at most three attempts, a 15-second socket timeout and a 30-second read deadline. Cancellation stops submission and interrupts retry waits; active requests are joined before cache ownership is released.
 `raw/download-coverage.json` records successful requested windows, including
-empty responses. Each asset entry has `sha256` and `windows`. The hash identifies
+empty responses. Each asset entry has `sha256`, `windows` and `base_span`. The base span is the saved coverage before managed extension, or null for a new file. Each finished window is tracked separately. An out-of-order result cannot make an unfinished middle window disappear. `previous` retains one earlier receipt for interrupted replacement. The hash identifies
 the exact saved file. Only a valid file with that hash can reuse the windows.
 Missing, corrupt or manually replaced files lose old completion evidence.
 Legacy list-only entries have no proof and are ignored; usable saved rows
 remain. Retrying resumes unrequested windows for the validated asset. Valid saved rows and
 legacy light prices are retained. Each price or market window is published by
-atomic replacement. Completed windows survive interruption. Corrupt files are
+atomic replacement. Expected-content receipts are saved before asset replacement.
+The current or previous receipt applies only when its hash matches the actual
+valid file. This covers interruption on either side of replacement. Completed windows survive interruption. Corrupt files are
 backed up under `raw/archive/*.before-data-repair` before repair. Invalid JSONL
 financial lines are backed up; valid symbol records remain and missing symbol
 records are downloaded. Both preparation and group inspection use the same
@@ -400,3 +402,36 @@ instructions when opened as a file.
 
 Check with `python3 tests/test_data_manager.py`, `node tests/check-data-panel.cjs`,
 `python3 tests/test_cache_access.py`, and `python3 tests/test_startup.py`.
+
+
+### Download performance experiment
+
+The experiment lives in `tmp/2026-10-22-fmp-download/`. Temporary responses and
+disposable caches stay ignored. The durable record is
+`results/experiments/fmp-download-benchmark.json`. It includes settings, per-request
+measurements, request counts and the selected implementation fingerprints.
+The run used native Windows Python 3.12. It did not replace active raw inputs.
+
+Unpaced transport batches each contained 16 distinct uncached one-year stock
+requests. Pooled workers 1, 4 and 8 were measured twice, in reversed order;
+16 workers and the legacy urllib serial baseline were measured once. Eight
+workers took 3.04–3.54 seconds, versus 22.09–31.81 seconds for one pooled worker.
+Sixteen workers took 4.06 seconds. All 128 concurrency requests returned HTTP 200.
+Companies, historical periods and provider load vary; the samples do not prove
+a universal optimum.
+
+The paced production path saved 16 histories in 6.56 seconds, with 16 HTTP 200
+responses and no retries. It used the same symbols as the 42.47-second urllib
+reference but a different year (2024 versus 2019). Do not label that comparison
+a controlled same-period speedup. A replay of the earlier disposable production
+cache took 0.06 seconds and made no request. A local publication-only control
+took 0.31 seconds. An intermediate transport had a Python 3.12 `read1()` response
+closure bug; it is recorded separately and was fixed before the final run.
+
+The production policy uses eight workers and at most four request starts per
+second, leaving headroom below FMP’s published Starter allowance. Shared 429
+cooldowns reduce that rate further. Ten-year price windows returned about 2,519
+sessions for the long-lived sample stocks, below the known 5,000-row cap. The
+Treasury probe was empty and did not justify changing the proven monthly policy.
+Cancellation and out-of-order publication are checked offline and on Windows.
+Run `python3 tests/test_fmp_download.py` alongside data-manager/cache-access tests.

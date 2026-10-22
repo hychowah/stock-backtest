@@ -78,9 +78,10 @@ def missing_spans(rows,field,start,end,checked):
 class SeriesAsset:
     """Own one price/yield file, its normalized rows and request provenance.
 
-    Publication preserves saved values and light prices. Publish the asset
-    before its evidence: interruption can cause a harmless retry, never a
-    falsely completed missing file. Evidence uses a content hash, not mtime.
+    Publication preserves saved values and light prices. Evidence names the
+    expected file content and original saved span. A half-published update
+    cannot match the wrong file. Unfinished managed windows remain missing
+    even if parallel results extend the actual date span on both sides.
     """
     def __init__(self,path,field,*,stock=False):
         self.path=path;self.field=field;self.stock=stock
@@ -100,9 +101,17 @@ class SeriesAsset:
         # valid empty history. Real empty histories are represented by [].
         if values and not self.rows:self.valid=False;self.digest=None
 
-    def checked(self,ledger):
+    def evidence(self,ledger):
+        if not self.valid:return {}
         entry=ledger.get(self.key,{})
-        if not self.valid or not isinstance(entry,dict) or entry.get('sha256')!=self.digest:return []
+        if not isinstance(entry,dict):return {}
+        for candidate in (entry,entry.get('previous',{})):
+            if isinstance(candidate,dict) and candidate.get('sha256')==self.digest:return candidate
+        return {}
+
+    def checked(self,ledger):
+        entry=self.evidence(ledger)
+        if not entry:return []
         windows=entry.get('windows',[])
         if not isinstance(windows,list):return []
         try:
@@ -110,8 +119,19 @@ class SeriesAsset:
         except (TypeError,ValueError):return []
         return windows
 
+    def base_span(self,ledger):
+        entry=self.evidence(ledger)
+        if 'base_span' in entry:
+            value=entry['base_span']
+            if value is None:return []
+            try:
+                if isinstance(value,list) and len(value)==2 and date.fromisoformat(value[0])<=date.fromisoformat(value[1]):return [value]
+            except (TypeError,ValueError):pass
+            return []
+        return [[self.rows[0]['date'][:10],self.rows[-1]['date'][:10]]] if self.rows else []
+
     def missing(self,start,end,ledger):
-        return missing_spans(self.rows,self.field,start,end,self.checked(ledger))
+        return missing_spans([],self.field,start,end,self.base_span(ledger)+self.checked(ledger))
 
     def publish(self,batch,start,end,ledger,ledger_path):
         valid=series(batch,self.field)
@@ -138,8 +158,18 @@ class SeriesAsset:
         if self.path.exists() and not self.valid:
             backup=ledger_path.parent/'archive'/(self.path.name+'.before-data-repair')
             if not backup.exists():backup.parent.mkdir(parents=True,exist_ok=True);backup.write_bytes(self.path.read_bytes())
-        write_json(self.path,value)
-        self.payload=value;self.rows=series(merged,self.field);self.valid=True
-        self.digest=hashlib.sha256(self.path.read_bytes()).hexdigest()
-        ledger[self.key]=dict(sha256=self.digest,windows=windows)
-        write_json(ledger_path,ledger)
+        base=self.base_span(ledger)
+        content=json.dumps(value,allow_nan=False).encode('utf-8')
+        digest=hashlib.sha256(content).hexdigest()
+        entry=dict(sha256=digest,windows=windows,base_span=base[0] if base else None)
+        previous=self.evidence(ledger)
+        if previous:entry['previous']={key:value for key,value in previous.items() if key!='previous'}
+        # Evidence can only apply when the exact corresponding asset exists.
+        # Publish its expected hash first: a crash before asset replacement
+        # leaves a mismatch, while a crash after it retains all known holes.
+        write_json(ledger_path,{**ledger,self.key:entry})
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        temporary=self.path.with_name(self.path.name+'.download')
+        temporary.write_bytes(content);temporary.replace(self.path)
+        self.payload=value;self.rows=series(merged,self.field);self.valid=True;self.digest=digest
+        ledger[self.key]=entry

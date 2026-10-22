@@ -24,7 +24,7 @@ freshness. Export the full check as JSON when needed.
 Use **Download missing data**, then **Rebuild prepared data + website**, then
 open the strategy builder. Downloads use the local FMP key file and preserve
 valid cached records. Checks and rebuilds are offline. No download starts when
-the panel opens. Cancel keeps completed windows so a retry can continue.
+the panel opens. Downloads run up to eight requests in parallel with a shared start-rate cap and reusable connections. One writer saves each result. Cancel keeps completed windows, stops new requests and interrupts retry waits. A retry also fills unfinished managed windows inside an expanded date span.
 Completion evidence belongs to the exact saved file; loss or corruption cannot
 leave missing data falsely complete. Short histories may reflect IPOs or stops.
 The downloader does not refresh existing reports/profiles or repair internal
@@ -54,6 +54,7 @@ The 2026 book is partial through 20 October 2026. Other book years are January-t
 node tests/check-range.cjs
 python3 tests/check_screener.py
 python3 tests/test_data_manager.py
+python3 tests/test_fmp_download.py
 python3 tests/test_cache_access.py
 node tests/check-data-panel.cjs
 ```
@@ -83,7 +84,7 @@ These cover signed contributions, the top-10 stock limit, positive/negative/zero
 
 The website opens in **Latest stock picks** mode. Historical backtest remains available in the view switch. The same size, valuation, sector, exchange, universe and rank controls apply in either mode. The latest view shows a current selection, with no holding returns or attribution charts because those outcomes do not exist yet.
 
-The displayed date comes from the latest cached SPY session, not a hard-coded January date or a relative “yesterday” label. As of this build it is **2026-10-20**. Only companies marked currently listed in the cached universe, with a dividend-adjusted price on that exact session, are included. Earlier last-trade prices are not carried forward. The annual figure must be available under the existing strict 90-day lag and no more than 800 days old. Market cap and EV are revalued at the latest price using report net debt and the same adjusted-price method as the historical model.
+The displayed date comes from the latest cached SPY session. Read the date above the latest stock table. Only companies marked currently listed in the cached universe, with a dividend-adjusted price on that exact session, are included. Earlier last-trade prices are not carried forward. The annual figure must be available under the existing strict 90-day lag and no more than 800 days old. Market cap and EV are revalued at the latest price using report net debt and the same adjusted-price method as the historical model.
 
 Latest mode has separate prepared records for the original 250-candidate pool and all eligible cached-price companies. Both remain incomplete representations of the full market. The coverage line shows how many active names have financials and how many can be valued from current cached prices. Available-from dates are assumptions based on fiscal year-end, not verified filing dates. Listing status, sector and exchange are cached metadata.
 
