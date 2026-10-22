@@ -81,7 +81,7 @@ See `../docs/research-workflow.md` for calculation and extension details.
 
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
 chain is automatic; no separate preparation commands are needed. The browser
-opens at the successfully bound local address. Port 8765 is the default; `--port` selects another port, and an occupied default port uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **Custom trade date
+opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **Custom trade date
 and frequency**. Set the first trade date, end/mark date, and monthly, quarterly,
 half-yearly or yearly rebalance interval, then click **Run backtest**.
 
@@ -142,10 +142,16 @@ trade dates in the CSV. Select a trial and click **Show stocks and period return
 to inspect its usual stock tables and contribution charts. Completed trial books
 survive an interrupted batch; restart the launcher and rerun the same seed.
 
-If an older server still occupies the default port, the launcher starts a fresh
-local instance on an available port and opens its own browser tab. Use that new
-tab; refreshing an old tab does not reload Python server code. Unsupported API
-routes now display this instruction rather than only “Unknown endpoint”.
+On Windows, `backtest-web.cmd` and `start.cmd` use managed startup. A new launch
+stops this project’s identified server and starts current code in the invoking
+terminal. Replacement waits up to 30 seconds for the previous listener and
+request threads to release ownership. If they remain active, wait or stop the
+old terminal, then retry. An unknown port owner stays running; the new instance
+uses an available port. Direct `python3 website/serve.py` starts a foreground
+server without replacing an existing server. Add `--managed` to request replacement.
+Use the opened browser tab; refreshing an old tab does not reload Python server
+code. Unsupported API routes display a relaunch instruction rather than only
+“Unknown endpoint”.
 
 After a random batch completes, Advanced remembers its date-set number. Checking
 **Repeat the same dates** then replays that batch's dates with the same window

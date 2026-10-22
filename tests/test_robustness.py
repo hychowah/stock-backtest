@@ -6,6 +6,7 @@ import json
 import sqlite3
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -158,6 +159,7 @@ class RobustnessTests(unittest.TestCase):
             self.db.backup(db);return db
         def handler(path,payload):
             obj=object.__new__(serve.Handler);body=json.dumps(payload).encode()
+            obj.server=SimpleNamespace(lifecycle=None)
             obj.path=path;obj.rfile=io.BytesIO(body);obj.wfile=io.BytesIO()
             obj.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}
             obj.statuses=[];obj.send_response=obj.statuses.append

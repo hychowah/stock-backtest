@@ -166,8 +166,10 @@ does not recompute the completed pool. Empty pools are recorded as complete too.
 Daily cache version 3 tracks this in `period_pools`. Compatible version-1/2 caches
 upgrade automatically at startup without reparsing prices or discarding books.
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
-`website/serve.py` serves only the built website and a loopback JSON calculation
-endpoint; no keys, remote services or market-data downloads are involved.
+`website/serve.py` serves the built website and local JSON calculation endpoints.
+The default listener is `0.0.0.0:3000`; the browser opens
+`http://127.0.0.1:3000` on this computer. Use `--host` and `--port` to change the
+listener. No keys, remote services or market-data downloads are involved.
 `website/schedule.js` renders dated periods without assuming one book per year.
 Run `python3 tests/test_schedules.py` in addition to the existing checks.
 
@@ -251,9 +253,14 @@ rendering with `node tests/check-robustness.cjs`.
 Random batches choose a fresh system-generated seed by default; the actual key
 is recorded in results and CSV exports. Advanced repeat mode supplies an explicit
 seed so comparisons or interrupted requests can reproduce the sampled dates.
-On an occupied port the launcher binds an available loopback port and opens the
-new server's URL, leaving the older process untouched. Missing API routes in old
-tabs instruct the user to relaunch and use the newly opened tab.
+Windows `backtest-web.cmd` and `start.cmd` use managed startup. They stop this
+project’s identified server and transfer ownership to the invoking terminal.
+Replacement waits up to 30 seconds for the old listener and request threads to
+close before preparation. If ownership remains held, wait or stop the old terminal
+and retry. Unknown port owners stay running; the service selects an available
+port and opens that address. Direct `python3 website/serve.py` starts a foreground
+server without replacement; `--managed` enables replacement. Missing API routes
+in old tabs instruct the user to relaunch and use the newly opened tab.
 
 Dated financial policy is shared in `scripts/books.py`: report-pool eligibility,
 candidate buffering, entry valuation and holding returns. January preparation

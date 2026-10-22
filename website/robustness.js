@@ -72,7 +72,7 @@ const RobustnessView=(()=>{
     }
     series.forEach((s,j)=>{
       out+=`<rect x="${70+j*400}" y="12" width="14" height="14" fill="${s.color}"/><text x="${92+j*400}" y="24" font-size="13">${s.name}${s.mean===null?' · no data':' · mean '+format(s.mean)}</text>`;
-      s.counts.forEach((count,i)=>{out+=`<rect x="${x(lo+i*width)+1}" y="${y(count)}" width="${880/bins-2}" height="${310-y(count)}" fill="${s.color}" opacity=".45"><title>${s.name}: ${format(lo+i*width)} to ${format(lo+(i+1)*width)}: ${count} trials</title></rect>`;});
+      s.counts.forEach((count,i)=>{out+=`<rect tabindex="0" x="${x(lo+i*width)+1}" y="${y(count)}" width="${880/bins-2}" height="${310-y(count)}" fill="${s.color}" opacity=".45"><title>${s.name}: ${format(lo+i*width)} to ${format(lo+(i+1)*width)}: ${count} trials</title></rect>`;});
       if(s.sd>0){
         const points=Array.from({length:201},(_,i)=>{const v=lo+(hi-lo)*i/200;return `${i?'L':'M'}${x(v)},${y(s.density(v))}`;}).join(' ');
         out+=`<path d="${points}" fill="none" stroke="${s.color}" stroke-width="3" stroke-dasharray="7 4"/>`;

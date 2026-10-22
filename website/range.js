@@ -62,7 +62,7 @@ function drawMarketCaps(){
   }
   data.forEach((d,i)=>{
     const v=medianMarketCap(d.year),x=60+i*step+5;
-    if(v!==null)markup+=`<rect x="${x}" y="${y(v)}" width="${step-10}" height="${330-y(v)}" fill="#20775e"><title>${d.year}: ${money(v)} median market cap</title></rect>`;
+    if(v!==null)markup+=`<rect tabindex="0" x="${x}" y="${y(v)}" width="${step-10}" height="${330-y(v)}" fill="#20775e"><title>${d.year}: ${money(v)} median market cap</title></rect>`;
     markup+=`<text transform="translate(${x+step/2-5},353) rotate(-55)" text-anchor="end" font-size="11">${d.year}</text>`;
   });
   document.getElementById('market-cap-chart').innerHTML=markup;

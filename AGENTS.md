@@ -164,7 +164,7 @@ retain their individual markers. Changed research inputs still require preparati
 
 ## Automatic local launcher
 
-`start.cmd` (Windows) and `python3 website/serve.py` own startup. The daily
+`backtest-web.cmd` and `start.cmd` (Windows) use `website/launcher.py` to manage a terminal-owned server. Logs stay in the terminal; Ctrl+C stops the server. The default listener is `0.0.0.0:3000`; the local browser uses `http://127.0.0.1:3000`. A per-port startup lock serializes preparation and binding. A separate lifetime lock stays held until the listener and all request threads close. An unreachable HTTP endpoint never proves that the old server has finished. Replacement waits up to 30 seconds for ownership, then reports a retry instruction. `website/launcher.py` owns identity publication, control requests, cleanup and both locks. An authenticated loopback identity endpoint identifies this project. Each managed launch stops the identified previous server and starts current code in the invoking terminal. This transfers ownership even from an unchanged background instance. Do not stop unknown port owners. Identity and startup lock files live under ignored `data/website-*` paths. Direct `python3 website/serve.py` remains a foreground option. The daily
 preparer first ensures the research cache, then the server checks the website
 build stamp and rebuilds if needed. Open the browser only after successful
 preparation and binding; `--no-browser` supports headless use. Keep dependency

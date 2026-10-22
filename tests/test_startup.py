@@ -21,7 +21,7 @@ class StartupTests(unittest.TestCase):
         with patch.object(serve.schedules,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve.subprocess,'run',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
             serve.ensure_ready()
         self.assertEqual(calls,['prepare','check_build','build'])
-        self.assertEqual(run.call_args.args[0],[sys.executable,str(serve.ROOT/'build.py')])
+        self.assertEqual(run.call_args.args[0],[sys.executable,'-X','utf8',str(serve.ROOT/'build.py')])
         self.assertTrue(run.call_args.kwargs['check'])
 
     def test_unchanged_caches_do_not_rebuild_page(self):
@@ -35,6 +35,13 @@ class StartupTests(unittest.TestCase):
         with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready',side_effect=lambda:calls.append('prepare')),patch.object(serve,'ThreadingHTTPServer',side_effect=lambda *args:calls.append('bind') or server),patch.object(serve.webbrowser,'open',side_effect=lambda url:calls.append('browser')):
             serve.main()
         self.assertEqual(calls,['prepare','bind','browser','serve'])
+        server.server_close.assert_called_once()
+
+    def test_ctrl_c_closes_terminal_owned_server(self):
+        server=Mock();server.server_address=('0.0.0.0',3000)
+        server.serve_forever.side_effect=KeyboardInterrupt
+        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve,'ensure_ready'),patch.object(serve,'ThreadingHTTPServer',return_value=server):
+            serve.main()
         server.server_close.assert_called_once()
 
     def test_failure_never_opens_browser(self):
@@ -57,7 +64,7 @@ class StartupTests(unittest.TestCase):
         server=Mock();server.server_address=('127.0.0.1',49123)
         with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready'),patch.object(serve,'ThreadingHTTPServer',side_effect=[OSError(errno.EADDRINUSE,'in use'),server]) as bind,patch.object(serve.webbrowser,'open') as browser:
             serve.main()
-        self.assertEqual(bind.call_args_list[1].args[0],('127.0.0.1',0))
+        self.assertEqual(bind.call_args_list[1].args[0],('0.0.0.0',0))
         browser.assert_called_once_with('http://127.0.0.1:49123')
         server.server_close.assert_called_once()
 

@@ -1,4 +1,5 @@
-"""Serve the website and custom cache-only schedules at http://127.0.0.1:8765."""
+"""Serve the website and custom cache-only schedules at http://127.0.0.1:3000."""
+from contextlib import nullcontext
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import argparse
@@ -9,6 +10,7 @@ import sys
 import subprocess
 import webbrowser
 from threading import Lock
+import launcher
 
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT.parent/'scripts'))
@@ -31,7 +33,19 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length',str(len(body)))
         self.end_headers();self.wfile.write(body)
 
+    def launcher_request(self):
+        lifecycle=getattr(self.server,'lifecycle',None)
+        if lifecycle:return lifecycle.control(self)
+        if self.path=='/api/launcher':
+            self.reply(404,dict(error='No managed server.'));return True
+        return False
+
+    def do_GET(self):
+        if not self.launcher_request():super().do_GET()
+
     def do_POST(self):
+        if self.launcher_request():return
+
         if self.path not in ('/api/schedule','/api/robustness'):
             self.reply(404,dict(error='Unknown endpoint.'));return
         origin=self.headers.get('Origin')
@@ -85,15 +99,27 @@ def ensure_ready():
     schedules.prepare()
     if not current_build():
         print('Rebuilding the website…',flush=True)
-        subprocess.run([sys.executable,str(ROOT/'build.py')],cwd=ROOT.parent,check=True)
+        subprocess.run([sys.executable,'-X','utf8',str(ROOT/'build.py')],cwd=ROOT.parent,check=True)
     print('Local caches and website are ready.',flush=True)
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--port',type=int,default=8765)
+    parser.add_argument('--port',type=int,default=3000)
+    parser.add_argument('--host',default='0.0.0.0')
     parser.add_argument('--no-browser',action='store_true',help='Start without opening a browser')
+    parser.add_argument('--managed',action='store_true',help='Replace this project’s previous server and keep this terminal attached')
     args=parser.parse_args()
+    try:
+        context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
+        with context as lifecycle:run_server(args,lifecycle,parser)
+    except KeyboardInterrupt:
+        print('Website stopped.',flush=True)
+    except (OSError,ValueError,RuntimeError) as error:
+        parser.exit(1,str(error)+'\n')
+
+
+def run_server(args,lifecycle,parser):
     try:
         ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
@@ -101,24 +127,30 @@ def main():
     except KeyboardInterrupt:
         parser.exit(1,'Preparation stopped. Run the launcher again to resume safely.\n')
     try:
-        server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
+        server=ThreadingHTTPServer((args.host,args.port),Handler)
     except OSError as error:
         if error.errno not in (errno.EADDRINUSE,10048) and getattr(error,'winerror',None)!=10048:
             parser.exit(1,f'Cannot start the local website service: {error}\n')
         # An older process may still serve the updated HTML with an outdated
         # API. Open a fresh local instance instead of reusing that process.
-        try:server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        try:server=ThreadingHTTPServer((args.host,0),Handler)
         except OSError as retry_error:
             parser.exit(1,f'Cannot start the local website service: {retry_error}\n')
         print(f'Port {args.port} is already in use; opening a fresh website instance.',flush=True)
     port=server.server_address[1]
-    print(f'Open http://127.0.0.1:{port} — custom schedules use saved data only.',flush=True)
-    if not args.no_browser:
-        try:webbrowser.open(f'http://127.0.0.1:{port}')
-        except webbrowser.Error:pass
-    try:server.serve_forever()
+    # Managed cleanup owns the server immediately, including publication failure.
+    if lifecycle:lifecycle.attach(server)
+    else:server.daemon_threads=False
+    try:
+        print('Server attached to this terminal. Press Ctrl+C to stop.',flush=True)
+        print(f'Open http://127.0.0.1:{port} — custom schedules use saved data only.',flush=True)
+        if not args.no_browser:
+            try:webbrowser.open(f'http://127.0.0.1:{port}')
+            except webbrowser.Error:pass
+        server.serve_forever()
     except KeyboardInterrupt:pass
-    finally:server.server_close()
+    finally:
+        if not lifecycle:server.server_close()
 
 
 if __name__=='__main__':main()

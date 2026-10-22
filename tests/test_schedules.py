@@ -10,6 +10,7 @@ import time
 from contextlib import ExitStack
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
@@ -372,6 +373,7 @@ class ServiceTests(unittest.TestCase):
 
     def request(self,payload,origin=None):
         handler=object.__new__(self.serve.Handler)
+        handler.server=SimpleNamespace(lifecycle=None)
         body=json.dumps(payload).encode()
         handler.path='/api/schedule';handler.rfile=io.BytesIO(body)
         handler.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}

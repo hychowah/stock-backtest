@@ -4,11 +4,11 @@ A standalone US stock backtest and interactive results website. Each January, bu
 
 ## Open the website
 
-On Windows, double-click **`start.cmd`**. It prepares stale local caches in order,
+On Windows, run **`backtest-web.cmd`** from the project folder, or double-click **`start.cmd`**. It prepares stale local caches in order,
 rebuilds the website when needed, starts the local service, and opens your browser.
-On other systems, run `python3 website/serve.py`. No API key or market-data
+On other systems, run `python3 website/serve.py` in the foreground. No API key or market-data
 download is needed; unchanged caches are reused. The first refresh can take a
-few minutes. Keep the launcher running while using custom dates and frequency.
+few minutes. The Windows command keeps the server attached to the terminal on `0.0.0.0:3000`. Open `http://127.0.0.1:3000` on this computer. The installed `backtest-web.cmd` command also works from other Windows Terminal folders. Keep the terminal open to see server logs. Press Ctrl+C to stop it. Repeating the command stops this project’s identified server and starts current code in the new terminal. This also replaces any older background instance. Replacement waits for active requests to finish before it prepares data. If ownership is still held after 30 seconds, the command asks you to wait or stop the old terminal, then retry.
 
 The website opens with Latest stock picks. Switch to Historical backtest for
 January books or custom trade dates with monthly, quarterly, half-yearly or

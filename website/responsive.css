@@ -1,0 +1,66 @@
+/* Keep wide data inside its panel. Do not hide page overflow to mask layout bugs. */
+main, section, form, .toolbar > *, .filter-grid > *, .contribution-layout > *{min-width:0}
+header{flex-wrap:wrap}
+.pill{white-space:nowrap}
+.toolbar > :first-child{flex:1 1 320px}
+.toolbar > :last-child{max-width:100%}
+.toolbar p{overflow-wrap:anywhere}
+button,input,select,summary{min-height:44px}
+input,select{font-size:16px;max-width:100%;color:#192b31}
+button{touch-action:manipulation}
+.mode-switch button{flex:0 1 auto}
+.scroll,.table-wrap,.latest-table{max-width:100%;overscroll-behavior-x:contain}
+.scroll:focus-visible,.table-wrap:focus-visible,.latest-table:focus-visible{outline:2px solid #20775e;outline-offset:3px}
+.scroll-hint{font-size:12px;color:#647575;margin:12px 0 8px}
+.chart-detail{min-height:24px;font-size:13px;color:#244f43;line-height:1.5}
+svg{height:auto}
+.stock-table{min-width:1350px}
+.stock-table th:nth-child(2),.stock-table td:nth-child(2){position:sticky;left:0;background:#fff;z-index:1;box-shadow:2px 0 0 #e8ece5;text-align:left;white-space:nowrap}
+.stock-table th:nth-child(2){background:#f4f6f1;z-index:3}
+th{z-index:2}
+.latest-facts,.stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.latest-facts strong,.stat strong{overflow-wrap:anywhere}
+.period-controls > div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#schedule-choice select,#schedule-period,#robustness-trial{max-width:100%}
+.legend{flex-wrap:wrap}
+.backtest-progress > div{min-width:0;flex:1}
+.backtest-progress p{overflow-wrap:anywhere}
+.random-advanced{min-width:0}
+.random-advanced label{display:block;margin-top:12px}
+@media(max-width:850px){
+  main{padding:28px 20px}
+  .filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .contribution-layout{grid-template-columns:minmax(0,1fr)}
+  .toolbar{gap:16px}
+}
+@media(max-width:600px){
+  main{padding:22px 14px}
+  header{gap:12px}
+  h1{font-size:38px;letter-spacing:-1px;margin-top:24px}
+  .panel{padding:16px;margin:18px 0}
+  .filter-grid{grid-template-columns:minmax(0,1fr);gap:16px}
+  .toolbar{align-items:stretch;flex-direction:column;gap:12px}
+  .toolbar > :first-child{flex:0 1 auto}
+  .toolbar > div:last-child{display:flex;flex-wrap:wrap;gap:8px}
+  .toolbar > div:last-child button{flex:1 1 auto}
+  .mode-switch{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .mode-switch button{padding:10px 8px}
+  .stats,.latest-facts{grid-template-columns:minmax(0,1fr);gap:12px;margin:20px 0}
+  .stat{padding:14px 0}
+  .stat strong{font-size:30px;margin:8px 0}
+  .stat small{font-size:12px}
+  .latest-facts > span{border-top:1px solid #e2e7df;padding-top:12px}
+  .latest-facts strong{font-size:27px;margin-top:5px}
+  #schedule-choice label{display:block}
+  #schedule-choice select{display:block;width:100%;margin-top:8px}
+  #year-controls{display:grid;grid-template-columns:auto minmax(0,1fr)}
+  #reset-range{grid-column:1 / -1}
+  .period-controls input{width:80px}
+  .contribution-facts{gap:16px}
+  .contribution-pies{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .contribution-legend{overflow-wrap:anywhere}
+  .backtest-progress{gap:12px;padding:14px;flex-wrap:wrap}
+  .backtest-elapsed{margin-left:38px}
+  #custom-view > button,#schedule-results > button{display:block;width:100%;margin:10px 0}
+  footer{overflow-wrap:anywhere}
+}

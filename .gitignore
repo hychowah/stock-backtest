@@ -30,3 +30,11 @@ data/*.building*
 # Local website build freshness stamp.
 website/dist/.build-state.json
 website/dist/.build-state.tmp
+
+# Local background website identity and startup lock.
+data/website-server-*.json
+data/website-launch-*.lock
+data/website-owner-*.lock
+
+# Browser verification snapshots and screenshots.
+.playwright-mcp/
