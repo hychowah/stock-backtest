@@ -4,6 +4,21 @@ This folder is a standalone US stock backtest. It is not a a different research 
 
 The folder can move. Scripts resolve paths from their own file. Keep `raw/` with the code. The FMP key stays at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
 
+## Git in this environment
+
+The normal `.git/` folder is empty and read-only in this workspace.
+The repository history is in `.git-local/`. Run Git from the project folder:
+
+```
+git --git-dir=.git-local --work-tree=. status
+git --git-dir=.git-local --work-tree=. log --oneline
+```
+
+Use the same options for diff, add and commit. If the default Git wrapper fails
+with a WSL socket error, use `/usr/bin/git` with these options.
+Do not initialize a new repository or replace the saved history.
+Ordinary Git commands and apps may not detect this repository automatically.
+
 ## Current result
 
 `results/summary-exits.txt` is the result to continue from. It is the pass that keeps a stock when trading stops.

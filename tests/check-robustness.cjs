@@ -29,6 +29,28 @@ function response(events,{truncate=false}={}){
  ctx.inspect=(trial,config)=>inspected={trial,config};call('RobustnessView.init(inspect);RobustnessView.render(batch)');
  assert.equal(node('robustness-results').hidden,false);assert.equal(node('robustness-mean').textContent,'15.00%');
  assert.equal(node('random-seed').value,'42');assert(node('robustness-distribution').innerHTML.includes('Strategy CAGR'));
+ assert(node('robustness-chart').innerHTML.includes('<rect'));
+ assert(!node('robustness-chart').innerHTML.includes('NaN'));
+ assert(node('robustness-chart-note').textContent.includes('Seed 42'));
+ batch.trials.push({...batch.trials[0],trial:2,cagr:.2,total_return:2,excess_cagr:.03}, {...batch.trials[0],trial:3,cagr:null,total_return:999});
+ batch.trials[0].total_return=1;batch.trials[0].spy_growth=1.5;
+ call('RobustnessView.render(batch)');
+ assert(node('robustness-chart').innerHTML.includes('<path'));
+ assert(node('robustness-chart').innerHTML.includes('Paired SPY'));
+ assert(node('robustness-chart').innerHTML.includes('mean 9.00%'));
+ assert(!node('robustness-chart').innerHTML.includes('NaN'));
+ assert(node('robustness-chart-note').textContent.includes('2 complete trials'));
+ node('robustness-measure').value='total_return';node('robustness-measure').handlers.change();
+ assert(node('robustness-chart').innerHTML.includes('Total return'));
+ assert(node('robustness-chart').innerHTML.includes('mean 50.00%'));
+ node('robustness-measure').value='excess_cagr';node('robustness-measure').handlers.change();
+ assert(!node('robustness-chart').innerHTML.includes('Paired SPY'));
+ assert(node('robustness-chart').innerHTML.includes(' pp'));
+
+ batch.trials=[];call('RobustnessView.render(batch)');
+ assert(node('robustness-chart').innerHTML.includes('No complete trials'));
+ batch.trials=[{trial:1,start:'2015-01-02',first_trade:'2015-03-02',dates:['2015-03-02','2017-07-03'],cagr:.1}];
+ call('RobustnessView.render(batch)');
  node('robustness-download').handlers.click();assert(csv.includes('2015-03-02;2017-07-03'));assert(csv.includes('"42"'));assert.equal(download,'random-dates-seed-42.csv');
  node('robustness-trial').value='0';node('robustness-inspect').handlers.click();assert.equal(inspected.trial.trial,1);assert.equal(inspected.config.months,24);
  console.log('Passed: streamed trial progress, chunk/UTF-8 decoding, interrupted/error streams, distribution rendering, reproducible CSV and trial inspection.');

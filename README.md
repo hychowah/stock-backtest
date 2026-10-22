@@ -85,11 +85,13 @@ The local website is ready to use. Hosted publication has not completed because 
 
 ## Version control in this environment
 
-The workspace mounts `.git/` read-only. Git metadata is therefore stored in `.git-local/`. Use:
+The workspace mounts an empty `.git/` folder read-only. The repository history is stored in `.git-local/`. Ordinary Git commands and apps may not detect it automatically. From the project folder, use:
 
 ```bash
 git --git-dir=.git-local --work-tree=. status
 git --git-dir=.git-local --work-tree=. log --oneline
 ```
+
+Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
 
 Source, reports and the built website are versioned. Downloaded data in `raw/` stays local and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
