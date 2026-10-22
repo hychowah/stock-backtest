@@ -78,6 +78,90 @@ class CacheTests(unittest.TestCase):
         self.assertEqual((self.raw/'px/A.json').read_bytes(),original)
         self.assertFalse(d.COVERAGE.exists())
 
+    def test_nonpositive_prices_keep_good_rows_and_persistent_warnings(self):
+        self.put('px/A.json',dict(div=[],light=[dict(date='2020-01-03',price=13)]))
+        batch=self.prices([('2020-01-02',0),('2020-01-03',12),('2020-01-06',-1)])
+        events=[];ledger={}
+        with patch.object(d,'request_json',return_value=batch) as get:
+            d.fill_series(None,'adjClose','prices',self.o,ledger,lambda **kw:events.append(kw),self.stop,symbol='A')
+            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+        self.assertEqual(get.call_count,1)
+        saved=d.read_json(self.raw/'px/A.json')
+        self.assertEqual(saved['div'],self.prices([('2020-01-03',12)]))
+        self.assertEqual(saved['light'],[dict(date='2020-01-03',price=13)])
+        self.assertTrue(any('2020-01-02' in event.get('warning','') for event in events))
+        report=d.inspect(self.o)
+        self.assertEqual(report['prices'][0]['skipped_dates'],['2020-01-02','2020-01-06'])
+        self.assertEqual(report['prices'][0]['windows'],0)
+        self.assertIn('A: skipped 2',report['warnings'][0])
+        # Later windows preserve exclusions and bind them to the updated asset.
+        asset=d.cache_assets.SeriesAsset(self.raw/'px/A.json','adjClose',stock=True)
+        asset.publish([], '2021-01-01','2021-12-31',ledger,d.COVERAGE)
+        self.assertEqual(d.inspect(self.o)['warnings'],report['warnings'])
+        # Replaced files cannot inherit a warning from another file generation.
+        self.put('px/A.json',dict(div=self.prices([('2020-01-03',99)])))
+        self.assertEqual(d.inspect(self.o)['warnings'],[])
+
+    def test_spy_report_exports_all_skipped_dates_with_concise_warning(self):
+        skipped=['2020-01-02','2020-01-03','2020-01-06','2020-01-07']
+        batch=self.prices([(day,0) for day in skipped]+[('2020-01-08',300)])
+        with patch.object(d,'request_json',return_value=batch):
+            d.fill_series('spy-div.json','adjClose','prices',self.o,{},self.emit,self.stop)
+        report=json.loads(json.dumps(d.inspect(self.o),allow_nan=False))
+        spy=next(asset for asset in report['assets'] if asset['name']=='SPY total-return prices')
+        self.assertEqual(spy['skipped_dates'],skipped)
+        self.assertEqual(spy['count'],1)
+        warning=report['warnings'][0]
+        self.assertIn('skipped 4',warning)
+        self.assertTrue(all(day in warning for day in skipped[:3]))
+        self.assertNotIn(skipped[3],warning)
+        self.assertIn('…',warning)
+
+    def test_download_and_check_jobs_show_skipped_price_warning(self):
+        jobs=d.Jobs();request=dict(scope='symbols',symbols='A',start='2020-01-01',end='2020-12-31',datasets=['prices'])
+        with patch.object(d,'request_json',return_value=self.prices([('2020-01-02',0),('2020-01-03',12)])):
+            jobs.start('download',request);jobs.thread.join(5)
+        self.assertFalse(jobs.snapshot()['job']['running'])
+        self.assertIsNone(jobs.snapshot()['job']['error'])
+        self.assertIn('A: skipped 1',jobs.snapshot()['job']['warning'])
+        jobs.start('check',request);jobs.thread.join(5)
+        self.assertIn('2020-01-02',jobs.snapshot()['job']['warning'])
+
+    def test_bad_price_row_does_not_stop_other_stock_histories(self):
+        self.o.update(symbols=['A','B'],datasets=['prices'])
+        def fetch(endpoint,params,*args):
+            return self.prices([('2020-01-02',0),('2020-01-03',12)]) if params['symbol']=='A' else self.prices([('2020-01-03',20)])
+        with patch.object(d,'request_json',side_effect=fetch):
+            report=d.download(self.o,self.emit,self.stop)
+        self.assertEqual(report['prices_available'],2)
+        self.assertTrue(all(row['windows']==0 for row in report['prices']))
+        self.assertEqual(d.read_json(self.raw/'px/B.json')['div'],self.prices([('2020-01-03',20)]))
+        self.assertIn('A: skipped 1',report['warnings'][0])
+
+    def test_malformed_or_unusable_windows_still_fail_without_publication(self):
+        payload=dict(div=self.prices([('2020-01-01',10)]))
+        batches=[{},[None],[dict(date='bad',adjClose=12)],
+                 [dict(date='2020-01-02')],self.prices([('2020-01-02',float('nan'))]),
+                 self.prices([('2020-01-02',12),('2020-01-02',13)]),
+                 self.prices([('2020-01-02',0)]),
+                 self.prices([('2020-01-02',12),('2021-01-01',0)])]
+        for batch in batches:
+            with self.subTest(batch=batch):
+                self.put('px/A.json',payload);original=(self.raw/'px/A.json').read_bytes()
+                asset=d.cache_assets.SeriesAsset(self.raw/'px/A.json','adjClose',stock=True);ledger={}
+                with self.assertRaisesRegex(ValueError,'px/A.json, 2020-01-01 to 2020-12-31'):
+                    asset.publish(batch,'2020-01-01','2020-12-31',ledger,d.COVERAGE)
+                self.assertEqual((self.raw/'px/A.json').read_bytes(),original)
+                self.assertEqual(ledger,{})
+                self.assertFalse(d.COVERAGE.exists())
+
+    def test_zero_and_negative_treasury_yields_are_valid(self):
+        asset=d.cache_assets.SeriesAsset(self.raw/'treasury.json','month3');ledger={}
+        batch=[dict(date='2020-01-02',month3=0),dict(date='2020-01-03',month3=-.1)]
+        self.assertEqual(asset.publish(batch,'2020-01-01','2020-12-31',ledger,d.COVERAGE),[])
+        self.assertEqual(len(asset.rows),2)
+        self.assertEqual(asset.skipped_dates(ledger),[])
+
     def test_partial_download_resumes_from_last_saved_window(self):
         self.o.update(start='2010-01-01',end='2020-12-31');ledger={}
         published=Event();publish=d.cache_assets.SeriesAsset.publish
@@ -171,7 +255,7 @@ class CacheTests(unittest.TestCase):
         self.o.update(start='2000-01-01',end='2020-12-31')
         writers=[];fetchers=[];lock=threading.Lock();gate=threading.Barrier(3)
         store=d.cache_assets.SeriesAsset._store
-        def record(asset,*args):writers.append(threading.get_ident());return store(asset,*args)
+        def record(asset,*args,**kwargs):writers.append(threading.get_ident());return store(asset,*args,**kwargs)
         def fetch(endpoint,params,stop,client):
             with lock:fetchers.append(threading.get_ident())
             gate.wait(3)

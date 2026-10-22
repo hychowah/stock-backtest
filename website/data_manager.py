@@ -125,8 +125,14 @@ def derived_status():
     return result
 
 
+def price_warning(name,days):
+    dates=', '.join(days[:3])+('…' if len(days)>3 else '')
+    noun='price' if len(days)==1 else 'prices'
+    return f'{name}: skipped {len(days)} zero or negative adjusted {noun} ({dates}). No usable price was saved for these dates.'
+
+
 def inspect(o,emit=lambda **kw:None,stop=lambda:None):
-    issues=[]
+    issues=[];warnings=[]
     try:universe=universe_rows()
     except (ValueError,TypeError):universe={};issues.append('US stock universe is invalid. Select universe for repair.')
     records,invalid=financial_records()
@@ -144,7 +150,9 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         rows=asset.rows
         if asset.path.exists() and not asset.valid:issues.append(file+' is invalid. Select this data type for repair.')
         gaps=asset.missing(start,end,ledger)
-        assets.append(dict(name=name,state='unrequested dates' if gaps else 'checked range',count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None))
+        skipped=asset.skipped_dates(ledger)
+        if skipped:warnings.append(price_warning(file,skipped))
+        assets.append(dict(name=name,state='unrequested dates' if gaps else 'checked range',count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,skipped_dates=skipped))
     prices=[];available=0
     for i,symbol in enumerate(targets,1):
         stop();path=run.cache_path_for(symbol)
@@ -152,9 +160,11 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         rows=asset.rows;bad=path.exists() and not asset.valid
         gaps=asset.missing(start,end,ledger)
         available+=bool(rows)
-        prices.append(dict(symbol=symbol,state='invalid' if bad else ('missing' if not path.exists() else 'empty' if not rows else 'unrequested dates' if gaps else 'checked range'),count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,windows=len(gaps)))
+        skipped=asset.skipped_dates(ledger)
+        if skipped:warnings.append(price_warning(symbol,skipped))
+        prices.append(dict(symbol=symbol,state='invalid' if bad else ('missing' if not path.exists() else 'empty' if not rows else 'unrequested dates' if gaps else 'checked range'),count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,windows=len(gaps),skipped_dates=skipped))
         if i%50==0 or i==len(targets):emit(message=f'Checked stock prices {i}/{len(targets)}',completed=i,total=len(targets))
-    return dict(issues=issues,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=run.KEY_PATH.is_file() and run.KEY_PATH.stat().st_size>0,
+    return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=run.KEY_PATH.is_file() and run.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
                 target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),
                 unavailable_metrics=['P/E: saved cache lacks earnings','P/B: saved cache lacks book values'])
@@ -201,7 +211,8 @@ def download_series(specs,o,ledger,emit,stop,client):
                 yield owner,a,b,endpoint,params
     for task,batch in client.map(tasks(),lambda task:request_json(task[3],task[4],stop,client)):
         stop();owner,a,b,_,_=task
-        owner['asset'].publish(batch,a,b,ledger,COVERAGE)
+        skipped=owner['asset'].publish(batch,a,b,ledger,COVERAGE)
+        if skipped:emit(warning=price_warning(owner['asset'].key,skipped))
         saved+=1;owner['left']-=1
         if not owner['left']:finished+=1
         progress()
@@ -287,7 +298,7 @@ class Jobs:
     def __init__(self):
         self.lock=Lock();self.cancel=Event()
         self.thread=None;self.report=None;self.rebuilt=False
-        self.state=dict(running=False,action=None,message='Check the saved data to see coverage.',completed=0,total=0,error=None)
+        self.state=dict(running=False,action=None,message='Check the saved data to see coverage.',completed=0,total=0,error=None,warning='')
 
     def snapshot(self):
         with self.lock:return dict(job=dict(self.state),report=self.report)
@@ -303,7 +314,7 @@ class Jobs:
         o=options(request)
         with self.lock:
             if self.state['running']:raise ValueError('A data job is already running. Wait for it or cancel it.')
-            self.cancel.clear();self.state=dict(running=True,action=action,message='Waiting for the current backtest to finish…',completed=0,total=0,error=None)
+            self.cancel.clear();self.state=dict(running=True,action=action,message='Waiting for the current backtest to finish…',completed=0,total=0,error=None,warning='')
             self.thread=Thread(target=self.work,args=(action,o),daemon=False)
             self.thread.start()
         return self.snapshot()
@@ -323,6 +334,7 @@ class Jobs:
                 elif action=='download':report=download(o,self.emit,self.stop)
                 else:report=inspect(o,self.emit,self.stop)
                 with self.lock:self.report=report
+                self.emit(warning=' '.join(report.get('warnings',[])))
                 self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
         except Cancelled:self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
         except (ValueError,FileNotFoundError) as error:

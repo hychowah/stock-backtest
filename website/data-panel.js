@@ -35,6 +35,7 @@ const DataPanel=(()=>{
     node('data-progress').hidden=!job.action;
     node('data-message').textContent=job.message;
     node('data-error').textContent=job.error??'';
+    node('data-warnings').textContent=job.warning??'';
     const progress=node('data-progress-bar');progress.hidden=!busy;
     if(job.total>0){progress.max=job.total;progress.value=job.completed;}else progress.removeAttribute('value');
     if(state.report && state.report.checked_at!==lastReport?.checked_at)renderReport(state.report);

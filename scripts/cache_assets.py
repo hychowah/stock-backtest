@@ -133,24 +133,44 @@ class SeriesAsset:
     def missing(self,start,end,ledger):
         return missing_spans([],self.field,start,end,self.base_span(ledger)+self.checked(ledger))
 
+    def skipped_dates(self,ledger):
+        """Return excluded price dates tied to this exact saved asset."""
+        values=self.evidence(ledger).get('skipped_dates',[])
+        if not isinstance(values,list):return []
+        return sorted({str(day) for value in values if (day:=run.parse_day(value))})
+
     def publish(self,batch,start,end,ledger,ledger_path):
-        valid=series(batch,self.field)
-        if not isinstance(batch,list) or (batch and len(valid)!=len(batch)):
-            raise ValueError('The provider returned invalid dated values. Saved files were kept.')
-        if any(not start<=row['date'][:10]<=end for row in valid):
-            raise ValueError('The provider returned values outside the requested dates. Saved files were kept.')
+        def fail(reason):
+            raise ValueError(f'{self.key}, {start} to {end}: {reason} Saved files were kept.')
+        if not isinstance(batch,list):fail('The provider returned invalid dated values.')
+        candidates=[];skipped=[]
+        for row in batch:
+            if not isinstance(row,dict) or not (day:=run.parse_day(row.get('date'))):
+                fail('The provider returned invalid dated values.')
+            if not start<=str(day)<=end:
+                fail('The provider returned values outside the requested dates.')
+            value=run.num(row.get(self.field))
+            if self.field=='adjClose' and value is not None and value<=0:
+                skipped.append(str(day))
+            else:candidates.append(row)
+        valid=series(candidates,self.field)
+        if len(valid)!=len(candidates):fail('The provider returned invalid or duplicate dated values.')
+        if batch and not valid:fail('The provider returned no usable dated values.')
         windows=self.checked(ledger)+[[start,end]]
         by_day={row['date'][:10]:row for row in self.rows}
         for row in valid:by_day.setdefault(row['date'][:10],row)
         merged=[by_day[day] for day in sorted(by_day,reverse=True)]
-        self._store(merged,windows,ledger,ledger_path)
+        skipped=sorted(set(skipped)-by_day.keys())
+        exclusions=sorted((set(self.skipped_dates(ledger))|set(skipped))-by_day.keys())
+        self._store(merged,windows,ledger,ledger_path,skipped_dates=exclusions)
+        return skipped
 
     def repair(self,ledger,ledger_path):
         """Normalize salvageable rows without claiming any new requested dates."""
         if self.path.exists() and not self.valid and self.rows:
             self._store(self.rows,[],ledger,ledger_path)
 
-    def _store(self,merged,windows,ledger,ledger_path):
+    def _store(self,merged,windows,ledger,ledger_path,*,skipped_dates=None):
         if self.stock:
             value=dict(self.payload) if isinstance(self.payload,dict) else {}
             value['div']=merged
@@ -162,6 +182,7 @@ class SeriesAsset:
         content=json.dumps(value,allow_nan=False).encode('utf-8')
         digest=hashlib.sha256(content).hexdigest()
         entry=dict(sha256=digest,windows=windows,base_span=base[0] if base else None)
+        if skipped_dates:entry['skipped_dates']=skipped_dates
         previous=self.evidence(ledger)
         if previous:entry['previous']={key:value for key,value in previous.items() if key!='previous'}
         # Evidence can only apply when the exact corresponding asset exists.
