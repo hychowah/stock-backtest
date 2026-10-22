@@ -1,5 +1,5 @@
 """One launcher resolves dependencies and opens the browser without manual steps."""
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -16,6 +16,11 @@ import research
 
 
 class StartupTests(unittest.TestCase):
+    def setUp(self):
+        self.context=ExitStack();self.addCleanup(self.context.close)
+        self.context.enter_context(patch.object(serve.cache_access,'access',side_effect=lambda:nullcontext()))
+        self.context.enter_context(patch.object(serve.data_manager,'source_problem',return_value=False))
+
     def test_prepare_then_build_when_stale(self):
         calls=[]
         with patch.object(serve.schedules,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve.subprocess,'run',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
@@ -36,6 +41,13 @@ class StartupTests(unittest.TestCase):
             serve.main()
         self.assertEqual(calls,['prepare','bind','browser','serve'])
         server.server_close.assert_called_once()
+
+    def test_missing_sources_open_recovery_panel_without_preparation(self):
+        server=Mock();server.server_address=('127.0.0.1',3000)
+        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve.data_manager,'source_problem',return_value=True),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'ThreadingHTTPServer',return_value=server):
+            serve.main()
+        prepare.assert_not_called();self.assertTrue(server.data_recovery)
+        server.serve_forever.assert_called_once()
 
     def test_ctrl_c_closes_terminal_owned_server(self):
         server=Mock();server.server_address=('0.0.0.0',3000)
@@ -76,7 +88,7 @@ class BuildStateTests(unittest.TestCase):
         self.website=root/'website';(self.website/'dist').mkdir(parents=True)
         (root/'data').mkdir();(root/'data'/'research.sqlite').write_bytes(b'database')
         self.source=self.website/'range.js';self.source.write_bytes(b'const n=1;\r\n')
-        for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv'):
+        for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html'):
             (self.website/'dist'/name).write_text('output')
         self.context.enter_context(patch.object(build_state,'ROOT',self.website))
         self.context.enter_context(patch.object(build_state,'STAMP',self.website/'dist'/'.build-state.json'))
@@ -102,7 +114,7 @@ class PortableFingerprintTests(unittest.TestCase):
             for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(raw/name).write_text('[]')
             (results/'summary-exits.txt').write_text('fixture')
             context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw));context.enter_context(patch.object(research,'RESULTS',results))
-            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.run,'run.py'),(research.revalue,'revalue.py')]:
+            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.cache_assets,'cache_assets.py'),(research.run,'run.py'),(research.revalue,'revalue.py')]:
                 file=root/name;file.write_text('source');context.enter_context(patch.object(module,'__file__',str(file)))
             expected=research.signature();original=Path.stat;directory=raw/'px'
             stamp=directory.stat().st_mtime_ns

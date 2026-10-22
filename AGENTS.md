@@ -125,7 +125,7 @@ Yearly attribution uses `website/contributions.js` for browser calculations and 
 
 Schema version 2 prepares `latest_snapshots` separately from historical snapshots. Latest date means the latest cached SPY session. Require an exact-session dividend-adjusted price and cached `listed=True`; never reuse old stopped prices in the latest screen. Use the same 90-day lag, strict availability-before-date rule and 800-day report-age limit. No future return or contribution is stored for latest picks. `research.latest_screen()` and `StockScreener.latestScreen()` must agree. The website opens in latest mode; historical mode retains year controls.
 
-Historical preparation is bounded by the canonical report's Through date and historical ASOF, while latest preparation can advance independently. The reference report participates in freshness checks. Refresh prepared data and rebuild the HTML after cache updates; the website does not fetch market data. Tests include exact-date exclusion, unavailable/stale reports, cached listing status, unchanged historical periods when latest prices advance, both SQL/browser screen modes and latest CSV output.
+Historical preparation is bounded by the canonical report's Through date and historical ASOF, while latest preparation can advance independently. The reference report participates in freshness checks. Refresh prepared data and rebuild the HTML after cache updates; strategy calculations do not fetch market data. The separate data panel downloads missing inputs only after an explicit button action. Tests include exact-date exclusion, unavailable/stale reports, cached listing status, unchanged historical periods when latest prices advance, both SQL/browser screen modes and latest CSV output.
 
 ## Ranking metric catalog
 
@@ -207,3 +207,44 @@ server-side and recorded for replay. An explicit seed remains deterministic,
 exposed through an advanced repeat option rather than the main strategy controls.
 If the default port is occupied, open a new loopback instance on an available
 port rather than reusing a possibly outdated API process.
+
+
+## Multiple threshold filters and data control panel
+
+Schema version 5 adds `filter_values` separately from ranking pairs. Conditions
+use `field`, strict `lt` or `gt`, and a finite `value`. All conditions must pass
+before ranking. Missing values fail only conditions that need them. Use display
+units: millions of USD, percent, or multiples. `metrics.filter_values()` owns
+threshold calculations for January, latest and dated books. Trailing returns
+use only adjusted prices on or before the screen date and its anniversary,
+within seven calendar days. Clamp leap-day anniversaries to 28 February. P/E and
+P/B remain unavailable; the current downloader does not add their input fields.
+
+Manage backtest data opens `/data.html`. Checks and rebuilds use saved files.
+Downloads require an explicit user action. Fill missing financial symbols and
+unrequested price ranges; preserve valid records. Keep the key and provider
+request URLs out of status responses. Serve the panel from source so startup can
+open it when required raw files are missing or invalid.
+
+`scripts/cache_assets.py` owns normalized annual records, series validation,
+atomic series publication and completion evidence. Preparation and data-group
+inspection share `books.statements()` for financial eligibility. Completion
+entries in `raw/download-coverage.json` use `sha256` and `windows`. Reuse windows
+only for the exact valid saved asset. Missing, corrupt, replaced or legacy
+unbound files must not inherit completion evidence. Preserve usable rows and
+back up invalid originals before repair. Empty provider responses can be reused
+only while their associated asset remains intact. Saved date spans do not prove
+that every session exists; internal gaps are not repaired automatically.
+
+`scripts/cache_access.py` owns shared resource coordination. Startup, standalone
+preparation, data jobs, fixed schedules and random batches must use it. Lock
+order is the process-local reentrant lock, project file lock, then database
+connections and worker pools. Hold ownership through worker completion and
+final database closure. Nested preparation reuses ownership. Build subprocesses
+read under the parent’s ownership; workers must not acquire the parent lock.
+Keep `data/website-data-0.lock` ignored. Do not replace this with a handler-only
+thread lock; multiple local server instances share the same cache.
+
+Focused checks: `python3 tests/test_data_manager.py`,
+`python3 tests/test_cache_access.py`, and `node tests/check-data-panel.cjs`.
+Run the cache-access and data-manager checks on native Windows too.

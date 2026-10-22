@@ -138,4 +138,9 @@ print('Verified every annual holding count and return against summary-exits.txt.
 print(f'Built {len(data)} years with static chart and table, plus optional interactions.')
 
 from build_state import record_build
+
+# The management page also works as a source-served recovery page before a build.
+data_page=(ROOT/'data.html').read_text().replace('__DATA_STYLE__',(ROOT/'data-panel.css').read_text()).replace('__DATA_SCRIPT__',(ROOT/'data-panel.js').read_text())
+(ROOT/'dist'/'data.html').write_text(data_page,encoding='utf-8')
+
 record_build()

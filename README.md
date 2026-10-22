@@ -15,6 +15,13 @@ January books or custom trade dates with monthly, quarterly, half-yearly or
 yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)
 directly for the saved latest/January views; custom schedules use the local service.
 
+Choose **Manage backtest data** to inspect saved files and date coverage.
+Choose a stock group or enter symbols. **Download missing data** fills missing
+financial symbols and price ranges with your local FMP key. **Rebuild prepared
+data + website** applies saved changes offline. Existing records are kept.
+No download starts when the panel opens. If essential source files are missing,
+startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
+
 Random-date batches plan missing books once, calculate ahead with separate Python
 processes, and save complete trials through one SQLite writer. Replays reuse
 saved books. Filters, metrics and stock counts share the ordinary screening rules.

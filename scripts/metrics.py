@@ -81,3 +81,56 @@ def prepare_metrics(db):
             for metric,pair in evaluate(observation,histories.get(row['symbol'],[])).items():
                 values.append((mode,row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
         db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',values)
+
+
+# Threshold values use display units: millions of dollars, percent, or multiples.
+FILTERS = {
+    'pb': dict(label='P/B', available=False),
+    'pe': dict(label='P/E', available=False),
+    'return_1y': dict(label='1-year trailing return (%)', available=True),
+    'return_3y': dict(label='3-year trailing return (%)', available=True),
+    'market_cap': dict(label='Market cap ($ million)', available=True),
+    'enterprise_value': dict(label='Enterprise value ($ million)', available=True),
+    'ev_ebitda': dict(label='EV / EBITDA (×)', available=True),
+    'ev_ebitda_3y': dict(label='EV / 3-year average EBITDA (×)', available=True),
+    'ebitda_yield': dict(label='EBITDA / EV (%)', available=True),
+}
+
+
+def validate_filters(filters):
+    import math
+    if filters is None:
+        return []
+    if not isinstance(filters, list) or len(filters)>50:
+        raise ValueError('Use a list of at most 50 filter conditions.')
+    for condition in filters:
+        if not isinstance(condition, dict) or set(condition)!={'field','op','value'}:
+            raise ValueError('Each filter needs a field, comparison and value.')
+        field,op,value=(condition[k] for k in ('field','op','value'))
+        if not isinstance(field,str) or not FILTERS.get(field,{}).get('available'):
+            raise ValueError('Choose an available filter metric.')
+        if op not in ('lt','gt'):
+            raise ValueError('Choose less than or more than.')
+        if type(value) not in (int,float) or not math.isfinite(value):
+            raise ValueError('Filter values must be finite numbers.')
+    return filters
+
+
+def filter_values(observation, pairs, day, lookup):
+    """Prepare threshold inputs at the screen date, never the future exit.
+
+    Annual lookbacks use the same calendar day (Feb 29 clamps to Feb 28).
+    Each endpoint uses an adjusted close on or before that day, within 7 days.
+    Missing endpoints omit the value and exclude a stock only if filtered on it.
+    """
+    from calendar import monthrange
+    values={k:observation[k]/1e6 for k in ('market_cap','enterprise_value')}
+    values['ebitda_yield']=observation['ebitda_yield']*100
+    values.update({k:pair[0] for k,pair in pairs.items() if k in FILTERS})
+    end=lookup(day,'adjusted',False,7)
+    for years in (1,3):
+        target=day.replace(year=day.year-years,day=min(day.day,monthrange(day.year-years,day.month)[1]))
+        start=lookup(target,'adjusted',False,7)
+        if end and start and start[1]>0:
+            values[f'return_{years}y']=(end[1]/start[1]-1)*100
+    return values

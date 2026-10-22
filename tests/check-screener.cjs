@@ -13,6 +13,8 @@ const cases=[
  {first:1996,last:1996,rank_to:100},
  {first:2026,last:2026,rank_from:10,rank_to:10},
  {first:2015,last:2020,pool:'cached',metric:'ev_ebitda_3y',max_multiple:8},
+ {first:2015,last:2020,pool:'cached',filters:[{field:'return_1y',op:'gt',value:-10},{field:'return_3y',op:'lt',value:100},{field:'ev_ebitda',op:'lt',value:10}]},
+ {first:2015,last:2020,filters:[{field:'market_cap',op:'gt',value:500},{field:'market_cap',op:'lt',value:500}]},
 ];
 if(!process.argv[2])throw Error('Run python3 tests/check_screener.py to generate independent SQLite expectations.');
 const references=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
@@ -29,23 +31,24 @@ for(let i=0;i<cases.length;i++){
   else assert.equal(y.portfolio,null);
  }
  assert.equal(result.spy_growth,result.years.reduce((w,y)=>w*(1+dataset.periods[y.year].spy),1));
- if(!actual.length){assert.equal(result.cagr,null);assert.equal(result.growth,null);assert.equal(result.empty_years.length,6);}
+ if(!actual.length){assert.equal(result.cagr,null);assert.equal(result.growth,null);assert.equal(result.empty_years.length,cases[i].last-cases[i].first+1);}
 }
 assert.equal(engine.screen(dataset,{first:1996,last:1996,rank_to:100}).years[0].names,61);
 assert.deepStrictEqual(engine.screen(dataset,{first:1996,last:1996,rank_to:100}).short_years,[1996]);
 assert.throws(()=>engine.screen(dataset,{min_cap:1e9,max_cap:100}),/Maximum market cap/);
 assert.throws(()=>engine.screen(dataset,{rank_from:20,rank_to:10}),/increasing ranks/);
 assert.throws(()=>engine.screen(dataset,{min_yield:NaN}),/non-negative/);
-console.log('Passed: browser/SQLite parity across 9 screens, exact holdings and valuations, empty and short years, SPY periods, and invalid inputs.');
+console.log(`Passed: browser/SQLite parity across ${cases.length} screens, including combined filters, exact holdings, empty and short years, SPY periods, and invalid inputs.`);
 
 const latestCases=[{}, {pool:'cached',rank_to:100},{pool:'cached',min_cap:500e6,max_cap:5e9,min_yield:.15},{pool:'cached',sector:'Technology',exchange:'NASDAQ',max_multiple:8},{rank_from:10,rank_to:20},{sector:'No matching sector'},{pool:'cached',metric:'ev_ebitda_3y',rank_to:100,max_multiple:8}];
+latestCases.push({pool:'cached',filters:[{field:'return_1y',op:'gt',value:-10},{field:'return_3y',op:'lt',value:100}]});
 for(let i=0;i<latestCases.length;i++){
  const result=engine.latestScreen(dataset,latestCases[i]),expected=references.latest[i];
  assert.deepStrictEqual(result.stocks.map(h=>[h.symbol,h.rank]),expected.map(h=>[h.symbol,h.rank]));
  for(let j=0;j<expected.length;j++)for(const k of ['price_date','price','fiscal','known','market_cap','enterprise_value','ebitda_yield','ev_ebitda','metric_multiple','metric_yield'])assert.equal(result.stocks[j][k],expected[j][k]);
  assert(result.stocks.every(h=>h.price_date===result.asof && h.known<result.asof && !('return_value' in h)));
 }
-console.log('Passed: browser/SQLite latest-date parity across 7 screens, prices, valuations, report availability and no future returns.');
+console.log(`Passed: browser/SQLite latest-date parity across ${latestCases.length} screens, prices, valuations, combined filters and no future returns.`);
 // Latest selection is independent of historical year controls.
 assert.deepStrictEqual(engine.latestScreen(dataset,{first:2030,last:1900}).stocks,engine.latestScreen(dataset,{}).stocks);
 assert.throws(()=>engine.screen(dataset,{first:2030,last:1900}),/year range/);

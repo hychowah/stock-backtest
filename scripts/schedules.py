@@ -10,6 +10,7 @@ import time
 
 import research as r
 import metrics
+import cache_access
 import books as financial_books
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
@@ -76,6 +77,7 @@ def upgrade_daily_cache(path, inputs):
         db.close()
 
 
+@cache_access.exclusive
 def prepare(path=DATABASE, source=r.DATABASE):
     """Parse raw prices once; keep the previous cache if publication fails."""
     started=time.perf_counter()
@@ -206,7 +208,7 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         treasury=db.execute('SELECT yield_value FROM treasuries WHERE day<=? ORDER BY day DESC LIMIT 1',(str(entry),)).fetchone()
         treasury=treasury[0] if treasury else 0.
         spy_return=spy[str(exit_day)]/spy[str(entry)]-1
-    snapshots=[];pairs=[]
+    snapshots=[];pairs=[];filter_rows=[]
     for symbol,s in statements[pool].items():
         if symbol not in cached or (pool=='legacy' and symbol not in ranks):continue
         lookup=lambda day,column,forward,slack:price(db,symbol,day,column,forward=forward,slack=slack)
@@ -214,14 +216,16 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         if row is None:continue
         fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,ret,status=row
         if not financial_books.eligible(pool,cap,ev):continue
-        observation=dict(symbol=symbol,fiscal=fiscal,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
+        observation=dict(symbol=symbol,fiscal=fiscal,market_cap=cap,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
         snapshots.append((symbol,ranks.get(symbol),fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,yield_value-treasury,ret,status))
         history=[dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in broad[symbol]]
-        for metric,(multiple,yield_value) in metrics.evaluate(observation,history).items():
+        evaluated=metrics.evaluate(observation,history)
+        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup).items())
+        for metric,(multiple,yield_value) in evaluated.items():
             pairs.append((symbol,metric,multiple,yield_value))
     return dict(entry=str(entry),exit=str(exit_day),pool=pool,
                 period=(str(entry),str(exit_day),spy_return,treasury,len(ranks),len(statements['cached'])),
-                snapshots=snapshots,metrics=pairs)
+                snapshots=snapshots,metrics=pairs,filters=filter_rows)
 
 
 def store_period(db,book):
@@ -236,6 +240,8 @@ def store_period(db,book):
     else:period_id=row[0]
     db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',
                    ((pool,period_id,*row) for row in book['snapshots']))
+    db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
+                   (('historical',pool,period_id,*row) for row in book.get('filters',[])))
     db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
                    (('historical',pool,period_id,*row) for row in book['metrics']))
     # Empty pools are completed too. The caller commits this marker with all
@@ -286,7 +292,7 @@ def backtest_dates(db, *, dates, start, end, months=12, **options):
 def backtest_periods(db, periods, *, months, **options):
     """Prepare missing books atomically and apply the shared SQL screener."""
     started=time.perf_counter()
-    allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange'}
+    allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters'}
     if set(options)-allowed:raise ValueError('Unknown screening option.')
     r._select(db,period=(-1,-1),**options)
     pool=options.get('pool','legacy')

@@ -19,7 +19,7 @@ def inputs():
 
 
 def current_build():
-    if not all((ROOT/'dist'/name).exists() for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv')):
+    if not all((ROOT/'dist'/name).exists() for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html')):
         return False
     try:return json.loads(STAMP.read_text())==inputs()
     except (OSError,ValueError):return False

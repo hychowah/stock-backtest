@@ -57,6 +57,16 @@ class BacktestTests(unittest.TestCase):
                 self.db.execute('INSERT INTO prices VALUES(?,?,?,?)',(symbol,day,price,price))
         self.db.commit()
 
+    def test_conditions_reuse_dated_books_and_exclude_missing_returns(self):
+        options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
+        initial=s.backtest(self.db,**options)
+        count=self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0]
+        filtered=s.backtest(self.db,**options,filters=[dict(field='market_cap',op='gt',value=150)])
+        self.assertEqual([h['symbol'] for h in filtered['periods'][0]['holdings']],['A'])
+        empty=s.backtest(self.db,**options,filters=[dict(field='return_1y',op='gt',value=-100)])
+        self.assertEqual(empty['periods'][0]['names'],0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0],count)
+
     def test_array_and_sql_price_adapters_share_financial_policy(self):
         statement=s.histories(self.db)[0]['A'][0]
         entry,exit_day=date(2015,1,2),date(2015,7,1)

@@ -6,6 +6,25 @@ Storage, calendar planning and SQL insertion stay outside this module.
 import run
 
 
+def statements(records, universe):
+    """Apply annual eligibility once for preparation and cache coverage groups.
+
+    Records must come from cache_assets.financial_records. Missing financial
+    fields exclude a report; malformed JSON records are handled at that boundary.
+    """
+    broad={}
+    for symbol,record in records.items():
+        if symbol not in universe:continue
+        rows=[]
+        for report in record['rows']:
+            fiscal=run.parse_day(report.get('date'))
+            cap,ev,multiple=map(run.num,[report.get('marketCap'),report.get('enterpriseValue'),report.get('evToEBITDA')])
+            if fiscal is None or any(v is None or v<=0 for v in (cap,ev,multiple)) or str(report.get('reportedCurrency') or 'USD').upper()!='USD':continue
+            rows.append(dict(fiscal=fiscal,known=fiscal+run.LAG,market_cap=cap,enterprise=ev,ebitda=ev/multiple,**{'yield':1/multiple}))
+        if rows:broad[symbol]=sorted(rows,key=lambda row:row['fiscal'])
+    return broad
+
+
 def pools(broad):
     """Original eligibility is report-size filtered before choosing a report."""
     legacy={symbol:[s for s in rows if s['market_cap']>=run.MIN_MARKET_CAP and s['enterprise']>=run.MIN_EV] for symbol,rows in broad.items()}

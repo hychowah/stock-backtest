@@ -70,6 +70,30 @@ class ResearchTests(unittest.TestCase):
             r.metrics.prepare_metrics(self.db)
             self.assertEqual(len(r.screen(self.db,first=2015,last=2015,metric='test_signal')),3)
 
+    def test_combined_thresholds_before_ranking_and_missing_values(self):
+        self.db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',[
+            ('historical','legacy',2015,'S1','return_1y',-10),
+            ('historical','legacy',2015,'S2','return_1y',20),
+            ('historical','legacy',2015,'S2','ev_ebitda',4),
+            ('historical','legacy',2015,'S3','return_1y',30)])
+        conditions=[dict(field='return_1y',op='gt',value=0),dict(field='return_1y',op='lt',value=30),dict(field='ev_ebitda',op='lt',value=5)]
+        rows=r.screen(self.db,first=2015,last=2015,rank_to=1,filters=conditions)
+        self.assertEqual([(row['symbol'],row['rank']) for row in rows],[('S2',1)])
+        for conditions in ([dict(field='pe',op='lt',value=15)],[dict(field='return_1y',op='gt',value=float('nan'))],[dict(field='return_1y',op='gte',value=0)],{}):
+            with self.assertRaises(ValueError):r.latest_screen(self.db,filters=conditions)
+
+    def test_trailing_returns_use_only_past_prices_and_require_history(self):
+        prices=[(date(2017,2,28),50),(date(2019,2,28),80),(date(2020,2,28),100),(date(2020,3,2),1000)]
+        lookup=lambda day,column,forward,slack:r.before(prices,day,slack)
+        observation=dict(market_cap=100e6,enterprise_value=200e6,ebitda_yield=.1)
+        values=r.metrics.filter_values(observation,{},date(2020,2,29),lookup)
+        self.assertEqual(values['return_1y'],25)
+        self.assertEqual(values['return_3y'],100)
+        self.assertEqual(values['market_cap'],100)
+        values=r.metrics.filter_values(observation,{},date(2019,2,28),lookup)
+        self.assertNotIn('return_1y',values)
+        self.assertNotIn('return_3y',values)
+
     def tearDown(self):
         self.db.close()
 

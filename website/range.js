@@ -5,6 +5,7 @@ const fromYear=document.getElementById('from-year'),toYear=document.getElementBy
 const fields={metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
 let currentScreen=null,currentLatest=null;
 let screeningMode='latest';
+let filterConditions=[];
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function selectedHoldings(year){return currentScreen?.years.find(y=>y.year===+year)?.holdings??[];}
@@ -28,7 +29,17 @@ function initializeFilters(){
   document.getElementById('random-seed').value='42';
   resetFilters();
 }
+function renderConditions(){
+  const container=document.getElementById('filter-conditions');
+  container.innerHTML=filterConditions.map((c,i)=>`<div class="condition-row">
+    <label>Metric<select data-index="${i}" data-key="field" aria-label="Filter ${i+1} metric">${Object.entries(screeningData.filter_catalog).map(([key,m])=>`<option value="${safe(key)}" ${key===c.field?'selected':''} ${m.available?'':'disabled'}>${safe(m.label)}${m.available?'':' — needs financial data'}</option>`).join('')}</select></label>
+    <label>Comparison<select data-index="${i}" data-key="op" aria-label="Filter ${i+1} comparison"><option value="lt" ${c.op==='lt'?'selected':''}>Less than (&lt;)</option><option value="gt" ${c.op==='gt'?'selected':''}>More than (&gt;)</option></select></label>
+    <label>Value<input data-index="${i}" data-key="value" aria-label="Filter ${i+1} value" type="number" step="any" required value="${safe(c.value)}" placeholder="Enter value"></label>
+    <button type="button" data-remove="${i}" aria-label="Remove filter ${i+1}">Remove</button></div>`).join('');
+  document.getElementById('add-filter').disabled=filterConditions.length>=50;
+}
 function resetFilters(){
+  filterConditions=[];renderConditions();
   for(const [key,id] of Object.entries(fields)){
     const v=StockScreener.defaults[key];
     document.getElementById(id).value=v===null?'':String(key==='min_cap'||key==='min_ev'?v/1e6:key==='min_yield'?v*100:v);
@@ -44,6 +55,10 @@ function readOptions(){
       o[key]=text===''?null:Number(text)*(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1);
     }
   }
+  o.filters=filterConditions.map(c=>{
+    if(String(c.value).trim()==='')throw Error('Enter a value for each added filter.');
+    return {...c,value:Number(c.value)};
+  });
   return o;
 }
 function updateMetricLabels(o){
@@ -248,3 +263,20 @@ document.querySelectorAll('.holding-years details').forEach(el=>el.addEventListe
 document.getElementById('download-returns').addEventListener('click',e=>{e.preventDefault();downloadSelection('returns');});
 document.getElementById('download-holdings').addEventListener('click',e=>{e.preventDefault();downloadSelection('holdings');});
 applyRange();
+
+document.getElementById('add-filter').addEventListener('click',()=>{
+  if(filterConditions.length<50)filterConditions.push({field:'return_1y',op:'gt',value:''});
+  renderConditions();
+});
+document.getElementById('filter-conditions').addEventListener('input',event=>{
+  const target=event.target;
+  if(target.dataset.key)filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;
+});
+document.getElementById('filter-conditions').addEventListener('change',event=>{
+  const target=event.target;
+  if(target.dataset.key)filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;
+});
+document.getElementById('filter-conditions').addEventListener('click',event=>{
+  const index=event.target.dataset.remove;
+  if(index!==undefined){filterConditions.splice(Number(index),1);renderConditions();}
+});

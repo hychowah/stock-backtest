@@ -10,7 +10,11 @@ for (const match of html.matchAll(/\bhref="#([^"]+)"/g)) assert(ids.includes(mat
 for (const match of html.matchAll(/\baria-controls="([^"]+)"/g)) assert(ids.includes(match[1]), `Missing controlled panel ${match[1]}`);
 assert(!/<(?:link|img|script)\b[^>]*(?:src|href)=["']https?:/i.test(html), 'Guide must work without remote assets');
 assert(html.includes('Shared in-memory data remains a prototype.') && html.includes('The requested-pool change is now in the source.'), 'Source and prototype status must be clear');
-assert(html.includes('P/B below 1 is not a current filter.'), 'Do not imply P/B is implemented');
+assert(html.includes('P/B and P/E need more saved financial data.') && html.includes('All conditions must pass before ranking.'), 'Do not imply P/B is implemented');
+
+assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
+
+assert(html.includes('content hash') && html.includes('worker completion and database closure') && html.includes('scripts/cache_assets.py'), 'Cache repair evidence and shared ownership must be explained');
 
 class Element {
   constructor(dataset = {}) { this.dataset = dataset; this.attributes = {}; this.events = {}; this.textContent = ''; this.children = []; this.hidden = false; this.open = false; }

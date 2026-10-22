@@ -6,12 +6,34 @@ Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from t
 
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
 2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
-3. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the lowest selected valuation multiple after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
-4. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
+3. Use **Additional filters → + Add filter** to combine metric, **Less than** or **More than**, and value conditions. All conditions must pass before ranking. Two conditions on one metric create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. P/E and P/B are listed but unavailable because their inputs are absent.
+4. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the lowest selected valuation multiple after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
+5. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
 
 The saved January view reselects and equally weights stocks every January. Custom calendars rebalance on the selected fixed or random schedule. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
 
 If fewer stocks match than requested, the available picks receive equal weights and short years are listed. A year with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a period containing an empty book. SPY continues to show the full selected period. This is distinct from the CLI's explicitly labelled populated-book compounding. Early stops outside the original top-50 review are flagged when selected.
+
+## Manage backtest data
+
+Choose **Manage backtest data** from the strategy builder. Select a stock group,
+optional symbols, price-history dates and data types. **Check data** reports
+actual date spans, missing financial symbols, empty histories and prepared-data
+freshness. Export the full check as JSON when needed.
+
+Use **Download missing data**, then **Rebuild prepared data + website**, then
+open the strategy builder. Downloads use the local FMP key file and preserve
+valid cached records. Checks and rebuilds are offline. No download starts when
+the panel opens. Cancel keeps completed windows so a retry can continue.
+Completion evidence belongs to the exact saved file; loss or corruption cannot
+leave missing data falsely complete. Short histories may reflect IPOs or stops.
+The downloader does not refresh existing reports/profiles or repair internal
+price gaps. P/E and P/B still need additional financial fields.
+
+If essential source files are missing or invalid, startup opens this panel for
+recovery. The page is served from current source at `/data.html`; opening the
+built HTML directly provides local-service instructions. See the detailed
+[data workflow](../docs/research-workflow.md#data-control-panel).
 
 ## Rebuild from saved data
 
@@ -31,9 +53,12 @@ The 2026 book is partial through 20 October 2026. Other book years are January-t
 ```bash
 node tests/check-range.cjs
 python3 tests/check_screener.py
+python3 tests/test_data_manager.py
+python3 tests/test_cache_access.py
+node tests/check-data-panel.cjs
 ```
 
-The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across nine historical and seven latest configurations, including short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
+The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across historical and latest configurations, including combined conditions, short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
 
 A private Sites project is registered in `.openai/hosting.json`. Hosted publication remains blocked by source-host access from this environment. Preserve the project ID when retrying.
 

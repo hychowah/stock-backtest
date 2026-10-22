@@ -15,16 +15,19 @@ import time
 import run
 import metrics
 import books
+import cache_assets
+import cache_access
 import revalue
 from paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
 CREATE TABLE screening_metrics (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, metric TEXT, multiple REAL NOT NULL, yield_value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,metric));
+CREATE TABLE filter_values (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, field TEXT, value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,field));
 CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
 CREATE TABLE snapshots (
  pool TEXT, year INTEGER, symbol TEXT, candidate_rank INTEGER,
@@ -42,7 +45,7 @@ CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
 
 def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px', RESULTS/'summary-exits.txt', Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(run.__file__), Path(revalue.__file__)]
+    paths += [RAW/'px', RESULTS/'summary-exits.txt', Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(cache_assets.__file__), Path(run.__file__), Path(revalue.__file__)]
     return {p.relative_to(ROOT).as_posix(): ['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths}
 
 
@@ -115,6 +118,7 @@ def latest_snapshot(statement, day, light, div):
     return [str(statement['fiscal']),str(statement['known']),str(adjusted[0]),adjusted[1],cap,ev,ebitda/ev,ev/ebitda]
 
 
+@cache_access.exclusive
 def prepare(path=DATABASE, force=False):
     started=time.perf_counter()
     path=Path(path)
@@ -147,25 +151,11 @@ def prepare(path=DATABASE, force=False):
     yields.sort()
     legacy={}
     ranks={}
-    broad={}
-    financials=[]
-    with (RAW/'metrics.jsonl').open() as handle:
-        for line in handle:
-            record=json.loads(line); symbol=record['symbol']
-            if symbol not in universe:
-                continue
-            rows=[]
-            for r in record['rows']:
-                fiscal=run.parse_day(r.get('date'))
-                cap,ev,multiple=map(run.num,[r.get('marketCap'),r.get('enterpriseValue'),r.get('evToEBITDA')])
-                if fiscal is None or any(v is None or v<=0 for v in [cap,ev,multiple]) or str(r.get('reportedCurrency') or 'USD').upper()!='USD':
-                    continue
-                row=dict(fiscal=fiscal,known=fiscal+run.LAG,market_cap=cap,enterprise=ev,yield_=1/multiple)
-                row['yield']=row.pop('yield_')
-                rows.append(row)
-                financials.append((symbol,str(fiscal),str(row['known']),cap,ev,ev/multiple,1/multiple))
-            if rows:
-                broad[symbol]=sorted(rows,key=lambda r:r['fiscal'])
+    records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
+    if invalid:raise ValueError('Annual financial cache contains invalid records. Use the data panel to repair annual financials.')
+    broad=books.statements(records,universe)
+    financials=[(symbol,str(row['fiscal']),str(row['known']),row['market_cap'],row['enterprise'],row['ebitda'],row['yield'])
+                for symbol,rows in broad.items() for row in rows]
     broad,book=books.pools(broad)
     for year in range(run.FIRST_YEAR,run.LAST_YEAR+1):
         entry=run.session_on_or_after(sessions,date(year,1,1))
@@ -235,6 +225,16 @@ def prepare(path=DATABASE, force=False):
                     if row is None or (pool=='legacy' and (row[4]<run.MIN_MARKET_CAP or row[5]<run.MIN_EV)):
                         continue
                     db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
+            history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
+            def lookup(day,column,forward,slack):
+                return (after if forward else before)(div,day,slack)
+            for mode,table,day_key in [('historical','snapshots','entry'),('latest','latest_snapshots','price_date')]:
+                for saved in db.execute('SELECT * FROM '+table+' WHERE symbol=?',(symbol,)).fetchall():
+                    observation=dict(saved)
+                    pairs=metrics.evaluate(observation,history)
+                    values=metrics.filter_values(observation,pairs,date.fromisoformat(saved[day_key]),lookup)
+                    db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
+                        [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
                 print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} January snapshots',flush=True)
         metrics.prepare_metrics(db)
@@ -254,7 +254,7 @@ def prepare(path=DATABASE, force=False):
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
 
 
-def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
+def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None):
     """Filter and rank either snapshot type using one selection policy."""
     import math
     if any(type(v) is not int for v in (rank_from,rank_to)) or not 1 <= rank_from <= rank_to <= 5000:
@@ -268,6 +268,7 @@ def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metr
         raise ValueError('Maximum market cap must be at least the minimum.')
     if metric not in metrics.METRICS:
         raise ValueError('Choose a valid ranking metric.')
+    filters=metrics.validate_filters(filters)
     multiple,score='m.multiple','m.yield_value'
     clauses=['s.pool=?','s.market_cap>=?','s.enterprise_value>=?',score+'>=?']
     values=[('historical' if period is not None else 'latest'),metric,pool,min_cap,min_ev,min_yield]
@@ -278,6 +279,10 @@ def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metr
     if period is not None:
         table,partition,ordering='snapshots','PARTITION BY s.year ','year,rank'
         clauses.append('s.year BETWEEN ? AND ?');values.extend(period)
+    for condition in filters:
+        comparator='<' if condition['op']=='lt' else '>'
+        clauses.append('EXISTS (SELECT 1 FROM filter_values f WHERE f.symbol=s.symbol AND f.pool=s.pool AND f.year='+('s.year' if period is not None else '0')+' AND f.mode=? AND f.field=? AND f.value'+comparator+'?)')
+        values.extend(['historical' if period is not None else 'latest',condition['field'],condition['value']])
     join=' JOIN screening_metrics m ON m.symbol=s.symbol AND m.pool=s.pool AND '+('m.year=s.year' if period is not None else 'm.year=0')+' AND m.mode=? AND m.metric=?'
     sql=f"""WITH ranked AS (
       SELECT s.*,c.name,c.sector,c.exchange,{score} AS metric_yield,{multiple} AS metric_multiple,
@@ -288,14 +293,14 @@ def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metr
     return [dict(zip(fields,row)) for row in cursor]
 
 
-def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
+def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None):
     if any(type(v) is not int for v in (first,last)) or not 1996 <= first <= last <= 2026:
         raise ValueError('Choose increasing integer years within 1996–2026.')
-    return _select(db,period=(first,last),rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange)
+    return _select(db,period=(first,last),rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters)
 
 
-def latest_screen(db, *, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None):
-    return _select(db,rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange)
+def latest_screen(db, *, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None):
+    return _select(db,rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters)
 
 
 def aggregate(rows):

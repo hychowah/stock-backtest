@@ -1,7 +1,7 @@
 /* Pure selection engine shared by the browser and SQL parity tests. */
 (function(root) {
   'use strict';
-  const defaults = Object.freeze({first:1996,last:2025,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null});
+  const defaults = Object.freeze({first:1996,last:2025,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:null});
   function validate(options) {
     const o={...defaults,...options};
     for(const key of ['rank_from','rank_to']) if(!Number.isInteger(o[key])) throw Error('Years and ranks must be whole numbers.');
@@ -11,6 +11,10 @@
       if(o[key]!==null && (!Number.isFinite(o[key]) || o[key]<0)) throw Error('Financial filters must be non-negative numbers.');
     }
     if(o.max_cap!==null && o.max_cap<o.min_cap) throw Error('Maximum market cap must be at least the minimum.');
+    if(o.filters!==null && (!Array.isArray(o.filters) || o.filters.length>50))throw Error('Use a list of at most 50 filter conditions.');
+    for(const c of o.filters??[]){
+      if(!c || Object.keys(c).sort().join(',')!=='field,op,value' || typeof c.field!=='string' || !['lt','gt'].includes(c.op) || !Number.isFinite(c.value))throw Error('Each filter needs a metric, less than or more than, and a finite value.');
+    }
     return o;
   }
   function median(values) {
@@ -20,6 +24,11 @@
   }
   function select(observations,o,dataset,mode) {
     if(!Object.hasOwn(dataset.metrics,o.metric))throw Error('Choose a valid ranking metric.');
+    for(const c of o.filters??[])if(!dataset.filter_catalog?.[c.field]?.available)throw Error('Choose an available filter metric.');
+    observations=observations.filter(h=>{
+      const values=dataset.filter_values?.[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]??{};
+      return (o.filters??[]).every(c=>Number.isFinite(values[c.field]) && (c.op==='lt'?values[c.field]<c.value:values[c.field]>c.value));
+    });
     observations=observations.map(h=>{
       const value=dataset.metric_values[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]?.[o.metric];
       return value?{...h,metric_multiple:value[0],metric_yield:value[1]}:null;

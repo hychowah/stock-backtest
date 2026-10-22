@@ -38,3 +38,6 @@ data/website-owner-*.lock
 
 # Browser verification snapshots and screenshots.
 .playwright-mcp/
+
+# Serialize data management and startup across local servers.
+data/website-data-*.lock

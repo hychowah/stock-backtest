@@ -74,7 +74,7 @@ python3 tests/test_attribution.py
 python3 tests/check_screener.py
 ```
 
-The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across nine historical and seven latest configurations; real browser visual QA remains unavailable in the current environment.
+The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across historical and latest configurations, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
 
 ## Measured performance
 
@@ -169,7 +169,7 @@ upgrade automatically at startup without reparsing prices or discarding books.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
 The default listener is `0.0.0.0:3000`; the browser opens
 `http://127.0.0.1:3000` on this computer. Use `--host` and `--port` to change the
-listener. No keys, remote services or market-data downloads are involved.
+listener. Backtest calculations use saved data only. The separate data panel can download missing data when requested.
 `website/schedule.js` renders dated periods without assuming one book per year.
 Run `python3 tests/test_schedules.py` in addition to the existing checks.
 
@@ -297,3 +297,106 @@ It took 261.4/178.6/163.3/155.0 seconds with 1/2/4/8 workers. One short read
 transaction per book removed that overhead. The failed variant is retained in
 `results/experiments/backtest-benchmark-parallel-locking.json`; its timings are
 not the applied implementation. The production cache was unchanged by all runs.
+
+
+### Multiple threshold conditions
+
+The website has an **Additional filters** list. Add one condition per metric,
+comparison and value. All conditions must pass before ranking. Comparisons are
+strict: `lt` means less than; `gt` means more than. Two conditions can bound the
+same metric. Missing values fail only conditions that require those values.
+
+The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
+market cap, enterprise value, and trailing 1-year and 3-year returns. P/B and
+P/E are shown as unavailable. The saved annual cache lacks book values and
+earnings. No additional data is downloaded for these controls.
+
+`scripts/metrics.py` defines the catalog and prepares threshold values.
+Schema version 5 stores them in `filter_values`, separately from ranking pairs.
+Returns use dividend-adjusted closes on or before the screening date and its
+calendar anniversary, with a seven-calendar-day tolerance at each endpoint.
+A leap-day anniversary clamps to 28 February. Return values use percent units;
+market cap and EV use millions of dollars. Return filters never use the later
+holding-period return. The same calculations serve dated books.
+
+Python screens and schedule APIs accept `filters`, for example:
+
+```python
+filters = [
+    {"field": "return_1y", "op": "gt", "value": 10},
+    {"field": "ev_ebitda", "op": "lt", "value": 8},
+]
+```
+
+After changing the catalog or calculations, prepare research and daily caches
+and rebuild the website. Changing condition values reuses prepared books.
+
+
+### Data control panel
+
+Open **Manage backtest data** from the strategy builder, or open `/data.html`
+on the local service. The panel checks the universe, annual financials, stock
+prices, SPY, Treasury yields, prepared databases and website build. Select the
+original candidate sets, existing price-cache stocks, all eligible financial
+stocks, or up to 200 specific symbols. Choose a price-history range. Include
+prior prices for report-date valuation and trailing returns.
+
+**Check data** reads saved files. It makes no provider request and does not read
+the API key. Reports show actual first and last dates, record counts, missing
+financial symbols, empty histories and invalid files. The JSON report includes
+the full stock list. P/E and P/B remain unavailable; the downloader does not
+add earnings or book values.
+
+**Download missing data** uses the selected data types. It reuses a saved
+universe and existing annual records. Financial downloads fill missing symbols
+across the universe, or only the explicitly entered symbols. Price downloads
+fill ranges outside the existing saved date span. They do not refresh existing
+values or repair internal session gaps. Short histories can reflect listings
+or trading stops. The provider may have no additional data.
+
+Stock and SPY requests use annual windows. Treasury uses monthly windows.
+`raw/download-coverage.json` records successful requested windows, including
+empty responses. Each asset entry has `sha256` and `windows`. The hash identifies
+the exact saved file. Only a valid file with that hash can reuse the windows.
+Missing, corrupt or manually replaced files lose old completion evidence.
+Legacy list-only entries have no proof and are ignored; usable saved rows
+remain. Retrying resumes unrequested windows for the validated asset. Valid saved rows and
+legacy light prices are retained. Each price or market window is published by
+atomic replacement. Completed windows survive interruption. Corrupt files are
+backed up under `raw/archive/*.before-data-repair` before repair. Invalid JSONL
+financial lines are backed up; valid symbol records remain and missing symbol
+records are downloaded. Both preparation and group inspection use the same
+validated mapping-only annual rows and financial eligibility policy. Provider
+failures do not mark a window complete.
+
+The key stays at `~/.grok/secrets/fmp_api_key`. The UI sees only file presence,
+never its value or provider request URLs. Downloads can require a paid provider
+subscription. Opening the panel never starts a download.
+
+**Rebuild prepared data + website** runs research preparation, daily preparation,
+and the website build without network requests. The canonical January check
+still applies. Historical dates do not advance with latest prices. Open the
+strategy page after rebuilding to load the new embedded data.
+
+`website/data_manager.py` owns the inventory and background job. The local
+service exposes `/api/data/status`, `/api/data/report`, and POST actions
+`check`, `download`, `rebuild`, and `cancel`. Data endpoints accept only local,
+same-origin requests. `scripts/cache_access.py` owns one project-wide resource
+coordinator, backed by ignored `data/website-data-0.lock`. Startup, standalone
+research/daily preparation, data jobs, fixed schedules and random batches use
+the same coordinator. Lock order is process-local reentrant lock, project file
+lock, then database connections and worker pools. Ownership remains held until
+workers finish and databases close. Nested preparation reuses ownership. The
+website build subprocess reads under its parent’s ownership. Polling reports real work progress. Cancel waits
+for an active provider request or preparation step, retaining completed files.
+Shutdown waits for the worker before releasing server lifetime ownership.
+
+The service serves `/data.html` directly from current source. Missing or invalid
+essential raw inputs route startup to this recovery panel. It does not need a
+prepared database or prior website build. The canonical reference report must
+be restored from backup if missing; it is never invented or downloaded.
+The built `website/dist/data.html` is a standalone copy with local-service
+instructions when opened as a file.
+
+Check with `python3 tests/test_data_manager.py`, `node tests/check-data-panel.cjs`,
+`python3 tests/test_cache_access.py`, and `python3 tests/test_startup.py`.

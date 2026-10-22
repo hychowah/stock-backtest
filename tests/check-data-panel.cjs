@@ -1,0 +1,29 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const elements=new Map();
+function node(id){if(!elements.has(id))elements.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,hidden:false,handlers:{},addEventListener(event,handler){this.handlers[event]=handler},removeAttribute(key){delete this[key]}});return elements.get(id);}
+node('data-scope').value='symbols';node('data-symbols').value='A';node('data-start').value='2020-01-01';node('data-end').value='2020-12-31';
+const requests=[],timers=[];
+let reply={job:{running:false,action:null,message:'Ready',completed:0,total:0,error:null},report:null};
+const ctx=vm.createContext({document:{getElementById:node,querySelectorAll:()=>[{value:'prices'}]},location:{protocol:'http:'},Date,console,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},setTimeout(fn){timers.push(fn);return timers.length},async fetch(path,options){requests.push({path,options});return {status:200,ok:true,json:async()=>reply}}});
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/data-panel.js'),'utf8'),ctx);
+const run=code=>vm.runInContext(code,ctx);
+(async()=>{
+ await run('DataPanel.refresh()');
+ assert(requests.every(r=>r.path==='/api/data/status'&&!r.options.method),'Opening the panel must never start downloads.');
+ assert(!node('data-download').disabled);
+ reply={job:{running:true,action:'download',message:'Checking A',completed:1,total:3,error:null},report:null};
+ await run("DataPanel.start('download')");
+ const request=requests.at(-1);assert.equal(request.path,'/api/data/download');
+ assert.deepEqual(JSON.parse(request.options.body),{scope:'symbols',symbols:'A',start:'2020-01-01',end:'2020-12-31',datasets:['prices']});
+ assert(node('data-check').disabled);assert(!node('data-cancel').hidden);assert.equal(node('data-progress-bar').value,1);assert.equal(node('data-progress-bar').max,3);
+ assert.equal(timers.length,1);
+ reply={job:{running:false,action:'download',message:'Complete',completed:3,total:3,error:null},report:{checked_at:'2026-10-22T00:00:00Z',options:{start:'2020-01-01',end:'2020-12-31',scope:'symbols'},api_key_present:false,assets:[{name:'SPY',state:'saved',count:2,first:'2020-01-01',last:'2020-12-31'}],prices:[{symbol:'<A>',state:'missing',count:0,first:null,last:null,windows:1}],target_count:1,prices_available:0,price_files:0,financial_symbols:1,missing_financials:['B'],empty_financials:[],invalid_financial_lines:0,derived:[{name:'January',state:'needs rebuild',bytes:1000000}]}};
+ await run('DataPanel.refresh()');
+ assert(!node('data-download').disabled);assert(node('data-cancel').hidden);assert(!node('data-export').disabled);
+ assert(node('data-prices').innerHTML.includes('&lt;A&gt;'));assert(node('data-key').textContent.includes('missing'));assert(node('data-derived').innerHTML.includes('needs rebuild'));
+ node('data-search').value='missing';node('data-search').handlers.input();assert(node('data-prices').innerHTML.includes('&lt;A&gt;'));
+ node('data-symbols').value='';await run("DataPanel.start('check')");assert(node('data-error').textContent.includes('Enter the stock symbols'));
+ ctx.fetch=async()=>({ok:false,status:404});await run('DataPanel.refresh()');assert(node('data-connection').textContent.includes('Restart start.cmd'));assert(node('data-download').disabled);
+ ctx.location.protocol='file:';run('DataPanel.init()');assert(node('data-connection').textContent.includes('start.cmd'));assert(node('data-check').disabled);
+ console.log('Passed: status-only startup, selected download request, progress/polling, coverage rendering, escaping, missing-key state, validation and offline/older-server instructions.');
+})().catch(error=>{console.error(error);process.exitCode=1});
