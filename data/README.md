@@ -31,13 +31,19 @@ and reusable entry/exit books. The local website service computes missing books
 and persists them here; original `research.sqlite` remains read-only. Daily-cache
 freshness includes the schedule engine and research calculation fingerprints.
 
-Daily schema version 2 adds `period_pools(period_id,pool)`. A completed period can
+Daily cache version 3 retains `period_pools(period_id,pool)` from version 2. A completed period can
 contain one or both pools. The service prepares only the requested pool, and
 fills the other on demand while retaining the same period ID. Completion markers
 also cover empty pools; do not infer readiness from the presence of snapshots.
 Markers, snapshots and metrics commit together, once per schedule/trial.
 
-The launcher upgrades compatible version-1 caches in place: it marks both pools
-complete for every existing period and retains prices, financials and dated
-results. Changed research inputs or financial calculation code still trigger an
+Random batches plan unique missing books upfront. Read-only worker processes
+calculate ahead; one parent writes complete trials in order. Calculations do not
+hold a write transaction. Price lookups share one short read transaction per
+book, released before the result returns to the writer. The parent stages large trials in a temporary local
+file before their atomic save. Replays start no workers when all books are saved.
+
+The launcher upgrades compatible version-1/2 caches in place. Version-1 books
+mark both pools complete; version-2 books retain individual completion markers.
+Prices, financials and dated results are retained. Changed research inputs or financial calculation code still trigger an
 offline rebuild. No market data is downloaded during either path.

@@ -15,6 +15,10 @@ January books or custom trade dates with monthly, quarterly, half-yearly or
 yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)
 directly for the saved latest/January views; custom schedules use the local service.
 
+Random-date batches plan missing books once, calculate ahead with separate Python
+processes, and save complete trials through one SQLite writer. Replays reuse
+saved books. Filters, metrics and stock counts share the ordinary screening rules.
+
 For an explanation of the program, open the [plain-language architecture guide](docs/architecture-guide/dist/index.html).
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.

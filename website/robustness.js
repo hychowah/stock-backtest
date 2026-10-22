@@ -20,7 +20,7 @@ const RobustnessView=(()=>{
       if(!text.trim())return;
       const event=JSON.parse(text);
       if(event.type==='configuration'){remember(event.configuration);progress(event);}
-      else if(event.type==='progress')progress(event);
+      else if(event.type==='progress'||event.type==='preparation')progress(event);
       else if(event.type==='complete')complete=event.result;
       else if(event.type==='error')throw Error(event.message);
     }

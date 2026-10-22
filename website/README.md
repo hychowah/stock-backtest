@@ -133,8 +133,11 @@ from both paired summary distributions. These overlapping historical scenarios
 are not independent observations or confidence intervals; mean CAGR describes
 trial CAGRs, not one investment portfolio.
 
-The progress bar counts completed trials; the current trial may take longer when
-its books have not been prepared before. Results include each trial's actual
+The batch plans shared missing books upfront. Worker processes calculate books
+in parallel from read-only SQLite connections. One parent saves complete trials
+in order. The progress bar counts completed trials; a separate book count and
+worker count show preparation ahead of those saves. Cached replays start no
+workers. Results include each trial's actual
 trade dates in the CSV. Select a trial and click **Show stocks and period returns**
 to inspect its usual stock tables and contribution charts. Completed trial books
 survive an interrupted batch; restart the launcher and rerun the same seed.

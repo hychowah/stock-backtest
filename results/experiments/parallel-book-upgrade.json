@@ -1,0 +1,32 @@
+{
+  "before": {
+    "counts": {
+      "prices": 9884873,
+      "statements": 96896,
+      "periods": 2581,
+      "period_pools": 2881,
+      "snapshots": 870640,
+      "screening_metrics": 1602029
+    },
+    "digests": {
+      "periods": "60d6404ed83dee75016f57ab36055bb4295111361a074e26e63222a8f8ba83b9",
+      "period_pools": "fee99805e6cea2fa929ce41834568407d86931a50dff80a12a465a9ef67bd7b1"
+    },
+    "version": 2
+  },
+  "after": {
+    "counts": {
+      "statements": 96896,
+      "periods": 2581,
+      "period_pools": 2881,
+      "snapshots": 870640,
+      "screening_metrics": 1602029
+    },
+    "digests": {
+      "periods": "60d6404ed83dee75016f57ab36055bb4295111361a074e26e63222a8f8ba83b9",
+      "period_pools": "fee99805e6cea2fa929ce41834568407d86931a50dff80a12a465a9ef67bd7b1"
+    },
+    "version": 3
+  },
+  "verified": "All dated periods and pool markers have identical digests; financial and result counts match. Compatible startup upgrade retained cached prices without parsing JSON. Price row count was not rescanned after migration."
+}

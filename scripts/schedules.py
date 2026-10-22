@@ -13,7 +13,7 @@ import metrics
 import books as financial_books
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 2
+VERSION = 3
 POOL_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
@@ -32,7 +32,9 @@ CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
 def fingerprint():
     # Preparation already validated every raw price file. Normal requests inspect
     # only the compact research signature, not thousands of raw files.
-    return dict(version=VERSION, inputs=r.signature(), engine=[Path(__file__).stat().st_size,Path(__file__).stat().st_mtime_ns])
+    sources=[Path(__file__),Path(__file__).with_name('book_batch.py')]
+    return dict(version=VERSION, inputs=r.signature(),
+                engine={p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
 
 def connect(path=DATABASE):
@@ -51,7 +53,7 @@ def connect(path=DATABASE):
 
 
 def upgrade_daily_cache(path, inputs):
-    """Version 1 prepared both pools; retain its prices and completed books.
+    """Retain compatible prices and books across preparation-engine upgrades.
 
     Only this schema/engine change is compatible. Changed research inputs or
     financial calculation code still require the ordinary offline rebuild.
@@ -62,11 +64,12 @@ def upgrade_daily_cache(path, inputs):
         with db:
             db.execute('BEGIN IMMEDIATE')
             saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-            if saved.get('version')!=1 or inputs.get('version')!=2 or saved.get('inputs')!=inputs.get('inputs'):
+            if saved.get('version') not in (1,2) or inputs.get('version')!=VERSION or saved.get('inputs')!=inputs.get('inputs'):
                 return False
             db.execute(POOL_SCHEMA)
-            for pool in ('cached','legacy'):
-                db.execute('INSERT INTO period_pools SELECT year,? FROM periods',(pool,))
+            if saved['version']==1:
+                for pool in ('cached','legacy'):
+                    db.execute('INSERT INTO period_pools SELECT year,? FROM periods',(pool,))
             db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(inputs),))
         return True
     finally:
@@ -88,7 +91,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
         except ValueError:
             if upgrade_daily_cache(path,inputs):
                 reference.close()
-                print('Daily cache upgraded; existing prices and both completed pools retained.');return
+                print('Daily cache upgraded; existing prices and completed pools retained.');return
         else:
             db.close();reference.close();print('Daily cache already current; no prices parsed.');return
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -186,20 +189,24 @@ def prepared_period(db,entry,exit_day,pool):
     return row[0] if row is not None else None
 
 
-def prepare_period(db,entry,exit_day,books,cached,pool='legacy'):
-    completed=prepared_period(db,entry,exit_day,pool)
-    if completed is not None:return completed
+def cached_symbols(db):
+    row=db.execute("SELECT value FROM metadata WHERE key='cached_symbols'").fetchone()
+    return set(json.loads(row[0])) if row else {row[0] for row in db.execute('SELECT DISTINCT symbol FROM prices')}
+
+
+def compute_period(db,entry,exit_day,books,cached,pool):
+    """Calculate a dated pool without writes; workers share this financial path."""
     broad,legacy=books
     statements,ranks=financial_books.candidates(books,entry)
-    existing=db.execute('SELECT year,treasury FROM periods WHERE entry=? AND exit=?',(str(entry),str(exit_day))).fetchone()
+    existing=db.execute('SELECT spy,treasury FROM periods WHERE entry=? AND exit=?',(str(entry),str(exit_day))).fetchone()
     if existing is not None:
-        period_id,treasury=existing
+        spy_return,treasury=existing
     else:
         spy=dict(db.execute('SELECT day,price FROM sessions WHERE day IN (?,?)',(str(entry),str(exit_day))).fetchall())
         treasury=db.execute('SELECT yield_value FROM treasuries WHERE day<=? ORDER BY day DESC LIMIT 1',(str(entry),)).fetchone()
         treasury=treasury[0] if treasury else 0.
-        cursor=db.execute('INSERT INTO periods(entry,exit,spy,treasury,legacy_candidates,cached_candidates) VALUES(?,?,?,?,?,?)',(str(entry),str(exit_day),spy[str(exit_day)]/spy[str(entry)]-1,treasury,len(ranks),len(statements['cached'])))
-        period_id=cursor.lastrowid
+        spy_return=spy[str(exit_day)]/spy[str(entry)]-1
+    snapshots=[];pairs=[]
     for symbol,s in statements[pool].items():
         if symbol not in cached or (pool=='legacy' and symbol not in ranks):continue
         lookup=lambda day,column,forward,slack:price(db,symbol,day,column,forward=forward,slack=slack)
@@ -208,14 +215,39 @@ def prepare_period(db,entry,exit_day,books,cached,pool='legacy'):
         fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,ret,status=row
         if not financial_books.eligible(pool,cap,ev):continue
         observation=dict(symbol=symbol,fiscal=fiscal,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
-        db.execute('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',(pool,period_id,symbol,ranks.get(symbol),fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,yield_value-treasury,ret,status))
+        snapshots.append((symbol,ranks.get(symbol),fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,yield_value-treasury,ret,status))
         history=[dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in broad[symbol]]
         for metric,(multiple,yield_value) in metrics.evaluate(observation,history).items():
-            db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('historical',pool,period_id,symbol,metric,multiple,yield_value))
+            pairs.append((symbol,metric,multiple,yield_value))
+    return dict(entry=str(entry),exit=str(exit_day),pool=pool,
+                period=(str(entry),str(exit_day),spy_return,treasury,len(ranks),len(statements['cached'])),
+                snapshots=snapshots,metrics=pairs)
+
+
+def store_period(db,book):
+    """Save a complete calculated pool inside the caller's transaction."""
+    pool=book['pool'];entry=book['entry'];exit_day=book['exit']
+    completed=prepared_period(db,entry,exit_day,pool)
+    if completed is not None:return completed
+    row=db.execute('SELECT year FROM periods WHERE entry=? AND exit=?',(entry,exit_day)).fetchone()
+    if row is None:
+        cursor=db.execute('INSERT INTO periods(entry,exit,spy,treasury,legacy_candidates,cached_candidates) VALUES(?,?,?,?,?,?)',book['period'])
+        period_id=cursor.lastrowid
+    else:period_id=row[0]
+    db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',
+                   ((pool,period_id,*row) for row in book['snapshots']))
+    db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
+                   (('historical',pool,period_id,*row) for row in book['metrics']))
     # Empty pools are completed too. The caller commits this marker with all
     # snapshots/metrics, so an interrupted pool switch can safely be retried.
     db.execute('INSERT INTO period_pools VALUES(?,?)',(period_id,pool))
     return period_id
+
+
+def prepare_period(db,entry,exit_day,books,cached,pool='legacy'):
+    completed=prepared_period(db,entry,exit_day,pool)
+    if completed is not None:return completed
+    return store_period(db,compute_period(db,entry,exit_day,books,cached,pool))
 
 
 def backtest(db, *, start, end, months=12, **options):
@@ -225,14 +257,8 @@ def backtest(db, *, start, end, months=12, **options):
     return backtest_periods(db,periods,months=months,**options)
 
 
-def backtest_dates(db, *, dates, start, end, months=12, **options):
-    """Evaluate sampled dates, including zero-return cash before the first trade.
-
-    Both the portfolio and paired SPY hold cash over that initial interval. All
-    trials therefore use the same elapsed window for CAGR. Dates must be real
-    cached sessions and strictly increasing; every trial uses ordinary books.
-    """
-    sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+def dated_periods(dates,start,end,months,sessions):
+    """Validate explicit trades and return their common window and periods."""
     window=schedule(start,end,months,sessions)
     first,final=window[0][0],window[-1][1]
     trades=[date.fromisoformat(day) for day in dates]
@@ -240,10 +266,17 @@ def backtest_dates(db, *, dates, start, end, months=12, **options):
     if not trades or trades!=sorted(set(trades)) or any(day not in available or not first<=day<final for day in trades):
         raise ValueError('Sampled trades must be increasing cached sessions inside the backtest window.')
     periods=list(zip(trades,trades[1:]+[final]))
+    return first,final,periods
+
+
+def backtest_dates(db, *, dates, start, end, months=12, **options):
+    """Evaluate explicit trades, holding cash before the first trade for both sides."""
+    sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+    first,final,periods=dated_periods(dates,start,end,months,sessions)
     result=backtest_periods(db,periods,months=months,**options)
     result['first_trade']=result['start']
     result['start']=str(first)
-    result['cash_days']=(trades[0]-first).days
+    result['cash_days']=(periods[0][0]-first).days
     duration=(final-first).days/365.25
     result['cagr']=result['growth']**(1/duration)-1 if result['growth'] is not None else None
     result['spy_cagr']=result['spy_growth']**(1/duration)-1
@@ -259,8 +292,7 @@ def backtest_periods(db, periods, *, months, **options):
     pool=options.get('pool','legacy')
     missing=any(prepared_period(db,a,b,pool) is None for a,b in periods)
     books=histories(db) if missing else None
-    saved=db.execute("SELECT value FROM metadata WHERE key='cached_symbols'").fetchone() if missing else None
-    cached=set(json.loads(saved[0])) if saved else {row[0] for row in db.execute('SELECT DISTINCT symbol FROM prices')} if missing else set()
+    cached=cached_symbols(db) if missing else set()
     results=[]
     with db:
         for entry,exit_day in periods:

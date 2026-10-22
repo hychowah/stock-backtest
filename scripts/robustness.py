@@ -16,6 +16,7 @@ import statistics
 import time
 
 import schedules
+import book_batch
 
 
 def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
@@ -75,18 +76,8 @@ def summarize(result, number, dates):
                 empty_periods=sum(p['names']==0 for p in periods),short_periods=sum(p['names']<requested for p in periods),seconds=result['seconds'])
 
 
-def run(db, configuration, progress=None):
-    """Commit each trial through the ordinary engine and retain small summaries.
-
-    A stopped batch can be rerun with the same seed; completed books remain
-    reusable. No alternate eligibility, ranking or metric policy lives here.
-    """
-    started=time.perf_counter();rows=[];total=configuration['requested']
-    for number,dates in enumerate(configuration['samples'],1):
-        if progress:progress(dict(type='progress',completed=number-1,total=total,trial=number))
-        result=schedules.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],months=configuration['months'],**configuration['options'])
-        rows.append(summarize(result,number,dates))
-        if progress:progress(dict(type='progress',completed=number,total=total,trial=number))
+def summarize_trials(configuration, rows, started):
+    """Aggregate ordinary trial summaries without changing paired coverage."""
     complete=[row for row in rows if row['cagr'] is not None]
     distributions={key:distribution([row[key] for row in complete])
                    for key in ('cagr','spy_cagr','excess_cagr','total_return','growth')}
@@ -95,3 +86,18 @@ def run(db, configuration, progress=None):
                 distributions=distributions,beat_spy=sum(row['excess_cagr']>0 for row in complete),
                 unique_schedules=len({tuple(row['dates']) for row in rows}),seconds=time.perf_counter()-started,
                 note='Each trial independently samples one trading date in every rebalance block, including a final partial block. Actual holding intervals vary. All trials use the same window, with zero-return cash until their first trade for both strategy and paired SPY. Mean CAGR averages trial CAGRs; it is not the return of one portfolio. Incomplete trials remain listed and are excluded from paired statistics. Scenarios overlap; percentiles are not confidence intervals.')
+
+
+def run(db, configuration, progress=None, *, workers=None):
+    """Plan shared books upfront; calculate ahead and commit each complete trial.
+
+    Workers only read immutable prepared inputs. One parent writes books and
+    applies the ordinary screener; retrying a seed reuses completed trials.
+    """
+    started=time.perf_counter();rows=[];execution={}
+    for number,result,stats in book_batch.evaluate_trials(db,configuration,progress,workers):
+        rows.append(summarize(result,number,configuration['samples'][number-1]))
+        execution=dict(stats)
+    result=summarize_trials(configuration,rows,started)
+    result['execution']=execution
+    return result

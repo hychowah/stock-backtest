@@ -80,7 +80,7 @@ class RobustnessTests(unittest.TestCase):
         self.assertAlmostEqual(result['distributions']['cagr']['mean'],sum(expected)/4)
         self.assertEqual(result['distributions']['cagr']['min'],min(expected))
         self.assertEqual(result['distributions']['cagr']['max'],max(expected))
-        self.assertEqual([e['completed'] for e in events],[0,1,1,2,2,3,3,4])
+        self.assertEqual([e['completed'] for e in events if e['type']=='progress'],[0,1,1,2,2,3,3,4])
         self.assertEqual(r.distribution([0,10])['median'],5)
         self.assertEqual(r.distribution([0,10])['p10'],1)
         self.assertEqual(r.distribution([0,10])['stddev'],5)

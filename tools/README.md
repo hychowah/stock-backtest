@@ -29,9 +29,11 @@ and retains ordinary filtering, metric calculation and per-trial saving. Opening
 and loading are included; common benchmark-only cloning/reset is excluded. The
 OS page cache is not flushed. Each engine also replays the completed batch.
 
-`--modes` selects experiments. `selected_pool` is now an alias for `production`,
-including durable per-pool completion tracking. `arrays_selected_pool` combines
-the applied engine with experimental shared report histories and
+`--modes` selects experiments. `production` runs the current upfront planner and
+parallel engine. `--worker-counts 1 2 4 8` compares process counts sequentially,
+including Windows spawn, report loading, inter-process transfer and saving.
+`selected_pool` preserves the serial requested-pool loop with durable per-pool
+completion tracking. `arrays_selected_pool` combines that loop with shared report histories and
 in-memory prices. The benefit depends on the requested pool; avoiding the broad
 pool mostly helps the original candidate set.
 No experiment changes production engine code or the real daily database.
@@ -42,7 +44,7 @@ Match the interpreter used by the launcher when comparing timings. For Windows
 `start.cmd`, run the benchmark in Windows Python, for example:
 
 ```bat
-py -3 tools\bench_backtest.py --trials 100 --modes production --reference-report results\experiments\backtest-benchmark-windows-100.json --output results\experiments\backtest-benchmark-applied.json
+py -3 tools\bench_backtest.py --trials 100 --modes production --worker-counts 1 2 4 8 --reference-report results\experiments\backtest-benchmark-applied.json --output results\experiments\backtest-benchmark-parallel.json
 ```
 
 WSL accessing the Windows-mounted project can have substantially different I/O

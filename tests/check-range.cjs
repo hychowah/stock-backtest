@@ -201,13 +201,14 @@ console.log('Passed: metric selection in both modes and reset to default.');
  let deliverFinish,notifyProgress,step=0;
  const progressReady=new Promise(resolve=>notifyProgress=resolve);
  ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body)};return {ok:true,body:{getReader:()=>({async read(){
-   if(step++===0)return {value:Buffer.from(JSON.stringify({type:'progress',completed:1,total:3,trial:2})+'\n'),done:false};
+   if(step++===0)return {value:Buffer.from(JSON.stringify({type:'progress',completed:1,total:3,trial:2})+'\n'+JSON.stringify({type:'preparation',completed:1,total:3,trial:2,workers:4,calculated_books:40,total_new_books:90})+'\n'),done:false};
    if(step===2)return new Promise(resolve=>{deliverFinish=resolve;notifyProgress()});
    return {done:true};
  },releaseLock(){}})}}};
  const randomRun=run('ScheduleView.run(readOptions())');await progressReady;
  assert.equal(request.url,'/api/robustness');assert.equal(request.body.trials,3);assert.equal(request.body.seed,123);assert.equal(request.body.months,24);
  assert.equal(el('trial-progress').value,1);assert.equal(el('trial-progress').max,3);assert(el('schedule-progress-detail').textContent.includes('1/3'));
+ assert(el('schedule-progress-detail').textContent.includes('40/90'));assert(el('schedule-progress-detail').textContent.includes('4 workers'));
  deliverFinish({value:Buffer.from(JSON.stringify({type:'progress',completed:3,total:3,trial:3})+'\n'+JSON.stringify({type:'complete',result:batch})+'\n'),done:false});
  await randomRun;
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,true);assert.equal(el('robustness-mean').textContent,'10.00%');

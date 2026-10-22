@@ -15,9 +15,9 @@ function response(events,{truncate=false}={}){
 }
 (async()=>{
  const progress=[];ctx.progress=e=>progress.push(e);
- ctx.response=response([{type:'progress',completed:0,total:2},{type:'progress',completed:1,total:2},{type:'complete',result:batch}]);
+ ctx.response=response([{type:'progress',completed:0,total:2},{type:'preparation',completed:0,total:2,workers:4,calculated_books:10,total_new_books:20},{type:'progress',completed:1,total:2},{type:'complete',result:batch}]);
  const result=await call('RobustnessView.read(response,progress)');
- assert.equal(result.note,batch.note);assert.deepStrictEqual(progress.map(e=>e.completed),[0,1]);assert(ctx.response.reader.released);
+ assert.equal(result.note,batch.note);assert.deepStrictEqual(progress.map(e=>e.completed),[0,0,1]);assert.equal(progress[1].workers,4);assert.equal(progress[1].calculated_books,10);assert(ctx.response.reader.released);
  ctx.response=response([{type:'configuration',configuration:{seed:987,months:24,start:'2015-01-01',end:'2020-01-01',requested:2,options:{}}},{type:'progress',completed:1,total:2}],{truncate:true});
  await assert.rejects(()=>call('RobustnessView.read(response,progress)'),/ended before all trials completed/);assert(ctx.response.reader.released);
  assert.equal(node('random-seed').value,'987');assert.equal(node('robustness-replay').hidden,false);

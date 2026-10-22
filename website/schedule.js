@@ -107,9 +107,10 @@ const ScheduleView=(()=>{
         const error=await response.json();throw Error(error.error||'Schedule calculation failed.');
       }
       const next=random?await RobustnessView.read(response,event=>{
-        if(number===requestNumber && event.type==='progress'){
+        if(number===requestNumber && (event.type==='progress'||event.type==='preparation')){
           node('trial-progress').value=event.completed;node('trial-progress').max=event.total;
-          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete · '+(event.completed<event.total?'running trial '+event.trial:'finishing summary')+' · every '+body.months+' month(s).';
+          const books=event.total_new_books>0?' · preparing books '+event.calculated_books+'/'+event.total_new_books+' with '+event.workers+' worker'+(event.workers===1?'':'s'):'';
+          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · every '+body.months+' month(s).';
         }
       }):await response.json();
       if(number!==requestNumber)return;

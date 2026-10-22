@@ -299,7 +299,7 @@ class PreparationTests(unittest.TestCase):
     def version_one_cache(self):
         s.prepare(self.path,self.source)
         previous=dict(version=1,inputs={'raw':'unchanged'},engine=[10,20])
-        current=dict(version=2,inputs=previous['inputs'],engine=[30,40])
+        current=dict(version=s.VERSION,inputs=previous['inputs'],engine=[30,40])
         db=sqlite3.connect(self.path)
         db.execute('DROP TABLE period_pools')
         db.execute("INSERT INTO periods VALUES(1,'2015-01-02','2015-07-01',.1,0,1,1)")
@@ -336,6 +336,20 @@ class PreparationTests(unittest.TestCase):
         current['inputs']={'raw':'changed'}
         self.assertFalse(s.upgrade_daily_cache(self.path,current))
         self.assertEqual(self.path.read_bytes(),before)
+
+    def test_version_two_upgrade_preserves_partial_pool_completion(self):
+        previous,current=self.version_one_cache()
+        db=sqlite3.connect(self.path);db.execute(s.POOL_SCHEMA)
+        prices=db.execute('SELECT * FROM prices').fetchall()
+        db.execute("INSERT INTO period_pools VALUES(1,'legacy')")
+        previous['version']=2
+        db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),))
+        db.commit();db.close()
+        self.assertTrue(s.upgrade_daily_cache(self.path,current))
+        db=sqlite3.connect(self.path)
+        self.assertEqual(db.execute('SELECT * FROM period_pools').fetchall(),[(1,'legacy')])
+        self.assertEqual(db.execute('SELECT * FROM prices').fetchall(),prices)
+        db.close()
 
     def test_upgrade_rolls_back_schema_and_markers_if_metadata_update_fails(self):
         previous,current=self.version_one_cache()

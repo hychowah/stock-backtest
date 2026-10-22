@@ -163,7 +163,7 @@ filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
-Daily schema version 2 tracks this in `period_pools`. Compatible version-1 caches
+Daily cache version 3 tracks this in `period_pools`. Compatible version-1/2 caches
 upgrade automatically at startup without reparsing prices or discarding books.
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves only the built website and a loopback JSON calculation
@@ -226,13 +226,26 @@ scenarios. Empty-book trials stay in the table and are excluded from both sides
 of paired averages. Percentiles are scenario descriptions, not confidence limits.
 
 The loopback `/api/robustness` endpoint streams NDJSON trial progress and a final
-summary. Each individual trial commits its books through the ordinary engine,
+summary. `scripts/book_batch.py` validates every sampled schedule upfront and
+deduplicates missing date-pair/pool books across the batch. Bounded process
+workers read prepared inputs with read-only SQLite connections and calculate
+ahead through `schedules.compute_period`. Each process loads report histories
+once. Price queries share one short read transaction per book, avoiding repeated
+native Windows lock operations. The reader releases it before returning the book;
+no reader holds a transaction across multiple books. Only the parent saves books, using `schedules.store_period` in short write
+transactions. New books for a whole trial are staged before its atomic commit;
+large trials spill to a temporary file. No calculation holds the writer lock.
+The automatic policy uses up to four workers for at least 64 missing books,
+bounded by CPU count. Smaller batches stay serial. Workers monitor parent lifetime
+and exit if the launcher is forcibly closed. Cached-only batches launch no processes. Each individual trial commits its books,
 so a disconnected/stopped batch can be repeated with the same seed and reuse
-completed work. The frontend shows real completed-trial counts and exports dates,
+completed work. Prefetched books for later trials are not saved if the batch is
+stopped first. The frontend reports worker counts and book preparation separately
+from real completed-trial counts and exports dates,
 seed, frequency and trial outcomes. Inspection calls the existing schedule API
 with that trial's exact dates rather than implementing another selection engine.
 Test sampling, statistics, interruption and the stream contract with
-`python3 tests/test_robustness.py`; test incremental decoding and distribution
+`python3 tests/test_robustness.py` and `python3 tests/test_book_batch.py`; test incremental decoding and distribution
 rendering with `node tests/check-robustness.cjs`.
 
 Random batches choose a fresh system-generated seed by default; the actual key
@@ -252,3 +265,28 @@ The browser saves that configuration locally immediately. **Replay saved date
 test** repeats the window, filters, frequency, trial count and seed after a
 disconnection or launcher restart; completed books are reused. Fresh runs still
 generate a new seed by default.
+
+### Upfront parallel-book benchmark
+
+On native Windows Python 3.12, 100 full-history annual random-date trials took
+103.4 seconds with one worker, 62.0 with two, 40.9 with four, and 33.2 with eight.
+A fresh serial requested-pool control took 133.3 seconds, matching the earlier
+133.1-second measurement. Four workers are the automatic default. The final applied implementation,
+including forced-shutdown worker cleanup, took 43.2 seconds (about 3.1× faster
+than the serial control). Eight workers saved another 7.7 seconds while
+doubling the processes. Cached replays took about 5.6 seconds.
+
+All 100 complete holding/result digests and aggregate outcomes matched the saved
+reference exactly for every variant. Each batch prepared the same 3,082 unique
+books and 537,906 stock snapshots. Loading, Windows process startup, transfers,
+staging and per-trial saving are included; common test-only cloning is excluded.
+Settings remain original pool, top 50, current EV/EBITDA, seed 20261022,
+1996-01-01 through 2026-10-20. Broader-pool and monthly timings were not measured.
+See `results/experiments/backtest-benchmark-parallel.json` and the final applied
+run in `backtest-benchmark-parallel-applied.json`.
+
+The rejected first implementation let every price query acquire a read lock.
+It took 261.4/178.6/163.3/155.0 seconds with 1/2/4/8 workers. One short read
+transaction per book removed that overhead. The failed variant is retained in
+`results/experiments/backtest-benchmark-parallel-locking.json`; its timings are
+not the applied implementation. The production cache was unchanged by all runs.

@@ -139,12 +139,13 @@ charts show dated period returns; don't label monthly/quarterly books as annual
 returns. Keep canonical January reports untouched. Verify with
 `python3 tests/test_schedules.py` and existing research/website checks.
 
-Daily schema version 2 prepares only the requested pool. `period_pools` records
+Daily cache version 3 prepares only the requested pool. `period_pools` records
 completion independently of snapshot counts, including empty pools. A pool switch
 fills the missing pool in the same dated period; filters, ranks and metrics reuse
 its prepared rows. Keep completion markers and rows in the same transaction.
-Startup upgrades compatible version-1 caches in place, retaining daily prices
-and existing two-pool books; changed research inputs still require preparation.
+Startup upgrades compatible version-1/2 caches in place, retaining daily prices
+and completed pools. Version-1 books mark both pools complete; version-2 books
+retain their individual markers. Changed research inputs still require preparation.
 
 ## Automatic local launcher
 
@@ -170,6 +171,21 @@ completed-trial counts through `/api/robustness`; commit per trial so retrying a
 seed reuses books after interruption. Inspect trials using the ordinary schedule
 API with explicit dates. Check `python3 tests/test_robustness.py` and
 `node tests/check-robustness.cjs` alongside existing checks.
+
+`scripts/book_batch.py` plans unique missing date-pair/pool books across the
+whole random batch. Bounded process workers read the daily SQLite cache through
+read-only connections and use `schedules.compute_period`; only the parent calls
+`store_period`. Group price lookups into one read transaction per book and release
+it before returning the book. Per-query autocommit locks are expensive on Windows;
+long-lived readers block the writer. Calculate outside write transactions, stage a whole trial, then
+commit its books together. Preserve first-use order, deterministic results and
+completed-trial recovery. Share financial policy and SQL screening with ordinary
+schedules. Cached-only batches start no workers. Report book preparation and
+worker counts separately from real completed trials. Verify with
+`python3 tests/test_book_batch.py`, including native Windows spawn coverage.
+Use up to four workers automatically for at least 64 missing books, bounded by
+CPU count. Small batches stay serial. Child workers monitor parent lifetime so a
+forced launcher shutdown releases their read locks and memory.
 
 Random date batches draw fresh dates by default; an omitted seed is generated
 server-side and recorded for replay. An explicit seed remains deterministic,

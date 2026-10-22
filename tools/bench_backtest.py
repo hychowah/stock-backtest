@@ -184,14 +184,25 @@ def worker(args):
                 print(json.dumps(dict(event='checkpoint', mode=args.mode,
                                       completed=completed, seconds=round(elapsed, 3))), flush=True)
 
+        def run(callback=None):
+            if args.mode=='production':
+                return robustness.run(db,config,callback,workers=args.workers)
+            # Reference/prototype modes preserve their original serial loop so
+            # their patched price/prepare functions run in this process.
+            began=time.perf_counter();rows=[]
+            for number,dates in enumerate(config['samples'],1):
+                trial=s.backtest_dates(db,dates=dates,start=config['start'],end=config['end'],months=config['months'],**config['options'])
+                rows.append(robustness.summarize(trial,number,dates))
+                if callback:callback(dict(type='progress',completed=number,total=config['requested'],trial=number))
+            return robustness.summarize_trials(config,rows,began)
         calculation_start = time.perf_counter()
-        result = robustness.run(db, config, progress)
+        result = run(progress)
         calculation_seconds = time.perf_counter()-calculation_start
         fresh_seconds = time.perf_counter()-started
         fresh_cpu_seconds = time.process_time()-cpu_started
         phase = 'cached'
         cached_start = time.perf_counter()
-        repeated = robustness.run(db, config)
+        repeated = run()
         cached_seconds = time.perf_counter()-cached_start
         if signatures['fresh'] != signatures['cached']:
             raise AssertionError('Fully cached replay changed complete holding results.')
@@ -200,7 +211,7 @@ def worker(args):
         replay_outcomes = [{k: row[k] for k in columns} for row in repeated['trials']]
         if outcomes != replay_outcomes:
             raise AssertionError('Fully cached replay changed trial summaries.')
-        report = dict(mode=args.mode, configuration=config,
+        report = dict(mode=args.mode, workers=args.workers, execution=result.get('execution'), configuration=config,
                       initialization_seconds=init_seconds,
                       calculation_seconds=calculation_seconds,
                       fresh_total_seconds=fresh_seconds,
@@ -233,6 +244,8 @@ def main():
                         default=['sqlite_128mb', 'production'])
     parser.add_argument('--database', type=Path, default=s.DATABASE)
     parser.add_argument('--worker-output')
+    parser.add_argument('--workers',type=int,choices=range(1,9),default=1)
+    parser.add_argument('--worker-counts',type=int,nargs='+',choices=range(1,9),help='Sequential production comparisons; never time competing runs.')
     parser.add_argument('--workdir', type=Path,
                         help='Override temporary database location for a filesystem control run.')
     parser.add_argument('--output', type=Path, default=ROOT/'results/experiments/backtest-benchmark.json')
@@ -257,7 +270,9 @@ def main():
                                    price_history_loading_included=True,
                                    filesystem=str(args.workdir or args.database.parent),
                                    excluded='Common benchmark-only database cloning/reset; OS page cache is not flushed',
-                                   production_changes=False), runs=[])
+                                   production_changes=False, parent_cpu_only=True),
+                  source_hashes={str(p.relative_to(ROOT)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest()
+                                 for p in (ROOT/'scripts'/name for name in ('schedules.py','book_batch.py','robustness.py'))},runs=[])
     if args.reference_report:
         report['reference_report']=str(args.reference_report)
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -272,25 +287,26 @@ def main():
         for table in ('period_pools', 'screening_metrics', 'snapshots', 'latest_snapshots', 'periods'):
             destination.execute('DELETE FROM '+table)
         destination.commit(); destination.close()
+        s.upgrade_daily_cache(template,s.fingerprint())
         report['benchmark_setup_seconds'] = time.perf_counter()-clone_start
         print(json.dumps(dict(event='template_ready', seconds=round(report['benchmark_setup_seconds'], 3))), flush=True)
         def comparable(result):
             return (result['configuration'], result['holding_result_digests'],
                     result['outcomes'], result['distributions'], result['persisted_books'])
         reference = comparable(json.loads(args.reference_report.read_text())['runs'][0]) if args.reference_report else None
-        for mode in args.modes:
+        for mode,count in ((mode,count) for mode in args.modes for count in ((args.worker_counts or [args.workers]) if mode=='production' else [1])):
             with tempfile.NamedTemporaryFile(prefix='benchmark-', suffix='.sqlite',
                                              dir=args.workdir or args.database.parent, delete=False) as handle:
                 temporary = Path(handle.name)
             try:
                 shutil.copyfile(template, temporary)
-                worker_output = Path(scratch)/(mode+'.json')
+                worker_output = Path(scratch)/(mode+'-'+str(count)+'.json')
                 command = [sys.executable, str(Path(__file__).resolve()), '--worker',
                            '--mode', mode, '--database', str(temporary),
                            '--worker-output', str(worker_output), '--start', args.start,
                            '--end', args.end, '--months', str(args.months),
                            '--trials', str(args.trials), '--seed', str(args.seed),
-                           '--pool', args.pool, '--metric', args.metric]
+                           '--pool', args.pool, '--metric', args.metric,'--workers',str(count)]
                 process_start = time.perf_counter()
                 subprocess.run(command, check=True)
                 result = json.loads(worker_output.read_text())
@@ -303,7 +319,7 @@ def main():
                 result['matches_reference_exactly'] = True
                 report['runs'].append(result)
                 args.output.write_text(json.dumps(report, indent=2)+'\n')
-                print(json.dumps(dict(event='mode_complete', mode=mode,
+                print(json.dumps(dict(event='mode_complete', mode=mode, workers=count,
                                       fresh_seconds=round(result['fresh_total_seconds'], 3),
                                       cached_seconds=round(result['cached_replay_seconds'], 3),
                                       parity=True)), flush=True)
