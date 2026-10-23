@@ -217,8 +217,25 @@ before ranking. Missing values fail only conditions that need them. Use display
 units: millions of USD, percent, or multiples. `metrics.filter_values()` owns
 threshold calculations for January, latest and dated books. Trailing returns
 use only adjusted prices on or before the screen date and its anniversary,
-within seven calendar days. Clamp leap-day anniversaries to 28 February. P/E and
-P/B remain unavailable; the current downloader does not add their input fields.
+within seven calendar days. Clamp leap-day anniversaries to 28 February. Financial ratio filters include P/E, P/B, free cash flow amount/yield, price/FCF,
+net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity.
+`scripts/financial_inputs.py` validates separate annual statement assets under
+`raw/financial-inputs/`. Downloads require the data-panel Full annual financial data action.
+Save full annual income, balance-sheet, cash-flow, key-metrics and ratios responses.
+Preserve all returned fields, nulls, currencies and filing metadata in raw assets.
+Repeated fiscal dates are valid. Preserve all returned rows and distinct saved
+variants on repair. Prepare each input only when nonmissing USD values agree
+within the endpoint and fiscal date. Conflicting inputs remain absent.
+Select eligible USD numerical inputs separately for calculations. New key-metric
+records in metrics.jsonl also keep full responses. Backfill old trimmed key metrics
+in the separate full-data cache without rewriting baseline inputs.
+Content-bound receipts include empty responses. Rebuild after download.
+`scripts/metrics.py` owns the formulas. Use the selected fiscal report only;
+never fill missing fields with a newer report. PEG uses positive three-year
+diluted EPS CAGR in percentage points with four consecutive positive EPS years.
+ROE uses mean positive equity from the selected and previous fiscal years.
+Other ratio denominators must be positive. Keep signed cash flow and margin values.
+Check `python3 tests/test_financial_inputs.py` alongside research, schedule and browser parity checks.
 
 Manage backtest data opens `/data.html`. Checks and rebuilds use saved files.
 Downloads require an explicit user action. Fill missing financial symbols and

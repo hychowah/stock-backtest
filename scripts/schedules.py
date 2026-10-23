@@ -102,7 +102,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
     db=sqlite3.connect(temporary)
     try:
         db.executescript(SCHEMA)
-        for table in ('companies','statements'):
+        for table in ('companies','statements','financial_inputs'):
             rows=reference.execute('SELECT * FROM '+table).fetchall()
             if rows:
                 db.executemany('INSERT INTO '+table+' VALUES('+','.join('?'*len(rows[0]))+')',rows)
@@ -220,7 +220,7 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         snapshots.append((symbol,ranks.get(symbol),fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,yield_value-treasury,ret,status))
         history=[dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in broad[symbol]]
         evaluated=metrics.evaluate(observation,history)
-        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup).items())
+        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup,{record[0]:json.loads(record[1]) for record in db.execute('SELECT fiscal,values_json FROM financial_inputs WHERE symbol=?',(symbol,))}).items())
         for metric,(multiple,yield_value) in evaluated.items():
             pairs.append((symbol,metric,multiple,yield_value))
     return dict(entry=str(entry),exit=str(exit_day),pool=pool,

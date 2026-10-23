@@ -232,7 +232,10 @@ console.log('Passed: metric selection in both modes and reset to default.');
 
 run("filterConditions=[];switchMode('latest')");
 el('add-filter').handlers.click();
-assert(el('filter-conditions').innerHTML.includes('needs financial data'));
+for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','peg','roe','current_ratio','interest_coverage','debt_equity']) {
+ const option=el('filter-conditions').innerHTML.match(new RegExp('<option[^>]*value="'+field+'"[^>]*>'));
+ assert(option,'Missing financial filter '+field);assert(!option[0].includes('disabled'));
+}
 assert.throws(()=>run('readOptions()'),/Enter a value/);
 el('filter-conditions').handlers.input({target:{dataset:{index:'0',key:'value'},value:'0'}});
 assert.equal(run('readOptions().filters[0].value'),0);

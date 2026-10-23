@@ -6,7 +6,7 @@ Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from t
 
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
 2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
-3. Use **Additional filters → + Add filter** to combine metric, **Less than** or **More than**, and value conditions. All conditions must pass before ranking. Two conditions on one metric create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. P/E and P/B are listed but unavailable because their inputs are absent.
+3. Use **Additional filters → + Add filter** to combine metric, **Less than** or **More than**, and value conditions. All conditions must pass before ranking. Two conditions on one metric create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Download Full annual financial data and rebuild to supply their inputs.
 4. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the lowest selected valuation multiple after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
 5. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
 
@@ -32,7 +32,7 @@ all workers and reduces the start rate. One writer saves each result. Cancel kee
 Completion evidence belongs to the exact saved file; loss or corruption cannot
 leave missing data falsely complete. Short histories may reflect IPOs or stops.
 The downloader does not refresh existing reports/profiles or repair internal
-price gaps. P/E and P/B still need additional financial fields.
+price gaps. Full annual financial data downloads income, balance-sheet, cash-flow, key-metrics and ratios responses for the chosen group. It retains every returned field, null, currency and filing metadata in the raw cache. New key-metric records also keep full responses. Older trimmed key metrics can be backfilled separately. Prepared calculations use eligible USD inputs; future metrics can reuse the other saved fields.
 
 If essential source files are missing or invalid, startup opens this panel for
 recovery. The page is served from current source at `/data.html`; opening the

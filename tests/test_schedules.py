@@ -57,6 +57,19 @@ class BacktestTests(unittest.TestCase):
                 self.db.execute('INSERT INTO prices VALUES(?,?,?,?)',(symbol,day,price,price))
         self.db.commit()
 
+    def test_financial_ratios_use_selected_report_and_reuse_books(self):
+        self.db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[
+            ('A','2014-06-30',json.dumps(dict(netIncome=20e6,revenue=100e6))),
+            ('A','2015-06-30',json.dumps(dict(netIncome=1e9,revenue=1e9)))])
+        options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
+        result=s.backtest(self.db,**options,filters=[dict(field='pe',op='lt',value=11),dict(field='profit_margin',op='gt',value=15)])
+        self.assertEqual([h['symbol'] for h in result['periods'][0]['holdings']],['A'])
+        saved=dict(self.db.execute("SELECT field,value FROM filter_values WHERE symbol='A'"))
+        self.assertEqual(saved['pe'],10);self.assertEqual(saved['profit_margin'],20)
+        with patch.object(s,'compute_period',side_effect=AssertionError('Books must be reused')):
+            result=s.backtest(self.db,**options,filters=[dict(field='pe',op='lt',value=10)])
+        self.assertEqual(result['periods'][0]['names'],0)
+
     def test_conditions_reuse_dated_books_and_exclude_missing_returns(self):
         options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
         initial=s.backtest(self.db,**options)

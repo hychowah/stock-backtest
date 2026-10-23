@@ -10,9 +10,11 @@ for (const match of html.matchAll(/\bhref="#([^"]+)"/g)) assert(ids.includes(mat
 for (const match of html.matchAll(/\baria-controls="([^"]+)"/g)) assert(ids.includes(match[1]), `Missing controlled panel ${match[1]}`);
 assert(!/<(?:link|img|script)\b[^>]*(?:src|href)=["']https?:/i.test(html), 'Guide must work without remote assets');
 assert(html.includes('Shared in-memory data remains a prototype.') && html.includes('The requested-pool change is now in the source.'), 'Source and prototype status must be clear');
-assert(html.includes('P/B and P/E need more saved financial data.') && html.includes('All conditions must pass before ranking.'), 'Do not imply P/B is implemented');
+assert(html.includes('Financial ratios use annual statement inputs.') && html.includes('All conditions must pass before ranking.'), 'Explain annual ratio inputs');
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
+
+assert(html.includes('Multiple records can have the same fiscal date.') && html.includes('Conflicting values stay unavailable.'), 'Explain duplicate annual response preservation and input ambiguity');
 
 assert(html.includes('content hash') && html.includes('worker completion and database closure') && html.includes('scripts/cache_assets.py'), 'Cache repair evidence and shared ownership must be explained');
 
@@ -78,7 +80,7 @@ for (const pool of ['legacy', 'cached']) for (const count of ['50', '100']) for 
   elements['example-filter'].value = filter;
   selects[0].events.change();
   const result = text(elements['settings-explanation']);
-  if (filter === 'pb') assert(result.includes('not available now') && result.includes('historical book values'));
+  if (filter === 'pb') assert(result.includes('saved annual equity') && result.includes('Full annual financial data'));
   else assert(result.includes(count) && result.includes('Saved books'));
   if (pool === 'legacy' && count === '100' && filter !== 'pb') assert(result.includes('does not expand'));
 }

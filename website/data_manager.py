@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 from threading import Event, Lock, Thread
+import financial_inputs
 import cache_assets
 import cache_access
 from cache_assets import read_json, write_json, series
@@ -24,7 +25,7 @@ import baseline
 ROOT=r.ROOT
 RAW=r.RAW
 COVERAGE=RAW/'download-coverage.json'
-KINDS=('universe','financials','prices','spy','treasury')
+KINDS=('universe','financials','fundamentals','prices','spy','treasury')
 
 
 
@@ -164,6 +165,8 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         skipped=asset.skipped_dates(ledger)
         if skipped:warnings.append(price_warning(file,skipped))
         assets.append(dict(name=name,state='unrequested dates' if gaps else 'checked range',count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,skipped_dates=skipped))
+    fundamental_missing={endpoint:[symbol for symbol in targets if not financial_inputs.completed(RAW,symbol,endpoint,ledger)] for endpoint in financial_inputs.ENDPOINTS}
+    assets.append(dict(name='Financial ratio inputs (annual statements)',state='missing inputs' if any(fundamental_missing.values()) else 'checked',count=sum(len(targets)-len(missing) for missing in fundamental_missing.values()),first=None,last=None))
     prices=[];available=0
     for i,symbol in enumerate(targets,1):
         stop();path=run.cache_path_for(symbol)
@@ -178,7 +181,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
     return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=run.KEY_PATH.is_file() and run.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
                 target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),baseline=baseline_audit(),
-                unavailable_metrics=['P/E: saved cache lacks earnings','P/B: saved cache lacks book values'])
+                missing_ratio_inputs=fundamental_missing, unavailable_metrics=[])
 
 
 def request_json(endpoint,params,stop,client=None):
@@ -287,7 +290,7 @@ def _download(o,emit,stop,client):
         pending=[s for s in wanted if s not in records]
         for completed,(symbol,rows) in enumerate(client.map(pending,lambda symbol:request_json('key-metrics',dict(symbol=symbol,period='annual',limit=40),stop,client)),1):
             stop()
-            record=run.slim_metrics(symbol,rows)
+            record=run.financial_record(symbol,rows)
             path=RAW/'metrics.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
             # A valid final JSONL record need not end with a newline.
             needs_newline=path.exists() and path.stat().st_size>0
@@ -296,6 +299,19 @@ def _download(o,emit,stop,client):
             with path.open('a',encoding='utf-8') as handle:handle.write(('\n' if needs_newline else '')+json.dumps(record)+'\n')
             records[symbol]=record
             emit(message=f'Saved annual financials {completed}/{len(pending)} · up to {client.workers} parallel requests.',completed=completed,total=len(pending),workers=client.workers)
+    if 'fundamentals' in selected:
+        if not universe:raise ValueError('Download the US stock universe first.')
+        targets=target_symbols(o,universe,records)
+        # Reuse full key-metric responses already saved by the financial downloader.
+        for symbol in targets:
+            record=records.get(symbol,{})
+            if record.get('full_response') is True and not financial_inputs.completed(RAW,symbol,'key-metrics',ledger):
+                financial_inputs.publish(RAW,symbol,'key-metrics',record['rows'],ledger,COVERAGE)
+        pending=[(symbol,endpoint) for symbol in targets for endpoint in financial_inputs.ENDPOINTS if not financial_inputs.completed(RAW,symbol,endpoint,ledger)]
+        for completed,(task,rows) in enumerate(client.map(pending,lambda task:request_json(task[1],dict(symbol=task[0],period='annual',limit=40),stop,client)),1):
+            stop();symbol,endpoint=task
+            financial_inputs.publish(RAW,symbol,endpoint,rows,ledger,COVERAGE)
+            emit(message=f'Saved financial ratio inputs {completed}/{len(pending)}.',completed=completed,total=len(pending),workers=client.workers)
     market=[]
     if 'spy' in selected:market.append(('spy-div.json','adjClose','historical-price-eod/dividend-adjusted',None))
     if 'treasury' in selected:market.append(('treasury.json','month3','treasury-rates',None))

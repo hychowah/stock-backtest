@@ -1,7 +1,7 @@
 """Selection, temporal availability, price alignment, and invalidation checks."""
 import json
 import io
-from contextlib import ExitStack, redirect_stdout
+from contextlib import ExitStack, redirect_stdout, closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -79,7 +79,7 @@ class ResearchTests(unittest.TestCase):
         conditions=[dict(field='return_1y',op='gt',value=0),dict(field='return_1y',op='lt',value=30),dict(field='ev_ebitda',op='lt',value=5)]
         rows=r.screen(self.db,first=2015,last=2015,rank_to=1,filters=conditions)
         self.assertEqual([(row['symbol'],row['rank']) for row in rows],[('S2',1)])
-        for conditions in ([dict(field='pe',op='lt',value=15)],[dict(field='return_1y',op='gt',value=float('nan'))],[dict(field='return_1y',op='gte',value=0)],{}):
+        for conditions in ([dict(field='unknown_ratio',op='lt',value=15)],[dict(field='return_1y',op='gt',value=float('nan'))],[dict(field='return_1y',op='gte',value=0)],{}):
             with self.assertRaises(ValueError):r.latest_screen(self.db,filters=conditions)
 
     def test_trailing_returns_use_only_past_prices_and_require_history(self):
@@ -223,6 +223,19 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0], 2)
         finally:
             db.close()
+
+    def test_preparation_stores_dated_financial_ratios_in_both_modes(self):
+        ledger={}
+        for endpoint,fields in [('income-statement',dict(netIncome=20e6,revenue=100e6)),('balance-sheet-statement',dict(totalStockholdersEquity=50e6)),('cash-flow-statement',dict(freeCashFlow=-5e6))]:
+            r.financial_inputs.publish(r.RAW,'TEST',endpoint,[dict(date='2014-06-30',reportedCurrency='USD',**fields)],ledger,r.RAW/'coverage.json')
+        r.prepare(self.path)
+        with closing(r.connect(self.path)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM financial_inputs').fetchone()[0],1)
+            historical=r.screen(db,first=2015,last=2015,filters=[dict(field='pe',op='lt',value=11),dict(field='profit_margin',op='gt',value=19)])
+            self.assertEqual([h['symbol'] for h in historical],['TEST'])
+            latest=r.latest_screen(db,filters=[dict(field='pe',op='gt',value=10)])
+            self.assertEqual([h['symbol'] for h in latest],['TEST'])
+            self.assertEqual(r.latest_screen(db,filters=[dict(field='fcf_yield',op='gt',value=0)]),[])
 
     def test_new_latest_prices_do_not_extend_historical_reference(self):
         spy=r.RAW/'spy-div.json'

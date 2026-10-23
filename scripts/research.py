@@ -14,6 +14,7 @@ import time
 import run
 import metrics
 import books
+import financial_inputs
 import cache_assets
 import cache_access
 import revalue
@@ -21,11 +22,12 @@ import baseline
 from paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
+CREATE TABLE financial_inputs (symbol TEXT, fiscal TEXT, values_json TEXT NOT NULL, PRIMARY KEY(symbol,fiscal));
 CREATE TABLE screening_metrics (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, metric TEXT, multiple REAL NOT NULL, yield_value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,metric));
 CREATE TABLE filter_values (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, field TEXT, value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,field));
 CREATE TABLE baseline_prices (year INTEGER, symbol TEXT, fiscal_price_date TEXT, valuation_date TEXT, fiscal_price REAL, valuation_price REAL, entry_price REAL, exit_price REAL, PRIMARY KEY(year,symbol));
@@ -48,6 +50,8 @@ CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
 def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(cache_assets.__file__), Path(run.__file__), Path(revalue.__file__)]
+    paths += [Path(financial_inputs.__file__)]
+    paths += sorted((RAW/'financial-inputs').glob('*/*.json'))
     return dict({p.relative_to(ROOT).as_posix(): ['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths}, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
 
 
@@ -234,6 +238,8 @@ def prepare(path=DATABASE, force=False):
                     if row is None or (pool=='legacy' and (row[4]<run.MIN_MARKET_CAP or row[5]<run.MIN_EV)):
                         continue
                     db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
+            financial_history=financial_inputs.history(RAW,symbol)
+            db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in financial_history.items()])
             history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
             def lookup(day,column,forward,slack):
                 return (after if forward else before)(div,day,slack)
@@ -241,7 +247,7 @@ def prepare(path=DATABASE, force=False):
                 for saved in db.execute('SELECT * FROM '+table+' WHERE symbol=?',(symbol,)).fetchall():
                     observation=dict(saved)
                     pairs=metrics.evaluate(observation,history)
-                    values=metrics.filter_values(observation,pairs,date.fromisoformat(saved[day_key]),lookup)
+                    values=metrics.filter_values(observation,pairs,date.fromisoformat(saved[day_key]),lookup,financial_history)
                     db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):

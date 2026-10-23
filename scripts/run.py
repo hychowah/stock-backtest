@@ -214,21 +214,14 @@ def load_done(path: Path) -> set[str]:
     return done
 
 
-def slim_metrics(symbol: str, payload: object) -> dict:
-    rows = []
-    if isinstance(payload, list):
-        for row in payload:
-            if not isinstance(row, dict):
-                continue
-            rows.append({
-                "date": row.get("date"),
-                "fiscalYear": row.get("fiscalYear"),
-                "reportedCurrency": row.get("reportedCurrency"),
-                "marketCap": row.get("marketCap"),
-                "enterpriseValue": row.get("enterpriseValue"),
-                "evToEBITDA": row.get("evToEBITDA"),
-            })
-    return {"symbol": symbol, "rows": rows}
+def financial_record(symbol: str, payload: object) -> dict:
+    """Keep every provider field. Prepared calculations select their own inputs."""
+    if not isinstance(payload,list) or any(not isinstance(row,dict) for row in payload):
+        raise ValueError('Invalid annual financial response. Saved files were kept.')
+    record={"symbol":symbol,"rows":payload,"full_response":True}
+    # Reject nonfinite JSON values without discarding unknown fields or nulls.
+    json.dumps(record,allow_nan=False)
+    return record
 
 
 def fetch_metrics(symbols: list[str], dest: Path) -> None:
@@ -248,7 +241,7 @@ def fetch_metrics(symbols: list[str], dest: Path) -> None:
         }, paced=False)
         if status != 200 or not isinstance(payload, list):
             return "fail"
-        record = slim_metrics(symbol, payload)
+        record = financial_record(symbol, payload)
         with write_lock:
             with dest.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(record) + "\n")

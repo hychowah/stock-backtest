@@ -5,6 +5,7 @@ controls consume the catalog, rather than branching on metric identifiers.
 """
 from datetime import date
 import statistics
+import math
 
 METRICS = {
     'ev_ebitda': dict(label='EV / EBITDA'),
@@ -85,8 +86,17 @@ def prepare_metrics(db):
 
 # Threshold values use display units: millions of dollars, percent, or multiples.
 FILTERS = {
-    'pb': dict(label='P/B', available=False),
-    'pe': dict(label='P/E', available=False),
+    'pb': dict(label='P/B (×)', available=True),
+    'pe': dict(label='P/E (×)', available=True),
+    'fcf': dict(label='Free cash flow ($ million)', available=True),
+    'fcf_yield': dict(label='Free cash flow yield (%)', available=True),
+    'price_fcf': dict(label='Price / free cash flow (×)', available=True),
+    'profit_margin': dict(label='Net profit margin (%)', available=True),
+    'peg': dict(label='PEG — 3-year EPS growth (×)', available=True),
+    'roe': dict(label='Return on average equity (%)', available=True),
+    'current_ratio': dict(label='Current ratio (×)', available=True),
+    'interest_coverage': dict(label='Interest coverage — EBIT / interest (×)', available=True),
+    'debt_equity': dict(label='Debt / equity (×)', available=True),
     'return_1y': dict(label='1-year trailing return (%)', available=True),
     'return_3y': dict(label='3-year trailing return (%)', available=True),
     'market_cap': dict(label='Market cap ($ million)', available=True),
@@ -116,7 +126,7 @@ def validate_filters(filters):
     return filters
 
 
-def filter_values(observation, pairs, day, lookup):
+def filter_values(observation, pairs, day, lookup, financials=None):
     """Prepare threshold inputs at the screen date, never the future exit.
 
     Annual lookbacks use the same calendar day (Feb 29 clamps to Feb 28).
@@ -133,4 +143,36 @@ def filter_values(observation, pairs, day, lookup):
         start=lookup(target,'adjusted',False,7)
         if end and start and start[1]>0:
             values[f'return_{years}y']=(end[1]/start[1]-1)*100
+    if financials:values.update(financial_values(observation,financials))
     return values
+
+
+def financial_values(observation,reports):
+    """Use the selected annual report only; no newer report fills missing fields."""
+    fiscal=str(observation['fiscal']);current=reports.get(fiscal,{})
+    # Annual year-end dates can move. Select the latest date in each earlier year.
+    by_year={}
+    for day,row in sorted(reports.items()):
+        if day<=fiscal:by_year[int(day[:4])]=row
+    previous=by_year.get(int(fiscal[:4])-1,{})
+    result={};cap=observation['market_cap']
+    def ratio(key,numerator,denominator,scale=1):
+        if numerator is not None and denominator is not None and denominator>0:
+            value=numerator/denominator*scale
+            if math.isfinite(value):result[key]=value
+    income=current.get('netIncome');equity=current.get('totalStockholdersEquity');fcf=current.get('freeCashFlow')
+    ratio('pe',cap,income);ratio('pb',cap,equity)
+    if fcf is not None:result['fcf']=fcf/1e6
+    ratio('fcf_yield',fcf,cap,100);ratio('price_fcf',cap,fcf)
+    ratio('profit_margin',income,current.get('revenue'),100)
+    old_equity=previous.get('totalStockholdersEquity')
+    if equity is not None and old_equity is not None and equity>0 and old_equity>0:
+        ratio('roe',income,(equity+old_equity)/2,100)
+    ratio('current_ratio',current.get('totalCurrentAssets'),current.get('totalCurrentLiabilities'))
+    ratio('interest_coverage',current.get('ebit'),current.get('interestExpense'))
+    ratio('debt_equity',current.get('totalDebt'),equity)
+    eps=[by_year.get(int(fiscal[:4])-i,{}).get('epsDiluted') for i in range(4)]
+    if 'pe' in result and all(e is not None and e>0 for e in eps):
+        growth=((eps[0]/eps[3])**(1/3)-1)*100
+        ratio('peg',result['pe'],growth)
+    return result

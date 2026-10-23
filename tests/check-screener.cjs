@@ -4,6 +4,8 @@ const html=fs.readFileSync(path.join(process.argv[3]||path.join(root,'website/lo
 const dataset=JSON.parse(html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
 const engine=require('../website/screener.js');
 const cases=[
+ {first:2015,last:2020,filters:[{field:'pe',op:'lt',value:20}]},
+ {first:2015,last:2020,pool:'cached',filters:[{field:'roe',op:'gt',value:10},{field:'debt_equity',op:'lt',value:1}]},
  {first:2015,last:2020},
  {first:2015,last:2020,rank_to:100},
  {first:2015,last:2020,rank_from:10,rank_to:20},
@@ -41,6 +43,7 @@ assert.throws(()=>engine.screen(dataset,{min_yield:NaN}),/non-negative/);
 console.log(`Passed: browser/SQLite parity across ${cases.length} screens, including combined filters, exact holdings, empty and short years, SPY periods, and invalid inputs.`);
 
 const latestCases=[{}, {pool:'cached',rank_to:100},{pool:'cached',min_cap:500e6,max_cap:5e9,min_yield:.15},{pool:'cached',sector:'Technology',exchange:'NASDAQ',max_multiple:8},{rank_from:10,rank_to:20},{sector:'No matching sector'},{pool:'cached',metric:'ev_ebitda_3y',rank_to:100,max_multiple:8}];
+latestCases.push({pool:'cached',filters:[{field:'fcf_yield',op:'gt',value:5}]});
 latestCases.push({pool:'cached',filters:[{field:'return_1y',op:'gt',value:-10},{field:'return_3y',op:'lt',value:100}]});
 for(let i=0;i<latestCases.length;i++){
  const result=engine.latestScreen(dataset,latestCases[i]),expected=references.latest[i];
@@ -64,3 +67,18 @@ for(const values of Object.values(custom.metric_values))values.test_signal=[7,.1
 assert(engine.latestScreen(custom,{metric:'test_signal',pool:'cached'}).stocks.length>0);
 assert(engine.latestScreen(custom,{metric:'test_signal',pool:'cached'}).stocks.every(h=>h.metric_multiple===7 && h.metric_yield===.125));
 assert(engine.screen(custom,{metric:'test_signal',pool:'cached',first:2015,last:2015}).years[0].holdings.every(h=>h.metric_multiple===7 && h.metric_yield===.125));
+
+// Nonempty financial input fixtures exercise threshold values, missing data and ties.
+const financial=JSON.parse(JSON.stringify(dataset));
+financial.filter_values={};
+const selected=engine.latestScreen(financial,{pool:'cached',rank_to:2}).stocks;
+assert.equal(selected.length,2);
+for (const [i,h] of selected.entries()) {
+ const key='latest:cached:0:'+h.symbol;
+ financial.filter_values[key]??={};
+ Object.assign(financial.filter_values[key],{pe:10+i,roe:20,fcf_yield:-5});
+}
+const financialOptions={pool:'cached',filters:[{field:'pe',op:'lt',value:11},{field:'roe',op:'gt',value:10},{field:'fcf_yield',op:'lt',value:0}]};
+assert.deepStrictEqual(engine.latestScreen(financial,financialOptions).stocks.map(h=>h.symbol),[selected[0].symbol]);
+assert.equal(engine.latestScreen(financial,{pool:'cached',filters:[{field:'pe',op:'lt',value:10}]}).stocks.length,0);
+console.log('Passed: populated financial filter values, strict thresholds, signed cash flow and missing-data exclusion.');

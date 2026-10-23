@@ -10,6 +10,8 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import research
 
 CASES = [
+    dict(first=2015,last=2020,filters=[dict(field='pe',op='lt',value=20)]),
+    dict(first=2015,last=2020,pool='cached',filters=[dict(field='roe',op='gt',value=10),dict(field='debt_equity',op='lt',value=1)]),
     dict(first=2015, last=2020),
     dict(first=2015, last=2020, rank_to=100),
     dict(first=2015, last=2020, rank_from=10, rank_to=20),
@@ -27,6 +29,7 @@ def main():
     db = research.connect()
     try:
         latest_cases=[{},dict(pool='cached',rank_to=100),dict(pool='cached',min_cap=500e6,max_cap=5e9,min_yield=.15),dict(pool='cached',sector='Technology',exchange='NASDAQ',max_multiple=8),dict(rank_from=10,rank_to=20),dict(sector='No matching sector'),dict(pool='cached',metric='ev_ebitda_3y',rank_to=100,max_multiple=8)]
+        latest_cases.append(dict(pool='cached',filters=[dict(field='fcf_yield',op='gt',value=5)]))
         latest_cases.append(dict(pool='cached',filters=[dict(field='return_1y',op='gt',value=-10),dict(field='return_3y',op='lt',value=100)]))
         expected = dict(historical=[research.screen(db, **options) for options in CASES],latest=[research.latest_screen(db,**options) for options in latest_cases])
     finally:

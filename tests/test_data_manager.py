@@ -425,7 +425,7 @@ class CacheTests(unittest.TestCase):
         report=d.inspect(self.o)
         self.assertEqual(report['missing_financials'],['B'])
         self.assertEqual(report['prices'][0]['state'],'missing')
-        self.assertEqual(report['unavailable_metrics'][0],'P/E: saved cache lacks earnings')
+        self.assertEqual(report['missing_ratio_inputs']['income-statement'],['A'])
 
     def test_rebuild_runs_offline_dependency_chain_then_checks(self):
         jobs=d.Jobs();calls=[]

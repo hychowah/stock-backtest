@@ -309,9 +309,12 @@ strict: `lt` means less than; `gt` means more than. Two conditions can bound the
 same metric. Missing values fail only conditions that require those values.
 
 The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
-market cap, enterprise value, and trailing 1-year and 3-year returns. P/B and
-P/E are shown as unavailable. The saved annual cache lacks book values and
-earnings. No additional data is downloaded for these controls.
+market cap, enterprise value, and trailing 1-year and 3-year returns. Additional
+financial filters include P/E, P/B, free cash flow amount/yield, price/FCF, net
+profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity.
+These use saved annual statement inputs. Select Full annual financial data in
+the data panel, download missing assets, then rebuild. Changing filters makes no
+provider requests. Missing inputs exclude only stocks filtered on those inputs.
 
 `scripts/metrics.py` defines the catalog and prepares threshold values.
 Schema version 5 stores them in `filter_values`, separately from ranking pairs.
@@ -346,8 +349,7 @@ prior prices for report-date valuation and trailing returns.
 **Check data** reads saved files. It makes no provider request and does not read
 the API key. Reports show actual first and last dates, record counts, missing
 financial symbols, empty histories and invalid files. The JSON report includes
-the full stock list. P/E and P/B remain unavailable; the downloader does not
-add earnings or book values.
+the full stock list and missing full-data endpoint assets for the chosen group.
 
 **Download missing data** uses the selected data types. It reuses a saved
 universe and existing annual records. Financial downloads fill missing symbols
@@ -498,3 +500,32 @@ It no longer writes an unchecked report or advances the historical cutoff.
 Standalone website builds take cache ownership. Managed build subprocesses use
 `--cache-owned` while the parent retains ownership. Daily preparation captures its
 fingerprint after research preparation. No rebuild makes a market-data request.
+
+### Full annual financial data
+
+The full-data option saves complete annual income statements, balance sheets,
+cash flow statements, key metrics and ratios under `raw/financial-inputs/`.
+All returned fields are retained, including unknown fields, null values,
+currencies and filing metadata. New `metrics.jsonl` records also keep complete
+key-metric responses. Older trimmed records stay unchanged. The separate full-data
+cache can backfill their discarded fields without rewriting baseline inputs.
+
+Each endpoint uses annual requests with a 40-report limit. Saved responses do not
+prove complete historical coverage. Empty responses are bound to their exact saved
+asset by a content hash. Valid full responses are reused. Invalid originals are
+backed up before repair. Interrupted publication retains a receipt for the saved
+generation. Workers fetch; one owner publishes under the shared cache lock.
+
+Schema version 7 adds `financial_inputs` for eligible numerical inputs. The raw
+cache retains the other fields for future metric preparation. Selected annual
+inputs must match the report selected by the original eligibility rules. No newer
+report fills an older report's missing fields. P/E and P/B use screen-date market
+cap. ROE uses average positive equity from the selected and prior fiscal years.
+PEG divides P/E by three-year diluted EPS CAGR in percentage points; it requires
+four consecutive positive annual EPS values and positive growth. Ratios require
+positive denominators. Negative FCF, FCF yield and profit margins remain valid.
+
+Run `python3 tests/test_financial_inputs.py`, research and schedule checks, then
+build and run browser parity checks. These checks use offline fixtures.
+
+Annual responses can contain repeated fiscal dates. Keep every returned row, including identical rows. A repair also retains distinct saved variants. Preparation uses a numerical input only when all nonmissing USD values for that endpoint and fiscal date agree. Conflicting inputs stay absent. Nulls do not replace known values. Response order does not select a revision.
