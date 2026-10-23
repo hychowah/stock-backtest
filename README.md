@@ -10,6 +10,8 @@ On other systems, run `python3 website/serve.py` in the foreground. No API key o
 download is needed; unchanged caches are reused. The first refresh can take a
 few minutes. The Windows command keeps the server attached to the terminal on `0.0.0.0:3000`. Open `http://127.0.0.1:3000` on this computer. The installed `backtest-web.cmd` command also works from other Windows Terminal folders. Keep the terminal open to see server logs. Press Ctrl+C to stop it. Repeating the command stops this project’s identified server and starts current code in the new terminal. This also replaces any older background instance. Replacement waits for active requests to finish before it prepares data. If ownership is still held after 30 seconds, the command asks you to wait or stop the old terminal, then retry.
 
+The server also saves development logs in `data/logs/website-<pid>.log`. The terminal and data panel show the current file. Logs keep error types, stack locations, file error codes and safe download context. They omit API keys, provider URLs, response bodies and arbitrary exception text. Each process keeps one active log and two rotated backups, up to about 5 MiB each.
+
 The website opens with Latest stock picks. Switch to Historical backtest for
 January books or custom trade dates with monthly, quarterly, half-yearly or
 yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)

@@ -19,9 +19,17 @@ import schedules
 import robustness
 import data_manager
 import cache_access
+import diagnostics
 from build_state import current_build
 
 DATA_JOBS=data_manager.Jobs()
+
+
+class Server(ThreadingHTTPServer):
+    def handle_error(self,request,client_address):
+        error=sys.exc_info()[1]
+        diagnostics.failure('http.failed',error)
+        print(f'HTTP request failed ({type(error).__name__}). Check the development log.',file=sys.stderr,flush=True)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -91,6 +99,7 @@ class Handler(SimpleHTTPRequestHandler):
                 result=calculate(db,**request)
             self.reply(200,result)
         except (ValueError,TypeError,sqlite3.Error) as error:
+            diagnostics.failure('schedule.failed',error,mode='robustness' if self.path=='/api/robustness' else 'schedule')
             self.reply(400,dict(error=str(error)))
 
     def data_request(self):
@@ -124,6 +133,7 @@ class Handler(SimpleHTTPRequestHandler):
             # next trial when the browser disconnects.
             return
         except Exception as error:
+            diagnostics.failure('robustness.failed',error)
             try:event(dict(type='error',message=str(error)))
             except (BrokenPipeError,ConnectionResetError):pass
 
@@ -150,13 +160,20 @@ def main():
     parser.add_argument('--no-browser',action='store_true',help='Start without opening a browser')
     parser.add_argument('--managed',action='store_true',help='Replace this project’s previous server and keep this terminal attached')
     args=parser.parse_args()
+    path=diagnostics.configure()
+    print('Development log: '+diagnostics.relative_path(path) if path else 'Development log unavailable. Terminal logging remains active.',flush=True)
+    diagnostics.event('server.starting',port=args.port,managed=args.managed)
     try:
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
         with context as lifecycle:run_server(args,lifecycle,parser)
     except KeyboardInterrupt:
         print('Website stopped.',flush=True)
     except (OSError,ValueError,RuntimeError) as error:
+        diagnostics.failure('server.failed',error)
         parser.exit(1,str(error)+'\n')
+    finally:
+        diagnostics.event('server.stopped')
+        diagnostics.close()
 
 
 def run_server(args,lifecycle,parser):
@@ -166,18 +183,21 @@ def run_server(args,lifecycle,parser):
             if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
             else:ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
+        diagnostics.failure('startup.failed',error)
         parser.exit(1,'Could not prepare the local website: '+str(error)+'\n')
     except KeyboardInterrupt:
         parser.exit(1,'Preparation stopped. Run the launcher again to resume safely.\n')
     try:
-        server=ThreadingHTTPServer((args.host,args.port),Handler)
+        server=Server((args.host,args.port),Handler)
     except OSError as error:
         if error.errno not in (errno.EADDRINUSE,10048) and getattr(error,'winerror',None)!=10048:
+            diagnostics.failure('server.bind_failed',error,port=args.port)
             parser.exit(1,f'Cannot start the local website service: {error}\n')
         # An older process may still serve the updated HTML with an outdated
         # API. Open a fresh local instance instead of reusing that process.
-        try:server=ThreadingHTTPServer((args.host,0),Handler)
+        try:server=Server((args.host,0),Handler)
         except OSError as retry_error:
+            diagnostics.failure('server.bind_failed',retry_error)
             parser.exit(1,f'Cannot start the local website service: {retry_error}\n')
         print(f'Port {args.port} is already in use; opening a fresh website instance.',flush=True)
     server.data_recovery=recovery
@@ -188,6 +208,7 @@ def run_server(args,lifecycle,parser):
     try:
         print('Server attached to this terminal. Press Ctrl+C to stop.',flush=True)
         print(f'Open http://127.0.0.1:{port} — custom schedules use saved data only.',flush=True)
+        diagnostics.event('server.ready',port=port)
         if not args.no_browser:
             try:webbrowser.open(f'http://127.0.0.1:{port}')
             except webbrowser.Error:pass

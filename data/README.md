@@ -47,3 +47,5 @@ The launcher upgrades compatible version-1/2 caches in place. Version-1 books
 mark both pools complete; version-2 books retain individual completion markers.
 Prices, financials and dated results are retained. Changed research inputs or financial calculation code still trigger an
 offline rebuild. No market data is downloaded during either path.
+
+`logs/website-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.

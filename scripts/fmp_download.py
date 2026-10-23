@@ -14,6 +14,7 @@ import time
 import urllib.parse
 
 import run
+import diagnostics
 
 WORKERS=8
 STARTS_PER_SECOND=4.0
@@ -95,7 +96,8 @@ class Client:
                 # Close the response before reusing its persistent connection.
                 response.close()
         except (Cancelled,FileNotFoundError):raise
-        except Exception:
+        except Exception as error:
+            diagnostics.failure('provider.transport_failed',error,symbol=params.get('symbol'),start=params.get('from'),end=params.get('to'))
             connection.close();self.local.connection=None
             return 0,b'',None
 
@@ -114,6 +116,7 @@ class Client:
             self.gate.enter(self)
             status,body,retry_after=self._once(endpoint,params)
             self.check()
+            diagnostics.event('provider.response',status=status,attempt=attempt+1,symbol=params.get('symbol'),start=params.get('from'),end=params.get('to'))
             if status==200:
                 try:payload=json.loads(body)
                 except (ValueError,UnicodeDecodeError):payload=None
@@ -123,6 +126,7 @@ class Client:
             if not transient or attempt==ATTEMPTS-1:break
             delay=self.retry_delay(retry_after,2**(attempt+1))
             self.gate.pause(delay,throttled=status==429)
+            diagnostics.event('provider.retry',status=status,delay=delay,attempt=attempt+1)
             self.emit(message=f'Provider retry (status {status}); waiting {delay:g}s. Saved work is kept.')
         raise ValueError(f'Data provider request failed (status {status}). Saved files were kept. Check your key, subscription or connection, then retry.')
 

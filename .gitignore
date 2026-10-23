@@ -42,5 +42,8 @@ data/website-owner-*.lock
 # Serialize data management and startup across local servers.
 data/website-data-*.lock
 
+# Per-process development logs and their rotated backups.
+data/logs/
+
 # Disposable API experiments, response memoization and benchmark caches.
 tmp/

@@ -36,6 +36,7 @@ const DataPanel=(()=>{
     node('data-message').textContent=job.message;
     node('data-error').textContent=job.error??'';
     node('data-warnings').textContent=job.warning??'';
+    node('data-log').textContent=state.log_file?'Development log: '+state.log_file:'Development logging is unavailable. Check the server terminal.';
     const progress=node('data-progress-bar');progress.hidden=!busy;
     if(job.total>0){progress.max=job.total;progress.value=job.completed;}else progress.removeAttribute('value');
     if(state.report && state.report.checked_at!==lastReport?.checked_at)renderReport(state.report);

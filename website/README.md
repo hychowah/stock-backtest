@@ -182,3 +182,11 @@ code. Unsupported API routes display a relaunch instruction rather than only
 After a random batch completes, Advanced remembers its date-set number. Checking
 **Repeat the same dates** then replays that batch's dates with the same window
 and frequency. Leaving it unchecked draws fresh dates, without needing a number.
+
+## Development diagnostics
+
+Each server process saves `data/logs/website-<pid>.log`. Startup and the data panel show the current path. The files record startup, job completion or failure, provider status and retries, saved windows, and file publication retries. Error chains include exception types, OS codes and stack locations. Messages, source lines, locals, API keys, provider URLs and response bodies are omitted. Logs use UTC timestamps. Each process keeps a 5 MiB active file and two rotated backups. Logs stay local and are ignored by Git.
+
+Windows file indexers can briefly lock cache files. Atomic JSON publication retries access or sharing errors up to eight times, with less than two seconds of total retry waits. Other file errors fail immediately. The existing cache owner remains held. Receipts still publish before their corresponding assets. Persistent failures keep the previous saved data and record the error location in the log.
+
+Check with `python3 tests/test_diagnostics.py`, `python3 tests/test_data_manager.py` and `python3 tests/test_startup.py`. Run these checks on native Windows too.

@@ -19,6 +19,8 @@ class StartupTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
         self.context.enter_context(patch.object(serve.cache_access,'access',side_effect=lambda:nullcontext()))
+        self.context.enter_context(patch.object(serve.diagnostics,'configure',return_value=None))
+        self.context.enter_context(patch.object(serve.diagnostics,'close'))
         self.context.enter_context(patch.object(serve.data_manager,'source_problem',return_value=False))
 
     def test_prepare_then_build_when_stale(self):
@@ -37,14 +39,14 @@ class StartupTests(unittest.TestCase):
     def test_main_opens_browser_after_successful_bind(self):
         calls=[];server=Mock();server.server_address=('127.0.0.1',8765)
         server.serve_forever.side_effect=lambda:calls.append('serve')
-        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready',side_effect=lambda:calls.append('prepare')),patch.object(serve,'ThreadingHTTPServer',side_effect=lambda *args:calls.append('bind') or server),patch.object(serve.webbrowser,'open',side_effect=lambda url:calls.append('browser')):
+        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready',side_effect=lambda:calls.append('prepare')),patch.object(serve,'Server',side_effect=lambda *args:calls.append('bind') or server),patch.object(serve.webbrowser,'open',side_effect=lambda url:calls.append('browser')):
             serve.main()
         self.assertEqual(calls,['prepare','bind','browser','serve'])
         server.server_close.assert_called_once()
 
     def test_missing_sources_open_recovery_panel_without_preparation(self):
         server=Mock();server.server_address=('127.0.0.1',3000)
-        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve.data_manager,'source_problem',return_value=True),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'ThreadingHTTPServer',return_value=server):
+        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve.data_manager,'source_problem',return_value=True),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'Server',return_value=server):
             serve.main()
         prepare.assert_not_called();self.assertTrue(server.data_recovery)
         server.serve_forever.assert_called_once()
@@ -52,29 +54,29 @@ class StartupTests(unittest.TestCase):
     def test_ctrl_c_closes_terminal_owned_server(self):
         server=Mock();server.server_address=('0.0.0.0',3000)
         server.serve_forever.side_effect=KeyboardInterrupt
-        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve,'ensure_ready'),patch.object(serve,'ThreadingHTTPServer',return_value=server):
+        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve,'ensure_ready'),patch.object(serve,'Server',return_value=server):
             serve.main()
         server.server_close.assert_called_once()
 
     def test_failure_never_opens_browser(self):
-        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready',side_effect=ValueError('bad cache')),patch.object(serve,'ThreadingHTTPServer') as server,patch.object(serve.webbrowser,'open') as browser:
+        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready',side_effect=ValueError('bad cache')),patch.object(serve,'Server') as server,patch.object(serve.webbrowser,'open') as browser:
             with self.assertRaises(SystemExit):serve.main()
         server.assert_not_called();browser.assert_not_called()
 
     def test_bind_failure_does_not_open_browser(self):
-        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready'),patch.object(serve,'ThreadingHTTPServer',side_effect=OSError('port unavailable')),patch.object(serve.webbrowser,'open') as browser:
+        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready'),patch.object(serve,'Server',side_effect=OSError('port unavailable')),patch.object(serve.webbrowser,'open') as browser:
             with self.assertRaises(SystemExit):serve.main()
         browser.assert_not_called()
 
     def test_no_browser_flag(self):
         server=Mock();server.server_address=('127.0.0.1',8765)
-        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve,'ensure_ready'),patch.object(serve,'ThreadingHTTPServer',return_value=server),patch.object(serve.webbrowser,'open') as browser:
+        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve,'ensure_ready'),patch.object(serve,'Server',return_value=server),patch.object(serve.webbrowser,'open') as browser:
             serve.main()
         browser.assert_not_called();server.serve_forever.assert_called_once()
 
     def test_occupied_port_opens_new_instance_instead_of_stale_server(self):
         server=Mock();server.server_address=('127.0.0.1',49123)
-        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready'),patch.object(serve,'ThreadingHTTPServer',side_effect=[OSError(errno.EADDRINUSE,'in use'),server]) as bind,patch.object(serve.webbrowser,'open') as browser:
+        with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready'),patch.object(serve,'Server',side_effect=[OSError(errno.EADDRINUSE,'in use'),server]) as bind,patch.object(serve.webbrowser,'open') as browser:
             serve.main()
         self.assertEqual(bind.call_args_list[1].args[0],('0.0.0.0',0))
         browser.assert_called_once_with('http://127.0.0.1:49123')

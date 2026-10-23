@@ -11,6 +11,8 @@ const run=code=>vm.runInContext(code,ctx);
  await run('DataPanel.refresh()');
  assert(requests.every(r=>r.path==='/api/data/status'&&!r.options.method),'Opening the panel must never start downloads.');
  assert(!node('data-download').disabled);
+ reply.log_file='data/logs/website-123.log';await run('DataPanel.refresh()');
+ assert.equal(node('data-log').textContent,'Development log: data/logs/website-123.log');
  reply={job:{running:true,action:'download',message:'Checking A',completed:1,total:3,error:null},report:null};
  await run("DataPanel.start('download')");
  const request=requests.at(-1);assert.equal(request.path,'/api/data/download');

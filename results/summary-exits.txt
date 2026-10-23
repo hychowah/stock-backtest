@@ -11,7 +11,7 @@ strategy CAGR: 18.01%
 SPY CAGR: 10.22%
 
 Through 2026-10-20
-strategy growth of $1: 178.30
+strategy growth of $1: 178.28
 SPY growth of $1: 21.00
 strategy CAGR: 18.33%
 SPY CAGR: 10.39%
@@ -47,4 +47,4 @@ year,portfolio,spy,names,stopped,bankrupt
 2023,0.1711,0.2600,50,7,0
 2024,0.1659,0.2528,50,7,0
 2025,0.1048,0.1823,50,4,0
-2026,0.2392,0.1345,50,2,0
+2026,0.2391,0.1345,50,2,0

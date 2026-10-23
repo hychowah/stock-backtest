@@ -18,6 +18,7 @@ import schedules
 import research as r
 import run
 import fmp_download
+import diagnostics
 
 ROOT=r.ROOT
 RAW=r.RAW
@@ -211,7 +212,11 @@ def download_series(specs,o,ledger,emit,stop,client):
                 yield owner,a,b,endpoint,params
     for task,batch in client.map(tasks(),lambda task:request_json(task[3],task[4],stop,client)):
         stop();owner,a,b,_,_=task
-        skipped=owner['asset'].publish(batch,a,b,ledger,COVERAGE)
+        try:skipped=owner['asset'].publish(batch,a,b,ledger,COVERAGE)
+        except Exception as error:
+            diagnostics.failure('download.publish_failed',error,asset=owner['asset'].key,start=a,end=b)
+            raise
+        diagnostics.event('download.saved',asset=owner['asset'].key,start=a,end=b,rows=len(batch),skipped=len(skipped))
         if skipped:emit(warning=price_warning(owner['asset'].key,skipped))
         saved+=1;owner['left']-=1
         if not owner['left']:finished+=1
@@ -301,7 +306,8 @@ class Jobs:
         self.state=dict(running=False,action=None,message='Check the saved data to see coverage.',completed=0,total=0,error=None,warning='')
 
     def snapshot(self):
-        with self.lock:return dict(job=dict(self.state),report=self.report)
+        path=diagnostics.log_path()
+        with self.lock:return dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
 
     def emit(self,**values):
         with self.lock:self.state.update(values)
@@ -320,6 +326,7 @@ class Jobs:
         return self.snapshot()
 
     def work(self,action,o):
+        diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
         try:
             # Audit and replacement share the same lock as custom backtests.
             with cache_access.access():
@@ -336,15 +343,21 @@ class Jobs:
                 with self.lock:self.report=report
                 self.emit(warning=' '.join(report.get('warnings',[])))
                 self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
-        except Cancelled:self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
+                diagnostics.event('data.completed',action=action)
+        except Cancelled:
+            diagnostics.event('data.cancelled',action=action)
+            self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
         except (ValueError,FileNotFoundError) as error:
+            diagnostics.failure('data.failed',error,action=action)
             # Only our validation errors are suitable for the UI. Provider URLs
             # and subprocess traces must never reach a status response.
             if isinstance(error,json.JSONDecodeError):message='A saved JSON file is invalid. Restore it from backup or repair that data type.'
             elif isinstance(error,FileNotFoundError):message='A required saved file or API key is missing. Check the data list and key setup.'
             else:message=str(error)
             self.emit(error=message,message='Data job failed. Existing completed files were kept.')
-        except Exception:self.emit(error='Data operation failed. Check file access, provider access and available disk space, then retry.',message='Data job failed. Existing completed files were kept.')
+        except Exception as error:
+            diagnostics.failure('data.failed',error,action=action)
+            self.emit(error='Data operation failed. Check the development log below for details, then retry.',message='Data job failed. Existing completed files were kept.')
         finally:self.emit(running=False)
 
     def cancel_job(self):

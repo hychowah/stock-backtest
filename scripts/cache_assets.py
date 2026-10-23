@@ -7,8 +7,33 @@ but cannot inherit empty-request evidence from a different file generation.
 from datetime import date, timedelta
 import hashlib
 import json
+import time
 
+import diagnostics
 import run
+
+PUBLISH_RETRY_DELAYS=(.05,.1,.2,.4,.4,.4,.4)
+
+
+def publish_bytes(path,content):
+    """Replace atomically; retry Windows sharing/access locks for under 2s.
+
+    File indexers can briefly deny either temporary-file writes or replacement.
+    Keep the old destination and pending file on failure. Other OS errors fail
+    immediately. The caller retains cache ownership throughout these retries.
+    """
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temporary=path.with_name(path.name+'.download')
+    for attempt in range(len(PUBLISH_RETRY_DELAYS)+1):
+        try:
+            temporary.write_bytes(content)
+            temporary.replace(path)
+            return
+        except PermissionError as error:
+            if getattr(error,'winerror',None) not in (5,32,33) or attempt==len(PUBLISH_RETRY_DELAYS):raise
+            diagnostics.event('cache.publish_retry',asset=diagnostics.relative_path(path),attempt=attempt+1,
+                              winerror=error.winerror,delay=PUBLISH_RETRY_DELAYS[attempt])
+            time.sleep(PUBLISH_RETRY_DELAYS[attempt])
 
 
 def read_json(path, default=None):
@@ -17,10 +42,7 @@ def read_json(path, default=None):
 
 
 def write_json(path, value):
-    path.parent.mkdir(parents=True,exist_ok=True)
-    temporary=path.with_name(path.name+'.download')
-    temporary.write_bytes(json.dumps(value,allow_nan=False).encode('utf-8'))
-    temporary.replace(path)
+    publish_bytes(path,json.dumps(value,allow_nan=False).encode('utf-8'))
 
 
 def financial_records(path):
@@ -140,6 +162,13 @@ class SeriesAsset:
         return sorted({str(day) for value in values if (day:=run.parse_day(value))})
 
     def publish(self,batch,start,end,ledger,ledger_path):
+        """Save usable values and record dated price exclusions, even if all.
+
+        A checked request can have no usable prices. Exclusion dates distinguish
+        that result from an empty provider response without making prices up.
+        Malformed records, missing/nonfinite values and out-of-window dates
+        still fail before publication.
+        """
         def fail(reason):
             raise ValueError(f'{self.key}, {start} to {end}: {reason} Saved files were kept.')
         if not isinstance(batch,list):fail('The provider returned invalid dated values.')
@@ -155,7 +184,6 @@ class SeriesAsset:
             else:candidates.append(row)
         valid=series(candidates,self.field)
         if len(valid)!=len(candidates):fail('The provider returned invalid or duplicate dated values.')
-        if batch and not valid:fail('The provider returned no usable dated values.')
         windows=self.checked(ledger)+[[start,end]]
         by_day={row['date'][:10]:row for row in self.rows}
         for row in valid:by_day.setdefault(row['date'][:10],row)
@@ -189,8 +217,6 @@ class SeriesAsset:
         # Publish its expected hash first: a crash before asset replacement
         # leaves a mismatch, while a crash after it retains all known holes.
         write_json(ledger_path,{**ledger,self.key:entry})
-        self.path.parent.mkdir(parents=True,exist_ok=True)
-        temporary=self.path.with_name(self.path.name+'.download')
-        temporary.write_bytes(content);temporary.replace(self.path)
+        publish_bytes(self.path,content)
         self.payload=value;self.rows=series(merged,self.field);self.valid=True;self.digest=digest
         ledger[self.key]=entry

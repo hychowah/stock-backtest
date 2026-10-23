@@ -3,6 +3,8 @@ from contextlib import ExitStack, nullcontext
 from datetime import date
 import io
 import json
+import errno
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -138,12 +140,38 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(d.read_json(self.raw/'px/B.json')['div'],self.prices([('2020-01-03',20)]))
         self.assertIn('A: skipped 1',report['warnings'][0])
 
-    def test_malformed_or_unusable_windows_still_fail_without_publication(self):
+    def test_all_nonpositive_prices_record_unavailable_window_and_continue_batch(self):
+        self.o.update(symbols=['A','B'],datasets=['prices'])
+        batch=self.prices([('2020-01-02',0),('2020-01-03',-1)])
+        def fetch(endpoint,params,*args):
+            return batch if params['symbol']=='A' else self.prices([('2020-01-03',20)])
+        with patch.object(d,'request_json',side_effect=fetch) as get:
+            report=d.download(self.o,self.emit,self.stop)
+            again=d.download(self.o,self.emit,self.stop)
+        self.assertEqual(get.call_count,2,'Both completed histories must be reused on retry.')
+        self.assertEqual(d.read_json(self.raw/'px/A.json')['div'],[])
+        a=next(row for row in report['prices'] if row['symbol']=='A')
+        self.assertEqual(a['skipped_dates'],['2020-01-02','2020-01-03'])
+        self.assertEqual(a['state'],'empty');self.assertEqual(a['windows'],0)
+        self.assertEqual(report['prices_available'],1)
+        self.assertEqual(again['warnings'],report['warnings'])
+        self.assertIn('A: skipped 2',report['warnings'][0])
+
+    def test_all_nonpositive_response_preserves_saved_prices_and_light_history(self):
+        self.o['start']='2020-01-02'
+        payload=dict(div=self.prices([('2020-01-02',12)]),light=[dict(date='2020-01-02',price=13)])
+        self.put('px/A.json',payload)
+        batch=self.prices([('2020-12-31',0)])
+        with patch.object(d,'request_json',return_value=batch):
+            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+        self.assertEqual(d.read_json(self.raw/'px/A.json'),payload)
+        self.assertEqual(d.inspect(self.o)['prices'][0]['skipped_dates'],['2020-12-31'])
+
+    def test_malformed_windows_still_fail_without_publication(self):
         payload=dict(div=self.prices([('2020-01-01',10)]))
         batches=[{},[None],[dict(date='bad',adjClose=12)],
                  [dict(date='2020-01-02')],self.prices([('2020-01-02',float('nan'))]),
                  self.prices([('2020-01-02',12),('2020-01-02',13)]),
-                 self.prices([('2020-01-02',0)]),
                  self.prices([('2020-01-02',12),('2021-01-01',0)])]
         for batch in batches:
             with self.subTest(batch=batch):
@@ -161,6 +189,55 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(asset.publish(batch,'2020-01-01','2020-12-31',ledger,d.COVERAGE),[])
         self.assertEqual(len(asset.rows),2)
         self.assertEqual(asset.skipped_dates(ledger),[])
+
+    def test_transient_windows_locks_retry_receipt_and_asset_publication(self):
+        asset=d.cache_assets.SeriesAsset(self.raw/'px/A.json','adjClose',stock=True)
+        write=Path.write_bytes;replace=Path.replace
+        failed=set()
+        def locked():
+            error=PermissionError(errno.EACCES,'locked');error.winerror=5;return error
+        def write_once(path,content):
+            if path.name=='download-coverage.json.download' and 'write' not in failed:
+                failed.add('write');raise locked()
+            return write(path,content)
+        def replace_once(path,target):
+            if target not in failed:
+                failed.add(target);raise locked()
+            return replace(path,target)
+        with patch.object(Path,'write_bytes',write_once),patch.object(Path,'replace',replace_once),patch.object(d.cache_assets.time,'sleep') as sleep:
+            asset.publish(self.prices([('2020-01-02',12)]),'2020-01-01','2020-12-31',{},d.COVERAGE)
+        self.assertEqual(sleep.call_count,3)
+        self.assertEqual(d.read_json(asset.path)['div'],self.prices([('2020-01-02',12)]))
+        self.assertTrue(asset.checked(d.read_json(d.COVERAGE)))
+
+    def test_persistent_windows_lock_preserves_saved_file_and_receipt(self):
+        asset=d.cache_assets.SeriesAsset(self.raw/'px/A.json','adjClose',stock=True);ledger={}
+        asset.publish(self.prices([('2020-01-02',12)]),'2020-01-01','2020-06-30',ledger,d.COVERAGE)
+        original=asset.path.read_bytes();receipt=d.COVERAGE.read_bytes()
+        error=PermissionError(errno.EACCES,'locked');error.winerror=5
+        with patch.object(Path,'replace',side_effect=error) as replace,patch.object(d.cache_assets.time,'sleep') as sleep,self.assertRaises(PermissionError):
+            asset.publish(self.prices([('2020-12-31',15)]),'2020-07-01','2020-12-31',ledger,d.COVERAGE)
+        self.assertEqual(replace.call_count,8)
+        self.assertLess(sum(call.args[0] for call in sleep.call_args_list),2)
+        self.assertEqual(asset.path.read_bytes(),original)
+        self.assertEqual(d.COVERAGE.read_bytes(),receipt)
+        self.assertEqual(asset.checked(ledger),[['2020-01-01','2020-06-30']])
+
+    def test_disk_full_failure_is_not_retried(self):
+        with patch.object(Path,'write_bytes',side_effect=OSError(errno.ENOSPC,'full')),patch.object(d.cache_assets.time,'sleep') as sleep,self.assertRaises(OSError):
+            d.write_json(self.raw/'spy-div.json',[])
+        sleep.assert_not_called()
+
+    @unittest.skipUnless(os.name=='nt','Native Windows file sharing test')
+    def test_native_windows_reader_lock_recovers_after_reader_closes(self):
+        path=self.raw/'probe.json';d.write_json(path,dict(old=True))
+        handle=path.open('rb')
+        try:
+            with patch.object(d.cache_assets.time,'sleep',side_effect=lambda delay:handle.close()) as sleep:
+                d.write_json(path,dict(new=True))
+            self.assertTrue(sleep.called)
+            self.assertEqual(d.read_json(path),dict(new=True))
+        finally:handle.close()
 
     def test_partial_download_resumes_from_last_saved_window(self):
         self.o.update(start='2010-01-01',end='2020-12-31');ledger={}
@@ -344,6 +421,20 @@ class CacheTests(unittest.TestCase):
         self.assertNotIn('secret',jobs.snapshot()['job']['error'])
         jobs.cancel.set()
         with self.assertRaises(d.Cancelled):jobs.stop()
+
+    def test_unexpected_job_failure_has_persistent_sanitized_trace(self):
+        path=d.diagnostics.configure(self.root/'logs')
+        self.addCleanup(d.diagnostics.close)
+        jobs=d.Jobs()
+        with patch.object(d,'inspect',side_effect=RuntimeError('https://provider.invalid/?apikey=PRIVATE-CANARY')):
+            jobs.start('check',dict(scope='symbols',symbols='A'));jobs.thread.join(3)
+        state=jobs.snapshot()
+        self.assertIn('development log',state['job']['error'])
+        self.assertTrue(state['log_file'].endswith('.log'))
+        content=path.read_text()
+        self.assertIn('data.failed',content);self.assertIn('RuntimeError',content)
+        self.assertIn('data_manager.py',content)
+        self.assertNotIn('PRIVATE-CANARY',content);self.assertNotIn('https:',content)
 
 
 class HttpTests(unittest.TestCase):
