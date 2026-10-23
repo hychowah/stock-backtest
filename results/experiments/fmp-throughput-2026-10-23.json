@@ -1,0 +1,524 @@
+{
+  "measured_date": "2026-10-23",
+  "record_kind": "Prior standalone transport experiment; no new live measurement during implementation",
+  "source_experiment": "tmp/2026-10-23-fmp-throughput/",
+  "endpoint": "historical-price-eod/dividend-adjusted",
+  "scope": "Missing stock histories only; no active raw files or program files were written by the experiment. Each stock/date window was requested once.",
+  "method": "Seeded random assignment to disjoint stock/window cohorts. Fresh worker pool per case. HTTP/1.1 persistent worker-local connections. Shared start gate, no retries. Responses decoded, parsed and saved under tmp/.",
+  "account_limit_from_user_per_minute": 3000,
+  "requests": 1392,
+  "successes": 1392,
+  "total_wire_bytes": 303960019,
+  "total_rows": 3087845,
+  "gzip_body_byte_reduction": 0.8910763875975525,
+  "raw_cache_verification": {
+    "unchanged": true,
+    "files": 5750,
+    "changed": []
+  },
+  "cases": [
+    {
+      "name": "baseline",
+      "workers": 8,
+      "rate": 4,
+      "gzip": false,
+      "requested": 64,
+      "attempts": 64,
+      "successes": 64,
+      "wall_seconds": 18.562272800016217,
+      "successful_calls_per_minute": 206.87121891650278,
+      "peak_in_flight": 8,
+      "median_seconds": 0.9468187499442138,
+      "p95_seconds": 2.4876297999871895,
+      "statuses": {
+        "200": 64
+      },
+      "errors": {},
+      "nonempty": 62,
+      "rows": 141969,
+      "wire_bytes": 23107952,
+      "aggregate_stage_seconds": {
+        "connect": 5.485945999971591,
+        "headers": 17.970909299911,
+        "read": 50.622618800145574,
+        "decode_json": 0.13815589959267527,
+        "save": 0.04976570047438145
+      },
+      "platform": "native Windows Python 3.12.1",
+      "decoded_bytes": 23107952,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 7648.255228738798,
+      "environment": {
+        "platform": "win32",
+        "python": "3.12.1"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "rate_only",
+      "workers": 8,
+      "rate": 45,
+      "gzip": false,
+      "requested": 96,
+      "attempts": 96,
+      "successes": 96,
+      "wall_seconds": 16.189244500012137,
+      "successful_calls_per_minute": 355.7917727411975,
+      "peak_in_flight": 8,
+      "median_seconds": 1.1416369500220753,
+      "p95_seconds": 2.497492399998009,
+      "statuses": {
+        "200": 96
+      },
+      "errors": {},
+      "nonempty": 95,
+      "rows": 221811,
+      "wire_bytes": 36169814,
+      "aggregate_stage_seconds": {
+        "connect": 5.326323900022544,
+        "headers": 25.85323590016924,
+        "read": 94.03422239993233,
+        "decode_json": 0.2295537997270003,
+        "save": 0.07448600034695119
+      },
+      "platform": "native Windows Python 3.12.1",
+      "decoded_bytes": 36169814,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 13701.133490190583,
+      "environment": {
+        "platform": "win32",
+        "python": "3.12.1"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "workers16",
+      "workers": 16,
+      "rate": 45,
+      "gzip": false,
+      "requested": 128,
+      "attempts": 128,
+      "successes": 128,
+      "wall_seconds": 10.198396199964918,
+      "successful_calls_per_minute": 753.0595840183595,
+      "peak_in_flight": 16,
+      "median_seconds": 0.9238557999487966,
+      "p95_seconds": 2.511854900047183,
+      "statuses": {
+        "200": 128
+      },
+      "errors": {},
+      "nonempty": 120,
+      "rows": 272480,
+      "wire_bytes": 44554159,
+      "aggregate_stage_seconds": {
+        "connect": 11.469663099967875,
+        "headers": 34.96789159986656,
+        "read": 98.11504509986844,
+        "decode_json": 0.2777394000440836,
+        "save": 0.11110459885094315
+      },
+      "platform": "native Windows Python 3.12.1",
+      "decoded_bytes": 44554159,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 26717.92649131805,
+      "environment": {
+        "platform": "win32",
+        "python": "3.12.1"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "workers32",
+      "workers": 32,
+      "rate": 45,
+      "gzip": false,
+      "requested": 160,
+      "attempts": 160,
+      "successes": 160,
+      "wall_seconds": 7.953704799991101,
+      "successful_calls_per_minute": 1206.984699760386,
+      "peak_in_flight": 32,
+      "median_seconds": 1.1804133999394253,
+      "p95_seconds": 2.4983255999395624,
+      "statuses": {
+        "200": 160
+      },
+      "errors": {},
+      "nonempty": 158,
+      "rows": 367683,
+      "wire_bytes": 59972240,
+      "aggregate_stage_seconds": {
+        "connect": 21.474313200102188,
+        "headers": 46.76302789954934,
+        "read": 147.07484590052627,
+        "decode_json": 0.3817776006180793,
+        "save": 0.1618674990022555
+      },
+      "platform": "native Windows Python 3.12.1",
+      "decoded_bytes": 59972240,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 46227.89118354146,
+      "environment": {
+        "platform": "win32",
+        "python": "3.12.1"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "workers64",
+      "workers": 64,
+      "rate": 45,
+      "gzip": false,
+      "requested": 192,
+      "attempts": 192,
+      "successes": 192,
+      "wall_seconds": 10.124940500012599,
+      "successful_calls_per_minute": 1137.7844640159283,
+      "peak_in_flight": 64,
+      "median_seconds": 2.177557799965143,
+      "p95_seconds": 3.9783265000442043,
+      "statuses": {
+        "200": 192
+      },
+      "errors": {},
+      "nonempty": 188,
+      "rows": 434155,
+      "wire_bytes": 70946043,
+      "aggregate_stage_seconds": {
+        "connect": 46.57888800033834,
+        "headers": 69.79743089957628,
+        "read": 318.61475759989116,
+        "decode_json": 0.47688779968302697,
+        "save": 0.22099639964289963
+      },
+      "platform": "native Windows Python 3.12.1",
+      "decoded_bytes": 70946043,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 42879.75815753779,
+      "environment": {
+        "platform": "win32",
+        "python": "3.12.1"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "wsl_plain32",
+      "workers": 32,
+      "rate": 45,
+      "gzip": false,
+      "requested": 64,
+      "attempts": 64,
+      "successes": 64,
+      "wall_seconds": 4.2688043570015,
+      "successful_calls_per_minute": 899.5493067518556,
+      "peak_in_flight": 32,
+      "median_seconds": 1.5077959284972167,
+      "p95_seconds": 2.660450014998787,
+      "statuses": {
+        "200": 64
+      },
+      "errors": {},
+      "nonempty": 62,
+      "rows": 139650,
+      "wire_bytes": 22890998,
+      "aggregate_stage_seconds": {
+        "connect": 19.665459831005137,
+        "headers": 22.56397341898264,
+        "read": 43.15695022496948,
+        "decode_json": 0.2045411999861244,
+        "save": 4.810302101985144
+      },
+      "platform": "linux",
+      "decoded_bytes": 22890998,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 32714.07830413975,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:23:17.747682+00:00"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "wsl_gzip32",
+      "workers": 32,
+      "rate": 45,
+      "gzip": true,
+      "requested": 64,
+      "attempts": 64,
+      "successes": 64,
+      "wall_seconds": 2.314946261001751,
+      "successful_calls_per_minute": 1658.7858062581158,
+      "peak_in_flight": 32,
+      "median_seconds": 0.6821627359968261,
+      "p95_seconds": 1.2598100710019935,
+      "statuses": {
+        "200": 64
+      },
+      "errors": {},
+      "nonempty": 63,
+      "rows": 145706,
+      "wire_bytes": 2717522,
+      "aggregate_stage_seconds": {
+        "connect": 19.696441443971707,
+        "headers": 19.807153507012117,
+        "read": 6.619106600010127,
+        "decode_json": 0.25076880602136953,
+        "save": 2.511763482034439
+      },
+      "platform": "linux",
+      "decoded_bytes": 23794449,
+      "wire_fraction_of_decoded": 0.11420823402971003,
+      "rows_per_second": 62941.417887147145,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:23:20.097662+00:00"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "wsl_gzip64",
+      "workers": 64,
+      "rate": 45,
+      "gzip": true,
+      "requested": 80,
+      "attempts": 80,
+      "successes": 80,
+      "wall_seconds": 3.613204474997474,
+      "successful_calls_per_minute": 1328.4606595654557,
+      "peak_in_flight": 56,
+      "median_seconds": 1.1997784839986707,
+      "p95_seconds": 2.188040909000847,
+      "statuses": {
+        "200": 80
+      },
+      "errors": {},
+      "nonempty": 77,
+      "rows": 175735,
+      "wire_bytes": 3257958,
+      "aggregate_stage_seconds": {
+        "connect": 51.10102177695808,
+        "headers": 26.40386886098713,
+        "read": 9.761631200053671,
+        "decode_json": 0.32763339397206437,
+        "save": 6.432382561004488
+      },
+      "platform": "linux",
+      "decoded_bytes": 28734930,
+      "wire_fraction_of_decoded": 0.11337970894656782,
+      "rows_per_second": 48636.8820851532,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:23:23.755241+00:00"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "wsl_plain32_repeat",
+      "workers": 32,
+      "rate": 45,
+      "gzip": false,
+      "requested": 64,
+      "attempts": 64,
+      "successes": 64,
+      "wall_seconds": 3.791196140999091,
+      "successful_calls_per_minute": 1012.8729448928084,
+      "peak_in_flight": 32,
+      "median_seconds": 1.3741041499961284,
+      "p95_seconds": 2.6081006079984945,
+      "statuses": {
+        "200": 64
+      },
+      "errors": {},
+      "nonempty": 61,
+      "rows": 133741,
+      "wire_bytes": 21883809,
+      "aggregate_stage_seconds": {
+        "connect": 20.77946555800736,
+        "headers": 21.38913791297091,
+        "read": 43.349504056976,
+        "decode_json": 0.15593939403333934,
+        "save": 1.5781417470498127
+      },
+      "platform": "linux",
+      "decoded_bytes": 21883809,
+      "wire_fraction_of_decoded": 1.0,
+      "rows_per_second": 35276.72930284091,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:23:27.583711+00:00"
+      },
+      "price_window": [
+        "2015-01-01",
+        "2024-12-31"
+      ]
+    },
+    {
+      "name": "sustain_gzip16",
+      "workers": 16,
+      "rate": 45,
+      "gzip": true,
+      "requested": 128,
+      "attempts": 128,
+      "successes": 128,
+      "wall_seconds": 4.2641975120059215,
+      "successful_calls_per_minute": 1801.04227779713,
+      "peak_in_flight": 16,
+      "median_seconds": 0.292832383998757,
+      "p95_seconds": 1.4038828980046674,
+      "statuses": {
+        "200": 128
+      },
+      "errors": {},
+      "nonempty": 122,
+      "rows": 281152,
+      "wire_bytes": 4877158,
+      "aggregate_stage_seconds": {
+        "connect": 12.297472838996327,
+        "headers": 37.199957453034585,
+        "read": 4.144146079044731,
+        "decode_json": 0.37102759304252686,
+        "save": 2.1874647450022167
+      },
+      "platform": "linux",
+      "decoded_bytes": 45818237,
+      "wire_fraction_of_decoded": 0.10644578053057781,
+      "rows_per_second": 65933.15605302327,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:24:55.115941+00:00"
+      },
+      "price_window": [
+        "2005-01-01",
+        "2014-12-31"
+      ]
+    },
+    {
+      "name": "sustain_gzip32",
+      "workers": 32,
+      "rate": 45,
+      "gzip": true,
+      "requested": 192,
+      "attempts": 192,
+      "successes": 192,
+      "wall_seconds": 5.085073009999178,
+      "successful_calls_per_minute": 2265.4541984642738,
+      "peak_in_flight": 32,
+      "median_seconds": 0.3075745409987576,
+      "p95_seconds": 1.1998672389963758,
+      "statuses": {
+        "200": 192
+      },
+      "errors": {},
+      "nonempty": 178,
+      "rows": 418134,
+      "wire_bytes": 7283908,
+      "aggregate_stage_seconds": {
+        "connect": 19.4706446650016,
+        "headers": 53.37535672004742,
+        "read": 8.775803758995607,
+        "decode_json": 0.53689066102379,
+        "save": 4.470416296986514
+      },
+      "platform": "linux",
+      "decoded_bytes": 67963582,
+      "wire_fraction_of_decoded": 0.10717369193401254,
+      "rows_per_second": 82227.72793582124,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:25:00.235340+00:00"
+      },
+      "price_window": [
+        "2005-01-01",
+        "2014-12-31"
+      ]
+    },
+    {
+      "name": "sustain_gzip48",
+      "workers": 48,
+      "rate": 45,
+      "gzip": true,
+      "requested": 160,
+      "attempts": 160,
+      "successes": 160,
+      "wall_seconds": 4.7898793689964805,
+      "successful_calls_per_minute": 2004.2258396188545,
+      "peak_in_flight": 48,
+      "median_seconds": 0.3933604220037523,
+      "p95_seconds": 1.9248462059986196,
+      "statuses": {
+        "200": 160
+      },
+      "errors": {},
+      "nonempty": 148,
+      "rows": 355629,
+      "wire_bytes": 6298458,
+      "aggregate_stage_seconds": {
+        "connect": 32.60486768800911,
+        "headers": 64.3331378159346,
+        "read": 10.647328981998726,
+        "decode_json": 0.4822657120821532,
+        "save": 5.919288536955719
+      },
+      "platform": "linux",
+      "decoded_bytes": 58020363,
+      "wire_fraction_of_decoded": 0.10855599093718184,
+      "rows_per_second": 74245.91990810558,
+      "environment": {
+        "platform": "linux",
+        "python": "3.14.4",
+        "at": "2026-10-23T02:25:05.105083+00:00"
+      },
+      "price_window": [
+        "2005-01-01",
+        "2014-12-31"
+      ]
+    }
+  ],
+  "limitations": [
+    "Short cold-pool batches, about 2\u201319 seconds; not a sustained-rate or minute-long limit test.",
+    "Different companies, periods, operating systems and Python versions. Ratios are not controlled application speedups.",
+    "Some successful requests were empty or had shorter listing histories. Success does not establish complete daily coverage.",
+    "This is a transport prototype, not a data-panel end-to-end measurement. Production publication cost was not measured.",
+    "Only adjusted stock prices were benchmarked. No performance claim for other endpoints, full refreshes, HTTP/2 or bulk downloads.",
+    "Case names starting sustain_gzip refer to larger batches, not a long soak test."
+  ],
+  "selected_starting_policy": {
+    "workers": 32,
+    "starts_per_second": 45,
+    "accept_encoding": "gzip",
+    "connections": "persistent per worker",
+    "publication": "one cache owner; workers do not publish"
+  },
+  "implementation_validation": "Offline transport, publication and lifecycle checks run separately. Prior timings must not be presented as new application measurements."
+}

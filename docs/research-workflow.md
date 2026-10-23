@@ -354,7 +354,18 @@ fill ranges outside the existing saved date span. They do not refresh existing
 values or repair internal session gaps. Short histories can reflect listings
 or trading stops. The provider may have no additional data.
 
-Stock and SPY requests use windows of up to ten years. Treasury uses monthly windows. Up to eight requests run concurrently. The default shared start-rate cap is four per second. Each worker reuses its HTTP connection. A 429 response applies a shared Retry-After cooldown and reduces the start rate. There are at most three attempts, a 15-second socket timeout and a 30-second read deadline. Cancellation stops submission and interrupts retry waits; active requests are joined before cache ownership is released.
+Stock and SPY requests use windows of up to ten years. Treasury uses monthly windows.
+Up to 32 requests run concurrently. The default shared start-rate cap is 45 per
+second (2,700/minute), below this account's stated 3,000/minute allowance.
+Each worker reuses its HTTP connection. The transport requests gzip and decodes
+successful compressed responses before JSON parsing. Plain responses also work.
+Corrupt compressed bodies and unsupported encodings use bounded transport retries.
+Error status and Retry-After take precedence over response-body encoding.
+A 429 response applies a shared Retry-After cooldown and reduces the start rate.
+There are at most three attempts, a 15-second socket timeout and a 30-second read
+deadline. Cancellation stops submission and interrupts retry waits; active
+requests are joined before cache ownership is released. Only the owner publishes
+validated records and coverage receipts. Workers do not write raw files.
 `raw/download-coverage.json` records successful requested windows, including
 empty responses. Each asset entry has `sha256`, `windows` and `base_span`. The base span is the saved coverage before managed extension, or null for a new file. Each finished window is tracked separately. An out-of-order result cannot make an unfinished middle window disappear. `previous` retains one earlier receipt for interrupted replacement. The hash identifies
 the exact saved file. Only a valid file with that hash can reuse the windows.
@@ -427,13 +438,29 @@ cache took 0.06 seconds and made no request. A local publication-only control
 took 0.31 seconds. An intermediate transport had a Python 3.12 `read1()` response
 closure bug; it is recorded separately and was fixed before the final run.
 
-The production policy uses eight workers and at most four request starts per
+The policy selected on 22 October used eight workers and at most four request starts per
 second, leaving headroom below FMP’s published Starter allowance. Shared 429
 cooldowns reduce that rate further. Ten-year price windows returned about 2,519
 sessions for the long-lived sample stocks, below the known 5,000-row cap. The
 Treasury probe was empty and did not justify changing the proven monthly policy.
 Cancellation and out-of-order publication are checked offline and on Windows.
 Run `python3 tests/test_fmp_download.py` alongside data-manager/cache-access tests.
+
+The 23 October standalone transport experiment is recorded in
+`results/experiments/fmp-throughput-2026-10-23.json`. It made 1,392 distinct
+stock/window requests. All returned HTTP 200. Gzip reduced transferred body bytes
+by 89.1% across compressed cases. In native Windows Python 3.12.1, the eight-worker,
+four-starts-per-second case averaged 207 calls/minute. The 32-worker, 45-starts case
+averaged 1,207 calls/minute without compression. In WSL Python 3.14.4, the larger
+32-worker gzip case averaged 2,265 calls/minute. More workers were slower in the
+sampled comparisons. These findings set the current 32-worker, 45-starts-per-second
+gzip policy. They do not establish guaranteed throughput.
+
+The runs used different companies, periods and environments. Each fresh-pool
+batch lasted about 2–19 seconds. The experiment did not measure the full data
+panel or a minute-long sustained rate. Do not describe the ratio between these
+cases as a controlled application speedup. The implementation checks use local
+provider fixtures and temporary caches; they make no live FMP calls.
 
 
 ## Verified baseline revisions

@@ -16,7 +16,8 @@ assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*
 
 assert(html.includes('content hash') && html.includes('worker completion and database closure') && html.includes('scripts/cache_assets.py'), 'Cache repair evidence and shared ownership must be explained');
 
-assert(html.includes('up to eight parallel requests') && html.includes('original saved span') && html.includes('6.56 seconds'), 'Download policy and scoped benchmark evidence must be clear');
+assert(html.includes('up to 32 parallel requests') && html.includes('45 request starts per second') && html.includes('gzip compression') && html.includes('original saved span'), 'Current download policy and cache bounds must be clear');
+assert(html.includes('6.56 seconds') && html.includes('policy selected on 22 October') && html.includes('fmp-throughput-2026-10-23.json') && html.includes('not new application tests'), 'Historical benchmark settings and limits must remain explicit');
 
 class Element {
   constructor(dataset = {}) { this.dataset = dataset; this.attributes = {}; this.events = {}; this.textContent = ''; this.children = []; this.hidden = false; this.open = false; }

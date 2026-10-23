@@ -24,7 +24,11 @@ freshness. Export the full check as JSON when needed.
 Use **Download missing data**, then **Rebuild prepared data + website**, then
 open the strategy builder. Downloads use the local FMP key file and preserve
 valid cached records. Checks and rebuilds are offline. No download starts when
-the panel opens. Downloads run up to eight requests in parallel with a shared start-rate cap and reusable connections. One writer saves each result. Cancel keeps completed windows, stops new requests and interrupts retry waits. A retry also fills unfinished managed windows inside an expanded date span.
+the panel opens. Downloads run up to 32 requests in parallel. A shared cap permits
+45 request starts per second (2,700/minute) for this account's stated 3,000/minute
+allowance. Connections are reused. Gzip responses reduce transferred bytes and
+are decoded before validation; plain responses also work. A 429 response pauses
+all workers and reduces the start rate. One writer saves each result. Cancel keeps completed windows, stops new requests and interrupts retry waits. A retry also fills unfinished managed windows inside an expanded date span.
 Completion evidence belongs to the exact saved file; loss or corruption cannot
 leave missing data falsely complete. Short histories may reflect IPOs or stops.
 The downloader does not refresh existing reports/profiles or repair internal

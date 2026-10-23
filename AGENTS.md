@@ -256,9 +256,13 @@ Run the cache-access and data-manager checks on native Windows too.
 
 ## Parallel FMP downloads
 
-`scripts/fmp_download.py` owns the data panel transport. Use eight request
-workers with reusable connections, a shared four-starts-per-second default cap,
-and one publishing owner. At most eight tasks may be submitted at once. Workers
+`scripts/fmp_download.py` owns the data panel transport. Use 32 request
+workers with reusable connections, gzip responses and a shared 45-starts-per-second
+default cap (2,700/minute, below this account's stated 3,000/minute allowance).
+Decode successful gzip responses inside the transport. Accept plain responses.
+Encoding failures use bounded transport retries. Error status and Retry-After
+take precedence over body encoding. Keep one publishing owner.
+At most `client.workers` tasks may be submitted at once. Workers
 must not write raw files or completion receipts. Retain completed windows after
 cancellation; do not release cache ownership before in-flight workers finish.
 
@@ -270,6 +274,9 @@ response explicitly before connection reuse, including Python 3.12 read1 EOF.
 
 The native Windows experiment and its limitations are recorded in
 `results/experiments/fmp-download-benchmark.json`. Temporary API responses and
-experiment caches live in ignored `tmp/`. Do not reuse old timings as a new
+experiment caches live in ignored `tmp/`. The 23 October transport experiment
+is recorded in `results/experiments/fmp-throughput-2026-10-23.json`. It supports
+the new defaults but is not a sustained-rate or full application benchmark.
+Keep the earlier eight-worker measurements historical. Do not reuse old timings as a new
 measurement. Test `python3 tests/test_fmp_download.py` and the data-manager and
 cache-access checks, including native Windows.

@@ -1,12 +1,14 @@
 """Bounded FMP requests with reusable connections and cancellable retries.
 
 Only workers fetch. The caller consumes completed results and owns publication.
-Eight requests may be in flight; starts are spaced below the Starter allowance.
+Up to 32 requests may be in flight, with at most 45 starts per second.
+Successful gzip responses are decoded here; callers receive ordinary JSON lists.
 A provider cooldown applies to every worker, without reserving future slots.
 No exception from the HTTP implementation can expose credentials or request URLs.
 """
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from email.utils import parsedate_to_datetime
+import gzip
 import http.client
 import json
 import threading
@@ -16,8 +18,8 @@ import urllib.parse
 import run
 import diagnostics
 
-WORKERS=8
-STARTS_PER_SECOND=4.0
+WORKERS=32
+STARTS_PER_SECOND=45.0
 SOCKET_TIMEOUT=15
 REQUEST_DEADLINE=30
 ATTEMPTS=3
@@ -48,6 +50,11 @@ class StartGate:
 
 
 class Client:
+    """Fetch decoded lists with shared pacing and bounded outstanding work.
+
+    The context joins active workers before returning cache ownership to callers.
+    Transport and encoding failures share bounded retries and safe diagnostics.
+    """
     def __init__(self,stop=lambda:None,emit=lambda **kw:None,*,workers=WORKERS,rate=STARTS_PER_SECOND):
         self.external_stop=stop;self.emit=emit;self.workers=workers
         self.gate=StartGate(rate);self.abort=threading.Event();self.local=threading.local()
@@ -79,7 +86,7 @@ class Client:
             with self.lock:
                 if self.key is None:self.key=run.KEY_PATH.read_text(encoding='utf-8').strip()
             query=urllib.parse.urlencode({**params,'apikey':self.key})
-            connection.request('GET','/stable/'+endpoint+'?'+query,headers={'Accept':'application/json'})
+            connection.request('GET','/stable/'+endpoint+'?'+query,headers={'Accept':'application/json','Accept-Encoding':'gzip'})
             if connection.sock:connection.sock.settimeout(max(.01,min(SOCKET_TIMEOUT,deadline-time.monotonic())))
             response=connection.getresponse();chunks=[]
             try:
@@ -90,7 +97,13 @@ class Client:
                     chunk=response.read1(65536)
                     if not chunk:break
                     chunks.append(chunk)
-                return response.status,b''.join(chunks),response.getheader('Retry-After')
+                body=b''.join(chunks)
+                # Error status and Retry-After take precedence over body encoding.
+                if response.status==200:
+                    encoding=(response.getheader('Content-Encoding') or 'identity').strip().lower()
+                    if encoding=='gzip':body=gzip.decompress(body)
+                    elif encoding!='identity':raise ValueError('Unsupported response encoding')
+                return response.status,body,response.getheader('Retry-After')
             finally:
                 # Python 3.12 read1() can leave an exhausted response open.
                 # Close the response before reusing its persistent connection.

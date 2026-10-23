@@ -2,6 +2,7 @@
 from contextlib import ExitStack, nullcontext
 from datetime import date
 import io
+import gzip
 import json
 import errno
 import os
@@ -343,6 +344,43 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(len(set(fetchers)),3)
         self.assertEqual(set(writers),{threading.get_ident()})
         self.assertEqual(d.inspect(self.o)['prices'][0]['windows'],0)
+
+    def test_gzip_transport_publishes_on_owner_and_reuses_saved_windows(self):
+        import threading
+        import urllib.parse
+        self.o.update(start='2000-01-01',end='2020-12-31',datasets=['prices'])
+        d.run.KEY_PATH.write_text('test-key')
+        writers=[];fetchers=[];responses=[];gate=threading.Barrier(3)
+        store=d.cache_assets.SeriesAsset._store
+        def record(asset,*args,**kwargs):writers.append(threading.get_ident());return store(asset,*args,**kwargs)
+        class Response:
+            status=200
+            def __init__(response,start):
+                response.body=io.BytesIO(gzip.compress(json.dumps(self.prices([(start,10)])).encode()))
+                response.closed=False
+            def read1(response,size):return response.body.read1(size)
+            def getheader(response,key):return 'gzip' if key=='Content-Encoding' else None
+            def close(response):response.closed=True
+        class Connection:
+            sock=None
+            def __init__(connection,*args,**kwargs):pass
+            def request(connection,method,path,headers):
+                self.assertEqual(headers['Accept-Encoding'],'gzip')
+                connection.start=urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)['from'][0]
+                fetchers.append(threading.get_ident());gate.wait(3)
+            def getresponse(connection):
+                response=Response(connection.start);responses.append(response);return response
+            def close(connection):pass
+        with patch.object(d.fmp_download.http.client,'HTTPSConnection',Connection),patch.object(d.cache_assets.SeriesAsset,'_store',record):
+            report=d.download(self.o,self.emit,self.stop)
+        self.assertEqual(len(set(fetchers)),3);self.assertEqual(set(writers),{threading.get_ident()})
+        self.assertEqual(report['prices'][0]['windows'],0);self.assertTrue(all(r.closed for r in responses))
+        saved=(self.raw/'px/A.json').read_bytes();receipt=d.COVERAGE.read_bytes()
+        d.run.KEY_PATH.unlink()
+        with patch.object(d.fmp_download.http.client,'HTTPSConnection',side_effect=AssertionError('No network for saved windows')):
+            report=d.download(self.o,self.emit,self.stop)
+        self.assertFalse(report['api_key_present']);self.assertEqual(report['prices'][0]['windows'],0)
+        self.assertEqual((self.raw/'px/A.json').read_bytes(),saved);self.assertEqual(d.COVERAGE.read_bytes(),receipt)
 
     def test_close_during_download_joins_fetchers_and_stops_submission(self):
         import threading

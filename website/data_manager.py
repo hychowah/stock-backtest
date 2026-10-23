@@ -193,7 +193,7 @@ def fill_series(file,field,endpoint,o,ledger,emit,stop,symbol=None):
 
 
 def download_series(specs,o,ledger,emit,stop,client):
-    """Plan lazily, fetch at most eight windows, and publish on this thread.
+    """Plan lazily within the client's submission bound; publish on this thread.
 
     The original saved span plus individual completed windows defines coverage.
     Out-of-order results cannot hide unfinished windows inside an expanded span.
