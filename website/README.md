@@ -190,3 +190,14 @@ Each server process saves `data/logs/website-<pid>.log`. Startup and the data pa
 Windows file indexers can briefly lock cache files. Atomic JSON publication retries access or sharing errors up to eight times, with less than two seconds of total retry waits. Other file errors fail immediately. The existing cache owner remains held. Receipts still publish before their corresponding assets. Persistent failures keep the previous saved data and record the error location in the log.
 
 Check with `python3 tests/test_diagnostics.py`, `python3 tests/test_data_manager.py` and `python3 tests/test_startup.py`. Run these checks on native Windows too.
+
+
+Rebuilds verify the January baseline with two independent engines at the saved
+Through date. Agreement permits a revised report. The previous report and priced
+holdings remain in `../results/baseline-history/`. The data panel shows the last
+revision after a check or rebuild. **Export baseline revision** downloads its
+old/new holdings, prices and returns as JSON. First-run unknown old prices stay
+null. Engine disagreement leaves the prior report, database and website intact.
+An interrupted file replacement requires retrying preparation; readers reject
+its unfinished publication journal. Standalone `build.py` takes cache ownership;
+managed children receive `--cache-owned` from their owning parent.

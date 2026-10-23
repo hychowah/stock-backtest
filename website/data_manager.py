@@ -19,6 +19,7 @@ import research as r
 import run
 import fmp_download
 import diagnostics
+import baseline
 
 ROOT=r.ROOT
 RAW=r.RAW
@@ -126,6 +127,15 @@ def derived_status():
     return result
 
 
+def baseline_audit():
+    """Return the last committed revision for the check report and JSON export."""
+    try:
+        db=r.connect(check=False)
+    except (ValueError,OSError,sqlite3.Error):return None
+    try:return baseline.Baseline(r.RESULTS,r.DATABASE).audit(db)
+    finally:db.close()
+
+
 def price_warning(name,days):
     dates=', '.join(days[:3])+('…' if len(days)>3 else '')
     noun='price' if len(days)==1 else 'prices'
@@ -167,7 +177,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         if i%50==0 or i==len(targets):emit(message=f'Checked stock prices {i}/{len(targets)}',completed=i,total=len(targets))
     return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=run.KEY_PATH.is_file() and run.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
-                target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),
+                target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),baseline=baseline_audit(),
                 unavailable_metrics=['P/E: saved cache lacks earnings','P/B: saved cache lacks book values'])
 
 
@@ -335,7 +345,7 @@ class Jobs:
                     self.emit(message='Preparing January and custom-date databases…')
                     schedules.prepare();self.stop()
                     self.emit(message='Rebuilding the website…')
-                    subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py')],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     self.rebuilt=True
                     report=inspect(o,self.emit,self.stop)
                 elif action=='download':report=download(o,self.emit,self.stop)

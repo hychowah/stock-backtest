@@ -149,7 +149,7 @@ def ensure_ready():
         schedules.prepare()
         if not current_build():
             print('Rebuilding the website…',flush=True)
-            subprocess.run([sys.executable,'-X','utf8',str(ROOT/'build.py')],cwd=ROOT.parent,check=True)
+            subprocess.run([sys.executable,'-X','utf8',str(ROOT/'build.py'),'--cache-owned'],cwd=ROOT.parent,check=True)
     print('Local caches and website are ready.',flush=True)
 
 

@@ -6,7 +6,7 @@
 python3 scripts/research.py prepare
 ```
 
-Preparation reads each cached company price history once, writes compact January snapshots, and verifies the original top-50 annual returns before atomically replacing the database. Running preparation again without input changes only checks file metadata and returns immediately.
+Preparation reads each cached company price history once, writes compact January snapshots, and compares the original top-50 priced holdings and annual returns with the independent engine before publishing the report/database pair. Running preparation again without input changes only checks file metadata and returns immediately.
 
 The database contains company metadata, cleaned annual financial observations with availability dates, January holding periods, entry valuations/holding returns for both original-screen candidates and the wider set with cached prices, and separate latest-session valuations for cached currently-listed companies with an exact-date price. It does not duplicate daily histories: those stay in `raw/px/`. Changes to rebalance frequency require additional preparation.
 
@@ -49,3 +49,10 @@ Prices, financials and dated results are retained. Changed research inputs or fi
 offline rebuild. No market data is downloaded during either path.
 
 `logs/website-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
+
+Schema 6 adds `baseline_prices` and `baseline_periods` for holding-level agreement.
+Metadata stores the priced result, last historical revision and exact report
+hash. The report cutoff is a source input; generated report contents are a
+publication identity. An unfinished `research.sqlite.publication.json` blocks
+readers. Preparation completes that verified publication before checking cache
+freshness. Keep its referenced `results/baseline-history/` files for recovery.

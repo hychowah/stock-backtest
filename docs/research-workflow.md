@@ -8,7 +8,7 @@ Normal research should query prepared January snapshots instead of reparsing dai
 python3 scripts/research.py prepare
 ```
 
-The first run reads the existing financial cache and each relevant stock-price file once. Subsequent preparation only checks source metadata when data and calculation code have not changed. Queries skip the full per-price-file scan to keep parameter changes fast. Raw downloads are preserved. The completed database is published only after the original current top-50 return series passes verification. `--force` requests a complete offline rebuild.
+The first run reads the existing financial cache and each relevant stock-price file once. Subsequent preparation only checks source metadata when data and calculation code have not changed. Queries skip the full per-price-file scan to keep parameter changes fast. Raw downloads are preserved. The completed database and canonical report are published only after the SQL and independent engines agree on the original top-50 holdings, ranks, fiscal reports, price dates, prices, valuations, exit basis and returns at full precision. `--force` requests a complete offline rebuild.
 
 Preparation stores historical observations and a separate latest-session valuation snapshot:
 
@@ -74,7 +74,7 @@ python3 tests/test_attribution.py
 python3 tests/check_screener.py
 ```
 
-The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation checks every year of the canonical saved result. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across historical and latest configurations, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
+The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation compares every historical year with the independent engine. `python3 tests/test_baseline.py` checks changed prices, holding-level mismatches, latest-only updates, interrupted publication, recovery receipts and Windows sharing locks. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across historical and latest configurations, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
 
 ## Measured performance
 
@@ -86,7 +86,7 @@ The original 1996 pre-price buffer yields only 61 usable holdings, so it cannot 
 
 Schema version 2 adds `latest_snapshots` and latest-date metadata. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `research.latest_screen()` exposes the same SQL filters and rank semantics without return fields.
 
-Historical preparation is capped at the saved canonical report's Through date (and the configured historical ASOF). Latest preparation can advance beyond that date without silently extending the historical backtest. The reference report is included in the freshness signature. Updating a database and rebuilding HTML are separate from fetching missing or new market data.
+Historical preparation is capped at the saved canonical report's Through date (and the configured historical ASOF). Latest preparation can advance beyond that date without silently extending the historical backtest. The report cutoff is included in source freshness. The committed database stores the report content hash. Updating the generated report does not invalidate its own source signature. Updating a database and rebuilding HTML are separate from fetching missing or new market data.
 
 ### Select a ranking metric
 
@@ -376,8 +376,7 @@ never its value or provider request URLs. Downloads can require a paid provider
 subscription. Opening the panel never starts a download.
 
 **Rebuild prepared data + website** runs research preparation, daily preparation,
-and the website build without network requests. The canonical January check
-still applies. Historical dates do not advance with latest prices. Open the
+and the website build without network requests. Two independent engines must agree before a changed January reference is published. Export the revision from the data panel to inspect its evidence. Historical dates do not advance with latest prices. Open the
 strategy page after rebuilding to load the new embedded data.
 
 `website/data_manager.py` owns the inventory and background job. The local
@@ -435,3 +434,38 @@ sessions for the long-lived sample stocks, below the known 5,000-row cap. The
 Treasury probe was empty and did not justify changing the proven monthly policy.
 Cancellation and out-of-order publication are checked offline and on Windows.
 Run `python3 tests/test_fmp_download.py` alongside data-manager/cache-access tests.
+
+
+## Verified baseline revisions
+
+A data addition can change a historical result without changing its Through date.
+Preparation compares the SQL baseline with `revalue.calculate(through)`. The
+reference calculation reads raw files and keeps its original selection and return
+arithmetic. It does not call the prepared engine. Full-precision numbers use
+relative and absolute tolerances of `1e-12`. All years and holding identities must
+match. Equal annual averages cannot conceal a holding mismatch.
+
+When the engines agree, `scripts/baseline.py` updates the report and research
+database together under cache ownership. `results/baseline-history/<generation>/`
+retains the previous report verbatim, previous and new priced snapshots, the new
+report and `audit.json`. The audit lists changed years, added or removed stocks,
+ranks, fiscal inputs, price dates, prices and returns. The first verification
+cannot recover prices missing from older databases. Those previous prices are
+null and the audit marks the migration. Later revisions use saved priced
+snapshots. Latest-only updates retain the historical revision.
+
+Publication first stages and hashes the evidence and closed database. The
+`data/research.sqlite.publication.json` journal binds the pending report and
+database to that evidence. Journal targets use logical names. Evidence locators
+use relative POSIX paths, so recovery also works after moving the project or
+switching between Windows and WSL. Readers reject unfinished publication. Retrying
+preparation completes a verified pending publication before testing freshness.
+Do not delete the journal or its referenced files to bypass recovery. Comparison
+failure leaves the existing report, database and website in place. A filesystem
+failure can interrupt replacement; its journal permits an idempotent retry.
+
+`python3 scripts/revalue.py` forces this same verified refresh at the saved cutoff.
+It no longer writes an unchecked report or advances the historical cutoff.
+Standalone website builds take cache ownership. Managed build subprocesses use
+`--cache-owned` while the parent retains ownership. Daily preparation captures its
+fingerprint after research preparation. No rebuild makes a market-data request.

@@ -28,7 +28,7 @@ class StartupTests(unittest.TestCase):
         with patch.object(serve.schedules,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve.subprocess,'run',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
             serve.ensure_ready()
         self.assertEqual(calls,['prepare','check_build','build'])
-        self.assertEqual(run.call_args.args[0],[sys.executable,'-X','utf8',str(serve.ROOT/'build.py')])
+        self.assertEqual(run.call_args.args[0],[sys.executable,'-X','utf8',str(serve.ROOT/'build.py'),'--cache-owned'])
         self.assertTrue(run.call_args.kwargs['check'])
 
     def test_unchanged_caches_do_not_rebuild_page(self):
@@ -114,9 +114,9 @@ class PortableFingerprintTests(unittest.TestCase):
             root=Path(tmp);raw=root/'raw';raw.mkdir();(raw/'px').mkdir()
             results=root/'results';results.mkdir()
             for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(raw/name).write_text('[]')
-            (results/'summary-exits.txt').write_text('fixture')
+            (results/'summary-exits.txt').write_text('Through 2026-10-20\n')
             context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw));context.enter_context(patch.object(research,'RESULTS',results))
-            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.cache_assets,'cache_assets.py'),(research.run,'run.py'),(research.revalue,'revalue.py')]:
+            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.cache_assets,'cache_assets.py'),(research.run,'run.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
                 file=root/name;file.write_text('source');context.enter_context(patch.object(module,'__file__',str(file)))
             expected=research.signature();original=Path.stat;directory=raw/'px'
             stamp=directory.stat().st_mtime_ns

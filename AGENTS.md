@@ -25,7 +25,7 @@ Ordinary Git commands and apps may not detect this repository automatically.
 
 `results/legacy/summary.txt` and `results/legacy/picks.csv` are the earlier pass. That pass dropped a stock when its price stopped more than 10 days before the January sale. Do not quote those files as the latest result.
 
-`scripts/revalue.py` writes `results/summary-exits.txt`. It reads the cache and does not download. `scripts/run.py` still uses the old exit rule and rewrites `results/legacy/summary.txt`.
+`scripts/revalue.py` requests a verified refresh of `results/summary-exits.txt` and the research database. Its `calculate(through)` function is the independent read-only engine. It reads the cache and does not download. `scripts/run.py` still uses the old exit rule and rewrites `results/legacy/summary.txt`.
 
 ## What the test does
 
@@ -111,7 +111,7 @@ to satisfy this rule.
 
 ## Fast research workflow
 
-`scripts/research.py prepare` creates the offline `data/research.sqlite` January data layer from the raw cache. It verifies the baseline against `results/summary-exits.txt`; repeated preparation skips parsing when inputs are current. Use `scripts/research.py screen --top 100` or other flags for experiments, rather than editing `HOLD` and reparsing daily history. The website uses the prepared database. `scripts/revalue.py` remains the independent slower reference calculation.
+`scripts/research.py prepare` creates the offline `data/research.sqlite` January data layer from the raw cache. It compares the prepared baseline with `revalue.calculate(through)` at full precision; repeated preparation skips parsing when inputs are current. `scripts/baseline.py` owns the report cutoff, report rendering, holding-level agreement, revision evidence and recoverable report/database publication. Both engines must agree on all years, ranks, symbols, dates, prices, valuations, returns and exit basis. Verified changes update the canonical report without advancing its Through date. Preserve previous reports verbatim and priced snapshots under ignored `results/baseline-history/`. First-run unavailable prices must stay null. An unfinished `data/research.sqlite.publication.json` blocks readers; preparation completes its hash-verified publication before freshness checks. Do not bypass disagreement or relax the full-precision tolerance. Test with `python3 tests/test_baseline.py`, including native Windows. Use `scripts/research.py screen --top 100` or other flags for experiments, rather than editing `HOLD` and reparsing daily history. The website uses the prepared database. `scripts/revalue.py` remains the independent slower reference calculation.
 
 The `legacy` research pool preserves the original 250-candidate pre-price screen and uses the **current** exit rule. The `cached` pool broadens the screen to available cached-price companies, not the full universe. Report missing coverage and unreviewed new early stops; do not imply all expanded holdings received the earlier bankruptcy review. See `docs/research-workflow.md`. Test with `python3 tests/test_research.py`.
 
@@ -125,7 +125,7 @@ Yearly attribution uses `website/contributions.js` for browser calculations and 
 
 Schema version 2 prepares `latest_snapshots` separately from historical snapshots. Latest date means the latest cached SPY session. Require an exact-session dividend-adjusted price and cached `listed=True`; never reuse old stopped prices in the latest screen. Use the same 90-day lag, strict availability-before-date rule and 800-day report-age limit. No future return or contribution is stored for latest picks. `research.latest_screen()` and `StockScreener.latestScreen()` must agree. The website opens in latest mode; historical mode retains year controls.
 
-Historical preparation is bounded by the canonical report's Through date and historical ASOF, while latest preparation can advance independently. The reference report participates in freshness checks. Refresh prepared data and rebuild the HTML after cache updates; strategy calculations do not fetch market data. The separate data panel downloads missing inputs only after an explicit button action. Tests include exact-date exclusion, unavailable/stale reports, cached listing status, unchanged historical periods when latest prices advance, both SQL/browser screen modes and latest CSV output.
+Historical preparation is bounded by the canonical report's Through date and historical ASOF, while latest preparation can advance independently. The report cutoff participates in source freshness. Its full content hash binds the committed database to the report. Capture schedule fingerprints after research preparation, since preparation can update the report. Refresh prepared data and rebuild the HTML after cache updates; strategy calculations do not fetch market data. The separate data panel downloads missing inputs only after an explicit button action. Tests include exact-date exclusion, unavailable/stale reports, cached listing status, unchanged historical periods when latest prices advance, both SQL/browser screen modes and latest CSV output.
 
 ## Ranking metric catalog
 

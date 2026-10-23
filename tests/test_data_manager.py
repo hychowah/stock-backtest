@@ -27,6 +27,7 @@ class CacheTests(unittest.TestCase):
         self.context.enter_context(patch.object(d,'ROOT',self.root))
         self.context.enter_context(patch.object(d,'COVERAGE',self.raw/'download-coverage.json'))
         self.context.enter_context(patch.object(d,'derived_status',return_value=[]))
+        self.context.enter_context(patch.object(d,'baseline_audit',return_value=None))
         self.context.enter_context(patch.object(d.run,'KEY_PATH',self.root/'absent-key'))
         self.context.enter_context(patch.object(d.cache_access,'access',side_effect=lambda:nullcontext()))
         self.context.enter_context(patch.object(d.run,'get_json',side_effect=AssertionError('Unexpected request')))

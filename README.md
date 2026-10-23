@@ -21,7 +21,7 @@ Choose **Manage backtest data** to inspect saved files and date coverage.
 Choose a stock group or enter symbols. **Download missing data** fills missing
 financial symbols and price ranges with your local FMP key. **Rebuild prepared
 data + website** applies saved changes offline. Existing records are kept.
-No download starts when the panel opens. If essential source files are missing,
+A rebuild compares SQL results with the independent reference engine at the saved historical cutoff. When they agree, it updates the report and preserves revision evidence in `results/baseline-history/`. Engine disagreement stops publication. Use **Export baseline revision** in the data panel to inspect changed holdings and prices. No download starts when the panel opens. If essential source files are missing,
 startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
 
 Random-date batches plan missing books once, calculate ahead with separate Python

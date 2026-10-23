@@ -1,17 +1,18 @@
-"""Revalue the book. A trading stop is an acquisition or redemption at the last price.
+"""Independent cache-only January calculation and verified reference refresh.
 
-A bankruptcy would be a total loss. None of the stops is marked that way
-until a bankruptcy filing is identified.
+This engine uses run's original screen and price arithmetic. It does not use
+prepared snapshots, books.snapshot, or the SQL selector.
 """
-
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from datetime import date
+import io
 import json
-from datetime import date, timedelta
 
 import run
-
 from paths import RAW, RESULTS
+
 # Filled after the filing check. Symbol-year pairs that are bankruptcies.
 BANKRUPT: set[tuple[int, str]] = set()
 
@@ -24,127 +25,72 @@ def last_in_window(div, entry: date, exit_day: date):
     return last
 
 
-def main() -> None:
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    universe = {row["symbol"]: row for row in json.loads((RAW / "universe.json").read_text(encoding="utf-8"))}
-    book = run.build_statements(universe)
-    spy = run.load_bars(RAW / "spy-div.json", "adjClose")
-    sessions = [day for day, _ in spy]
-    treasury = json.loads((RAW / "treasury.json").read_text(encoding="utf-8"))
-    yields = []
-    for row in treasury:
-        day = run.parse_day(row.get("date"))
-        value = run.num(row.get("month3"))
-        if day is not None and value is not None:
-            yields.append((day, value / 100.0))
-    yields.sort()
-    picks = run.screen(book, yields, sessions)
-    symbols = sorted({row["symbol"] for rows in picks.values() for row in rows})
-    prices = {symbol: run.load_price_pair(symbol) for symbol in symbols}
+def calculate(through: date):
+    """Return full-precision years and priced holdings through a fixed date.
 
-    yearly = []
-    stopped_rows = []
-    bankrupt_rows = []
-    for year in range(run.FIRST_YEAR, run.LAST_YEAR + 1):
+    Read saved files only. The caller owns cache_access for both engines. Dates
+    in the result are ISO strings; unavailable prices are never carried forward
+    beyond the original engine's price rules. This function never publishes.
+    """
+    universe = {row['symbol']: row for row in json.loads((RAW/'universe.json').read_text(encoding='utf-8'))}
+    with redirect_stdout(io.StringIO()):
+        book = run.build_statements(universe)
+        spy = [row for row in run.load_bars(RAW/'spy-div.json','adjClose') if row[0] <= through]
+        sessions = [day for day, _ in spy]
+        treasury = json.loads((RAW/'treasury.json').read_text(encoding='utf-8'))
+        yields = []
+        for row in treasury:
+            day, value = run.parse_day(row.get('date')), run.num(row.get('month3'))
+            if day is not None and value is not None: yields.append((day,value/100.))
+        yields.sort()
+        picks = run.screen(book,yields,sessions)
+    prices = {symbol: run.load_price_pair(symbol) for symbol in sorted({r['symbol'] for rows in picks.values() for r in rows})}
+    years = []
+    for year in range(run.FIRST_YEAR,run.LAST_YEAR+1):
         rows = picks.get(year) or []
-        if not rows:
-            continue
-        rebalance = rows[0]["rebalance"]
-        if year < run.LAST_YEAR:
-            exit_day = run.session_on_or_after(sessions, date(year + 1, 1, 1))
-        else:
-            exit_day = sessions[-1]
+        if not rows: continue
+        rebalance = rows[0]['rebalance']
+        end = run.session_on_or_after(sessions,date(year+1,1,1)) if year < run.LAST_YEAR else sessions[-1]
+        if end is None: raise ValueError('Reference calculation lacks an exit session for '+str(year))
         refreshed = []
         for row in rows:
-            light, div_bars = prices.get(row["symbol"], ([], []))
-            scaled = run.rescale(row, light or div_bars)
-            if scaled is not None:
-                refreshed.append(scaled)
-        refreshed.sort(key=lambda item: item["spread"], reverse=True)
-        returns = []
-        n_stop = 0
-        n_bust = 0
-        for row in refreshed[: run.HOLD]:
-            _light, div = prices.get(row["symbol"], ([], []))
-            start = run.first_on_or_after(div, row["entry_day"], 4)
-            if start is None:
-                continue
-            scheduled = run.last_on_or_before(div, exit_day, 10)
-            if scheduled is not None and (year, row["symbol"]) not in BANKRUPT:
-                returns.append(scheduled[1] / start[1] - 1)
-                continue
-            if (year, row["symbol"]) in BANKRUPT:
-                returns.append(-1.0)
-                n_bust += 1
-                bankrupt_rows.append((year, row["symbol"]))
-                continue
-            last = last_in_window(div, start[0], exit_day)
-            if last is None:
-                continue
-            ret = last[1] / start[1] - 1
-            returns.append(ret)
-            n_stop += 1
-            stopped_rows.append((year, row["symbol"], last[0].isoformat(), ret))
-        spy_start = run.first_on_or_after(spy, rebalance, 4)
-        spy_end = run.last_on_or_before(spy, exit_day, 4)
-        port = sum(returns) / len(returns)
-        bench = spy_end[1] / spy_start[1] - 1
-        yearly.append({
-            "year": year,
-            "rebalance": rebalance,
-            "exit": exit_day,
-            "names": len(returns),
-            "stopped": n_stop,
-            "bust": n_bust,
-            "portfolio": port,
-            "spy": bench,
-        })
-        print(
-            f"year {year} n={len(returns)} stop={n_stop} bust={n_bust} "
-            f"port={port:.1%} spy={bench:.1%}",
-            flush=True,
-        )
-
-    completed = [row for row in yearly if row["year"] < run.LAST_YEAR]
-    port_30 = run.wealth_path([row["portfolio"] for row in completed])
-    spy_30 = run.wealth_path([row["spy"] for row in completed])
-    start_30 = completed[0]["rebalance"]
-    end_30 = completed[-1]["exit"]
-    port_now = run.wealth_path([row["portfolio"] for row in yearly])
-    spy_now = run.wealth_path([row["spy"] for row in yearly])
-    end_now = yearly[-1]["exit"]
-    lines = [
-        "Trading that stops before the January sale is kept.",
-        "If the shares were acquired or redeemed, the exit is the last price.",
-        "A bankruptcy would be entered as a total loss. This pass found no bankruptcy among the stops.",
-        f"Stops kept at the last price: {len(stopped_rows)}",
-        f"Bankruptcies at -100%: {len(bankrupt_rows)}",
-        "",
-        f"30-year window {start_30.isoformat()} to {end_30.isoformat()}",
-        f"strategy growth of $1: {port_30:.2f}",
-        f"SPY growth of $1: {spy_30:.2f}",
-        f"strategy CAGR: {run.cagr(port_30, start_30, end_30):.2%}",
-        f"SPY CAGR: {run.cagr(spy_30, start_30, end_30):.2%}",
-        "",
-        f"Through {end_now.isoformat()}",
-        f"strategy growth of $1: {port_now:.2f}",
-        f"SPY growth of $1: {spy_now:.2f}",
-        f"strategy CAGR: {run.cagr(port_now, start_30, end_now):.2%}",
-        f"SPY CAGR: {run.cagr(spy_now, start_30, end_now):.2%}",
-        "",
-        "year,portfolio,spy,names,stopped,bankrupt",
-    ]
-    for row in yearly:
-        lines.append(
-            f"{row['year']},{row['portfolio']:.4f},{row['spy']:.4f},{row['names']},{row['stopped']},{row['bust']}"
-        )
-    text = "\n".join(lines) + "\n"
-    (RESULTS / "summary-exits.txt").write_text(text, encoding="utf-8")
-    print(text, flush=True)
-    print("stopped detail", flush=True)
-    for item in stopped_rows:
-        print(f"  {item[0]} {item[1]:8} last={item[2]} ret={item[3]:.1%}", flush=True)
+            light, div = prices[row['symbol']]
+            scaled = run.rescale(row,light or div)
+            if scaled is not None: refreshed.append(scaled)
+        refreshed.sort(key=lambda r:r['spread'],reverse=True)
+        holdings = []
+        for rank,row in enumerate(refreshed[:run.HOLD],1):
+            light, div = prices[row['symbol']]
+            start = run.first_on_or_after(div,row['entry_day'],4)
+            if start is None: continue
+            finish = run.last_on_or_before(div,end,10)
+            status = 'Scheduled exit' if end.year > rebalance.year else 'Marked to date'
+            bankrupt = (year,row['symbol']) in BANKRUPT
+            if finish is None:
+                finish = last_in_window(div,start[0],end)
+                status = 'Last available price'
+            if finish is None: continue
+            ret = -1. if bankrupt else finish[1]/start[1]-1
+            if bankrupt: status = 'Bankruptcy'
+            fiscal = run.last_on_or_before(light or div,row['fiscal'],7)
+            entry = run.first_on_or_after(light or div,rebalance,4)
+            holdings.append(dict(symbol=row['symbol'],rank=rank,fiscal=str(row['fiscal']),entry=str(start[0]),exit=str(finish[0]),
+                                 fiscal_price_date=str(fiscal[0]),valuation_date=str(entry[0]),fiscal_price=fiscal[1],valuation_price=entry[1],entry_price=start[1],exit_price=finish[1],
+                                 market_cap=row['equity_now'],enterprise_value=row['ev_now'],ebitda=row['ebitda_yield']*row['enterprise'],
+                                 return_value=ret,status=status))
+        if not holdings: raise ValueError('Reference calculation has no holdings for '+str(year))
+        a,b=run.first_on_or_after(spy,rebalance,4),run.last_on_or_before(spy,end,4)
+        years.append(dict(year=year,entry=str(rebalance),exit=str(end),spy_entry=str(a[0]),spy_exit=str(b[0]),
+                          spy_entry_price=a[1],spy_exit_price=b[1],spy=b[1]/a[1]-1,
+                          portfolio=sum(h['return_value'] for h in holdings)/len(holdings),holdings=holdings))
+    return dict(through=str(through),years=years)
 
 
-if __name__ == "__main__":
-    main()
+def main():
+    # Keep one publication policy for the CLI, launcher and data panel.
+    import research
+    research.prepare(force=True)
+    print((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'),flush=True)
+
+
+if __name__=='__main__': main()

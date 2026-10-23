@@ -47,3 +47,8 @@ data/logs/
 
 # Disposable API experiments, response memoization and benchmark caches.
 tmp/
+
+# Local baseline revision evidence and interrupted publication receipts.
+results/baseline-history/
+data/*.publication.json
+data/*.publication.json.download

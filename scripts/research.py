@@ -6,7 +6,6 @@ from bisect import bisect_left, bisect_right
 import csv
 from datetime import date
 import json
-import re
 from pathlib import Path
 import sqlite3
 import statistics
@@ -18,16 +17,19 @@ import books
 import cache_assets
 import cache_access
 import revalue
+import baseline
 from paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
 CREATE TABLE screening_metrics (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, metric TEXT, multiple REAL NOT NULL, yield_value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,metric));
 CREATE TABLE filter_values (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, field TEXT, value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,field));
+CREATE TABLE baseline_prices (year INTEGER, symbol TEXT, fiscal_price_date TEXT, valuation_date TEXT, fiscal_price REAL, valuation_price REAL, entry_price REAL, exit_price REAL, PRIMARY KEY(year,symbol));
+CREATE TABLE baseline_periods (year INTEGER PRIMARY KEY, spy_entry TEXT, spy_exit TEXT, spy_entry_price REAL, spy_exit_price REAL);
 CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
 CREATE TABLE snapshots (
  pool TEXT, year INTEGER, symbol TEXT, candidate_rank INTEGER,
@@ -45,8 +47,8 @@ CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
 
 def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px', RESULTS/'summary-exits.txt', Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(cache_assets.__file__), Path(run.__file__), Path(revalue.__file__)]
-    return {p.relative_to(ROOT).as_posix(): ['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths}
+    paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(cache_assets.__file__), Path(run.__file__), Path(revalue.__file__)]
+    return dict({p.relative_to(ROOT).as_posix(): ['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths}, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
 
 
 def price_sources():
@@ -60,6 +62,7 @@ def connect(path=DATABASE, check=True, full_prices=False):
     db=sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)
     db.row_factory=sqlite3.Row
     try:
+        baseline.Baseline(RESULTS,path).check_ready(db)
         meta={r['key']:json.loads(r['value']) for r in db.execute('SELECT * FROM metadata')}
         if meta.get('version') != SCHEMA_VERSION:
             raise ValueError('Database version changed; run research.py prepare')
@@ -122,6 +125,8 @@ def latest_snapshot(statement, day, light, div):
 def prepare(path=DATABASE, force=False):
     started=time.perf_counter()
     path=Path(path)
+    owner=baseline.Baseline(RESULTS,path)
+    owner.recover()
     if path.exists() and not force:
         try:
             db=connect(path,full_prices=True)
@@ -136,11 +141,7 @@ def prepare(path=DATABASE, force=False):
     # Reuse the current selection semantics, including the 250-name pre-price buffer.
     book={}
     all_spy=run.load_bars(RAW/'spy-div.json','adjClose')
-    reference=(RESULTS/'summary-exits.txt').read_text()
-    match=re.search(r'^Through (\d{4}-\d{2}-\d{2})$',reference,re.MULTILINE)
-    if match is None:
-        raise ValueError('Current reference report is missing its Through date.')
-    historical_end=min(run.ASOF,date.fromisoformat(match[1]))
+    historical_end=owner.through()
     spy=[row for row in all_spy if row[0]<=historical_end]
     sessions=[d for d,_ in spy]
     yields=[]
@@ -186,6 +187,8 @@ def prepare(path=DATABASE, force=False):
         for year,(entry,end,spy_return,treasury) in periods.items():
             count=sum(run.latest_statement(rs,entry) is not None for rs in broad.values())
             db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,str(entry),str(end),spy_return,treasury,len(legacy[year]),count))
+            a,b=after(spy,entry,4),before(spy,end,4)
+            db.execute('INSERT INTO baseline_periods VALUES(?,?,?,?,?)',(year,str(a[0]),str(b[0]),a[1],b[1]))
         cached_symbols=sorted(s for s in broad if run.cache_path_for(s).name in sources)
         total=0
         for number,symbol in enumerate(cached_symbols,1):
@@ -213,6 +216,12 @@ def prepare(path=DATABASE, force=False):
                     if not books.eligible(pool,cap,ev):
                         continue
                     inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
+                    if pool=='legacy':
+                        fiscal_px=before(light or div,statement['fiscal'],7)
+                        valuation_px=after(light or div,entry,4)
+                        entry_px=after(div,date.fromisoformat(entry_date),0)
+                        exit_px=before(div,date.fromisoformat(exit_date),0)
+                        db.execute('INSERT INTO baseline_prices VALUES(?,?,?,?,?,?,?,?)',(year,symbol,str(fiscal_px[0]),str(valuation_px[0]),fiscal_px[1],valuation_px[1],entry_px[1],exit_px[1]))
             db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',inserts)
             total+=len(inserts)
             if symbol in active:
@@ -238,15 +247,17 @@ def prepare(path=DATABASE, force=False):
             if number%200==0 or number==len(cached_symbols):
                 print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} January snapshots',flush=True)
         metrics.prepare_metrics(db)
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta).items():
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
         if inputs!=signature() or sources!=price_sources():
             raise ValueError('Inputs changed during preparation; retry.')
         db.commit()
-        verify_reference(db)
+        result=verify_reference(db)
+        if inputs!=signature() or sources!=price_sources():
+            raise ValueError('Inputs changed during baseline verification; retry.')
         db.close()
-        temporary.replace(path)
+        owner.publish(temporary,result)
     except BaseException:
         db.close()
         temporary.unlink(missing_ok=True)
@@ -310,16 +321,28 @@ def aggregate(rows):
     return {year:dict(holdings=stocks,median_market_cap=statistics.median(r['market_cap'] for r in stocks),median_yield=statistics.median(r['metric_yield'] for r in stocks),median_multiple=statistics.median(r['metric_multiple'] for r in stocks),portfolio=statistics.mean(r['return_value'] for r in stocks)) for year,stocks in groups.items()}
 
 
+def prepared_baseline(db):
+    """Export the SQL engine's priced January result for independent comparison."""
+    years=[]
+    for year,group in aggregate(screen(db)).items():
+        period=dict(db.execute('SELECT * FROM periods JOIN baseline_periods USING(year) WHERE year=?',(year,)).fetchone())
+        holdings=[]
+        for stock in group['holdings']:
+            prices=dict(db.execute('SELECT * FROM baseline_prices WHERE year=? AND symbol=?',(year,stock['symbol'])).fetchone())
+            holdings.append({key:(prices[key] if key in baseline.PRICE_FIELDS else stock[key]) for key in baseline.HOLDING_FIELDS})
+        years.append(dict(year=year,entry=period['entry'],exit=period['exit'],spy_entry=period['spy_entry'],spy_exit=period['spy_exit'],
+                          spy_entry_price=period['spy_entry_price'],spy_exit_price=period['spy_exit_price'],
+                          spy=period['spy'],portfolio=group['portfolio'],holdings=holdings))
+    through=json.loads(db.execute("SELECT value FROM metadata WHERE key='historical_through'").fetchone()[0])
+    return dict(through=through,years=years)
+
+
 def verify_reference(db):
-    import io
-    text=(RESULTS/'summary-exits.txt').read_text()
-    reference=list(csv.DictReader(io.StringIO(text[text.index('year,portfolio,spy,'):])) )
-    actual=aggregate(screen(db))
-    for r in reference:
-        group=actual.get(int(r['year']))
-        if group is None or len(group['holdings'])!=int(r['names']) or abs(group['portfolio']-float(r['portfolio']))>.000051:
-            raise ValueError('Prepared data does not reproduce the current result for '+r['year'])
-    print('Verified all 31 baseline holding counts and annual returns against the current report.',flush=True)
+    result=prepared_baseline(db)
+    independent=revalue.calculate(date.fromisoformat(result['through']))
+    baseline.agree(result,independent)
+    print(f'Verified {len(result["years"])} January books, holdings, prices and returns with the independent engine.',flush=True)
+    return result
 
 
 def website_holdings(path=DATABASE):

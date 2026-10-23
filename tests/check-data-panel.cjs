@@ -2,9 +2,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const elements=new Map();
 function node(id){if(!elements.has(id))elements.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,hidden:false,handlers:{},addEventListener(event,handler){this.handlers[event]=handler},removeAttribute(key){delete this[key]}});return elements.get(id);}
 node('data-scope').value='symbols';node('data-symbols').value='A';node('data-start').value='2020-01-01';node('data-end').value='2020-12-31';
-const requests=[],timers=[];
+const requests=[],timers=[],downloads=[];
 let reply={job:{running:false,action:null,message:'Ready',completed:0,total:0,error:null},report:null};
-const ctx=vm.createContext({document:{getElementById:node,querySelectorAll:()=>[{value:'prices'}]},location:{protocol:'http:'},Date,console,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},setTimeout(fn){timers.push(fn);return timers.length},async fetch(path,options){requests.push({path,options});return {status:200,ok:true,json:async()=>reply}}});
+const ctx=vm.createContext({document:{getElementById:node,createElement:()=>({click(){downloads.push(this.download)}}),querySelectorAll:()=>[{value:'prices'}]},location:{protocol:'http:'},Date,console,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},setTimeout(fn){timers.push(fn);return timers.length},async fetch(path,options){requests.push({path,options});return {status:200,ok:true,json:async()=>reply}}});
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/data-panel.js'),'utf8'),ctx);
 const run=code=>vm.runInContext(code,ctx);
 (async()=>{
@@ -26,6 +26,11 @@ const run=code=>vm.runInContext(code,ctx);
  assert.equal(node('data-warnings').textContent,'');
  assert(!node('data-download').disabled);assert(node('data-cancel').hidden);assert(!node('data-export').disabled);
  assert(node('data-prices').innerHTML.includes('&lt;A&gt;'));assert(node('data-key').textContent.includes('missing'));assert(node('data-derived').innerHTML.includes('needs rebuild'));
+ reply.report={...reply.report,checked_at:'revision',baseline:{summary:{through:'2026-10-20',changed_years:[2026],bootstrap:false},details:{years:[{year:2026,holdings:[{symbol:'DDT'}]}]}}};
+ await run('DataPanel.refresh()');
+ assert(node('data-baseline').textContent.includes('Changed years: 2026'));assert(!node('data-baseline-export').disabled);
+ node('data-baseline-export').handlers.click();assert.equal(downloads.at(-1),'backtest-baseline-revision.json');
+ reply.report.baseline.summary.bootstrap=true;reply.report={...reply.report,checked_at:'bootstrap'};await run('DataPanel.refresh()');assert(node('data-baseline').textContent.includes('previous prices are unavailable'));
  node('data-search').value='missing';node('data-search').handlers.input();assert(node('data-prices').innerHTML.includes('&lt;A&gt;'));
  node('data-symbols').value='';await run("DataPanel.start('check')");assert(node('data-error').textContent.includes('Enter the stock symbols'));
  ctx.fetch=async()=>({ok:false,status:404});await run('DataPanel.refresh()');assert(node('data-connection').textContent.includes('Restart start.cmd'));assert(node('data-download').disabled);

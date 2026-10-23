@@ -81,11 +81,11 @@ def upgrade_daily_cache(path, inputs):
 def prepare(path=DATABASE, source=r.DATABASE):
     """Parse raw prices once; keep the previous cache if publication fails."""
     started=time.perf_counter()
-    inputs=fingerprint()
     path=Path(path)
     # The public daily-cache command owns its prerequisite too. Users never
     # need to discover and run the dependency chain themselves.
     r.prepare(source)
+    inputs=fingerprint()
     reference=r.connect(source,full_prices=True)
     if path.exists():
         try:

@@ -203,7 +203,7 @@ class PreparationTests(unittest.TestCase):
                                   (r.run, 'LAST_YEAR', 2015)]:
             self.context.enter_context(patch.object(owner, key, value))
         self.context.enter_context(patch.object(r, 'signature', return_value={'fixture': 1}))
-        self.context.enter_context(patch.object(r, 'verify_reference', side_effect=self.verify_fixture))
+        self.context.enter_context(patch.object(r, 'verify_reference', side_effect=lambda db: (self.verify_fixture(db),r.prepared_baseline(db))[1]))
         self.context.enter_context(patch('urllib.request.urlopen', side_effect=AssertionError('Unexpected download')))
         self.context.enter_context(redirect_stdout(io.StringIO()))
 
