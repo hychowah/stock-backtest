@@ -32,6 +32,14 @@ For an explanation of the program, open the [plain-language architecture guide](
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
+The proposed [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
+sets a 5× minimum speed target and divides research, implementation and qualification
+into single-session phases. Its [research findings](docs/plans/compiled-backtest/research.md)
+compare the design options. This replacement is planned; the current engine is unchanged.
+Each code phase automatically runs `$strategic-design-plan`, implementation and
+verification, then `$smart-commit`. Agents ask only about critical blockers or
+decisions that need the user's judgment.
+
 
 ## Run from the saved data
 
