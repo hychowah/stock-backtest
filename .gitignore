@@ -27,7 +27,10 @@ data/*.sqlite
 data/*.sqlite-*
 data/*.building*
 
-# Local website build freshness stamp.
+# Rebuildable local website output; tracked dist is an explicit portable snapshot.
+website/local/
+
+# Legacy portable-snapshot build stamps.
 website/dist/.build-state.json
 website/dist/.build-state.tmp
 

@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parent
-STAMP=ROOT/'dist'/'.build-state.json'
+LOCAL_OUTPUT=ROOT/'local'
+SNAPSHOT_OUTPUT=ROOT/'dist'
+STAMP=LOCAL_OUTPUT/'.build-state.json'
 
 
 def inputs():
@@ -19,7 +21,7 @@ def inputs():
 
 
 def current_build():
-    if not all((ROOT/'dist'/name).exists() for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html')):
+    if not all((LOCAL_OUTPUT/name).exists() for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html')):
         return False
     try:return json.loads(STAMP.read_text())==inputs()
     except (OSError,ValueError):return False

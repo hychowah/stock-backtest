@@ -1,6 +1,6 @@
 const fs=require('fs'),path=require('path'),assert=require('assert');
 const root=path.resolve(__dirname,'..');
-const html=fs.readFileSync(path.join(root,'website/dist/index.html'),'utf8');
+const html=fs.readFileSync(path.join(process.argv[3]||path.join(root,'website/local'),'index.html'),'utf8');
 const dataset=JSON.parse(html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
 const engine=require('../website/screener.js');
 const cases=[

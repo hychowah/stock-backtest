@@ -1,5 +1,6 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const html=fs.readFileSync(require('path').join(__dirname,'../website/dist/index.html'),'utf8');
+const output=require('path').resolve(process.argv[2]||require('path').join(__dirname,'../website/local'));
+const html=fs.readFileSync(require('path').join(output,'index.html'),'utf8');
 const els=new Map();
 const embedded=html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const prepared=JSON.parse(embedded),screener=require('../website/screener.js');
@@ -34,7 +35,7 @@ el('from-year').value='2026';el('to-year').value='2020';run("applyRange('from')"
 el('from-year').value='1999';el('to-year').value='1996';run("applyRange('to')");assert.equal(run('data[0].year'),1996);assert.equal(run('data.length'),1);
 el('reset-range').handlers.click();assert.equal(run('data.length'),30);
 console.log('Passed: 2015–2020 charts, tables, holdings, compounding, period dates, single-year ranges, reversed bounds, partial 2026, and reset.');
-const cached=JSON.parse(fs.readFileSync(require('path').join(__dirname,'../website/dist/valuations.json'),'utf8'));
+const cached=JSON.parse(fs.readFileSync(require('path').join(output,'valuations.json'),'utf8'));
 el('from-year').value='2015';el('to-year').value='2020';
 el('rank-from').value='10';el('rank-to').value='20';run('applyRange()');
 for(let year=2015;year<=2020;year++){

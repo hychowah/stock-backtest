@@ -1,12 +1,14 @@
 """Build a standalone website from one committed baseline generation."""
+import argparse
 import sys
 from contextlib import nullcontext
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import cache_access
+from build_state import LOCAL_OUTPUT, SNAPSHOT_OUTPUT
 
 
-def main():
+def main(output=None):
     """Build a self-contained return chart from saved results, without downloads."""
     import csv
     import io
@@ -19,10 +21,13 @@ def main():
     from dataset import load_screening_data
     from attribution import render as render_attribution
     from research import connect, latest_screen
+    from baseline import cutoff
     from pathlib import Path
 
     ROOT = Path(__file__).resolve().parent
-    text = (ROOT.parent / 'results' / 'summary-exits.txt').read_text()
+    output=Path(output) if output is not None else LOCAL_OUTPUT
+    report_bytes=(ROOT.parent / 'results' / 'summary-exits.txt').read_bytes()
+    text=report_bytes.decode('utf-8').replace('\r\n','\n')
     csv_text = text[text.index('year,portfolio,spy,'):]
     rows = list(csv.DictReader(io.StringIO(csv_text)))
     data = [dict(year=int(r['year']), portfolio=float(r['portfolio']), spy=float(r['spy'])) for r in rows]
@@ -56,7 +61,7 @@ def main():
     page = (ROOT / 'template.html').read_text().replace('__DATA__', json.dumps(data))
     page = re.sub(r'(<svg id="chart"[^>]*>).*?(</svg>)', lambda m: m[1]+''.join(svg)+m[2], page, count=1, flags=re.S)
     page = page.replace('<tbody id="rows"></tbody>', '<tbody id="rows">'+''.join(table)+'</tbody>')
-    (ROOT / 'dist').mkdir(exist_ok=True)
+    output.mkdir(parents=True,exist_ok=True)
     holdings = load()
     for group in holdings.values():
         group['median_market_cap'] = statistics.median(h['market_cap'] for h in group['holdings'])
@@ -115,9 +120,9 @@ def main():
     <div class="latest-facts"><span>Selected stocks<strong id="latest-count">{len(latest_stocks)}</strong></span><span>Median market cap<strong id="latest-median-cap">{latest_cap}</strong></span><span>Median selected metric yield<strong id="latest-median-yield">{latest_yield}</strong></span></div>
     <div class="latest-table"><table class="stock-table"><thead><tr>{''.join('<th'+(' data-metric-multiple' if h=='EV/EBITDA' else ' data-metric-yield' if h=='EBITDA/EV' else '')+'>'+h+'</th>' for h in latest_heads)}</tr></thead><tbody id="latest-body">{''.join(latest_rows) if latest_rows else '<tr><td colspan="13">No stocks match these filters.</td></tr>'}</tbody></table></div><p class="hint">Market cap and EV are estimates at the displayed date using dividend-adjusted prices and report net debt. “Available from” is the assumed fiscal year-end plus 90 days, not a verified publication date. No holding return or contribution exists yet for these picks.</p></section>'''
     page = page.replace('__LATEST_PANEL__', latest_panel)
-    with (ROOT/'dist/latest-picks.csv').open('w',newline='') as handle:
+    with (output/'latest-picks.csv').open('w',newline='',encoding='utf-8') as handle:
         latest_fields=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','known','price_date']
-        writer=csv.DictWriter(handle,fieldnames=latest_fields,extrasaction='ignore')
+        writer=csv.DictWriter(handle,fieldnames=latest_fields,extrasaction='ignore',lineterminator='\n')
         writer.writeheader();writer.writerows(latest_stocks)
 
     # Escape script delimiters in vendor-supplied text without changing parsed JSON.
@@ -133,28 +138,43 @@ def main():
                   + '<div class="'+m[1]+'" tabindex="0" role="region" aria-label="Scrollable chart or data table">', page)
     page = re.sub(r'(</svg></div>)(?!<p id="detail")', r'\1<p class="chart-detail" aria-live="polite">Tap, hover over, or focus a chart mark to see details.</p>', page)
     page = page.replace('</body>', scripts+'</body>')
-    (ROOT / 'dist/index.html').write_text(page)
-    with (ROOT / 'dist/holdings.csv').open('w',newline='') as handle:
+    (output / 'index.html').write_text(page,encoding='utf-8',newline='\n')
+    with (output / 'holdings.csv').open('w',newline='',encoding='utf-8') as handle:
         fields = ['year']+list(next(iter(holdings.values()))['holdings'][0])
-        writer = csv.DictWriter(handle,fieldnames=fields)
+        writer = csv.DictWriter(handle,fieldnames=fields,lineterminator='\n')
         writer.writeheader()
         for year, group in holdings.items():
             for h in group['holdings']:
                 writer.writerow(dict(year=year,**h))
-    (ROOT / 'dist/valuations.json').write_text(json.dumps(holdings,indent=2))
+    (output / 'valuations.json').write_text(json.dumps(holdings,indent=2),encoding='utf-8',newline='\n')
     print('Verified every annual holding count and return against summary-exits.txt.')
-    (ROOT / 'dist/returns.csv').write_text(csv_text)
+    (output / 'returns.csv').write_text(csv_text,encoding='utf-8',newline='\n')
     print(f'Built {len(data)} years with static chart and table, plus optional interactions.')
 
     from build_state import record_build
 
     # The management page also works as a source-served recovery page before a build.
     data_page=(ROOT/'data.html').read_text().replace('__DATA_STYLE__',(ROOT/'data-panel.css').read_text()).replace('__DATA_SCRIPT__',(ROOT/'data-panel.js').read_text())
-    (ROOT/'dist'/'data.html').write_text(data_page,encoding='utf-8')
+    (output/'data.html').write_text(data_page,encoding='utf-8',newline='\n')
 
-    record_build()
+    # A portable snapshot records the data cutoffs and source contents it used.
+    import hashlib
+    from build_state import inputs
+    provenance=dict(report_sha256=hashlib.sha256(report_bytes).hexdigest(),
+                    historical_through=str(cutoff(text)),
+                    latest_asof=latest_asof,sources=inputs()['sources'])
+    (output/'snapshot.json').write_text(json.dumps(provenance,indent=2)+'\n',encoding='utf-8',newline='\n')
+    if output==LOCAL_OUTPUT:record_build()
+    print('Website output: '+str(output))
 
 
-if __name__=='__main__':
-    with nullcontext() if '--cache-owned' in sys.argv else cache_access.access():
-        main()
+def cli():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--snapshot',action='store_true',help='Explicitly refresh the tracked portable website in website/dist')
+    parser.add_argument('--cache-owned',action='store_true',help=argparse.SUPPRESS)
+    args=parser.parse_args()
+    with nullcontext() if args.cache_owned else cache_access.access():
+        main(SNAPSHOT_OUTPUT if args.snapshot else LOCAL_OUTPUT)
+
+
+if __name__=='__main__':cli()

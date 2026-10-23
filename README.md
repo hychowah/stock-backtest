@@ -44,7 +44,7 @@ python3 scripts/research.py prepare
 # Run a fast screen; change --top, years, or filters freely
 python3 scripts/research.py screen --top 100
 
-# Rebuild the website from prepared holdings
+# Rebuild ignored local output from prepared holdings
 python3 website/build.py
 
 # Check year/rank filtering and performance calculations (requires Node.js)
@@ -63,7 +63,8 @@ Commands above run from the project folder. Python scripts resolve data paths fr
 scripts/             Data preparation, screening, backtest, exit analysis, and paths
 data/                Prepared local SQLite database (generated; ignored by Git)
 website/             Website source, builder, hosting identity, and built output
-  dist/              Ready-to-open HTML, CSV exports, and valuation data
+  local/             Ignored local server output
+  dist/              Tracked portable snapshot; refresh explicitly
 results/
   summary-exits.txt  Current backtest result
   stops/             Early trading-stop analysis and filing classifications
@@ -104,3 +105,11 @@ git --git-dir=.git-local --work-tree=. log --oneline
 Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
 
 Source, reports and the built website are versioned. Downloaded data in `raw/` stays local and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
+
+## Local builds and portable snapshots
+
+Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the tracked portable snapshot in `website/dist/`.
+
+Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
+
+Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.

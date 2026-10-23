@@ -34,7 +34,7 @@ def main():
     with tempfile.TemporaryDirectory() as folder:
         fixture = Path(folder) / 'sql-expectations.json'
         fixture.write_text(json.dumps(expected))
-        subprocess.run(['node', str(ROOT / 'tests/check-screener.cjs'), str(fixture)], check=True, cwd=ROOT)
+        subprocess.run(['node', str(ROOT / 'tests/check-screener.cjs'), str(fixture), str(Path(sys.argv[1]).resolve() if len(sys.argv)>1 else ROOT/'website'/'local')], check=True, cwd=ROOT)
 
 if __name__ == '__main__':
     main()

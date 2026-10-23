@@ -80,7 +80,7 @@ Change the screen, the universe, or the price cache in `scripts/run.py`. Run it 
 
 Backtest entry points live in `scripts/`, with shared paths in `scripts/paths.py`. API experiments and repair tools are in `tools/`. Current reports are in `results/`, older reports in `results/legacy/`, and stop analyses in `results/stops/`. Unused acquisition files are preserved in `raw/archive/`; active cache locations are unchanged.
 
-The website source and ready-to-open output live in `website/` and `website/dist/`. Rebuild with `python3 website/build.py`. Verify path handling with `python3 tests/check_paths.py` and website calculations with `node tests/check-range.cjs`. Python uses the standard library; the JavaScript check needs Node.js. Cache-only workflows require no API key.
+The website source lives in `website/`. Normal builds, startup and data-panel rebuilds write ignored `website/local/`, which the server serves. Build with `python3 website/build.py`. The tracked `website/dist/` is a portable snapshot. Refresh it only with explicit `python3 website/build.py --snapshot`. Do not auto-stage snapshot changes with unrelated code. Review its `snapshot.json` cutoffs and source hashes with generated diffs. Browser parity and range checks default to local output; pass `website/dist` to check the portable snapshot. Verify path handling with `python3 tests/check_paths.py` and website calculations with `node tests/check-range.cjs`. Python uses the standard library; the JavaScript check needs Node.js. Cache-only workflows require no API key.
 
 ## Keep the user architecture guide current
 

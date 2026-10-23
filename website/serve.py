@@ -20,7 +20,7 @@ import robustness
 import data_manager
 import cache_access
 import diagnostics
-from build_state import current_build
+from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
 
@@ -34,7 +34,7 @@ class Server(ThreadingHTTPServer):
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs):
-        super().__init__(*args,directory=str(ROOT/'dist'),**kwargs)
+        super().__init__(*args,directory=str(LOCAL_OUTPUT),**kwargs)
 
     def reply(self,status,payload):
         body=json.dumps(payload,allow_nan=False).encode()

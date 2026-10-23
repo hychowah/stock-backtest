@@ -59,6 +59,8 @@ If a filter leaves fewer names than requested, the result states which years are
 python3 website/build.py
 ```
 
+Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the tracked `website/dist/` snapshot unchanged. Refresh that portable snapshot only with `python3 website/build.py --snapshot`. Review its generated files and `snapshot.json` cutoffs and source hashes before committing. Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable snapshot instead.
+
 The website builder queries the prepared database and embeds both historical and latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for the year-based results. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange, pool and year filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. Each year also has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
 
 The original `scripts/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
@@ -407,7 +409,7 @@ The service serves `/data.html` directly from current source. Missing or invalid
 essential raw inputs route startup to this recovery panel. It does not need a
 prepared database or prior website build. The canonical reference report must
 be restored from backup if missing; it is never invented or downloaded.
-The built `website/dist/data.html` is a standalone copy with local-service
+The built `website/local/data.html` and portable `website/dist/data.html` are standalone copies with local-service
 instructions when opened as a file.
 
 Check with `python3 tests/test_data_manager.py`, `node tests/check-data-panel.cjs`,

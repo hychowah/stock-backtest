@@ -12,6 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
 import serve
 import build_state
+import build
 import research
 
 
@@ -87,13 +88,22 @@ class BuildStateTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
         root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
-        self.website=root/'website';(self.website/'dist').mkdir(parents=True)
+        self.website=root/'website';(self.website/'local').mkdir(parents=True)
         (root/'data').mkdir();(root/'data'/'research.sqlite').write_bytes(b'database')
         self.source=self.website/'range.js';self.source.write_bytes(b'const n=1;\r\n')
         for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html'):
-            (self.website/'dist'/name).write_text('output')
+            (self.website/'local'/name).write_text('output')
         self.context.enter_context(patch.object(build_state,'ROOT',self.website))
-        self.context.enter_context(patch.object(build_state,'STAMP',self.website/'dist'/'.build-state.json'))
+        self.context.enter_context(patch.object(build_state,'LOCAL_OUTPUT',self.website/'local'))
+        self.context.enter_context(patch.object(build_state,'STAMP',self.website/'local'/'.build-state.json'))
+
+    def test_portable_snapshot_does_not_satisfy_local_build(self):
+        snapshot=self.website/'dist';snapshot.mkdir()
+        for path in (self.website/'local').iterdir():
+            (snapshot/path.name).write_bytes(path.read_bytes())
+            path.unlink()
+        build_state.record_build()
+        self.assertFalse(build_state.current_build())
 
     def test_source_changes_invalidate_but_newlines_do_not(self):
         self.assertFalse(build_state.current_build())
@@ -102,10 +112,23 @@ class BuildStateTests(unittest.TestCase):
         self.source.write_text('const n=2;');self.assertFalse(build_state.current_build())
 
     def test_missing_artifacts_and_malformed_stamp(self):
-        build_state.record_build();(self.website/'dist'/'holdings.csv').unlink()
+        build_state.record_build();(self.website/'local'/'holdings.csv').unlink()
         self.assertFalse(build_state.current_build())
-        (self.website/'dist'/'holdings.csv').write_text('output')
+        (self.website/'local'/'holdings.csv').write_text('output')
         build_state.STAMP.write_text('bad JSON');self.assertFalse(build_state.current_build())
+
+
+class BuildDestinationTests(unittest.TestCase):
+    def test_cli_defaults_to_local_and_snapshot_requires_flag(self):
+        for options,destination in [([],build.LOCAL_OUTPUT),(['--snapshot'],build.SNAPSHOT_OUTPUT)]:
+            with patch.object(sys,'argv',['build.py',*options]),patch.object(build.cache_access,'access',return_value=nullcontext()),patch.object(build,'main') as main:
+                build.cli()
+            main.assert_called_once_with(destination)
+
+    def test_handler_serves_local_output(self):
+        with patch('http.server.SimpleHTTPRequestHandler.__init__') as initialize:
+            serve.Handler(None,None,None)
+        self.assertEqual(initialize.call_args.kwargs['directory'],str(build_state.LOCAL_OUTPUT))
 
 
 class PortableFingerprintTests(unittest.TestCase):
