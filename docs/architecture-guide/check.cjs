@@ -4,6 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, 'dist/index.html'), 'utf8');
+const checkedDates = [...html.matchAll(/Checked(?: against the project on)? (\d{1,2} [A-Z][a-z]+ \d{4})/g)].map(x => x[1]);
+assert.equal(checkedDates.length, 2, 'Both checked dates must be present');
+assert.equal(new Set(checkedDates).size, 1, 'Guide sidebar and footer checked dates must agree');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(x => x[1]);
 assert.equal(new Set(ids).size, ids.length, 'IDs must be unique');
 for (const match of html.matchAll(/\bhref="#([^"]+)"/g)) assert(ids.includes(match[1]), `Missing anchor ${match[1]}`);
@@ -11,6 +14,8 @@ for (const match of html.matchAll(/\baria-controls="([^"]+)"/g)) assert(ids.incl
 assert(!/<(?:link|img|script)\b[^>]*(?:src|href)=["']https?:/i.test(html), 'Guide must work without remote assets');
 assert(html.includes('Shared in-memory data remains a prototype.') && html.includes('The requested-pool change is now in the source.'), 'Source and prototype status must be clear');
 assert(html.includes('Financial ratios use annual statement inputs.') && html.includes('All conditions must pass before ranking.'), 'Explain annual ratio inputs');
+assert(html.includes('WSL source') && html.includes('Windows runtime') && html.includes('tools/deploy.py') && html.includes('deployment.pending.json'), 'Explain source deployment and interrupted publication');
+assert(html.includes('serve_app.py') && html.includes('runtime_access.py') && html.includes('--collect-report'), 'Explain native ownership and verified report collection');
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 

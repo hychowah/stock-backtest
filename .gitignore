@@ -55,3 +55,10 @@ tmp/
 results/baseline-history/
 data/*.publication.json
 data/*.publication.json.download
+
+# Local WSL/native-Windows workspace registration and publication receipts.
+data/workspace.json
+data/workspace-*.json
+data/deployment*.json
+data/website-source.lock
+.deployment/

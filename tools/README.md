@@ -50,3 +50,10 @@ py -3 tools\bench_backtest.py --trials 100 --modes production --worker-counts 1 
 WSL accessing the Windows-mounted project can have substantially different I/O
 costs. `--workdir` permits a separate filesystem control; do not mix such runs
 into a same-filesystem speedup claim.
+
+## WSL deployment
+
+`deploy.py` publishes a committed source revision from the WSL checkout to the
+registered native Windows runtime. It also starts that runtime, dispatches
+saved-data checks, and explicitly collects a verified report revision. It does
+not download market data. See [workspace commands](../docs/workspaces.md).

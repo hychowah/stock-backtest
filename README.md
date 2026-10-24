@@ -4,9 +4,15 @@ A standalone US stock backtest and interactive results website. Each January, bu
 
 ## Open the website
 
-On Windows, run **`backtest-web.cmd`** from the project folder, or double-click **`start.cmd`**. It prepares stale local caches in order,
+Source development now lives in WSL at `<wsl-checkout>`.
+The native Windows runtime is `<windows-runtime>`. Commit in WSL,
+then run `python3 tools/deploy.py --start`, or run the installed
+`backtest-web.cmd` from Windows Terminal. The Windows command deploys committed
+source before starting the server. See [workspace commands and ownership](docs/workspaces.md).
+
+On Windows, run **`backtest-web.cmd`** from the runtime folder, or double-click **`start.cmd`**. It prepares stale local caches in order,
 rebuilds the website when needed, starts the local service, and opens your browser.
-On other systems, run `python3 website/serve.py` in the foreground. No API key or market-data
+A standalone installation on another system can run `python3 website/serve.py` in the foreground with its own cache. In this split workspace, use the native Windows runtime. No API key or market-data
 download is needed; unchanged caches are reused. The first refresh can take a
 few minutes. The Windows command keeps the server attached to the terminal on `0.0.0.0:3000`. Open `http://127.0.0.1:3000` on this computer. The installed `backtest-web.cmd` command also works from other Windows Terminal folders. Keep the terminal open to see server logs. Press Ctrl+C to stop it. Repeating the command stops this project’s identified server and starts current code in the new terminal. This also replaces any older background instance. Replacement waits for active requests to finish before it prepares data. If ownership is still held after 30 seconds, the command asks you to wait or stop the old terminal, then retry.
 
@@ -44,6 +50,9 @@ decisions that need the user's judgment.
 ## Run from the saved data
 
 Python 3.10 or newer is required. Python scripts use only the standard library.
+Run the saved-data commands below in the Windows runtime with native Python.
+The WSL checkout runs source and synthetic checks; `python3 tools/deploy.py --check`
+dispatches the full saved-data checks to Windows.
 
 ```bash
 # Prepare the local database once (no downloads)
@@ -63,7 +72,7 @@ python3 tests/check_screener.py
 python3 tests/check_paths.py
 ```
 
-Commands above run from the project folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the project when moving it. Initial database preparation reads roughly 1.2 GB of cached price files. Subsequent screens and website builds query compact prepared records. The independent `scripts/revalue.py` reference run still reads raw prices.
+Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records. The independent `scripts/revalue.py` reference run still reads raw prices.
 
 ## Project layout
 
@@ -103,7 +112,11 @@ The local website is ready to use. Hosted publication has not completed because 
 
 ## Version control in this environment
 
-The workspace mounts an empty `.git/` folder read-only. The repository history is stored in `.git-local/`. Ordinary Git commands and apps may not detect it automatically. From the project folder, use:
+The authoritative WSL checkout has a `.git` pointer to the preserved `.git-local/`
+history. Ordinary `git status`, `git diff` and `git commit` work there. The Windows
+runtime is a deployment, with its exact source commit in `data/deployment.json`.
+It has no second repository. The following explicit form also works in the WSL
+checkout and is required for the retained original folder's read-only `.git/` mount:
 
 ```bash
 git --git-dir=.git-local --work-tree=. status
@@ -112,7 +125,7 @@ git --git-dir=.git-local --work-tree=. log --oneline
 
 Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
 
-Source, reports and the built website are versioned. Downloaded data in `raw/` stays local and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
+Source, reviewed reports and the portable snapshot are versioned. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. Collect a changed verified runtime report with `python3 tools/deploy.py --collect-report` before reviewing and committing it. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
 
 ## Local builds and portable snapshots
 

@@ -4,14 +4,14 @@ set PYTHONUTF8=1
 cd /d "%~dp0"
 where py >nul 2>&1
 if errorlevel 1 goto python
-py -3 website\serve.py --managed %*
+py -3 tools\deploy.py --native-launch %*
 goto finish
 :python
 where python3 >nul 2>&1
 if errorlevel 1 goto fallback
-python3 website\serve.py --managed %*
+python3 tools\deploy.py --native-launch %*
 goto finish
 :fallback
-python website\serve.py --managed %*
+python tools\deploy.py --native-launch %*
 :finish
 if errorlevel 1 pause

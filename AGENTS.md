@@ -2,12 +2,14 @@
 
 This folder is a standalone US stock backtest. It is not a a different research session. Do not open the parent harness, do not invent a fair value, and do not edit product code from here.
 
-The folder can move. Scripts resolve paths from their own file. Keep `raw/` with the code. The FMP key stays at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
+The folder can move. Scripts resolve paths from their own file. Keep `raw/` with the Windows runtime code. The WSL source checkout does not hold a second full cache. The FMP key stays at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
 
 ## Git in this environment
 
-The normal `.git/` folder is empty and read-only in this workspace.
-The repository history is in `.git-local/`. Run Git from the project folder:
+The authoritative source checkout is `<wsl-checkout>` in
+WSL. Its `.git` file points to the preserved `.git-local/` history. Ordinary Git
+commands work there. The retained original Windows folder has an empty,
+read-only `.git/`; use the explicit form below there or in the source checkout:
 
 ```
 git --git-dir=.git-local --work-tree=. status
@@ -17,7 +19,33 @@ git --git-dir=.git-local --work-tree=. log --oneline
 Use the same options for diff, add and commit. If the default Git wrapper fails
 with a WSL socket error, use `/usr/bin/git` with these options.
 Do not initialize a new repository or replace the saved history.
-Ordinary Git commands and apps may not detect this repository automatically.
+In the retained original folder, ordinary Git commands and apps may not detect
+the repository automatically.
+
+## WSL development and native Windows runtime
+
+Edit and commit only in the WSL source checkout. `<windows-runtime>`
+is the native Windows runtime, not a second repository. `python3 tools/deploy.py`
+exports committed source there. `--start` deploys and starts native Python;
+`--check` deploys and runs the installed Windows checks. The installed Windows
+`backtest-web.cmd` performs the same deploy/start flow through WSL. Local paths
+and interpreter registration live in ignored `data/workspace.json`.
+
+Preserve Windows-owned raw data, databases, logs, environments, local builds and
+the verified canonical report. Do not edit runtime source or synchronize these
+assets back into WSL. `--collect-report` explicitly collects a database-bound
+report and priced evidence for review; it refuses conflicting source edits.
+The WSL checkout has source and synthetic fixtures, not a second raw cache.
+Run real-cache preparation and `tests/check_paths.py` with native Windows Python.
+
+Source publication stops only authenticated project servers, owns the runtime
+source exclusively, then takes financial cache ownership. Native server entry
+takes shared source ownership before importing `website/serve_app.py` and holds
+it through shutdown. Do not change source/bootstrap lock ordering or bypass a
+`data/deployment.pending.json` journal. Retry deployment to complete recovery.
+Only manifest-owned source can be removed. Preserve the original folder as a
+fallback. See `docs/workspaces.md`. Verify deployment with
+`python3 tests/test_deployment.py`, including native Windows.
 
 ## Current result
 

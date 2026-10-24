@@ -4,7 +4,9 @@ Created: 23 October 2026.
 
 Implementation workflow updated: 24 October 2026.
 
-Status: proposed program. No replacement engine has been implemented. All implementation phases below are planned, including the measurement phase.
+Status: workspace preparation CB-00 is implemented. No replacement calculation
+engine has been implemented. Engine phases CB-01 through CB-15 remain planned,
+including the measurement phase.
 
 ## Objective
 
@@ -192,11 +194,16 @@ Keep the old cache and reference calculation path available during rollout. Do n
 
 ## Phase map
 
-All phases are **planned**. CB-03 is conditional. The normal path has 14 sessions; the Rust investigation makes it 15. These are scope units, not promises about elapsed duration. Split a phase before implementation if its detailed plan cannot fit one session without leaving an unstable partial change.
+CB-00 is the preparatory WSL/native-Windows workspace migration. Its design and
+handoff are filed in `phases/CB-00.design.md` and `phases/CB-00.md`. It does not
+implement the compiled calculation engine. Read that handoff before CB-01.
+
+All engine phases are **planned**. CB-03 is conditional. The normal engine path has 14 sessions; the Rust investigation makes it 15. CB-00 is separate preparatory work. These are scope units, not promises about elapsed duration. Split a phase before implementation if its detailed plan cannot fit one session without leaving an unstable partial change.
 
 | Phase | Single-session result | Depends on |
 |---|---|---|
-| CB-01 | Reproducible current-engine baseline and frozen workloads | This plan |
+| CB-00 | WSL source and native Windows deployment workflow | User's split-workspace request |
+| CB-01 | Reproducible current-engine baseline and frozen workloads | CB-00 and this plan |
 | CB-02 | Representative compiled feasibility prototype and decision evidence | CB-01 |
 | CB-03 | Conditional Rust or bulk alternative comparison | A documented CB-02 limitation |
 | CB-04 | Immutable numerical artifact preparation and publication | Backend gate passed |
@@ -471,6 +478,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 
 | Phase | Status | Evidence |
 |---|---|---|
+| CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Planned | Baseline not yet captured |
 | CB-02 | Planned | Compiled feasibility not yet tested |
 | CB-03 | Conditional | Trigger only from a documented CB-02 limitation |
