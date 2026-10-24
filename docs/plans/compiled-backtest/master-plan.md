@@ -4,6 +4,8 @@ Created: 23 October 2026.
 
 Implementation workflow and comparative research updated: 24 October 2026.
 
+Wave5 measurement expansion: 25 October 2026.
+
 Status: workspace preparation CB-00 and baseline measurement CB-01 are complete.
 CB-01 recorded all 18 native Windows cases with exact replay agreement.
 No production calculation engine has been replaced. CB-02 now compares competing
@@ -32,9 +34,12 @@ It adds prepared attachment provenance and policy-derived request planning.
 Numba took 12.33 seconds and Rust 13.41 seconds. Faster-adjacent-control ratios
 were 10.49× and 9.58×, with exact agreement. Setup took about 146 seconds
 separately. This one original-pool F0 seed-42 case is promising, not full
-qualification. The next bounded CB-02 wave expands the frozen matrix; the
-remaining 17 cases and operational gates stay required. No production backend
-is selected, and no production freshness policy changed.
+qualification. The [fifth wave](phases/CB-02/wave5/README.md) completed all 17
+remaining cases with unchanged measured code. The full matrix has exact
+financial agreement. Five of six median gates pass for each method. Broader-pool
+F2 fails: Numba 4.66× and Rust 4.53×. No primary cases remain. No production
+backend is selected. Shared request costs need another bounded experiment before
+integration. Operational qualification and the freshness policy remain unchanged.
 
 ## Objective
 
@@ -361,12 +366,21 @@ Numba/Rust completed all 88 primary and correctness trials exactly. The frozen
 and compilation took 146.10/145.48 seconds separately. Native and WSL generation
 invalidation and recovery checks pass. See [wave4 evidence](phases/CB-02/wave4/results.json).
 
-Wave4 is a bounded pilot. A following CB-02 wave must run the remaining frozen
-primary cases, retain both promising methods and alternate their order across
-seeds. Start at `legacy-F1-42`, then finish the six seed-42 cases before the other
-two seeds. Broader-pool controls have a recorded multi-hour matrix cost. The
-split preserves the full six-case, three-seed acceptance protocol. Do not call
-CB-02 qualified or begin production integration from one passing case.
+Wave4 is a bounded pilot. [Wave5](phases/CB-02/wave5/README.md) completed all
+17 remaining primary cases. It ran both methods serially with fresh adjacent
+production controls: Numba/Rust for seed 42, Rust/Numba for 20261022 and
+Numba/Rust for 20261023. Its [ledger](phases/CB-02/wave5/results.json) preserves
+all per-seed times and ratios, complete per-case medians and an empty remaining
+primary-case list. All intermediate, holding, summary and replay comparisons
+are exact. Full request validation, saving and delivery remain timed.
+
+The 5× gate fails for both methods in broader-pool F2: medians 4.66×/4.53×.
+All other median gates pass, with limited margin in broader-pool F1. Keep
+production unchanged. The next bounded CB-02 experiment must address shared
+candidate guards/assembly, price lookup and SQL staging/selection. The record
+retains original counters; no component ablation or new fix is claimed. Re-run
+the full primary gate after a changed implementation. Do not substitute an
+overall average or begin production integration from this failed gate.
 
 **Gate:** Require at least 5× representative end-to-end improvement with exact
 categorical agreement, existing numeric tolerance and a budget for remaining
@@ -613,7 +627,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | Wave4 pilot passes one case; full gate pending | [Fourth wave](phases/CB-02/wave4/README.md): exact; Numba 12.33 s / 10.49×, Rust 13.41 s / 9.58×; remaining 17 primary cases next |
+| CB-02 | Wave5 matrix complete; 5× gate failed | [Fifth wave](phases/CB-02/wave5/README.md); all 18 cases exact; broader-pool F2 medians Numba 4.66× / Rust 4.53×; no backend selected |
 | CB-03 | Conditional | Rust and Polars already attempted in CB-02; require a new concrete question |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -633,10 +647,10 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
 The immediate next step remains **CB-02**, the comparative optimization gate.
-All six named approaches have been tested. Wave4 addresses shared validation
-and request work with an equivalent fresh inventory scan. It preserves current
-manual-edit detection and passes the first case for both Numba and Rust. Expand
-both promising candidates through the remaining CB-01 matrix, starting with
-`legacy-F1-42`. Keep full validation, saving and delivery in headline timing.
-The first-case ratios are not six-case three-seed medians. Do not start production
-integration before the required gate passes.
+All six named approaches have been tested. Wave4 preserves immediate manual-edit
+detection. Wave5 completed the full primary comparison for Numba and Rust, with
+exact financial agreement. Both fail the broader-pool F2 median gate. No primary
+cases remain. Use the observed request-cost evidence to design the next bounded
+shared-work experiment. Keep full validation, saving and delivery in headline
+timing and repeat the full gate after implementation changes. Do not start
+production integration before the required gate passes.
