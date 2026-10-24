@@ -17,6 +17,15 @@ The retained freshness check took 44.10 seconds. No 5× gate passed. See the
 [second-wave record](phases/CB-02/wave2/README.md) for the control drift and
 the next validation/report-factor decision. Later production phases stay gated.
 
+The [six-method candidate/factor comparison](phases/CB-02/wave3/README.md) is
+complete. Numba and Rust took 17.55 and 17.65 seconds. Persistent workers, bulk
+Python, Polars and DuckDB took 21.58, 25.94, 29.06 and 101.81 seconds. All
+financial and intermediate comparisons matched exactly. The best conservative
+paired ratio was 3.34×; no 5× gate passed. Full freshness consumed about 60% of
+the two fastest requests. All named alternatives have now been attempted.
+The next bounded experiment must address shared validation/work costs before
+expanding unchanged candidates. No production backend is selected.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -35,10 +44,10 @@ The [research findings and primary sources](research.md) explain the options and
 |---|---|---|
 | Calculation model | Compare bulk Python, compiled batched lookup and analytical SQL before selecting a backend. Test compact result publication with each. | Contemporary end-to-end comparisons and full holding parity. |
 | Data model | Immutable numeric inputs, sparse price histories, bounded entry-date factor batches. | Sparse versus dense access, measured memory and Windows mapping lifecycle. |
-| Initial candidates | Sparse Python arrays, NumPy/Numba batched searches and DuckDB ASOF joins. No preferred winner. | Native timings, memory/load costs, correctness and dependency evidence. |
-| Reserved challengers | Rust numerical core, full compiled policy or a complete batched factor engine using the same contract. | A specific unresolved cost or deployment limit found in the first comparison. |
+| Current comparison | Bulk Python, Numba, whole-batch DuckDB, persistent loaded workers, Polars and Rust. Start with Numba; attempt all six. | Native timings, memory/load costs, correctness and dependency evidence. |
+| Policy ownership | All six candidate executors use source-derived financial expressions. Shared guards, SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
 | Database role | Keep verified research data and compact job/result storage. Remove per-candidate SQL traffic from calculation. | Publication and recovery measurements. |
-| Analytical alternatives | DuckDB is an initial experimental challenger. Polars is reserved for a demonstrated additional bulk-processing question. | A measured advantage at the same request boundary. |
+| Analytical alternatives | Whole-batch DuckDB and Polars are included in the current candidate/factor comparison. | A measured advantage at the same request boundary. |
 | Deployment | Persistent local runtime with bounded native parallelism. | Shutdown, generation replacement and memory tests on native Windows. |
 | Weekly intervals | Add an explicit calendar extension. Proposed week means seven calendar days, with session rolling. | Freeze exact rules in CB-08 before exposing controls. |
 
@@ -49,7 +58,7 @@ serially so resource contention cannot inflate a comparison. Keep one shared
 financial policy and one measurement contract. Retain no competing production
 engines after selection.
 
-The earlier recommendation to use Polars is refined here: it is useful when bulk preparation needs it. Existing validated SQLite inputs may already permit a sufficient streaming export. Avoid adding a second analytical dependency without a measured reason.
+The user requested an attempt for every remaining approach before choosing the next optimization phase. The [third-wave record](phases/CB-02/wave3/README.md) covers these six methods. Experimental dependencies remain isolated. No library becomes a production dependency from a pilot alone.
 
 ## Scope and boundaries
 
@@ -307,6 +316,27 @@ headline comparisons omit the current scan. Whole-batch analytical execution
 and persistent bounded execution remain alternatives. These pilots do not
 reject complete compiled or SQL financial engines.
 
+**Current scope:** The [third wave](phases/CB-02/wave3/README.md) tests all six
+candidate/factor approaches. Each executor owns temporal report selection,
+sparse price searches and source-derived numerical arithmetic. Final SQL
+selection and financial aggregation remain shared. It starts with Numba, then
+bulk Python, DuckDB, persistent workers, Polars and Rust. Current full freshness
+stays in primary timing. Each method also gets real intermediate proof and
+both-pool financial, trailing and mixed-filter checks. Failure of one method
+does not stop the comparison. These tests bring the previously reserved Rust
+and Polars alternatives into CB-02; CB-03 needs a further concrete question.
+
+**Six-method result:** All methods completed the original-pool F0 seed-42
+primary case and all six real filter requests. Complete candidates, holdings,
+summaries and replay matched exactly. Numba and Rust were effectively tied near
+17.6 seconds. The other requests took 21.58–101.81 seconds. No 5× gate passed.
+The full freshness check took 10.16–10.95 seconds. Attachment cost 40.87–50.56
+seconds separately. Do not infer first-use or full-matrix speed from warm pilots.
+See the [collected evidence](phases/CB-02/wave3/results.json). Deferred work is
+explicit: the other 17 primary cases, capacity and production qualification.
+No remaining named method is silently reserved or untested. CB-03 now requires
+a further concrete unresolved question.
+
 **Gate:** Require at least 5× representative end-to-end improvement with exact
 categorical agreement, existing numeric tolerance and a budget for remaining
 integration. Final qualification still requires all six cases and three seeds.
@@ -552,8 +582,8 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | Experiments in progress | [First pilot](phases/CB-02/README.md): no 5× result; common report/factor work is the next target |
-| CB-03 | Conditional | Trigger only from a documented CB-02 limitation |
+| CB-02 | Six-method pilot complete; gate pending | [Third wave](phases/CB-02/wave3/README.md): all exact; Numba/Rust about 17.6 s; no 5× result; shared validation/work next |
+| CB-03 | Conditional | Rust and Polars already attempted in CB-02; require a new concrete question |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
 | CB-06 | Planned | — |
@@ -571,6 +601,9 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 
 The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
-The immediate next step is **CB-02**, the comparative optimization gate. Use the
-CB-01 workload and evidence. Do not start the website rewrite before that gate's
-results exist.
+The immediate next step remains **CB-02**, the comparative optimization gate.
+All six named approaches have now been tested. Address the measured shared
+validation and request work, then qualify promising candidates against the full
+CB-01 protocol. Keep the current freshness scan in headline timing until its
+replacement contract is defined and verified. Do not start production integration
+before the gate passes.

@@ -2,6 +2,13 @@
 
 These reports are separate from the canonical `results/summary-exits.txt`.
 
+CB-02's [third experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave3/README.md)
+compares Numba, bulk Python, whole-batch DuckDB, persistent workers, Polars and
+Rust over shared source-derived financial policy. Its phase record binds the
+native artifacts and separates primary timing, setup and correctness checks.
+All six completed with exact agreement. Numba and Rust took about 17.6 seconds
+on the original-pool pilot. No 5× gate passed; full qualification remains pending.
+
 CB-02's [second experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave2/README.md)
 tests indexed annual-report selection and unused threshold omission. Its record
 keeps native controls, correctness evidence and the performance decision separate

@@ -183,8 +183,9 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
     """Warm loaded base, empty result store; include validation and durable writes.
 
     This benchmark adapter retains the current full freshness scan. Loading and
-    JIT compilation are separately reported. Candidate buffers are bounded to
-    one period. Complete selected trial evidence is committed before progress.
+    JIT compilation are separately reported. SQL candidate tables contain one
+    period. Callers can retain bounded candidate batches. Complete selected
+    trial evidence is committed before progress.
     """
     if Path(store_path).exists():
         raise ValueError('A fresh request requires a new result store.')

@@ -4,6 +4,7 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 | Script | Purpose |
 | --- | --- |
+| `bench_candidates_run.py` | Compare six batched report, price and factor executors on native Windows; common financial policy and durable evidence |
 | `bench_methods.py` | Compare isolated Python-array, NumPy/Numba and DuckDB price engines with common financial policy and compact trial publication |
 | `bench_baseline.py` | Freeze CB-01 workloads and resume the production-engine baseline on disposable copies |
 | `bench_backtest.py` | Offline end-to-end random-date benchmarks on disposable SQLite copies; checks exact holding/result parity |
@@ -134,6 +135,19 @@ It still evaluates the full ranking catalog and uses the existing financial
 policy and SQL selector. The full freshness scan stays inside request time.
 See the separate [second-wave record](../docs/plans/compiled-backtest/phases/CB-02/wave2/README.md).
 The normal application does not use this evaluator.
+
+The [third-wave comparison](../docs/plans/compiled-backtest/phases/CB-02/wave3/README.md)
+uses `bench_candidates_run.py --runtime <native-root> --workdir <new-native-tmp-folder>`.
+Its explicit method order is `--methods numba python duckdb persistent polars rust`.
+Executors share immutable numerical inputs and source-derived financial arithmetic.
+They own report selection, sparse price searches and factor batches. Final SQL
+selection and portfolio assembly remain common. The full freshness check stays
+inside primary timing. Six additional requests per method check both pools,
+financial filters, trailing filters and mixed three-year ranking without a
+performance claim. Loading and compilation are separate costs. The parent
+contains native work in an owned process tree and retains committed evidence
+on timeout. Budgets are configurable with `--setup-budget`, `--request-budget`
+and `--smoke-budget`. Existing comparison directories are rejected.
 
 ## WSL deployment
 
