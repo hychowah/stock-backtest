@@ -4,6 +4,7 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 | Script | Purpose |
 | --- | --- |
+| `bench_methods.py` | Compare isolated Python-array, NumPy/Numba and DuckDB price engines with common financial policy and compact trial publication |
 | `bench_baseline.py` | Freeze CB-01 workloads and resume the production-engine baseline on disposable copies |
 | `bench_backtest.py` | Offline end-to-end random-date benchmarks on disposable SQLite copies; checks exact holding/result parity |
 | `bench_metrics.py` | Time per-symbol metrics requests |
@@ -113,6 +114,16 @@ preparation or recovery command before freezing a new baseline.
 The correctness inventory also names mixed filters, three-year ranking,
 top 100 and empty selection. Listing those cases does not claim real-data
 qualification. The phase report states which cases were actually run.
+
+## Comparative methods
+
+The comparative experiment uses `bench_methods.py --runtime <native-root>
+--workdir <dedicated-native-tmp-folder>`. It consumes the CB-01 workload.
+Method modules are benchmark-only. They do not change production selection.
+Install experimental dependencies in a separate native temporary environment;
+the normal application environment remains unchanged. See
+[`CB-02`](../docs/plans/compiled-backtest/phases/CB-02/README.md) for exact commands,
+paired controls, tested scope and qualification limits.
 
 ## WSL deployment
 

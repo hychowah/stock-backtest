@@ -2,12 +2,13 @@
 
 Created: 23 October 2026.
 
-Implementation workflow updated: 24 October 2026.
+Implementation workflow and comparative research updated: 24 October 2026.
 
 Status: workspace preparation CB-00 and baseline measurement CB-01 are complete.
 CB-01 recorded all 18 native Windows cases with exact replay agreement.
-No replacement calculation engine has been implemented. CB-02 through CB-15
-remain planned, with CB-03 conditional.
+No production calculation engine has been replaced. CB-02 now compares competing
+benchmark-only methods. Later implementation phases depend on that evidence.
+CB-03 remains conditional.
 
 ## Objective
 
@@ -25,16 +26,21 @@ The [research findings and primary sources](research.md) explain the options and
 
 | Subject | Program direction | Evidence still required |
 |---|---|---|
-| Calculation model | Compiled factor research engine. Separate entry-date screening from selected-holding returns. | Representative end-to-end prototype and full rule parity. |
+| Calculation model | Compare bulk Python, compiled batched lookup and analytical SQL before selecting a backend. Test compact result publication with each. | Contemporary end-to-end comparisons and full holding parity. |
 | Data model | Immutable numeric inputs, sparse price histories, bounded entry-date factor batches. | Sparse versus dense access, measured memory and Windows mapping lifecycle. |
-| Preferred implementation | Python orchestration with NumPy buffers and Numba native kernels. | Supported wheel set, cold-start behavior, invalidation and real workload speed. |
-| Alternative implementation | A Rust numerical core using the same input/output contract. | Conditional comparison if Numba exposes a material limitation. |
+| Initial candidates | Sparse Python arrays, NumPy/Numba batched searches and DuckDB ASOF joins. No preferred winner. | Native timings, memory/load costs, correctness and dependency evidence. |
+| Reserved challengers | Rust numerical core, full compiled policy or a complete batched factor engine using the same contract. | A specific unresolved cost or deployment limit found in the first comparison. |
 | Database role | Keep verified research data and compact job/result storage. Remove per-candidate SQL traffic from calculation. | Publication and recovery measurements. |
-| Polars and DuckDB | Optional bulk-preparation or batched-screening alternatives. | A measured advantage over a simple bulk export. Neither is mandatory initially. |
+| Analytical alternatives | DuckDB is an initial experimental challenger. Polars is reserved for a demonstrated additional bulk-processing question. | A measured advantage at the same request boundary. |
 | Deployment | Persistent local runtime with bounded native parallelism. | Shutdown, generation replacement and memory tests on native Windows. |
 | Weekly intervals | Add an explicit calendar extension. Proposed week means seven calendar days, with session rolling. | Freeze exact rules in CB-08 before exposing controls. |
 
-Numba is a preferred candidate, not a conclusion that it beats Rust. The architecture must not depend on a particular compiler. Conversely, the program must not build and maintain two complete production engines. CB-02 and conditional CB-03 settle the backend before full integration.
+The [24 October comparative research](method-research-2026-10-24.md) supersedes
+the earlier Numba preference. CB-02 assigns a separate agent to each method.
+Implementation and synthetic checks run in parallel. Timed Windows jobs run
+serially so resource contention cannot inflate a comparison. Keep one shared
+financial policy and one measurement contract. Retain no competing production
+engines after selection.
 
 The earlier recommendation to use Polars is refined here: it is useful when bulk preparation needs it. Existing validated SQLite inputs may already permit a sufficient streaming export. Avoid adding a second analytical dependency without a measured reason.
 
@@ -59,7 +65,11 @@ January and latest website modes can keep their prepared database and standalone
 
 Keep `scripts/revalue.py:calculate` independent. Do not make the reference call the replacement numerical engine. Keep canonical report/database publication under `scripts/baseline.py`.
 
-## Target behavior and data flow
+## Candidate behavior and data flow
+
+The following architecture is provisional. CB-02 may revise the input format,
+calculation boundary and later phase interfaces before production design.
+
 
 Preparation validates saved inputs and produces one immutable numerical generation. The local runtime attaches that generation. A job calculates the required entry-date inputs, applies filters and ranks stocks. It then calculates returns for the selected holdings and publishes completed trial evidence.
 
@@ -211,7 +221,7 @@ one session without leaving an unstable partial change.
 |---|---|---|
 | CB-00 | WSL source and native Windows deployment workflow | User's split-workspace request |
 | CB-01 | Reproducible current-engine baseline and frozen workloads | CB-00 and this plan |
-| CB-02 | Representative compiled feasibility prototype and decision evidence | CB-01 |
+| CB-02 | Research-backed comparative method experiments and decision evidence | CB-01 |
 | CB-03 | Conditional Rust or bulk alternative comparison | A documented CB-02 limitation |
 | CB-04 | Immutable numerical artifact preparation and publication | Backend gate passed |
 | CB-05 | Correct compiled date, report and price primitives | CB-04 |
@@ -244,17 +254,51 @@ comparison protocol in this plan; archived timing ratios alone do not qualify an
 
 **Handoff:** Exact commands, fixture identities, baseline timing matrix and the identified serial costs. Do not implement the replacement engine in this phase.
 
-### CB-02 Prove the compiled architecture
+### CB-02 Compare optimization methods
 
-**Outcome:** Evidence that the proposed calculation model can plausibly satisfy the objective before production integration.
+**Outcome:** Evidence for choosing, revising or rejecting an optimization method
+before production integration. No backend is selected from library reputation.
 
-**Work:** Build a benchmark-only numerical slice from bulk-read validated inputs. Include entry/report selection, default ranking, P/B and ROE, trailing-return filters, deterministic top-50 selection and stopped-stock returns. Use requested dates rather than a full daily factor cube. Run 24 annual trials on both pools. Check a short explicit-date weekly stress case. Include a compact completed-result write so a fast kernel cannot hide a slow persistence design.
+**Work:** Research primary sources, then dispatch independent agents for sparse
+Python arrays, NumPy/Numba batched searches and DuckDB ASOF lookup. The initial
+experiments share scalar financial policy, in-memory SQL selection and durable
+selected-trial publication. Their results compare price resolution and common
+publication changes; they do not compare fully rewritten financial engines.
+Keep the original pools and all production code unchanged. Use the CB-01
+24-trial dates, both pools and F0/F1/F2. Run a first-seed pilot, then expand
+promising methods to all three seeds. Preserve mixed-filter, three-year,
+top-100 and weekly-explicit-date checks as additional qualification work.
 
-**Deliverables:** An isolated prototype, numerical comparisons, native Windows timings, memory/load measurements, wheel/version evidence and a short backend decision. Prototype files must be clearly separated from production paths.
+**Deliverables:** Updated research, one shared experimental contract, disjoint
+method modules, complete holding comparisons, native timings, stage and memory
+evidence, dependency versions and a decision table. Record pending or failed
+methods explicitly. Files stay separate from production paths.
 
-**Verification:** Compare every selected holding and intermediate input supported by the slice. Distinguish compiler-cold, mapped-input attach and warm fresh-date time. Demonstrate a cross-module policy change invalidates the compiled code. Prototype success does not count as full-catalog parity or final application qualification.
+**Verification:** Compare every selected holding, aggregate and supported
+intermediate input. Include current full freshness scans, result saving and
+local response delivery in headline times. Keep loading and cold compilation
+separate. Use contemporary fresh controls and show timing drift. Disable
+compiler-cache reuse for the initial Numba lookup experiment; production
+invalidation proof remains required before integration. Test interruption and
+committed-trial recovery. A pilot remains unqualified.
 
-**Gate:** Proceed when the representative cases show at least 5× improvement at the comparable measured boundary, with an explicit budget for remaining integration costs. Otherwise, identify the remaining cost and revise the design. If the limitation is native compilation or deployment, trigger CB-03. If it is persistence or data layout, correct that design first.
+**Initial pilot result:** The original-pool F0 seed-42 lookup/publication
+comparison measured arrays at 52.62 s and Numba lookup at 53.10 s. Contemporary
+controls took 78.98 s and 115.31 s. DuckDB per-book ASOF exceeded its declared
+180 s request budget with five complete trials. No method qualified. See the
+[full pilot record](phases/CB-02/README.md). Do not expand unchanged lookup
+adapters until the shared scalar report/factor bottleneck is addressed.
+The next comparative wave tests report/factor batching, whole-batch analytical
+execution and persistent bounded execution. This pilot does not reject complete
+compiled or SQL financial engines.
+
+**Gate:** Require at least 5× representative end-to-end improvement with exact
+categorical agreement, existing numeric tolerance and a budget for remaining
+integration. Final qualification still requires all six cases and three seeds.
+If shared scalar work or freshness scanning dominates, record that limit and
+design the next bounded factor/policy experiment. Do not claim that a limited
+lookup prototype disproves a full backend. Trigger CB-03 only for a concrete
+unresolved alternative.
 
 **Handoff:** Choose the backend provisionally for production work. Freeze the typed-input and result boundary. List unsupported parts of the slice. Do not let prototype shortcuts become implicit production rules.
 
@@ -493,7 +537,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | Planned | Compiled feasibility not yet tested |
+| CB-02 | Experiments in progress | [First pilot](phases/CB-02/README.md): no 5× result; common report/factor work is the next target |
 | CB-03 | Conditional | Trigger only from a documented CB-02 limitation |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -512,6 +556,6 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 
 The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
-The immediate next step is **CB-02**, the early compiled feasibility gate. Use the
+The immediate next step is **CB-02**, the comparative optimization gate. Use the
 CB-01 workload and evidence. Do not start the website rewrite before that gate's
 results exist.
