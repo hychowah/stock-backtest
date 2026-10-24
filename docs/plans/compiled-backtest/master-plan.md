@@ -6,11 +6,13 @@ Implementation workflow and comparative research updated: 24 October 2026.
 
 Wave5 measurement expansion: 25 October 2026.
 
+Program direction revised after the full matrix: 25 October 2026.
+
 Status: workspace preparation CB-00 and baseline measurement CB-01 are complete.
 CB-01 recorded all 18 native Windows cases with exact replay agreement.
-No production calculation engine has been replaced. CB-02 now compares competing
-benchmark-only methods. Later implementation phases depend on that evidence.
-CB-03 remains conditional.
+No production calculation engine has been replaced. CB-02 has completed the
+broad method comparison. Numba is the working direction for the next bounded
+experiment. Production integration remains gated. CB-03 remains conditional.
 
 The second CB-02 pilot tested indexed report selection and unused threshold
 omission. It matched all 24 trials exactly but took 58.13 seconds, versus
@@ -41,6 +43,10 @@ F2 fails: Numba 4.66× and Rust 4.53×. No primary cases remain. No production
 backend is selected. Shared request costs need another bounded experiment before
 integration. Operational qualification and the freshness policy remain unchanged.
 
+The decisions below supersede earlier instructions to expand both candidates
+or continue the broad method search. Historical phase records retain their
+original conclusions and measurements.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -53,27 +59,52 @@ This is a program-level plan. Each phase is scoped for one Codex 6.1-sol session
 
 The [research findings and primary sources](research.md) explain the options and their limits. They are part of this plan.
 
+### Adjust the plan when new evidence changes the direction
+
+This is a living plan. Implementation experience, benchmark results and user
+workflow findings can justify changes to priorities, phase scope, sequence,
+dependencies and the chosen method. Update this master plan when those findings
+change the remaining work. Do not keep an obsolete phase sequence merely because
+it was written first. The 25 October revision is an example of this process.
+
+Record the evidence, the decision, affected phases and checks, and the next
+unresolved question. Preserve earlier measurement records. Distinguish a proposed
+change from implemented or qualified behavior. Recheck dependent phase briefs,
+the status ledger, research guidance and affected user documentation together.
+
+Make routine adjustments within the authorized objective autonomously. Ask for
+a user decision before changing the investment rules, correctness tolerance,
+performance acceptance criteria, promised interval scope or freshness guarantee.
+A failed gate is evidence for changing the work, not evidence that the gate passed.
+
 ## Decisions and open gates
 
 | Subject | Program direction | Evidence still required |
 |---|---|---|
-| Calculation model | Compare bulk Python, compiled batched lookup and analytical SQL before selecting a backend. Test compact result publication with each. | Contemporary end-to-end comparisons and full holding parity. |
+| Calculation model | Use Numba for the next shared-request optimization experiment. The broad comparison is complete. | A changed implementation passing the full primary gate, followed by operational qualification. |
 | Data model | Immutable numeric inputs, sparse price histories, bounded entry-date factor batches. | Sparse versus dense access, measured memory and Windows mapping lifecycle. |
-| Current comparison | Bulk Python, Numba, whole-batch DuckDB, persistent loaded workers, Polars and Rust. Start with Numba; attempt all six. | Native timings, memory/load costs, correctness and dependency evidence. |
+| Method choice | Numba is the experimental working direction. Retain Rust and the other methods as comparison evidence. | Reopen an alternative only for a concrete measured limitation or operational blocker. |
 | Policy ownership | All six candidate executors use source-derived financial expressions. Shared guards, SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
 | Database role | Keep verified research data and compact job/result storage. Remove per-candidate SQL traffic from calculation. | Publication and recovery measurements. |
-| Analytical alternatives | Whole-batch DuckDB and Polars are included in the current candidate/factor comparison. | A measured advantage at the same request boundary. |
+| Analytical alternatives | DuckDB and Polars have been attempted. No further library search is scheduled by default. | A specific unresolved question and a bounded comparison at the same request boundary. |
 | Deployment | Persistent local runtime with bounded native parallelism. | Shutdown, generation replacement and memory tests on native Windows. |
 | Weekly intervals | Add an explicit calendar extension. Proposed week means seven calendar days, with session rolling. | Freeze exact rules in CB-08 before exposing controls. |
+| Freshness | Retain immediate request-time detection under the existing path/size/mtime rule. | Equivalent scan evidence and stale-generation checks; no startup-only substitution. |
+| User experience | Set absolute time budgets for startup, fresh research, changed filters and saved-result reopening. | Prospective budgets and native measurements; annual relative speed alone is insufficient. |
 
-The [24 October comparative research](method-research-2026-10-24.md) supersedes
-the earlier Numba preference. CB-02 assigns a separate agent to each method.
-Implementation and synthetic checks run in parallel. Timed Windows jobs run
-serially so resource contention cannot inflate a comparison. Keep one shared
-financial policy and one measurement contract. Retain no competing production
-engines after selection.
+The [24 October comparative research](method-research-2026-10-24.md) led to
+attempts of all six named methods in the [third wave](phases/CB-02/wave3/README.md).
+The full Numba/Rust matrix now supports focusing the next experiment on Numba.
+Numba has the lower median request duration in all six cases. The differences
+are small; neither method passes the entire speed gate. This is a choice of
+development focus, not production approval or a claim of general superiority.
 
-The user requested an attempt for every remaining approach before choosing the next optimization phase. The [third-wave record](phases/CB-02/wave3/README.md) covers these six methods. Experimental dependencies remain isolated. No library becomes a production dependency from a pilot alone.
+Do not develop both methods on every iteration by default. Reopen Rust for a
+demonstrated Numba installation, startup, invalidation or execution limitation.
+Give any alternative comparison one question, a budget and a stop condition.
+Timed Windows jobs remain serial. Keep one shared financial policy and one
+measurement contract. Experimental dependencies remain isolated. Retain one
+production engine after qualification.
 
 ## Scope and boundaries
 
@@ -179,7 +210,15 @@ CB-01 freezes a manifest with explicit sampled date lists, not only seeds. Sugge
 | F1 | Annual financial filters | F0 plus P/B `< 3` and ROE `> 10` in display units |
 | F2 | Trailing-price filters | F0 plus one-year and three-year trailing returns `> 0` |
 
-These thresholds are engineering fixtures, not investment recommendations. Add a mixed-filter, three-year-ranking and top-100 case to qualification. Add a deliberately empty selection to correctness checks. The workload manifest should also retain any concrete user strategy settings supplied before CB-01 closes.
+These thresholds are engineering fixtures, not investment recommendations. Add a mixed-filter, three-year-ranking and top-100 case to qualification. Add a deliberately empty selection to correctness checks. Preserve concrete user strategy settings in supplementary manifests without changing the frozen primary manifest.
+
+Every frozen F2 trial has an empty period and a null full-period CAGR. Keep F2
+unchanged as a primary performance and incomplete-coverage test. Add a separate
+trailing-filter workload that produces complete trials and usable paired CAGRs
+on the declared saved inputs. Establish its coverage before timing, then freeze
+its settings and dates. Never replace the failed primary F2 case with this
+supplement. Include mixed filters and repeated filter changes in workflow
+qualification. Report complete and incomplete trials separately.
 
 Require **at least 5× median end-to-end speedup in each of the six primary pool/profile cases**, with no numerical or membership disagreement. Target 10× or more. Report per-seed ratios and absolute times; do not hide a slow case in an overall average. If a case fails, keep the new engine opt-in and revise the design.
 
@@ -195,6 +234,28 @@ Require **at least 5× median end-to-end speedup in each of the six primary pool
 8. Record wall time, stage times, private memory, working set, peak thread/process counts, artifact size and written bytes. Explain any timing exclusions.
 
 The six primary cases require 18 paired runs across the three seeds. Capture one baseline run per case first to check cost. Run the full matrix in resumable batches if needed. Do not silently reduce the protocol when a session ends.
+
+### User workflow budgets
+
+The relative annual speed gate is necessary. It does not establish acceptable
+startup time or an interactive research workflow. Before qualification timing,
+record an absolute time budget and a measurement boundary for each workflow:
+
+| Workflow | Required measurement | Budget status |
+|---|---|---|
+| First installation and first ready result | Dependency installation, preparation, attachment and compilation, with each cost separate | To be resolved before operational qualification |
+| Normal restart | Launcher start to ready service, then the first completed result | To be resolved before operational qualification |
+| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | To be resolved before workflow qualification; retain the six-case 5× gate |
+| Changed filters | Same dates with new settings; report permitted factor reuse and completion time | To be resolved before workflow qualification |
+| Saved-result reopening | Request to visible inspection and export-ready evidence | To be resolved before workflow qualification |
+| Weekly research | Short-window pilot, then the declared full-window workload, with resource caps | To be resolved before weekly capacity qualification |
+
+Choose budgets from the intended user workflow. Do not select thresholds merely
+to match an observed timing. Proposed acceptance budgets require a user decision;
+missing budgets remain unresolved and block the relevant release qualification.
+Wave5 attachment/setup took 52.73–152.03 seconds for its new cases. Those are
+historical setup observations, not acceptable-latency targets or full launcher
+measurements. No first-use or compiled-cache restart speed claim exists yet.
 
 ### Capacity and operational checks
 
@@ -216,9 +277,19 @@ Bind to immutable base inputs, not the whole mutable daily database. Capture fin
 
 ### Freshness
 
-Validate raw inputs fully during preparation and startup. A normal job should check the compact prepared-generation identity under the existing project coordinator. Downloads and repair operations must mark prepared inputs stale before releasing ownership, including cancellation after partial successful publication.
+Validate raw inputs fully during preparation and startup. A normal job checks
+the compact prepared-generation identity and the current raw inventory under
+the existing project coordinator. Downloads and repair operations must mark
+prepared inputs stale before releasing ownership, including cancellation after
+partial successful publication.
 
-Direct edits outside the coordinated data tools need an explicit policy. Proposed policy: they are detected by the next full startup/preparation check and require rebuild before the new snapshot is used. This changes the current financial-file request scan. CB-12 must document that policy, preserve supported manual workflows, and test it before removing those scans. If the existing immediate-detection guarantee must be retained, use reliable change evidence plus a full-check fallback. Never simply omit validation.
+Retain immediate request-time detection of direct edits under the existing
+path/size/mtime rule. Wave4 demonstrated a faster equivalent inventory scan;
+Wave5 retained it throughout the full matrix. Use the prepared identity together
+with equivalent current inventory evidence. Do not replace it with startup-only
+validation. A same-size edit with a restored timestamp remains outside the
+existing metadata guarantee. Any future proposal to change that guarantee needs
+separate evidence and a user decision. Removing scans is not a planned shortcut.
 
 ### Resource ownership
 
@@ -241,29 +312,58 @@ handoff are filed in `phases/CB-00.design.md` and `phases/CB-00.md`. It does not
 implement the compiled calculation engine. Read that handoff before CB-01.
 
 CB-01 measurement is complete. Its [phase record](phases/CB-01/README.md) contains
-the frozen workload, all 18 accepted cases and operational limits. Calculation
-phases CB-02 through CB-15 remain **planned**. CB-03 is conditional. The normal
-engine path has 14 sessions in total; the Rust investigation makes it 15. CB-00
-is separate preparatory work. These are scope units, not promises about elapsed
-duration. Split a phase before implementation if its detailed plan cannot fit
-one session without leaving an unstable partial change.
+the frozen workload, all 18 accepted cases and operational limits. CB-02 is in
+progress: the comparison is complete, but its full speed gate failed. CB-03 is
+conditional. CB-04 through CB-15 describe remaining capabilities. Reconcile
+these briefs with demonstrated work before implementing them. Phase identifiers
+are stable references, not a fixed session count or a demand to rebuild prototypes.
+Split or merge remaining work when the evidence warrants it and record the change.
 
-| Phase | Single-session result | Depends on |
+### Delivery milestones and evidence gates
+
+| Milestone | Result and exit evidence | Related phases |
+|---|---|---|
+| Close the request-performance gap | One bounded Numba experiment, then the full unchanged primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
+| Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; agreed workflow budgets | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
+| Deliver faster existing workflows | Opt-in support for the existing month intervals, filters, trial inspection, exports and rollback | CB-04–CB-07 and CB-09–CB-13 |
+| Add weekly research | Frozen calendar, correct explicit-date returns, useful latency and bounded resources | CB-08 and weekly extensions in CB-09–CB-14 |
+| Qualify and enable the default | Full primary, supplementary, workflow, weekly and operational gates pass | CB-14 and CB-15 |
+
+The first three milestones can expose risks before weekly capacity work. Existing
+month workflows can be delivered opt-in before weekly controls. Weekly support
+remains required for program completion. Annual speedup does not qualify weekly
+latency. Default cutover waits for all promised capabilities and gates.
+
+Development-focus selection permits bounded isolated feasibility proofs before
+the primary speed gate passes. It does not authorize production integration.
+Production integration requires the full primary speed gate and no known
+operational blocker. Final release qualification also requires the agreed
+workflow budgets, full correctness coverage and operational checks.
+
+Before each implementation phase, classify relevant evidence as **demonstrated
+and reusable**, **demonstrated but needs production hardening**, or **unknown and
+needs an experiment**. Link the proof and its limits. Prepared attachment,
+source-derived numerical factors, exact selection and completed-trial replay
+already have benchmark evidence. Production publication, launcher lifecycle,
+full filter-change performance and weekly capacity still need qualification.
+Reuse sound work; implement only the missing capability or hardening.
+
+| Phase | Scoped result | Depends on |
 |---|---|---|
 | CB-00 | WSL source and native Windows deployment workflow | User's split-workspace request |
 | CB-01 | Reproducible current-engine baseline and frozen workloads | CB-00 and this plan |
-| CB-02 | Research-backed comparative method experiments and decision evidence | CB-01 |
+| CB-02 | Numba shared-request experiment and full primary speed-gate decision | CB-01; completed comparison evidence |
 | CB-03 | Conditional Rust or bulk alternative comparison | A documented CB-02 limitation |
-| CB-04 | Immutable numerical artifact preparation and publication | Backend gate passed |
+| CB-04 | Production hardening of immutable numerical preparation/publication | Full primary speed gate passed; early isolated feasibility proofs allowed |
 | CB-05 | Correct compiled date, report and price primitives | CB-04 |
 | CB-06 | Complete metric and threshold calculations | CB-05 |
 | CB-07 | Deterministic generic filtering and ranking | CB-06 |
-| CB-08 | Weekly and intermediate interval contract and planner | CB-01; can precede CB-04 |
-| CB-09 | Fixed/explicit-date portfolio evaluation with full parity | CB-07 and CB-08 |
+| CB-08 | Weekly and intermediate interval contract and planner | CB-01; can precede CB-04; optional for existing-month opt-in delivery |
+| CB-09 | Fixed/explicit-date portfolio evaluation with full parity | CB-07; CB-08 for new interval planning |
 | CB-10 | Random trials and atomic recovery evidence | CB-09 |
 | CB-11 | Persistent runtime, bounded parallelism and lifecycle | CB-10 |
 | CB-12 | Launcher, preparation and data-panel integration | CB-11 |
-| CB-13 | Website/API integration, inspection and exports | CB-12 |
+| CB-13 | Existing-month opt-in UI/API, inspection and exports; weekly controls when qualified | CB-12; CB-08 and weekly evaluator checks for new controls |
 | CB-14 | Full numerical, operational and speed qualification | CB-13 |
 | CB-15 | Default cutover, documentation and retained fallback | CB-14 passed |
 
@@ -290,7 +390,7 @@ comparison protocol in this plan; archived timing ratios alone do not qualify an
 **Outcome:** Evidence for choosing, revising or rejecting an optimization method
 before production integration. No backend is selected from library reputation.
 
-**Work:** Research primary sources, then dispatch independent agents for sparse
+**Completed comparison:** Independent method experiments covered sparse
 Python arrays, NumPy/Numba batched searches and DuckDB ASOF lookup. The initial
 experiments share scalar financial policy, in-memory SQL selection and durable
 selected-trial publication. Their results compare price resolution and common
@@ -313,6 +413,9 @@ compiler-cache reuse for the initial Numba lookup experiment; production
 invalidation proof remains required before integration. Test interruption and
 committed-trial recovery. A pilot remains unqualified.
 
+**Recorded experiment sequence:** The following pilot scopes and decisions are
+historical. The next-experiment brief below defines the remaining work.
+
 **Initial pilot result:** The original-pool F0 seed-42 lookup/publication
 comparison measured arrays at 52.62 s and Numba lookup at 53.10 s. Contemporary
 controls took 78.98 s and 115.31 s. DuckDB per-book ASOF exceeded its declared
@@ -331,7 +434,7 @@ headline comparisons omit the current scan. Whole-batch analytical execution
 and persistent bounded execution remain alternatives. These pilots do not
 reject complete compiled or SQL financial engines.
 
-**Current scope:** The [third wave](phases/CB-02/wave3/README.md) tests all six
+**Third-wave scope:** The [third wave](phases/CB-02/wave3/README.md) tested all six
 candidate/factor approaches. Each executor owns temporal report selection,
 sparse price searches and source-derived numerical arithmetic. Final SQL
 selection and financial aggregation remain shared. It starts with Numba, then
@@ -358,7 +461,8 @@ metadata and full report binding. It rejects unfinished publication and stale
 reuse. Every request still enumerates the same current annual inventory and
 compares the current path/size/mtime evidence. Attachments prove exact equality
 with the authoritative scanner. This is an equivalent scan implementation,
-not the deferred CB-12 startup-only manual-edit policy.
+not the then-proposed CB-12 startup-only manual-edit policy. That proposal is
+retired by this revision.
 
 Numba/Rust completed all 88 primary and correctness trials exactly. The frozen
 `legacy-F0-42` requests took 12.33/13.41 seconds, with conservative ratios
@@ -382,21 +486,40 @@ retains original counters; no component ablation or new fix is claimed. Re-run
 the full primary gate after a changed implementation. Do not substitute an
 overall average or begin production integration from this failed gate.
 
-**Gate:** Require at least 5× representative end-to-end improvement with exact
-categorical agreement, existing numeric tolerance and a budget for remaining
-integration. Final qualification still requires all six cases and three seeds.
-If shared scalar work or freshness scanning dominates, record that limit and
-design the next bounded factor/policy experiment. Do not claim that a limited
-lookup prototype disproves a full backend. Trigger CB-03 only for a concrete
-unresolved alternative.
+**Next bounded experiment:** Use Numba. Test whether reducing shared candidate
+guards/assembly, price lookup or SQL staging/selection closes the broader-pool
+F2 gap while preserving all contracts. Select one intervention from measured
+evidence. Record the hypothesis, isolated file scope, timing/resource budget,
+expected evidence and stop condition before running it. Counters overlap; they
+do not establish a causal saving. Use a paired pilot to reject ineffective
+changes before another full matrix. Do not expand unchanged code or optimize
+only the already-small factor arithmetic without new evidence.
 
-**Handoff:** Choose the backend provisionally for production work. Freeze the typed-input and result boundary. List unsupported parts of the slice. Do not let prototype shortcuts become implicit production rules.
+Add the complete trailing-filter supplement and workflow measurements under
+separately frozen settings. Isolated lifecycle proofs may proceed to expose an
+operational blocker early. They do not authorize production integration.
+
+**Gate:** Development focus is Numba. Production integration requires at least
+5× median end-to-end improvement in every one of the six primary cases across
+three seeds on one changed source identity. Require exact categorical agreement,
+the existing numeric tolerance and a stated budget for integration overhead.
+Repeat the gate on the integrated engine at CB-14. Keep the old failed result
+visible until the changed implementation passes. Trigger CB-03 only for a
+concrete unresolved limitation.
+
+**Handoff:** Record the focus decision, passed and failed gates, reusable proofs,
+hardening needs and unknowns. Freeze the measured typed-input/result boundary
+before integration. Keep prototype shortcuts out of production rules.
 
 ### CB-03 Investigate the alternative only if needed
 
 **Outcome:** A backend decision supported by the same workload and numerical contract.
 
 **Work:** Reimplement only the limiting numerical slice in Rust, or run a truly batched Polars/DuckDB comparison if the issue is analytical processing. Reuse CB-02 inputs and output checks. Measure Python/native transfer and build/restart behavior. Resolve financial formula ownership if the implementation language changes.
+
+All named methods have already been attempted. This phase is dormant unless a
+new measured limitation justifies it. Record that trigger, its decision question,
+budget and stop condition. Do not repeat the broad comparison by default.
 
 **Deliverables:** A bounded comparison and an accepted backend decision. Update later phase assumptions and dependency requirements. If this phase is unnecessary, record a reasoned skip in the program ledger.
 
@@ -504,7 +627,7 @@ unresolved alternative.
 
 **Outcome:** The normal launcher brings the new engine to a ready state automatically.
 
-**Work:** Extend dependency preparation in order: recover/verify research publication, prepare compatible base data, publish the numerical generation, prepare native runtime and rebuild stale website output. Add a pinned tested dependency environment. Preserve panel recovery when raw inputs are missing. Integrate stale-generation evidence with every relevant successful or partial coordinated download/repair. Resolve and document the direct-edit freshness policy before removing repeated raw scans.
+**Work:** Extend dependency preparation in order: recover/verify research publication, prepare compatible base data, publish the numerical generation, prepare native runtime and rebuild stale website output. Add a pinned tested dependency environment. Preserve panel recovery when raw inputs are missing. Integrate stale-generation evidence with every relevant successful or partial coordinated download/repair. Preserve immediate direct-edit detection with equivalent current inventory checks.
 
 **Deliverables:** Launcher/data-panel integration, runtime/dependency instructions, compact generation checks and preparation status. Existing standard-library reference commands remain available without installing the new numerical stack.
 
@@ -514,13 +637,18 @@ unresolved alternative.
 
 ### CB-13 Integrate the website and API
 
-**Outcome:** Users can run the replacement through the existing website, including the extended interval range.
+**Outcome:** Users can run the replacement through the existing website. Existing
+month workflows can ship opt-in before the weekly extension is ready.
 
-**Work:** Route dated schedule and robustness requests through an explicit opt-in engine selection. Adapt NDJSON events and progress text to actual work units. Add week/month controls, versioned saved settings, trial inspection, exports and errors. Ensure old saved requests have a defined route. Keep January/latest/static fallback behavior intact.
+**Work:** Route dated schedule and robustness requests through an explicit opt-in engine selection. Adapt NDJSON events and progress text to actual work units. Add versioned saved settings, trial inspection, exports and errors. Expose week/month controls only after their calendar and evaluator checks pass. Ensure old saved requests have a defined route. Keep January/latest/static fallback behavior intact.
 
 **Deliverables:** Working local UI/API flow, browser checks and a documented rollback setting. Update the guide to distinguish opt-in source from the default running engine.
 
 **Verification:** Exercise a complete 24-trial run, changing filters, seed replay, weekly settings, cancellation/disconnection, saved trial inspection, CSVs and empty selections. Check desktop/mobile presentation when browser tools are available. Run existing range, screener, robustness, contributions and data-panel checks as affected. Build local output only.
+
+For an existing-month milestone, mark weekly checks pending and keep weekly
+controls unavailable. Run those checks before delivering the extension. Do not
+mark the whole phase or program complete from the earlier milestone.
 
 **Handoff:** API compatibility notes and browser evidence. Do not refresh or stage `website/dist/` as an incidental build action.
 
@@ -532,7 +660,7 @@ unresolved alternative.
 
 **Deliverables:** Tracked qualification report with settings, hashes, versions, maximum numeric differences, raw-output locations, per-case timings and explicit gate verdicts. Update experiment documentation with the new evidence while retaining historical results.
 
-**Verification:** All required correctness and operational checks pass on Windows. Primary cases each reach 5×. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
+**Verification:** All required correctness and operational checks pass on Windows. Primary cases each reach 5×. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
 
 **Handoff:** Pass/fail table. If a gate fails, leave the engine opt-in and write the smallest evidence-led follow-up phase. Do not label the program complete.
 
@@ -552,13 +680,19 @@ unresolved alternative.
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
 
-The current request updates this plan. It does not start CB-01 or the rest of the implementation program.
+Updating this plan alone does not start a benchmark or implementation phase.
 
 ### Start each session
 
 Read root `AGENTS.md`, this plan, the research findings and the preceding phase record. Inspect current Git status using `.git-local`. Preserve unrelated work, including existing portable-snapshot changes. Read only the files needed for that phase. Do not open the parent harness.
 
 Confirm the prerequisite gates passed and record the phase's intended file scope. If scope no longer fits one session, split it in this master plan before starting a partial integration. An agent can make a routine split that preserves the objective, ordering and acceptance criteria without asking the user. Do not infer completion from a phase heading or from a prototype's existence.
+
+Reassess the remaining plan against new evidence at each phase boundary. Update
+it during a phase when a finding invalidates an assumption or dependency. Record
+why the change is needed, its evidence, affected work and the next decision.
+Apply the living-plan rules above. A local implementation detail does not need
+a roadmap rewrite; a changed program direction does.
 
 ### Step 1 Run the detailed design skill
 
@@ -627,8 +761,8 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | Wave5 matrix complete; 5× gate failed | [Fifth wave](phases/CB-02/wave5/README.md); all 18 cases exact; broader-pool F2 medians Numba 4.66× / Rust 4.53×; no backend selected |
-| CB-03 | Conditional | Rust and Polars already attempted in CB-02; require a new concrete question |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Fifth wave](phases/CB-02/wave5/README.md); all 18 cases exact; broader-pool F2 medians Numba 4.66× / Rust 4.53×; next bounded shared-request experiment; no production backend selected |
+| CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
 | CB-06 | Planned | — |
@@ -637,20 +771,30 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-09 | Planned | — |
 | CB-10 | Planned | — |
 | CB-11 | Planned | — |
-| CB-12 | Planned | Freshness-policy gate pending |
+| CB-12 | Planned | Preserve immediate detection; operational and latency-budget checks pending |
 | CB-13 | Planned | — |
 | CB-14 | Planned | Final 5× gate pending |
 | CB-15 | Planned | Default unchanged |
 
 ## Completion definition
 
-The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
+The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
-The immediate next step remains **CB-02**, the comparative optimization gate.
+The immediate next step remains **CB-02**, now a focused Numba experiment.
 All six named approaches have been tested. Wave4 preserves immediate manual-edit
 detection. Wave5 completed the full primary comparison for Numba and Rust, with
 exact financial agreement. Both fail the broader-pool F2 median gate. No primary
-cases remain. Use the observed request-cost evidence to design the next bounded
-shared-work experiment. Keep full validation, saving and delivery in headline
-timing and repeat the full gate after implementation changes. Do not start
+cases remain. Use the observed request-cost evidence to define one bounded
+shared-work hypothesis, budget and stop condition. Keep full validation, saving
+and delivery in headline timing and repeat the full gate after implementation
+changes. Do not start
 production integration before the required gate passes.
+
+## Program decision record
+
+| Date | Evidence and insight | Plan adjustment | Remaining decision |
+|---|---|---|---|
+| 25 October 2026 | Six methods attempted; full Numba/Rust matrix exact, but cached-F2 fails at 4.66×/4.53×. Numba median duration is lower in all six cases by a small margin. | Focus CB-02 on Numba and shared request costs. Keep alternatives dormant and all primary gates intact. | Does a bounded intervention close the gap without weakening contracts? |
+| 25 October 2026 | All frozen F2 trials are incomplete. Setup is separate and startup/restart, filter changes and weekly capacity remain unqualified. | Retain F2; add complete trailing-filter coverage. Define workflow budgets before qualification. Separate existing-month delivery from weekly delivery. Allow early isolated operational proofs. | User acceptance budgets and full operational evidence remain unresolved. |
+| 25 October 2026 | Equivalent fresh scanning preserved immediate manual-edit detection across the full matrix. | Remove startup-only detection from the planned direction. Reuse demonstrated work and harden only missing capabilities. | Production publisher and lifecycle proofs remain required. |
+| 25 October 2026 | User explicitly permits plan changes when implementation yields new insight. | Reassess and update the roadmap from evidence, preserving history and acceptance criteria. | Raise material scope or acceptance changes for a user decision. |
