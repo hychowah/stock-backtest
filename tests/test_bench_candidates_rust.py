@@ -101,6 +101,26 @@ class RustNativeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'closed'):
             self.executor.kernel.calculate(np.empty((0,len(self.inputs.policy.input_names))))
 
+    def test_planned_native_batches_preserve_all_and_requested_values(self):
+        self.executor.limits['request_plan'] = True
+        for pool in ('legacy', 'cached'):
+            for profile in ('all', 'F0', 'F1', 'F2'):
+                options = dict(shared.baseline.options(pool, 'F0' if profile == 'all' else profile))
+                if profile == 'all':
+                    options['filters'] = [dict(field=field, op='gt', value=0.)
+                                          for field in shared.s.metrics.FILTERS]
+                self.ordinary.begin(dict(options=options))
+                self.executor.begin(dict(options=options))
+                books = [('2015-01-02', '2016-01-04', pool),
+                         ('2016-02-29', '2016-12-30', pool)]
+                expected = self.ordinary.evaluate(books)
+                actual = self.executor.evaluate(books)
+                self.assertTrue(shared.baseline.compare(expected, actual)['exact'])
+                if profile == 'all':
+                    for key, value in self.ordinary.trace.items():
+                        np.testing.assert_allclose(self.executor.trace[key], value,
+                                                   rtol=0, atol=0, equal_nan=True, err_msg=key)
+
 
 if __name__ == '__main__':
     unittest.main()

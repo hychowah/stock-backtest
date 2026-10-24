@@ -26,6 +26,16 @@ the two fastest requests. All named alternatives have now been attempted.
 The next bounded experiment must address shared validation/work costs before
 expanding unchanged candidates. No production backend is selected.
 
+The [fourth-wave pilot](phases/CB-02/wave4/README.md) retains immediate
+request-time manual-edit detection through an equivalent fresh inventory scan.
+It adds prepared attachment provenance and policy-derived request planning.
+Numba took 12.33 seconds and Rust 13.41 seconds. Faster-adjacent-control ratios
+were 10.49× and 9.58×, with exact agreement. Setup took about 146 seconds
+separately. This one original-pool F0 seed-42 case is promising, not full
+qualification. The next bounded CB-02 wave expands the frozen matrix; the
+remaining 17 cases and operational gates stay required. No production backend
+is selected, and no production freshness policy changed.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -337,6 +347,27 @@ explicit: the other 17 primary cases, capacity and production qualification.
 No remaining named method is silently reserved or untested. CB-03 now requires
 a further concrete unresolved question.
 
+**Fourth-wave result and split:** The benchmark-only prepared attachment checks
+its captured numerical generation, policy-source provenance, current research
+metadata and full report binding. It rejects unfinished publication and stale
+reuse. Every request still enumerates the same current annual inventory and
+compares the current path/size/mtime evidence. Attachments prove exact equality
+with the authoritative scanner. This is an equivalent scan implementation,
+not the deferred CB-12 startup-only manual-edit policy.
+
+Numba/Rust completed all 88 primary and correctness trials exactly. The frozen
+`legacy-F0-42` requests took 12.33/13.41 seconds, with conservative ratios
+10.49×/9.58×. Controls were 149.29/129.40/128.46 seconds. Initial attachment
+and compilation took 146.10/145.48 seconds separately. Native and WSL generation
+invalidation and recovery checks pass. See [wave4 evidence](phases/CB-02/wave4/results.json).
+
+Wave4 is a bounded pilot. A following CB-02 wave must run the remaining frozen
+primary cases, retain both promising methods and alternate their order across
+seeds. Start at `legacy-F1-42`, then finish the six seed-42 cases before the other
+two seeds. Broader-pool controls have a recorded multi-hour matrix cost. The
+split preserves the full six-case, three-seed acceptance protocol. Do not call
+CB-02 qualified or begin production integration from one passing case.
+
 **Gate:** Require at least 5× representative end-to-end improvement with exact
 categorical agreement, existing numeric tolerance and a budget for remaining
 integration. Final qualification still requires all six cases and three seeds.
@@ -582,7 +613,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | Six-method pilot complete; gate pending | [Third wave](phases/CB-02/wave3/README.md): all exact; Numba/Rust about 17.6 s; no 5× result; shared validation/work next |
+| CB-02 | Wave4 pilot passes one case; full gate pending | [Fourth wave](phases/CB-02/wave4/README.md): exact; Numba 12.33 s / 10.49×, Rust 13.41 s / 9.58×; remaining 17 primary cases next |
 | CB-03 | Conditional | Rust and Polars already attempted in CB-02; require a new concrete question |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -602,8 +633,10 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
 The immediate next step remains **CB-02**, the comparative optimization gate.
-All six named approaches have now been tested. Address the measured shared
-validation and request work, then qualify promising candidates against the full
-CB-01 protocol. Keep the current freshness scan in headline timing until its
-replacement contract is defined and verified. Do not start production integration
-before the gate passes.
+All six named approaches have been tested. Wave4 addresses shared validation
+and request work with an equivalent fresh inventory scan. It preserves current
+manual-edit detection and passes the first case for both Numba and Rust. Expand
+both promising candidates through the remaining CB-01 matrix, starting with
+`legacy-F1-42`. Keep full validation, saving and delivery in headline timing.
+The first-case ratios are not six-case three-seed medians. Do not start production
+integration before the required gate passes.

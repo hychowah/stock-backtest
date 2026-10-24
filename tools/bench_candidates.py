@@ -210,6 +210,7 @@ class PolicyProgram:
             (schedules.financial_books.run,schedules.r,schedules.r.revalue))
         self.source_hashes = {path.name:hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(source_files)}
+        self.source_paths = tuple(sorted(source_files))
         identity = dict(sources=self.source_hashes, inputs=self.input_names,
                         max_age=schedules.financial_books.run.MAX_AGE.days,
                         buffer=schedules.financial_books.run.BUFFER,
@@ -473,6 +474,54 @@ class NumericInputs:
         self.pool_known.clear();self.pool_fiscal.clear()
 
 
+class RequestPlan:
+    """Request work requirements, without retained factors or selected results.
+
+    Preserve every dated-book occurrence and its order. Resolve calendar targets
+    and requested lookup dependencies once. Mandatory snapshot and exit inputs
+    remain present even when no threshold consumes the trailing-price inputs.
+    """
+    def __init__(self, request, inputs):
+        self.options = dict(request.get('options', request))
+        self.needed = frozenset(condition['field'] for condition in
+                                self.options.get('filters', []) or [])
+        dependencies = set()
+        def collect(node):
+            if node[0] == 'input':
+                dependencies.add(node[1])
+            else:
+                for child in node[1:]:
+                    if isinstance(child, tuple): collect(child)
+        # Both ranking pairs remain exposed to the unchanged SQL selector. The
+        # mandatory slots also support source guards before numeric use.
+        outputs = ('cap', 'ev', 'ebitda', 'return_value', 'multiple', 'yield_value',
+                   'metric3_multiple', 'metric3_yield')
+        outputs += tuple('filter_' + field for field in self.needed)
+        for name in outputs:
+            collect(inputs.policy.expanded(name))
+        self.slots = tuple(sorted({0, 1, 3} | {slot for slot, field in enumerate(LOOKUP_FIELDS)
+                                                   if field in dependencies and slot != 2}))
+        self.books = ()
+        if 'samples' in request:
+            sessions = [date.fromisoformat(day) for day in sorted(inputs.sessions)]
+            books = []
+            for dates in request['samples']:
+                _, _, periods = inputs.s.dated_periods(dates, request['start'],
+                    request['end'], request['months'], sessions)
+                books.extend((str(a), str(b), self.options['pool']) for a, b in periods)
+            self.books = tuple(books)
+        self.targets = {}
+        for entry, _, _ in self.books:
+            self.calendar(date.fromisoformat(entry))
+
+    def calendar(self, entry):
+        if entry not in self.targets:
+            self.targets[entry] = (entry, *(entry.replace(year=entry.year-years,
+                day=min(entry.day, monthrange(entry.year-years, entry.month)[1]))
+                for years in (1, 3)))
+        return self.targets[entry]
+
+
 class PythonExecutor:
     """Batch report, price and policy execution with shared source guard logic.
 
@@ -485,16 +534,20 @@ class PythonExecutor:
         self.policy = policy or inputs.policy
         self.limits = dict(limits or {})
         self.options = {}
+        self.request_plan = None
         self.trace = {}
         self.stats = dict(backend='python',batches=0,books=0,candidate_rows=0)
 
     def begin(self,request):
         self.options = dict(request.get('options',request))
+        self.request_plan = RequestPlan(request, self.inputs) if self.limits.get('request_plan') else None
         self.trace = {}
         for key in ('report_seconds','lookup_seconds','planning_seconds',
                     'numeric_seconds','source_guard_seconds'):
             self.stats.pop(key,None)
         self.stats.update(batches=0,books=0,candidate_rows=0)
+        if self.request_plan is not None:
+            self.stats.update(planned_lookup_slots=list(self.request_plan.slots), price_queries=0)
 
     def select_reports(self,entries):
         inputs = self.inputs
@@ -549,9 +602,24 @@ class PythonExecutor:
             available = np.flatnonzero(legacy[book]>=0)
             ordered = sorted(available,key=lambda symbol:inputs.report_yield[legacy[book,symbol]],reverse=True)
             for rank,symbol in enumerate(ordered[:inputs.s.financial_books.run.BUFFER],1):ranks[book,symbol]=rank
-        rows = [(book,symbol,int(report)) for book,unused in enumerate(books)
-                for symbol,report in enumerate((legacy if books[book][2]=='legacy' else broad)[book])
-                if report>=0 and inputs.cached_mask[symbol] and (books[book][2]!='legacy' or ranks[book,symbol]>0)]
+        plan = self.request_plan
+        if plan is not None and plan.options != options:
+            raise ValueError('Request plan differs from candidate options.')
+        if plan is not None:
+            selected = np.where(np.asarray([pool == 'legacy' for _, _, pool in books])[:, None], legacy, broad)
+            allowed = (selected >= 0) & inputs.cached_mask[None, :]
+            for book, (_, _, pool) in enumerate(books):
+                if pool == 'legacy':
+                    allowed[book] &= ranks[book] > 0
+            row_books, row_symbols = np.nonzero(allowed)
+            row_books = row_books.astype(np.int32)
+            row_symbols = row_symbols.astype(np.int32)
+            row_reports = selected[row_books, row_symbols].astype(np.int32)
+            rows = list(zip(row_books.tolist(), row_symbols.tolist(), row_reports.tolist(), strict=True))
+        else:
+            rows = [(book,symbol,int(report)) for book,unused in enumerate(books)
+                    for symbol,report in enumerate((legacy if books[book][2]=='legacy' else broad)[book])
+                    if report>=0 and inputs.cached_mask[symbol] and (books[book][2]!='legacy' or ranks[book,symbol]>0)]
         row_books = np.asarray([row[0] for row in rows],dtype=np.int32)
         row_symbols = np.asarray([row[1] for row in rows],dtype=np.int32)
         row_reports = np.asarray([row[2] for row in rows],dtype=np.int32)
@@ -559,13 +627,13 @@ class PythonExecutor:
         if len(rows)>row_limit:raise ValueError('Candidate batch exceeds its declared row bound.')
         lookup_days = np.zeros((len(rows),7),dtype=np.int32)
         lookup_values = np.full((len(rows),7),np.nan,dtype=np.float64)
-        needed = {condition['field'] for condition in options.get('filters',[]) or []}
+        needed = plan.needed if plan is not None else {condition['field'] for condition in options.get('filters',[]) or []}
         # All temporal endpoints are planned together. Filter arithmetic remains
         # available for proof; unused threshold rows are not exposed to SQL.
         queries,locations = [],[]
         targets = []
         for book,(entry,exit_day,pool) in enumerate(books):
-            targets.append((entry,*(entry.replace(year=entry.year-years,
+            targets.append(plan.calendar(entry) if plan is not None else (entry,*(entry.replace(year=entry.year-years,
                 day=min(entry.day,monthrange(entry.year-years,entry.month)[1])) for years in (1,3))))
         for row,(book,symbol,report) in enumerate(rows):
             entry,exit_day,pool = books[book]
@@ -574,10 +642,14 @@ class PythonExecutor:
                        (4,entry.toordinal(),1,False),(5,targets[book][1].toordinal(),1,False),
                        (6,targets[book][2].toordinal(),1,False))
             for slot,target,column,forward in desired:
+                if plan is not None and slot not in plan.slots:
+                    continue
                 queries.append((symbol,target,column,forward));locations.append((row,slot))
         started = time.perf_counter()
         def execute(planned,where):
             if not planned:return
+            if plan is not None:
+                self.stats['price_queries'] += len(planned)
             symbol,day,column,forward = zip(*planned,strict=True)
             actual,values = self.resolve(np.asarray(symbol,dtype=np.int32),np.asarray(day,dtype=np.int32),
                               np.asarray(column,dtype=np.int8),np.asarray(forward,dtype=np.bool_))
@@ -598,18 +670,34 @@ class PythonExecutor:
         for entry,exit_day,pool in books:
             index = bisect_right(inputs.treasury_days,str(entry))-1
             treasuries.append(float(inputs.treasury_values[index]) if index>=0 else 0.)
-        for row,(book,symbol,report) in enumerate(rows):
-            entry,exit_day,pool = books[book]
-            for key,value in (('report_cap',inputs.report_cap[report]),
-                    ('report_enterprise',inputs.report_enterprise[report]),('report_yield',inputs.report_yield[report]),
-                    ('bankruptcy',float((entry.year,inputs.symbols[symbol]) in inputs.bankrupt)),
-                    ('average_3y',inputs.average_3y[report]),('treasury',treasuries[book])):
-                matrix[row,ii[key]] = value
-            for slot,key in enumerate(LOOKUP_FIELDS):matrix[row,ii[key]]=lookup_values[row,slot]
-            for slot,target in ((4,entry.toordinal()),(5,targets[book][1].toordinal()),(6,targets[book][2].toordinal())):
-                if not lookup_days[row,slot] or abs(int(lookup_days[row,slot])-target)>7:
-                    matrix[row,ii[LOOKUP_FIELDS[slot]]] = np.nan
-            matrix[row,len(policy.input_names)-len(policy.parameter_names):] = inputs.financial_parameters[report]
+        if plan is not None:
+            for key, values in (('report_cap', inputs.report_cap),
+                    ('report_enterprise', inputs.report_enterprise),
+                    ('report_yield', inputs.report_yield), ('average_3y', inputs.average_3y)):
+                matrix[:, ii[key]] = values[row_reports]
+            matrix[:, ii['treasury']] = np.asarray(treasuries)[row_books]
+            matrix[:, ii['bankruptcy']] = [float((books[book][0].year, inputs.symbols[symbol])
+                                                   in inputs.bankrupt) for book, symbol, _ in rows]
+            for slot, key in enumerate(LOOKUP_FIELDS):
+                matrix[:, ii[key]] = lookup_values[:, slot]
+            for slot, years in ((4, 0), (5, 1), (6, 2)):
+                target_days = np.asarray([target[years].toordinal() for target in targets])[row_books]
+                invalid = (lookup_days[:, slot] == 0) | (np.abs(lookup_days[:, slot] - target_days) > 7)
+                matrix[invalid, ii[LOOKUP_FIELDS[slot]]] = np.nan
+            matrix[:, len(policy.input_names)-len(policy.parameter_names):] = inputs.financial_parameters[row_reports]
+        else:
+            for row,(book,symbol,report) in enumerate(rows):
+                entry,exit_day,pool = books[book]
+                for key,value in (('report_cap',inputs.report_cap[report]),
+                        ('report_enterprise',inputs.report_enterprise[report]),('report_yield',inputs.report_yield[report]),
+                        ('bankruptcy',float((entry.year,inputs.symbols[symbol]) in inputs.bankrupt)),
+                        ('average_3y',inputs.average_3y[report]),('treasury',treasuries[book])):
+                    matrix[row,ii[key]] = value
+                for slot,key in enumerate(LOOKUP_FIELDS):matrix[row,ii[key]]=lookup_values[row,slot]
+                for slot,target in ((4,entry.toordinal()),(5,targets[book][1].toordinal()),(6,targets[book][2].toordinal())):
+                    if not lookup_days[row,slot] or abs(int(lookup_days[row,slot])-target)>7:
+                        matrix[row,ii[LOOKUP_FIELDS[slot]]] = np.nan
+                matrix[row,len(policy.input_names)-len(policy.parameter_names):] = inputs.financial_parameters[report]
         self._time('planning_seconds',started)
         started = time.perf_counter()
         numeric = self.calculate(matrix)
@@ -628,7 +716,7 @@ class PythonExecutor:
             entry,exit_day,pool = books[book]
             symbol = inputs.symbols[symbol_id]
             statement = inputs.report_rows[report]
-            values = [float(value) for value in numeric[row]]
+            values = numeric[row].tolist() if plan is not None else [float(value) for value in numeric[row]]
             def lookup(day,column,forward=False,slack=None):
                 if column=='price':slot=1 if forward else 0
                 elif forward:slot=2

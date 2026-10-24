@@ -82,6 +82,56 @@ class CandidateRequestTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(),b'preserve existing evidence')
 
 
+class PlannedCandidateRequestTests(CandidateRequestTests):
+    def setUp(self):
+        super().setUp()
+        self.executor.limits['request_plan'] = True
+
+    def test_rank_slice_three_year_and_empty_requests_preserve_source_and_replay(self):
+        for pool in ('legacy', 'cached'):
+            for label, changes in (('slice', dict(rank_from=2, rank_to=100, metric='ev_ebitda_3y')),
+                                   ('empty', dict(min_cap=1e100))):
+                config = self.fixture.configuration(pool, **changes)
+                reference, summary = self.fixture.reference(config)
+                path = self.fixture.root / (pool + '-' + label + '.sqlite')
+                measured, picks = runner.run_candidate(self.inputs, self.executor,
+                    config, self.fixture.reader, path, freshness=lambda: None, budget_seconds=10.)
+                self.assertTrue(shared.baseline.compare(reference, picks)['exact'])
+                self.assertTrue(shared.baseline.compare(summary, measured['summary'])['exact'])
+                self.assertTrue(shared.baseline.compare(picks, shared.methods.replay(path))['exact'])
+
+    def test_request_plan_keeps_repeated_books_and_omits_only_unused_lookups(self):
+        config = self.fixture.configuration()
+        config['samples'][1] = list(config['samples'][0])
+        self.executor.begin(config)
+        plan = self.executor.request_plan
+        self.executor.evaluate(plan.books)
+        self.assertGreater(len(plan.books), len(set(plan.books)))
+        self.assertEqual(plan.slots, (0, 1, 3))
+        self.assertEqual(self.executor.stats['planned_lookup_slots'], [0, 1, 3])
+        self.assertLessEqual(self.executor.stats['price_queries'],
+                             self.executor.stats['candidate_rows'] * 4)
+
+    def test_extended_real_checks_keep_all_profiles_and_add_slice_and_empty(self):
+        records = runner.smoke_requests(self.fixture.db, end='2016-12-30', extended=True)
+        self.assertEqual(len(records), 10)
+        self.assertEqual(sum(row['id'].endswith('empty') for row in records), 2)
+        self.assertEqual(sum(row['id'].endswith('rank-slice') for row in records), 2)
+
+    def test_lookup_requirements_follow_the_policy_expression_dependencies(self):
+        options = dict(shared.baseline.options('legacy', 'F0'),
+                       filters=[dict(field='pe', op='gt', value=0.)])
+        with patch.dict(self.inputs.policy.expression_map,
+                        filter_pe=('input', 'trailing_3y')):
+            self.executor.begin(dict(options=options))
+            self.assertIn(6, self.executor.request_plan.slots)
+        options['filters'] = [dict(field='return_1y', op='gt', value=0.)]
+        with patch.dict(self.inputs.policy.expression_map,
+                        filter_return_1y=('const', 2.)):
+            self.executor.begin(dict(options=options))
+            self.assertEqual(self.executor.request_plan.slots, (0, 1, 3))
+
+
 class ProcessContainmentTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory()

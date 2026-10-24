@@ -30,6 +30,27 @@ class CandidateTests(unittest.TestCase):
     def all_fields(self):
         return dict(filters=[dict(field=field,op='gt',value=-999999.) for field in s.metrics.FILTERS])
 
+    def test_planned_batches_preserve_all_fields_and_projected_request_results(self):
+        self.rich_financials()
+        inputs, executor = self.make()
+        ordinary = core.PythonExecutor(inputs, limits={'capture': True})
+        self.addCleanup(ordinary.close)
+        executor.limits['request_plan'] = True
+        for pool in ('legacy', 'cached'):
+            for profile in ('all', 'F0', 'F1', 'F2'):
+                options = dict(baseline.options(pool, 'F0' if profile == 'all' else profile))
+                if profile == 'all': options.update(self.all_fields())
+                batch = [('2015-01-02', '2016-01-04', pool),
+                         ('2016-02-29', '2016-12-30', pool)]
+                executor.begin(dict(options=options)); ordinary.begin(dict(options=options))
+                expected = ordinary.evaluate(batch)
+                observed = executor.evaluate(batch)
+                self.assertTrue(baseline.compare(expected, observed)['exact'])
+                if profile == 'all':
+                    for key, value in ordinary.trace.items():
+                        np.testing.assert_allclose(executor.trace[key], value, rtol=0, atol=0,
+                                                   equal_nan=True, err_msg=key)
+
     def reference(self,inputs,book):
         a,b,pool = book
         return s.compute_period(self.db,date.fromisoformat(a),date.fromisoformat(b),

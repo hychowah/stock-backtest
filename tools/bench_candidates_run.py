@@ -94,14 +94,18 @@ class BatchModel(previous.Model):
             began = time.perf_counter()
             self.executor.begin(self.expected)
             self.executor.deadline = self.deadline
-            sessions = [date.fromisoformat(row[0]) for row in
-                        db.execute('SELECT day FROM sessions ORDER BY day')]
-            jobs = []
-            for dates in self.expected['samples']:
-                _, _, periods = self.s.dated_periods(
-                    dates, self.expected['start'], self.expected['end'],
-                    self.expected['months'], sessions)
-                jobs.extend((str(a), str(b), pool) for a, b in periods)
+            plan = getattr(self.executor, 'request_plan', None)
+            if plan is not None:
+                jobs = plan.books
+            else:
+                sessions = [date.fromisoformat(row[0]) for row in
+                            db.execute('SELECT day FROM sessions ORDER BY day')]
+                jobs = []
+                for dates in self.expected['samples']:
+                    _, _, periods = self.s.dated_periods(
+                        dates, self.expected['start'], self.expected['end'],
+                        self.expected['months'], sessions)
+                    jobs.extend((str(a), str(b), pool) for a, b in periods)
             self.jobs = iter(jobs)
             self.started = True
             self.add_time('batch_planning_seconds', began)
@@ -204,6 +208,7 @@ def reference_smokes(source, requests, directory):
 
 def source_files():
     files = [Path(__file__), Path(previous.__file__), Path(baseline.__file__)]
+    files += [ROOT / 'tools' / name for name in ('bench_methods_arrays.py', 'bench_generation.py')]
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
     return list(dict.fromkeys(files))
@@ -280,20 +285,25 @@ def worker(args):
         raise ValueError('Candidate source changed before attachment.')
     source = sqlite3.connect((args.runtime / 'data/schedules.sqlite').resolve().as_uri()+'?mode=ro', uri=True)
     source.row_factory = sqlite3.Row
-    inputs = executor = None
+    inputs = executor = generation = None
     report = dict(method=args.worker, cases=[], status='setup', setup=None)
     resources = baseline.Resources(); resources.start()
     began = time.perf_counter()
     try:
         inputs = core.NumericInputs(source, baseline.s)
         limits = dict(threads=4, workers=4, workdir=str(args.workdir / args.worker),
-                      capture=False, batch_books=16, max_candidate_rows=65536)
+                      capture=False, batch_books=16, max_candidate_rows=65536,
+                      request_plan=request.get('prepared_validation', False))
         Path(limits['workdir']).mkdir(parents=True, exist_ok=True)
         if args.worker == 'python':
             executor = core.PythonExecutor(inputs, policy=inputs.policy, limits=limits)
         else:
             backend = importlib.import_module('bench_candidates_'+args.worker)
             executor = backend.attach(inputs, policy=inputs.policy, limits=limits)
+        if request.get('prepared_validation'):
+            from bench_generation import PreparedGeneration
+            generation = PreparedGeneration(inputs, baseline.s, sources=files)
+            report['prepared_generation'] = dict(generation.stats)
         report['setup'] = dict(wall_seconds=time.perf_counter()-began,
                               resources=resources.finish(), inputs=dict(inputs.stats),
                               executor=dict(executor.stats), policy_signature=inputs.policy.signature)
@@ -314,6 +324,9 @@ def worker(args):
             baseline.publish(args.result, report)
             try:
                 def freshness():
+                    if generation is not None:
+                        generation.validate()
+                        return
                     # Untimed smoke checks use the immutable inputs owned by the
                     # parent. They never supply a headline performance number.
                     if case['kind'] == 'primary':
@@ -381,7 +394,7 @@ def worker(args):
     emit('worker_complete', method=args.worker, status=report['status'])
 
 
-def smoke_requests(source, *, start='2015-01-01', end='2025-12-31'):
+def smoke_requests(source, *, start='2015-01-01', end='2025-12-31', extended=False):
     """Explicit correctness fixtures; these never replace frozen primary cases."""
     result = []
     for pool in ('legacy','cached'):
@@ -393,6 +406,13 @@ def smoke_requests(source, *, start='2015-01-01', end='2025-12-31'):
             configuration = baseline.robust.plan(source,start=start,end=end,
                                months=12,trials=2,seed=42,**options)
             result.append(dict(id=f'smoke-{pool}-{profile}',configuration=configuration))
+        if extended:
+            for label, changes in (('rank-slice', dict(rank_from=51, rank_to=100)),
+                                   ('empty', dict(min_cap=1e100))):
+                options = dict(baseline.options(pool, 'F0'), **changes)
+                configuration = baseline.robust.plan(source, start=start, end=end,
+                    months=12, trials=2, seed=42, **options)
+                result.append(dict(id=f'smoke-{pool}-{label}', configuration=configuration))
     return result
 
 
@@ -486,11 +506,13 @@ def parent(args):
     manifest=baseline.load(args.manifest)
     files=source_files(); source_hashes=hashes(files)
     report=dict(protocol=PROTOCOL,status='running',methods=args.methods,
+        prepared_validation=args.prepared_validation,
         source_hashes=source_hashes,environment=baseline.environment(),runs=[],controls=[],
         request_budget_seconds=args.request_budget,setup_budget_seconds=args.setup_budget,
         smoke_budget_seconds=args.smoke_budget,
         limitations=['Six candidate/factor executors share source guard logic, final SQL selection and portfolio assembly.',
-                     'Full current freshness is included in primary request time.',
+                     ('An equivalent fresh metadata inventory and prepared-generation binding are included in request time.'
+                      if args.prepared_validation else 'Full current freshness is included in primary request time.'),
                      'Smoke requests are untimed correctness checks under the owned immutable input generation.',
                      'Setup, compilation, cloning, proof and evidence comparison are separate from warm request time.',
                      'One primary pool/profile/seed is a pilot; no full-matrix qualification. OS cache is uncontrolled.'])
@@ -506,8 +528,8 @@ def parent(args):
             template=args.workdir/'template.sqlite'
             with closing(sqlite3.connect(template)) as destination:
                 source.backup(destination);baseline.clear_books(destination)
-            smokes=reference_smokes(source,smoke_requests(source),args.workdir)
-            case=next(case for case in manifest['primary_cases'] if case['id']=='legacy-F0-42')
+            smokes=reference_smokes(source,smoke_requests(source, extended=args.prepared_validation),args.workdir)
+            case=next(case for case in manifest['primary_cases'] if case['id']==args.case)
             configuration=baseline.configuration(manifest,case,source)
             def control(number):
                 emit('control_start',number=number)
@@ -528,6 +550,7 @@ def parent(args):
             report['primary_reference']=dict(file=reference.name,sha256=baseline.file_hash(reference))
             specification=args.workdir/'specification.json'
             baseline.publish(specification,dict(source_hashes=source_hashes,requests=requests,
+                prepared_validation=args.prepared_validation,
                 input_identity_sha256=report['input_identity_sha256'],request_budget=args.request_budget,
                 smoke_budget=args.smoke_budget))
             for number,method in enumerate(args.methods,1):
@@ -564,6 +587,10 @@ def parser():
     result.add_argument('--runtime', type=Path, required=True)
     result.add_argument('--workdir', type=Path, required=True)
     result.add_argument('--methods', nargs='+', choices=METHODS, default=list(METHODS))
+    result.add_argument('--prepared-validation', action='store_true',
+                        help='Benchmark exact inventory validation and planned request work; no production changes.')
+    result.add_argument('--case', default='legacy-F0-42',
+                        help='One frozen primary case ID; use separate serial runs for other cases.')
     result.add_argument('--manifest', type=Path, default=ROOT/'docs/plans/compiled-backtest/phases/CB-01/workloads.json')
     result.add_argument('--request-budget', type=float, default=180.)
     result.add_argument('--setup-budget', type=float, default=600.)
