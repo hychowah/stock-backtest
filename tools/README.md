@@ -125,6 +125,16 @@ the normal application environment remains unchanged. See
 [`CB-02`](../docs/plans/compiled-backtest/phases/CB-02/README.md) for exact commands,
 paired controls, tested scope and qualification limits.
 
+`--methods indexed` runs the next report-selection experiment. It uses the
+array price resolver and indexes both annual-report pools. It preserves the
+original buffer order before price-coverage filtering. With no threshold
+conditions, it skips unused threshold calculations and their trailing-price
+lookups. With any condition, it calls the complete existing threshold calculator.
+It still evaluates the full ranking catalog and uses the existing financial
+policy and SQL selector. The full freshness scan stays inside request time.
+See the separate [second-wave record](../docs/plans/compiled-backtest/phases/CB-02/wave2/README.md).
+The normal application does not use this evaluator.
+
 ## WSL deployment
 
 `deploy.py` publishes a committed source revision from the WSL checkout to the

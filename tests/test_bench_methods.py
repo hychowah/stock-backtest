@@ -1,6 +1,7 @@
 """Synthetic financial parity and durable evidence for the shared prototype."""
 from datetime import date, timedelta
 from contextlib import closing
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
@@ -219,6 +221,12 @@ class SharedMethodsTests(unittest.TestCase):
                 methods.run_request(self.model, self.resolver, configuration, store)
         self.assertEqual(calls, 4)
         self.assertTrue(baseline.compare(reference[:1], methods.replay(store))['exact'])
+        diagnostics = self.model.last_request
+        self.assertEqual(diagnostics['committed_trials'],1)
+        self.assertGreater(diagnostics['wall_seconds'],0)
+        self.assertGreater(diagnostics['result_bytes'],0)
+        self.assertIn('candidates_seconds',diagnostics['stages'])
+        self.assertIn('resources',diagnostics)
         with closing(sqlite3.connect(store)) as db:
             self.assertEqual(db.execute('SELECT number FROM trials').fetchall(), [(1,)])
         # A fresh retry reproduces all holdings. The interrupted store remains
@@ -262,6 +270,66 @@ class SharedMethodsTests(unittest.TestCase):
                                       self.root / 'budget-retry.sqlite')
         self.assertTrue(baseline.compare(reference, retry)['exact'])
         self.assertEqual(methods.replay(store), [])
+
+    def test_cli_failure_retains_setup_and_committed_evidence(self):
+        configuration = self.configuration()
+        reference,summary = self.reference(configuration)
+        case = dict(id='synthetic-F0-42',seed=42)
+        manifest = dict(primary_cases=[case],sha256='synthetic-workload')
+        workdir = self.root/'cli-failure'
+        original_run = methods.run_request
+
+        def open_source(*args,**kwargs):
+            db = sqlite3.connect(self.path)
+            db.row_factory = sqlite3.Row
+            return db
+
+        def interrupted(*args,**kwargs):
+            def stop_after_commit(event):
+                raise TimeoutError('Synthetic CLI budget after one commit')
+            kwargs['progress'] = stop_after_commit
+            return original_run(*args,**kwargs)
+
+        method = SimpleNamespace(open_prices=lambda *unused:self.resolver)
+        setup_failure = SimpleNamespace(open_model=Mock(side_effect=RuntimeError('Synthetic setup failure')))
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(sys,'argv',[
+                'bench_methods.py','--runtime',str(RUNTIME),'--workdir',str(workdir),
+                '--methods','arrays','numba','--cases',case['id'],'--no-control-after']))
+            stack.enter_context(patch.object(methods.importlib,'import_module',side_effect=[method,setup_failure]))
+            stack.enter_context(patch.object(baseline,'assert_workdir'))
+            stack.enter_context(patch.object(baseline,'validate_manifest'))
+            stack.enter_context(patch.object(baseline,'load',return_value=manifest))
+            stack.enter_context(patch.object(baseline,'configuration',return_value=configuration))
+            stack.enter_context(patch.object(baseline,'identity',return_value={'synthetic':True}))
+            stack.enter_context(patch.object(baseline,'request',return_value=(
+                dict(summary=summary,wall_seconds=1.),reference)))
+            stack.enter_context(patch.object(s,'connect',side_effect=open_source))
+            stack.enter_context(patch.object(s.r,'connect',side_effect=open_source))
+            stack.enter_context(patch.object(methods,'run_request',side_effect=interrupted))
+            methods.main()
+        report = json.loads((workdir/'comparison.json').read_text(encoding='utf-8'))
+        failure = report['runs'][0]['candidates']['arrays']
+        self.assertEqual(failure['status'],'failed')
+        self.assertEqual(failure['error_type'],'TimeoutError')
+        self.assertGreater(failure['setup_seconds'],0)
+        self.assertIsInstance(failure['setup_resources'],dict)
+        self.assertIsInstance(failure['backend_stats'],dict)
+        self.assertEqual(failure['committed_trials'],1)
+        self.assertEqual(failure['measurement']['committed_trials'],1)
+        self.assertTrue(failure['partial_comparison']['exact'])
+        self.assertEqual(failure['result_store_sha256'],
+                         baseline.file_hash(workdir/failure['result_store_file']))
+        self.assertTrue(baseline.compare(reference[:1],methods.replay(
+            workdir/failure['result_store_file']))['exact'])
+        setup = report['runs'][0]['candidates']['numba']
+        self.assertEqual(setup['status'],'failed')
+        self.assertEqual(setup['error_type'],'RuntimeError')
+        self.assertGreater(setup['setup_seconds'],0)
+        self.assertIsInstance(setup['setup_resources'],dict)
+        self.assertIsNone(setup['measurement'])
+        self.assertIsNone(setup['backend_stats'])
+        self.assertNotIn('result_store_file',setup)
 
 
 if __name__ == '__main__':

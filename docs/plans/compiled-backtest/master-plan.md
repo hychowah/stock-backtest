@@ -10,6 +10,13 @@ No production calculation engine has been replaced. CB-02 now compares competing
 benchmark-only methods. Later implementation phases depend on that evidence.
 CB-03 remains conditional.
 
+The second CB-02 pilot tested indexed report selection and unused threshold
+omission. It matched all 24 trials exactly but took 58.13 seconds, versus
+99.72/179.84-second controls. The descriptive conservative ratio is 1.72×.
+The retained freshness check took 44.10 seconds. No 5× gate passed. See the
+[second-wave record](phases/CB-02/wave2/README.md) for the control drift and
+the next validation/report-factor decision. Later production phases stay gated.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -288,9 +295,17 @@ controls took 78.98 s and 115.31 s. DuckDB per-book ASOF exceeded its declared
 180 s request budget with five complete trials. No method qualified. See the
 [full pilot record](phases/CB-02/README.md). Do not expand unchanged lookup
 adapters until the shared scalar report/factor bottleneck is addressed.
-The next comparative wave tests report/factor batching, whole-batch analytical
-execution and persistent bounded execution. This pilot does not reject complete
-compiled or SQL financial engines.
+The [report-index follow-up](phases/CB-02/wave2/README.md) completed the same
+case in 58.13 s with exact financial agreement. Controls took 99.72/179.84 s.
+The faster-control ratio was 1.72×, with 80% control drift. The full freshness
+check took 44.10 s. All 1,832 distinct frozen sample dates passed complete
+ordered report/rank comparisons; that is not full financial qualification.
+Do not expand the unchanged method across the matrix. The next bounded decision
+must address validation cost and remaining report/factor work. Any changed
+freshness policy needs an explicit accepted contract and verification before
+headline comparisons omit the current scan. Whole-batch analytical execution
+and persistent bounded execution remain alternatives. These pilots do not
+reject complete compiled or SQL financial engines.
 
 **Gate:** Require at least 5× representative end-to-end improvement with exact
 categorical agreement, existing numeric tolerance and a budget for remaining

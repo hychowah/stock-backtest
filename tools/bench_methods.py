@@ -1,8 +1,9 @@
-"""Compare isolated price engines with shared financial policy and durable trials.
+"""Compare benchmark-only evaluators with shared policy and durable trials.
 
-Production inputs and source never change. Method agents own only price lookup.
-All arithmetic, report selection, ranking and portfolio aggregation call the
-current production modules. Native timing is serialized by the cache owner.
+Production inputs and source never change. Financial arithmetic, ranking and
+portfolio aggregation call current production modules. Report-index experiments
+must prove their complete candidate mappings against that source policy.
+Native timing is serialized by the cache owner.
 """
 import argparse
 from bisect import bisect_right
@@ -24,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import bench_baseline as baseline
 
-METHODS = ('arrays', 'numba', 'duckdb')
+METHODS = ('arrays', 'numba', 'duckdb', 'indexed')
 
 
 def clean(value):
@@ -76,22 +77,33 @@ class Model:
     def add_time(self, key, began):
         self.stages[key] = self.stages.get(key,0.) + time.perf_counter()-began
 
+    def candidate_reports(self, entry):
+        return self.s.financial_books.candidates(self.books,entry)
+
+    def needs_thresholds(self, needed):
+        # The first-wave methods remain eager controls for later experiments.
+        return True
+
     def prepare(self, db, entry, exit_day, books, cached, pool='legacy'):
         """Resolve two batches; call unchanged scalar policy; stage one book."""
         self.check_deadline()
         began = time.perf_counter()
-        statements,ranks = self.s.financial_books.candidates(self.books,entry)
+        statements,ranks = self.candidate_reports(entry)
         candidates = {symbol:statement for symbol,statement in statements[pool].items()
                       if symbol in self.cached and (pool!='legacy' or symbol in ranks)}
         self.add_time('candidates_seconds',began)
-        trailing = [entry.replace(year=entry.year-years,
-                    day=min(entry.day,monthrange(entry.year-years,entry.month)[1])) for years in (1,3)]
+        needed = {condition['field'] for condition in self.options.get('filters',[])}
+        thresholds = self.needs_thresholds(needed)
+        trailing = ([entry.replace(year=entry.year-years,
+                     day=min(entry.day,monthrange(entry.year-years,entry.month)[1])) for years in (1,3)]
+                    if thresholds else [])
         queries = []
         for symbol,statement in candidates.items():
             queries.extend([(symbol,statement['fiscal'].toordinal(),'price',False),
                             (symbol,entry.toordinal(),'price',True),
-                            (symbol,exit_day.toordinal(),'adjusted',False),
-                            (symbol,entry.toordinal(),'adjusted',False)])
+                            (symbol,exit_day.toordinal(),'adjusted',False)])
+            if thresholds:
+                queries.append((symbol,entry.toordinal(),'adjusted',False))
             queries.extend((symbol,day.toordinal(),'adjusted',False) for day in trailing)
         queries = list(dict.fromkeys(queries))
         began = time.perf_counter()
@@ -109,7 +121,6 @@ class Model:
         treasury_index = bisect_right(self.treasury_days,str(entry))-1
         treasury = self.treasury_values[treasury_index] if treasury_index>=0 else 0.
         snapshots,pairs,filters = [],[],[]
-        needed = {condition['field'] for condition in self.options.get('filters',[])}
         metric = self.options.get('metric',self.s.metrics.DEFAULT_METRIC)
         for symbol,statement in candidates.items():
             self.check_deadline()
@@ -134,11 +145,17 @@ class Model:
                 enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
             began = time.perf_counter()
             evaluated = self.s.metrics.evaluate(observation,self.histories[symbol])
+            self.add_time('metric_seconds',began)
             # Call the complete authoritative calculator. Store only fields
             # required by this request; unused missing fields never exclude.
-            values = self.s.metrics.filter_values(observation,evaluated,entry,lookup,
-                                                  self.financials.get(symbol,{}))
-            self.add_time('metrics_seconds',began)
+            # The indexed method may omit the whole call when no condition
+            # consumes a threshold. It never projects individual formulas.
+            values = {}
+            if thresholds:
+                began = time.perf_counter()
+                values = self.s.metrics.filter_values(observation,evaluated,entry,lookup,
+                                                      self.financials.get(symbol,{}))
+                self.add_time('threshold_seconds',began)
             snapshots.append((pool,1,symbol,ranks.get(symbol),fiscal,buy,sell,cap,ev,
                               ebitda,yield_value,multiple,yield_value-treasury,ret,status))
             if metric in evaluated:
@@ -175,6 +192,7 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
     model.options = expected['options']
     model.average_cache.clear()
     model.stages = {}
+    model.last_request = None
     for table in baseline.DERIVED:
         model.db.execute('DELETE FROM '+table)
     model.db.commit()
@@ -242,10 +260,13 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
         if delivery.writer.fileno()!=-1:
             delivery.close()
         memory = resources.finish()
-    return dict(wall_seconds=elapsed,stages=dict(model.stages),resources=memory,
-                summary=clean(aggregate),committed_trials=len(holdings),
-                result_bytes=Path(store_path).stat().st_size,
-                response_bytes=delivery.bytes,received_bytes=delivery.received),holdings
+        # Keep diagnostics on exceptions too. Committed evidence is independently
+        # readable from the result store; an unfinished trial has no saved row.
+        model.last_request = dict(wall_seconds=time.perf_counter()-began,
+            stages=dict(model.stages),resources=memory,committed_trials=len(holdings),
+            result_bytes=Path(store_path).stat().st_size if Path(store_path).exists() else 0,
+            response_bytes=delivery.bytes,received_bytes=delivery.received)
+    return dict(model.last_request,wall_seconds=elapsed,summary=clean(aggregate)),holdings
 
 
 def replay(store):
@@ -282,6 +303,9 @@ def main():
         except ImportError as error:
             unavailable[name] = dict(status='unavailable',error_type=type(error).__name__,error=str(error))
     sources = [Path(__file__),Path(baseline.__file__)]+[ROOT/'tools'/('bench_methods_'+name+'.py') for name in args.methods]
+    for method in methods.values():
+        sources.extend(getattr(method,'SOURCE_FILES',()))
+    sources = list(dict.fromkeys(sources))
     source_hashes = {path.name:baseline.file_hash(path) for path in sources}
     def check_sources():
         if source_hashes != {path.name:baseline.file_hash(path) for path in sources}:
@@ -311,13 +335,11 @@ def main():
             with closing(sqlite3.connect(template)) as target:
                 source.backup(target)
                 baseline.clear_books(target)
-            model = Model(source,s)
-            report['scalar_base_load_seconds'] = model.base_seconds
             cases = [case for case in manifest['primary_cases'] if case['seed']==args.seed and
                      (not args.cases or case['id'] in args.cases)]
             for case in cases:
                 print(json.dumps(dict(event='case_start',case=case['id'])),flush=True)
-                configuration = baseline.configuration(manifest,case,model.db)
+                configuration = baseline.configuration(manifest,case,source)
                 control_path = workdir/(case['id']+'-control.sqlite')
                 shutil.copyfile(template,control_path)
                 control,evidence = baseline.request(control_path,manifest,case,workdir/'telemetry'/case['id']/'before')
@@ -333,7 +355,18 @@ def main():
                     setup_resources = baseline.Resources();setup_resources.start()
                     started = time.perf_counter()
                     resolver = None
+                    candidate_model = None
+                    setup_seconds = setup_memory = None
+                    store = workdir/(case['id']+'-'+name+'.sqlite')
                     try:
+                        if hasattr(method,'open_model'):
+                            candidate_model = method.open_model(source,s)
+                        else:
+                            if model is None:
+                                model = Model(source,s)
+                                report['scalar_base_load_seconds'] = model.base_seconds
+                            candidate_model = model
+                        candidate_model.last_request = None
                         resolver = method.open_prices(source)
                         setup_seconds = time.perf_counter()-started
                         setup_memory = setup_resources.finish()
@@ -344,8 +377,7 @@ def main():
                             if event['completed'] in (1,8,16,24):
                                 print(json.dumps(dict(event='trial',method=name,case=case['id'],
                                                       completed=event['completed'])),flush=True)
-                        store = workdir/(case['id']+'-'+name+'.sqlite')
-                        measurement,picks = run_request(model,resolver,configuration,store,
+                        measurement,picks = run_request(candidate_model,resolver,configuration,store,
                             freshness=freshness,progress=progress,budget_seconds=args.max_seconds,
                             binding=dict(input_identity=report['input_identity_sha256'],
                                          source_hashes=source_hashes,method=name))
@@ -361,19 +393,41 @@ def main():
                         item['candidates'][name] = dict(status='matched',measurement=measurement,
                             comparison=comparison,summary_comparison=summary_comparison,
                             setup_seconds=setup_seconds,setup_resources=setup_memory,backend_stats=resolver.stats,
+                            model_setup=getattr(candidate_model,'setup_stats',{}),
                             evidence_file=evidence_file.name,evidence_sha256=baseline.file_hash(evidence_file),
                             result_store_file=store.name,result_store_sha256=baseline.file_hash(store),
                             speedup_before=control['wall_seconds']/measurement['wall_seconds'])
                         print(json.dumps(dict(event='method_complete',method=name,case=case['id'],
                             seconds=measurement['wall_seconds'],speedup=item['candidates'][name]['speedup_before'])),flush=True)
                     except Exception as error:
-                        item['candidates'][name] = dict(status='failed',error_type=type(error).__name__,error=str(error))
+                        if setup_seconds is None:
+                            setup_seconds = time.perf_counter()-started
+                        if setup_memory is None:
+                            setup_memory = setup_resources.finish()
+                        failed = dict(status='failed',error_type=type(error).__name__,error=str(error),
+                            setup_seconds=setup_seconds,setup_resources=setup_memory,
+                            model_setup=getattr(candidate_model,'setup_stats',{}),
+                            backend_stats=dict(resolver.stats) if resolver is not None else None,
+                            measurement=getattr(candidate_model,'last_request',None))
+                        if store.exists():
+                            failed.update(result_store_file=store.name,
+                                          result_store_sha256=baseline.file_hash(store))
+                            try:
+                                partial = replay(store)
+                                failed['committed_trials'] = len(partial)
+                                failed['partial_comparison'] = baseline.compare(evidence[:len(partial)],partial)
+                            except Exception as partial_error:
+                                failed['partial_evidence_error'] = dict(
+                                    error_type=type(partial_error).__name__,error=str(partial_error))
+                        item['candidates'][name] = failed
                         print(json.dumps(dict(event='method_failed',method=name,error=str(error))),flush=True)
                     finally:
                         if not setup_resources.stop.is_set():
                             setup_resources.finish()
                         if resolver is not None:
                             resolver.close()
+                        if candidate_model is not None and candidate_model is not model:
+                            candidate_model.close()
                     baseline.publish(workdir/'comparison.json',dict(report,current_case=item))
                 if not args.no_control_after:
                     after_path = workdir/(case['id']+'-after.sqlite')
@@ -402,4 +456,6 @@ def main():
 
 
 if __name__=='__main__':
+    # Method plugins import the shared Model by name when this file is the CLI.
+    sys.modules['bench_methods'] = sys.modules[__name__]
     main()

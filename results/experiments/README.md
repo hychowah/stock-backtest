@@ -2,6 +2,11 @@
 
 These reports are separate from the canonical `results/summary-exits.txt`.
 
+CB-02's [second experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave2/README.md)
+tests indexed annual-report selection and unused threshold omission. Its record
+keeps native controls, correctness evidence and the performance decision separate
+from the first lookup pilot and from production behavior.
+
 The compiled-engine program's CB-01 baseline has its own
 [phase record](../../docs/plans/compiled-backtest/phases/CB-01/).
 Its frozen workloads cover 24 trials over 1997–2025, both pools, three filter
