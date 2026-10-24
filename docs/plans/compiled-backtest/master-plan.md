@@ -4,9 +4,10 @@ Created: 23 October 2026.
 
 Implementation workflow updated: 24 October 2026.
 
-Status: workspace preparation CB-00 is implemented. No replacement calculation
-engine has been implemented. Engine phases CB-01 through CB-15 remain planned,
-including the measurement phase.
+Status: workspace preparation CB-00 and baseline measurement CB-01 are complete.
+CB-01 recorded all 18 native Windows cases with exact replay agreement.
+No replacement calculation engine has been implemented. CB-02 through CB-15
+remain planned, with CB-03 conditional.
 
 ## Objective
 
@@ -198,7 +199,13 @@ CB-00 is the preparatory WSL/native-Windows workspace migration. Its design and
 handoff are filed in `phases/CB-00.design.md` and `phases/CB-00.md`. It does not
 implement the compiled calculation engine. Read that handoff before CB-01.
 
-All engine phases are **planned**. CB-03 is conditional. The normal engine path has 14 sessions; the Rust investigation makes it 15. CB-00 is separate preparatory work. These are scope units, not promises about elapsed duration. Split a phase before implementation if its detailed plan cannot fit one session without leaving an unstable partial change.
+CB-01 measurement is complete. Its [phase record](phases/CB-01/README.md) contains
+the frozen workload, all 18 accepted cases and operational limits. Calculation
+phases CB-02 through CB-15 remain **planned**. CB-03 is conditional. The normal
+engine path has 14 sessions in total; the Rust investigation makes it 15. CB-00
+is separate preparatory work. These are scope units, not promises about elapsed
+duration. Split a phase before implementation if its detailed plan cannot fit
+one session without leaving an unstable partial change.
 
 | Phase | Single-session result | Depends on |
 |---|---|---|
@@ -220,6 +227,12 @@ All engine phases are **planned**. CB-03 is conditional. The normal engine path 
 | CB-15 | Default cutover, documentation and retained fallback | CB-14 passed |
 
 ### CB-01 Capture the baseline
+
+**Recorded:** Complete on 24 October 2026. See the [phase report](phases/CB-01/README.md),
+[frozen workloads](phases/CB-01/workloads.json) and [compact evidence](phases/CB-01/baseline.json).
+All primary runs are complete. Every F2 trial retains one empty period and a null
+full-period CAGR. Timings vary materially. Later speed claims require the paired
+comparison protocol in this plan; archived timing ratios alone do not qualify an engine.
 
 **Outcome:** A later session can reproduce the current behavior and timing without using this conversation as evidence.
 
@@ -479,7 +492,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | Phase | Status | Evidence |
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
-| CB-01 | Planned | Baseline not yet captured |
+| CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
 | CB-02 | Planned | Compiled feasibility not yet tested |
 | CB-03 | Conditional | Trigger only from a documented CB-02 limitation |
 | CB-04 | Planned | — |
@@ -499,4 +512,6 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 
 The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
-The immediate next step is **CB-01**, followed by the early compiled feasibility gate. Do not start the website rewrite before those results exist.
+The immediate next step is **CB-02**, the early compiled feasibility gate. Use the
+CB-01 workload and evidence. Do not start the website rewrite before that gate's
+results exist.

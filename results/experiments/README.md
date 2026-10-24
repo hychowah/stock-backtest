@@ -2,6 +2,15 @@
 
 These reports are separate from the canonical `results/summary-exits.txt`.
 
+The compiled-engine program's CB-01 baseline has its own
+[phase record](../../docs/plans/compiled-backtest/phases/CB-01/).
+Its frozen workloads cover 24 trials over 1997–2025, both pools, three filter
+profiles and three seeds. Use `tools/bench_baseline.py` for that protocol.
+Full holding evidence and disposable databases remain under the Windows
+runtime's ignored `tmp/cb01-final/`. The earlier `tmp/cb01-baseline/` folder
+contains superseded diagnostics. The phase report records completed and
+pending runs. The older timings below remain historical measurements.
+
 - `top100-2015-2020.json`: an example top-100 query for six January books using the original 250-candidate screen and current last-price exit treatment. It includes the full selected holdings and settings. Additional early stops outside the original top 50 have not received the earlier manual bankruptcy review.
 - `performance.json`: measured local preparation/query/build timings for the new data layer. These are observations from this environment, not performance guarantees.
 - `backtest-benchmark-windows-full.json`: native Windows comparison of five engines over eight full-history, annually rebalanced random-date trials. Fresh-book timings include data loading, shared SQL selection and per-trial commits; holding results are compared exactly.
@@ -16,7 +25,7 @@ These reports are separate from the canonical `results/summary-exits.txt`.
 - `backtest-benchmark-summary.json`: compact timing comparisons, exact-parity verification and source hashes. The 100-trial reference took 467.0 seconds, requested-pool preparation 132.1 seconds (3.5× faster), and the combined in-memory prototype 105.9 seconds (4.4× faster, including loading). Requested-pool preparation was faster at the default 24 trials because it avoided the in-memory loading cost.
 - `backtest-benchmark-wsl-pilot.json` and `backtest-benchmark-wsl-full.json`: separate WSL diagnostics. The full run was stopped after the reference measurement when the user confirmed Windows `start.cmd` is the real launch method. Do not use WSL timings as the Windows baseline.
 
-The backtest experiments use the original candidate pool, current EV/EBITDA,
+The earlier backtest experiments listed above use the original candidate pool, current EV/EBITDA,
 default top-50 filters and seed `20261022`, from 1996-01-01 to 2026-10-20 (the
 latest session in the saved daily database). Every variant starts with no dated
 books and runs the same sampled dates. Ordinary completed-book replays are timed
