@@ -55,6 +55,7 @@ class OwnedProcess:
         self._known = {}
         self.reader = None
         self.process = None
+        self._resumed = False
         self.events = Queue(maxsize=limits.queued_events if limits else 128)
         _pending_processes[id(self)] = self
         try:
@@ -66,6 +67,8 @@ class OwnedProcess:
             if os.name == 'nt':
                 self._assign_job()
                 self._resume()
+                self._resumed = True
+            self._created()
             self.reader = Thread(target=self._read, daemon=True)
             self.reader.start()
         except BaseException as error:
@@ -79,6 +82,19 @@ class OwnedProcess:
             if not self.closed:
                 error.owned_process = self
             raise
+
+    def _created(self):
+        """Confirm a platform domain before opening its application handshake."""
+
+    def _stop_tree(self, code):
+        if self.job is not None:
+            if not self.kernel.TerminateJobObject(self.job, code):
+                raise ctypes.WinError(ctypes.get_last_error())
+        elif os.name != 'nt':
+            with suppress(ProcessLookupError):
+                os.killpg(self.process.pid, signal.SIGKILL)
+            for pid in self._session_members():
+                with suppress(ProcessLookupError): os.kill(pid, signal.SIGKILL)
 
     def _assign_job(self):
         from ctypes import wintypes as w
@@ -216,16 +232,7 @@ class OwnedProcess:
             return None if self.eof else {}
 
     def terminate(self):
-        if self.job is not None:
-            if not self.kernel.TerminateJobObject(self.job,1):
-                raise ctypes.WinError(ctypes.get_last_error())
-        elif os.name != 'nt':
-            with suppress(ProcessLookupError):
-                os.killpg(self.process.pid,signal.SIGKILL)
-            # Include previously observed descendants that changed session.
-            # Identity is the PID plus kernel start ticks, never a bare PID.
-            for pid in self._session_members():
-                with suppress(ProcessLookupError): os.kill(pid, signal.SIGKILL)
+        self._stop_tree(1)
         if self.process.poll() is None:
             # Also covers a suspended root whose job assignment failed.
             self.process.kill()
@@ -264,6 +271,10 @@ class OwnedProcess:
 
     def wait_empty(self):
         if self.job is None:
+            if os.name == 'nt' and not self._resumed and self.process.poll() is not None:
+                # Failed assignment left the root suspended throughout. No
+                # application/redirector instruction could create children.
+                self.descendants_empty = True
             if os.name != 'nt':
                 deadline = time.monotonic() + self._close_seconds
                 while self._session_members():
@@ -356,18 +367,10 @@ class OwnedProcess:
                 self.process.wait(timeout=self._close_seconds)
             except subprocess.TimeoutExpired:
                 self.terminate()
-        if self.job is not None:
-            # A broken method may have exited without closing its own workers.
-            # They still belong to this job, even after the leader has exited.
-            if not self.kernel.TerminateJobObject(self.job,0):
-                raise ctypes.WinError(ctypes.get_last_error())
-            self.wait_empty()
-        elif os.name!='nt':
-            with suppress(ProcessLookupError):
-                os.killpg(self.process.pid,signal.SIGKILL)
-            for pid in self._session_members():
-                with suppress(ProcessLookupError): os.kill(pid, signal.SIGKILL)
-            self.wait_empty()
+        # A domain can outlive its transport leader. Stop and confirm it
+        # independently, also on repeated partial-close attempts.
+        self._stop_tree(0)
+        self.wait_empty()
         if self.reader is not None and self.reader.ident is not None:
             self.reader.join(timeout=self._close_seconds)
         elif not self.eof:

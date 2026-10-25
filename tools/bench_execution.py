@@ -37,7 +37,14 @@ def environment(envelope):
 
 @dataclass(frozen=True)
 class ExecutionEnvelope:
-    """Explicit comparison bounds. This declaration is never an admission token."""
+    """Explicit fixture bounds, never an admission token.
+
+    sampled_memory_bytes sets controller/tree samples and also supplies the
+    Windows job commit or Linux domain charged-memory bound. These mechanisms
+    measure different resources; none proves total mapped residency. threads
+    sets library configuration only. sampled_tree_threads additionally supplies
+    Linux's combined process/thread task budget in supervised mode.
+    """
     database_bytes: int
     output_bytes: int
     sampled_memory_bytes: int
@@ -151,6 +158,11 @@ class MeasurementExecution:
         if declaration['environment'] != environment(self.envelope):
             raise ComparisonError('mismatch')
         self._ledger = ComparisonLedger(self.protocol)
+        if hasattr(self, '_supervision_started'):
+            # The external supervisor started before controller launch/import.
+            # Preserve that whole-operation origin and charge all launch work.
+            self._ledger.started = self._supervision_started
+            self._ledger.charge('attachment', time.monotonic() - self._supervision_started)
         self._workspace = _ExecutionWorkspace(self.capture, self.source, self.output,
             envelope=self.envelope, cancel=self.cancel)
         try:
@@ -379,6 +391,18 @@ class MeasurementExecution:
                 self._persist('stopped', error)
             raise
 
+    def supervised(self):
+        """Run this comparison controller inside an externally owned domain.
+
+        Default admission rejects before effects. Direct context use remains a
+        lower-level disposable fixture surface with a sampled outer controller.
+        """
+        admission.require_execution()
+        if self._used: raise ComparisonError('inactive')
+        self._used = True
+        from bench_execution_supervisor import ComparisonSupervisor, specification
+        return ComparisonSupervisor(specification(self), cancel=self.cancel).run()
+
     @property
     def result(self):
         if self._result is None or not self._finalized or self._ledger.stopped:
@@ -395,6 +419,7 @@ class MeasurementExecution:
             self._result = None
         terminal = self._terminal_error
         began = time.monotonic()
+        self._finalization_started = began
         try:
             self._close_child()
         except BaseException as close_error:
@@ -419,7 +444,10 @@ class MeasurementExecution:
             try:
                 self._ledger.charge('finalization', time.monotonic() - began)
                 self._result = self._ledger.result(closed=True)
+                publication_started = time.monotonic()
                 self._persist('complete')
+                self._ledger.charge('finalization', time.monotonic() - publication_started)
+                self._result = self._ledger.result(closed=True)
                 self._finalized = True
             except BaseException as failure:
                 self._result = None

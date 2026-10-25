@@ -263,6 +263,28 @@ class ExecutionTests(unittest.TestCase):
         self.assertIsNotNone(owner._ledger.stopped)
         self.assertFalse(owner._workspace._active)
 
+    def test_successful_terminal_write_cannot_escape_finalization_budget(self):
+        owner = self.owner()
+        with patch.object(execution.admission, 'require_execution'):
+            owner.__enter__()
+            self.finish_ledger(owner)
+            original = owner._persist
+            clock = [0.]
+            def slow_success(status, error=None):
+                result = original(status, error)
+                if status == 'complete':
+                    clock[0] += owner.protocol.value['costs']['finalization'] + 1.
+                return result
+            # Deterministic delay of a successful write. The ledger's whole
+            # clock remains real, so only finalization is exhausted.
+            with patch.object(execution.time, 'monotonic', side_effect=lambda: clock[0]), \
+                    patch.object(owner, '_persist', side_effect=slow_success):
+                with self.assertRaisesRegex(ComparisonError, 'limit'):
+                    owner.__exit__(None, None, None)
+        self.assertEqual(owner._ledger.stopped, 'limit')
+        self.assertFalse(owner._workspace._active)
+        with self.assertRaisesRegex(ComparisonError, 'incomplete'): _ = owner.result
+
     def test_cleanup_retry_cannot_turn_a_failed_body_into_a_completed_pair(self):
         owner = self.owner()
         error = RuntimeError('Synthetic caller failure')

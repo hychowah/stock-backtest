@@ -262,6 +262,42 @@ with WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5):
         self.assertGreater(workflows['export_bytes'], 0)
         self.assertGreater(workflows['panel_bytes'], 0)
 
+    def test_large_synthetic_inventory_yields_to_actual_live_workflows(self):
+        # Prospective scale: 36,160 generated two-byte assets, slightly more
+        # than the 36,155-file historical diagnostic. This is inventory scale,
+        # not production financial size, HTTP/browser or restart qualification.
+        count = 36160
+        folder = self.root / 'raw/financial-inputs/income'
+        for index in range(count): (folder / ('S%05d.json' % index)).write_bytes(b'[]')
+        signature = observations.signature
+        started, live, checkpoints = [], [], [0]
+        def scan(research, checkpoint):
+            def interrupt():
+                checkpoints[0] += 1
+                if checkpoints[0] == 256:
+                    live.append(self.live('workflow'))
+                    self.wait_intent()
+                    started.append(time.monotonic())
+                checkpoint()
+            return signature(research, interrupt)
+        with patch.object(observations, 'signature', side_effect=scan):
+            with self.assertRaisesRegex(ComparisonError, 'busy'): self.provider(seconds=60.).current()
+        self.assertEqual(live[0].stdout.readline().strip(), 'owned')
+        elapsed = time.monotonic() - started[0]
+        self.assertLess(elapsed, 2.)
+        path = self.fixture.fixture.root / 'live-workflow-result.json'
+        deadline = time.monotonic() + 30
+        while not path.exists() and time.monotonic() < deadline: time.sleep(.02)
+        self.assertTrue(path.exists())
+        result = json.loads(path.read_bytes())
+        self.assertEqual(result['fresh_trials'], 5)
+        self.assertGreater(result['cached_reuse'], 0)
+        self.assertGreater(result['export_bytes'], 0)
+        self.assertGreater(result['panel_bytes'], 0)
+        print(json.dumps(dict(check='scaled_inventory_handoff', generated_assets=count,
+            payload_bytes=count * 2, checkpoints=checkpoints[0], seconds=elapsed,
+            platform=sys.platform, workflows=result)), flush=True)
+
     def test_cancellation_at_child_phase_boundaries_and_private_disk_limit(self):
         from bench_execution import admission
         for phase in ('setup', 'proof', 'request', 'collection', 'disk'):
