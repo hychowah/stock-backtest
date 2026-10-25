@@ -78,3 +78,13 @@ server. It uses exclusive source/cache ownership and SQLite backup, preserves
 originals and saved books, and admits no benchmark. The
 [wave11 record](../../docs/plans/compiled-backtest/phases/CB-02/wave11/README.md)
 records focused proofs, bounded native capture and any remaining attachment limits.
+
+
+Wave12 adds a bounded captured-input workspace. It validates database/report
+artifacts, captured financial coherence and actual source snapshots. It owns
+read-only attachments and independent writable derivatives. Captured freshness
+is historical evidence; current raw freshness and both engine adapters remain
+unavailable. Synthetic WSL/native checks supply ownership evidence, not numerical
+parity, resource qualification or performance measurements. No real derivative
+creation or benchmark is admitted. See the
+[wave12 record](../../docs/plans/compiled-backtest/phases/CB-02/wave12/README.md).

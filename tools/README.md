@@ -4,6 +4,8 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 | Script | Purpose |
 | --- | --- |
+| `bench_execution_inputs.py` | Bounded captured-input workspace with verified source snapshot and owned writable derivatives; no engine attachment or current raw freshness |
+| `bench_input_artifacts.py` | Internal shared prepared-artifact inspection; no ownership or admission |
 | `bench_capture_offline.py` | Stopped-runtime SQLite-safe research/daily/report copy under exclusive source/cache ownership; no benchmark admission |
 | `bench_input_store.py` | Synthetic-only immutable research/daily/report store and owned writable clones; no live capture or execution admission |
 | `bench_admission.py` | Closed execution policy; no runtime is admitted until bound inputs and resources are qualified |
@@ -201,3 +203,28 @@ Keep output in a dedicated ignored native Windows experiment directory. Captured
 freshness metadata is retained, not rebased. The output confers no execution
 admission. See [wave11](../docs/plans/compiled-backtest/phases/CB-02/wave11/README.md)
 for source/receipt validation, limits, actual capture evidence and attachment gaps.
+
+
+## Captured input workspace
+
+`bench_execution_inputs.CapturedWorkspace` consumes an explicit wave11 capture,
+an explicit matching source tree and a fresh experiment directory. It validates
+the fixed research/daily/report artifacts and captured financial coherence.
+It copies actual source bytes into private storage and checks their captured
+hashes. It opens the captured databases read-only. `writable_daily()` creates a
+fresh SQLite backup under that workspace. Saved books are retained initially.
+All borrowed handles and derivatives close before workspace ownership ends.
+Completed and failed workspace evidence remains available.
+
+This bounded input abstraction does not import financial engines, construct a
+PolicyProgram, discover installed paths or attach either runner. Its freshness
+evidence describes capture time. It does not substitute for current request-time
+raw checks. Metadata is never rewritten to make a different root look current.
+The owner takes no stable financial lock. Synthetic cooperative caps do not
+admit the existing real capture or qualify resources. Do not create real
+workspaces or derivatives before later resource/cancellation admission.
+
+See [wave12](../docs/plans/compiled-backtest/phases/CB-02/wave12/README.md).
+The next engine facade must consume this owner, bind both engines and actual
+policy to its generation, and preserve immediate edit detection with live
+priority. Benchmark admission stays closed.

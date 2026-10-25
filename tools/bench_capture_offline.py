@@ -25,7 +25,9 @@ SOURCE = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(SOURCE / 'website'), str(SOURCE / 'scripts')]
 import runtime_access
 import cache_access
-from bench_input_store import BASE_TABLES, DAILY_BASE, RESEARCH_TABLES, DAILY_TABLES, _memory_bytes, InputStoreError
+from bench_input_store import _memory_bytes, InputStoreError
+from bench_input_artifacts import BASE_TABLES, DAILY_BASE, RESEARCH_TABLES, DAILY_TABLES
+import bench_input_artifacts as artifacts
 
 MAX_DATABASE_BYTES = 4 * 1024 ** 3
 MAX_OUTPUT_BYTES = 8 * 1024 ** 3
@@ -42,12 +44,8 @@ class OfflineCaptureError(ValueError):
         super().__init__('Offline capture: ' + reason)
 
 
-def encoded(value):
-    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
-
-
-def digest(value):
-    return hashlib.sha256(encoded(value)).hexdigest()
+encoded = artifacts.encoded
+digest = artifacts.digest
 
 
 class Budget:
@@ -234,31 +232,18 @@ def database(path, budget, *, readonly):
 
 
 def metadata(db):
-    try:
-        values = {key: json.loads(value) for key, value in db.execute('SELECT key,value FROM metadata')}
-        encoded(values)
-        return values
-    except (TypeError, ValueError) as error:
-        raise OfflineCaptureError('unsupported') from error
+    return artifacts.metadata(db, OfflineCaptureError, reason='unsupported')
 
 
 def table_hash(db, table, budget):
-    order = {'prices': 'symbol,day', 'sessions': 'day', 'treasuries': 'day'}.get(table, 'rowid')
-    result = hashlib.sha256()
-    for number, row in enumerate(db.execute(f'SELECT * FROM {table} ORDER BY {order}')):
-        if number % 1024 == 0: budget.check()
-        try: result.update(encoded(list(row)) + b'\n')
-        except (ValueError, TypeError) as error: raise OfflineCaptureError('unsupported') from error
-    return result.hexdigest()
+    return artifacts.table_hash(db, table, budget, OfflineCaptureError,
+                                reason='unsupported', every=1024, pool_order=False)
 
 
 def validate(research, daily, before, report_sha, budget, *, integrity):
     for db, expected in ((research, RESEARCH_TABLES), (daily, DAILY_TABLES)):
-        for table, columns in expected.items():
-            if [row[1] for row in db.execute(f'PRAGMA table_info({table})')] != columns.split():
-                raise OfflineCaptureError('unsupported')
-        if integrity and [row[0] for row in db.execute('PRAGMA integrity_check')] != ['ok']:
-            raise OfflineCaptureError('unsupported')
+        artifacts.schema(db, expected, budget, OfflineCaptureError,
+                         reason='unsupported', integrity=integrity, integrity_first=False)
     r, d = metadata(research), metadata(daily)
     if r.get('version') != 7 or not isinstance(d.get('daily_inputs'), dict) or d['daily_inputs'].get('version') != 3:
         raise OfflineCaptureError('unsupported')
@@ -267,8 +252,7 @@ def validate(research, daily, before, report_sha, budget, *, integrity):
     if r.get('inputs') != current['inputs'] or r.get('prices') != current['prices'] or d['daily_inputs'] != current['daily_inputs']:
         raise OfflineCaptureError('stale')
     if r.get('baseline_report_sha') != report_sha: raise OfflineCaptureError('mismatch')
-    shared = {table: table_hash(research, table, budget) for table in BASE_TABLES}
-    if shared != {table: table_hash(daily, table, budget) for table in BASE_TABLES}: raise OfflineCaptureError('mismatch')
+    artifacts.shared_rows(research, daily, lambda db, table: table_hash(db, table, budget), OfflineCaptureError)
     return r, d
 
 

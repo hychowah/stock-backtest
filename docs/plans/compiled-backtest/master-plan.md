@@ -107,6 +107,28 @@ Next bind the copied generation and source/raw freshness to both engines, then
 qualify execution resources and concurrent availability. A live capture producer
 is required only if future refresh must occur while the website is running.
 
+## Captured input attachment split (wave12)
+
+The wave12 CODE probe finds that connection defaults, report globals and spawned
+worker imports still resolve original runtime dependencies. PreparedGeneration
+requires a current raw inventory under caller ownership. The offline capture has
+no raw tree. Its receipts cannot replace immediate request-time freshness.
+
+Complete one deep captured-input abstraction first: CapturedWorkspace validates
+wave11 artifacts and financial coherence, snapshots actual matching source bytes,
+and owns read-only inputs and private writable derivatives. Extract shared pure
+artifact inspection without changing wave10 behavior or limits. No financial
+engine import, runner cutover, current-freshness claim or real derivative creation
+belongs to this step. Use only bounded disposable WSL/native fixtures. See
+[wave12](phases/CB-02/wave12/README.md) and its raw CODE design.
+
+Next build an isolated engine facade consuming that owner. It must bind both
+engines and actual PolicyProgram to the same generation. A qualified request
+freshness provider must preserve immediate edit detection and live priority
+without holding the live coordinator through calculation. Descendant/resource,
+cancellation and concurrent-availability qualification follow. Benchmark admission
+stays closed throughout this input prerequisite. No additional real copy is needed.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -1009,7 +1031,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -1045,9 +1067,14 @@ feature worktree and synthetic input store with immutable generations and owned
 writable clones. It establishes no live capture protocol or execution owner.
 Wave11 supplies a verified real copy during the user-authorized stopped-server
 window. It does not establish live capture or benchmark lifecycle qualification.
-The next bounded design must bind this copied generation, raw freshness and
-reference/candidate globals through one execution owner. Keep original metadata
-and publication checks intact. Then qualify execution resources
+Wave12 completes the bounded captured-input owner. It binds captured artifacts
+and actual source snapshots and owns private writable derivatives. It does not
+attach either engine or establish current raw freshness. The next bounded design
+is the engine facade in the wave12 handoff: consume CapturedWorkspace, construct
+PolicyProgram from its source snapshot and bind both engines to its generation.
+Preserve immediate request-time raw-edit detection and live priority without
+holding the live coordinator through calculation. Keep original metadata and
+publication checks intact. Qualify descendants, execution resources, cancellation
 and concurrent availability before another paired pilot. Account for observed
 control and preparation costs. Stable
 publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
@@ -1071,3 +1098,4 @@ before the required gate passes.
 | 25 October 2026 | Wave9 independent CODE design separates source attachment from executable benchmark work. Paths, copied databases and source hashes cannot establish input ownership. | Complete admission first: one policy rejects benchmark execution before effects. Keep fixture algorithms usable. Defer bound capture and resource admission. | One generation-bound owner for controls and candidates, safe capture, independent resources and availability proofs remain required before a pilot. |
 | 25 October 2026 | The user authorized a feature worktree and independently owned test databases. Direct backup under the exclusive coordinator delays users; a rollback-journal reader can block writer commit. Wave10 passes 21 new store tests on each platform and retains closed admission/freshness checks. | Complete a synthetic-only immutable input store in `cb02/input-ownership`. Publish no production adapter or real copy. Keep the registered checkout and running engine unchanged. | Design a production immutable producer and retirement boundary on synthetic fixtures, then bind execution inputs/raw freshness and qualify capture/execution resources and availability. Cooperative fixture limits are insufficient for real capture. |
 | 25 October 2026 | The user stopped the server to simplify copying. Wave11 capture and admission fixtures pass16 per platform. The native stopped-runtime copy passes coherence/integrity/receipts and original invariance, including all saved books. Its one-time controller missed worker EOF; verified controller-only cleanup and independent copy checks resolved the operation, with worker exit code unobserved. | Add a separate offline copy owner; leave wave10 limits/admission unchanged. No live-copy protocol is inferred. Preserve originals and bind independently copied inputs next. | A shared execution owner must bind generation/source/raw freshness before resource and concurrent-availability qualification or any pilot. Live capture is separate optional future capability. |
+| 25 October 2026 | Wave12 inspection finds database defaults, report globals and spawned imports still depend on runtime paths. Copies contain no raw tree, so capture-time inventory cannot establish current freshness. The bounded owner verifies artifacts/coherence and actual source bytes with private derivatives; prior semantic identities remain unchanged. | Split captured input ownership from execution. Complete CapturedWorkspace under synthetic limits; keep both runners and admission closed. No more real capture is required. | Build the isolated engine facade and qualified live-priority request-freshness provider; then prove descendant/resource/cancellation and concurrent availability before a pilot. |

@@ -26,31 +26,9 @@ import time
 import uuid
 
 
-RESEARCH_VERSION = 7
-DAILY_VERSION = 3
-BASE_TABLES = {
-    'companies': 'symbol name exchange sector',
-    'statements': 'symbol fiscal known market_cap enterprise_value ebitda ebitda_yield',
-    'financial_inputs': 'symbol fiscal values_json',
-}
-RESEARCH_TABLES = dict(BASE_TABLES, **{
-    'metadata': 'key value',
-    'screening_metrics': 'mode pool year symbol metric multiple yield_value',
-    'filter_values': 'mode pool year symbol field value',
-    'baseline_prices': 'year symbol fiscal_price_date valuation_date fiscal_price valuation_price entry_price exit_price',
-    'baseline_periods': 'year spy_entry spy_exit spy_entry_price spy_exit_price',
-    'periods': 'year entry exit spy treasury legacy_candidates cached_candidates',
-    'snapshots': 'pool year symbol candidate_rank fiscal entry exit market_cap enterprise_value ebitda ebitda_yield ev_ebitda spread return_value status',
-    'latest_snapshots': 'pool symbol candidate_rank fiscal known price_date price market_cap enterprise_value ebitda_yield ev_ebitda spread',
-})
-DAILY_BASE = dict(BASE_TABLES, **{
-    'prices': 'symbol day price adjusted', 'sessions': 'day price',
-    'treasuries': 'day yield_value',
-})
-DAILY_TABLES = dict(RESEARCH_TABLES, **DAILY_BASE,
-                    period_pools='period_id pool')
-DERIVED = ('periods', 'snapshots', 'screening_metrics', 'filter_values',
-           'baseline_prices', 'baseline_periods', 'latest_snapshots', 'period_pools')
+from bench_input_artifacts import (RESEARCH_VERSION, DAILY_VERSION, BASE_TABLES,
+    RESEARCH_TABLES, DAILY_BASE, DAILY_TABLES, DERIVED)
+import bench_input_artifacts as artifacts
 ARTIFACTS = ('research.sqlite', 'daily.sqlite', 'report.txt')
 _MAX_DATABASE_BYTES = 32 * 1024 * 1024
 _MAX_OUTPUT_BYTES = 64 * 1024 * 1024
@@ -69,13 +47,8 @@ class InputStoreError(ValueError):
         super().__init__('Input store: ' + reason)
 
 
-def _json(value):
-    return json.dumps(value, sort_keys=True, separators=(',', ':'),
-                      allow_nan=False).encode('utf-8')
-
-
-def _digest(value):
-    return hashlib.sha256(_json(value)).hexdigest()
+_json = artifacts.encoded
+_digest = artifacts.digest
 
 
 def _memory_bytes():
@@ -160,35 +133,16 @@ def _hash_file(path, budget):
 
 
 def _table_hash(db, table, budget):
-    # Statement row order is financial input: original-buffer ties use it.
-    order = {'prices': 'symbol,day', 'sessions': 'day', 'treasuries': 'day',
-             'period_pools': 'period_id,pool'}.get(table, 'rowid')
-    result = hashlib.sha256()
-    for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
-        budget.check()
-        try:
-            result.update(_json(list(row)) + b'\n')
-        except (TypeError, ValueError) as error:
-            raise InputStoreError('corrupt') from error
-    return result.hexdigest()
+    return artifacts.table_hash(db, table, budget, InputStoreError, reason='corrupt')
 
 
 def _metadata(db):
-    try:
-        result = {row[0]: json.loads(row[1]) for row in db.execute('SELECT key,value FROM metadata')}
-        _json(result)  # Reject nonfinite JSON values accepted by json.loads.
-        return result
-    except (TypeError, ValueError) as error:
-        raise InputStoreError('incomplete') from error
+    return artifacts.metadata(db, InputStoreError, reason='incomplete')
 
 
 def _schema(db, expected, budget):
-    budget.check()
-    if [row[0] for row in db.execute('PRAGMA integrity_check')] != ['ok']:
-        raise InputStoreError('corrupt')
-    for table, columns in expected.items():
-        if [row[1] for row in db.execute(f'PRAGMA table_info({table})')] != columns.split():
-            raise InputStoreError('incomplete')
+    artifacts.schema(db, expected, budget, InputStoreError,
+                     reason='incomplete', integrity_reason='corrupt')
 
 
 def _evidence(value):
@@ -261,9 +215,7 @@ def _coherence(research, daily, report_sha, evidence, budget, *, fresh):
         raise InputStoreError('mismatch')
     if not isinstance(r.get('prices'), dict) or not isinstance(d.get('cached_symbols'), list):
         raise InputStoreError('incomplete')
-    shared = {table: _table_hash(research, table, budget) for table in BASE_TABLES}
-    if shared != {table: _table_hash(daily, table, budget) for table in BASE_TABLES}:
-        raise InputStoreError('mismatch')
+    artifacts.shared_rows(research, daily, lambda db, table: _table_hash(db, table, budget), InputStoreError)
     if fresh and any(daily.execute('SELECT 1 FROM ' + table + ' LIMIT 1').fetchone() for table in DERIVED):
         raise InputStoreError('incomplete')
     base = {table: _table_hash(daily, table, budget) for table in DAILY_BASE}

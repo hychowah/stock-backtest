@@ -159,3 +159,21 @@ repair or download. The copy keeps original metadata; it is not automatically
 accepted by runtime-global APIs. Keep benchmark admission closed until a shared
 execution owner and its resource gates are qualified. See the
 [wave11 record](plans/compiled-backtest/phases/CB-02/wave11/README.md).
+
+
+## Captured input attachment
+
+Wave12 adds `tools/bench_execution_inputs.py` on the feature branch. Its bounded
+CapturedWorkspace accepts an explicit capture, matching source tree and fresh
+experiment directory. It verifies artifacts and source content, opens captured
+databases read-only and owns writable derivatives separately. It never reads
+workspace registration or falls back to the original databases. Handles close
+before workspace ownership ends. It takes no live financial ownership.
+
+Captured inventories remain historical evidence. The tool does not attach
+financial engines or establish current raw freshness. Synthetic fixture limits
+exclude real derivative creation. The next execution facade must bind both
+engines and policy without hidden original paths, retain immediate edit detection
+and qualify resources/cancellation and availability. No normal launcher change
+or benchmark admission follows. See the
+[wave12 record](plans/compiled-backtest/phases/CB-02/wave12/README.md).
