@@ -639,7 +639,25 @@ can admit a run. Synthetic calculation tests may patch the policy only inside
 their disposable fixture scopes. This increment implements no capture producer
 and admits no real execution.
 
-The following prerequisite is a consistent, generation-bound input owner shared
+**Wave10 bounded split:** The authorized feature branch and linked WSL worktree
+separate development source from the registered deployment checkout. Wave10 completes a synthetic-only owned input store. Its producer constructs private
+research/daily/report inputs, closes writers, validates coherence and publishes
+an immutable generation. Consumers own read-only attachments and separate writable
+clones. Benchmark admission remains closed. See
+[wave10 record](phases/CB-02/wave10/README.md).
+
+Direct live capture is deferred. The current exclusive coordinator would delay
+user work during backup. Releasing it with rollback-journal read transactions
+can delay commits. Synthetic concurrency fixtures on WSL and native Windows show this limitation
+and prove the immutable-handoff consumer boundary. WSL passes 37 focused tests;
+native passes 36 with one optional symlink skip. Resource checks are cooperative
+and do not qualify real capture. This increment has no production
+capture adapter, runtime attachment or execution owner. Real capture still needs
+a qualified immutable producer and capture-specific resource/availability gates.
+The WSL worktree holds source and synthetic fixtures only. Eventual qualified
+real copies belong in a dedicated ignored native Windows experiment directory.
+
+The following prerequisite is a consistent, generation-bound execution owner shared
 by controls and candidates. It must separate candidate source, dependencies, cache and result
 ownership from the stable service. Prove nonblocking capture without bypassing
 coordination or publication recovery. Do not run the inherited live-cache-locking
@@ -951,7 +969,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed; bound inputs, resource isolation and paired performance unresolved; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; live immutable producer, execution owner, resource isolation and paired performance unresolved; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -982,9 +1000,13 @@ its pair hit the 2,700-second whole budget before compiled candidate execution.
 Wave8 completes default publication revision selection as the first safety
 prerequisite, without changing the live engine. Wave9 closes executable benchmark
 orchestration and timed adapters while retaining source-only fixture imports.
-It implements no input capture and admits no execution. The next bounded design
-must establish a consistent input owner for both engines without blocking the
-live cache. Then qualify resources
+It implements no input capture and admits no execution. Wave10 completes a
+feature worktree and synthetic input store with immutable generations and owned
+writable clones. It establishes no live capture protocol or execution owner.
+The next bounded design must establish a production immutable handoff producer
+without blocking live work, using synthetic publication/retirement fixtures
+first. Bind raw freshness and reference/candidate globals through one execution
+owner. Then qualify capture and execution resources
 and concurrent availability before another paired pilot. Account for observed
 control and preparation costs. Stable
 publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
@@ -1006,3 +1028,4 @@ before the required gate passes.
 | 25 October 2026 | The user needs to keep using the slower website throughout development. The installed engine was restarted and its page, panel and one cached 50-stock backtest passed; current deployment revision is recorded above. Wave7's shared live-cache ownership would block such use. | Make stable website availability a cross-cutting gate. Isolate experiments and previews, protect the stable deployment/restart revision, and keep the old engine default until every CB-14 readiness gate passes. | Website-safe snapshot/measurement ownership and protected normal publication still need implementation and qualification before affecting live use. |
 | 25 October 2026 | Wave8 isolates the publication-revision prerequisite. Both platforms pass 32 disposable deployment tests; read-only actual selection retains the installed commit. | Normal WSL publication selects the installed or pending commit rather than experimental HEAD. Split benchmark admission/input handoff and resource/availability proofs before any new pilot. | No live restart, benchmark isolation or new compiled performance is qualified. |
 | 25 October 2026 | Wave9 independent CODE design separates source attachment from executable benchmark work. Paths, copied databases and source hashes cannot establish input ownership. | Complete admission first: one policy rejects benchmark execution before effects. Keep fixture algorithms usable. Defer bound capture and resource admission. | One generation-bound owner for controls and candidates, safe capture, independent resources and availability proofs remain required before a pilot. |
+| 25 October 2026 | The user authorized a feature worktree and independently owned test databases. Direct backup under the exclusive coordinator delays users; a rollback-journal reader can block writer commit. Wave10 passes 21 new store tests on each platform and retains closed admission/freshness checks. | Complete a synthetic-only immutable input store in `cb02/input-ownership`. Publish no production adapter or real copy. Keep the registered checkout and running engine unchanged. | Design a production immutable producer and retirement boundary on synthetic fixtures, then bind execution inputs/raw freshness and qualify capture/execution resources and availability. Cooperative fixture limits are insufficient for real capture. |

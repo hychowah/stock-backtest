@@ -9,6 +9,11 @@ fixture helpers remain available. Consistent bound-input ownership, safe capture
 and resource/availability qualification remain deferred. See the
 [wave9 record](../../docs/plans/compiled-backtest/phases/CB-02/wave9/README.md).
 This source safeguard does not change installed tools or the running website.
+Wave10 adds a synthetic-only immutable input store and separately writable daily
+clones in a linked feature worktree. It has no live capture adapter, raw-data
+attachment or execution admission. See the
+[wave10 record](../../docs/plans/compiled-backtest/phases/CB-02/wave10/README.md).
+Real-data copies remain deferred pending a qualified producer and capture gates.
 
 CB-02's [third experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave3/README.md)
 compares Numba, bulk Python, whole-batch DuckDB, persistent workers, Polars and

@@ -4,6 +4,7 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 | Script | Purpose |
 | --- | --- |
+| `bench_input_store.py` | Synthetic-only immutable research/daily/report store and owned writable clones; no live capture or execution admission |
 | `bench_admission.py` | Closed execution policy; no runtime is admitted until bound inputs and resources are qualified |
 | `bench_candidates_run.py` | Retained historical six-method comparison protocol; execution is closed |
 | `bench_methods.py` | Retained historical price-engine comparison protocol; execution is closed |
@@ -28,10 +29,17 @@ run. This source change does not alter installed tools or the running website.
 Source-only attachment and numerical fixture helpers remain available. Synthetic
 tests patch the policy only within disposable fixture scopes.
 
-Consistent bound-input ownership, safe capture, independent experimental resources
-and resource/availability qualification remain deferred. See the
+Wave10 adds `bench_input_store.py` for synthetic owned generations and separate
+writable daily clones. Producers construct private inputs and close their writers
+before immutable publication. The store validates database/report coherence and
+receipts. It has no production capture adapter and does not admit execution.
+
+Complete bound execution ownership, safe live capture, independent experimental
+resources and resource/availability qualification remain deferred. See the
 [wave9 record](../docs/plans/compiled-backtest/phases/CB-02/wave9/README.md).
 Do not run the retained live-cache-locking protocols against the stable runtime.
+See the [wave10 store record](../docs/plans/compiled-backtest/phases/CB-02/wave10/README.md)
+for its API, synthetic ownership proofs and cooperative resource limits.
 
 ## Historical end-to-end protocol
 

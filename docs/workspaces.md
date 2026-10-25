@@ -114,6 +114,30 @@ inside their disposable fixture scope.
 
 A later input owner must bind the same consistent generation to both engines.
 It must own experimental source, dependencies, compiler caches, mutable databases
-and result stores separately from the stable service. Capture and resource
-qualification are not implemented. Do not run the historical live-cache-locking
+and result stores separately from the stable service. Wave10 adds a synthetic-only input store in a feature worktree. It builds private
+research/daily/report inputs and validates their immutable handoff. It creates
+separate writable daily clones. It has no live capture adapter or execution
+owner. Real capture and resource qualification are not implemented. Do not run the historical live-cache-locking
 benchmark commands. See the [wave9 record](plans/compiled-backtest/phases/CB-02/wave9/README.md).
+
+
+## Isolated CB-02 development worktree
+
+Branch `cb02/input-ownership` starts from `27f96323e952c87923acfcfb0ca4f2cb4a81136e`.
+Its WSL source root is `<wsl-checkout>-cb02-input-ownership`.
+The linked Git metadata is
+`<wsl-checkout>/.git-local/worktrees/ebitda-ev-spread-cb02-input-ownership`.
+Use that metadata with `--work-tree` set to the linked root for feature operations.
+Do not use the main index for feature staging.
+
+The original checkout remains the registered deployment source. Do not copy
+`data/workspace.json` into the feature worktree or deploy from that worktree.
+The deployment tool does not support linked-worktree publication. Source tests
+use the feature root and independently owned temporary databases. Native tests
+use Windows temporary storage. WSL contains no second full raw cache.
+
+The [wave10 record](plans/compiled-backtest/phases/CB-02/wave10/README.md) states
+the synthetic input-store proof and its limits. No real-data copy exists from
+this phase. A later qualified copy must use a dedicated ignored Windows experiment
+directory. Copied databases alone do not remove reference-engine raw-data globals
+or establish resource isolation. Benchmark execution stays closed.
