@@ -79,6 +79,80 @@ This is a program-level plan. Each phase is scoped for one Codex 6.1-sol session
 
 The [research findings and primary sources](research.md) explain the options and their limits. They are part of this plan.
 
+### Keep the current website usable until full replacement readiness
+
+User requirement added on 25 October 2026: the user must keep using the current
+website and its slower backtest engine throughout development. This applies to
+every remaining phase, including benchmarks. A successful pilot or primary speed
+gate does not authorize replacement of the live website.
+
+The installed Windows engine is the stable service. Source edits, experimental
+commits and candidate failures must not stop or replace it. Keep its normal
+screens, fixed-date and random backtests, saved results, inspection, CSV exports
+and data panel usable. Preserve its raw cache, prepared databases, saved books,
+settings and working Python environment. Normal user-requested starts and stops
+remain supported.
+
+The installed deployment revision observed on 25 October is
+`63dda8fda1e3b1e76ef75c10453246f9e74c2a07`. Its main page, data panel and one
+cached 50-stock backtest were checked. This identifies the current fallback;
+it is not qualification evidence for the new engine. Record and verify the
+actual stable revision before later work rather than assuming it stays fixed.
+
+**Required safeguards before further experiments or integration:**
+
+- Keep candidate code, dependencies, generated data, compiler caches and result
+  stores separate from the installed service. A different port or temporary
+  output directory alone does not prove isolation.
+- Prepare a consistent, generation-bound input snapshot for both benchmark
+  engines. Do not keep the live cache lock for preparation, calculation or
+  cleanup that would block a user backtest. Use a qualified bounded handoff;
+  defer work that cannot safely obtain one. Preserve all existing coordination,
+  lock-order, publication-journal and freshness rules. Do not bypass a shared
+  resource lock or create a second full raw cache in WSL.
+- The live website has priority over experimental CPU, memory and disk use.
+  Declare resource limits and verify isolation before a long job. If user work
+  conflicts, defer or stop only the owned experiment. Keep interruption evidence;
+  do not count affected timings as passing speed evidence. Never stop the user
+  server or make user requests wait behind an experiment to obtain cleaner times.
+- Keep the stable deployment revision and restart path protected. The current
+  launcher defaults to publishing committed `HEAD`; a plan edit does not pin it.
+  Use the existing revision-selection mechanism or another verified safeguard
+  before production-affecting development can reach that publication path.
+  Until this is verified, do not publish unqualified source over the installed
+  service. Preserve authenticated server ownership and deployment recovery.
+- Early opt-in previews may use a separate instance and URL. They must have
+  isolated data ownership and leave the stable default available. Do not migrate
+  the stable cache in place or require the user to use a preview.
+
+**Availability gate:** Prove that the stable main page, data panel and a cached
+backtest still work while the candidate prepares, runs, cancels and fails. Check
+that stable restart still selects the known-good engine. Verify fresh-date and
+random backtests, saved-result inspection and exports on production-equivalent
+isolated fixtures. Check for cache-lock errors, resource contention, changed
+source and incompatible cache writes. A failed isolation or availability check
+blocks the experiment or deployment; continue only work that leaves the live
+service usable.
+
+**Full readiness gate:** Keep the stable engine as default until CB-14 passes
+all financial and coverage checks, all six three-seed 5× speed gates, the complete
+trailing-filter supplement, all promised month/week intervals and capacity
+checks, agreed workflow budgets, Native Windows startup/offline/lifecycle checks,
+and saved-data compatibility and rollback checks. Unresolved budgets or checks
+block cutover. CB-15 can then switch the default and verify the live workflow.
+Keep the known-good engine and compatible old caches through the documented
+rollback period. Candidate failure must leave the stable service usable.
+
+Before CB-15, integration work in this plan means work in the isolated candidate
+preview. Passing the primary speed gate permits that hardening and integration;
+it does not permit publication over the stable installed website.
+
+These are required safeguards, not implemented isolation claims. Wave7 used
+isolated result files but held the production cache coordinator. That approach
+must not be repeated while protecting live use. The next CB-02 code design must
+solve website-safe measurement before starting another real-cache pilot. This
+plan-only update does not implement or start that work.
+
 ### Adjust the plan when new evidence changes the direction
 
 This is a living plan. Implementation experience, benchmark results and user
@@ -107,7 +181,7 @@ A failed gate is evidence for changing the work, not evidence that the gate pass
 | Policy ownership | All six candidate executors use source-derived financial expressions. Guard policy remains source-owned, including the optional compiled Numba decisions. SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
 | Database role | Keep verified research data and compact job/result storage. Remove per-candidate SQL traffic from calculation. | Publication and recovery measurements. |
 | Analytical alternatives | DuckDB and Polars have been attempted. No further library search is scheduled by default. | A specific unresolved question and a bounded comparison at the same request boundary. |
-| Deployment | Persistent local runtime with bounded native parallelism. | Shutdown, generation replacement and memory tests on native Windows. |
+| Deployment | Preserve the stable installed website and restart revision until full replacement readiness; qualify candidates separately. | Website-safe isolation, protected publication, shutdown, generation replacement and memory tests on native Windows. |
 | Weekly intervals | Add an explicit calendar extension. Proposed week means seven calendar days, with session rolling. | Freeze exact rules in CB-08 before exposing controls. |
 | Freshness | Retain immediate request-time detection under the existing path/size/mtime rule. | Equivalent scan evidence and stale-generation checks; no startup-only substitution. |
 | User experience | Set absolute time budgets for startup, fresh research, changed filters and saved-result reopening. | Prospective budgets and native measurements; annual relative speed alone is insufficient. |
@@ -245,7 +319,7 @@ Require **at least 5× median end-to-end speedup in each of the six primary pool
 ### Measurement rules
 
 1. Freeze source identities, input generation, report hash, versions, CPU/thread counts and settings.
-2. Run against isolated derived data under ignored `tmp/`. Never clear the user's real books to make a test fresh.
+2. Run against isolated inputs and derived data under ignored Native `tmp/`. Prove live-website and data-ownership isolation first; a separate result directory alone is insufficient. Never clear the user's real books or hold its cache coordinator through a benchmark. Keep both engines bound to identical verified inputs.
 3. Give both engines identical base data and date samples. Each timed primary run starts without completed date-pair results or reusable entry-factor results. A loaded immutable base dataset is allowed for both.
 4. Include validation performed during the request, selection, return calculations, staging, completed-trial saving, response encoding and local transport. Use the same HTTP harness or equivalent isolated adapter for both engines.
 5. Separate first installation, source preparation, compiler-cold startup, restart with a compiled cache, and an already-running request. They are different measurements.
@@ -313,7 +387,14 @@ separate evidence and a user decision. Removing scans is not a planned shortcut.
 
 ### Resource ownership
 
-Retain lock order: process-local reentrant lock, project file lock, then database handles, mappings and worker resources. Retain ownership through native work and final closure. Keep current cross-server serialization while changing the engine; independent concurrent jobs are not a prerequisite.
+Retain lock order: process-local reentrant lock, project file lock, then database
+handles, mappings and worker resources. Retain ownership of the resources in use
+through native work and final closure. Keep current cross-server serialization
+for production jobs sharing the live cache. Experimental jobs must own isolated
+resources; they must not hold the live coordinator for the experiment lifetime.
+A snapshot handoff must be consistent and qualified before use. If safe isolation
+is unavailable, defer the experiment rather than bypassing ownership. Concurrent
+experimental and production jobs against the same writable cache are not required.
 
 Use one native parallelism layer with a measured cap. Do not create a new process pool for every trial or a full data copy per worker. Use bounded chunks so progress and cancellation can occur between native calls. Closing the terminal must stop native work before releasing lifetime ownership.
 
@@ -335,7 +416,8 @@ CB-01 measurement is complete. Its [phase record](phases/CB-01/README.md) contai
 the frozen workload, all 18 accepted cases and operational limits. CB-02 is in
 progress: the comparison is complete, but its full speed gate failed. CB-03 is
 conditional. CB-04 through CB-15 describe remaining capabilities. Reconcile
-these briefs with demonstrated work before implementing them. Phase identifiers
+these briefs with demonstrated work and the ongoing website availability
+contract before implementing them. Phase identifiers
 are stable references, not a fixed session count or a demand to rebuild prototypes.
 Split or merge remaining work when the evidence warrants it and record the change.
 
@@ -343,21 +425,25 @@ Split or merge remaining work when the evidence warrants it and record the chang
 
 | Milestone | Result and exit evidence | Related phases |
 |---|---|---|
+| Protect ongoing website use | Verify stable publication/restart and candidate resource/data isolation before work can affect the live website | Cross-cutting prerequisite; next CB-02 design and CB-12–CB-15 |
 | Close the request-performance gap | Revise measurement orchestration after the wave7 budget stop; obtain a promising guard/assembly pair, then the unchanged full primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
 | Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; agreed workflow budgets | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
-| Deliver faster existing workflows | Opt-in support for the existing month intervals, filters, trial inspection, exports and rollback | CB-04–CB-07 and CB-09–CB-13 |
+| Deliver faster existing workflows | Isolated opt-in preview for existing month intervals, filters, trial inspection and exports; preserve the stable website | CB-04–CB-07 and CB-09–CB-13 |
 | Add weekly research | Frozen calendar, correct explicit-date returns, useful latency and bounded resources | CB-08 and weekly extensions in CB-09–CB-14 |
 | Qualify and enable the default | Full primary, supplementary, workflow, weekly and operational gates pass | CB-14 and CB-15 |
 
-The first three milestones can expose risks before weekly capacity work. Existing
-month workflows can be delivered opt-in before weekly controls. Weekly support
+The website-protection milestone applies throughout the program. The early
+performance and operational milestones can expose risks before weekly capacity work. Existing
+month workflows can be delivered in an isolated opt-in preview before weekly
+controls. The stable installed website remains available. Weekly support
 remains required for program completion. Annual speedup does not qualify weekly
 latency. Default cutover waits for all promised capabilities and gates.
 
 Development-focus selection permits bounded isolated feasibility proofs before
 the primary speed gate passes. It does not authorize production integration.
-Production integration requires the full primary speed gate and no known
-operational blocker. Final release qualification also requires the agreed
+Candidate integration requires the full primary speed gate and no known
+operational blocker. Publication over the stable website and default cutover
+wait for all CB-14 readiness gates and CB-15 verification, including agreed
 workflow budgets, full correctness coverage and operational checks.
 
 Before each implementation phase, classify relevant evidence as **demonstrated
@@ -372,7 +458,7 @@ Reuse sound work; implement only the missing capability or hardening.
 |---|---|---|
 | CB-00 | WSL source and native Windows deployment workflow | User's split-workspace request |
 | CB-01 | Reproducible current-engine baseline and frozen workloads | CB-00 and this plan |
-| CB-02 | Numba shared-request experiment and full primary speed-gate decision | CB-01; completed comparison evidence |
+| CB-02 | Website-safe Numba measurement, shared-request experiment and full primary speed-gate decision | CB-01; completed comparison evidence |
 | CB-03 | Conditional Rust or bulk alternative comparison | A documented CB-02 limitation |
 | CB-04 | Production hardening of immutable numerical preparation/publication | Full primary speed gate passed; early isolated feasibility proofs allowed |
 | CB-05 | Correct compiled date, report and price primitives | CB-04 |
@@ -382,8 +468,8 @@ Reuse sound work; implement only the missing capability or hardening.
 | CB-09 | Fixed/explicit-date portfolio evaluation with full parity | CB-07; CB-08 for new interval planning |
 | CB-10 | Random trials and atomic recovery evidence | CB-09 |
 | CB-11 | Persistent runtime, bounded parallelism and lifecycle | CB-10 |
-| CB-12 | Launcher, preparation and data-panel integration | CB-11 |
-| CB-13 | Existing-month opt-in UI/API, inspection and exports; weekly controls when qualified | CB-12; CB-08 and weekly evaluator checks for new controls |
+| CB-12 | Isolated candidate startup/data panel and stable revision protection | CB-11 |
+| CB-13 | Isolated opt-in preview UI/API, inspection and exports; stable default preserved; weekly controls when qualified | CB-12; CB-08 and weekly evaluator checks for new controls |
 | CB-14 | Full numerical, operational and speed qualification | CB-13 |
 | CB-15 | Default cutover, documentation and retained fallback | CB-14 passed |
 
@@ -533,7 +619,9 @@ inputs and frozen sources. See [wave7](phases/CB-02/wave7/README.md).
 
 **Next bounded experiment:** Retain Numba and the unresolved source-derived
 guard/assembly question. First design measurement orchestration or resource
-planning that accounts for the observed control and preparation costs. Do not
+planning that accounts for the observed control and preparation costs and the
+[ongoing website availability contract](#keep-the-current-website-usable-until-full-replacement-readiness).
+Prove data/resource isolation from the live service before another pilot. Do not
 rerun this unchanged orchestration for a favorable result. Declare the revised
 scope, timing/resource budget and stop condition before timing. Preserve
 contemporary controls, complete candidate evidence, one financial policy, SQL
@@ -672,26 +760,35 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 ### CB-12 Integrate preparation startup and data control
 
-**Outcome:** The normal launcher brings the new engine to a ready state automatically.
+**Outcome:** Candidate preparation and startup work in isolation. The normal
+launcher retains the stable engine until full readiness and CB-15 cutover.
 
 **Work:** Extend dependency preparation in order: recover/verify research publication, prepare compatible base data, publish the numerical generation, prepare native runtime and rebuild stale website output. Add a pinned tested dependency environment. Preserve panel recovery when raw inputs are missing. Integrate stale-generation evidence with every relevant successful or partial coordinated download/repair. Preserve immediate direct-edit detection with equivalent current inventory checks.
 
-**Deliverables:** Launcher/data-panel integration, runtime/dependency instructions, compact generation checks and preparation status. Existing standard-library reference commands remain available without installing the new numerical stack.
+**Deliverables:** Isolated candidate launcher/data-panel integration, a verified
+stable revision/restart safeguard, runtime/dependency instructions, compact
+generation checks and preparation status. Existing standard-library reference
+commands remain available without installing the new numerical stack.
 
-**Verification:** Unchanged restart avoids re-export. Changed inputs trigger correct preparation. Baseline publication recovery still precedes readers. Test missing dependencies, supported/unsupported Python versions, unavailable package network, offline installed operation, moved paths, invalid raw data, partial downloads, rebuild failure and simultaneous local launches. Keep all existing lock and secret-safe logging behavior.
+**Verification:** Stable restart remains on the known-good engine. Candidate
+setup, dependency failure and publication failure leave the live website usable.
+Do not publish development HEAD over it. Unchanged candidate restart avoids re-export. Changed inputs trigger correct preparation. Baseline publication recovery still precedes readers. Test missing dependencies, supported/unsupported Python versions, unavailable package network, offline installed operation, moved paths, invalid raw data, partial downloads, rebuild failure and simultaneous local launches. Keep all existing lock and secret-safe logging behavior.
 
 **Handoff:** Tested Windows launch command and offline behavior. Initial package installation is separate from market-data downloading; running a strategy must not fetch market data.
 
 ### CB-13 Integrate the website and API
 
 **Outcome:** Users can run the replacement through the existing website. Existing
-month workflows can ship opt-in before the weekly extension is ready.
+month workflows can ship in a separate opt-in preview before the weekly
+extension is ready. The stable website remains the normal entry point.
 
-**Work:** Route dated schedule and robustness requests through an explicit opt-in engine selection. Adapt NDJSON events and progress text to actual work units. Add versioned saved settings, trial inspection, exports and errors. Expose week/month controls only after their calendar and evaluator checks pass. Ensure old saved requests have a defined route. Keep January/latest/static fallback behavior intact.
+**Work:** Route candidate dated schedule and robustness requests through an
+explicit opt-in engine selection in the isolated preview. Keep the stable
+instance, source, data ownership and default launcher intact. Adapt NDJSON events and progress text to actual work units. Add versioned saved settings, trial inspection, exports and errors. Expose week/month controls only after their calendar and evaluator checks pass. Ensure old saved requests have a defined route. Keep January/latest/static fallback behavior intact.
 
 **Deliverables:** Working local UI/API flow, browser checks and a documented rollback setting. Update the guide to distinguish opt-in source from the default running engine.
 
-**Verification:** Exercise a complete 24-trial run, changing filters, seed replay, weekly settings, cancellation/disconnection, saved trial inspection, CSVs and empty selections. Check desktop/mobile presentation when browser tools are available. Run existing range, screener, robustness, contributions and data-panel checks as affected. Build local output only.
+**Verification:** Exercise a complete 24-trial run, changing filters, seed replay, weekly settings, cancellation/disconnection, saved trial inspection, CSVs and empty selections. Prove that preview preparation, execution and failure do not block the stable website or its backtests. Check desktop/mobile presentation when browser tools are available. Run existing range, screener, robustness, contributions and data-panel checks as affected. Build local output only.
 
 For an existing-month milestone, mark weekly checks pending and keep weekly
 controls unavailable. Run those checks before delivering the extension. Do not
@@ -707,7 +804,9 @@ mark the whole phase or program complete from the earlier milestone.
 
 **Deliverables:** Tracked qualification report with settings, hashes, versions, maximum numeric differences, raw-output locations, per-case timings and explicit gate verdicts. Update experiment documentation with the new evidence while retaining historical results.
 
-**Verification:** All required correctness and operational checks pass on Windows. Primary cases each reach 5×. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
+**Verification:** All required correctness and operational checks pass on Windows.
+The ongoing website availability contract passes during candidate preparation,
+execution, failure and restart. Stable code, dependencies and caches remain usable. Primary cases each reach 5×. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
 
 **Handoff:** Pass/fail table. If a gate fails, leave the engine opt-in and write the smallest evidence-led follow-up phase. Do not label the program complete.
 
@@ -715,7 +814,9 @@ mark the whole phase or program complete from the earlier milestone.
 
 **Outcome:** The qualified engine is the default for dated backtests, with clear recovery and fallback instructions.
 
-**Work:** Change the default only after CB-14 passes. Remove temporary prototype integration and obsolete default routing. Retain the reference/rollback path and old caches through a documented migration period. Update README, workflow, data documentation, root instructions and the architecture guide to the implemented state. Document adding metrics, extending data, rebuilding generations, inspecting saved trials and rolling back.
+**Work:** Change the default only after all CB-14 checks and agreed budgets pass,
+including the availability, interval, saved-data compatibility and rollback gates.
+Until then, keep the stable engine and its normal restart path available. Remove temporary prototype integration and obsolete default routing. Retain the reference/rollback path and old caches through a documented migration period. Update README, workflow, data documentation, root instructions and the architecture guide to the implemented state. Document adding metrics, extending data, rebuilding generations, inspecting saved trials and rolling back.
 
 **Deliverables:** Default route, final user guide and program completion record. Record actual 5×/10× results by workload. Keep unachieved targets explicit.
 
@@ -731,7 +832,10 @@ Updating this plan alone does not start a benchmark or implementation phase.
 
 ### Start each session
 
-Read root `AGENTS.md`, this plan, the research findings and the preceding phase record. Inspect current Git status using `.git-local`. Preserve unrelated work, including existing portable-snapshot changes. Read only the files needed for that phase. Do not open the parent harness.
+Read root `AGENTS.md`, this plan, the research findings and the preceding phase record. Inspect current Git status using `.git-local`. Preserve unrelated work, including existing portable-snapshot changes. Identify
+the stable website, its deployment revision and data ownership. Keep it usable;
+verify the availability contract before experiments or publication can affect it.
+Do not stop it or hold its live cache for a benchmark. Read only the files needed for that phase. Do not open the parent harness.
 
 Confirm the prerequisite gates passed and record the phase's intended file scope. If scope no longer fits one session, split it in this master plan before starting a partial integration. An agent can make a routine split that preserves the objective, ordering and acceptance criteria without asking the user. Do not infer completion from a phase heading or from a prototype's existence.
 
@@ -818,14 +922,15 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-09 | Planned | — |
 | CB-10 | Planned | — |
 | CB-11 | Planned | — |
-| CB-12 | Planned | Preserve immediate detection; operational and latency-budget checks pending |
-| CB-13 | Planned | — |
+| CB-12 | Planned | Isolated candidate startup and stable revision/restart protection; immediate detection and operational budgets remain required |
+| CB-13 | Planned | Isolated preview; stable website remains default |
 | CB-14 | Planned | Final 5× gate pending |
-| CB-15 | Planned | Default unchanged |
+| CB-15 | Planned | Stable default stays until all CB-14 readiness gates pass |
 
 ## Completion definition
 
-The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
+The current website must remain usable until all replacement readiness gates
+pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
 The immediate next step remains **CB-02**, now a focused Numba experiment.
 All six named approaches have been tested. Wave4 preserves immediate manual-edit
@@ -835,8 +940,10 @@ cases remain for wave5. Wave6 rejected requested-metric SQL staging alone:
 3.92% observed request reduction and 4.87× production ratio. Do not expand
 that unchanged intervention. Wave7 implemented the guard/assembly prototype but
 its pair hit the 2,700-second whole budget before compiled candidate execution.
-The next bounded design must account for the observed measurement costs before
-another paired pilot. Do not expand this incomplete attempt. Preserve the
+The next bounded design must account for the observed measurement costs and
+prove isolation from the live website before another paired pilot. Stable
+publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
+Preserve the
 financial, freshness and acceptance contracts. A promising pair must precede the
 full gate after implementation changes. Do not start production integration
 before the required gate passes.
@@ -851,3 +958,4 @@ before the required gate passes.
 | 25 October 2026 | User explicitly permits plan changes when implementation yields new insight. | Reassess and update the roadmap from evidence, preserving history and acceptance criteria. | Raise material scope or acceptance changes for a user decision. |
 | 25 October 2026 | Wave6 metric projection preserved exact results and removed 1,412,574 unused rows, but its 3.92% request reduction and 4.87× ratio failed the declared pilot criteria. | Stop this intervention without a full matrix. Retain Numba; focus the next bounded question on source-derived candidate guards/assembly. | Can one shared-policy intervention close the request gap? Full primary and operational gates remain required. |
 | 25 October 2026 | Wave7 source-derived guard/assembly code passed 93 WSL and 92 native tests plus one skip. Source request and controls were 120.20 and 691.08/598.52 seconds on wave6's prepared-input identity. The 2,700-second watchdog stopped before compiled candidate execution. | Reject expansion of this incomplete pair. Revisit measurement orchestration/resource planning with a new prospective bounded protocol; retain the prototype and unchanged financial/speed gates. | Real-cache compiled correctness and paired performance remain unmeasured. A promising pair must precede the full primary matrix. |
+| 25 October 2026 | The user needs to keep using the slower website throughout development. The installed engine was restarted and its page, panel and one cached 50-stock backtest passed; current deployment revision is recorded above. Wave7's shared live-cache ownership would block such use. | Make stable website availability a cross-cutting gate. Isolate experiments and previews, protect the stable deployment/restart revision, and keep the old engine default until every CB-14 readiness gate passes. | Website-safe snapshot/measurement ownership and protected normal publication still need implementation and qualification before affecting live use. |
