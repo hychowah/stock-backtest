@@ -299,7 +299,8 @@ def reference_smokes(source, requests, directory):
 
 def source_files():
     files = [Path(__file__), Path(previous.__file__), Path(baseline.__file__)]
-    files += [ROOT / 'tools' / name for name in ('bench_methods_arrays.py', 'bench_generation.py')]
+    files += [ROOT / 'tools' / name for name in
+              ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py')]
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
     return list(dict.fromkeys(files))

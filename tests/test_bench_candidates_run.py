@@ -38,6 +38,44 @@ def agreed_method(requests):
             measurement=dict(wall_seconds=1.,resources=valid_resources())) for case in requests])
 
 
+class SourceInventoryTests(unittest.TestCase):
+    def test_extracted_policy_mutation_rejects_before_database_or_executor_access(self):
+        with tempfile.TemporaryDirectory(prefix='cb02-policy-source-') as temporary:
+            root = Path(temporary)
+            tools = root / 'tools'; tools.mkdir()
+            for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py'):
+                shutil.copy2(ROOT / 'tools' / name, tools / name)
+            implementation = tools / 'bench_policy_program.py'
+            with patch.object(runner, 'ROOT', root):
+                files = runner.source_files()
+                self.assertIn(implementation, files)
+                frozen = runner.hashes(files)
+                specification = root / 'specification.json'
+                shared.baseline.publish(specification, dict(staging='all', candidate_assembly='source',
+                    source_hashes=frozen))
+                implementation.write_bytes(implementation.read_bytes() + b'\n# owned mutation\n')
+                changed = runner.hashes(runner.source_files())
+                self.assertEqual(set(changed), set(frozen))
+                self.assertEqual({name for name in changed if changed[name] != frozen[name]},
+                                 {'bench_policy_program.py'})
+                args = SimpleNamespace(worker='python', runtime=root, workdir=root,
+                    specification=specification, result=root / 'result.json', staging='all',
+                    candidate_assembly='source')
+                with patch.object(runner.admission, 'require_execution'), \
+                     patch.object(runner.sys, 'stdin', io.StringIO('GO\n')), \
+                     patch.dict(os.environ), patch.object(runner.baseline, 'bootstrap'), \
+                     patch.object(runner, 'emit'), \
+                     patch.object(runner.sqlite3, 'connect', side_effect=AssertionError('Database accessed')) as connect, \
+                     patch('bench_candidates.NumericInputs', side_effect=AssertionError('Inputs constructed')) as inputs, \
+                     patch('bench_candidates.PythonExecutor', side_effect=AssertionError('Executor constructed')) as executor:
+                    with self.assertRaisesRegex(ValueError, 'Candidate source changed before attachment'):
+                        runner.worker(args)
+                connect.assert_not_called()
+                inputs.assert_not_called()
+                executor.assert_not_called()
+                self.assertFalse(args.result.exists())
+
+
 class CandidateRequestTests(unittest.TestCase):
     def setUp(self):
         self.fixture=shared.SharedMethodsTests('test_empty_trials_remain_visible_and_excluded_from_distributions')

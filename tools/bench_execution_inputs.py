@@ -40,6 +40,9 @@ _POLICY_ROOTS = frozenset('scripts/' + name + '.py' for name in
                           ('books', 'metrics', 'schedules', 'run', 'research', 'revalue', 'book_batch'))
 _locks_guard = Lock()
 _locks = {}
+# An incomplete attachment close must not let generator collection release the
+# workspace lock. A successful explicit exit retry removes this retained owner.
+_pending_closures = {}
 
 
 class ExecutionInputError(ValueError):
@@ -350,6 +353,7 @@ class CapturedWorkspace:
         self.cancel = cancel
         self._used = self._active = False
         self._resources = None
+        self._attachments = {}
         with _locks_guard:
             self._thread_lock = _locks.setdefault(str(self.root), Lock())
 
@@ -482,7 +486,56 @@ class CapturedWorkspace:
         return self._session.__enter__()
 
     def __exit__(self, *args):
-        return self._session.__exit__(*args)
+        # Close attached processes before unwinding the source/database stack.
+        # Keep the suspended owner alive if cleanup needs an explicit retry.
+        self._active = False
+        with _locks_guard:
+            _pending_closures[id(self)] = self
+        failure = None
+        for close in tuple(self._attachments.values()):
+            try:
+                close()
+            except BaseException as error:
+                failure = failure or error
+        if self._attachments:
+            if args[1] is not None:
+                # Preserve the caller's exception and retain ownership for retry.
+                return False
+            raise failure or ExecutionInputError('busy')
+        try:
+            if failure is not None and args[1] is None:
+                self._session.__exit__(type(failure), failure, failure.__traceback__)
+                raise failure
+            return self._session.__exit__(*args)
+        finally:
+            with _locks_guard:
+                _pending_closures.pop(id(self), None)
+
+    def _register_resource(self, name, close):
+        """Own at most one attachment of each kind through final closure.
+
+        Return an idempotent release callback for an attachment closed early.
+        The registered callback still runs before workspace ownership ends.
+        """
+        _require(self._active)
+        with _locks_guard:
+            _require(name not in self._attachments, 'busy')
+        released = False
+        def release():
+            nonlocal released
+            with _locks_guard:
+                if not released:
+                    self._attachments.pop(name, None)
+                    released = True
+        def finish():
+            close()
+            release()
+        with _locks_guard:
+            # Keep check and registration atomic for same-workspace callers.
+            _require(name not in self._attachments, 'busy')
+            self._attachments[name] = finish
+        self._resources.callback(finish)
+        return release
 
     @contextmanager
     def writable_daily(self):

@@ -4,6 +4,8 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 | Script | Purpose |
 | --- | --- |
+| `bench_execution_policy.py` | Owned source-only child constructs actual policy from a captured workspace; immutable binding only, no financial request command |
+| `bench_policy_program.py` | Shared source-derived PolicyProgram; construction needs no NumPy, numerical methods import it lazily |
 | `bench_execution_inputs.py` | Bounded captured-input workspace with verified source snapshot and owned writable derivatives; no engine attachment or current raw freshness |
 | `bench_input_artifacts.py` | Internal shared prepared-artifact inspection; no ownership or admission |
 | `bench_capture_offline.py` | Stopped-runtime SQLite-safe research/daily/report copy under exclusive source/cache ownership; no benchmark admission |
@@ -228,3 +230,34 @@ See [wave12](../docs/plans/compiled-backtest/phases/CB-02/wave12/README.md).
 The next engine facade must consume this owner, bind both engines and actual
 policy to its generation, and preserve immediate edit detection with live
 priority. Benchmark admission stays closed.
+
+## Isolated captured policy
+
+`bench_execution_policy.CapturedPolicy` consumes an active CapturedWorkspace.
+It owns one source-only child and its verified benchmark tools beneath the
+workspace. The child imports actual application modules from private source and
+constructs the actual PolicyProgram. Its immutable binding joins policy/source
+evidence to the captured financial generation. It does not rewrite application
+paths or captured metadata. It exposes no financial command or application
+module. Parent imports and logging stay separate. Outer workspace closure also
+closes an escaped policy scope before releasing ownership. Stop-signal and
+evidence-write errors cannot bypass child/reader/handle cleanup. If cleanup
+cannot be confirmed, the workspace retains its owned resources and lock. Retry
+its context exit after resolving the cleanup failure. Retain the workspace object
+and call `inputs.__exit__(None, None, None)` to finish that suspended outer exit.
+Closing only the policy does not finish the outer exit. A caller exception keeps
+its original identity; it does not grant early ownership release.
+
+The existing `bench_candidates.PolicyProgram` name remains an alias to the
+extracted program. Financial formulas and signatures stay unchanged. Construction
+needs no NumPy. Existing numerical methods import NumPy when called. The retained
+candidate runner's source inventory also hashes the extracted implementation.
+A changed implementation rejects attachment before database or executor access.
+
+Only bounded synthetic fixtures are qualified here. Existing workspace caps stay
+unchanged. The child has a ten-second attachment deadline and a sampled 128 MiB
+memory limit. These checks do not establish hard CPU/disk isolation or transient
+peaks. See [wave13](../docs/plans/compiled-backtest/phases/CB-02/wave13/README.md).
+Reference controls, NumericInputs, current request-time freshness and general
+execution lifecycle still need the isolated engine facade. No real capture,
+derivative, request or benchmark is admitted.

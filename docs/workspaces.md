@@ -177,3 +177,13 @@ engines and policy without hidden original paths, retain immediate edit detectio
 and qualify resources/cancellation and availability. No normal launcher change
 or benchmark admission follows. See the
 [wave12 record](plans/compiled-backtest/phases/CB-02/wave12/README.md).
+
+Wave13 adds CapturedPolicy for that active workspace. One owned source-only
+child constructs actual PolicyProgram from the private source. Its imports stay
+out of the parent process. It exposes immutable source/policy/generation evidence
+only. Workspace exit closes escaped policy children before ownership ends.
+Unconfirmed child cleanup retains experimental ownership for an explicit exit
+retry. Cleanup errors do not release a live child or replace a caller exception.
+This does not bind reference controls or candidate numerical inputs, validate
+current raw freshness, admit real execution or qualify general resources.
+See [wave13](plans/compiled-backtest/phases/CB-02/wave13/README.md).

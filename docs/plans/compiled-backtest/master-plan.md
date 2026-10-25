@@ -129,6 +129,30 @@ without holding the live coordinator through calculation. Descendant/resource,
 cancellation and concurrent-availability qualification follow. Benchmark admission
 stays closed throughout this input prerequisite. No additional real copy is needed.
 
+## Isolated policy attachment split (wave13)
+
+The independent CODE design finds that complete application imports change the
+process-global logger. Private module dictionaries do not contain that effect.
+Wave13 therefore completes source-only policy attachment in an owned child.
+CapturedPolicy consumes the active CapturedWorkspace and constructs an actual
+PolicyProgram from its verified private source. It exposes immutable binding
+evidence only. It accepts no calculation command. See
+[wave13 design](phases/CB-02/wave13/design.md).
+
+Extract the existing policy program into a benchmark-only module with lazy
+NumPy imports. Preserve its public alias, financial expressions and signatures.
+Keep all existing workspace limits. Source-only child fixtures have a separate
+128 MiB sampled memory cap and ten-second attachment deadline. Own child tools
+and protocol evidence beneath the workspace. Close the child before workspace
+ownership ends, including escaped policy scopes and the recorded EOF/poll race.
+
+The full isolated engine facade remains unfinished. Next bind actual reference
+controls and NumericInputs to the same captured financial generation. Then add
+current request-time inventory under source-before-cache ownership with live
+priority, followed by compiler/mapping/descendant/resource/cancellation and
+concurrent-availability qualification. No original metadata is rewritten.
+No real capture, derivative, request, pilot or runner cutover is admitted.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -1031,7 +1055,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -1070,8 +1094,14 @@ window. It does not establish live capture or benchmark lifecycle qualification.
 Wave12 completes the bounded captured-input owner. It binds captured artifacts
 and actual source snapshots and owns private writable derivatives. It does not
 attach either engine or establish current raw freshness. The next bounded design
-is the engine facade in the wave12 handoff: consume CapturedWorkspace, construct
-PolicyProgram from its source snapshot and bind both engines to its generation.
+is the engine facade after wave13. CapturedPolicy now consumes CapturedWorkspace
+and constructs actual PolicyProgram in an owned source-only child. Full
+post-closure checks pass 179 WSL/177 native, with two optional native symlink skips.
+After the source-inventory repair, 41 affected checks pass on each platform.
+Combined latest suite results are 180/178; they are not one aggregate on the final
+source identity. Exact policy extraction and source-only child closure are
+verified. See [wave13 verification](phases/CB-02/wave13/verify.md). Next bind both
+actual reference controls and NumericInputs to that captured generation.
 Preserve immediate request-time raw-edit detection and live priority without
 holding the live coordinator through calculation. Keep original metadata and
 publication checks intact. Qualify descendants, execution resources, cancellation
@@ -1099,3 +1129,4 @@ before the required gate passes.
 | 25 October 2026 | The user authorized a feature worktree and independently owned test databases. Direct backup under the exclusive coordinator delays users; a rollback-journal reader can block writer commit. Wave10 passes 21 new store tests on each platform and retains closed admission/freshness checks. | Complete a synthetic-only immutable input store in `cb02/input-ownership`. Publish no production adapter or real copy. Keep the registered checkout and running engine unchanged. | Design a production immutable producer and retirement boundary on synthetic fixtures, then bind execution inputs/raw freshness and qualify capture/execution resources and availability. Cooperative fixture limits are insufficient for real capture. |
 | 25 October 2026 | The user stopped the server to simplify copying. Wave11 capture and admission fixtures pass16 per platform. The native stopped-runtime copy passes coherence/integrity/receipts and original invariance, including all saved books. Its one-time controller missed worker EOF; verified controller-only cleanup and independent copy checks resolved the operation, with worker exit code unobserved. | Add a separate offline copy owner; leave wave10 limits/admission unchanged. No live-copy protocol is inferred. Preserve originals and bind independently copied inputs next. | A shared execution owner must bind generation/source/raw freshness before resource and concurrent-availability qualification or any pilot. Live capture is separate optional future capability. |
 | 25 October 2026 | Wave12 inspection finds database defaults, report globals and spawned imports still depend on runtime paths. Copies contain no raw tree, so capture-time inventory cannot establish current freshness. The bounded owner verifies artifacts/coherence and actual source bytes with private derivatives; prior semantic identities remain unchanged. | Split captured input ownership from execution. Complete CapturedWorkspace under synthetic limits; keep both runners and admission closed. No more real capture is required. | Build the isolated engine facade and qualified live-priority request-freshness provider; then prove descendant/resource/cancellation and concurrent availability before a pilot. |
+| 25 October 2026 | Wave13 CODE inspection finds process-global logging effects in the actual application import closure. Policy construction itself needs no NumPy. | Split an owned source-only policy child from numerical/reference requests. Extract the shared program without financial changes; preserve unchanged owner limits and closed admission. | Bind both engines to the captured generation, add qualified current request freshness with live priority, then qualify general resources and availability before real execution. |

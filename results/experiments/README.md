@@ -88,3 +88,12 @@ unavailable. Synthetic WSL/native checks supply ownership evidence, not numerica
 parity, resource qualification or performance measurements. No real derivative
 creation or benchmark is admitted. See the
 [wave12 record](../../docs/plans/compiled-backtest/phases/CB-02/wave12/README.md).
+
+Wave13 adds isolated source-only policy attachment. An owned child constructs
+actual PolicyProgram from private captured source. The parent receives immutable
+policy/source/generation evidence only. Outer workspace closure closes escaped
+policy scopes. Numerical and reference request adapters, current raw freshness,
+general resources and concurrent availability remain unqualified. Existing
+candidate tests check extraction regressions separately; they do not prove a
+captured engine request. No new performance evidence follows. See the
+[wave13 record](../../docs/plans/compiled-backtest/phases/CB-02/wave13/README.md).
