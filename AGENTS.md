@@ -4,6 +4,21 @@ This folder is a standalone US stock backtest. It is not a a different research 
 
 The folder can move. Scripts resolve paths from their own file. Keep `raw/` with the Windows runtime code. The WSL source checkout does not hold a second full cache. The FMP key stays at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
 
+## Parallel development boundary
+
+The `main` worktree continues frontend and unrelated backend development. The
+`cb02/input-ownership` worktree owns the new backtest engine and its supporting
+financial/cache contracts. Before choosing files for a task, read
+[docs/worktree-coordination.md](docs/worktree-coordination.md).
+
+On main, preserve calculation rules, engine interfaces, prepared schemas,
+freshness checks, worker/lock ownership and benchmark code. Keep edits to shared
+files narrow. Avoid broad refactors, renames and formatting changes in these
+areas. If a feature needs an overlapping change, identify the affected contract
+and agree its owning branch before editing that part. Existing task agreements
+can supply that coordination. Continue independent work while an overlap is
+unresolved. This boundary keeps both worktrees active and limits merge conflicts.
+
 ## Git in this environment
 
 The authoritative source checkout is `<wsl-checkout>` in

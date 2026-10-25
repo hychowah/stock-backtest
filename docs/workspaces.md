@@ -4,6 +4,12 @@ Edit and commit source in WSL. Run the server, saved-data preparation and full-d
 
 The original legacy folder is retained as a fallback. It is not the active development checkout. The WSL repository preserves its saved history in `.git-local`. A `.git` pointer enables ordinary Git commands. The Windows runtime has no separate Git repository.
 
+Frontend and unrelated backend work continue on `main`. The linked
+`cb02/input-ownership` worktree owns the new backtest engine. Read
+[worktree-coordination.md](worktree-coordination.md) before changing shared
+calculation, cache, worker, API or startup contracts. The feature worktree does
+not replace the registered deployment source.
+
 ## Daily commands
 
 From the WSL source checkout:
