@@ -25,6 +25,7 @@ import bench_baseline as baseline
 import bench_methods as previous
 
 METHODS = ('numba', 'python', 'duckdb', 'persistent', 'polars', 'rust')
+STAGING = ('all', 'requested')
 PROTOCOL = 1
 
 
@@ -49,17 +50,28 @@ def memory_workspace(source, schedules):
         raise
 
 
-def stage_book(db, book, pool):
-    """Keep one book of candidate rows in the original SQL screener schema."""
+def stage_book(db, book, pool, *, ranking_metric=None, staged_rows=None):
+    """Stage one complete snapshot book and only the ranking pair consumed by
+    this request; preserve missing pairs and requested threshold values.
+
+    A None ranking_metric retains complete staging for the comparison control.
+    Count actual inserted rows, including zero rows for a missing ranking pair.
+    """
     for table in baseline.DERIVED:
         db.execute('DELETE FROM ' + table)
     db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)', (1, *book['period']))
-    db.executemany('INSERT INTO snapshots VALUES(' + ','.join('?' * 15) + ')',
-                   ((pool, 1, *row) for row in book['snapshots']))
-    db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
-                   (('historical', pool, 1, *row) for row in book['metrics']))
-    db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                   (('historical', pool, 1, *row) for row in book['filters']))
+    snapshots = db.executemany('INSERT INTO snapshots VALUES(' + ','.join('?' * 15) + ')',
+                               ((pool, 1, *row) for row in book['snapshots']))
+    metrics = db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
+        (('historical', pool, 1, symbol, metric, multiple, score)
+         for symbol, metric, multiple, score in book['metrics']
+         if ranking_metric is None or metric == ranking_metric))
+    filters = db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
+                             (('historical', pool, 1, *row) for row in book['filters']))
+    if staged_rows is not None:
+        for name, cursor in (('snapshots', snapshots), ('screening_metrics', metrics),
+                             ('filter_values', filters)):
+            staged_rows[name] += cursor.rowcount
     return 1
 
 
@@ -71,7 +83,11 @@ class BatchModel(previous.Model):
     Only the pending bounded batch and one SQL candidate book stay resident.
     """
     def __init__(self, inputs, executor, expected, source, *, batch_books=16,
-                 row_limit=65536):
+                 row_limit=65536, staging='all'):
+        if staging not in STAGING:
+            raise ValueError('Choose all or requested SQL staging.')
+        self.staging = staging
+        self.staged_rows = dict.fromkeys(('snapshots', 'screening_metrics', 'filter_values'), 0)
         self.s = inputs.s
         self.books = inputs.books
         self.cached = {symbol for symbol, present in zip(inputs.symbols, inputs.cached_mask)
@@ -134,22 +150,29 @@ class BatchModel(previous.Model):
         if requested != key:
             raise ValueError('Candidate executor changed first-use order.')
         began = time.perf_counter()
-        result = stage_book(db, book, pool)
+        ranking_metric = (self.options.get('metric', self.s.metrics.DEFAULT_METRIC)
+                          if self.staging == 'requested' else None)
+        result = stage_book(db, book, pool, ranking_metric=ranking_metric,
+                            staged_rows=self.staged_rows)
         self.add_time('staging_seconds', began)
         return result
 
 
 def run_candidate(inputs, executor, expected, source, store, *, freshness,
-                  budget_seconds, binding=None, progress=None):
+                  budget_seconds, binding=None, progress=None, staging='all'):
     """Measure a fresh request through the original financial request adapter."""
-    model = BatchModel(inputs, executor, expected, source)
+    model = BatchModel(inputs, executor, expected, source, staging=staging)
     try:
         measured, evidence = previous.run_request(
             model, None, expected, store, freshness=freshness,
-            progress=progress, budget_seconds=budget_seconds, binding=binding)
+            progress=progress, budget_seconds=budget_seconds,
+            binding=dict(binding or {}, staging=staging))
         measured['executor'] = dict(executor.stats)
+        measured.update(staging=staging, staged_rows=dict(model.staged_rows))
         return measured, evidence
     finally:
+        if model.last_request is not None:
+            model.last_request.update(staging=staging, staged_rows=dict(model.staged_rows))
         executor.last_request = model.last_request
         model.close()
 
@@ -280,13 +303,15 @@ def worker(args):
     baseline.bootstrap(args.runtime)
     import bench_candidates as core
     request = baseline.load(args.specification)
+    if request['staging'] != args.staging or args.staging not in STAGING:
+        raise ValueError('SQL staging variant differs from the frozen specification.')
     files = source_files()
     if hashes(files) != request['source_hashes']:
         raise ValueError('Candidate source changed before attachment.')
     source = sqlite3.connect((args.runtime / 'data/schedules.sqlite').resolve().as_uri()+'?mode=ro', uri=True)
     source.row_factory = sqlite3.Row
     inputs = executor = generation = None
-    report = dict(method=args.worker, cases=[], status='setup', setup=None)
+    report = dict(method=args.worker, staging=args.staging, cases=[], status='setup', setup=None)
     resources = baseline.Resources(); resources.start()
     began = time.perf_counter()
     try:
@@ -319,7 +344,7 @@ def worker(args):
         for case in request['requests']:
             emit('request_start', method=args.worker, case=case['id'], kind=case['kind'])
             store = args.workdir / (args.worker+'-'+case['id']+'.sqlite')
-            result = dict(id=case['id'], kind=case['kind'], status='running')
+            result = dict(id=case['id'], kind=case['kind'], staging=args.staging, status='running')
             report['cases'].append(result)
             baseline.publish(args.result, report)
             try:
@@ -335,7 +360,7 @@ def worker(args):
                     if event['completed'] in (1, 8, 16, 24):
                         emit('trial', method=args.worker, case=case['id'], completed=event['completed'])
                 measured, picks = run_candidate(inputs, executor, case['configuration'],
-                    source, store, freshness=freshness,
+                    source, store, freshness=freshness, staging=args.staging,
                     budget_seconds=request['request_budget'] if case['kind']=='primary' else request['smoke_budget'],
                     binding=dict(input_identity=request['input_identity_sha256'],
                                  policy=inputs.policy.signature, source_hashes=request['source_hashes'],
@@ -354,7 +379,8 @@ def worker(args):
                     result['measurement'] = measured
                 else:
                     result['correctness'] = dict(committed_trials=measured['committed_trials'],
-                                                executor=measured['executor'])
+                                                executor=measured['executor'], staging=measured['staging'],
+                                                staged_rows=measured['staged_rows'])
                 emit('request_complete', method=args.worker, case=case['id'], status='matched',
                      **({'seconds':measured['wall_seconds']} if case['kind']=='primary' else {}))
             except Exception as error:
@@ -421,7 +447,7 @@ def run_isolated(args,method,specification,result):
     from bench_candidates_process import OwnedProcess
     command = [sys.executable,str(Path(__file__).resolve()),'--runtime',str(args.runtime),
         '--workdir',str(args.workdir),'--worker',method,'--specification',str(specification),
-        '--result',str(result)]
+        '--result',str(result),'--staging',args.staging]
     environment = dict(os.environ)
     # The child announces readiness before acquiring source ownership. Its
     # financial imports start only after assignment to the parent-owned job.
@@ -461,7 +487,7 @@ def run_isolated(args,method,specification,result):
                 emit('method_hard_timeout',method=method,stage=stage,case=case)
                 break
         code=owned.process.wait(timeout=30)
-    report=baseline.load(result) if result.exists() else dict(method=method,cases=[])
+    report=baseline.load(result) if result.exists() else dict(method=method,staging=args.staging,cases=[])
     report['process_exit_code']=code
     report['owned_descendants_closed']=True
     if outcome:
@@ -506,7 +532,7 @@ def parent(args):
     manifest=baseline.load(args.manifest)
     files=source_files(); source_hashes=hashes(files)
     report=dict(protocol=PROTOCOL,status='running',methods=args.methods,
-        prepared_validation=args.prepared_validation,
+        prepared_validation=args.prepared_validation,staging=args.staging,
         source_hashes=source_hashes,environment=baseline.environment(),runs=[],controls=[],
         request_budget_seconds=args.request_budget,setup_budget_seconds=args.setup_budget,
         smoke_budget_seconds=args.smoke_budget,
@@ -550,7 +576,7 @@ def parent(args):
             report['primary_reference']=dict(file=reference.name,sha256=baseline.file_hash(reference))
             specification=args.workdir/'specification.json'
             baseline.publish(specification,dict(source_hashes=source_hashes,requests=requests,
-                prepared_validation=args.prepared_validation,
+                prepared_validation=args.prepared_validation,staging=args.staging,
                 input_identity_sha256=report['input_identity_sha256'],request_budget=args.request_budget,
                 smoke_budget=args.smoke_budget))
             for number,method in enumerate(args.methods,1):
@@ -587,6 +613,8 @@ def parser():
     result.add_argument('--runtime', type=Path, required=True)
     result.add_argument('--workdir', type=Path, required=True)
     result.add_argument('--methods', nargs='+', choices=METHODS, default=list(METHODS))
+    result.add_argument('--staging', choices=STAGING, default='all',
+                        help='Stage all ranking pairs (control) or only the requested metric.')
     result.add_argument('--prepared-validation', action='store_true',
                         help='Benchmark exact inventory validation and planned request work; no production changes.')
     result.add_argument('--case', default='legacy-F0-42',

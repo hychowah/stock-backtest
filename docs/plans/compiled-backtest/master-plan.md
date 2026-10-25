@@ -43,6 +43,15 @@ F2 fails: Numba 4.66× and Rust 4.53×. No primary cases remain. No production
 backend is selected. Shared request costs need another bounded experiment before
 integration. Operational qualification and the freshness policy remain unchanged.
 
+The [sixth-wave bounded pilot](phases/CB-02/wave6/README.md) tested only
+requested-metric SQL staging in Numba on frozen `cached-F2-20261022`.
+Complete staging took 54.17 seconds; projection took 52.04 seconds.
+The observed 3.92% reduction and 4.87× conservative production ratio
+fail its prospectively declared 10% / 5× criteria. All financial comparisons
+remain exact. The intervention stops without expansion. The next bounded
+question concerns source-derived candidate guards and assembly. No full matrix
+or production integration follows this failed pilot.
+
 The decisions below supersede earlier instructions to expand both candidates
 or continue the broad method search. Historical phase records retain their
 original conclusions and measurements.
@@ -323,7 +332,7 @@ Split or merge remaining work when the evidence warrants it and record the chang
 
 | Milestone | Result and exit evidence | Related phases |
 |---|---|---|
-| Close the request-performance gap | One bounded Numba experiment, then the full unchanged primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
+| Close the request-performance gap | New bounded Numba guard/assembly experiment after the rejected metric-staging pilot, then the full unchanged primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
 | Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; agreed workflow budgets | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
 | Deliver faster existing workflows | Opt-in support for the existing month intervals, filters, trial inspection, exports and rollback | CB-04–CB-07 and CB-09–CB-13 |
 | Add weekly research | Frozen calendar, correct explicit-date returns, useful latency and bounded resources | CB-08 and weekly extensions in CB-09–CB-14 |
@@ -486,14 +495,25 @@ retains original counters; no component ablation or new fix is claimed. Re-run
 the full primary gate after a changed implementation. Do not substitute an
 overall average or begin production integration from this failed gate.
 
-**Next bounded experiment:** Use Numba. Test whether reducing shared candidate
-guards/assembly, price lookup or SQL staging/selection closes the broader-pool
-F2 gap while preserving all contracts. Select one intervention from measured
-evidence. Record the hypothesis, isolated file scope, timing/resource budget,
-expected evidence and stop condition before running it. Counters overlap; they
-do not establish a causal saving. Use a paired pilot to reject ineffective
-changes before another full matrix. Do not expand unchanged code or optimize
-only the already-small factor arithmetic without new evidence.
+**Sixth-wave result:** The requested-metric staging intervention omitted
+1,412,574 ranking rows while retaining complete candidate books and unchanged
+SQL policy. Contemporary complete/projected requests took 54.17/52.04 seconds.
+Projection reduced request time by 3.92% and reached 4.87× against its faster
+adjacent production control. Both prospective criteria fail. Both variants have
+exact intermediate, holding, summary and replay agreement. Source and full
+input identities match. See [wave6](phases/CB-02/wave6/README.md). No full matrix
+ran. Keep this failed hypothesis visible; do not expand it unchanged.
+
+**Next bounded experiment:** Retain Numba. Test source-derived candidate guards
+and assembly as the next single intervention. The projected request still
+records 15.75 seconds in source guards within candidate batches, versus
+0.054 seconds in numerical factors. These overlapping counters identify a
+question; they do not establish a saving. Preserve one financial policy,
+complete candidate evidence, SQL parity, freshness, saving and delivery.
+Record a new detailed code design, isolated scope, timing/resource budget and
+stop condition before another paired pilot. Do not replace the library or
+optimize the small arithmetic kernel without new evidence. A changed source
+identity must pass the complete primary gate before production integration.
 
 Add the complete trailing-filter supplement and workflow measurements under
 separately frozen settings. Isolated lifecycle proofs may proceed to expose an
@@ -761,7 +781,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Fifth wave](phases/CB-02/wave5/README.md); all 18 cases exact; broader-pool F2 medians Numba 4.66× / Rust 4.53×; next bounded shared-request experiment; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×; next bounded guard/assembly question; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -784,11 +804,12 @@ The immediate next step remains **CB-02**, now a focused Numba experiment.
 All six named approaches have been tested. Wave4 preserves immediate manual-edit
 detection. Wave5 completed the full primary comparison for Numba and Rust, with
 exact financial agreement. Both fail the broader-pool F2 median gate. No primary
-cases remain. Use the observed request-cost evidence to define one bounded
-shared-work hypothesis, budget and stop condition. Keep full validation, saving
-and delivery in headline timing and repeat the full gate after implementation
-changes. Do not start
-production integration before the required gate passes.
+cases remain for wave5. Wave6 rejected requested-metric SQL staging alone:
+3.92% observed request reduction and 4.87× production ratio. Do not expand
+that unchanged intervention. Define a new bounded source-derived guard/assembly
+hypothesis, scope, budget and stop condition. Keep full validation, saving and
+delivery in headline timing. Repeat the full gate after implementation changes.
+Do not start production integration before the required gate passes.
 
 ## Program decision record
 
@@ -798,3 +819,4 @@ production integration before the required gate passes.
 | 25 October 2026 | All frozen F2 trials are incomplete. Setup is separate and startup/restart, filter changes and weekly capacity remain unqualified. | Retain F2; add complete trailing-filter coverage. Define workflow budgets before qualification. Separate existing-month delivery from weekly delivery. Allow early isolated operational proofs. | User acceptance budgets and full operational evidence remain unresolved. |
 | 25 October 2026 | Equivalent fresh scanning preserved immediate manual-edit detection across the full matrix. | Remove startup-only detection from the planned direction. Reuse demonstrated work and harden only missing capabilities. | Production publisher and lifecycle proofs remain required. |
 | 25 October 2026 | User explicitly permits plan changes when implementation yields new insight. | Reassess and update the roadmap from evidence, preserving history and acceptance criteria. | Raise material scope or acceptance changes for a user decision. |
+| 25 October 2026 | Wave6 metric projection preserved exact results and removed 1,412,574 unused rows, but its 3.92% request reduction and 4.87× ratio failed the declared pilot criteria. | Stop this intervention without a full matrix. Retain Numba; focus the next bounded question on source-derived candidate guards/assembly. | Can one shared-policy intervention close the request gap? Full primary and operational gates remain required. |
