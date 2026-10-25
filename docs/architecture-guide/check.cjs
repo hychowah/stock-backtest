@@ -17,6 +17,7 @@ assert(html.includes('Financial ratios use annual statement inputs.') && html.in
 assert(html.includes('WSL source') && html.includes('Windows runtime') && html.includes('tools/deploy.py') && html.includes('deployment.pending.json'), 'Explain source deployment and interrupted publication');
 assert(html.includes('serve_app.py') && html.includes('runtime_access.py') && html.includes('--collect-report'), 'Explain native ownership and verified report collection');
 assert(html.includes('tools/bench_baseline.py') && html.includes('CB-01') && html.includes('24 annual trials over 1997–2025') && html.includes('does not measure the browser or an HTTP server'), 'Explain the frozen production baseline and its measurement boundary');
+assert(html.includes('tools/bench_execution.py') && html.includes('tools/bench_comparison.py') && html.includes('Real benchmark admission stays closed.') && html.includes('These fixture checks give no new speed result.'), 'Distinguish disposable financial execution from real admission and speed qualification');
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 

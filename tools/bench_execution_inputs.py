@@ -247,7 +247,7 @@ def _connect(path, budget, *, readonly):
             db.execute('PRAGMA query_only=ON')
         else:
             page_size = db.execute('PRAGMA page_size').fetchone()[0]
-            db.execute(f'PRAGMA max_page_count={MAX_DATABASE_BYTES // page_size}')
+            db.execute(f'PRAGMA max_page_count={getattr(budget, "database_bytes", MAX_DATABASE_BYTES) // page_size}')
         db.set_progress_handler(budget.progress, 1000)
         return db
     except BaseException:
@@ -426,9 +426,18 @@ class CapturedWorkspace:
             if error is None:
                 raise
 
+    def _budget(self):
+        """The public captured-input fixture retains its original envelope.
+
+        A measurement owner can reuse artifact operations with a separately
+        declared envelope. That owner must obtain execution admission first.
+        Changing that owner does not enlarge this fixture's qualified scope.
+        """
+        return _Budget(self.cancel)
+
     @contextmanager
     def _open_owned(self):
-        budget = _Budget(self.cancel)
+        budget = self._budget()
         with ExitStack() as lifetime:
             with _artifact_failures(budget):
                 lifetime.enter_context(self._ownership())
@@ -441,8 +450,8 @@ class CapturedWorkspace:
                     _require({p.name for p in self.capture.iterdir()} == set(_FILES) | {'capture.json'})
                     for path in self.capture.iterdir():
                         _require(_inside(self.capture, path.name).is_file())
-                    _require(sum((self.capture / name).stat().st_size for name in _FILES[:2]) <= MAX_DATABASE_BYTES, 'limit')
-                    _require(sum(p.stat().st_size for p in self.capture.iterdir()) <= MAX_OUTPUT_BYTES, 'limit')
+                    _require(sum((self.capture / name).stat().st_size for name in _FILES[:2]) <= getattr(budget, 'database_bytes', MAX_DATABASE_BYTES), 'limit')
+                    _require(sum(p.stat().st_size for p in self.capture.iterdir()) <= getattr(budget, 'output_bytes', MAX_OUTPUT_BYTES), 'limit')
                     manifest, raw = _manifest(self.capture)
                     for name in _FILES:
                         path = self.capture / name
@@ -541,7 +550,7 @@ class CapturedWorkspace:
     def writable_daily(self):
         """Borrow a fresh private derivative; outer exit also closes escapes."""
         _require(self._active)
-        budget = _Budget(self.cancel)
+        budget = self._budget()
         target = folder = None
         try:
             with _artifact_failures(budget):
@@ -555,7 +564,7 @@ class CapturedWorkspace:
                 self.daily.backup(target, pages=16, progress=budget.backup_progress, sleep=0)
                 # Backup copies page settings; enforce the target cap afterwards.
                 page_size = target.execute('PRAGMA page_size').fetchone()[0]
-                target.execute(f'PRAGMA max_page_count={MAX_DATABASE_BYTES // page_size}')
+                target.execute(f'PRAGMA max_page_count={getattr(budget, "database_bytes", MAX_DATABASE_BYTES) // page_size}')
                 budget.check(self._folder)
                 (folder / 'attempt.json').write_bytes(artifacts.encoded(dict(status='attached')))
             yield target
