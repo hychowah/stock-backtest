@@ -23,6 +23,7 @@ import types
 import numpy as np
 
 from bench_methods_arrays import ArrayPrices
+from bench_candidates_policy import CandidateDecisionProgram
 
 
 FINANCIAL_FIELDS = ('pe', 'pb', 'fcf', 'fcf_yield', 'price_fcf',
@@ -203,8 +204,10 @@ class PolicyProgram:
         self.expression_map = dict(expressions)
         self.output_names = tuple(name for name,unused in expressions)
         self.output_index = {name:i for i,name in enumerate(self.output_names)}
+        self.decisions = CandidateDecisionProgram(self, _tree)
         source_files = {Path(function.__code__.co_filename).resolve()
-                        for function in (schedules.financial_books.snapshot,m.financial_values,
+                        for function in (schedules.financial_books.snapshot,schedules.financial_books.eligible,
+                                         m.current_multiple,m.financial_values,
                                          schedules.compute_period,m.three_year_multiple)}
         source_files.update(Path(module.__file__).resolve() for module in
             (schedules.financial_books.run,schedules.r,schedules.r.revalue))
@@ -217,6 +220,8 @@ class PolicyProgram:
                         minimum_cap=schedules.financial_books.run.MIN_MARKET_CAP,
                         minimum_ev=schedules.financial_books.run.MIN_EV,
                         bankruptcy=sorted(schedules.r.revalue.BANKRUPT if bankrupt is None else bankrupt),
+                        candidate_decisions=self.decisions.source,
+                        candidate_statuses=self.decisions.statuses,
                         spy_expression=self.spy_expression,
                         expressions=self.expressions)
         self.signature = hashlib.sha256(json.dumps(identity,sort_keys=True,
@@ -536,14 +541,20 @@ class PythonExecutor:
         self.options = {}
         self.request_plan = None
         self.trace = {}
-        self.stats = dict(backend='python',batches=0,books=0,candidate_rows=0)
+        assembly = self.limits.get('candidate_assembly', 'source')
+        if assembly not in ('source', 'compiled'):
+            raise ValueError('Unknown candidate assembly variant.')
+        if assembly == 'compiled' and type(self).__name__ != 'NumbaExecutor':
+            raise ValueError('Compiled candidate assembly requires Numba.')
+        self.candidate_assembly = assembly
+        self.stats = dict(backend='python',candidate_assembly=assembly,batches=0,books=0,candidate_rows=0)
 
     def begin(self,request):
         self.options = dict(request.get('options',request))
         self.request_plan = RequestPlan(request, self.inputs) if self.limits.get('request_plan') else None
         self.trace = {}
         for key in ('report_seconds','lookup_seconds','planning_seconds',
-                    'numeric_seconds','source_guard_seconds'):
+                    'numeric_seconds','source_guard_seconds','decision_seconds','assembly_seconds','encoding_seconds'):
             self.stats.pop(key,None)
         self.stats.update(batches=0,books=0,candidate_rows=0)
         if self.request_plan is not None:
@@ -710,8 +721,43 @@ class PythonExecutor:
             results.append(dict(entry=str(entry),exit=str(exit_day),pool=pool,
                 period=(str(entry),str(exit_day),spy,treasuries[book],int(np.count_nonzero(ranks[book])),
                         int(np.count_nonzero(broad[book]>=0))),snapshots=[],metrics=[],filters=[]))
+        accepted = self.assemble_candidates(books, rows, targets, lookup_days,
+            lookup_values, matrix, numeric, ranks, needed, results)
+        self._time('source_guard_seconds' if self.candidate_assembly == 'source'
+                   else 'assembly_seconds',started)
+        self.stats['batches'] += 1;self.stats['books'] += len(books);self.stats['candidate_rows'] += len(rows)
+        self.trace = dict(entries=entries,exits=exits,broad_reports=broad,legacy_reports=legacy,
+            ranks=ranks,row_books=row_books,row_symbols=row_symbols,row_reports=row_reports,
+            lookup_days=lookup_days,lookup_values=lookup_values,numeric_inputs=matrix,
+            numeric_outputs=numeric,accepted=accepted) if self.limits.get('capture') else {}
+        return results
+
+    def assemble_candidates(self, books, rows, targets, lookup_days, lookup_values,
+                            matrix, numeric, ranks, needed, results):
+        return self._source_candidates(books, rows, targets, lookup_days, lookup_values,
+                                       numeric, ranks, needed, results)
+
+    def _encode_candidate(self, output, symbol, rank, observation, current_pair,
+                          three_pair, values, needed):
+        """Encode accepted candidate decisions into the existing complete book
+        format, preserving row order, ranking-pair missingness and requested
+        threshold values.
+        """
+        fiscal,buy,sell,cap,ev,ebitda,yield_value,multiple,ret,status = observation
+        oi = self.policy.output_index
+        output['snapshots'].append((symbol,rank,fiscal,buy,sell,cap,ev,ebitda,
+            yield_value,multiple,values[oi['excess_yield']],ret,status))
+        if current_pair is not None:output['metrics'].append((symbol,'ev_ebitda',*current_pair))
+        if three_pair is not None:output['metrics'].append((symbol,'ev_ebitda_3y',*three_pair))
+        for field in self.policy.filter_order:
+            value = values[oi['filter_'+field]]
+            if field in needed and math.isfinite(value):output['filters'].append((symbol,field,value))
+
+    def _source_candidates(self, books, rows, targets, lookup_days, lookup_values,
+                           numeric, ranks, needed, results):
+        inputs,policy = self.inputs,self.policy
+        plan = self.request_plan
         accepted = np.zeros(len(rows),dtype=np.bool_)
-        oi = policy.output_index
         for row,(book,symbol_id,report) in enumerate(rows):
             entry,exit_day,pool = books[book]
             symbol = inputs.symbols[symbol_id]
@@ -734,28 +780,16 @@ class PythonExecutor:
             fiscal,buy,sell,cap,ev,ebitda,yield_value,multiple,ret,status = observation
             if not inputs.s.financial_books.eligible(pool,cap,ev):continue
             accepted[row] = True
-            output = results[book]
-            rank = int(ranks[book,symbol_id]) or None
-            output['snapshots'].append((symbol,rank,fiscal,buy,sell,cap,ev,ebitda,
-                yield_value,multiple,values[oi['excess_yield']],ret,status))
             metric_observation = dict(symbol=symbol,fiscal=fiscal,market_cap=cap,
                 enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
             pair = inputs.s.metrics.current_multiple(metric_observation,inputs.histories[symbol])
-            output['metrics'].append((symbol,'ev_ebitda',*pair))
+            current_pair = pair
             average = inputs.average_3y[report]
             pair = policy._three(metric_observation,inputs.histories[symbol],values,
                                   None if np.isnan(average) else float(average))
-            if pair is not None:output['metrics'].append((symbol,'ev_ebitda_3y',*pair))
-            for field in policy.filter_order:
-                value = values[oi['filter_'+field]]
-                if field in needed and math.isfinite(value):output['filters'].append((symbol,field,value))
-        self._time('source_guard_seconds',started)
-        self.stats['batches'] += 1;self.stats['books'] += len(books);self.stats['candidate_rows'] += len(rows)
-        self.trace = dict(entries=entries,exits=exits,broad_reports=broad,legacy_reports=legacy,
-            ranks=ranks,row_books=row_books,row_symbols=row_symbols,row_reports=row_reports,
-            lookup_days=lookup_days,lookup_values=lookup_values,numeric_inputs=matrix,
-            numeric_outputs=numeric,accepted=accepted) if self.limits.get('capture') else {}
-        return results
+            self._encode_candidate(results[book], symbol, int(ranks[book,symbol_id]) or None,
+                                   observation, current_pair, pair, values, needed)
+        return accepted
 
     def close(self):
         self.trace = {}

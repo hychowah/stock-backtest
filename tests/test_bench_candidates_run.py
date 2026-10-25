@@ -22,6 +22,22 @@ import bench_candidates_run as runner
 from bench_candidates_process import OwnedProcess
 
 
+def valid_resources():
+    return dict(supported=True, samples=1, error=None,
+                sampled_tree_peaks=dict(private_bytes=1024, working_set=2048))
+
+
+def agreed_method(requests):
+    return dict(status='complete', financial_agreement=True, process_exit_code=0,
+        owned_descendants_closed=True, resources_closed=True, source_unchanged=True,
+        setup=dict(wall_seconds=1., resources=valid_resources()),
+        intermediate_proof=dict(comparison=dict(exact=True)),
+        cases=[dict(id=case['id'],kind=case['kind'],status='matched',
+            comparison=dict(exact=True),summary_comparison=dict(exact=True),
+            replay_comparison=dict(exact=True),
+            measurement=dict(wall_seconds=1.,resources=valid_resources())) for case in requests])
+
+
 class CandidateRequestTests(unittest.TestCase):
     def setUp(self):
         self.fixture=shared.SharedMethodsTests('test_empty_trials_remain_visible_and_excluded_from_distributions')
@@ -194,12 +210,12 @@ class CandidateRequestTests(unittest.TestCase):
             reference_file=workdir/'reference.json'
             shared.baseline.publish(reference_file,reference)
             specification=workdir/'specification.json'
-            shared.baseline.publish(specification,dict(staging=staging,
+            shared.baseline.publish(specification,dict(staging=staging,candidate_assembly='source',
                 source_hashes=runner.hashes(runner.source_files()),input_identity_sha256='fixture',
-                request_budget=10.,smoke_budget=10.,requests=[dict(id='fixture',kind='untimed_correctness',
+                setup_budget=600.,request_budget=10.,smoke_budget=10.,requests=[dict(id='fixture',kind='untimed_correctness',
                     configuration=config,evidence_file=str(reference_file),summary=summary)]))
             args=SimpleNamespace(worker='python',runtime=runtime,workdir=workdir,
-                specification=specification,result=workdir/'result.json',staging=staging)
+                specification=specification,result=workdir/'result.json',staging=staging,candidate_assembly='source')
             with patch.object(runner.sys,'stdin',io.StringIO('GO\n')), \
                     patch.dict(os.environ),patch.object(runner.baseline,'bootstrap'), \
                     patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=True))), \
@@ -209,6 +225,7 @@ class CandidateRequestTests(unittest.TestCase):
             self.assertEqual(report['status'],'complete')
             self.assertTrue(report['financial_agreement'])
             self.assertEqual(report['staging'],staging)
+            self.assertEqual(report['candidate_assembly'],'source')
             case=report['cases'][0]
             self.assertEqual(case['staging'],staging)
             self.assertEqual(case['correctness']['staging'],staging)
@@ -216,6 +233,7 @@ class CandidateRequestTests(unittest.TestCase):
             with closing(sqlite3.connect(workdir/case['result_store_file'])) as store:
                 identity=json.loads(store.execute('SELECT value FROM binding').fetchone()[0])['identity']
             self.assertEqual(identity['staging'],staging)
+            self.assertEqual(identity['candidate_assembly'],'source')
             self.assertTrue(case['comparison']['exact'])
             self.assertTrue(case['summary_comparison']['exact'])
             self.assertTrue(case['replay_comparison']['exact'])
@@ -228,16 +246,18 @@ class CandidateRequestTests(unittest.TestCase):
             db=sqlite3.connect(self.fixture.path)
             db.row_factory=sqlite3.Row
             return db
-        for staging in runner.STAGING:
+        for staging,assembly in (('all','source'),('requested','source'),('all','compiled')):
             args=runner.parser().parse_args(['--runtime',str(self.fixture.root),
-                '--workdir',str(self.fixture.root/('parent-'+staging)),
-                '--methods','numba','--staging',staging,'--case','fixture'])
+                '--workdir',str(self.fixture.root/('parent-'+staging+'-'+assembly)),
+                '--methods','numba','--staging',staging,'--candidate-assembly',assembly,'--case','fixture'])
             def isolated(arguments,method,specification,result):
                 frozen=shared.baseline.load(specification)
                 self.assertEqual(frozen['staging'],staging)
                 self.assertEqual(arguments.staging,staging)
-                return dict(staging=staging,cases=[dict(id='fixture',kind='primary',status='matched',
-                    measurement=dict(wall_seconds=1.))])
+                self.assertEqual(frozen['candidate_assembly'],assembly)
+                self.assertEqual(arguments.candidate_assembly,assembly)
+                self.assertEqual(frozen['setup_budget'],arguments.setup_budget)
+                return dict(agreed_method(frozen['requests']),staging=staging,candidate_assembly=assembly)
             with ExitStack() as stack:
                 stack.enter_context(patch.object(runner,'os',SimpleNamespace(name='nt',environ=os.environ)))
                 stack.enter_context(patch.dict(os.environ))
@@ -262,6 +282,258 @@ class CandidateRequestTests(unittest.TestCase):
             report=shared.baseline.load(args.workdir/'comparison.json')
             self.assertEqual(report['staging'],staging)
             self.assertEqual(report['runs'][0]['staging'],staging)
+            self.assertEqual(report['candidate_assembly'],assembly)
+            self.assertEqual(report['runs'][0]['candidate_assembly'],assembly)
+
+
+class TerminalEvidenceTests(unittest.TestCase):
+    setUp = CandidateRequestTests.setUp
+
+    def worker_case(self, label, *, kind='untimed_correctness', setup_budget=600.):
+        config = self.fixture.configuration('cached','F2')
+        reference, summary = self.fixture.reference(config)
+        runtime = self.fixture.root / ('runtime-'+label)
+        (runtime/'data').mkdir(parents=True)
+        shutil.copyfile(self.fixture.path,runtime/'data/schedules.sqlite')
+        workdir = self.fixture.root / ('worker-'+label); workdir.mkdir()
+        evidence = workdir/'reference.json'; shared.baseline.publish(evidence,reference)
+        requests = [dict(id=label+'-'+str(i),kind=kind,configuration=config,
+                         evidence_file=str(evidence),summary=summary) for i in range(2)]
+        specification = workdir/'specification.json'
+        shared.baseline.publish(specification,dict(staging='all',candidate_assembly='source',
+            source_hashes=runner.hashes(runner.source_files()),input_identity_sha256='fixture',
+            setup_budget=setup_budget,request_budget=10.,smoke_budget=10.,requests=requests))
+        args = SimpleNamespace(worker='python',runtime=runtime,workdir=workdir,
+            specification=specification,result=workdir/'result.json',staging='all',candidate_assembly='source')
+        return args, reference
+
+    def worker_context(self):
+        stack = ExitStack()
+        stack.enter_context(patch.object(runner.sys,'stdin',io.StringIO('GO\n')))
+        stack.enter_context(patch.dict(os.environ))
+        stack.enter_context(patch.object(runner.baseline,'bootstrap'))
+        return stack
+
+    def assert_worker_stopped(self, args, expected_cases):
+        report = shared.baseline.load(args.result)
+        self.assertEqual(report['status'],'failed')
+        self.assertFalse(report['financial_agreement'])
+        self.assertTrue(report['resources_closed'])
+        self.assertTrue(report['source_unchanged'])
+        self.assertEqual(len(report['cases']),expected_cases)
+        return report
+
+    def test_failed_proof_stops_before_requests_and_preserves_comparison(self):
+        for label, proof in (('returned',dict(comparison=dict(exact=False,maximum_absolute=1e-15))),
+                             ('raised',ValueError('Proof failed'))):
+            with self.subTest(label=label):
+                args,_ = self.worker_case('proof-'+label)
+                kwargs = dict(side_effect=proof) if isinstance(proof,Exception) else dict(return_value=proof)
+                with self.worker_context(), patch.object(runner,'intermediate_proof',**kwargs), \
+                        patch.object(runner,'run_candidate') as request, patch.object(runner,'emit'), \
+                        patch.object(PythonExecutor,'close',autospec=True,side_effect=PythonExecutor.close) as close:
+                    runner.worker(args)
+                request.assert_not_called(); close.assert_called_once()
+                report = self.assert_worker_stopped(args,0)
+                self.assertEqual(report['intermediate_proof']['status'],'failed')
+                if label=='returned':
+                    self.assertEqual(report['intermediate_proof']['comparison'],proof['comparison'])
+
+    def test_unagreed_holdings_summary_or_replay_is_terminal_with_completed_evidence(self):
+        original_compare = shared.baseline.compare
+        for label, target in (('holdings',1),('summary',2),('replay',3),('exception',1)):
+            with self.subTest(label=label):
+                args, reference = self.worker_case(label)
+                comparisons = 0
+                def compare(*values):
+                    nonlocal comparisons
+                    comparisons += 1
+                    result = original_compare(*values)
+                    if comparisons==target:
+                        if label=='exception':raise ValueError('Synthetic comparison failure')
+                        result.update(exact=False,maximum_absolute=1e-15)
+                    return result
+                with self.worker_context(), patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=True))), \
+                        patch.object(runner,'run_candidate',wraps=runner.run_candidate) as request, \
+                        patch.object(runner.baseline,'compare',side_effect=compare), patch.object(runner,'emit'):
+                    runner.worker(args)
+                request.assert_called_once()
+                report = self.assert_worker_stopped(args,1)
+                case = report['cases'][0]
+                self.assertEqual(case['status'],'failed')
+                self.assertEqual(case['committed_trials'],3)
+                self.assertTrue(case['partial_comparison']['exact'])
+                self.assertTrue(original_compare(reference,shared.baseline.load(args.workdir/case['evidence_file']))['exact'])
+                self.assertTrue(original_compare(reference,shared.methods.replay(args.workdir/case['result_store_file']))['exact'])
+                if label!='exception':
+                    field = dict(holdings='comparison',summary='summary_comparison',replay='replay_comparison')[label]
+                    self.assertFalse(case[field]['exact'])
+                    self.assertEqual(case[field]['maximum_absolute'],1e-15)
+
+    def test_request_exception_retains_committed_prefix_and_closes_every_connection(self):
+        args, reference = self.worker_case('interrupted')
+        original_run = runner.run_candidate
+        original_connect = sqlite3.connect
+        connections = []
+        def connect(*values,**kwargs):
+            db = original_connect(*values,**kwargs);connections.append(db);return db
+        def interrupted(*values,**kwargs):
+            def stop(event):
+                if event['completed']==1:raise RuntimeError('Stop after durable trial')
+            kwargs['progress'] = stop
+            return original_run(*values,**kwargs)
+        with self.worker_context(), patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=True))), \
+                patch.object(runner,'run_candidate',side_effect=interrupted) as request, \
+                patch.object(sqlite3,'connect',side_effect=connect), patch.object(runner,'emit'), \
+                patch.object(PythonExecutor,'close',autospec=True,side_effect=PythonExecutor.close) as executor_close, \
+                patch.object(NumericInputs,'close',autospec=True,side_effect=NumericInputs.close) as inputs_close:
+            runner.worker(args)
+        request.assert_called_once();executor_close.assert_called_once();inputs_close.assert_called_once()
+        for db in connections:
+            with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
+        report = self.assert_worker_stopped(args,1)
+        case = report['cases'][0]
+        self.assertEqual(case['committed_trials'],1)
+        self.assertTrue(case['partial_comparison']['exact'])
+        self.assertTrue(shared.baseline.compare(reference[:1],shared.methods.replay(args.workdir/case['result_store_file']))['exact'])
+
+    def test_invalid_setup_stops_before_proof_or_request(self):
+        for label in ('time','memory','sampling','sampling-start'):
+            with self.subTest(label=label):
+                args,_ = self.worker_case('setup-'+label,setup_budget=1e-30 if label=='time' else 600.)
+                resources = valid_resources()
+                if label=='memory':resources['sampled_tree_peaks']['working_set'] = 2*1024**3+1
+                if label=='sampling':resources['error'] = 'SyntheticSamplerFailure'
+                sampler = Mock();sampler.finish.return_value = resources
+                if label=='sampling-start':sampler.start.side_effect = OSError('Synthetic sampler start failure')
+                with self.worker_context(), patch.object(runner.baseline,'Resources',return_value=sampler), \
+                        patch.object(runner,'intermediate_proof') as proof, \
+                        patch.object(runner,'run_candidate') as request,patch.object(runner,'emit'):
+                    runner.worker(args)
+                proof.assert_not_called();request.assert_not_called()
+                self.assert_worker_stopped(args,0)
+
+    def test_invalid_primary_stops_before_next_request_and_keeps_full_evidence(self):
+        original_run = runner.run_candidate
+        for label in ('time','memory','sampling'):
+            with self.subTest(label=label):
+                args, reference = self.worker_case('primary-'+label,kind='primary')
+                def invalid(*values,**kwargs):
+                    measured,picks = original_run(*values,**kwargs)
+                    measured['resources'] = valid_resources()
+                    if label=='time':measured['wall_seconds'] = 11.
+                    if label=='memory':measured['resources']['sampled_tree_peaks']['private_bytes'] = 2*1024**3+1
+                    if label=='sampling':measured['resources']['error'] = 'SyntheticSamplerFailure'
+                    return measured,picks
+                with self.worker_context(), patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=True))), \
+                        patch.object(runner,'run_candidate',side_effect=invalid) as request,patch.object(runner,'emit'), \
+                        patch.object(shared.s,'connect',side_effect=lambda:sqlite3.connect(self.fixture.path)):
+                    runner.worker(args)
+                request.assert_called_once()
+                report = self.assert_worker_stopped(args,1)
+                case = report['cases'][0]
+                self.assertEqual(case['committed_trials'],len(reference))
+                self.assertTrue(case['partial_comparison']['exact'])
+                self.assertIn('measurement',case)
+
+    def test_cleanup_failure_still_closes_inputs_and_source_and_invalidates_report(self):
+        args,_ = self.worker_case('closure')
+        with self.worker_context(), patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=False))), \
+                patch.object(PythonExecutor,'close',side_effect=RuntimeError('Synthetic close failure')), \
+                patch.object(NumericInputs,'close',autospec=True,side_effect=NumericInputs.close) as close,patch.object(runner,'emit'):
+            runner.worker(args)
+        close.assert_called_once()
+        report = shared.baseline.load(args.result)
+        self.assertEqual(report['status'],'failed')
+        self.assertFalse(report['resources_closed'])
+        self.assertEqual(report['closure_errors'][0]['error_type'],'RuntimeError')
+
+    def test_parent_stops_invalid_child_before_any_following_control_or_method(self):
+        config = self.fixture.configuration()
+        reference,summary = self.fixture.reference(config)
+        scenarios = ('failed','incomplete','unagreed','proof','holdings','summary','replay',
+                     'missing-case','exit','descendants','closure','source','setup-time','primary-time',
+                     'setup-memory','primary-memory','sampling','missing-samples',
+                     'control-holdings','control-summary','input-drift','source-drift','method-raises')
+        for label in scenarios:
+            with self.subTest(label=label):
+                args = runner.parser().parse_args(['--runtime',str(self.fixture.root),
+                    '--workdir',str(self.fixture.root/('parent-stops-'+label)),
+                    '--methods','python','numba','--case','fixture'])
+                args.manifest = self.fixture.root/'manifest.json'
+                shared.baseline.publish(args.manifest,dict(primary_cases=[dict(id='fixture')],sha256='fixture'))
+                connections = []
+                method_called = False
+                def connect(*values,**kwargs):
+                    db = sqlite3.connect(self.fixture.path);db.row_factory=sqlite3.Row
+                    connections.append(db);return db
+                def isolated(arguments,method,specification,result):
+                    nonlocal method_called
+                    method_called = True
+                    if label=='method-raises':raise RuntimeError('Synthetic process closure failure')
+                    report = agreed_method(shared.baseline.load(specification)['requests'])
+                    case = report['cases'][0]
+                    if label in ('failed','incomplete'):report['status'] = label
+                    if label=='unagreed':report['financial_agreement'] = False
+                    if label=='proof':report['intermediate_proof']['comparison']['exact'] = False
+                    if label in ('holdings','summary','replay'):
+                        case[dict(holdings='comparison',summary='summary_comparison',replay='replay_comparison')[label]]['exact'] = False
+                    if label=='missing-case':report['cases'] = []
+                    if label=='exit':report['process_exit_code'] = 1
+                    if label=='descendants':report['owned_descendants_closed'] = False
+                    if label=='closure':report['resources_closed'] = False
+                    if label=='source':report['source_unchanged'] = False
+                    measured = report['setup'] if label.startswith('setup-') else case['measurement']
+                    if label.endswith('-time'):measured['wall_seconds'] = 10000.
+                    if label.endswith('-memory'):measured['resources']['sampled_tree_peaks']['private_bytes'] = 2*1024**3+1
+                    if label=='sampling':measured['resources']['error'] = 'SyntheticSamplerFailure'
+                    if label=='missing-samples':measured['resources']['samples'] = 0
+                    return report
+                original_hashes = runner.hashes
+                def hashes(files):
+                    values = original_hashes(files)
+                    if label=='source-drift' and method_called:values['changed'] = 'synthetic'
+                    return values
+                original_compare = shared.baseline.compare
+                comparisons = 0
+                def compare(*values):
+                    nonlocal comparisons
+                    comparisons += 1
+                    result = original_compare(*values)
+                    if ((label=='control-holdings' and comparisons==1)
+                            or (label=='control-summary' and comparisons==2)):
+                        result['exact'] = False
+                    return result
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(runner,'os',SimpleNamespace(name='nt',environ=os.environ)))
+                    stack.enter_context(patch.dict(os.environ))
+                    for name in ('bootstrap','assert_workdir','validate_manifest'):
+                        stack.enter_context(patch.object(runner.baseline,name))
+                    stack.enter_context(patch.object(runner.baseline,'identity',side_effect=lambda unused:
+                        dict(fixture=not (label=='input-drift' and method_called))))
+                    stack.enter_context(patch.object(runner,'hashes',side_effect=hashes))
+                    stack.enter_context(patch.object(runner.baseline,'compare',side_effect=compare))
+                    stack.enter_context(patch.object(runner.baseline,'configuration',return_value=config))
+                    controls = stack.enter_context(patch.object(runner.baseline,'request',return_value=(dict(summary=summary,wall_seconds=2.),reference)))
+                    stack.enter_context(patch.object(runner.baseline.coordinator,'access',return_value=nullcontext()))
+                    stack.enter_context(patch.object(shared.s.r,'connect',side_effect=connect))
+                    stack.enter_context(patch.object(shared.s,'connect',side_effect=connect))
+                    stack.enter_context(patch.object(runner,'smoke_requests',return_value=[]))
+                    stack.enter_context(patch.object(runner,'reference_smokes',return_value=[]))
+                    methods = stack.enter_context(patch.object(runner,'run_isolated',side_effect=isolated))
+                    stack.enter_context(patch.object(runner,'emit'))
+                    with self.assertRaises((ValueError,RuntimeError)):runner.parent(args)
+                methods.assert_called_once()
+                self.assertEqual(controls.call_count,2 if label.startswith('control-') else 1)
+                report = shared.baseline.load(args.workdir/'comparison.json')
+                self.assertEqual(report['status'],'stopped')
+                self.assertEqual(len(report['runs']),0 if label=='method-raises' else 1)
+                self.assertEqual(len(report['controls']),controls.call_count)
+                self.assertEqual(report['source_unchanged'],label!='source-drift')
+                self.assertEqual(report['production_unchanged'],label!='input-drift')
+                self.assertTrue(report['source_closed'])
+                for db in connections:
+                    with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
 
 
 class PlannedCandidateRequestTests(CandidateRequestTests):
@@ -316,6 +588,119 @@ class PlannedCandidateRequestTests(CandidateRequestTests):
                         filter_return_1y=('const', 2.)):
             self.executor.begin(dict(options=options))
             self.assertEqual(self.executor.request_plan.slots, (0, 1, 3))
+
+
+class CompiledCandidateRequestTests(unittest.TestCase):
+    def setUp(self):
+        from bench_candidates_numba import NumbaExecutor
+        self.fixture = shared.SharedMethodsTests('test_empty_trials_remain_visible_and_excluded_from_distributions')
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        self.inputs = NumericInputs(self.fixture.reader,shared.s)
+        self.addCleanup(self.inputs.close)
+        self.executor = NumbaExecutor(self.inputs,limits=dict(capture=False,request_plan=True,
+                                                              candidate_assembly='compiled'))
+        self.addCleanup(self.executor.close)
+
+    def test_complete_requests_preserve_evidence_summaries_filters_and_replay(self):
+        for pool in ('legacy','cached'):
+            for profile in ('F0','F1','F2','all','slice','empty'):
+                for metric in shared.s.metrics.METRICS:
+                    extra = dict(metric=metric)
+                    if profile == 'all':extra['filters'] = [dict(field=field,op='gt',value=-999999.) for field in shared.s.metrics.FILTERS]
+                    if profile == 'slice':extra.update(rank_from=2,rank_to=100)
+                    if profile == 'empty':extra['min_cap'] = 1e100
+                    config = self.fixture.configuration(pool,profile if profile in ('F0','F1','F2') else 'F0',**extra)
+                    reference,summary = self.fixture.reference(config)
+                    path = self.fixture.root / f'compiled-{pool}-{profile}-{metric}.sqlite'
+                    measured,picks = runner.run_candidate(self.inputs,self.executor,config,
+                        self.fixture.reader,path,freshness=lambda:None,budget_seconds=10.,
+                        candidate_assembly='compiled')
+                    self.assertTrue(shared.baseline.compare(reference,picks)['exact'])
+                    self.assertTrue(shared.baseline.compare(summary,measured['summary'])['exact'])
+                    self.assertTrue(shared.baseline.compare(picks,shared.methods.replay(path))['exact'])
+                    self.assertEqual(measured['candidate_assembly'],'compiled')
+                    self.assertEqual(measured['staging'],'all')
+                    with closing(sqlite3.connect(path)) as store:
+                        identity = json.loads(store.execute('SELECT value FROM binding').fetchone()[0])['identity']
+                    self.assertEqual(identity['candidate_assembly'],'compiled')
+                    self.assertEqual(identity['staging'],'all')
+
+    def test_interruption_retains_committed_trials_and_rejects_identity_mismatch(self):
+        config = self.fixture.configuration('cached','F2')
+        reference,_ = self.fixture.reference(config)
+        path = self.fixture.root/'interrupted-compiled.sqlite'
+        def stop(event):
+            if event['completed'] == 1:raise RuntimeError('Stop after durable compiled trial')
+        with self.assertRaisesRegex(RuntimeError,'durable compiled'):
+            runner.run_candidate(self.inputs,self.executor,config,self.fixture.reader,path,
+                freshness=lambda:None,budget_seconds=10.,progress=stop,candidate_assembly='compiled')
+        self.assertTrue(shared.baseline.compare(reference[:1],shared.methods.replay(path))['exact'])
+        self.assertEqual(self.executor.last_request['candidate_assembly'],'compiled')
+        for assembly,staging,pattern in (('source','all','differs from attached'),
+                                          ('compiled','requested','complete SQL staging')):
+            rejected = self.fixture.root / (assembly+'-'+staging+'.sqlite')
+            with self.assertRaisesRegex(ValueError,pattern):
+                runner.run_candidate(self.inputs,self.executor,config,self.fixture.reader,rejected,
+                    freshness=lambda:None,budget_seconds=10.,candidate_assembly=assembly,staging=staging)
+            self.assertFalse(rejected.exists())
+        _,retry = runner.run_candidate(self.inputs,self.executor,config,self.fixture.reader,
+            self.fixture.root/'retry-compiled.sqlite',freshness=lambda:None,budget_seconds=10.,candidate_assembly='compiled')
+        self.assertTrue(shared.baseline.compare(reference,retry)['exact'])
+
+    def test_worker_requires_frozen_assembly_and_records_new_signatures(self):
+        config = self.fixture.configuration('cached','F2')
+        reference,summary = self.fixture.reference(config)
+        runtime = self.fixture.root/'runtime'
+        (runtime/'data').mkdir(parents=True)
+        shutil.copyfile(self.fixture.path,runtime/'data/schedules.sqlite')
+        workdir = self.fixture.root/'compiled-worker';workdir.mkdir()
+        reference_file = workdir/'reference.json';shared.baseline.publish(reference_file,reference)
+        specification = workdir/'specification.json'
+        frozen = dict(staging='all',candidate_assembly='source',
+            source_hashes=runner.hashes(runner.source_files()),input_identity_sha256='fixture',
+            setup_budget=600.,request_budget=10.,smoke_budget=10.,requests=[dict(id='fixture',kind='untimed_correctness',
+                configuration=config,evidence_file=str(reference_file),summary=summary)])
+        shared.baseline.publish(specification,frozen)
+        args = SimpleNamespace(worker='numba',runtime=runtime,workdir=workdir,
+            specification=specification,result=workdir/'result.json',staging='all',candidate_assembly='compiled')
+        def context():
+            stack = ExitStack()
+            stack.enter_context(patch.object(runner.sys,'stdin',io.StringIO('GO\n')))
+            stack.enter_context(patch.dict(os.environ))
+            stack.enter_context(patch.object(runner.baseline,'bootstrap'))
+            stack.enter_context(patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=True))))
+            stack.enter_context(patch.object(runner,'emit'))
+            return stack
+        with context(),self.assertRaisesRegex(ValueError,'frozen specification'):runner.worker(args)
+        frozen['candidate_assembly'] = 'compiled';shared.baseline.publish(specification,frozen)
+        with context():runner.worker(args)
+        report = shared.baseline.load(args.result)
+        self.assertEqual(report['status'],'complete')
+        self.assertEqual(report['candidate_assembly'],'compiled')
+        self.assertTrue(report['setup']['executor']['nopython_signatures']['decisions'])
+        case = report['cases'][0]
+        self.assertEqual(case['correctness']['candidate_assembly'],'compiled')
+        self.assertTrue(case['comparison']['exact'])
+        self.assertTrue(case['summary_comparison']['exact'])
+        self.assertTrue(case['replay_comparison']['exact'])
+        with closing(sqlite3.connect(workdir/case['result_store_file'])) as store:
+            identity = json.loads(store.execute('SELECT value FROM binding').fetchone()[0])['identity']
+        self.assertEqual(identity['candidate_assembly'],'compiled')
+
+
+class AssemblyVariantTests(unittest.TestCase):
+    def test_default_and_unsupported_combinations_fail_closed(self):
+        args = runner.parser().parse_args(['--runtime','runtime','--workdir','work'])
+        self.assertEqual(args.candidate_assembly,'source')
+        for methods,staging in ((['python'],'all'),(['numba','rust'],'all'),(['numba'],'requested')):
+            with self.assertRaisesRegex(ValueError,'requires Numba and complete'):
+                runner.validate_assembly('compiled',methods,staging)
+        with self.assertRaisesRegex(ValueError,'source or compiled'):
+            runner.validate_assembly('unknown',['numba'],'all')
+        runner.validate_assembly('compiled',['numba'],'all')
+        runner.validate_assembly('source',list(runner.METHODS),'requested')
+
 
 
 class ProcessContainmentTests(unittest.TestCase):
@@ -395,12 +780,13 @@ else:
             def terminate(self):pass
         owned=FakeOwned()
         args=SimpleNamespace(runtime=self.root,workdir=self.root,setup_budget=1.,
-                             request_budget=1.,smoke_budget=1.,staging='requested')
+                             request_budget=1.,smoke_budget=1.,staging='requested',candidate_assembly='source')
         with patch('bench_candidates_process.OwnedProcess',return_value=owned) as spawn, \
                 patch.object(runner.time,'monotonic',side_effect=[0.,0.,0.,0.,100.]):
             report=runner.run_isolated(args,'python',specification,result)
         command=spawn.call_args.args[0]
         self.assertEqual(command[command.index('--staging')+1],'requested')
+        self.assertEqual(command[command.index('--candidate-assembly')+1],'source')
         self.assertTrue(owned.closed)
         self.assertEqual(report['status'],'incomplete')
         self.assertTrue(report['owned_descendants_closed'])

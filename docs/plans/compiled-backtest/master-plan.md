@@ -52,6 +52,17 @@ remain exact. The intervention stops without expansion. The next bounded
 question concerns source-derived candidate guards and assembly. No full matrix
 or production integration follows this failed pilot.
 
+The [seventh-wave bounded attempt](phases/CB-02/wave7/README.md) implemented
+source-derived candidate decisions and a common encoder. It passed 93 WSL tests
+and 92 native tests with one optional skip. The native pair stopped at its
+2,700-second whole-experiment bound during the compiled variant's first
+production control. The compiled candidate never started. Source guards took
+120.20 seconds, with exact evidence, against 691.08/598.52-second controls.
+Prepared production inputs match wave6. The timing drift has no established
+cause. There is no paired speed conclusion and no expansion. Revise measurement
+orchestration or resource planning from those costs before a new bounded pilot.
+The guard/assembly hypothesis and all qualification gates remain unresolved.
+
 The decisions below supersede earlier instructions to expand both candidates
 or continue the broad method search. Historical phase records retain their
 original conclusions and measurements.
@@ -90,10 +101,10 @@ A failed gate is evidence for changing the work, not evidence that the gate pass
 
 | Subject | Program direction | Evidence still required |
 |---|---|---|
-| Calculation model | Use Numba for the next shared-request optimization experiment. The broad comparison is complete. | A changed implementation passing the full primary gate, followed by operational qualification. |
+| Calculation model | Retain the Numba source-derived guard/assembly prototype. Obtain a complete bounded paired measurement; the broad comparison is complete. | A changed implementation passing the full primary gate, followed by operational qualification. |
 | Data model | Immutable numeric inputs, sparse price histories, bounded entry-date factor batches. | Sparse versus dense access, measured memory and Windows mapping lifecycle. |
 | Method choice | Numba is the experimental working direction. Retain Rust and the other methods as comparison evidence. | Reopen an alternative only for a concrete measured limitation or operational blocker. |
-| Policy ownership | All six candidate executors use source-derived financial expressions. Shared guards, SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
+| Policy ownership | All six candidate executors use source-derived financial expressions. Guard policy remains source-owned, including the optional compiled Numba decisions. SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
 | Database role | Keep verified research data and compact job/result storage. Remove per-candidate SQL traffic from calculation. | Publication and recovery measurements. |
 | Analytical alternatives | DuckDB and Polars have been attempted. No further library search is scheduled by default. | A specific unresolved question and a bounded comparison at the same request boundary. |
 | Deployment | Persistent local runtime with bounded native parallelism. | Shutdown, generation replacement and memory tests on native Windows. |
@@ -332,7 +343,7 @@ Split or merge remaining work when the evidence warrants it and record the chang
 
 | Milestone | Result and exit evidence | Related phases |
 |---|---|---|
-| Close the request-performance gap | New bounded Numba guard/assembly experiment after the rejected metric-staging pilot, then the full unchanged primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
+| Close the request-performance gap | Revise measurement orchestration after the wave7 budget stop; obtain a promising guard/assembly pair, then the unchanged full primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
 | Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; agreed workflow budgets | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
 | Deliver faster existing workflows | Opt-in support for the existing month intervals, filters, trial inspection, exports and rollback | CB-04–CB-07 and CB-09–CB-13 |
 | Add weekly research | Frozen calendar, correct explicit-date returns, useful latency and bounded resources | CB-08 and weekly extensions in CB-09–CB-14 |
@@ -504,16 +515,32 @@ exact intermediate, holding, summary and replay agreement. Source and full
 input identities match. See [wave6](phases/CB-02/wave6/README.md). No full matrix
 ran. Keep this failed hypothesis visible; do not expand it unchanged.
 
-**Next bounded experiment:** Retain Numba. Test source-derived candidate guards
-and assembly as the next single intervention. The projected request still
-records 15.75 seconds in source guards within candidate batches, versus
-0.054 seconds in numerical factors. These overlapping counters identify a
-question; they do not establish a saving. Preserve one financial policy,
-complete candidate evidence, SQL parity, freshness, saving and delivery.
-Record a new detailed code design, isolated scope, timing/resource budget and
-stop condition before another paired pilot. Do not replace the library or
-optimize the small arithmetic kernel without new evidence. A changed source
-identity must pass the complete primary gate before production integration.
+**Seventh-wave result:** The source-derived candidate-decision prototype and
+common encoder passed focused WSL/native checks, including mutations, tolerance
+boundaries, nopython signatures, SQL selection, interruption and replay. The
+runner now makes failed financial or measured-bound evidence terminal. Its
+source variant matched complete intermediate and trial evidence exactly. The
+request took 120.20 seconds; separate setup took 148.33. Controls took
+691.08/598.52 seconds. These inputs match wave6's production identity, but the
+controls and source request are slower. No cause is established.
+
+The outer watchdog stopped at 2,700 seconds during the compiled variant's first
+production control. The compiled candidate did not start. Its performance and
+real-cache financial evidence are absent. The 10% paired-reduction and 5×
+production criteria cannot be evaluated. Expansion is rejected. All owned
+processes closed; native post-run identity checks confirm preserved production
+inputs and frozen sources. See [wave7](phases/CB-02/wave7/README.md).
+
+**Next bounded experiment:** Retain Numba and the unresolved source-derived
+guard/assembly question. First design measurement orchestration or resource
+planning that accounts for the observed control and preparation costs. Do not
+rerun this unchanged orchestration for a favorable result. Declare the revised
+scope, timing/resource budget and stop condition before timing. Preserve
+contemporary controls, complete candidate evidence, one financial policy, SQL
+parity, immediate freshness, saving and delivery. Do not infer compiled saving
+from source-only counters. Do not lower the financial or speed gates to fit a
+measurement budget. A promising paired pilot must precede the full unchanged
+primary gate on one implementation identity. Production integration stays blocked.
 
 Add the complete trailing-filter supplement and workflow measurements under
 separately frozen settings. Isolated lifecycle proofs may proceed to expose an
@@ -781,7 +808,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×; next bounded guard/assembly question; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): 2,700-second budget stop before compiled candidate; paired performance unresolved; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -806,10 +833,13 @@ detection. Wave5 completed the full primary comparison for Numba and Rust, with
 exact financial agreement. Both fail the broader-pool F2 median gate. No primary
 cases remain for wave5. Wave6 rejected requested-metric SQL staging alone:
 3.92% observed request reduction and 4.87× production ratio. Do not expand
-that unchanged intervention. Define a new bounded source-derived guard/assembly
-hypothesis, scope, budget and stop condition. Keep full validation, saving and
-delivery in headline timing. Repeat the full gate after implementation changes.
-Do not start production integration before the required gate passes.
+that unchanged intervention. Wave7 implemented the guard/assembly prototype but
+its pair hit the 2,700-second whole budget before compiled candidate execution.
+The next bounded design must account for the observed measurement costs before
+another paired pilot. Do not expand this incomplete attempt. Preserve the
+financial, freshness and acceptance contracts. A promising pair must precede the
+full gate after implementation changes. Do not start production integration
+before the required gate passes.
 
 ## Program decision record
 
@@ -820,3 +850,4 @@ Do not start production integration before the required gate passes.
 | 25 October 2026 | Equivalent fresh scanning preserved immediate manual-edit detection across the full matrix. | Remove startup-only detection from the planned direction. Reuse demonstrated work and harden only missing capabilities. | Production publisher and lifecycle proofs remain required. |
 | 25 October 2026 | User explicitly permits plan changes when implementation yields new insight. | Reassess and update the roadmap from evidence, preserving history and acceptance criteria. | Raise material scope or acceptance changes for a user decision. |
 | 25 October 2026 | Wave6 metric projection preserved exact results and removed 1,412,574 unused rows, but its 3.92% request reduction and 4.87× ratio failed the declared pilot criteria. | Stop this intervention without a full matrix. Retain Numba; focus the next bounded question on source-derived candidate guards/assembly. | Can one shared-policy intervention close the request gap? Full primary and operational gates remain required. |
+| 25 October 2026 | Wave7 source-derived guard/assembly code passed 93 WSL and 92 native tests plus one skip. Source request and controls were 120.20 and 691.08/598.52 seconds on wave6's prepared-input identity. The 2,700-second watchdog stopped before compiled candidate execution. | Reject expansion of this incomplete pair. Revisit measurement orchestration/resource planning with a new prospective bounded protocol; retain the prototype and unchanged financial/speed gates. | Real-cache compiled correctness and paired performance remain unmeasured. A promising pair must precede the full primary matrix. |
