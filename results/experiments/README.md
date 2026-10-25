@@ -13,7 +13,8 @@ Wave10 adds a synthetic-only immutable input store and separately writable daily
 clones in a linked feature worktree. It has no live capture adapter, raw-data
 attachment or execution admission. See the
 [wave10 record](../../docs/plans/compiled-backtest/phases/CB-02/wave10/README.md).
-Real-data copies remain deferred pending a qualified producer and capture gates.
+Copies made while the website runs remain deferred pending a qualified producer
+and capture gates. The later offline operation is described below.
 
 CB-02's [third experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave3/README.md)
 compares Numba, bulk Python, whole-batch DuckDB, persistent workers, Polars and
@@ -70,3 +71,10 @@ python3 scripts/research.py screen --top 100 --first 2015 --last 2020 --output r
 ```
 
 The first January book has fewer than 100 usable names in the original 250-candidate pool. Full-universe top-100 claims require broader price coverage and exit review. Use `status` and inspect short-year output before interpreting an experiment.
+
+
+Wave11 adds a stopped-runtime offline copy owner after the user stopped the
+server. It uses exclusive source/cache ownership and SQLite backup, preserves
+originals and saved books, and admits no benchmark. The
+[wave11 record](../../docs/plans/compiled-backtest/phases/CB-02/wave11/README.md)
+records focused proofs, bounded native capture and any remaining attachment limits.

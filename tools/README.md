@@ -4,6 +4,7 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 | Script | Purpose |
 | --- | --- |
+| `bench_capture_offline.py` | Stopped-runtime SQLite-safe research/daily/report copy under exclusive source/cache ownership; no benchmark admission |
 | `bench_input_store.py` | Synthetic-only immutable research/daily/report store and owned writable clones; no live capture or execution admission |
 | `bench_admission.py` | Closed execution policy; no runtime is admitted until bound inputs and resources are qualified |
 | `bench_candidates_run.py` | Retained historical six-method comparison protocol; execution is closed |
@@ -184,3 +185,19 @@ and `--smoke-budget`. Existing comparison directories are rejected.
 registered native Windows runtime. It also starts that runtime, dispatches
 saved-data checks, and explicitly collects a verified report revision. It does
 not download market data. See [workspace commands](../docs/workspaces.md).
+
+
+## Offline database capture
+
+`bench_capture_offline.py` is separate from the closed benchmark entry points.
+Use it only in a user-authorized stopped-server window. It acquires exclusive
+source ownership before financial ownership with no wait. SQLite backup preserves
+the research/daily/report set and all saved books. It rejects pending publications,
+sidecars and WAL source format; no original normalization or preparation runs.
+A source or data owner makes capture fail. A new server start can wait until
+capture completes. The tool never stops or starts a server.
+
+Keep output in a dedicated ignored native Windows experiment directory. Captured
+freshness metadata is retained, not rebased. The output confers no execution
+admission. See [wave11](../docs/plans/compiled-backtest/phases/CB-02/wave11/README.md)
+for source/receipt validation, limits, actual capture evidence and attachment gaps.

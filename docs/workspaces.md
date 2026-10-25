@@ -117,7 +117,8 @@ It must own experimental source, dependencies, compiler caches, mutable database
 and result stores separately from the stable service. Wave10 adds a synthetic-only input store in a feature worktree. It builds private
 research/daily/report inputs and validates their immutable handoff. It creates
 separate writable daily clones. It has no live capture adapter or execution
-owner. Real capture and resource qualification are not implemented. Do not run the historical live-cache-locking
+owner. Live capture and benchmark-resource qualification remain unavailable. Offline
+copying is a separate operation described below. Do not run the historical live-cache-locking
 benchmark commands. See the [wave9 record](plans/compiled-backtest/phases/CB-02/wave9/README.md).
 
 
@@ -141,3 +142,20 @@ the synthetic input-store proof and its limits. No real-data copy exists from
 this phase. A later qualified copy must use a dedicated ignored Windows experiment
 directory. Copied databases alone do not remove reference-engine raw-data globals
 or establish resource isolation. Benchmark execution stays closed.
+
+
+## Offline experiment copies
+
+After the user stops the server, `tools/bench_capture_offline.py` can create a
+separate database/report set under native Windows `tmp/`. It takes exclusive
+source ownership before financial ownership, both with no wait. Active project
+servers or coordinated data jobs reject capture. Server starts attempted during
+the copy can wait; retry after capture. The tool does not stop or start a server.
+
+The tool uses SQLite backup, keeps saved daily books, checks report/database and
+freshness binding, and verifies unchanged originals before publication. It
+rejects unfinished journals, sidecars and WAL source format. It does not prepare,
+repair or download. The copy keeps original metadata; it is not automatically
+accepted by runtime-global APIs. Keep benchmark admission closed until a shared
+execution owner and its resource gates are qualified. See the
+[wave11 record](plans/compiled-backtest/phases/CB-02/wave11/README.md).

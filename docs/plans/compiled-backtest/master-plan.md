@@ -67,6 +67,46 @@ The decisions below supersede earlier instructions to expand both candidates
 or continue the broad method search. Historical phase records retain their
 original conclusions and measurements.
 
+## User-authorized offline capture adjustment (wave11)
+
+After wave10, the user stopped the server and stated: “i already stop the server
+running if that simplify the process”. This allows a bounded offline database
+copy while the site stays stopped. Continuous live availability is no longer a
+capture requirement for this offline window. No server is stopped or restarted
+by the capture tool. The general live-service contract still governs later
+experiments. No benchmark execution or performance run is authorized.
+
+Wave11 adds a separate offline capture owner. It takes exclusive source ownership
+before financial ownership, both without waiting. These locks exclude project
+servers and coordinated data jobs throughout SQLite backup and final verification.
+Attempts to start the server during capture can wait behind this ownership.
+The tool rejects pending journals, sidecars and WAL source headers. It never
+prepares, repairs or changes originals. The wave10 synthetic store limits and
+closed benchmark admission remain unchanged. See
+[wave11 design](phases/CB-02/wave11/design.md).
+
+Prospective limits: one process/thread, 8 MiB SQLite caches, 4 GiB total source
+DBs, 8 GiB output, sampled 512 MiB current process memory and 900 seconds for the
+whole operation. Cooperative progress/cancellation checks and an external native
+watchdog bound the copy attempt. Fixture proofs and independent Code review must
+pass before the real copy. This is offline-copy qualification only, not a live
+handoff producer, engine attachment or benchmark-resource qualification.
+
+Wave11 completed the stopped-runtime copy after 12 capture fixtures passed on
+each platform and independent Code review cleared it. All four closed-admission
+tests also pass on each platform. The separate native copy preserves the research,
+daily and report set, including saved books. Original content hashes/timestamps
+remain unchanged. Independent comparison finds only SQLite header counter/cookie
+bytes differ in the database copies; all other bytes match. The one-time monitor
+missed EOF after worker exit and required verified controller-only cleanup under
+the bound. Its worker exit code is unobserved; valid artifact/invariance evidence
+is independently verified. See [wave11](phases/CB-02/wave11/README.md).
+
+This supplies offline test assets, not an execution owner or benchmark admission.
+Next bind the copied generation and source/raw freshness to both engines, then
+qualify execution resources and concurrent availability. A live capture producer
+is required only if future refresh must occur while the website is running.
+
 ## Objective
 
 Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
@@ -969,7 +1009,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; live immutable producer, execution owner, resource isolation and paired performance unresolved; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -1003,10 +1043,11 @@ orchestration and timed adapters while retaining source-only fixture imports.
 It implements no input capture and admits no execution. Wave10 completes a
 feature worktree and synthetic input store with immutable generations and owned
 writable clones. It establishes no live capture protocol or execution owner.
-The next bounded design must establish a production immutable handoff producer
-without blocking live work, using synthetic publication/retirement fixtures
-first. Bind raw freshness and reference/candidate globals through one execution
-owner. Then qualify capture and execution resources
+Wave11 supplies a verified real copy during the user-authorized stopped-server
+window. It does not establish live capture or benchmark lifecycle qualification.
+The next bounded design must bind this copied generation, raw freshness and
+reference/candidate globals through one execution owner. Keep original metadata
+and publication checks intact. Then qualify execution resources
 and concurrent availability before another paired pilot. Account for observed
 control and preparation costs. Stable
 publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
@@ -1029,3 +1070,4 @@ before the required gate passes.
 | 25 October 2026 | Wave8 isolates the publication-revision prerequisite. Both platforms pass 32 disposable deployment tests; read-only actual selection retains the installed commit. | Normal WSL publication selects the installed or pending commit rather than experimental HEAD. Split benchmark admission/input handoff and resource/availability proofs before any new pilot. | No live restart, benchmark isolation or new compiled performance is qualified. |
 | 25 October 2026 | Wave9 independent CODE design separates source attachment from executable benchmark work. Paths, copied databases and source hashes cannot establish input ownership. | Complete admission first: one policy rejects benchmark execution before effects. Keep fixture algorithms usable. Defer bound capture and resource admission. | One generation-bound owner for controls and candidates, safe capture, independent resources and availability proofs remain required before a pilot. |
 | 25 October 2026 | The user authorized a feature worktree and independently owned test databases. Direct backup under the exclusive coordinator delays users; a rollback-journal reader can block writer commit. Wave10 passes 21 new store tests on each platform and retains closed admission/freshness checks. | Complete a synthetic-only immutable input store in `cb02/input-ownership`. Publish no production adapter or real copy. Keep the registered checkout and running engine unchanged. | Design a production immutable producer and retirement boundary on synthetic fixtures, then bind execution inputs/raw freshness and qualify capture/execution resources and availability. Cooperative fixture limits are insufficient for real capture. |
+| 25 October 2026 | The user stopped the server to simplify copying. Wave11 capture and admission fixtures pass16 per platform. The native stopped-runtime copy passes coherence/integrity/receipts and original invariance, including all saved books. Its one-time controller missed worker EOF; verified controller-only cleanup and independent copy checks resolved the operation, with worker exit code unobserved. | Add a separate offline copy owner; leave wave10 limits/admission unchanged. No live-copy protocol is inferred. Preserve originals and bind independently copied inputs next. | A shared execution owner must bind generation/source/raw freshness before resource and concurrent-availability qualification or any pilot. Live capture is separate optional future capability. |
