@@ -116,13 +116,14 @@ def read_json(path, default=None):
 
 
 def validate_manifest(value):
-    if not isinstance(value, dict) or value.get('version') != 1 or not re.fullmatch(r'[0-9a-f]{40}', value.get('commit', '')):
+    if (not isinstance(value, dict) or type(value.get('version')) is not int or value['version'] != 1
+            or not isinstance(value.get('commit'), str) or not re.fullmatch(r'[0-9a-f]{40}', value['commit'])):
         raise ValueError('Invalid deployment manifest.')
     if not isinstance(value.get('files'), dict):
         raise ValueError('Invalid deployment inventory.')
     folded = set()
     for name, sha in value['files'].items():
-        if not managed(name) or not re.fullmatch(r'[0-9a-f]{64}', sha):
+        if not managed(name) or not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{64}', sha):
             raise ValueError('Invalid deployment source ownership.')
         if name.casefold() in folded:
             raise ValueError('Deployment paths collide on Windows.')
@@ -309,8 +310,12 @@ def export_runtime_report(root, destination):
                 db.close()
 
 
+def git_command(*arguments):
+    return ['/usr/bin/git', '--git-dir=' + str(ROOT / '.git-local'), '--work-tree=' + str(ROOT), *arguments]
+
+
 def git(*arguments):
-    return subprocess.check_output(['git', '-C', str(ROOT), *arguments])
+    return subprocess.check_output(git_command(*arguments))
 
 
 def windows_path(path):
@@ -323,7 +328,7 @@ def linux_path(path):
 
 def configuration():
     config = read_json(ROOT / CONFIG)
-    if not config or config.get('source') != str(ROOT):
+    if not isinstance(config, dict) or config.get('source') != str(ROOT):
         raise ValueError('Configure data/workspace.json for this WSL checkout first; see docs/workspaces.md.')
     return config
 
@@ -333,8 +338,65 @@ def native(config, *arguments):
     return subprocess.run([str(executable), '-X', 'utf8', '-B', *arguments], cwd=linux_path(config['runtime']), check=True)
 
 
-def deploy(config, revision):
-    commit = git('rev-parse', '--verify', revision + '^{commit}').decode().strip()
+def deployment_revision(config, requested=None):
+    """Resolve one committed publication revision before runtime changes.
+
+    Ordinary publication retains the installed revision. An unfinished publication
+    resumes its recorded commit. Explicit selection cannot replace a pending transaction.
+    """
+    if (not isinstance(config, dict) or config.get('source') != str(ROOT)
+            or not isinstance(config.get('distro'), str) or not config['distro'].strip()
+            or not isinstance(config.get('runtime'), str) or not config['runtime'].strip()):
+        raise ValueError('Deployment registration does not identify this source and distro.')
+    runtime = linux_path(config['runtime'])
+    missing = object()
+
+    def registered_manifest(value):
+        value = validate_manifest(value)
+        if any(value.get(field) != config[field] for field in ('source', 'distro')):
+            raise ValueError('Deployment evidence does not match the source and distro registration.')
+        return value
+
+    installed = read_json(runtime / MANIFEST, missing)
+    if installed is not missing:
+        registered_manifest(installed)
+    journal = read_json(runtime / PENDING, missing)
+    pending = None
+    if journal is not missing:
+        if not isinstance(journal, dict) or not {'manifest', 'previous', 'payload'} <= journal.keys():
+            raise ValueError('Invalid pending publication journal; retain it for recovery.')
+        pending = registered_manifest(journal['manifest'])
+        previous = journal['previous']
+        if previous is not None:
+            registered_manifest(previous)
+        relative = source_path(journal['payload'])
+        if not relative.startswith('.deployment/'):
+            raise ValueError('Invalid publication staging location.')
+        if installed is not missing and installed not in (previous, pending):
+            raise ValueError('Installed evidence conflicts with the pending publication.')
+
+    if requested is None:
+        if pending is not None:
+            requested = pending['commit']
+        elif installed is not missing:
+            requested = installed['commit']
+        else:
+            raise ValueError('A fresh runtime requires an explicit --revision <commit>.')
+    if not isinstance(requested, str) or not requested:
+        raise ValueError('An explicit revision must identify a committed revision.')
+    commit = git('rev-parse', '--verify', '--end-of-options', requested + '^{commit}').decode().strip()
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        raise ValueError('Git did not resolve an exact committed revision.')
+    if pending is not None and commit != pending['commit']:
+        raise ValueError('Explicit revision conflicts with pending publication; retry its recorded commit first.')
+    return commit
+
+
+def deploy(config, revision=None):
+    # A pending transaction owns publication intent until recovery finishes.
+    # Resolve its commit before staging; native publication verifies and completes
+    # its retained payload under the existing locks.
+    commit = deployment_revision(config, revision)
     runtime = linux_path(config['runtime'])
     stage = runtime / '.deployment' / ('stage-' + uuid.uuid4().hex)
     stage.mkdir(parents=True)
@@ -342,7 +404,7 @@ def deploy(config, revision):
         helper = git('show', commit + ':tools/deploy.py')
         (stage / 'bootstrap.py').write_bytes(helper)
         with (stage / 'source.tar').open('wb') as handle:
-            subprocess.run(['git', '-C', str(ROOT), 'archive', '--format=tar', commit], stdout=handle, check=True)
+            subprocess.run(git_command('archive', '--format=tar', commit), stdout=handle, check=True)
         write_json(stage / 'request.json', dict(commit=commit, archive_sha256=digest(stage / 'source.tar'),
                    source=str(ROOT), distro=config['distro']))
         native(config, windows_path(stage / 'bootstrap.py'), '--native-publish', windows_path(stage), config['runtime'])
@@ -374,11 +436,14 @@ def collect_report(config):
     shutil.rmtree(bundle)
 
 
-def native_launch(arguments):
+def native_launch(arguments, revision=None):
     config = read_json(ROOT / CONFIG)
     if config:
+        selection = ['--revision', revision] if revision is not None else []
         return subprocess.call(['wsl.exe', '-d', config['distro'], '--cd', config['source'],
-                                '--exec', 'python3', 'tools/deploy.py', '--start', *arguments])
+                                '--exec', 'python3', 'tools/deploy.py', '--start', *selection, *arguments])
+    if revision is not None:
+        raise ValueError('Explicit revision selection requires a registered WSL source checkout.')
     return subprocess.call([sys.executable, str(ROOT / 'website/serve.py'), '--managed', *arguments])
 
 
@@ -400,7 +465,7 @@ def main():
         # Match start.cmd and propagate UTF-8 to native test/build children.
         os.environ['PYTHONUTF8'] = '1'
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--revision', default='HEAD', help='Committed revision to deploy (default HEAD)')
+    parser.add_argument('--revision', help='Deliberately select a committed revision; default retains the installed revision or resumes pending publication')
     parser.add_argument('--start', action='store_true', help='Deploy, then run native Windows server in this terminal')
     parser.add_argument('--collect-report', action='store_true', help='Collect a verified Windows report revision for review')
     parser.add_argument('--check', action='store_true', help='Deploy, then check installed native Windows paths and lifecycle')
@@ -421,7 +486,7 @@ def main():
         elif options.native_export:
             export_runtime_report(*options.native_export)
         elif options.native_launch:
-            raise SystemExit(native_launch(server_arguments))
+            raise SystemExit(native_launch(server_arguments, options.revision))
         elif options.native_check:
             check_runtime()
         else:

@@ -115,12 +115,12 @@ actual stable revision before later work rather than assuming it stays fixed.
   conflicts, defer or stop only the owned experiment. Keep interruption evidence;
   do not count affected timings as passing speed evidence. Never stop the user
   server or make user requests wait behind an experiment to obtain cleaner times.
-- Keep the stable deployment revision and restart path protected. The current
-  launcher defaults to publishing committed `HEAD`; a plan edit does not pin it.
-  Use the existing revision-selection mechanism or another verified safeguard
-  before production-affecting development can reach that publication path.
-  Until this is verified, do not publish unqualified source over the installed
-  service. Preserve authenticated server ownership and deployment recovery.
+- Keep the stable deployment revision and restart path protected. Wave8 changes
+  normal WSL publication to retain the installed commit, or the pending commit
+  during recovery. The installed launcher delegates to that WSL tool. Explicit
+  revision selection remains a deliberate operator override. Isolated fixture
+  tests qualify request-start selection, not a live restart or replacement
+  engine. Never publish unqualified source over the installed service. Preserve authenticated server ownership and deployment recovery.
 - Early opt-in previews may use a separate instance and URL. They must have
   isolated data ownership and leave the stable default available. Do not migrate
   the stable cache in place or require the user to use a preview.
@@ -147,11 +147,14 @@ Before CB-15, integration work in this plan means work in the isolated candidate
 preview. Passing the primary speed gate permits that hardening and integration;
 it does not permit publication over the stable installed website.
 
-These are required safeguards, not implemented isolation claims. Wave7 used
+These are required safeguards, not implemented isolation claims. Wave8 implements
+only the request-start publication revision safeguard and verifies it on isolated
+fixtures. No live restart or deployment qualifies the later gates. Wave7 used
 isolated result files but held the production cache coordinator. That approach
 must not be repeated while protecting live use. The next CB-02 code design must
 solve website-safe measurement before starting another real-cache pilot. This
-plan-only update does not implement or start that work.
+availability-contract update did not implement or start that work. The wave8
+prerequisite remains separate from benchmark admission and data/resource isolation.
 
 ### Adjust the plan when new evidence changes the direction
 
@@ -617,6 +620,32 @@ production criteria cannot be evaluated. Expansion is rejected. All owned
 processes closed; native post-run identity checks confirm preserved production
 inputs and frozen sources. See [wave7](phases/CB-02/wave7/README.md).
 
+**Website-safe prerequisite split (wave8):** Complete one safety boundary at a
+time. [Wave8](phases/CB-02/wave8/README.md) completes normal publication revision
+selection in source, with 32 passing deployment tests in each of WSL and native
+Windows. Read-only actual resolution selects the installed stable commit. It
+does not run a live restart or deployment. A normal start retains the installed committed revision instead of following
+experimental HEAD. Resolution and existing recovery pass on isolated fixtures
+in WSL and native Windows. No live restart or publication is part of this proof. Existing explicit revision selection remains a deliberate operator action;
+it is not qualification of that revision.
+
+The next prerequisite is benchmark admission and a consistent, generation-bound
+input handoff. It must separate candidate source, dependencies, cache and result
+ownership from the stable service. Prove nonblocking capture without bypassing
+coordination or publication recovery. Do not run the inherited live-cache-locking
+benchmark entry points against the installed runtime. No real-cache pilot is
+permitted from the revision safeguard alone.
+
+A later prerequisite qualifies CPU, memory, disk and cancellation limits and
+live availability during preparation, execution and failure. It must cover the
+main page, panel, cached backtests and production-equivalent fresh/random jobs,
+inspection and exports. Then freeze a new paired pilot that accounts for the
+observed preparation and complete-control costs. Revision selection is bound at
+request start; this phase does not add a concurrent publication protocol.
+Preserve all financial,
+freshness, saving and speed gates. These later prerequisites remain unimplemented
+until their own evidence passes. This split does not advance CB-12 integration.
+
 **Next bounded experiment:** Retain Numba and the unresolved source-derived
 guard/assembly question. First design measurement orchestration or resource
 planning that accounts for the observed control and preparation costs and the
@@ -912,7 +941,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): 2,700-second budget stop before compiled candidate; paired performance unresolved; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete; benchmark isolation and paired performance unresolved; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -922,7 +951,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-09 | Planned | — |
 | CB-10 | Planned | — |
 | CB-11 | Planned | — |
-| CB-12 | Planned | Isolated candidate startup and stable revision/restart protection; immediate detection and operational budgets remain required |
+| CB-12 | Planned | Wave8 request-start revision selection reusable; isolated startup, actual restart, immediate detection and operational budgets remain required |
 | CB-13 | Planned | Isolated preview; stable website remains default |
 | CB-14 | Planned | Final 5× gate pending |
 | CB-15 | Planned | Stable default stays until all CB-14 readiness gates pass |
@@ -940,8 +969,12 @@ cases remain for wave5. Wave6 rejected requested-metric SQL staging alone:
 3.92% observed request reduction and 4.87× production ratio. Do not expand
 that unchanged intervention. Wave7 implemented the guard/assembly prototype but
 its pair hit the 2,700-second whole budget before compiled candidate execution.
-The next bounded design must account for the observed measurement costs and
-prove isolation from the live website before another paired pilot. Stable
+Wave8 completes default publication revision selection as the first safety
+prerequisite, without changing the live engine. The next bounded design must
+separate benchmark admission from source-only fixture imports and establish a
+consistent input handoff without blocking the live cache. Then qualify resources
+and concurrent availability before another paired pilot. Account for observed
+control and preparation costs. Stable
 publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
 Preserve the
 financial, freshness and acceptance contracts. A promising pair must precede the
@@ -959,3 +992,4 @@ before the required gate passes.
 | 25 October 2026 | Wave6 metric projection preserved exact results and removed 1,412,574 unused rows, but its 3.92% request reduction and 4.87× ratio failed the declared pilot criteria. | Stop this intervention without a full matrix. Retain Numba; focus the next bounded question on source-derived candidate guards/assembly. | Can one shared-policy intervention close the request gap? Full primary and operational gates remain required. |
 | 25 October 2026 | Wave7 source-derived guard/assembly code passed 93 WSL and 92 native tests plus one skip. Source request and controls were 120.20 and 691.08/598.52 seconds on wave6's prepared-input identity. The 2,700-second watchdog stopped before compiled candidate execution. | Reject expansion of this incomplete pair. Revisit measurement orchestration/resource planning with a new prospective bounded protocol; retain the prototype and unchanged financial/speed gates. | Real-cache compiled correctness and paired performance remain unmeasured. A promising pair must precede the full primary matrix. |
 | 25 October 2026 | The user needs to keep using the slower website throughout development. The installed engine was restarted and its page, panel and one cached 50-stock backtest passed; current deployment revision is recorded above. Wave7's shared live-cache ownership would block such use. | Make stable website availability a cross-cutting gate. Isolate experiments and previews, protect the stable deployment/restart revision, and keep the old engine default until every CB-14 readiness gate passes. | Website-safe snapshot/measurement ownership and protected normal publication still need implementation and qualification before affecting live use. |
+| 25 October 2026 | Wave8 isolates the publication-revision prerequisite. Both platforms pass 32 disposable deployment tests; read-only actual selection retains the installed commit. | Normal WSL publication selects the installed or pending commit rather than experimental HEAD. Split benchmark admission/input handoff and resource/availability proofs before any new pilot. | No live restart, benchmark isolation or new compiled performance is qualified. |

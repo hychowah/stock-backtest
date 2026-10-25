@@ -26,7 +26,11 @@ the repository automatically.
 
 Edit and commit only in the WSL source checkout. `<windows-runtime>`
 is the native Windows runtime, not a second repository. `python3 tools/deploy.py`
-exports committed source there. `--start` deploys and starts native Python;
+exports committed source there. Normal publication retains the installed commit;
+a valid pending publication selects its recorded commit for recovery. Use
+`--revision <commit>` from WSL only for a deliberate revision change. A fresh
+runtime requires an explicit revision. Conflicting pending intent is rejected.
+`--start` deploys and starts native Python;
 `--check` deploys and runs the installed Windows checks. The installed Windows
 `backtest-web.cmd` performs the same deploy/start flow through WSL. Local paths
 and interpreter registration live in ignored `data/workspace.json`.

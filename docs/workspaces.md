@@ -15,9 +15,26 @@ python3 tools/deploy.py
 python3 tools/deploy.py --start
 ```
 
-Deployment exports the selected Git commit. It does not copy working-tree edits. The two existing portable-snapshot edits remain in the WSL checkout until separately reviewed. Commit implementation changes before deployment. Use `--revision <commit>` to select another compatible committed revision.
+Deployment exports one selected Git commit. It does not copy working-tree edits.
+Normal publication retains the installed commit from `data/deployment.json`.
+Committing experimental work does not change that default. A valid unfinished
+publication selects its recorded commit first. A missing or invalid installation
+record stops normal publication. A fresh runtime needs an explicit revision.
 
-From Windows Terminal, run `backtest-web.cmd`. The installed command calls the Windows runtime launcher. It asks WSL to deploy the source checkout's `HEAD`, then starts native Windows Python in the same terminal. Ctrl+C stops the server. WSL must be available to run this deployment step.
+Use `python3 tools/deploy.py --revision <commit> --start` from WSL to deliberately
+select another compatible committed revision. An explicit `--revision HEAD` also
+requests a change. Explicit selection does not qualify an experimental engine.
+Keep the installed stable engine until the compiled program's full readiness
+gates pass. The two existing portable-snapshot edits stay in WSL until separately
+reviewed. Commit authorized source changes before deliberate publication.
+
+From Windows Terminal, run `backtest-web.cmd`. The installed command calls the Windows runtime launcher. It asks the current WSL deployment tool to retain the installed revision, then starts native Windows Python in the same terminal. Ctrl+C stops the server. WSL must be available to run this deployment step.
+
+The running server does not load WSL edits. The installed launcher already delegates
+to the current WSL tool, so its normal next invocation uses this revision rule.
+The updated native forwarding of an explicit revision is source-only until it
+is deliberately installed. Use the WSL command above for an explicit revision
+with the older installed launcher.
 
 For an already-installed revision without contacting WSL, run native Python directly:
 
@@ -56,7 +73,7 @@ There is no automatic reverse source sync. Do not edit installed Windows code. D
 python3 tools/deploy.py --check
 ```
 
-This deploys committed source, runs native Windows deployment, launcher, startup, cache-access and saved-path checks, ensures prepared data, builds local output, and checks SQL/browser parity. It also runs the range check with Node.js from WSL against the Windows output. No market-data download starts.
+This republishes the retained revision (or an explicitly selected revision), runs native Windows deployment, launcher, startup, cache-access and saved-path checks, ensures prepared data, builds local output, and checks SQL/browser parity. It also runs the range check with Node.js from WSL against the Windows output. No market-data download starts.
 
 The WSL checkout contains source and synthetic test fixtures, not another full raw cache. For example, `python3 tests/test_deployment.py` runs there. The saved-data `tests/check_paths.py` belongs in the Windows runtime and is included in `--check`. Linux and Windows environments and native binaries are separate.
 
@@ -74,7 +91,7 @@ Raw data remains outside Git. Back it up separately. Baseline revision history r
 
 ## Interrupted deployment
 
-Run `python3 tools/deploy.py` again. A pending publication retains its verified staging payload and completion journal. Retry completes that publication before starting another. The server refuses to import application modules while a pending publication exists. Do not delete the journal, edit the manifest, or copy individual source files to bypass recovery.
+Run `python3 tools/deploy.py` again. A pending publication retains its verified staging payload and completion journal. Default retry selects that transaction's commit, even if the final manifest still records the older commit. An explicit different revision is rejected before staging. Finish recovery first, then deliberately select another revision if needed. Native publication still verifies the retained payload under its existing locks. The server refuses to import application modules while a pending publication exists. Do not delete the journal, edit the manifest, or copy individual source files to bypass recovery.
 
 The lock is acquired before the application module is imported. `website/serve.py` is the small entry point; `website/serve_app.py` holds the HTTP application. The ownership implementation is `website/runtime_access.py`.
 

@@ -1,6 +1,6 @@
 """Committed source publication, recovery and actual cross-process ownership."""
 import hashlib
-from contextlib import closing
+from contextlib import closing, ExitStack
 import io
 import json
 from pathlib import Path
@@ -17,6 +17,211 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'website'), str(ROOT / 'scripts')]
 import deploy
 import runtime_access
+
+
+class DeploymentRevisionTests(unittest.TestCase):
+    """Resolve intent against disposable evidence before any publication action."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name) / 'runtime'
+        self.root.mkdir()
+        self.source = Path(temporary.name) / 'source'
+        self.config = dict(source=str(self.source), distro='Ubuntu', runtime=str(self.root), python='fixture-python')
+        self.installed = self.manifest('a' * 40)
+        self.pending = self.manifest('b' * 40)
+        self.head = 'c' * 40
+        self.addCleanup(patch.stopall)
+        patch.object(deploy, 'ROOT', self.source).start()
+        patch.object(deploy, 'linux_path', side_effect=Path).start()
+        self.git = patch.object(deploy, 'git', side_effect=self.git_result).start()
+
+    def manifest(self, commit):
+        return dict(version=1, commit=commit, files={'README.md': 'd' * 64},
+                    source=str(self.source), distro='Ubuntu')
+
+    def git_result(self, *arguments):
+        if arguments[0] == 'rev-parse':
+            self.assertEqual(arguments[:3], ('rev-parse', '--verify', '--end-of-options'))
+            revision = arguments[3].removesuffix('^{commit}')
+            if revision == 'HEAD':
+                return self.head.encode()
+            if revision in ('a' * 40, 'b' * 40, 'c' * 40):
+                return revision.encode()
+            raise subprocess.CalledProcessError(128, ['fixture-git', 'rev-parse'])
+        self.assertEqual(arguments[0], 'show')
+        return b'committed bootstrap fixture'
+
+    def evidence(self, installed=True, previous=True):
+        if installed:
+            deploy.write_json(self.root / deploy.MANIFEST, self.installed)
+        journal = dict(manifest=self.pending, previous=self.installed if previous else None,
+                       payload='.deployment/stage-retained/payload')
+        deploy.write_json(self.root / deploy.PENDING, journal)
+        return journal
+
+    def assert_rejected(self, requested=None, error=ValueError):
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        with ExitStack() as stack:
+            guards = [stack.enter_context(patch.object(owner, name)) for owner, name in (
+                (Path, 'mkdir'), (deploy, 'native'), (deploy.subprocess, 'run'),
+                (deploy, 'stop_servers'), (deploy, 'cache_ownership'),
+                (runtime_access, 'ownership'), (deploy, 'install_file'), (deploy, 'windows_path'))]
+            with self.assertRaises(error):
+                deploy.deploy(self.config, requested)
+            for guard in guards:
+                guard.assert_not_called()
+        self.assertFalse((self.root / '.deployment').exists())
+        after = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        self.assertEqual(after, before)
+        self.assertFalse(any(call.args[0] == 'show' for call in self.git.call_args_list))
+
+    def test_default_retains_installed_commit_while_head_differs(self):
+        deploy.write_json(self.root / deploy.MANIFEST, self.installed)
+        self.assertEqual(deploy.deployment_revision(self.config), 'a' * 40)
+        self.git.assert_called_once_with('rev-parse', '--verify', '--end-of-options', 'a' * 40 + '^{commit}')
+
+    def test_fresh_runtime_requires_explicit_revision(self):
+        self.assert_rejected()
+        self.git.assert_not_called()
+        self.assertEqual(deploy.deployment_revision(self.config, 'HEAD'), self.head)
+
+    def test_explicit_selection_can_change_installed_commit(self):
+        deploy.write_json(self.root / deploy.MANIFEST, self.installed)
+        self.assertEqual(deploy.deployment_revision(self.config, 'HEAD'), self.head)
+
+    def test_pending_owns_default_with_old_new_or_absent_installed_manifest(self):
+        for current in (self.installed, self.pending, None):
+            with self.subTest(current=current):
+                self.evidence(installed=False)
+                path = self.root / deploy.MANIFEST
+                if current is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    deploy.write_json(path, current)
+                self.assertEqual(deploy.deployment_revision(self.config), self.pending['commit'])
+                self.assertTrue((self.root / deploy.PENDING).exists())
+        self.evidence(installed=False, previous=False)
+        self.assertEqual(deploy.deployment_revision(self.config), self.pending['commit'])
+
+    def test_pending_allows_only_its_exact_commit(self):
+        self.evidence()
+        self.assertEqual(deploy.deployment_revision(self.config, self.pending['commit']), self.pending['commit'])
+        self.assert_rejected('HEAD')
+        self.assert_rejected(self.installed['commit'])
+
+    def test_invalid_installed_evidence_fails_even_for_explicit_selection(self):
+        invalid = [None, {}, [], dict(self.installed, version=True), dict(self.installed, commit=None),
+                   dict(self.installed, commit='HEAD'), dict(self.installed, files=[]),
+                   dict(self.installed, files={'README.md': None}),
+                   dict(self.installed, files={'raw/prices.json': 'd' * 64}),
+                   dict(self.installed, files={'README.md': 'd' * 64, 'readme.md': 'd' * 64}),
+                   dict(self.installed, source='/different/source'), dict(self.installed, distro='Other')]
+        for value in invalid:
+            with self.subTest(value=value):
+                deploy.write_json(self.root / deploy.MANIFEST, value)
+                self.assert_rejected('HEAD')
+        for content in ('', '{'):
+            with self.subTest(content=content):
+                (self.root / deploy.MANIFEST).write_text(content)
+                self.assert_rejected('HEAD')
+
+    def test_malformed_pending_never_behaves_as_missing(self):
+        valid = self.evidence()
+        invalid = [None, {}, [], False]
+        invalid += [{key: value for key, value in valid.items() if key != missing}
+                    for missing in valid]
+        invalid += [dict(valid, manifest=value) for value in (None, {}, [], dict(self.pending, commit=42))]
+        invalid += [dict(valid, previous=value) for value in ({}, [], False, dict(self.installed, source='wrong'))]
+        invalid += [dict(valid, payload=value) for value in (None, '', '../outside', 'elsewhere/payload', '.deployment')]
+        for value in invalid:
+            with self.subTest(value=value):
+                deploy.write_json(self.root / deploy.PENDING, value)
+                self.assert_rejected('HEAD')
+        for content in ('', '{'):
+            with self.subTest(content=content):
+                (self.root / deploy.PENDING).write_text(content)
+                self.assert_rejected()
+
+    def test_pending_rejects_unrelated_or_malformed_current_evidence(self):
+        self.evidence()
+        for value in (self.manifest('c' * 40), None, {}, dict(self.installed, files={})):
+            with self.subTest(value=value):
+                deploy.write_json(self.root / deploy.MANIFEST, value)
+                self.assert_rejected()
+
+    def test_invalid_registration_rejects_before_publication(self):
+        deploy.write_json(self.root / deploy.MANIFEST, self.installed)
+        original = self.config.copy()
+        for field, value in (('source', '/other/source'), ('distro', None), ('distro', ''),
+                             ('distro', 'Other'), ('runtime', None), ('runtime', '')):
+            with self.subTest(field=field, value=value):
+                self.config = dict(original, **{field: value})
+                self.assert_rejected('HEAD')
+
+    def test_missing_history_never_falls_back_to_head(self):
+        deploy.write_json(self.root / deploy.MANIFEST, dict(self.installed, commit='e' * 40))
+        self.assert_rejected(error=subprocess.CalledProcessError)
+        self.git.assert_called_once_with('rev-parse', '--verify', '--end-of-options', 'e' * 40 + '^{commit}')
+        self.evidence()
+        journal = deploy.read_json(self.root / deploy.PENDING)
+        journal['manifest']['commit'] = 'e' * 40
+        deploy.write_json(self.root / deploy.PENDING, journal)
+        self.assert_rejected(error=subprocess.CalledProcessError)
+
+    def test_export_uses_one_resolved_commit_for_bootstrap_and_archive(self):
+        deploy.write_json(self.root / deploy.MANIFEST, self.installed)
+        for requested, expected in ((None, 'a' * 40), ('HEAD', 'c' * 40)):
+            with self.subTest(requested=requested):
+                self.git.reset_mock()
+                self.head = 'c' * 40
+                def archive(command, stdout, check):
+                    self.assertEqual(command, ['/usr/bin/git', '--git-dir=' + str(self.source / '.git-local'),
+                                     '--work-tree=' + str(self.source), 'archive', '--format=tar', expected])
+                    self.head = 'b' * 40  # A moving name cannot affect the extracted generation.
+                    stdout.write(b'fixture archive')
+                def publish(config, bootstrap, operation, stage, runtime):
+                    self.assertEqual(operation, '--native-publish')
+                    self.assertEqual(Path(bootstrap).read_bytes(), b'committed bootstrap fixture')
+                    request = deploy.read_json(Path(stage) / 'request.json')
+                    self.assertEqual(request['commit'], expected)
+                    self.assertEqual(request['archive_sha256'], deploy.digest(Path(stage) / 'source.tar'))
+                with patch.object(deploy.subprocess, 'run', side_effect=archive) as run, \
+                        patch.object(deploy, 'windows_path', side_effect=str), \
+                        patch.object(deploy, 'native', side_effect=publish) as native:
+                    deploy.deploy(self.config, requested)
+                self.assertEqual(self.git.call_count, 2)
+                self.assertEqual(self.git.call_args.args, ('show', expected + ':tools/deploy.py'))
+                run.assert_called_once()
+                native.assert_called_once()
+                self.assertEqual(list((self.root / '.deployment').iterdir()), [])
+
+    def test_parser_default_and_explicit_revision_reach_deploy(self):
+        for selection, expected in (([], None), (['--revision', 'HEAD'], 'HEAD')):
+            with self.subTest(selection=selection), patch.object(sys, 'argv', ['deploy.py', *selection]), \
+                    patch.object(deploy.os, 'name', 'posix'), \
+                    patch.object(deploy, 'configuration', return_value=self.config), \
+                    patch.object(deploy, 'deploy') as publish:
+                deploy.main()
+                publish.assert_called_once_with(self.config, expected)
+
+    def test_native_parser_forwards_explicit_revision_and_default_has_no_head(self):
+        deploy.write_json(self.root / deploy.CONFIG, self.config)
+        for selection, expected in (([], []), (['--revision', 'HEAD'], ['--revision', 'HEAD'])):
+            with self.subTest(selection=selection), patch.object(deploy, 'ROOT', self.root), \
+                    patch.object(sys, 'argv', ['deploy.py', '--native-launch', *selection, '--no-browser']), \
+                    patch.object(deploy.subprocess, 'call', return_value=0) as call, self.assertRaises(SystemExit) as result:
+                deploy.main()
+            self.assertEqual(result.exception.code, 0)
+            self.assertEqual(call.call_args.args[0], ['wsl.exe', '-d', 'Ubuntu', '--cd', str(self.source),
+                             '--exec', 'python3', 'tools/deploy.py', '--start', *expected, '--no-browser'])
+
+    def test_unregistered_native_launcher_rejects_explicit_selection(self):
+        with patch.object(deploy, 'ROOT', self.root), patch.object(deploy.subprocess, 'call') as call:
+            with self.assertRaisesRegex(ValueError, 'registered'):
+                deploy.native_launch(['--no-browser'], 'HEAD')
+        call.assert_not_called()
 
 
 class DeploymentTests(unittest.TestCase):
