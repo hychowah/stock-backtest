@@ -220,7 +220,11 @@ class CapturedPolicy:
                    'runpy.run_module("bench_execution_policy",run_name="__main__")',
                    str(support), str(request)]
         try:
-            self._owned = OwnedProcess(command, env=environment)
+            try:
+                self._owned = OwnedProcess(command, env=environment)
+            except BaseException as error:
+                self._owned = getattr(error, 'owned_process', None)
+                raise
         except OSError as error:
             raise ExecutionPolicyError('child_failed') from error
         self._owned.start()
@@ -277,10 +281,7 @@ class CapturedPolicy:
 
     def _closure_confirmed(self):
         owned = self._owned
-        return (owned is None or
-                owned.process.poll() is not None and not owned.reader.is_alive() and
-                all(stream is None or stream.closed for stream in
-                    (owned.process.stdin, owned.process.stdout)) and owned.job is None)
+        return owned is None or owned.closed
 
     def close(self, error=None):
         """Release ownership only after the child, reader and handles close.

@@ -261,3 +261,30 @@ peaks. See [wave13](../docs/plans/compiled-backtest/phases/CB-02/wave13/README.m
 Reference controls, NumericInputs, current request-time freshness and general
 execution lifecycle still need the isolated engine facade. No real capture,
 derivative, request or benchmark is admitted.
+
+
+## Measured-execution hardening (source only)
+
+`bench_execution.MeasurementExecution` owns the actual private reference and
+Numba adapters, current observations, private derivatives, compiler files,
+results and confirmed closure. `bench_execution_observation.CurrentObservation`
+shares fixture and coordinated checks. Coordinated mode requires verified
+participating cache-access source. It takes source ownership before short cache
+ownership and yields to live-intent leases. It releases both before calculation.
+This is cooperative priority, not zero-delay access or installed compatibility.
+
+`bench_candidates_process.OwnedProcess` bounds transport and records separate
+closure facts. Native Job Objects limit committed memory, processes and CPU
+share. Resident-memory, thread and disk enforcement remain incomplete. Linux
+sessions do not prevent escape. Full resource qualification stays open.
+
+Validate the prospective declaration without reading runtime assets:
+
+```text
+python3 tools/bench_comparison.py < docs/plans/compiled-backtest/phases/CB-02/execution/prospective-comparison.json
+```
+
+This validates arithmetic and protocol shape only. It cannot verify caller
+qualification claims, discover the runtime, admit execution or resume a stopped
+pair. The declaration retains pending real bindings. No real pilot is authorized.
+See the [hardening record](../docs/plans/compiled-backtest/phases/CB-02/execution/hardening.md).

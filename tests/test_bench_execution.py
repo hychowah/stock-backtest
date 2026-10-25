@@ -96,6 +96,9 @@ class ExecutionTests(unittest.TestCase):
             binding=dict(capture_id=f.manifest['capture_id'], financial_generation=f.identity,
                          sources=execution.digest(f.sources)),
             environment=execution.environment(envelope), costs=costs,
+            step_costs={step: {key: costs[key] / 4 for key in ('clone', 'setup', 'proof',
+                        'request', 'collection', 'shutdown')} for step in
+                        ('control_before', 'numba_source', 'numba_compiled', 'control_after')},
             whole_seconds=400., max_control_drift=1000., max_bracket_seconds=390.)
         values = dict(capture=f.capture, source=f.source, output=f.output, protocol=protocol,
             envelope=envelope,
@@ -277,6 +280,40 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(owner._workspace._active)
         self.assertNotIn(id(owner), execution._pending_measurements)
 
+    def test_failed_child_constructor_keeps_workspace_and_process_for_retry(self):
+        from contextlib import ExitStack
+        from bench_candidates_process import OwnedProcess, _pending_processes
+        for failure_kind in ('descendants', 'handles'):
+            with self.subTest(failure_kind=failure_kind):
+                owner = self.owner()
+                failure = RuntimeError('Synthetic reader initialization failure')
+                with patch.object(execution.admission, 'require_execution'):
+                    owner.__enter__()
+                    with ExitStack() as faults:
+                        faults.enter_context(patch('bench_candidates_process.Thread.start', side_effect=failure))
+                        if failure_kind == 'descendants':
+                            faults.enter_context(patch.object(OwnedProcess, 'wait_empty', side_effect=TimeoutError('Synthetic closure')))
+                        else:
+                            def partial_close(process):
+                                for stream in (process.process.stdin, process.process.stdout):
+                                    if not stream.closed: stream.close()
+                                raise OSError('Synthetic native handle close failure')
+                            faults.enter_context(patch.object(OwnedProcess, '_close_handles', partial_close))
+                        with self.assertRaises(RuntimeError) as caught:
+                            try: owner.compare()
+                            except BaseException as error:
+                                owner.__exit__(type(error), error, error.__traceback__)
+                                raise
+                        self.assertIs(caught.exception, failure)
+                    process = owner._owned
+                    self.assertIs(process, failure.owned_process)
+                    self.assertIs(_pending_processes[id(process)], process)
+                    self.assertTrue(owner._workspace._active)
+                    self.assertIs(execution._pending_measurements[id(owner)], owner)
+                    owner.__exit__(None, None, None)
+                    self.assertNotIn(id(process), _pending_processes)
+                    self.assertNotIn(id(owner), execution._pending_measurements)
+                    self.assertFalse(owner._workspace._active)
 
 if __name__ == '__main__':
     unittest.main()

@@ -189,10 +189,11 @@ separate future waves with repeated system handoffs:
    Default database arguments and spawned imports must resolve private assets.
    Compare complete books, holdings, summaries and committed replay.
 3. Obtain a new current-inventory observation inside each timed request.
-   The implemented provider serves disposable fixtures only. A production
-   provider is unavailable until source-before-cache ordering and live priority
-   pass native cross-process concurrency checks. No-wait exclusive acquisition
-   alone does not prove priority. Historical receipts cannot supply freshness.
+   The current provider implements source-before-cache observation with a
+   source-bound cooperative live-intent contract. Disposable cross-process
+   fixtures qualify yielding, not zero-delay access or installed-runtime
+   compatibility. Nonparticipating source is rejected. Historical receipts
+   cannot supply freshness. Real provider admission remains unavailable.
 4. Own resources through confirmed descendant, reader, database and mapping
    closure. Retain ownership on closure failure. Cover cancellation during
    setup, requests and publication. EOF and leader exit are separate evidence.
@@ -208,7 +209,12 @@ bytes, whole lifetime, process/thread counts, CPU allocation, total experimental
 private memory/mapped residency and cancellation/cleanup bounds. The existing
 4 GiB default-job working-set target remains a target. Sampled child memory,
 environment thread settings and process containment are not complete resource
-enforcement or a concurrent-availability proof.
+enforcement or a concurrent-availability proof. The same owner now applies
+native Job Object committed-memory, process-count and CPU-rate limits before GO.
+Transport frames, bytes and queued events are bounded. Native resident memory,
+threads and disk quotas remain unsupported. Linux session escape prevention is
+unsupported. These gaps keep the complete resource gate open. See the
+[hardening record](phases/CB-02/execution/hardening.md).
 
 ### One feasible comparison protocol
 
@@ -235,7 +241,11 @@ seconds remain for all other work. Its source setup alone took 148.33 seconds,
 and its source request took 120.20 seconds. Two shared controls reduce repeated
 work, but do not establish a sufficient budget for the unmeasured treatment.
 These are calculations from historical costs, not new timings or an explanation
-of drift. Freeze new bounds and stop conditions before a real attempt.
+of drift. The source-only [prospective declaration](phases/CB-02/execution/prospective-comparison.json)
+now allocates 6,960 seconds within a 7,200-second whole bound. It declares each
+step, a 1.20 maximum control ratio and a 6,600-second bracket. These are stop
+allocations, not cost predictions or user budgets. Real binding, resource and
+availability prerequisites are pending. Validation cannot grant admission.
 
 After a promising qualified pair, run the unchanged six-case, three-seed primary
 gate on one implementation identity. Repeat it on the integrated engine. Keep
@@ -1159,7 +1169,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate in that historical scope. [Execution capability](phases/CB-02/execution/README.md): actual disposable reference/Numba pair, costed protocol and capability roadmap; production freshness/resources/admission remain unqualified. No production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate in that historical scope. [Execution capability](phases/CB-02/execution/README.md): actual disposable reference/Numba pair, costed protocol and capability roadmap; cooperative source-bound observations and bounded transport/native job controls are implemented within it; complete resources, installed availability and real admission remain unqualified. See [hardening](phases/CB-02/execution/hardening.md). No production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned hardening | Immutable numeric artifact publication/attachment/retirement; input loading already demonstrated |
 | CB-05 | Planned hardening | Retain demonstrated Numba temporal primitives |
@@ -1190,8 +1200,10 @@ proofs remain reusable within their recorded limits. Wave13's combined latest
 MeasurementExecution now brings actual private reference and Numba requests,
 current disposable observations, shared-control orchestration, private results
 and closure into one fixture-tested operation. Its new envelope does not change
-CapturedWorkspace's original limits. It has no production observation provider,
-qualified real-resource envelope or real measurement admission. The detailed
+CapturedWorkspace's original limits. Its source-bound cooperative observation
+provider is implemented on disposable participating fixtures. Installed source
+compatibility, a qualified real-resource envelope and real admission remain
+unavailable. The detailed
 [execution record](phases/CB-02/execution/README.md) names its exact proof scope
 and remaining checkpoints. Finish those checkpoints together. Then obtain a
 promising paired pilot and repeat all six three-seed primary gates on one
@@ -1216,3 +1228,4 @@ freshness, weekly, workflow and rollback requirements intact.
 | 25 October 2026 | Wave12 inspection finds database defaults, report globals and spawned imports still depend on runtime paths. Copies contain no raw tree, so capture-time inventory cannot establish current freshness. The bounded owner verifies artifacts/coherence and actual source bytes with private derivatives; prior semantic identities remain unchanged. | Split captured input ownership from execution. Complete CapturedWorkspace under synthetic limits; keep both runners and admission closed. No more real capture is required. | Build the isolated engine facade and qualified live-priority request-freshness provider; then prove descendant/resource/cancellation and concurrent availability before a pilot. |
 | 25 October 2026 | Wave13 CODE inspection finds process-global logging effects in the actual application import closure. Policy construction itself needs no NumPy. | Split an owned source-only policy child from numerical/reference requests. Extract the shared program without financial changes; preserve unchanged owner limits and closed admission. | Bind both engines to the captured generation, add qualified current request freshness with live priority, then qualify general resources and availability before real execution. |
 | 25 October 2026 | Program review finds sound financial boundaries but repeated attachment prerequisites, late measurement lifetime and a horizontal rebuild of demonstrated work. User authorizes the recommendations and confirms Numba remains in scope. | Converge ownership into one measured-execution capability, rewrite phase responsibilities by retained capability, and freeze one costed contemporary control bracket. Actual disposable reference/Numba execution is distinct from production qualification. | Live-priority current observation, complete resource/availability qualification, a promising real pair, full primary gate, workflow budgets and weekly capacity remain open. |
+| 25 October 2026 | Disposable hardening adds source-bound live-intent observation, bounded transport and native job controls. Strict zero-delay access, full resource enforcement and installed-runtime compatibility remain unsupported or pending. | Keep the same measured-execution owner. Validate a fully costed prospective bracket without real assets or an admission route. | Qualify remaining enforcement and production-scale availability before real binding or execution. |

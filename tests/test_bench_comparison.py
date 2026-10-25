@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from bench_comparison import ComparisonError, ComparisonLedger, ComparisonProtocol, COSTS, STEPS
+from bench_comparison import ComparisonError, ComparisonLedger, ComparisonProtocol, COSTS, STEPS, STEP_COSTS, validate_prospective
 
 
 def protocol(**changes):
@@ -77,11 +77,70 @@ class ProtocolTests(unittest.TestCase):
             for number, step in enumerate(STEPS):
                 ledger.begin(step)
                 if problem == 'time' and number == 3:
-                    now[0] = 95.
+                    now[0] = 89.
                 seconds = 3. if problem == 'drift' and number == 3 else 1.
                 ledger.finish(step, dict(financial_agreement=True, closed=True, request_seconds=seconds))
+            if problem == 'time': now[0] = 95.
             with self.assertRaisesRegex(ComparisonError, 'noncontemporary|control_drift'):
                 ledger.result(closed=True)
+
+    def test_bracket_expiry_stops_before_another_request(self):
+        now = [0.]
+        ledger = ComparisonLedger(protocol(), clock=lambda: now[0])
+        ledger.begin(STEPS[0])
+        ledger.finish(STEPS[0], dict(financial_agreement=True, closed=True, request_seconds=1.))
+        now[0] = 95.
+        with self.assertRaisesRegex(ComparisonError, 'noncontemporary'): ledger.begin(STEPS[1])
+        self.assertEqual(ledger.stopped, 'noncontemporary')
+
+    def test_step_limits_survive_freeze_and_reject_overrun_with_aggregate_headroom(self):
+        import copy
+        allocations = {step: dict.fromkeys(STEP_COSTS, 2.5) for step in STEPS}
+        frozen = protocol(step_costs=allocations)
+        changed = copy.deepcopy(allocations)
+        changed[STEPS[0]]['request'] -= .5
+        changed[STEPS[1]]['request'] += .5
+        self.assertNotEqual(frozen.identity, protocol(step_costs=changed).identity)
+        self.assertEqual(frozen.value['costs'], protocol(step_costs=changed).value['costs'])
+        ledger = ComparisonLedger(frozen)
+        ledger.begin(STEPS[0])
+        self.assertEqual(ledger.remaining('request'), 2.5)
+        with self.assertRaisesRegex(ComparisonError, 'limit'): ledger.charge('request', 2.6)
+        self.assertLess(ledger.costs['request'], frozen.value['costs']['request'])
+        with self.assertRaises(ComparisonError): ledger.begin(STEPS[1])
+
+    def test_prospective_declaration_costs_order_gates_and_stdin_only_route(self):
+        import copy
+        import json
+        import subprocess
+        path = Path(__file__).resolve().parents[1] / 'docs/plans/compiled-backtest/phases/CB-02/execution/prospective-comparison.json'
+        value = json.loads(path.read_bytes())
+        result = validate_prospective(value)
+        self.assertEqual(result['arithmetic'], 'feasible')
+        self.assertEqual(result['execution_admission'], 'unavailable')
+        self.assertEqual(len(result['unresolved']), 6)
+        for kind in ('missing', 'cost', 'order', 'stop'):
+            changed = copy.deepcopy(value)
+            if kind == 'missing': changed['step_costs']['numba_compiled'].pop('setup')
+            elif kind == 'cost': changed['step_costs']['numba_compiled']['request'] = 1e9
+            elif kind == 'order': changed['order'] = changed['order'][::-1]
+            else: changed['stop_rules'].remove('busy')
+            with self.subTest(kind=kind), self.assertRaises(ComparisonError): validate_prospective(changed)
+        changed = copy.deepcopy(value)
+        changed['order'][1:3] = changed['order'][1:3][::-1]
+        self.assertEqual(validate_prospective(changed)['execution_admission'], 'unavailable')
+        changed = copy.deepcopy(value)
+        changed['step_costs']['control_before']['request'] -= 1.
+        changed['step_costs']['numba_source']['request'] += 1.
+        self.assertNotEqual(result['protocol_sha256'], validate_prospective(changed)['protocol_sha256'])
+        # Even unsupported caller qualification assertions grant no admission.
+        changed['qualification'] = dict.fromkeys(value['qualification'], 'qualified')
+        self.assertEqual(validate_prospective(changed)['qualification_claims'], 'unverified')
+        tool = Path(__file__).resolve().parents[1] / 'tools/bench_comparison.py'
+        run = subprocess.run([sys.executable, str(tool)], input=json.dumps(value),
+                             text=True, capture_output=True, timeout=10)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(json.loads(run.stdout)['execution_admission'], 'unavailable')
 
 
 if __name__ == '__main__':

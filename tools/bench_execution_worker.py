@@ -13,7 +13,6 @@ from pathlib import Path
 import sys
 import sysconfig
 import time
-from types import SimpleNamespace
 
 import bench_admission as admission
 from bench_comparison import ComparisonError, digest, encoded
@@ -46,7 +45,10 @@ def _guard(request, folder):
             mode, flags = args[1:3]
             writing = (isinstance(mode, str) and any(char in mode for char in 'wax+')) or bool(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC))
             if writing:
-                if not within(path, (owner,)) or within(path, (source, tools)):
+                coordination = request.get('observation_mode') == 'coordinated' and (
+                    path in (observation / 'data/website-source.lock', observation / 'data/website-data-0.lock')
+                    or path.parent == observation / 'data/website-data-0.lock.live')
+                if not coordination and (not within(path, (owner,)) or within(path, (source, tools))):
                     raise ComparisonError('unsupported')
             elif not within(path, (*readonly, owner)):
                 if os.name == 'nt' or not within(path, (Path('/proc'), Path('/sys'))):
@@ -65,37 +67,8 @@ def _guard(request, folder):
 
 
 def _observe(request, schedules):
-    """Fresh fixture metadata, source, report and prepared binding per request.
-
-    This provider never obtains live cache ownership or claims live priority.
-    It is only usable behind closed execution admission in disposable tests.
-    The captured inventory supplies expected values, never current observations.
-    """
-    from bench_generation import signature, metadata, file_hash
-    root = Path(request['observation_root'])
-    for journal in ('deployment.pending.json', 'research.sqlite.publication.json'):
-        if (root / 'data' / journal).exists():
-            raise ComparisonError('stale')
-    r = schedules.r
-    names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs')
-    modules = {name: SimpleNamespace(__file__=str(root / 'scripts' / (name + '.py'))) for name in names}
-    modules['baseline'].cutoff = r.baseline.cutoff
-    observed = signature(SimpleNamespace(ROOT=root, RAW=root / 'raw', RESULTS=root / 'results',
-        __file__=str(root / 'scripts/research.py'), **modules))
-    _verify(root, request['sources'])
-    expected = request['captured_freshness']
-    research, daily = metadata(root / 'data/research.sqlite'), metadata(root / 'data/schedules.sqlite')
-    engine = {}
-    for name in ('schedules.py', 'book_batch.py'):
-        info = (root / 'scripts' / name).stat()
-        engine[name] = [info.st_size, info.st_mtime_ns]
-    report = file_hash(root / 'results/summary-exits.txt')
-    if (observed != expected['inputs'] or research != request['captured_metadata']['research']
-            or daily.get('daily_inputs') != expected['daily_inputs']
-            or daily['daily_inputs'].get('engine') != engine
-            or report != research.get('baseline_report_sha')):
-        raise ComparisonError('stale')
-    return observed
+    from bench_execution_observation import CurrentObservation
+    return CurrentObservation(request, schedules).current()
 
 
 def _bind(request):

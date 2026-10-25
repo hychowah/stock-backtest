@@ -309,7 +309,7 @@ class Delivery:
             raise ValueError('Local response transport did not receive the complete response.')
 
 
-def windows_processes():
+def windows_processes(*, include_pids=None):
     """One sampled process tree snapshot using native stdlib APIs."""
     import ctypes as c
     from ctypes import wintypes as w
@@ -352,6 +352,8 @@ def windows_processes():
         if expanded == descendants:
             break
         descendants = expanded
+    if include_pids is not None:
+        descendants = set(include_pids)
     result = {}
     for pid, parent, threads in entries:
         if pid not in descendants:

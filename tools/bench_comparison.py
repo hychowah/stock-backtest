@@ -27,6 +27,63 @@ class ComparisonError(ValueError):
 
 STEPS = ('control_before', 'numba_source', 'numba_compiled', 'control_after')
 COSTS = ('attachment', 'clone', 'setup', 'proof', 'request', 'collection', 'shutdown', 'finalization')
+STEP_COSTS = ('clone', 'setup', 'proof', 'request', 'collection', 'shutdown')
+QUALIFICATIONS = ('participating_source', 'live_priority', 'resource_enforcement',
+                  'descendant_closure', 'concurrent_workflows', 'real_input_binding')
+STOP_RULES = ('cancelled', 'busy', 'stale', 'limit', 'unsupported', 'mismatch',
+              'child_failed', 'closure_pending', 'control_drift', 'noncontemporary', 'interrupted')
+
+
+def validate_prospective(value):
+    """Validate a source-only cost declaration, never execute or grant admission.
+
+    Pending real bindings are explicit. Even complete caller declarations cannot
+    certify qualifications: they are unverified claims, not admission evidence.
+    This route reads only its JSON input. It discovers no runtime or dependencies.
+    """
+    try:
+        if (value['version'] != 1 or set(value['step_costs']) != set(STEPS)
+                or set(value['global_costs']) != {'attachment', 'finalization'}
+                or set(value['qualification']) != set(QUALIFICATIONS)
+                or set(value['stop_rules']) != set(STOP_RULES)
+                or not value['resource_requirements'] or not value['benchmark_tools']):
+            raise ComparisonError('incomplete')
+        totals = dict.fromkeys(COSTS, 0.)
+        for step, costs in value['step_costs'].items():
+            if set(costs) != set(STEP_COSTS): raise ComparisonError('incomplete')
+            for key, seconds in costs.items():
+                if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds <= 0:
+                    raise ComparisonError('infeasible_costs')
+                totals[key] += seconds
+        totals.update(value['global_costs'])
+        protocol = ComparisonProtocol.freeze(configuration=value['configuration'],
+            binding=value['binding'], environment=value['environment'], costs=totals,
+            whole_seconds=value['whole_seconds'], max_control_drift=value['max_control_drift'],
+            max_bracket_seconds=value['max_bracket_seconds'], order=value['order'],
+            step_costs=value['step_costs'])
+        unresolved = [name for name in QUALIFICATIONS if value['qualification'][name] != 'qualified']
+        return dict(declaration_sha256=digest(value), protocol_sha256=protocol.identity,
+            arithmetic='feasible', allocated_seconds=sum(totals.values()), costs=totals,
+            unresolved=unresolved, qualification_claims='unverified',
+            execution_admission='unavailable', compiled_real_cost='unmeasured',
+            workflow_budgets='unresolved', request_boundary='freshness_through_transport')
+    except (KeyError, TypeError, AttributeError):
+        raise ComparisonError('incomplete') from None
+
+
+def main():
+    """Validate one declaration from stdin; no path argument or execution mode."""
+    import sys
+    try:
+        data = sys.stdin.buffer.read(1024 * 1024 + 1)
+        if len(data) > 1024 * 1024: raise ComparisonError('limit')
+        value = validate_prospective(json.loads(data))
+    except (ValueError, TypeError) as error:
+        print(encoded(dict(reason=getattr(error, 'reason', 'unsupported'),
+                           execution_admission='unavailable')).decode())
+        return 2
+    print(encoded(value).decode())
+    return 0
 
 
 @dataclass(frozen=True)
@@ -46,7 +103,7 @@ class ComparisonProtocol:
 
     @classmethod
     def freeze(cls, *, configuration, binding, environment, costs, whole_seconds,
-               max_control_drift, max_bracket_seconds, order=STEPS):
+               max_control_drift, max_bracket_seconds, order=STEPS, step_costs=None):
         def positive(value):
             return type(value) in (int, float) and math.isfinite(value) and value > 0
         if (set(costs) != set(COSTS) or not all(positive(v) for v in costs.values())
@@ -65,6 +122,12 @@ class ComparisonProtocol:
             environment=environment, costs=costs, whole_seconds=whole_seconds,
             max_control_drift=max_control_drift, max_bracket_seconds=max_bracket_seconds,
             order=list(order))
+        if step_costs is not None:
+            if (set(step_costs) != set(STEPS) or any(set(row) != set(STEP_COSTS)
+                    or not all(positive(v) for v in row.values()) for row in step_costs.values())
+                    or any(sum(step_costs[step][key] for step in STEPS) > costs[key] for key in STEP_COSTS)):
+                raise ComparisonError('infeasible_costs')
+            payload['step_costs'] = step_costs
         return cls(encoded(payload))
 
     @property
@@ -88,6 +151,7 @@ class ComparisonLedger:
         self.started = clock()
         self._events = []
         self.costs = dict.fromkeys(COSTS, 0.)
+        self.step_costs = {step: dict.fromkeys(STEP_COSTS, 0.) for step in STEPS}
         self.stopped = None
         self.active = None
 
@@ -101,6 +165,9 @@ class ComparisonLedger:
         if self.clock() - self.started > self.protocol.value['whole_seconds']:
             self.stop('limit')
             raise ComparisonError('limit')
+        if self._events and self.clock() - self.started - self._events[0]['elapsed'] > self.protocol.value['max_bracket_seconds']:
+            self.stop('noncontemporary')
+            raise ComparisonError('noncontemporary')
 
     def charge(self, category, seconds):
         self.check()
@@ -108,9 +175,24 @@ class ComparisonLedger:
                 or not math.isfinite(seconds) or seconds < 0):
             raise ComparisonError('invalid_cost')
         self.costs[category] += seconds
+        if self.active is not None and category in STEP_COSTS:
+            self.step_costs[self.active][category] += seconds
+            allocations = self.protocol.value.get('step_costs')
+            if allocations is not None and self.step_costs[self.active][category] > allocations[self.active][category]:
+                self.stop('limit')
+                raise ComparisonError('limit')
         if self.costs[category] > self.protocol.value['costs'][category]:
             self.stop('limit')
             raise ComparisonError('limit')
+
+    def remaining(self, category):
+        """Enforce both the active step and whole-comparison allocation."""
+        self.check()
+        total = self.protocol.value['costs'][category] - self.costs[category]
+        allocations = self.protocol.value.get('step_costs')
+        if allocations is not None and self.active is not None and category in STEP_COSTS:
+            total = min(total, allocations[self.active][category] - self.step_costs[self.active][category])
+        return total
 
     def begin(self, step):
         self.check()
@@ -152,4 +234,9 @@ class ComparisonLedger:
         return dict(status='fixture_pair_complete', protocol=self.protocol.identity,
                     execution_admission='unavailable', speed_gate='unqualified',
                     control_drift=max(times) / min(times), costs=dict(self.costs),
+                    step_costs=json.loads(encoded(self.step_costs)),
                     events=list(self.events), closed=True)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

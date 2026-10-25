@@ -329,3 +329,10 @@ the new defaults but is not a sustained-rate or full application benchmark.
 Keep the earlier eight-worker measurements historical. Do not reuse old timings as a new
 measurement. Test `python3 tests/test_fmp_download.py` and the data-manager and
 cache-access checks, including native Windows.
+
+
+Benchmark observations now use source-bound cooperative live-intent leases.
+They take source ownership before short cache ownership and yield at checkpoints.
+They release ownership before calculation. This does not qualify zero-delay
+access or the installed older runtime. Keep `data/website-data-*.lock.live/`
+ignored. Real benchmark admission stays closed.

@@ -11,16 +11,131 @@ from functools import wraps
 import os
 from threading import RLock, local
 import time
+import uuid
 
 from paths import ROOT
+
+# A source-bound observer requires this protocol, not a directory marker.
+OBSERVATION_PROTOCOL = 1
+
+
+def _file_lock(handle, acquire):
+    handle.seek(0)
+    if os.name == 'nt':
+        import msvcrt
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK if acquire else msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(handle, (fcntl.LOCK_EX | fcntl.LOCK_NB) if acquire else fcntl.LOCK_UN)
+
+
+def _contended(error):
+    return error.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK)
 
 
 class WorkspaceAccess:
     def __init__(self,path):
         self.path=path;self.lock=RLock();self.state=local()
 
+    @property
+    def intents(self):
+        return self.path.with_name(self.path.name + '.live')
+
+    def live_pending(self):
+        """Inspect OS-owned leases. Crashed owners leave inactive files.
+
+        Inspection never waits for a live owner. Unknown/unreadable lease state
+        defers observers. Only the creator removes a lease, after releasing it.
+        """
+        try:
+            paths = list(self.intents.iterdir())
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True
+        for path in paths:
+            try:
+                if path.is_symlink() or not path.is_file():
+                    return True
+                with path.open('r+b', buffering=0) as handle:
+                    try:
+                        _file_lock(handle, True)
+                    except OSError:
+                        return True
+                    _file_lock(handle, False)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return True
+        return False
+
+    @contextmanager
+    def _intent(self):
+        self.intents.mkdir(parents=True, exist_ok=True)
+        path = self.intents / (uuid.uuid4().hex + '.lease')
+        handle = path.open('x+b', buffering=0)
+        locked = False
+        try:
+            # Lock the byte even before its first write. This also covers a
+            # crash during publication. A concurrent probe releases promptly.
+            while not locked:
+                try:
+                    _file_lock(handle, True); locked = True
+                except OSError as error:
+                    if not _contended(error): raise
+                    time.sleep(.001)
+            handle.write(b'0')
+            yield
+        finally:
+            try:
+                if locked: _file_lock(handle, False)
+            finally:
+                handle.close()
+                try: path.unlink()
+                except FileNotFoundError: pass
+                except PermissionError:
+                    # Windows may still have a short-lived probe handle open.
+                    # The closed lease is inactive and safe to leave behind.
+                    pass
+
+    @contextmanager
+    def observe(self):
+        """Borrow the coordinator without waiting; yield a conflict checkpoint.
+
+        Normal operations announce intent before waiting for either lock.
+        An observer must checkpoint between bounded work units and close its
+        handles on conflict. This is cooperative handoff, not zero-delay access.
+        Never nest an ordinary operation inside an observation.
+        """
+        def checkpoint():
+            if self.live_pending():
+                raise ValueError('Live work has priority over input observation.')
+        checkpoint()
+        if getattr(self.state, 'held', False):
+            raise ValueError('Observation must own a separate request scope.')
+        with self._hold(0):
+            self.state.observing = True
+            try:
+                checkpoint()
+                yield checkpoint
+                checkpoint()
+            finally:
+                self.state.observing = False
+
     @contextmanager
     def hold(self,timeout=30):
+        if getattr(self.state, 'observing', False):
+            raise ValueError('Live operations cannot nest inside observations.')
+        if getattr(self.state, 'held', False):
+            with self._hold(timeout): yield
+        else:
+            # Announce before the local lock too, so waiting threads have the
+            # same priority as independent processes. Keep intent through close.
+            with self._intent():
+                with self._hold(timeout): yield
+
+    @contextmanager
+    def _hold(self,timeout):
         message='Another backtest or data operation owns the shared cache. Let it finish, then retry.'
         deadline=time.monotonic()+timeout
         if not self.lock.acquire(timeout=timeout):raise ValueError(message)

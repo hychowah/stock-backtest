@@ -1,8 +1,8 @@
 """Own a complete disposable comparison; real measurement admission stays closed.
 
-The only implemented freshness provider is for disposable fixtures. It is not a
-live-priority production provider. Declared limits and sampled enforcement do
-not qualify a real three-gigabyte capture or stable website availability.
+A source-bound cooperative observation provider is qualified only on disposable
+participating fixtures. Declared limits and sampled enforcement do not qualify
+a real three-gigabyte capture or installed website availability.
 """
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -17,7 +17,7 @@ import time
 
 import bench_admission as admission
 from bench_comparison import ComparisonError, ComparisonLedger, ComparisonProtocol, digest, encoded
-from bench_candidates_process import OwnedProcess
+from bench_candidates_process import OwnedProcess, ProcessLimits
 import bench_execution_inputs as inputs
 from bench_execution_policy import _memory
 
@@ -30,7 +30,9 @@ def environment(envelope):
     """Freeze interpreter/compiler versions and this operation's exact bounds."""
     return dict(python=sys.version, platform=sys.platform,
                 packages={name: version(name) for name in ('numpy', 'numba', 'llvmlite')},
-                envelope=asdict(envelope))
+                envelope=asdict(envelope),
+                tool_sources={path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                              for path in sorted(Path(__file__).parent.glob('bench_*.py'))})
 
 
 @dataclass(frozen=True)
@@ -41,14 +43,29 @@ class ExecutionEnvelope:
     sampled_memory_bytes: int
     wall_seconds: float
     threads: int
+    processes: int = 8
+    cpu_percent: int = 25
+    log_bytes: int = 1024 * 1024
+    close_seconds: float = 5.
+    sampled_tree_threads: int = 64
 
     def __post_init__(self):
-        for value in (self.database_bytes, self.output_bytes, self.sampled_memory_bytes, self.threads):
+        for value in (self.database_bytes, self.output_bytes, self.sampled_memory_bytes,
+                      self.threads, self.sampled_tree_threads):
             if type(value) is not int or value <= 0:
                 raise ComparisonError('unsupported')
         if (self.threads > 4 or type(self.wall_seconds) not in (int, float)
                 or not math.isfinite(self.wall_seconds) or self.wall_seconds <= 0):
             raise ComparisonError('unsupported')
+        try:
+            self.process_limits()
+        except ValueError:
+            raise ComparisonError('unsupported') from None
+
+    def process_limits(self):
+        return ProcessLimits(self.sampled_memory_bytes, self.processes,
+                             self.cpu_percent, output_bytes=self.log_bytes,
+                             close_seconds=self.close_seconds)
 
 
 class _ExecutionBudget(inputs._Budget):
@@ -67,8 +84,11 @@ class _ExecutionBudget(inputs._Budget):
             total = 0
             for path in folder.rglob('*'):
                 inputs._inside(folder, path.relative_to(folder).as_posix())
-                if path.is_file():
-                    total += path.stat().st_size
+                try:
+                    if path.is_file(): total += path.stat().st_size
+                except FileNotFoundError:
+                    # Owned SQLite journals can disappear between samples.
+                    continue
             inputs._require(total <= self.output_bytes, 'limit')
 
 
@@ -89,15 +109,19 @@ class MeasurementExecution:
     not admit real measurements. No CLI, runtime locator or qualification flag
     can open admission. Tests patch admission only inside disposable fixtures.
 
-    fixture_observation_root supplies the only implemented current-inventory
-    provider. Production live priority and resource qualification are absent.
+    coordinated_observation_root requires participating, source-bound ownership.
+    fixture_observation_root retains uncoordinated disposable legacy fixtures.
+    Neither option opens admission or qualifies a production resource envelope.
     A comparison is single-use; a retry gets a new workspace and bracket.
     """
     def __init__(self, capture, source, output, protocol, envelope, *,
-                 fixture_observation_root, cancel=None):
+                 fixture_observation_root=None, coordinated_observation_root=None, cancel=None):
         self.capture, self.source, self.output = capture, source, output
         self.protocol, self.envelope = protocol, envelope
-        self.observation_root = fixture_observation_root
+        if (fixture_observation_root is None) == (coordinated_observation_root is None):
+            raise ComparisonError('unsupported')
+        self.observation_root = coordinated_observation_root or fixture_observation_root
+        self.observation_mode = 'coordinated' if coordinated_observation_root is not None else 'fixture'
         self.cancel = cancel or (lambda: False)
         self._workspace = self._owned = self._ledger = None
         self._active = self._used = False
@@ -108,6 +132,9 @@ class MeasurementExecution:
         self._terminal_error = None
         self._child_failure = None
         self._entered = False
+        self._priority = None
+        self._resources = []
+        self._peaks = dict(processes=0, threads=0, resident_bytes=0, private_bytes=0)
 
     def __enter__(self):
         # Reject before reading paths, loading a manifest, or creating output.
@@ -140,6 +167,14 @@ class MeasurementExecution:
             if observation == workspace.capture or observation.is_relative_to(workspace.root):
                 raise ComparisonError('unsupported')
             self.observation_root = observation
+            if self.observation_mode == 'coordinated':
+                # This reads verified coordination source only. Observation
+                # itself remains in each timed child request.
+                import cache_access
+                expected = manifest['originals']['sources'].get('scripts/cache_access.py')
+                if not expected or hashlib.sha256(Path(cache_access.__file__).read_bytes()).hexdigest() != expected:
+                    raise ComparisonError('unsupported')
+                self._priority = cache_access.WorkspaceAccess(observation / 'data/website-data-0.lock')
             self._tools = workspace._folder / 'tools'
             self._tools.mkdir()
             self._tool_hashes = {}
@@ -149,6 +184,9 @@ class MeasurementExecution:
                 (self._tools / path.name).write_bytes(data)
                 if hashlib.sha256(path.read_bytes()).hexdigest() != self._tool_hashes[path.name]:
                     raise ComparisonError('mismatch')
+            if self._tool_hashes != declaration['environment']['tool_sources']:
+                raise ComparisonError('mismatch')
+            (workspace._folder / 'protocol.json').write_bytes(self.protocol.declaration)
             self._release = workspace._register_resource('measurement', self._close_child)
             self._ledger.charge('attachment', time.monotonic() - began)
             self._active = True
@@ -164,6 +202,8 @@ class MeasurementExecution:
             raise ComparisonError('inactive')
         if self.cancel():
             raise ComparisonError('cancelled')
+        if self._priority is not None and self._priority.live_pending():
+            raise ComparisonError('busy')
         self._ledger.check()
         self._workspace._budget().check(self._workspace._folder)
 
@@ -171,9 +211,12 @@ class MeasurementExecution:
         if self._workspace is None or not hasattr(self._workspace, '_folder'):
             return
         value = dict(status=status, scope='disposable_fixture', execution_admission='unavailable',
-            production_freshness='unavailable', production_resources='unqualified',
-            resource_observation='sampled_controller_and_leader_only',
+            production_freshness='cooperative_source_only' if self._priority else 'unavailable',
+            production_resources='unqualified', resource_records=self._resources,
+            envelope=asdict(self.envelope),
+            resource_observation='controller_and_leader_sampled; native_job_limits_when_available',
             protocol=self.protocol.identity, costs=dict(self._ledger.costs), events=list(self._ledger.events))
+        value['step_costs'] = self._ledger.step_costs
         if error is not None:
             value.update(reason=getattr(error, 'reason', 'unexpected'), error_type=type(error).__name__)
         if self._child_failure is not None:
@@ -203,8 +246,9 @@ class MeasurementExecution:
                 owned.close()
             except BaseException as error:
                 failure = failure or error
-            if (owned.process.poll() is not None and not owned.reader.is_alive() and owned.job is None
-                    and all(stream is None or stream.closed for stream in (owned.process.stdin, owned.process.stdout))):
+            if owned.closed:
+                self._resources.append(dict(capabilities=owned.capabilities(), closure=owned.closure()))
+                self._resources[-1]['sampled_peaks'] = dict(self._peaks)
                 self._owned = None
                 return
         raise ComparisonError('closure_pending') from failure
@@ -229,10 +273,11 @@ class MeasurementExecution:
             tools=self._tool_hashes, binding=self.binding,
             configuration=self.protocol.value['configuration'],
             observation_root=str(self.observation_root),
+            observation_mode=self.observation_mode,
             captured_freshness=workspace.captured_freshness,
             captured_metadata=workspace.captured_metadata,
             reference=reference, threads=self.envelope.threads)
-        request['request_budget'] = self.protocol.value['costs']['request'] - self._ledger.costs['request']
+        request['request_budget'] = self._ledger.remaining('request')
         request_path = folder / 'request.json'
         request_path.write_bytes(encoded(request))
         environment = {key: value for key, value in os.environ.items()
@@ -244,20 +289,32 @@ class MeasurementExecution:
                            MPLCONFIGDIR=str(folder / 'config'))
         temporary = folder / 'temporary'; temporary.mkdir()
         environment.update(TMPDIR=str(temporary), TEMP=str(temporary), TMP=str(temporary))
-        self._owned = OwnedProcess(self._command(request_path), env=environment)
+        phase_started = time.monotonic()
+        try:
+            self._owned = OwnedProcess(self._command(request_path), env=environment,
+                                       limits=self.envelope.process_limits())
+        except BaseException as error:
+            self._owned = getattr(error, 'owned_process', None)
+            raise
         self._owned.start()
         eof = False
         phases = ('setup', 'proof', 'request', 'collection', 'shutdown')
         phase_index = 0
-        phase_started = time.monotonic()
         final = None
         while True:
             self._check()
             elapsed = time.monotonic() - phase_started
-            allocation = self.protocol.value['costs'][phases[phase_index]] - self._ledger.costs[phases[phase_index]]
+            allocation = self._ledger.remaining(phases[phase_index])
             if elapsed > allocation:
                 raise ComparisonError('limit')
             code = self._owned.process.poll()
+            usage = self._owned.tree_usage()
+            for key, value in usage.items():
+                if value is not None: self._peaks[key] = max(self._peaks[key], value)
+            if (usage['processes'] > self.envelope.processes
+                    or usage['threads'] > self.envelope.sampled_tree_threads
+                    or usage['resident_bytes'] > self.envelope.sampled_memory_bytes):
+                raise ComparisonError('limit')
             if code is None:
                 try:
                     if _memory(self._owned.process.pid) > self.envelope.sampled_memory_bytes:
