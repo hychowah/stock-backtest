@@ -4,6 +4,10 @@ Each method runs in a fresh process with loaded immutable inputs. The parent
 owns source/cache coordination, production controls and failure containment.
 The original request adapter owns financial aggregation and durable NDJSON
 delivery. No saved input or production book is changed.
+
+Execution is closed until bound input ownership and resource/availability
+admission are qualified. Source-only imports and numerical helpers remain
+available for synthetic tests. The retained runner is not an isolation proof.
 """
 import argparse
 from collections import deque
@@ -23,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import bench_baseline as baseline
 import bench_methods as previous
+import bench_admission as admission
 
 METHODS = ('numba', 'python', 'duckdb', 'persistent', 'polars', 'rust')
 STAGING = ('all', 'requested')
@@ -223,6 +228,7 @@ class BatchModel(previous.Model):
 def run_candidate(inputs, executor, expected, source, store, *, freshness,
                   budget_seconds, binding=None, progress=None, staging='all', candidate_assembly='source'):
     """Measure a fresh request through the original financial request adapter."""
+    admission.require_execution()
     model = BatchModel(inputs, executor, expected, source, staging=staging, candidate_assembly=candidate_assembly)
     try:
         measured, evidence = previous.run_request(
@@ -358,6 +364,7 @@ def intermediate_proof(inputs, executor, source):
 
 def worker(args):
     """No financial import or child is started before the parent assigns ownership."""
+    admission.require_execution()
     emit('worker_ready', method=args.worker)
     if sys.stdin.readline().strip() != 'GO':
         raise ValueError('Candidate worker did not receive its ownership handshake.')
@@ -539,6 +546,7 @@ def smoke_requests(source, *, start='2015-01-01', end='2025-12-31', extended=Fal
 
 def run_isolated(args,method,specification,result):
     """Use phase deadlines and terminate the complete owned process group."""
+    admission.require_execution()
     from bench_candidates_process import OwnedProcess
     command = [sys.executable,str(Path(__file__).resolve()),'--runtime',str(args.runtime),
         '--workdir',str(args.workdir),'--worker',method,'--specification',str(specification),
@@ -615,6 +623,7 @@ def run_isolated(args,method,specification,result):
 
 def parent(args):
     """Serial native comparison; invalid evidence stops subsequent work."""
+    admission.require_execution()
     validate_assembly(args.candidate_assembly, args.methods, args.staging)
     if os.name!='nt':
         raise ValueError('Headline comparisons require native Windows Python.')

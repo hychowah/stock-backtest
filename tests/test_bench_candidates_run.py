@@ -781,7 +781,8 @@ else:
         owned=FakeOwned()
         args=SimpleNamespace(runtime=self.root,workdir=self.root,setup_budget=1.,
                              request_budget=1.,smoke_budget=1.,staging='requested',candidate_assembly='source')
-        with patch('bench_candidates_process.OwnedProcess',return_value=owned) as spawn, \
+        with patch.object(runner.admission,'require_execution'), \
+                patch('bench_candidates_process.OwnedProcess',return_value=owned) as spawn, \
                 patch.object(runner.time,'monotonic',side_effect=[0.,0.,0.,0.,100.]):
             report=runner.run_isolated(args,'python',specification,result)
         command=spawn.call_args.args[0]

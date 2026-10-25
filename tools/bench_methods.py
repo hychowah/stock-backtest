@@ -3,7 +3,9 @@
 Production inputs and source never change. Financial arithmetic, ranking and
 portfolio aggregation call current production modules. Report-index experiments
 must prove their complete candidate mappings against that source policy.
-Native timing is serialized by the cache owner.
+Execution is closed until bound input ownership and resource/availability
+admission are qualified. The retained orchestration is historical. Source-only
+attachment and numerical/evidence helpers remain available for synthetic tests.
 """
 import argparse
 from bisect import bisect_right
@@ -24,6 +26,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import bench_baseline as baseline
+import bench_admission as admission
 
 METHODS = ('arrays', 'numba', 'duckdb', 'indexed')
 
@@ -187,6 +190,7 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
     period. Callers can retain bounded candidate batches. Complete selected
     trial evidence is committed before progress.
     """
+    admission.require_execution()
     if Path(store_path).exists():
         raise ValueError('A fresh request requires a new result store.')
     model.resolver = resolver
@@ -290,6 +294,7 @@ def main():
     args = parser.parse_args()
     if not math.isfinite(args.max_seconds) or args.max_seconds<=0:
         parser.error('--max-seconds must be finite and positive')
+    admission.require_execution()
     os.environ.setdefault('NUMBA_NUM_THREADS','4')
     os.environ['BACKTEST_BASELINE_RUNTIME'] = str(args.runtime)
     baseline.bootstrap(args.runtime)

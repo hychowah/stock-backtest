@@ -1,6 +1,7 @@
 """Offline, isolated end-to-end random-date engine comparisons.
 
-Run from any folder. Production code and caches are never modified. Each worker
+Execution is closed until bound input ownership and resource/availability
+admission are qualified. The retained protocol is historical. Each worker
 gets a fresh SQLite copy on the same filesystem as the real daily database.
 The template has no prepared dated books. File-copy/reset time is benchmark
 setup, excluded for every engine; opening, loading, calculation, selection and
@@ -30,6 +31,8 @@ except ImportError:  # Native Windows does not expose resource.getrusage.
     resource = None
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools'))
+import bench_admission as admission
 sys.path.insert(0, str(ROOT / 'scripts'))
 import schedules as s
 import robustness
@@ -136,6 +139,7 @@ def prepare_reference_period(db, entry, exit_day, books, cached, pool='legacy'):
 
 
 def worker(args):
+    admission.require_execution()
     started = time.perf_counter()
     cpu_started = time.process_time()
     db = sqlite3.connect(args.database, timeout=60)
@@ -259,6 +263,7 @@ def main():
     parser.add_argument('--pool', default='legacy')
     parser.add_argument('--metric', default='ev_ebitda')
     args = parser.parse_args()
+    admission.require_execution()
     if args.worker:
         worker(args)
         return

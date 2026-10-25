@@ -28,6 +28,8 @@ class BaselineTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.root = Path(self.folder.name)
+        # Only this disposable calculation fixture bypasses execution admission.
+        self.enterContext(patch.object(bench.admission, 'require_execution'))
         self.path = self.root/'daily.sqlite'
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row

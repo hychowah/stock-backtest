@@ -1,10 +1,9 @@
 """Frozen production-engine baseline on disposable databases; never download data.
 
-freeze records exact workloads. run resumes only content-bound completed evidence.
-verify validates evidence without running calculations. Run native Windows Python
-with --runtime pointing at the committed runtime and --workdir beneath its tmp/.
-The benchmark script may be loaded from WSL; application imports come exclusively
-from the runtime, under source ownership. No financial function is replaced.
+Execution is closed until bound input ownership and resource/availability
+admission are qualified. The retained freeze/run/verify protocol describes
+historical measurements. Source-only bootstrap remains available for synthetic
+imports under source ownership; it does not admit benchmark execution.
 """
 import argparse
 import atexit
@@ -25,6 +24,8 @@ import tempfile
 from threading import Event, Thread
 import time
 from unittest.mock import patch
+
+import bench_admission as admission
 
 ROOT = Path(__file__).resolve().parents[1]
 PROTOCOL = 1
@@ -422,6 +423,7 @@ def request(database, manifest, case, telemetry, *, require_fresh=True):
     holding references, stage clocks and sampled resources are included.
     Socket transport is equivalent local delivery, not the production HTTP server.
     """
+    admission.require_execution()
     assert_tool()
     telemetry.mkdir(parents=True, exist_ok=True)
     # Interrupted attempts retain their own evidence. Only this new directory
@@ -542,6 +544,7 @@ def assert_workdir(root, workdir):
 
 
 def runner(args):
+    admission.require_execution()
     assert_tool()
     os.environ['BACKTEST_BASELINE_TOOL_SHA256'] = _loaded_tool_sha256
     root = Path(args.runtime).resolve()

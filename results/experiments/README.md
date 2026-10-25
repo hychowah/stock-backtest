@@ -2,6 +2,14 @@
 
 These reports are separate from the canonical `results/summary-exits.txt`.
 
+Current WSL benchmark execution is closed. Wave9 adds one admission policy to
+benchmark orchestration and timed request adapters. Historical command examples
+are unavailable for current execution. Source-only attachment and numerical
+fixture helpers remain available. Consistent bound-input ownership, safe capture
+and resource/availability qualification remain deferred. See the
+[wave9 record](../../docs/plans/compiled-backtest/phases/CB-02/wave9/README.md).
+This source safeguard does not change installed tools or the running website.
+
 CB-02's [third experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave3/README.md)
 compares Numba, bulk Python, whole-batch DuckDB, persistent workers, Polars and
 Rust over shared source-derived financial policy. Its phase record binds the
@@ -17,7 +25,8 @@ from the first lookup pilot and from production behavior.
 The compiled-engine program's CB-01 baseline has its own
 [phase record](../../docs/plans/compiled-backtest/phases/CB-01/).
 Its frozen workloads cover 24 trials over 1997–2025, both pools, three filter
-profiles and three seeds. Use `tools/bench_baseline.py` for that protocol.
+profiles and three seeds. `tools/bench_baseline.py` retains that historical
+protocol; its execution is closed.
 Full holding evidence and disposable databases remain under the Windows
 runtime's ignored `tmp/cb01-final/`. The earlier `tmp/cb01-baseline/` folder
 contains superseded diagnostics. The phase report records completed and

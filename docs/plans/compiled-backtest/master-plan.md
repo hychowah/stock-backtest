@@ -148,13 +148,15 @@ preview. Passing the primary speed gate permits that hardening and integration;
 it does not permit publication over the stable installed website.
 
 These are required safeguards, not implemented isolation claims. Wave8 implements
-only the request-start publication revision safeguard and verifies it on isolated
-fixtures. No live restart or deployment qualifies the later gates. Wave7 used
+the request-start publication revision safeguard and verifies it on isolated
+fixtures. Wave9 adds a closed execution-admission policy in benchmark tools. It
+admits no runtime. Source-only imports remain available for synthetic fixtures.
+No live restart or deployment qualifies the later gates. Wave7 used
 isolated result files but held the production cache coordinator. That approach
 must not be repeated while protecting live use. The next CB-02 code design must
 solve website-safe measurement before starting another real-cache pilot. This
 availability-contract update did not implement or start that work. The wave8
-prerequisite remains separate from benchmark admission and data/resource isolation.
+revision prerequisite remains separate from bound-input ownership and resource isolation.
 
 ### Adjust the plan when new evidence changes the direction
 
@@ -629,8 +631,16 @@ experimental HEAD. Resolution and existing recovery pass on isolated fixtures
 in WSL and native Windows. No live restart or publication is part of this proof. Existing explicit revision selection remains a deliberate operator action;
 it is not qualification of that revision.
 
-The next prerequisite is benchmark admission and a consistent, generation-bound
-input handoff. It must separate candidate source, dependencies, cache and result
+**Wave9 admission-first boundary:** Wave9 implements one closed benchmark
+execution policy before input handoff. Executable orchestration and timed request
+adapters reject before effects. Source-only bootstrap and numerical fixture
+helpers remain available. No flag, environment variable, directory marker or source hash
+can admit a run. Synthetic calculation tests may patch the policy only inside
+their disposable fixture scopes. This increment implements no capture producer
+and admits no real execution.
+
+The following prerequisite is a consistent, generation-bound input owner shared
+by controls and candidates. It must separate candidate source, dependencies, cache and result
 ownership from the stable service. Prove nonblocking capture without bypassing
 coordination or publication recovery. Do not run the inherited live-cache-locking
 benchmark entry points against the installed runtime. No real-cache pilot is
@@ -941,7 +951,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete; benchmark isolation and paired performance unresolved; no production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed; bound inputs, resource isolation and paired performance unresolved; no production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned | — |
 | CB-05 | Planned | — |
@@ -970,9 +980,11 @@ cases remain for wave5. Wave6 rejected requested-metric SQL staging alone:
 that unchanged intervention. Wave7 implemented the guard/assembly prototype but
 its pair hit the 2,700-second whole budget before compiled candidate execution.
 Wave8 completes default publication revision selection as the first safety
-prerequisite, without changing the live engine. The next bounded design must
-separate benchmark admission from source-only fixture imports and establish a
-consistent input handoff without blocking the live cache. Then qualify resources
+prerequisite, without changing the live engine. Wave9 closes executable benchmark
+orchestration and timed adapters while retaining source-only fixture imports.
+It implements no input capture and admits no execution. The next bounded design
+must establish a consistent input owner for both engines without blocking the
+live cache. Then qualify resources
 and concurrent availability before another paired pilot. Account for observed
 control and preparation costs. Stable
 publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
@@ -993,3 +1005,4 @@ before the required gate passes.
 | 25 October 2026 | Wave7 source-derived guard/assembly code passed 93 WSL and 92 native tests plus one skip. Source request and controls were 120.20 and 691.08/598.52 seconds on wave6's prepared-input identity. The 2,700-second watchdog stopped before compiled candidate execution. | Reject expansion of this incomplete pair. Revisit measurement orchestration/resource planning with a new prospective bounded protocol; retain the prototype and unchanged financial/speed gates. | Real-cache compiled correctness and paired performance remain unmeasured. A promising pair must precede the full primary matrix. |
 | 25 October 2026 | The user needs to keep using the slower website throughout development. The installed engine was restarted and its page, panel and one cached 50-stock backtest passed; current deployment revision is recorded above. Wave7's shared live-cache ownership would block such use. | Make stable website availability a cross-cutting gate. Isolate experiments and previews, protect the stable deployment/restart revision, and keep the old engine default until every CB-14 readiness gate passes. | Website-safe snapshot/measurement ownership and protected normal publication still need implementation and qualification before affecting live use. |
 | 25 October 2026 | Wave8 isolates the publication-revision prerequisite. Both platforms pass 32 disposable deployment tests; read-only actual selection retains the installed commit. | Normal WSL publication selects the installed or pending commit rather than experimental HEAD. Split benchmark admission/input handoff and resource/availability proofs before any new pilot. | No live restart, benchmark isolation or new compiled performance is qualified. |
+| 25 October 2026 | Wave9 independent CODE design separates source attachment from executable benchmark work. Paths, copied databases and source hashes cannot establish input ownership. | Complete admission first: one policy rejects benchmark execution before effects. Keep fixture algorithms usable. Defer bound capture and resource admission. | One generation-bound owner for controls and candidates, safe capture, independent resources and availability proofs remain required before a pilot. |

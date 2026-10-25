@@ -33,6 +33,8 @@ class SharedMethodsTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.root = Path(self.folder.name)
+        # Keep the exception inside this owned synthetic calculation fixture.
+        self.enterContext(patch.object(baseline.admission, 'require_execution'))
         self.path = self.root / 'daily.sqlite'
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row

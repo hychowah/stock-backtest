@@ -1,13 +1,14 @@
 # Data acquisition and diagnostics
 
-These are diagnostics, retained API experiments and maintenance tools, not the normal workflow. The offline backtest benchmark needs no key or network. Acquisition scripts generally require `~/.grok/secrets/fmp_api_key`.
+These are diagnostics, retained API experiments and maintenance tools, not the normal workflow. Offline benchmark fixtures need no key or network. Acquisition scripts generally require `~/.grok/secrets/fmp_api_key`.
 
 | Script | Purpose |
 | --- | --- |
-| `bench_candidates_run.py` | Compare six batched report, price and factor executors on native Windows; common financial policy and durable evidence |
-| `bench_methods.py` | Compare isolated Python-array, NumPy/Numba and DuckDB price engines with common financial policy and compact trial publication |
-| `bench_baseline.py` | Freeze CB-01 workloads and resume the production-engine baseline on disposable copies |
-| `bench_backtest.py` | Offline end-to-end random-date benchmarks on disposable SQLite copies; checks exact holding/result parity |
+| `bench_admission.py` | Closed execution policy; no runtime is admitted until bound inputs and resources are qualified |
+| `bench_candidates_run.py` | Retained historical six-method comparison protocol; execution is closed |
+| `bench_methods.py` | Retained historical price-engine comparison protocol; execution is closed |
+| `bench_baseline.py` | Retained historical CB-01 freeze/run/verify protocol; execution is closed |
+| `bench_backtest.py` | Retained historical end-to-end random-date protocol; execution is closed |
 | `bench_metrics.py` | Time per-symbol metrics requests |
 | `download_one.py` | Download one exploratory bulk file into `raw/archive/` |
 | `fetch_bulk.py` | Legacy bulk downloader; outputs to `raw/archive/` |
@@ -18,7 +19,27 @@ These are diagnostics, retained API experiments and maintenance tools, not the n
 
 Do not run these just to recompute results or rebuild the website. Use `scripts/revalue.py` and `website/build.py` instead. Bulk downloads can be refused by the provider, and long histories can be truncated. The main missing-data workflow lives in `scripts/run.py` and retains its older exit rule.
 
-For a full-history performance comparison, run:
+## Current benchmark admission
+
+Wave9 closes executable benchmark orchestration and timed request adapters in
+WSL source. They raise `BenchmarkAdmissionError` before financial access or
+output work. No flag, environment variable, marker or copied database admits a
+run. This source change does not alter installed tools or the running website.
+Source-only attachment and numerical fixture helpers remain available. Synthetic
+tests patch the policy only within disposable fixture scopes.
+
+Consistent bound-input ownership, safe capture, independent experimental resources
+and resource/availability qualification remain deferred. See the
+[wave9 record](../docs/plans/compiled-backtest/phases/CB-02/wave9/README.md).
+Do not run the retained live-cache-locking protocols against the stable runtime.
+
+## Historical end-to-end protocol
+
+The commands and protocol descriptions below retain the earlier measurement
+boundary. They are historical examples, unavailable for current execution.
+They do not authorize a capture, pilot or change to the live website.
+
+The full-history comparison used:
 
 ```bash
 python3 tools/bench_backtest.py --trials 8 --output results/experiments/backtest-benchmark-full.json
@@ -43,8 +64,8 @@ No experiment changes production engine code or the real daily database.
 Temporary database copies sit beside the daily cache for filesystem parity and
 are removed on normal completion. Long batches can take several minutes.
 
-Match the interpreter used by the launcher when comparing timings. For Windows
-`start.cmd`, run the benchmark in Windows Python, for example:
+The historical measurements matched the launcher interpreter. The Windows
+`start.cmd` comparison used native Windows Python, for example:
 
 ```bat
 py -3 tools\bench_backtest.py --trials 100 --modes production --worker-counts 1 2 4 8 --reference-report results\experiments\backtest-benchmark-applied.json --output results\experiments\backtest-benchmark-parallel.json
@@ -54,12 +75,12 @@ WSL accessing the Windows-mounted project can have substantially different I/O
 costs. `--workdir` permits a separate filesystem control; do not mix such runs
 into a same-filesystem speedup claim.
 
-## Frozen production baseline
+## Historical frozen production baseline
 
-`bench_baseline.py` is the CB-01 measurement protocol. The older harness above
-retains its historical experiments. The new harness runs only the current
-production engine. It does not change financial calculations or download data.
-Use native Windows Python and the committed Windows runtime for measured runs:
+`bench_baseline.py` retains the CB-01 measurement protocol. The older harness
+above retains its earlier experiments. CB-01 measured the production engine
+without changing financial calculations or downloading data. Its historical
+commands used native Windows Python and the committed Windows runtime:
 
 ```bat
 py -3 tools\bench_baseline.py freeze --runtime <windows-runtime> --manifest tmp\cb01-baseline\workloads.json
@@ -68,7 +89,7 @@ py -3 tools\bench_baseline.py run --runtime <windows-runtime> --manifest tmp\cb0
 py -3 tools\bench_baseline.py verify --runtime <windows-runtime> --manifest tmp\cb01-baseline\workloads.json
 ```
 
-Run these commands from the Windows runtime. An explicit `--workdir` must be
+Those historical commands ran from the Windows runtime. An explicit `--workdir` was
 a dedicated directory below that runtime's `tmp/`. The default is
 `tmp/cb01-baseline`. `--report` defaults to `baseline.json` in that directory.
 For source review, copy the generated manifest and compact report to the phase
@@ -116,17 +137,17 @@ The correctness inventory also names mixed filters, three-year ranking,
 top 100 and empty selection. Listing those cases does not claim real-data
 qualification. The phase report states which cases were actually run.
 
-## Comparative methods
+## Historical comparative methods
 
-The comparative experiment uses `bench_methods.py --runtime <native-root>
+The comparative experiment used `bench_methods.py --runtime <native-root>
 --workdir <dedicated-native-tmp-folder>`. It consumes the CB-01 workload.
 Method modules are benchmark-only. They do not change production selection.
-Install experimental dependencies in a separate native temporary environment;
-the normal application environment remains unchanged. See
+The experiments used dependencies in a separate native temporary environment.
+The normal application environment stayed unchanged. See
 [`CB-02`](../docs/plans/compiled-backtest/phases/CB-02/README.md) for exact commands,
 paired controls, tested scope and qualification limits.
 
-`--methods indexed` runs the next report-selection experiment. It uses the
+`--methods indexed` selects the retained second-wave report-selection experiment. It uses the
 array price resolver and indexes both annual-report pools. It preserves the
 original buffer order before price-coverage filtering. With no threshold
 conditions, it skips unused threshold calculations and their trailing-price

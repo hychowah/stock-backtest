@@ -102,3 +102,18 @@ The ignored `data/workspace.json` records `source` (the WSL path), `distro`, `ru
 The original folder keeps its source, history and saved data. Its old `backtest-web.cmd` can launch that retained copy explicitly. Its code predates deployment ownership. Use it as a separate fallback; do not point the new deployment target at that source repository. A rollback to another deployed revision requires that revision to contain the workspace deployment tools.
 
 The user architecture guide describes the current split. The compiled-engine master plan remains a separate program; this workspace migration does not implement its calculation phases.
+
+## Benchmark execution admission
+
+The WSL benchmark tools currently reject executable runs and timed request
+adapters before financial access. This source safeguard does not alter the
+running website or installed tools. Source-only attachment and numerical fixture
+helpers remain available. No command flag, environment variable, temporary folder
+or copied database grants admission. Synthetic tests patch the policy only
+inside their disposable fixture scope.
+
+A later input owner must bind the same consistent generation to both engines.
+It must own experimental source, dependencies, compiler caches, mutable databases
+and result stores separately from the stable service. Capture and resource
+qualification are not implemented. Do not run the historical live-cache-locking
+benchmark commands. See the [wave9 record](plans/compiled-backtest/phases/CB-02/wave9/README.md).
