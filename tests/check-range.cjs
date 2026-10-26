@@ -173,6 +173,19 @@ el('rank-to').value='50';el('reset-ranks').handlers.click();
 el('auto-run').checked=true;el('auto-run').handlers.change();
 assert.equal(run('currentScreen.options.rank_to'),50);
 console.log('Passed: manual multi-setting edits, dirty notice, restoring settings, explicit submit and re-enabling auto-run.');
+// A saved January result reopens from its own stock rows without selection.
+const savedJanuary=JSON.parse(run('JSON.stringify(SavedBacktests.current())'));
+savedJanuary.result.years[0].holdings[0].symbol='SAVED_ONLY';ctx.savedJanuary=savedJanuary;
+el('auto-run').checked=false;el('rank-to').value='7';
+run("const selectBeforeRestore=StockScreener.screen;StockScreener.screen=()=>{throw Error('Saved results must not rerun')};restoreSavedBacktest(savedJanuary);StockScreener.screen=selectBeforeRestore");
+assert.equal(el('rank-to').value,String(savedJanuary.settings.rank_to));
+assert(el('results-state').textContent.includes('Results match'));
+run('renderStockTable(currentScreen.years[0].year)');
+assert(el('holding-body-'+savedJanuary.result.years[0].year).innerHTML.includes('SAVED_ONLY'));
+el('download-holdings').handlers.click({preventDefault(){}});assert(savedCsv.includes('SAVED_ONLY'));
+el('auto-run').checked=true;run('applyRange()');
+console.log('Passed: saved January settings, exact stored stocks/returns and CSV restore without rerunning.');
+
 // Custom schedules use explicit dates and period results, never January charts.
 (async()=>{
  const selected=JSON.parse(run('JSON.stringify(currentScreen.years.find(y=>y.holdings.length))'));
@@ -180,7 +193,7 @@ console.log('Passed: manual multi-setting edits, dirty notice, restoring setting
  const fixture={periods:[period],start:period.entry,end:period.exit,months:3,options:{metric:'ev_ebitda',rank_from:1,rank_to:50},growth:1+period.portfolio,spy_growth:1+period.spy,cagr:.1,spy_cagr:.05,seconds:.03,coverage:'Fixture coverage'};
  let request,resolveResponse,requests=0,fakeNow=0;
  ctx.Date=class extends Date{static now(){return fakeNow}};
- ctx.location={protocol:'http:'};ctx.fetch=(url,options)=>{requests++;request={url,body:JSON.parse(options.body)};return new Promise(resolve=>resolveResponse=resolve);};
+ ctx.location={protocol:'http:'};ctx.fetch=(url,options)=>{requests++;request={url,body:JSON.parse(options.body),headers:options.headers};return new Promise(resolve=>resolveResponse=resolve);};
  const preDisabled=el('already-disabled');preDisabled.disabled=true;
  el('strategy-form').querySelectorAll=()=>[el('trade-start'),el('rebalance-months'),el('stock-pool'),preDisabled];
  el('schedule-kind').value='custom';el('trade-start').value='2015-03-15';el('trade-end').value='2015-06-15';el('rebalance-months').value='3';
@@ -220,6 +233,13 @@ console.log('Passed: manual multi-setting edits, dirty notice, restoring setting
  assert(el('schedule-message').textContent.includes('stopped'));assert.equal(timers.size,0);
  finishStopped({ok:true,json:async()=>({...fixture,start:'1999-01-01'})});await stopped;
  assert(!el('schedule-dates').textContent.includes('1999-01-01'));
+ const savedFixed=JSON.parse(run('JSON.stringify(SavedBacktests.current())'));ctx.savedFixed=savedFixed;
+ el('trade-start').value='2001-01-01';el('rank-to').value='2';
+ ctx.fetch=()=>{throw Error('Restoring must not request a calculation')};
+ run('restoreSavedBacktest(savedFixed)');
+ assert.equal(el('trade-start').value,savedFixed.settings.start);assert.equal(el('rank-to').value,String(savedFixed.settings.rank_to));
+ assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');
+ assert(el('schedule-message').textContent.includes('No calculation'));
  const previous=el('schedule-dates').textContent;
  ctx.fetch=async()=>({ok:false,json:async()=>({error:'Invalid schedule dates'})});
  await run('ScheduleView.run(readOptions())');assert(el('screen-error').textContent.includes('Invalid schedule'));assert.equal(el('schedule-dates').textContent,previous);
@@ -245,26 +265,35 @@ console.log('Passed: manual multi-setting edits, dirty notice, restoring setting
  el('date-testing').value='random';el('random-trials').value='3';el('random-seed').value='123';el('repeat-random').checked=true;el('repeat-random').handlers.change();el('rebalance-months').value='24';
  const stat={n:3,mean:.1,median:.1,p10:.1,p25:.1,p75:.1,p90:.1,min:.1,max:.1,stddev:0};
  const batch={kind:'random_dates',completed:3,valid:3,incomplete:0,beat_spy:2,unique_schedules:3,note:'Independent dates in each block.',configuration:{start:'2015-03-15',end:'2015-06-15',months:24,seed:123,requested:3,options:{metric:'ev_ebitda',rank_to:50}},distributions:Object.fromEntries(['cagr','spy_cagr','excess_cagr','total_return','growth'].map(k=>[k,stat])),trials:[1,2,3].map(trial=>({trial,start:'2015-03-16',first_trade:'2015-03-16',end:'2015-06-15',dates:['2015-03-16'],periods:1,cagr:.1,spy_cagr:.05,excess_cagr:.05,empty_periods:0,short_periods:0}))};
+ batch.trial_results=[fixture,fixture,fixture];
  let deliverFinish,notifyProgress,step=0;
  const progressReady=new Promise(resolve=>notifyProgress=resolve);
- ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body)};return {ok:true,body:{getReader:()=>({async read(){
+ ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body),headers:options.headers};return {ok:true,body:{getReader:()=>({async read(){
    if(step++===0)return {value:Buffer.from(JSON.stringify({type:'progress',completed:1,total:3,trial:2})+'\n'+JSON.stringify({type:'preparation',completed:1,total:3,trial:2,workers:4,calculated_books:40,total_new_books:90})+'\n'),done:false};
    if(step===2)return new Promise(resolve=>{deliverFinish=resolve;notifyProgress()});
    return {done:true};
  },releaseLock(){}})}}};
  const randomRun=run('ScheduleView.run(readOptions())');await progressReady;
- assert.equal(request.url,'/api/robustness');assert.equal(request.body.trials,3);assert.equal(request.body.seed,123);assert.equal(request.body.months,24);
+ assert.equal(request.url,'/api/robustness');assert.equal(request.headers['X-Backtest-Details'],'holdings');assert.equal(request.body.trials,3);assert.equal(request.body.seed,123);assert.equal(request.body.months,24);
  assert.equal(el('trial-progress').value,1);assert.equal(el('trial-progress').max,3);assert(el('schedule-progress-detail').textContent.includes('1/3'));
  assert(el('schedule-progress-detail').textContent.includes('40/90'));assert(el('schedule-progress-detail').textContent.includes('4 workers'));
  deliverFinish({value:Buffer.from(JSON.stringify({type:'progress',completed:3,total:3,trial:3})+'\n'+JSON.stringify({type:'complete',result:batch})+'\n'),done:false});
  await randomRun;
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,true);assert.equal(el('robustness-mean').textContent,'10.00%');
  assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);assert(el('schedule-message').textContent.includes('3 trials'));
- ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body)};return {ok:true,json:async()=>fixture}};
- await el('robustness-inspect').handlers.click();assert.equal(request.url,'/api/schedule');assert.deepStrictEqual(request.body.dates,['2015-03-16']);
+ ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body),headers:options.headers};return {ok:true,json:async()=>fixture}};
+ const beforeInspect=request;await el('robustness-inspect').handlers.click();assert.equal(request,beforeInspect,'Stored trial inspection must not call the service');
  assert.equal(el('robustness-results').hidden,false);assert.equal(el('schedule-results').hidden,false);
+ const savedRandom=JSON.parse(run('JSON.stringify(SavedBacktests.current())'));ctx.savedRandom=savedRandom;
+ el('random-seed').value='999';el('random-trials').value='1';
+ run('restoreSavedBacktest(savedRandom)');
+ assert.equal(el('random-seed').value,'123');assert.equal(el('random-trials').value,'3');assert.equal(el('repeat-random').checked,true);
+ assert(el('results-state').textContent.includes('Results match'));
+ assert.equal(el('schedule-results').hidden,true);await el('robustness-inspect').handlers.click();
+ assert.equal(request,beforeInspect);assert.equal(el('schedule-results').hidden,false);
+
  el('repeat-random').checked=false;el('repeat-random').handlers.change();assert.equal(el('random-seed').disabled,true);
- ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body)};return {ok:true,json:async()=>batch}};
+ ctx.fetch=async(url,options)=>{request={url,body:JSON.parse(options.body),headers:options.headers};return {ok:true,json:async()=>batch}};
  el('trade-start').value='2010-01-01';el('rebalance-months').value='1';el('random-trials').value='10';
  await el('robustness-replay').handlers.click();assert.equal(request.url,'/api/robustness');assert.equal(request.body.seed,123);assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,24);assert.equal(request.body.trials,3);assert.equal(request.body.rank_to,50);
  await run('ScheduleView.run(readOptions())');assert(!('seed' in request.body),'Fresh random mode must not send a fixed seed');

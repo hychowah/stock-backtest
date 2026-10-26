@@ -116,7 +116,7 @@ const RobustnessView=(()=>{
     node('robustness-replay').addEventListener('click',()=>configuration?replay(configuration):undefined);
     node('robustness-measure').addEventListener('change',()=>result&&chart());
     node('robustness-download').addEventListener('click',download);
-    node('robustness-inspect').addEventListener('click',()=>result?inspect(result.trials[+node('robustness-trial').value],result.configuration):undefined);
+    node('robustness-inspect').addEventListener('click',()=>result?inspect(result.trials[+node('robustness-trial').value],result.configuration,result.trial_results?.[+node('robustness-trial').value]):undefined);
   }
   return {read,render,init};
 })();

@@ -6,6 +6,9 @@ const fields={metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_ca
 let currentScreen=null,currentLatest=null;
 let screeningMode='latest';
 let filterConditions=[];
+let renderingCatalog={metrics:screeningData.metrics,filters:screeningData.filter_catalog};
+const resultCatalogs=new Map();
+const metricLabel=id=>renderingCatalog.metrics[id]?.label||screeningData.metrics[id]?.label||id;
 // Keep the submitted settings with each visible result. Editing controls never
 // relabels an older result as the new strategy.
 const displayedSettings=new Map(),resultNotes=new Map(),resultPills=new Map();
@@ -24,11 +27,13 @@ function currentSettings(){
   }
   return settings;
 }
-function rememberResult(settings){
+function rememberResult(settings,result=null){
   const view=viewKey();
   displayedSettings.set(view,settingsSignature(settings));
   resultPills.set(view,document.querySelector('.pill').textContent);
   resultNotes.set(view,['screen-coverage','screen-status','range-note'].map(id=>[id,document.getElementById(id).textContent,document.getElementById(id).className]));
+  resultCatalogs.set(view,renderingCatalog);
+  SavedBacktests.capture(settings,result,{notes:resultNotes.get(view),pill:resultPills.get(view)},renderingCatalog);
   updateResultsState();
 }
 function updateResultsState(){
@@ -39,6 +44,7 @@ function updateResultsState(){
   state.textContent=stale?'Settings changed — displayed results do not match the current settings. Select '+(view==='latest'?'Screen latest':'Run backtest')+' to update them. Downloads still use the displayed results.':saved===undefined?'No results for these settings yet. Select '+(view==='latest'?'Screen latest.':'Run backtest.'):'Results match the current settings.';
   if(ScheduleView.isRunning())state.textContent+=' A backtest is running with the settings submitted at its start.';
   for(const id of ['latest-view','backtest-view','custom-view'])document.getElementById(id).setAttribute('data-results-stale',String(stale));
+  SavedBacktests.update();
 }
 function settingsChanged(changed,run=true){
   if(+fromYear.value>+toYear.value){if(changed==='from')toYear.value=fromYear.value;else fromYear.value=toYear.value;}
@@ -74,7 +80,7 @@ function initializeFilters(){
 function renderConditions(){
   const container=document.getElementById('filter-conditions');
   container.innerHTML=filterConditions.map((c,i)=>`<div class="condition-row">
-    <label>Metric<select data-index="${i}" data-key="field" aria-label="Filter ${i+1} metric">${Object.entries(screeningData.filter_catalog).map(([key,m])=>`<option value="${safe(key)}" ${key===c.field?'selected':''} ${m.available?'':'disabled'}>${safe(m.label)}${m.available?'':' — needs financial data'}</option>`).join('')}</select></label>
+    <label>Metric<select data-index="${i}" data-key="field" aria-label="Filter ${i+1} metric">${Object.entries({...renderingCatalog.filters,...screeningData.filter_catalog}).map(([key,m])=>`<option value="${safe(key)}" ${key===c.field?'selected':''} ${m.available?'':'disabled'}>${safe(m.label)}${m.available?'':' — needs financial data'}</option>`).join('')}</select></label>
     <label>Comparison<select data-index="${i}" data-key="op" aria-label="Filter ${i+1} comparison"><option value="lt" ${c.op==='lt'?'selected':''}>Less than (&lt;)</option><option value="gt" ${c.op==='gt'?'selected':''}>More than (&gt;)</option></select></label>
     <label>Value<input data-index="${i}" data-key="value" aria-label="Filter ${i+1} value" type="number" step="any" required value="${safe(c.value)}" placeholder="Enter value"></label>
     <button type="button" data-remove="${i}" aria-label="Remove filter ${i+1}">Remove</button></div>`).join('');
@@ -104,7 +110,7 @@ function readOptions(){
   return o;
 }
 function updateMetricLabels(o){
-  const label=screeningData.metrics[o.metric].label;
+  const label=metricLabel(o.metric);
   document.querySelectorAll('[data-metric-multiple]').forEach(el=>el.textContent=label+' (×)');
   document.querySelectorAll('[data-metric-yield]').forEach(el=>el.textContent='Selected metric yield');
   document.getElementById('strategy-heading').textContent='Lowest '+label;
@@ -185,6 +191,7 @@ function setModeVisibility(){
   document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
   if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
+  renderingCatalog=resultCatalogs.get(viewKey())||{metrics:screeningData.metrics,filters:screeningData.filter_catalog};
   const previous=latest?currentLatest:custom?null:currentScreen;
   if(previous)updateMetricLabels(previous.options);
   if(resultPills.has(viewKey()))document.querySelector('.pill').textContent=resultPills.get(viewKey());
@@ -196,6 +203,7 @@ function switchMode(mode){
   screeningMode=mode;setModeVisibility();settingsChanged();
 }
 function applyLatest(){
+  renderingCatalog={metrics:screeningData.metrics,filters:screeningData.filter_catalog};
   try{currentLatest=StockScreener.latestScreen(screeningData,readOptions());}
   catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
   document.getElementById('screen-error').textContent='';
@@ -235,13 +243,18 @@ function applyRange(changed){
   }
   try{
     const next=StockScreener.screen(screeningData,readOptions());
+    renderingCatalog={metrics:screeningData.metrics,filters:screeningData.filter_catalog};
     currentScreen=next;
   }catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
+  renderJanuary(currentScreen,currentSettings());
+}
+function renderJanuary(result,settings,context=null){
+  currentScreen=result;
   document.getElementById('screen-error').textContent='';
   data=currentScreen.years.map(y=>({year:y.year,portfolio:y.portfolio,spy:y.spy,names:y.names}));
   updateMetricLabels(currentScreen.options);
   const {first,last,rank_from,rank_to}=currentScreen.options;
-  document.getElementById('strategy-legend').textContent=`${screeningData.metrics[currentScreen.options.metric].label} ranks ${rank_from}–${rank_to}`;
+  document.getElementById('strategy-legend').textContent=`${metricLabel(currentScreen.options.metric)} ranks ${rank_from}–${rank_to}`;
   draw();drawMarketCaps();
   document.getElementById('rows').innerHTML=data.map(d=>`<tr><td>${d.year}${d.year===2026?'*':''}</td><td>${d.names}</td><td class="${d.portfolio>=0?'positive':'negative'}">${d.portfolio===null?'—':pct(d.portfolio)}</td><td class="${d.spy>=0?'positive':'negative'}">${pct(d.spy)}</td><td>${d.portfolio===null?'—':pp(d.portfolio-d.spy)}</td></tr>`).join('');
   const active=document.getElementById('holding-year').value;
@@ -272,7 +285,8 @@ function applyRange(changed){
   document.getElementById('detail').textContent='Hover over or focus a bar to see its return.';
   document.querySelector('.pill').textContent=`${first} — ${last}${last===2026?'*':''}`;
   updateWarnings();
-  rememberResult(currentSettings());
+  restoreResultContext(context);
+  rememberResult(settings,currentScreen);
 }
 function downloadLatest(){
   if(!currentLatest)return;
@@ -292,6 +306,50 @@ function downloadSelection(kind){
   const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=kind+'-'+currentScreen.options.first+'-'+currentScreen.options.last+'.csv';a.click();URL.revokeObjectURL(url);
+}
+function restoreResultContext(context){
+  if(!context)return;
+  for(const [id,text,className] of context.notes||[]){
+    if(!['screen-coverage','screen-status','range-note'].includes(id))continue;
+    const target=document.getElementById(id);target.textContent=text;target.className=className;
+  }
+  if(context.pill)document.querySelector('.pill').textContent=context.pill;
+}
+function restoreSavedBacktest(snapshot){
+  if(snapshot.version!==1 || !['january','custom','random'].includes(snapshot.kind))throw Error('Unsupported saved backtest format.');
+  ScheduleView.cancel();
+  const settings={...snapshot.settings};
+  screeningMode='backtest';
+  document.getElementById('schedule-kind').value=snapshot.kind==='january'?'january':'custom';
+  setModeVisibility();
+  renderingCatalog=snapshot.catalog||{metrics:screeningData.metrics,filters:screeningData.filter_catalog};
+  const set=(id,value,label=value)=>{
+    const control=document.getElementById(id),text=String(value??'');
+    if(control.tagName==='SELECT' && ![...control.options].some(option=>option.value===text))control.add(new Option(label,text));
+    control.value=text;
+  };
+  for(const [key,id] of Object.entries(fields)){
+    const value=settings[key];
+    set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?metricLabel(value):value);
+  }
+  set('rank-from',settings.rank_from??1);set('rank-to',settings.rank_to??50);
+  filterConditions=(settings.filters||[]).map(condition=>({...condition}));renderConditions();
+  if(snapshot.kind==='january'){
+    set('from-year',settings.first);set('to-year',settings.last);
+    renderJanuary(snapshot.result,settings,snapshot.context);
+  }else{
+    set('trade-start',settings.start);set('trade-end',settings.end);set('rebalance-months',settings.months);
+    set('date-testing',snapshot.kind==='random'?'random':'single');
+    if(snapshot.kind==='random'){
+      settings.seed=snapshot.result.configuration.seed;
+      set('random-trials',settings.trials);set('random-seed',settings.seed);
+      document.getElementById('repeat-random').checked=true;document.getElementById('random-seed').disabled=false;
+    }
+    ScheduleView.restore(snapshot.result,snapshot.kind);
+    restoreResultContext(snapshot.context);
+    rememberResult(settings,snapshot.result);
+  }
+  document.getElementById('screen-error').textContent='';updateResultsState();
 }
 initializeFilters();
 ScheduleView.init();
@@ -348,3 +406,5 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
   settingsChanged();
 });
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
+
+SavedBacktests.init();

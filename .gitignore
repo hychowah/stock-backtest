@@ -22,7 +22,8 @@ raw/archive/*
 # Sites maintains its own repository metadata; project source is tracked here.
 website/.git/
 
-# Rebuildable prepared research database.
+# Local SQLite files. saved-backtests.sqlite contains durable user records.
+# Keep saved backtests when rebuilding research or schedule caches.
 data/*.sqlite
 data/*.sqlite-*
 data/*.building*

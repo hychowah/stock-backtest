@@ -344,3 +344,21 @@ the new defaults but is not a sustained-rate or full application benchmark.
 Keep the earlier eight-worker measurements historical. Do not reuse old timings as a new
 measurement. Test `python3 tests/test_fmp_download.py` and the data-manager and
 cache-access checks, including native Windows.
+
+## Saved backtest library
+
+`website/saved_backtests.py` owns durable user records in
+`data/saved-backtests.sqlite`. This is not a rebuildable cache. Preserve it during
+preparation, cleanup and source deployment. `website/saved-backtests.js` saves the
+last completed result and its submitted settings, even when controls have pending
+edits. Opening a record restores stored stock rows, returns, labels and downloads
+without calculation. Cap the library at 20 records atomically across instances.
+Never evict an existing record automatically. Delete only the record selected by
+the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
+`node tests/check-saved-backtests.cjs` and the existing range/control checks.
+
+Random results opt into full trial details with `X-Backtest-Details: holdings`.
+The optional `robustness.run(..., capture=observer)` receives each completed
+trial's original result. Observers must not mutate it. Preserve the default
+summary-only result and all existing calculation/progress contracts. Saved
+random records require ordered `trial_results` for every completed trial.

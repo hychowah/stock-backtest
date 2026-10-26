@@ -65,7 +65,7 @@ const ScheduleView=(()=>{
     if(!result)return;
     const period=result.periods[+node('schedule-period').value];
     if(!period)return;
-    const metric=screeningData.metrics[result.options.metric??'ev_ebitda'].label;
+    const metric=metricLabel(result.options.metric??'ev_ebitda');
     node('schedule-multiple-head').textContent=metric+' (×)';
     node('schedule-stock-body').innerHTML=period.holdings.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
     const group=ReturnContributions.analyze(period.holdings);
@@ -105,7 +105,9 @@ const ScheduleView=(()=>{
     controller=new AbortController();
     startBusy();
     try{
-      const response=await fetch(random?'/api/robustness':'/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});
+      const headers={'Content-Type':'application/json'};
+      if(random)headers['X-Backtest-Details']='holdings';
+      const response=await fetch(random?'/api/robustness':'/api/schedule',{method:'POST',headers,body:JSON.stringify(body),signal:controller.signal});
       if(number!==requestNumber){await response.body?.cancel();return;}
       if(!response.ok){
         if(response.status===404)throw Error('This tab is connected to an older server. Run start.cmd again and use the new browser tab it opens. Refreshing this tab alone does not update the server.');
@@ -119,9 +121,10 @@ const ScheduleView=(()=>{
         }
       },()=>number===requestNumber):await response.json();
       if(number!==requestNumber)return;
+      renderingCatalog={metrics:screeningData.metrics,filters:screeningData.filter_catalog};
       if(random){
         RobustnessView.render(next);hasResults=true;
-        rememberResult({mode:'random',...body});
+        rememberResult({mode:'random',...body},next);
         node('schedule-results').hidden=true;
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
         node('schedule-message').className='backtest-complete';
@@ -129,7 +132,7 @@ const ScheduleView=(()=>{
       }
       if(!override)node('robustness-results').hidden=true;
       result=next;render();hasResults=true;
-      rememberResult({mode:'custom',...body});
+      rememberResult({mode:'custom',...body},next);
       node('schedule-message').textContent='Backtest complete · '+result.periods.length+' holding periods · '+elapsed()+' elapsed.';
       node('schedule-message').className='backtest-complete';
     }catch(error){if(number===requestNumber){
@@ -143,10 +146,19 @@ const ScheduleView=(()=>{
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration)=>run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration));
+    RobustnessView.init((trial,configuration,stored)=>stored?inspect(stored):run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration));
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
+  }
+  function inspect(stored){result=stored;render();hasResults=true;}
+  function restore(stored,kind){
+    if(kind==='random'){
+      RobustnessView.render(stored);node('schedule-results').hidden=true;
+    }else{
+      result=stored;render();node('robustness-results').hidden=true;
+    }
+    hasResults=true;node('schedule-message').textContent='Saved backtest restored. No calculation was run.';node('schedule-message').className='';
   }
   function cancel(){
     if(!running)return;
@@ -154,5 +166,5 @@ const ScheduleView=(()=>{
     node('schedule-message').textContent='Backtest stopped.'+(hasResults?' Previous results remain displayed.':' Select Run backtest when ready.')+' A new run may wait for cleanup.';
     node('schedule-message').className='';
   }
-  return {run,init,cancel,isRunning:()=>running};
+  return {run,init,cancel,restore,isRunning:()=>running};
 })();

@@ -56,3 +56,20 @@ hash. The report cutoff is a source input; generated report contents are a
 publication identity. An unfinished `research.sqlite.publication.json` blocks
 readers. Preparation completes that verified publication before checking cache
 freshness. Keep its referenced `results/baseline-history/` files for recovery.
+
+## Saved backtests
+
+`saved-backtests.sqlite` contains user-saved backtests. It is separate from the
+rebuildable research and schedule databases. Keep this file during cache cleanup,
+rebuilds and source deployment. Back it up with your local user data.
+
+The website stores at most 20 complete records. Each record keeps the submitted
+settings, traded stocks, holding-period returns, result summaries and display
+labels. Opening a record reads its stored results without running a calculation.
+Changed data does not rewrite a saved record. Delete individual records in the
+website to free slots. Reaching the limit never removes an older record.
+
+`website/saved_backtests.py` owns this database. SQLite transactions enforce the
+limit across server instances. Each complete snapshot is compressed inside its
+record. A failed save keeps existing records. This database does not participate
+in financial-cache freshness or rebuilds.

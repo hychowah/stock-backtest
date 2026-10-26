@@ -213,3 +213,32 @@ Normal builds, startup and data-panel rebuilds write ignored `website/local/`. T
 Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 
 Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
+
+## Save and reopen completed backtests
+
+Use **Save displayed backtest** after a historical run. Give it a name if useful.
+The save keeps the settings used for the displayed result, all traded stocks,
+and all stock and period returns. Pending control edits are not included.
+A stopped or failed run does not replace the last completed result.
+
+Open **Open or delete saved backtests** to reopen a record. Opening restores its
+settings, charts, stock tables and downloads without rerunning a calculation.
+Records stay available after browser and server restarts. They are stored on the
+server computer in `data/saved-backtests.sqlite`, outside the rebuildable caches.
+The library is shared by browser sessions using that runtime. A saved HTML file
+needs the local service to use the library.
+
+The maximum is 20 records. When full, delete a chosen record before saving
+another. Deletion asks for confirmation and removes only that record. It does
+not remove the result currently displayed in the page.
+
+Check with `python3 tests/test_saved_backtests.py`,
+`node tests/check-saved-backtests.cjs`, and the ordinary range controls check.
+Run the persistence checks with native Windows Python too.
+
+Random-date saves include every trial's exact trade dates, stock rows and period
+returns, plus the seed and distribution summary. Trial inspection uses these
+stored rows. It does not recalculate the book. The website opts into full trial
+results with `X-Backtest-Details: holdings`. Existing summary-only API clients
+keep their existing response. Save a completed new run; older summary-only
+results do not contain enough evidence for a complete random backtest record.

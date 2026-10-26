@@ -24,9 +24,11 @@ import data_manager
 import cache_access
 import diagnostics
 import backtest_control
+import saved_backtests
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
+SAVED_BACKTESTS=saved_backtests.Store()
 
 
 class Server(ThreadingHTTPServer):
@@ -64,6 +66,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.launcher_request():return
+        if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
+            self.saved_backtest_request();return
         if self.path=='/data.html':
             body=data_page().encode('utf-8')
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8')
@@ -95,6 +99,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.launcher_request():return
+
+        if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
+            self.saved_backtest_request();return
 
         if self.path.startswith('/api/data/'):
             self.data_request();return
@@ -128,6 +135,38 @@ class Handler(SimpleHTTPRequestHandler):
             diagnostics.failure('schedule.failed',error,mode='robustness' if self.path=='/api/robustness' else 'schedule')
             self.reply(400,dict(error=str(error)))
 
+    def do_DELETE(self):
+        if self.path.startswith('/api/backtests/'):
+            self.saved_backtest_request();return
+        self.reply(404,dict(error='Unknown endpoint.'))
+
+    def saved_backtest_request(self):
+        origin=self.headers.get('Origin')
+        if origin and origin!='http://'+self.headers.get('Host',''):
+            self.reply(403,dict(error='Open the website to manage saved backtests.'));return
+        identifier=self.path.removeprefix('/api/backtests/');collection=self.path=='/api/backtests'
+        try:
+            if self.command=='GET':
+                self.reply(200,dict(limit=saved_backtests.LIMIT,records=SAVED_BACKTESTS.list()) if collection else SAVED_BACKTESTS.get(identifier))
+            elif self.command=='DELETE' and not collection:
+                SAVED_BACKTESTS.delete(identifier);self.reply(200,dict(deleted=True,id=identifier))
+            elif self.command=='POST' and collection:
+                length=int(self.headers.get('Content-Length','0'))
+                if length>saved_backtests.MAX_BYTES:
+                    self.reply(413,dict(error='This backtest is too large to save as one record.'));return
+                if length<=0:raise ValueError('Expected a completed backtest.')
+                def invalid_constant(value):raise ValueError('Saved values must be finite.')
+                request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
+                if not isinstance(request,dict):raise ValueError('Expected a completed backtest.')
+                self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
+            else:self.reply(405,dict(error='Unsupported saved-backtest action.'))
+        except saved_backtests.Full as error:self.reply(409,dict(error=str(error)))
+        except saved_backtests.Missing as error:self.reply(404,dict(error=str(error)))
+        except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+        except (OSError,sqlite3.Error) as error:
+            diagnostics.failure('saved_backtest.failed',error)
+            self.reply(500,dict(error='Could not access saved backtests. Your existing records were kept. Check the development log.'))
+
     def data_request(self):
         if not self.data_allowed():self.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return
         action=self.path.removeprefix('/api/data/')
@@ -153,7 +192,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.flush()
         try:
             event(dict(type='configuration',configuration=configuration))
-            result=robustness.run(db,configuration,progress=event)
+            if getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings':
+                details=[]
+                result=robustness.run(db,configuration,progress=event,capture=lambda number,trial:details.append(trial))
+                result['trial_results']=details
+            else:
+                result=robustness.run(db,configuration,progress=event)
             event(dict(type='complete',result=result))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # The completed trial transactions remain cached; stop before the

@@ -96,3 +96,19 @@ existing interfaces. Financial formulas, request fields, result shapes, saved
 books and lock ordering stay the same. In-flight workers finish under the
 existing cleanup before cache ownership ends. The engine branch can integrate
 these checks deliberately with its replacement engine.
+
+## Agreed exception: saved backtest results (26 October 2026)
+
+The user assigned main the narrow adapter for saving random-trial stock details.
+`scripts/robustness.py` adds an optional `capture(number, result)` observer after
+an ordinary completed trial. Calculations, dates, progress and saved-book
+transactions stay unchanged. Existing callers keep the summary-only result.
+The website requests `X-Backtest-Details: holdings`; only that opt-in adds ordered
+`trial_results` to the completed HTTP result. Each entry is the full original
+trial result, including all holding periods and selected stock rows. The browser
+can inspect these stocks without another calculation. The engine branch can
+integrate this observer deliberately; no engine implementation is copied here.
+
+The independent library uses `data/saved-backtests.sqlite`. It stores complete
+user snapshots, capped atomically at 20 records. This durable file stays outside
+financial-cache freshness and rebuilds. Source deployment preserves it.
