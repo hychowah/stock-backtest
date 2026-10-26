@@ -69,6 +69,31 @@ The decisions below supersede earlier instructions to expand both candidates
 or continue the broad method search. Historical phase records retain their
 original conclusions and measurements.
 
+## User-authorized performance acceptance update — 26 October 2026
+
+The user now accepts **at least 4× median end-to-end speedup** instead of 5×.
+This changes the minimum in each of the six primary pool/profile cases across
+three seeds. The **10× target** remains. Apply the 4× minimum to future pilot
+production-speed criteria, CB-02 integration eligibility, CB-14 qualification
+and program completion. A pilot's separate 10% paired-improvement criterion
+remains unchanged. No correctness, coverage, freshness, resource, isolation,
+workflow-budget or operational requirement changes.
+
+This decision supersedes older 5× requirements in phase briefs and execution
+resume records. Historical wave results and independent reports keep their
+original criteria and verdicts. Wave5's recorded cached-F2 medians, 4.66× for
+Numba and 4.53× for Rust, exceed the new minimum on that historical identity.
+This is a comparison with retained measurements, not a new run or current-source
+qualification. It does not complete CB-02, open real admission or authorize
+production integration. Requalify a changed implementation on one bound identity.
+
+The user requests a new Codex session in this worktree to continue CB-02 until
+it is finished. Coherent checkpoint commits inside that session are permitted.
+This supersedes the earlier stop-at-next-commit instruction for that session.
+Read the [session handover](phases/CB-02/execution/session-handover.md) for the
+current boundary and separate-environment authorization. No code changes belong
+to this acceptance update, so the code-structure design skill does not apply.
+
 ## User-authorized offline capture adjustment (wave11)
 
 After wave10, the user stopped the server and stated: “i already stop the server
@@ -272,9 +297,9 @@ allocations, not cost predictions or user budgets. Real binding, resource and
 availability prerequisites are pending. Validation cannot grant admission.
 
 After a promising qualified pair, run the unchanged six-case, three-seed primary
-gate on one implementation identity. Repeat it on the integrated engine. Keep
-cached-F2 failed, all incomplete trials visible and the complete trailing-filter
-supplement separately frozen. No acceptance requirement is relaxed.
+gate on one implementation identity. Repeat it on the integrated engine. Keep the
+historical cached-F2 failure against 5× visible. Keep all incomplete trials
+visible and the complete trailing-filter supplement separately frozen. Only the user-authorized minimum changes to 4×; all other requirements remain.
 
 ### Capability-based sequence
 
@@ -294,7 +319,7 @@ program completion. Do not add weekly controls before its correctness gate.
 
 ## Objective
 
-Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
+Make random-date stock-screen research at least **4× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
 
 The main workload is at least 24 random-date trials over **1997–2025**, usually with **12-month** rebalancing. The user changes filter settings between experiments. The intended interval range is **one week through two years**. Fresh random dates must benefit. Reusing a fixed seed must not be necessary for a speed claim.
 
@@ -360,7 +385,7 @@ blocks the experiment or deployment; continue only work that leaves the live
 service usable.
 
 **Full readiness gate:** Keep the stable engine as default until CB-14 passes
-all financial and coverage checks, all six three-seed 5× speed gates, the complete
+all financial and coverage checks, all six three-seed 4× speed gates, the complete
 trailing-filter supplement, all promised month/week intervals and capacity
 checks, agreed workflow budgets, Native Windows startup/offline/lifecycle checks,
 and saved-data compatibility and rollback checks. Unresolved budgets or checks
@@ -420,7 +445,9 @@ The [24 October comparative research](method-research-2026-10-24.md) led to
 attempts of all six named methods in the [third wave](phases/CB-02/wave3/README.md).
 The full Numba/Rust matrix now supports focusing the next experiment on Numba.
 Numba has the lower median request duration in all six cases. The differences
-are small; neither method passes the entire speed gate. This is a choice of
+are small; neither method passed the then-required 5× speed gate. Their historical
+medians exceed the newly authorized 4× minimum; current-source qualification
+remains pending. This is a choice of
 development focus, not production approval or a claim of general superiority.
 
 Do not develop both methods on every iteration by default. Reopen Rust for a
@@ -544,7 +571,7 @@ its settings and dates. Never replace the failed primary F2 case with this
 supplement. Include mixed filters and repeated filter changes in workflow
 qualification. Report complete and incomplete trials separately.
 
-Require **at least 5× median end-to-end speedup in each of the six primary pool/profile cases**, with no numerical or membership disagreement. Target 10× or more. Report per-seed ratios and absolute times; do not hide a slow case in an overall average. If a case fails, keep the new engine opt-in and revise the design.
+Require **at least 4× median end-to-end speedup in each of the six primary pool/profile cases**, with no numerical or membership disagreement. Target 10× or more. Report per-seed ratios and absolute times; do not hide a slow case in an overall average. If a case fails, keep the new engine opt-in and revise the design.
 
 ### Measurement rules
 
@@ -569,7 +596,7 @@ record an absolute time budget and a measurement boundary for each workflow:
 |---|---|---|
 | First installation and first ready result | Dependency installation, preparation, attachment and compilation, with each cost separate | To be resolved before operational qualification |
 | Normal restart | Launcher start to ready service, then the first completed result | To be resolved before operational qualification |
-| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | To be resolved before workflow qualification; retain the six-case 5× gate |
+| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | To be resolved before workflow qualification; retain the six-case 4× gate |
 | Changed filters | Same dates with new settings; report permitted factor reuse and completion time | To be resolved before workflow qualification |
 | Saved-result reopening | Request to visible inspection and export-ready evidence | To be resolved before workflow qualification |
 | Weekly research | Short-window pilot, then the declared full-window workload, with resource caps | To be resolved before weekly capacity qualification |
@@ -644,7 +671,8 @@ implement the compiled calculation engine. Read that handoff before CB-01.
 
 CB-01 measurement is complete. Its [phase record](phases/CB-01/README.md) contains
 the frozen workload, all 18 accepted cases and operational limits. CB-02 is in
-progress: the comparison is complete, but its full speed gate failed. CB-03 is
+progress: the comparison is complete. Its historical 5× gate failed; the user
+now accepts 4×. Current-source and operational qualification remain pending. CB-03 is
 conditional. CB-04 through CB-15 describe remaining capabilities. Reconcile
 these briefs with demonstrated work and the ongoing website availability
 contract before implementing them. Phase identifiers
@@ -916,11 +944,11 @@ and capacity remain separate from existing-month measurement. No production
 integration follows until the unchanged full primary gate passes.
 
 **Gate:** Development focus is Numba. Production integration requires at least
-5× median end-to-end improvement in every one of the six primary cases across
+4× median end-to-end improvement in every one of the six primary cases across
 three seeds on one changed source identity. Require exact categorical agreement,
 the existing numeric tolerance and a stated budget for integration overhead.
-Repeat the gate on the integrated engine at CB-14. Keep the old failed result
-visible until the changed implementation passes. Trigger CB-03 only for a
+Repeat the gate on the integrated engine at CB-14. Keep the old 5× verdict and measurements
+visible. Qualify the changed implementation against the current 4× minimum. Trigger CB-03 only for a
 concrete unresolved limitation.
 
 **Handoff:** Record the focus decision, passed and failed gates, reusable proofs,
@@ -1087,7 +1115,7 @@ mark the whole phase or program complete from the earlier milestone.
 
 **Verification:** All required correctness and operational checks pass on Windows.
 The ongoing website availability contract passes during candidate preparation,
-execution, failure and restart. Stable code, dependencies and caches remain usable. Primary cases each reach 5×. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
+execution, failure and restart. Stable code, dependencies and caches remain usable. Primary cases each reach 4×. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
 
 **Handoff:** Pass/fail table. If a gate fails, leave the engine opt-in and write the smallest evidence-led follow-up phase. Do not label the program complete.
 
@@ -1099,7 +1127,7 @@ execution, failure and restart. Stable code, dependencies and caches remain usab
 including the availability, interval, saved-data compatibility and rollback gates.
 Until then, keep the stable engine and its normal restart path available. Remove temporary prototype integration and obsolete default routing. Retain the reference/rollback path and old caches through a documented migration period. Update README, workflow, data documentation, root instructions and the architecture guide to the implemented state. Document adding metrics, extending data, rebuilding generations, inspecting saved trials and rolling back.
 
-**Deliverables:** Default route, final user guide and program completion record. Record actual 5×/10× results by workload. Keep unachieved targets explicit. Before cutover, record the actual stable revision, environment, database/report generation, compatible saved-result route and immutable artifact locations. Keep them until the user accepts retirement; do not invent an automatic expiry. Rollback deliberately selects that retained revision, restores its compatible routing and reuses its preserved assets. Test rollback in isolation before changing the default. Never recompute old evidence silently or delete stable books.
+**Deliverables:** Default route, final user guide and program completion record. Record actual 4×/10× results by workload. Keep unachieved targets explicit. Before cutover, record the actual stable revision, environment, database/report generation, compatible saved-result route and immutable artifact locations. Keep them until the user accepts retirement; do not invent an automatic expiry. Rollback deliberately selects that retained revision, restores its compatible routing and reuses its preserved assets. Test rollback in isolation before changing the default. Never recompute old evidence silently or delete stable books.
 
 **Verification:** Native Windows launcher smoke test, representative browser flow, offline operation and the required regression checks. Confirm the canonical report is unchanged unless a separately verified data revision explains it. Confirm old books and raw data remain available. Compare the complete commit diff with the architecture guide.
 
@@ -1146,7 +1174,9 @@ Preserve the financial correctness contract, benchmark gates, source data, canon
 
 Run the phase's required checks, including native Windows checks where specified. Read failures, apply clear repairs and rerun affected checks until they pass. Dependency repair and bounded isolated experiments are part of the phase. Do not ask the user to run a routine preparation command or approve each test repair.
 
-A failed speed gate is engineering evidence. Investigate its cause, improve the authorized design or run the planned alternative comparison automatically. Keep the gate failed until the evidence passes. Ask the user only when progress requires a critical scope, correctness, resource or acceptance decision. Do not lower the speed target, weaken tolerance, omit a filter or claim an unrun check passed.
+A failed speed gate is engineering evidence. Investigate its cause, improve the authorized design or run the planned alternative comparison automatically. Keep the gate failed until the evidence passes. Ask the user only when progress requires a critical scope, correctness, resource or acceptance decision. Do not change performance acceptance without user authorization, weaken
+tolerance, omit a filter or claim an unrun check passed. The authorized
+26 October amendment sets the minimum at 4× and retains the 10× target.
 
 Complete the phase record and status evidence before the commit audit. If required verification cannot finish, record the unfinished checks and their cause. Do not commit a phase as complete or start a dependent phase while a required gate remains unresolved.
 
@@ -1193,7 +1223,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate in that historical scope. [Execution capability](phases/CB-02/execution/README.md): actual disposable reference/Numba pair, costed protocol and capability roadmap; cooperative source-bound observations and bounded transport/native job controls are implemented within it; complete resources, installed availability and real admission remain unqualified. See [hardening](phases/CB-02/execution/hardening.md) and the [application-controller resource checkpoint](phases/CB-02/execution/resources.md) and [synthetic HTTP availability](phases/CB-02/execution/availability.md): actual handlers, cooperative priority, partial-stream recovery and orderly fresh-interpreter restart at recorded synthetic scale. [Native user CPU](phases/CB-02/execution/user-cpu.md): periodic aggregate user-time termination with final accounting; total CPU and full resources remain open. [Storage](phases/CB-02/execution/storage.md): optional WSL tmpfs and bounded evidence recovery; native aggregate storage remains unsupported. [Supervisor lifetime](phases/CB-02/execution/lifetime.md): optional WSL ancestor through collection; caller relay and complete resources remain open. [Native lifetime](phases/CB-02/execution/native-lifetime.md): explicit ancestor Job Object through helper finalization, with caller residual and unsupported resources retained. [Source-prepared service](phases/CB-02/execution/source-service.md): ordinary fictional preparation/build, freshness and actual browser CSV checks extend the smaller HTTP fixture. [Combined service](phases/CB-02/execution/combined-service.md): the existing capture and measured-execution owners join the full fictional generation to its live source service under a separate declaration. Real-data capacity, installed compatibility, full resources and real admission remain open. No production backend selected |
+| CB-02 | In progress; Numba focus; 4× minimum authorized; current-source qualification pending | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate in that historical scope. [Execution capability](phases/CB-02/execution/README.md): actual disposable reference/Numba pair, costed protocol and capability roadmap; cooperative source-bound observations and bounded transport/native job controls are implemented within it; complete resources, installed availability and real admission remain unqualified. See [hardening](phases/CB-02/execution/hardening.md) and the [application-controller resource checkpoint](phases/CB-02/execution/resources.md) and [synthetic HTTP availability](phases/CB-02/execution/availability.md): actual handlers, cooperative priority, partial-stream recovery and orderly fresh-interpreter restart at recorded synthetic scale. [Native user CPU](phases/CB-02/execution/user-cpu.md): periodic aggregate user-time termination with final accounting; total CPU and full resources remain open. [Storage](phases/CB-02/execution/storage.md): optional WSL tmpfs and bounded evidence recovery; native aggregate storage remains unsupported. [Supervisor lifetime](phases/CB-02/execution/lifetime.md): optional WSL ancestor through collection; caller relay and complete resources remain open. [Native lifetime](phases/CB-02/execution/native-lifetime.md): explicit ancestor Job Object through helper finalization, with caller residual and unsupported resources retained. [Source-prepared service](phases/CB-02/execution/source-service.md): ordinary fictional preparation/build, freshness and actual browser CSV checks extend the smaller HTTP fixture. [Combined service](phases/CB-02/execution/combined-service.md): the existing capture and measured-execution owners join the full fictional generation to its live source service under a separate declaration. Real-data capacity, installed compatibility, full resources and real admission remain open. No production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned hardening | Immutable numeric artifact publication/attachment/retirement; input loading already demonstrated |
 | CB-05 | Planned hardening | Retain demonstrated Numba temporal primitives |
@@ -1205,13 +1235,13 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-11 | Split capability | Measurement lifetime belongs before next real pilot; persistent production stress later |
 | CB-12 | Planned | Wave8 request-start revision selection reusable; isolated startup, actual restart, immediate detection and operational budgets remain required |
 | CB-13 | Planned | Isolated preview; stable website remains default |
-| CB-14 | Planned | Final 5× gate pending |
+| CB-14 | Planned | Final 4× gate pending |
 | CB-15 | Planned | Stable default stays until all CB-14 readiness gates pass |
 
 ## Completion definition
 
 The current website must remain usable until all replacement readiness gates
-pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
+pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 4× threshold, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
 The immediate next step is the remaining qualification of the single CB-02
 measurement operation, not another source-only attachment wave. Numba remains
