@@ -26,6 +26,7 @@ website/.git/
 data/*.sqlite
 data/*.sqlite-*
 data/*.building*
+data/numerical/
 
 # Rebuildable local website output; tracked dist is an explicit portable snapshot.
 website/local/

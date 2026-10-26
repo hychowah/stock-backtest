@@ -10,8 +10,9 @@ Program direction revised after the full matrix and program review: 25 October 2
 
 Status: CB-00 and CB-01 are complete. **CB-02 is complete by the user's
 method-selection decision on 26 October 2026. Numba is accepted.** Further
-comparative benchmarking is waived. CB-03 is skipped. CB-04 is the next
-implementation phase. No production engine or running server changes here.
+comparative benchmarking is waived. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
+[phase record](phases/CB-04.md). CB-05 is the next implementation phase.
+No production engine or running server routing changes here.
 
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
 authority. It supersedes earlier instructions to finish the measurement owner,
@@ -116,7 +117,7 @@ this WSL worktree. Real data has not been copied there. Original/runtime assets
 and the preserved real capture remain protected under the existing nonaccess
 rules. Later production-input work must resolve its authorized data source.
 
-The next ready task is CB-04 design for the production numerical generation
+At method selection, the next ready task was CB-04 design for the production numerical generation
 lifecycle, using private synthetic inputs first. Retain the reference for
 correctness checks. Do not start another comparative benchmark or fabricate a
 passed speed/resource gate. This prose-only selection decision does not need a
@@ -1285,7 +1286,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
 | CB-02 | Complete by user decision; further comparison waived | [Method selection](phases/CB-02/method-selection.md); retained wave and execution evidence keeps its original limits |
 | CB-03 | Skipped | User accepts Numba; no alternative comparison scheduled |
-| CB-04 | Planned hardening | Immutable numeric artifact publication/attachment/retirement; input loading already demonstrated |
+| CB-04 | Complete | [Phase record](phases/CB-04.md); bounded offline export, immutable publication/recovery, read-only attachment and reader-safe retirement; synthetic WSL/native verification |
 | CB-05 | Planned hardening | Retain demonstrated Numba temporal primitives |
 | CB-06 | Planned hardening | Retain source-derived catalog, specialization and dependency planning |
 | CB-07 | Conditional replacement | Shared SQL is demonstrated; generic native selection is not |
@@ -1303,8 +1304,10 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 The current website must remain usable until all replacement readiness gates
 pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
-The immediate next step is CB-04 production artifact-lifecycle design using the
-accepted Numba evaluator. The CB-02 comparison route is retired. The following
+CB-04 completes the offline artifact lifecycle in WSL source. Its
+[handoff](phases/CB-04.md) defines format 1 and attachment ownership.
+The immediate next step is CB-05 temporal-primitive hardening using this artifact
+interface and the accepted Numba evaluator. Startup integration remains in CB-12. The CB-02 comparison route is retired. The following
 paragraphs retain the earlier execution evidence and its qualification limits. Numba remains
 the working direction. Its wave5 full matrix is exact. Its cached-F2 median of 4.66× failed the
 historical 5× gate and exceeds the subsequently retired 4× minimum on that historical identity; wave6 is rejected; wave7's additional guard treatment never ran on real

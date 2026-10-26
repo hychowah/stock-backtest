@@ -1,0 +1,141 @@
+# Offline numerical generations
+
+CB-04 adds an offline input artifact. It does not route website requests to
+Numba. Automatic startup integration belongs to CB-12. The installed website
+and the independent `scripts/revalue.py` stay on their existing paths.
+
+Use the tested NumPy environment. From the project folder, run:
+
+```
+python scripts/numerical_generation.py prepare
+python scripts/numerical_generation.py attach
+python scripts/numerical_generation.py retire
+```
+
+`prepare` requires current research and daily preparation. It checks the full
+saved-price inventory, the existing research readiness rules and the canonical
+report binding. It rejects pending deployment or baseline publication. It does
+not prepare raw inputs, download data or change the canonical report. A stale
+cache requires the ordinary offline preparation before numerical export.
+
+`attach` verifies the current artifact, opens its buffers and records read-only,
+prints its identity and load observations, then closes it. It still checks
+current input metadata. An artifact hash alone does not prove current inputs.
+The existing path, size and modification-time freshness guarantee stays in use.
+A same-size edit with a restored timestamp remains outside that guarantee.
+
+`retire` keeps the current and previous generations. It removes older verified
+generations only when they have no live or uncertain reader lease. It never
+waits for a reader. Damaged or unknown directories require explicit review.
+
+`python scripts/numerical_generation.py recover` restores the verified previous
+pointer. This is an explicit recovery operation. It preserves the damaged files.
+The previous artifact can be valid but stale. Attachment still rejects stale
+inputs. Run export to make a current artifact after such recovery. A corrupt
+pointer that cannot identify its previous generation fails closed.
+
+All command paths resolve from the source file. A moved project can reuse its
+artifact if the prepared relative input inventory and source contents still
+match. The command takes shared source ownership before application imports.
+It then takes the ordinary project cache coordinator.
+
+## Format 1
+
+The ignored store is `data/numerical/`. Each published directory name is a
+SHA-256 identity. `manifest.json` contains the format, prepared binding, array
+schema and complete file inventory. Identity is SHA-256 of canonical JSON for
+these four fields. JSON has sorted keys, compact separators and no NaN values.
+Each inventory entry binds the file's exact byte count and SHA-256.
+
+The binding contains daily base-input metadata, current raw price-file metadata,
+the canonical report content hash, the source-derived policy signature and
+relevant source-content hashes. Mutable dated books, saved trial results,
+database sizes, absolute project paths and observation times are excluded.
+There is no persisted executable state or pickle. Compiler and runtime identity
+remain a separate later contract.
+
+Each numerical buffer is a non-object, little-endian NPY file. The manifest
+records its dtype and shape. `raw_*` names retain compatibility with the tested
+input interface: these buffers hold the selected **valuation** series from the
+daily cache. They do not imply that every value is an unadjusted market price.
+`adjusted_*` contains the separately saved dividend-adjusted series.
+
+| Buffers | Meaning |
+|---|---|
+| `raw_offsets`, `raw_days`, `raw_values` | Sparse valuation histories by original symbol ID |
+| `adjusted_offsets`, `adjusted_days`, `adjusted_values` | Independent sparse dividend-adjusted histories |
+| `symbol_sort` | Symbol IDs in alphabetical order |
+| `cached_mask` | Membership in the prepared cached-price set |
+| `report_symbol`, `report_fiscal`, `report_known` | Stable report identity and ordinal dates |
+| `report_cap`, `report_enterprise`, `report_yield` | Prepared annual valuation inputs |
+| `average_3y`, `financial_parameters` | Source-calculated annual specialization; missing values stay NaN |
+| `cached_*`, `legacy_*` | Pool offsets, report IDs, known dates and fiscal dates |
+
+Offsets use signed 64-bit integers. Other IDs and ordinal days use signed 32-bit
+integers. Values use 64-bit floats. The cached mask uses Boolean values.
+Sparse missing prices have no entry. The two price series never fill each
+other's missing dates. The original symbol order is the first statement
+occurrence in source row order, followed by alphabetical price-only symbols.
+Reports within a symbol use fiscal date and original row order. This retains
+the original buffer tie order independently of `symbol_sort`.
+
+`records.sqlite` contains `symbols`, `reports`, `companies`, `financial_inputs`,
+`sessions` and `treasuries`. It contains no backtest or saved-trial tables.
+Financial JSON is copied verbatim from prepared inputs. It is not a second raw
+cache. `owner.json` identifies store-owned exports and abandoned staging trees.
+
+## Memory and resource ownership
+
+Export writes directly into mapped buffers. Price cursor batches have at most
+4,096 rows. Record batches have at most 4,096 rows and a 1 MiB target. A single
+record may use up to 4 MiB. Annual specialization holds one symbol's history,
+with at most 16,384 annual or financial records. Larger inputs fail export.
+It never creates the complete Python price or annual-history graph.
+Mapping address space and OS-managed resident pages still grow with artifact
+size. These bounds do not claim a hard resident-memory limit or a disk quota.
+
+Attachment maps arrays read-only. It loads symbol IDs, sessions and Treasury
+rows once. `report_rows[index]`, `histories[symbol]` and `financials[symbol]`
+read records on demand. They retain no history cache. Company rows load only
+when requested. An attachment does not borrow a prepared database connection.
+
+For library use, construct `GenerationStore(schedules)`, call `prepare()`, then
+use `with store.open_current() as inputs:`. Library callers own source before
+imports. Calculations retain ordinary project cache ownership through native
+work and final resource closure. Call `inputs.validate()` before each job inside
+that ownership scope. It rechecks current prepared metadata, raw inventory and
+source policy. An old attachment can stay open but cannot validate after its
+inputs change. Close evaluators and all borrowed array views
+before closing the attachment. Borrowed views expire when attachment closes.
+
+Each attachment holds an OS-locked lease outside its immutable directory.
+Idle attachments can keep old mappings while publication selects new inputs.
+Close releases SQLite and mappings before the lease. Failed close retains a
+strong owner and the lease for explicit retry. Process death releases its OS
+lock. Retirement can then reclaim its abandoned lease.
+
+## Publication and recovery
+
+One coordinator owns export, pointer transitions and retirement. Export writes
+to a uniquely named staging directory. It closes writers and verifies file
+hashes, headers, shapes, sparse order and record relationships before rename.
+Published buffers are never overwritten in place.
+
+`publication.json` records the candidate and prior pointer before the atomic
+`current.json` replacement. The pointer contains current and previous IDs.
+Retry verifies the candidate and finishes the transition. An invalid candidate
+restores a verified prior pointer. With no prior pointer, an incomplete first
+publication is discarded and export can retry. Conflicting intent fails closed.
+Readers still perform current freshness checks after recovery.
+
+Owned abandoned staging trees are removed under coordination. Unknown trees
+are preserved. A damaged generation can be rebuilt only when no reader holds
+it; the damaged directory is preserved under a separate name before replacement.
+Windows access and sharing failures receive the existing eight-attempt retry
+policy, with less than two seconds of retry waits. Other file errors propagate.
+These operations cover process interruption and atomic file replacement. They
+do not claim durability through arbitrary hardware or filesystem failure.
+
+CB-04 verification uses private synthetic inputs. It does not qualify real-data
+capacity or make a new speed comparison. See the
+[phase record](plans/compiled-backtest/phases/CB-04.md) for exact observations.
