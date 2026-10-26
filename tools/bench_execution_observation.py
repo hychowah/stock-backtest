@@ -39,7 +39,8 @@ class CurrentObservation:
                 raise ComparisonError('unsupported')
         if cache_access.OBSERVATION_PROTOCOL != 1:
             raise ComparisonError('unsupported')
-        return cache_access.WorkspaceAccess(self.root / 'data/website-data-0.lock'), runtime_access
+        return cache_access.WorkspaceAccess(self.root / 'data/website-data-0.lock',
+            read_only=self.request.get('read_only_observation', False)), runtime_access
 
     def live_pending(self):
         if not self.coordinated:
@@ -57,7 +58,8 @@ class CurrentObservation:
                 checkpoint = check
                 if self.coordinated:
                     access, runtime = self._coordinator()
-                    scope.enter_context(runtime.ownership(self.root, timeout=0))
+                    scope.enter_context(runtime.ownership(self.root, timeout=0,
+                        read_only=self.request.get('read_only_observation', False)))
                     conflict = scope.enter_context(access.observe())
                     def checkpoint():
                         check(); conflict()

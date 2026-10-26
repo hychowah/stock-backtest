@@ -42,12 +42,15 @@ def _windows_lock(handle, exclusive):
 
 
 @contextmanager
-def ownership(root, *, exclusive=False, timeout=30, allow_pending=False):
+def ownership(root, *, exclusive=False, timeout=30, allow_pending=False, read_only=False):
     """Own source for execution or publication; fail closed on partial deploys."""
     root = Path(root)
     data = root / 'data'
-    data.mkdir(parents=True, exist_ok=True)
-    handle = (data / 'website-source.lock').open('a+b')
+    # A private read-only observer must use an existing source-lock inode.
+    # It cannot create files or take publication ownership.
+    if read_only and exclusive: raise ValueError('Read-only publication is unsupported.')
+    if not read_only: data.mkdir(parents=True, exist_ok=True)
+    handle = (data / 'website-source.lock').open('rb' if read_only else 'a+b')
     release = None
     deadline = time.monotonic() + timeout
     try:

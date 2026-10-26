@@ -15,6 +15,7 @@ import time
 import bench_admission as admission
 from bench_comparison import ComparisonError, encoded
 from bench_execution_domain import DomainLimits, start_controller
+from bench_execution_storage import ExperimentalStorage, PRIVATE_ROOT, CONTROL_BYTES, validate_limits, storage_io, failure_reason
 
 _pending_supervisors = {}
 
@@ -37,6 +38,9 @@ class ComparisonSupervisor:
         self.terminal_error = None
         self._result = None
         self.evidence = None
+        self.storage = None
+        self._domain_closed = False
+        self._finalization_started = None
 
     def _command(self, request):
         return [sys.executable, '-I', '-B', '-c',
@@ -58,18 +62,35 @@ class ComparisonSupervisor:
             output_bytes=e['log_bytes'], close_seconds=e['close_seconds'])
         self.limit = limits
         spec['supervision_started'] = self.started
+        validate_limits(e.get('storage_bytes'), e.get('evidence_bytes'))
+        if e.get('storage_bytes') is not None:
+            self.storage = ExperimentalStorage(e['storage_bytes'], e['evidence_bytes'],
+                                               spec['output'], e['close_seconds'],
+                protected=(spec['capture'], spec['source'], spec['observation_root']))
         raw = encoded(spec)
-        if len(raw) > 1024 * 1024: raise ComparisonError('limit')
+        if len(raw) > CONTROL_BYTES: raise ComparisonError('limit')
         self.control = Path(tempfile.mkdtemp(prefix='cb02-supervision-'))
         _pending_supervisors[id(self)] = self
         request = self.control / 'request.json'
         try:
-            request.write_bytes(raw)
+            if self.storage is not None:
+                self.storage.prepare()
+                spec['output'] = PRIVATE_ROOT + '/output'
+                spec['read_only_observation'] = True
+                raw = encoded(spec)
+                if len(raw) > CONTROL_BYTES: raise ComparisonError('limit')
+            with storage_io(): request.write_bytes(raw)
+            command = self._command(request)
+            if self.storage is not None:
+                command = self.storage.command(command,
+                    [spec['capture'], spec['source'], spec['observation_root'], self.control])
             try:
-                self.owned = start_controller(self._command(request), limits)
+                self.owned = start_controller(command, limits)
             except BaseException as error:
                 self.owned = getattr(error, 'owned_process', None)
                 raise
+            if self.storage is not None:
+                self.storage.attach(self.owned, self._checkpoint)
             self.owned.start()
             terminal = None
             while True:
@@ -91,7 +112,7 @@ class ComparisonSupervisor:
                     if self.owned.process.returncode or terminal is None:
                         raise ComparisonError('child_failed')
                     break
-            self.close()
+            self._close_domain()
             # A queued terminal message and a zero leader exit are provisional.
             # Final accounting includes descendants that ran during closure.
             if self.owned.resource_failure():
@@ -104,7 +125,8 @@ class ComparisonSupervisor:
                 raise ComparisonError('mismatch')
             # One continuous boundary includes controller terminal publication,
             # transport, domain closure and then this supervisor's receipt.
-            result['costs']['finalization'] = time.monotonic() - terminal['finalization_started']
+            self._finalization_started = terminal['finalization_started']
+            result['costs']['finalization'] = time.monotonic() - self._finalization_started
             elapsed = time.monotonic() - self.started
             if (elapsed > limits.wall_seconds or any(result['costs'][key] > bound
                     for key, bound in spec['protocol']['costs'].items())):
@@ -113,23 +135,33 @@ class ComparisonSupervisor:
                 protocol=spec['protocol_sha256'], elapsed_seconds=elapsed,
                 capabilities=self.owned.capabilities(), closure=self.owned.closure(),
                 supervisor_scope='outside_application_domain; bounded_control_transport_only',
-                receipt_timing='costs_through_domain_closure; receipt_write_checked_before_return',
+                receipt_timing=('costs_before_storage_collection; collection_publication_and_release_checked_before_return'
+                                if self.storage else 'costs_through_domain_closure; receipt_write_checked_before_return'),
                 result=result)
             workspace = Path(terminal['workspace'])
-            output = Path(spec['output']).resolve()
-            if (workspace.parent.resolve() != output or not workspace.name.startswith('workspace-')
-                    or workspace.is_symlink()):
+            output = Path(spec['output']).resolve() if self.storage is None else Path(spec['output'])
+            parent = workspace.parent.resolve() if self.storage is None else workspace.parent
+            if (parent != output or not workspace.name.startswith('workspace-')
+                    or any(c not in '0123456789abcdef' for c in workspace.name[len('workspace-'):])
+                    or (self.storage is None and workspace.is_symlink())):
                 raise ComparisonError('mismatch')
+            if self.storage is not None:
+                workspace = self.storage.root / 'output' / workspace.name
+                if workspace.is_symlink() or not workspace.is_dir(): raise ComparisonError('mismatch')
+                self.evidence['storage'] = self.storage.capability()
+                self.evidence['capabilities']['disk'] = self.storage.capability()
             target = workspace / 'domain.json'
             temporary = workspace / 'domain.building'
-            temporary.write_bytes(encoded(self.evidence))
-            temporary.replace(target)
-            # Publication itself is still part of finalization and whole time.
+            with storage_io():
+                temporary.write_bytes(encoded(self.evidence))
+                temporary.replace(target)
+            # Collection/publication/handle release remain continuously charged.
+            self.close()
             publication = time.monotonic() - self.started - elapsed
             result['costs']['finalization'] += publication
             if (time.monotonic() - self.started > limits.wall_seconds or
                     result['costs']['finalization'] > spec['protocol']['costs']['finalization']):
-                target.unlink()
+                if self.storage is None: target.unlink()
                 raise ComparisonError('limit')
             self._result = json.loads(encoded(result))
             return self
@@ -147,12 +179,32 @@ class ComparisonSupervisor:
             raise ComparisonError('incomplete')
         return json.loads(encoded(self._result))
 
-    def close(self):
-        if self.closed: return
+    def _checkpoint(self):
+        if self.cancel(): raise ComparisonError('cancelled')
+        now = time.monotonic()
+        if now - self.started > self.limit.wall_seconds: raise ComparisonError('limit')
+        if (self._finalization_started is not None and
+                now - self._finalization_started > self.specification['protocol']['costs']['finalization']):
+            raise ComparisonError('limit')
+
+    def _close_domain(self):
+        if self._domain_closed: return
         if self.owned is not None:
             if self.owned.process.poll() is None: self.owned.terminate()
             self.owned.close()
             if not self.owned.closed: raise ComparisonError('closure_pending')
+        self._domain_closed = True
+
+    def close(self):
+        if self.closed: return
+        self._close_domain()
+        if self.storage is not None:
+            # Error recovery has a fresh bounded mechanical cleanup interval.
+            # It never replenishes the failed comparison's ledger or CPU time.
+            check = self._checkpoint if self.terminal_error is None else (lambda: None)
+            self.storage.finish(domain_closed=self._domain_closed,
+                reason=failure_reason(self.terminal_error, 'unexpected') if self.terminal_error else None,
+                checkpoint=check)
         if self.control is not None: shutil.rmtree(self.control)
         self.closed = True
         _pending_supervisors.pop(id(self), None)

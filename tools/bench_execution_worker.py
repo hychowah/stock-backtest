@@ -15,6 +15,7 @@ import sysconfig
 import time
 
 import bench_admission as admission
+from bench_execution_storage import failure_reason
 from bench_comparison import ComparisonError, digest, encoded
 
 
@@ -276,7 +277,7 @@ def main():
     try:
         run(sys.argv[-1])
     except BaseException as error:
-        print(json.dumps(dict(event='failed', reason=getattr(error, 'reason', 'child_failed'),
+        print(json.dumps(dict(event='failed', reason=failure_reason(error),
                               error_type=type(error).__name__)), flush=True)
         raise SystemExit(1)
 

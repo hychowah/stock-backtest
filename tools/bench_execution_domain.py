@@ -144,7 +144,12 @@ class _UserService(OwnedProcess):
         state = self._state()
         if state['LoadState'] != 'not-found':
             result = self._control('stop', self.unit)
-            if result.returncode: raise OSError('Experimental service stop is unconfirmed.')
+            if result.returncode:
+                # A --collect unit can disappear between show and stop. Only
+                # previously verified creation can accept this race. A dead
+                # client and repeated absence still cannot settle creation.
+                if not self._creation_settled or self._state()['LoadState'] != 'not-found':
+                    raise OSError('Experimental service stop is unconfirmed.')
             # A successful manager-bound stop settles the registered creation,
             # even if cancellation preceded the cgroup's first process.
             self._creation_settled = True

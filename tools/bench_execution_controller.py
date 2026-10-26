@@ -5,6 +5,7 @@ import sys
 import time
 
 import bench_admission as admission
+from bench_execution_storage import failure_reason
 from bench_comparison import ComparisonError, ComparisonProtocol, encoded
 
 
@@ -32,13 +33,14 @@ def main():
             ('fixture_observation_root' if mode == 'fixture' else 'coordinated_observation_root'):
                 request['observation_root']})
     owner._supervision_started = request['supervision_started']
+    owner._read_only_observation = request.get('read_only_observation', False)
     try:
         with owner: owner.compare()
         print(encoded(dict(event='complete', result=owner.result,
             finalization_started=owner._finalization_started,
             controller_finished=time.monotonic(), workspace=str(owner._workspace._folder))).decode(), flush=True)
     except BaseException as error:
-        print(encoded(dict(event='failed', reason=getattr(error, 'reason', 'child_failed'),
+        print(encoded(dict(event='failed', reason=failure_reason(error),
                            error_type=type(error).__name__)).decode(), flush=True)
         return 1
     return 0

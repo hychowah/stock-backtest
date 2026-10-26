@@ -34,8 +34,11 @@ def _contended(error):
 
 
 class WorkspaceAccess:
-    def __init__(self,path):
+    def __init__(self,path, *, read_only=False):
         self.path=path;self.lock=RLock();self.state=local()
+        # Read-only observers lock existing files. They never initialize files
+        # or publish live intent. The ordinary ownership contract is unchanged.
+        self.read_only = read_only
 
     @property
     def intents(self):
@@ -57,7 +60,7 @@ class WorkspaceAccess:
             try:
                 if path.is_symlink() or not path.is_file():
                     return True
-                with path.open('r+b', buffering=0) as handle:
+                with path.open('rb' if self.read_only else 'r+b', buffering=0) as handle:
                     try:
                         _file_lock(handle, True)
                     except OSError:
@@ -124,6 +127,8 @@ class WorkspaceAccess:
 
     @contextmanager
     def hold(self,timeout=30):
+        if self.read_only:
+            raise ValueError('Read-only coordination supports observation only.')
         if getattr(self.state, 'observing', False):
             raise ValueError('Live operations cannot nest inside observations.')
         if getattr(self.state, 'held', False):
@@ -143,9 +148,11 @@ class WorkspaceAccess:
         try:
             if getattr(self.state,'held',False):
                 yield;return
-            self.path.parent.mkdir(parents=True,exist_ok=True)
-            handle=self.path.open('a+b')
-            if not self.path.stat().st_size:handle.write(b'0');handle.flush()
+            if not self.read_only:self.path.parent.mkdir(parents=True,exist_ok=True)
+            handle=self.path.open('rb' if self.read_only else 'a+b')
+            if not self.path.stat().st_size:
+                if self.read_only:raise ValueError('Observation lock is not initialized.')
+                handle.write(b'0');handle.flush()
             while True:
                 try:
                     handle.seek(0)
