@@ -1193,7 +1193,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate in that historical scope. [Execution capability](phases/CB-02/execution/README.md): actual disposable reference/Numba pair, costed protocol and capability roadmap; cooperative source-bound observations and bounded transport/native job controls are implemented within it; complete resources, installed availability and real admission remain unqualified. See [hardening](phases/CB-02/execution/hardening.md) and the [application-controller resource checkpoint](phases/CB-02/execution/resources.md) and [synthetic HTTP availability](phases/CB-02/execution/availability.md): actual handlers, cooperative priority, partial-stream recovery and orderly fresh-interpreter restart at recorded synthetic scale. [Native user CPU](phases/CB-02/execution/user-cpu.md): periodic aggregate user-time termination with final accounting; total CPU and full resources remain open. [Storage](phases/CB-02/execution/storage.md): optional WSL tmpfs and bounded evidence recovery; native aggregate storage remains unsupported. [Supervisor lifetime](phases/CB-02/execution/lifetime.md): optional WSL ancestor through collection; caller relay and complete resources remain open. [Native lifetime](phases/CB-02/execution/native-lifetime.md): explicit ancestor Job Object through helper finalization, with caller residual and unsupported resources retained. [Source-prepared service](phases/CB-02/execution/source-service.md): ordinary fictional preparation/build, freshness and actual browser CSV checks extend the smaller HTTP fixture. Combined attachment, real-data capacity, installed compatibility and real admission remain open. No production backend selected |
+| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed. [Wave10](phases/CB-02/wave10/README.md): feature worktree and synthetic owned input store verified; execution owner, resource isolation and paired performance unresolved. [Wave11](phases/CB-02/wave11/README.md): stopped-runtime real copy verified, originals preserved; one-time controller exit limitation recorded; admission closed. [Wave12](phases/CB-02/wave12/README.md): bounded captured-input workspace and source snapshot verified; engine facade/current freshness and resource gates remain unavailable. [Wave13](phases/CB-02/wave13/README.md): source-only policy attachment verified (combined latest suites WSL180/native178 plus two optional skips; full post-closure plus affected source-inventory follow-up); reference/candidate attachment and current freshness stay separate in that historical scope. [Execution capability](phases/CB-02/execution/README.md): actual disposable reference/Numba pair, costed protocol and capability roadmap; cooperative source-bound observations and bounded transport/native job controls are implemented within it; complete resources, installed availability and real admission remain unqualified. See [hardening](phases/CB-02/execution/hardening.md) and the [application-controller resource checkpoint](phases/CB-02/execution/resources.md) and [synthetic HTTP availability](phases/CB-02/execution/availability.md): actual handlers, cooperative priority, partial-stream recovery and orderly fresh-interpreter restart at recorded synthetic scale. [Native user CPU](phases/CB-02/execution/user-cpu.md): periodic aggregate user-time termination with final accounting; total CPU and full resources remain open. [Storage](phases/CB-02/execution/storage.md): optional WSL tmpfs and bounded evidence recovery; native aggregate storage remains unsupported. [Supervisor lifetime](phases/CB-02/execution/lifetime.md): optional WSL ancestor through collection; caller relay and complete resources remain open. [Native lifetime](phases/CB-02/execution/native-lifetime.md): explicit ancestor Job Object through helper finalization, with caller residual and unsupported resources retained. [Source-prepared service](phases/CB-02/execution/source-service.md): ordinary fictional preparation/build, freshness and actual browser CSV checks extend the smaller HTTP fixture. [Combined service](phases/CB-02/execution/combined-service.md): the existing capture and measured-execution owners join the full fictional generation to its live source service under a separate declaration. Real-data capacity, installed compatibility, full resources and real admission remain open. No production backend selected |
 | CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
 | CB-04 | Planned hardening | Immutable numeric artifact publication/attachment/retirement; input loading already demonstrated |
 | CB-05 | Planned hardening | Retain demonstrated Numba temporal primitives |
@@ -1321,11 +1321,42 @@ freshness checks before panel rebuild. Latest-only updates preserve history.
 This extends the earlier prepared-binding HTTP fixture. It does not qualify
 real-data capacity, installed compatibility, browser resources or a complete
 resource envelope. The combined cold databases exceed the original 32 MiB
-capture fixture allowance. That allowance stays unchanged, and attachment of
-this full fixture to the measured financial operation remains unqualified.
+capture fixture allowance. That allowance stays unchanged. The earlier source-
+service check did not qualify full-fixture measured attachment. The later
+[combined-service check](phases/CB-02/execution/combined-service.md) qualifies its separately
+declared fictional workload.
 The existing smaller reference/Numba and concurrent-priority proofs retain
 their own scope. The Linux browser checks the WSL service. Native HTTP workflows pass, but
 native browser interaction remains unverified because the tool cannot reach
 the private Windows loopback listener. Native and WSL matching-source results follow in this
 checkpoint's verification record. Real admission stays closed. No new speed
 gate passes, and no production engine or installed server changes.
+
+
+## Combined fictional generation checkpoint
+
+The [combined-service checkpoint](phases/CB-02/execution/combined-service.md)
+uses the existing offline capture owner to seal the ordinarily prepared
+64-company fictional generation. The service closes for capture, then restarts
+unchanged. The existing measurement owner binds both controls and both Numba
+variants to this generation while observing the actual source service root.
+Its new explicit synthetic envelope is separate from the unchanged public
+32 MiB capture fixture. No financial binder or capture identity is duplicated.
+
+Root cleanup retains registered service, comparison and output owners until
+closure is confirmed. Actual current observation, live priority, complete books,
+holdings, summaries and committed replay remain in the combined operation.
+Separate WSL strict storage keeps its own declaration. Native storage and browser
+limitations stay explicit. Current verification is recorded in that checkpoint;
+older source-service counts and browser evidence remain historical and scoped.
+No real admission, full-resource, installed-compatibility, capacity or speed gate
+follows from this synthetic work. The failed primary case and all acceptance
+requirements remain unchanged.
+
+
+The combined checkpoint's [remaining-resource feasibility record](phases/CB-02/execution/remaining-resource-feasibility.md)
+identifies the complete-environment prerequisite and unspecified total-CPU,
+hard-I/O and strict-cleanup semantics. Existing native controls and the documented
+unsupported modern Job Object I/O API establish no complete route under current
+permissions. Obtain the required capability/access decision before another
+resource backend. This does not relax the declaration or authorize real access.

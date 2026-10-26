@@ -27,6 +27,7 @@ ALLOWANCES = dict(raw=64*MIB, database=128*MIB, website=64*MIB,
                   history=32*MIB, control=16*MIB, downloads=16*MIB, total=512*MIB)
 SPEC = dict(companies=64, first='1992-01-01', through='2026-10-21',
             fiscal_first=1992, fiscal_last=2025, calendar='fictional weekdays')
+_retained_workspaces = {}
 
 
 def sha(path):
@@ -48,6 +49,8 @@ class FictionalWorkspace:
         self.temporary = tempfile.TemporaryDirectory(prefix='cb02-source-service-')
         self.root = Path(self.temporary.name)
         self.source = self.root / 'application'
+        self._owners = []
+        self.closed = False
         self.sources = {}
         for folder in ('scripts', 'website'):
             for path in sorted((ROOT / folder).iterdir()):
@@ -126,6 +129,37 @@ class FictionalWorkspace:
         return {p.relative_to(self.source).as_posix(): sha(p)
                 for p in sorted((self.source/'raw').rglob('*')) if p.is_file()}
 
+    def own(self, owner):
+        """Retain every registered owner until it confirms closure.
+
+        Uncertain closure preserves this workspace and its cleanup dependencies
+        for explicit retry. Register before the owner can create effects.
+        """
+        if self.closed or owner is self:raise ValueError('Fictional ownership is closed or recursive.')
+        if not callable(getattr(owner,'close',None)) or not hasattr(owner,'closed'):
+            raise TypeError('Fixture dependencies must confirm closure.')
+        if not any(value is owner for value in self._owners):self._owners.append(owner)
+        return owner
+
+    def capture_prepared(self):
+        """Capture this fictional workspace only after its service has confirmed
+        closure. Reuse the offline capture owner to preserve actual prepared
+        metadata, source identity and report binding. Never prepare or repair
+        inputs during capture.
+        """
+        if any(isinstance(owner,SourceService) and not owner.closed for owner in self._owners):
+            raise AssertionError('Close the fictional service before offline capture.')
+        if any(service.fixture is self and not service.closed for service in _pending_services.values()):
+            raise AssertionError('Unconfirmed service closure blocks offline capture.')
+        import bench_capture_offline
+        before=self.input_inventory()
+        report=sha(self.source/'results/summary-exits.txt')
+        capture=bench_capture_offline.capture_offline(self.source,self.source/'tmp'/'combined-capture')
+        assert before==self.input_inventory()
+        assert report==sha(self.source/'results/summary-exits.txt')
+        self.inventory()
+        return capture
+
     def inventory(self):
         """Check logical bytes and immutable source; this is not a disk quota."""
         files = []
@@ -145,11 +179,23 @@ class FictionalWorkspace:
         return result
 
     def close(self):
+        if self.closed:return
+        try:
+            for owner in reversed(self._owners):
+                owner.close()
+                if not owner.closed:raise AssertionError('Fixture dependency closure is unconfirmed.')
+        except BaseException:
+            self.temporary._finalizer.detach()
+            _retained_workspaces[id(self)]=self
+            raise
         if any(s.fixture is self and not s.closed for s in _pending_services.values()):
             self.temporary._finalizer.detach()
+            _retained_workspaces[id(self)]=self
             raise AssertionError('Unconfirmed service closure retains the fictional workspace.')
         self.inventory()
         self.temporary.cleanup()
+        self.closed=True
+        _retained_workspaces.pop(id(self),None)
 
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
@@ -168,6 +214,7 @@ class SourceService(SyntheticService):
 
     def __init__(self, workspace, **scenario):
         super().__init__(workspace, dict(source=str(workspace.source), sources=workspace.sources), **scenario)
+        workspace.own(self)
 
     def command(self, path):
         return [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
