@@ -246,7 +246,7 @@ class DeploymentTests(unittest.TestCase):
     def test_preserves_runtime_assets_and_source_mtime(self):
         files = {'scripts/engine.py': 'one', 'README.md': 'source'}
         manifest = self.manifest(files)
-        for name in ('raw/prices.json', 'data/research.sqlite', deploy.REPORT,
+        for name in ('raw/prices.json', 'data/research.sqlite', 'data/backtest-queue.sqlite', deploy.REPORT,
                      'website/local/index.html', 'website/.openai/hosting.json'):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +257,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.root / 'scripts/engine.py').stat().st_mtime_ns, before)
         self.assertEqual((self.root / deploy.REPORT).read_bytes(), b'Windows-owned')
         self.assertEqual((self.root / 'data/research.sqlite').read_bytes(), b'Windows-owned')
+        self.assertEqual((self.root / 'data/backtest-queue.sqlite').read_bytes(), b'Windows-owned')
         self.assertEqual(deploy.read_json(self.root / deploy.MANIFEST)['commit'], 'a' * 40)
         self.assertFalse((self.root / deploy.PENDING).exists())
 
@@ -337,7 +338,7 @@ class DeploymentTests(unittest.TestCase):
         for name in ('../escape', '/absolute', 'folder\\file', 'file:stream', './file'):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 deploy.source_path(name)
-        for name in ('raw/a.json', 'data/research.sqlite', deploy.REPORT, '.git/config',
+        for name in ('raw/a.json', 'data/research.sqlite', 'data/backtest-queue.sqlite', deploy.REPORT, '.git/config',
                      '.git-local/HEAD', '.venv/file', '.env', 'website/local/index.html',
                      'Raw/a.json', 'DATA/deployment.json', 'RESULTS/SUMMARY-EXITS.TXT'):
             with self.subTest(name=name):

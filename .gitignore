@@ -45,6 +45,7 @@ data/website-owner-*.lock
 
 # Serialize data management and startup across local servers.
 data/website-data-*.lock
+data/backtest-queue.lock
 
 # Per-process development logs and their rotated backups.
 data/logs/

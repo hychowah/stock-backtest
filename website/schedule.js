@@ -177,7 +177,8 @@ const ScheduleView=(()=>{
     try{run=await BacktestRuns.recover(()=>{node('schedule-progress-detail').textContent='Reconnecting to check saved runs…';});}
     finally{stopBusy();}
     if(!run){node('screen-error').textContent='No previous run is available. It may have stopped, failed or expired. Run the backtest again.';return;}
-    restoreBacktestSettings({mode:run.mode,...run.options});
+    try{restoreBacktestSettings({mode:run.mode,...run.options});}
+    catch(error){node('screen-error').textContent=error.message;return;}
     return follow(run);
   }
   function inspect(index){inspectedTrial=index;render();}

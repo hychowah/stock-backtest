@@ -25,6 +25,24 @@ class Busy(ValueError):
     pass
 
 
+def calculate(mode,options,progress,configuration,*,planned=None):
+    """Run one website test under cache ownership; return after engine cleanup."""
+    with cache_access.daily() as db:
+        backtest_control.checkpoint()
+        db.execute('PRAGMA cache_size=-131072')
+        if mode=='random':
+            if planned is None:planned=robustness.plan(db,**options)
+            configuration(planned)
+            details=[]
+            result=robustness.run(db,planned,progress=progress,capture=lambda number,trial:details.append(trial))
+            result['trial_results']=details
+        else:
+            evaluate=schedules.backtest_dates if 'dates' in options else schedules.backtest
+            result=evaluate(db,**options)
+        backtest_control.checkpoint()
+    return result
+
+
 class Jobs:
     def __init__(self):
         self.lock=RLock()
@@ -80,20 +98,11 @@ class Jobs:
     def _run(self,run):
         def progress(event):
             with self.lock:run['progress']=deepcopy(event)
+        def configuration(value):
+            with self.lock:run['configuration']=value
         try:
-            with backtest_control.cancel_when(run['stop'].is_set),cache_access.daily() as db:
-                backtest_control.checkpoint()
-                db.execute('PRAGMA cache_size=-131072')
-                if run['mode']=='random':
-                    configuration=robustness.plan(db,**run['options'])
-                    with self.lock:run['configuration']=configuration
-                    details=[]
-                    result=robustness.run(db,configuration,progress=progress,capture=lambda number,trial:details.append(trial))
-                    result['trial_results']=details
-                else:
-                    calculate=schedules.backtest_dates if 'dates' in run['options'] else schedules.backtest
-                    result=calculate(db,**run['options'])
-                backtest_control.checkpoint()
+            with backtest_control.cancel_when(run['stop'].is_set):
+                result=calculate(run['mode'],run['options'],progress,configuration)
             # Publish only after worker cleanup, database closure and cache release.
             with self.lock:
                 run['result']=result

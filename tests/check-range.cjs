@@ -329,6 +329,56 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
  console.log('Passed: configurable random trial count/seed, two-year requests, streamed progress, distributions and exact-date trial inspection.');
  console.log('Passed: custom dates/frequency, local-service request, period chart, stocks, attribution, CSV, spinner/timer, duplicate prevention, network failure, mode switching and file-preview instructions.');
 
+ // One form-owner boundary protects a held edit from every restoration source.
+ const waitingId='a'.repeat(32),completedId='b'.repeat(32);
+ let queueRows=[{id:waitingId,name:'Edit this test',state:'queued',revision:1,position:1,mode:'custom',options:savedFixed.settings},
+   {id:completedId,name:'Completed test',state:'complete',revision:1,position:2,mode:'custom',options:savedFixed.settings}],rejectHold=false;
+ ctx.waitingId=waitingId;ctx.completedId=completedId;
+ ctx.fetch=async(url,options={})=>{
+   if(url.startsWith('/api/backtests/'))return {ok:true,json:async()=>({name:'Library result',snapshot:savedFixed})};
+   assert(url.startsWith('/api/backtest-queue'),'Form policy must not submit a calculation');
+   const [,id,action]=url.match(/^\/api\/backtest-queue(?:\/([^/]+))?(?:\/([^/]+))?$/);
+   if(!id)return {ok:true,json:async()=>({limit:100,paused:true,records:JSON.parse(JSON.stringify(queueRows))})};
+   const record=queueRows.find(row=>row.id===id);
+   if(!options.method||options.method==='GET')return {ok:true,json:async()=>({...record,snapshot:savedFixed})};
+   const body=JSON.parse(options.body);
+   if(action==='hold'&&rejectHold)return {ok:false,status:409,json:async()=>({error:'The test already started.'})};
+   if(options.method==='DELETE'){queueRows=queueRows.filter(row=>row.id!==id);return {ok:true,json:async()=>({id,deleted:true})};}
+   record.revision++;
+   if(action==='hold')record.state='held';
+   if(action==='release')record.state='queued';
+   if(action==='update')Object.assign(record,{mode:body.mode,options:body.options,name:body.name,state:'queued'});
+   return {ok:true,json:async()=>JSON.parse(JSON.stringify(record))};
+ };
+ await run('BacktestQueue.refresh();');await run('BacktestQueue.action("edit",waitingId)');
+ el('rank-to').value='7';run('settingsChanged(undefined,false)');
+ const draft=run('JSON.stringify(currentSettings())'),artifactBefore=run('ResultArtifacts.forView("custom")');
+ assert.throws(()=>run('restoreSavedBacktest(savedFixed)'),/Save or cancel/);
+ assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(run('ResultArtifacts.forView("custom")'),artifactBefore);
+ await run('BacktestQueue.action("open",completedId)');assert(el('queue-status').textContent.includes('Save or cancel'));
+ await run('BacktestQueue.action("copy",completedId)');assert(el('queue-status').textContent.includes('Save or cancel'));
+ await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});
+ assert(el('saved-message').textContent.includes('Save or cancel'));
+ assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(el('queue-name').value,'Edit this test');
+ const realPending=run('BacktestRuns.pending'),realRecover=run('BacktestRuns.recover');
+ ctx.manualRun={mode:'custom',options:savedFixed.settings};
+ run('BacktestRuns.pending=()=>manualRun;BacktestRuns.recover=async()=>manualRun');
+ await run('ScheduleView.resume()');assert(el('screen-error').textContent.includes('Save or cancel'));
+ assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(run('ScheduleView.isRunning()'),false);
+ ctx.realPending=realPending;ctx.realRecover=realRecover;run('BacktestRuns.pending=realPending;BacktestRuns.recover=realRecover');
+ await run('BacktestQueue.add()');assert.equal(queueRows[0].options.rank_to,7);assert.equal(run('BacktestQueue.isEditing()'),false);
+ await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});assert.equal(el('rank-to').value,String(savedFixed.settings.rank_to));
+ await run('BacktestQueue.action("edit",waitingId)');el('rank-to').value='9';
+ await el('queue-cancel-edit').handlers.click();assert.equal(queueRows[0].options.rank_to,7);
+ await run('BacktestQueue.action("open",completedId)');assert.equal(el('rank-to').value,String(savedFixed.settings.rank_to));
+ await run('BacktestQueue.action("edit",waitingId)');await run('BacktestQueue.action("confirm",waitingId)');
+ run('const afterDelete=StrategyDraft.beginQueuedEdit("after-delete");afterDelete.end()');
+ queueRows.push({id:waitingId,name:'Rejected hold',state:'queued',revision:1,position:3,mode:'custom',options:savedFixed.settings});
+ rejectHold=true;await run('BacktestQueue.refresh()');await run('BacktestQueue.action("edit",waitingId)');
+ assert.equal(run('BacktestQueue.isEditing()'),false);assert.doesNotThrow(()=>run('restoreSavedBacktest(savedFixed)'));
+ queueRows=[];await run('BacktestQueue.refresh()');
+ console.log('Passed: held draft ownership across queue open/copy, saved-library opening and manual recovery; save/cancel/delete and failed admission release the form.');
+
 run("filterConditions=[];switchMode('latest')");
 el('add-filter').handlers.click();
 for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','peg','roe','current_ratio','interest_coverage','debt_equity']) {

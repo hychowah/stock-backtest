@@ -112,6 +112,17 @@ recovery checks current server status across saved run IDs. Full result retrieva
 keeps the original run route and payload. Admission and Stop markers stay in the
 browser transport module; views do not select the submission operation.
 
+The user's overnight-queue extension is also owned by main's website adapter.
+`website/backtest_queue.py` adds durable queue records and consumer ownership;
+`website/queue.js` and its HTML/CSS add management controls. The additive
+`/api/backtest-queue` routes manage order, held edits, pause, Stop and stored
+results. The existing website engine call is extracted into
+`backtest_jobs.calculate`; the queue reuses it and may replay a previously
+recorded random plan. Engine functions, transaction rules, progress fields and
+financial locks are unchanged. A narrow server-start hook resumes durable
+work; shutdown joins the queue before existing source lifetime ownership ends.
+No engine-branch files, prepared schemas or benchmark contracts change.
+
 ## Agreed exception: saved backtest results (26 October 2026)
 
 The user assigned main the narrow adapter for saving random-trial stock details.

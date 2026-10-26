@@ -43,12 +43,15 @@ function publishResult(artifact){
   document.getElementById('screen-error').textContent='';updateResultsState();
 }
 function completeResult(settings,result){
-  const presentation=settings.mode==='latest'?latestPresentation(result):settings.mode==='january'?januaryPresentation(result):{
+  const presentation=settings.mode==='latest'?latestPresentation(result):settings.mode==='january'?januaryPresentation(result):scheduledPresentation(settings);
+  publishResult(ResultArtifacts.create(settings,result,sourceCatalog(),presentation));
+}
+function scheduledPresentation(settings){
+  return {
     coverage:'Custom dates use the local daily-cache service. Original candidate-set restrictions and cached-price coverage still apply.',
     notice:{text:'Results use the submitted stock filters and trade dates.',severity:'info'},
     rangeNote:'Custom schedule: trade dates and interval determine holding periods. Results and CSV exports below use this schedule.',
     periodLabel:settings.start+' → '+settings.end};
-  publishResult(ResultArtifacts.create(settings,result,sourceCatalog(),presentation));
 }
 function updateResultsState(){
   const view=viewKey(),saved=currentArtifact(),state=document.getElementById('results-state');
@@ -66,7 +69,7 @@ function settingsChanged(changed,run=true){
     if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
   }
   updateResultsState();
-  if(run && document.getElementById('auto-run').checked && !ScheduleView.isRunning())applyRange();
+  if(run && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
 }
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -322,34 +325,55 @@ function restoreSavedBacktest(snapshot){
   publishResult(artifact);
   if(artifact.kind!=='january')document.getElementById('schedule-message').textContent='Saved backtest restored. No calculation was run.';
 }
-function restoreBacktestSettings(settings,catalog=sourceCatalog(),seed=settings.seed){
-  screeningMode='backtest';
-  document.getElementById('schedule-kind').value=settings.mode==='january'?'january':'custom';
-  setModeVisibility();
+// The form owns its draft. Restoration sources cannot replace a queued edit;
+// only its session may load settings until a confirmed save/cancel ends it.
+const StrategyDraft=(()=>{
+  let active=null;
+  const refusal=()=>Error('Save or cancel the queued edit before replacing the strategy settings.');
+  function apply(settings,catalog=sourceCatalog(),seed=settings.seed){
+    screeningMode='backtest';
+    document.getElementById('schedule-kind').value=settings.mode==='january'?'january':'custom';
+    setModeVisibility();
 
-  const set=(id,value,label=value)=>{
-    const control=document.getElementById(id),text=String(value??'');
-    if(control.tagName==='SELECT' && ![...control.options].some(option=>option.value===text))control.add(new Option(label,text));
-    control.value=text;
-  };
-  for(const [key,id] of Object.entries(fields)){
-    const value=settings[key];
-    set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
-  }
-  set('rank-from',settings.rank_from??1);set('rank-to',settings.rank_to??50);
-  filterConditions=(settings.filters||[]).map(condition=>({...condition}));
-  if(settings.mode==='january'){
-    set('from-year',settings.first);set('to-year',settings.last);
-  }else{
-    set('trade-start',settings.start);set('trade-end',settings.end);set('rebalance-months',settings.months);
-    set('date-testing',settings.mode==='random'?'random':'single');
-    if(settings.mode==='random'){
-      set('random-trials',settings.trials);set('random-seed',seed??42);
-      document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
+    const set=(id,value,label=value)=>{
+      const control=document.getElementById(id),text=String(value??'');
+      if(control.tagName==='SELECT' && ![...control.options].some(option=>option.value===text))control.add(new Option(label,text));
+      control.value=text;
+    };
+    for(const [key,id] of Object.entries(fields)){
+      const value=settings[key];
+      set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
     }
+    set('rank-from',settings.rank_from??1);set('rank-to',settings.rank_to??50);
+    filterConditions=(settings.filters||[]).map(condition=>({...condition}));
+    if(settings.mode==='january'){
+      set('from-year',settings.first);set('to-year',settings.last);
+    }else{
+      set('trade-start',settings.start);set('trade-end',settings.end);set('rebalance-months',settings.months);
+      set('date-testing',settings.mode==='random'?'random':'single');
+      if(settings.mode==='random'){
+        set('random-trials',settings.trials);set('random-seed',seed??42);
+        document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
+      }
+    }
+    renderConditions();
   }
-  renderConditions();
-}
+  function restore(...args){
+    if(active)throw refusal();
+    return apply(...args);
+  }
+  function beginQueuedEdit(id){
+    if(active)throw refusal();
+    const session={id,
+      restore(...args){if(active!==session)throw Error('This strategy edit is no longer active.');return apply(...args);},
+      end(){if(active===session)active=null;}
+    };
+    active=session;return session;
+  }
+  return {restore,beginQueuedEdit};
+})();
+const restoreBacktestSettings=StrategyDraft.restore;
+
 initializeFilters();
 ScheduleView.init();
 document.getElementById('schedule-kind').addEventListener('change',()=>{setModeVisibility();settingsChanged();});
@@ -407,4 +431,7 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
 SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest});
+BacktestQueue.init({beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
+  prepare:()=>{autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
+  metricLabel:id=>sourceCatalog().metrics[id]?.label||id,filterLabel:id=>sourceCatalog().filters[id]?.label||id});
 ScheduleView.resume();

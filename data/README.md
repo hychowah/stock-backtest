@@ -78,3 +78,25 @@ Saved snapshots support versions 1 and 2 within the same database table. Version
 uses semantic presentation fields instead of DOM IDs and CSS classes. The browser
 converts version-1 records when opening them. Reading old records never rewrites
 their stored contents. Both formats preserve the original stock rows and returns.
+
+## Overnight backtest queue
+
+`backtest-queue.sqlite` is durable user data. Keep it during preparation, cleanup
+and source deployment. It stores up to 100 fixed or random-date test records,
+including completed results. Results are compressed version-2 snapshots with
+their submitted settings and display labels. They stay until explicit deletion.
+The 20-slot saved library remains independent.
+
+The queue also stores order, pause state, held edits, revisions, progress and
+random seeds. A started random test records its full date plan for interruption
+recovery. Changing waiting calculation parameters discards that old plan.
+Renaming a test keeps its dates. The queue does not participate in research
+freshness and never downloads market data.
+
+`backtest-queue.lock` elects one consumer across server instances. Keep ownership
+through worker completion and financial database closure. Queue transactions
+end before the consumer requests financial ownership. A stopped consumer leaves
+unfinished work waiting. An abrupt exit releases the OS lock; its successor
+recovers running items only after acquiring that lock. Pending Stop requests
+remain stopped. Deleted items keep only a small submission receipt to prevent
+an acknowledgement retry from recreating them.

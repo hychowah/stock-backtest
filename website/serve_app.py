@@ -26,6 +26,7 @@ import diagnostics
 import backtest_control
 import saved_backtests
 import backtest_jobs
+import backtest_queue
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -35,9 +36,11 @@ SAVED_BACKTESTS=saved_backtests.Store()
 class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
         self.backtest_jobs=backtest_jobs.Jobs()
+        self.backtest_queue=backtest_queue.Queue()
         super().__init__(*args,**kwargs)
 
     def server_close(self):
+        self.backtest_queue.close()
         self.backtest_jobs.close()
         super().server_close()
 
@@ -75,6 +78,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.launcher_request():return
+        if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
+            self.queue_request();return
         if self.path.startswith('/api/backtest-runs/'):
             self.backtest_run_request();return
         if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
@@ -110,6 +115,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.launcher_request():return
+        if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
+            self.queue_request();return
         if self.path.startswith('/api/backtest-runs/'):
             self.backtest_run_request();return
 
@@ -149,9 +156,47 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(400,dict(error=str(error)))
 
     def do_DELETE(self):
+        if self.path.startswith('/api/backtest-queue/'):
+            self.queue_request();return
         if self.path.startswith('/api/backtests/'):
             self.saved_backtest_request();return
         self.reply(404,dict(error='Unknown endpoint.'))
+
+    def queue_request(self):
+        origin=self.headers.get('Origin')
+        if origin and origin!='http://'+self.headers.get('Host',''):
+            self.reply(403,dict(error='Open the website to manage the backtest queue.'));return
+        queue=self.server.backtest_queue;store=queue.store
+        collection=self.path=='/api/backtest-queue'
+        path=[] if collection else self.path.removeprefix('/api/backtest-queue/').split('/')
+        try:
+            queue.start()
+            if self.command=='GET':
+                if not collection and len(path)!=1:
+                    self.reply(404,dict(error='Unknown queue action.'));return
+                self.reply(200,store.listing() if collection else store.get(path[0]));return
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0<length<=262144:raise ValueError('Invalid queue request size.')
+            def invalid(value):raise ValueError('Queue values must be finite.')
+            request=json.loads(self.rfile.read(length),parse_constant=invalid)
+            if not isinstance(request,dict):raise ValueError('Expected queue options.')
+            if self.command=='POST' and collection:
+                result=store.enqueue(request)
+            elif self.command=='POST' and path==['pause']:
+                result=store.pause(request.get('paused'))
+            elif self.command=='POST' and len(path)==2:
+                result=store.change(path[0],path[1],request)
+            elif self.command=='DELETE' and len(path)==1:
+                result=store.change(path[0],'delete',request)
+            else:self.reply(404,dict(error='Unknown queue action.'));return
+            queue.wake.set();self.reply(200,result)
+        except backtest_queue.Missing as error:self.reply(404,dict(error=str(error)))
+        except backtest_queue.Conflict as error:self.reply(409,dict(error=str(error)))
+        except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+        except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+        except (OSError,sqlite3.Error) as error:
+            diagnostics.failure('queue.request_failed',error)
+            self.reply(500,dict(error='Could not access the backtest queue. Existing records were kept. Check the server log.'))
 
     def backtest_run_request(self):
         origin=self.headers.get('Origin')
@@ -317,6 +362,7 @@ def run_server(args,lifecycle,parser):
     if lifecycle:lifecycle.attach(server)
     else:server.daemon_threads=False
     try:
+        if not recovery:server.backtest_queue.start()
         print('Server attached to this terminal. Press Ctrl+C to stop.',flush=True)
         print(f'Open http://127.0.0.1:{port} — custom schedules use saved data only.',flush=True)
         diagnostics.event('server.ready',port=port)

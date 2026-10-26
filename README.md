@@ -37,6 +37,22 @@ cancel. Keep the server computer awake and its terminal open. Temporary results
 last 24 hours, up to four recent runs, until the server exits. Use **Save displayed
 backtest** to keep a completed result in the library.
 
+Use **Backtest queue** for overnight fixed or random-date tests. Add the current
+custom-date settings, change parameters and add another test. Edit, hold, reorder
+or delete waiting tests. Pause the queue to let the active test finish without
+starting another. Stop cancels only the selected active test. Auto-run is
+suspended while the queue has waiting or running work. Adding, copying or
+editing a queue item also turns Auto-run off for continued batch setup.
+Open completed results from the queue without calculating again.
+Save or cancel an active edit before opening or copying another result. This
+keeps the held test's draft parameters intact.
+
+The queue holds up to 100 records, including completed results. It persists in
+`data/backtest-queue.sqlite` until you delete individual records. It is separate
+from temporary manual runs and the 20-slot saved library. Server restart resumes
+interrupted work with its recorded random dates; held edits stay held. Keep the
+server computer awake and its terminal open overnight.
+
 Choose **Manage backtest data** to inspect saved files and date coverage.
 Choose a stock group or enter symbols. **Download missing data** fills missing
 financial symbols and price ranges with your local FMP key. **Rebuild prepared

@@ -242,6 +242,61 @@ Windows. `tests/check-backtest-runs.cjs` checks browser transport and stored-ID
 recovery. `tests/check-range.cjs` checks loading/timer state, duplicate
 suppression, completion, reconnects and changes of view.
 
+### Overnight queue
+
+Use **Backtest queue** for fixed or random-date tests. Select the custom calendar,
+set parameters and add the current test. Change settings to add more tests.
+Auto-run is suspended while waiting/running queue work exists. Adding, copying
+or editing a queue item also turns it off so setup stays manual between fast
+cached tests. Explicit Run still starts an immediate test. Queue tests run one at a time. Browser closure
+does not affect them. Keep the server computer awake and its terminal open.
+
+Edit holds a waiting item so it cannot start with incomplete edits. Save changes
+to release it. Cancel keeps the original parameters. Held edits survive page and
+server restarts. Move up/down changes waiting order. Copy settings creates a new
+test without changing the original. Pause lets the active item finish but does
+not claim another item. Stop cancels the selected item and waits for normal
+worker cleanup. Failed items remain visible; the consumer continues to the next.
+
+The strategy form owns a queued edit session. While that session is active,
+opening a queue or saved-library result, copying another test, or recovering a
+manual run cannot replace its settings. Save or cancel the edit first. The same
+form boundary handles every restoration source. A failed server hold releases
+the local form session without leaving the controls reserved.
+
+Up to 100 records, including completed results, persist in
+`data/backtest-queue.sqlite`. There is no automatic eviction. Open a result to
+restore its immutable artifact and downloads without running it again. The queue
+is separate from the 20-record saved library. Delete confirms removal of only
+the selected test/result. A deleted-ID receipt prevents a lost acknowledgement
+from recreating it. Keep the queue database during cache cleanup and deployment.
+
+One OS lock, `data/backtest-queue.lock`, elects a consumer across server
+instances. Queue database transactions close before financial ownership starts.
+The queue calls the ordinary website calculation adapter. It waits through
+financial cache contention instead of failing every queued test. Server shutdown
+requeues unfinished work after engine cleanup. A successor recovers abandoned
+running items only after obtaining the consumer lock. Pending Stop requests
+remain cancelled. A random seed is recorded at admission. Once planned, the full
+trial date plan is recorded and reused after interruption. Changing waiting
+calculation parameters discards the previous plan. Renaming a test keeps its
+dates. Tests use the saved financial data available when they execute. Completed artifacts retain their original priced evidence.
+
+The same-origin `/api/backtest-queue` API lists metadata with GET and enqueues
+with POST. Enqueue supplies an idempotent 32-character hex ID, name, mode,
+options, catalog and semantic presentation. `GET /<id>` includes the completed
+snapshot. `POST /pause` accepts a boolean `paused`. Item POST actions are
+`hold`, `release`, `update`, `move` and `stop`; DELETE removes an item.
+Mutations carry its current `revision`. Move supplies `direction: -1` or `1`.
+Update supplies new settings/labels and requires a held item. A revision conflict
+returns 409. Listing never loads result blobs or the full random date plan.
+
+Check `python3 tests/test_queue.py` on WSL/native Windows and
+`node tests/check-queue.cjs`, plus the existing background-run, website, saved
+library and deployment checks. Synthetic tests cover serial execution, failed
+tests, holds, revisions, pause, cancellation, consumer competition, process death,
+cache contention and exact random-date recovery.
+
 ### Random independent rebalances
 
 `scripts/robustness.py` owns seeded date sampling and distribution summaries.

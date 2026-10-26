@@ -371,3 +371,47 @@ selectors or CSS classes. Decode version-1 saved records without rewriting them.
 Confirmed library mutations must remain successful if list reconciliation fails.
 Ignore list responses that precede a newer acknowledged mutation. Check
 `node tests/check-result-artifacts.cjs` and the saved-library/range checks.
+
+## Overnight backtest queue
+
+`website/backtest_queue.py` owns durable fixed/random test records in
+`data/backtest-queue.sqlite`. Preserve this file during rebuilds, cleanup and
+deployment. It is separate from financial caches and the 20-slot saved library.
+Keep up to 100 visible records without automatic eviction. Only explicit
+deletion removes a selected test and its result. Retain a small deleted-ID
+receipt so retrying an unacknowledged submission cannot recreate it.
+
+`data/backtest-queue.lock` elects one consumer across local server instances.
+Only the consumer holding this OS lock may recover interrupted running rows.
+End queue database transactions before requesting financial cache ownership.
+Use the existing `backtest_jobs.calculate` adapter and engine cancellation
+checks. Retain queue/source/financial ownership through worker completion and
+financial database closure. Cache contention defers queue work. It must not
+turn a batch into failed tests after a manual-run lock timeout.
+
+Pause prevents the next claim. Held edits do not execute. Only waiting tests
+can change settings or order. Mutation revisions reject stale editors.
+Server shutdown requeues interrupted work; an explicit Stop stays cancelled.
+Record a random seed at admission and the full date plan before execution.
+Reuse that plan after interruption. Changing waiting calculation parameters
+discards its previous plan. Renaming a test keeps its dates. Each completed
+result is an immutable version-2 artifact with all trial holdings and original
+display labels. Opening it does not calculate.
+
+`website/queue.js` manages queue controls. Auto-run is suspended while the queue
+has waiting/running work or an active edit. Adding, copying or editing an item
+turns Auto-run off for batch setup. Explicit Run remains available.
+Parameter edits never mutate submitted tests. Preserve acknowledged queue
+mutations if a list refresh fails, and ignore stale list responses. Checks:
+`python3 tests/test_queue.py` on WSL and native Windows,
+`node tests/check-queue.cjs`, existing background-run/range/library checks and
+`python3 tests/test_deployment.py` on both platforms.
+
+`StrategyDraft` in `website/range.js` owns the strategy form. A queued edit
+reserves a form session before requesting its server hold. Only that session
+can restore settings until a confirmed save, cancel or deletion ends it.
+Queue result opening/copying, saved-library opening and manual recovery use
+the same restoration boundary. They must refuse replacement with a clear
+save-or-cancel message instead of overwriting a held draft. A failed hold must
+release its local form session. Do not add queue-specific restoration guards
+to individual callers. Check these interactions in `tests/check-range.cjs`.
