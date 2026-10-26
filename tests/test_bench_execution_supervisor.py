@@ -1,5 +1,6 @@
 """Externally supervised comparisons on generated captures only."""
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -186,6 +187,46 @@ with patch.object(c.admission,'require_execution'), patch.object(e.MeasurementEx
             with self.assertRaises(OSError): owner.run()
         self.assertTrue(owner.closed)
         with self.assertRaisesRegex(ComparisonError, 'incomplete'): _ = owner.result
+
+    @unittest.skipUnless(os.name == 'nt', 'Native final accounting acceptance race')
+    def test_zero_exit_and_queued_complete_cannot_bypass_final_cpu_exhaustion(self):
+        from dataclasses import replace
+        from bench_comparison import ComparisonProtocol
+        import bench_execution as execution
+        from test_bench_execution_user_cpu import burn
+        bound = self.fixture.owner(fixture_observation_root=None,
+                                   coordinated_observation_root=self.fixture.fixture.source)
+        bound.envelope = replace(bound.envelope, user_cpu_seconds=.3)
+        declaration = bound.protocol.value
+        declaration.pop('version')
+        declaration['environment'] = execution.environment(bound.envelope)
+        bound.protocol = ComparisonProtocol.freeze(**declaration)
+        owner = supervisor.ComparisonSupervisor(supervisor.specification(bound))
+        result = dict(protocol=bound.protocol.identity, status='fixture_pair_complete', closed=True,
+                      costs=dict.fromkeys(bound.protocol.value['costs'], 0.))
+        terminal = dict(event='complete', result=result,
+                        workspace=str(self.fixture.fixture.output / 'workspace-unused'))
+        code = ('import json,sys,time,subprocess;assert input()=="GO";'
+            'subprocess.Popen([sys.executable,"-B","-c",' + repr(burn(30.)) + '],'
+            'creationflags=8,stdout=sys.stdout,stderr=sys.stderr);'
+            'terminal=json.loads(' + repr(json.dumps(terminal)) + ');'
+            'terminal["finalization_started"]=time.monotonic();'
+            'print(json.dumps(terminal),flush=True)')
+        # Hold resource observation until normal close, as a delayed supervisor
+        # could. This bypasses neither the kernel threshold nor final accounting.
+        def delayed_accounting(process):
+            return process.failure
+        with patch.object(supervisor.admission, 'require_execution'), \
+                patch.object(owner, '_command', return_value=[sys.executable, '-B', '-c', code]), \
+                patch.object(OwnedProcess, 'resource_failure', delayed_accounting):
+            with self.assertRaisesRegex(ComparisonError, 'limit'): owner.run()
+        self.assertEqual(owner.owned.process.returncode, 0)
+        self.assertTrue(owner.closed)
+        self.assertTrue(owner.owned.closure()['user_cpu']['exceeded'])
+        self.assertLess(time.monotonic() - owner.started,
+                        bound.protocol.value['costs']['finalization'])
+        with self.assertRaisesRegex(ComparisonError, 'incomplete'): _ = owner.result
+        self.assertFalse(list(self.fixture.fixture.output.glob('workspace-*/domain.json')))
 
     def test_successful_slow_controller_write_exhausts_finalization_before_whole(self):
         owner = self.supervisor()

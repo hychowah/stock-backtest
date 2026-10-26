@@ -91,7 +91,8 @@ class ExecutionTests(unittest.TestCase):
         f = self.fixture
         costs = dict(attachment=20., clone=10., setup=180., proof=30., request=90.,
                      collection=20., shutdown=30., finalization=20.)
-        envelope = execution.ExecutionEnvelope(32 * 1024**2, 64 * 1024**2, 2 * 1024**3, 400., 2)
+        envelope = execution.ExecutionEnvelope(32 * 1024**2, 64 * 1024**2, 2 * 1024**3, 400., 2,
+                                               user_cpu_seconds=120.)
         protocol = ComparisonProtocol.freeze(configuration=self.configuration,
             binding=dict(capture_id=f.manifest['capture_id'], financial_generation=f.identity,
                          sources=execution.digest(f.sources)),

@@ -54,7 +54,7 @@ class ComparisonSupervisor:
         spec = json.loads(encoded(self.specification))
         e = spec['envelope']
         limits = DomainLimits(e['sampled_memory_bytes'], e['sampled_tree_threads'],
-            e['cpu_percent'], e['wall_seconds'], processes=e['processes'],
+            e['cpu_percent'], e['wall_seconds'], e['user_cpu_seconds'], processes=e['processes'],
             output_bytes=e['log_bytes'], close_seconds=e['close_seconds'])
         self.limit = limits
         spec['supervision_started'] = self.started
@@ -86,10 +86,16 @@ class ComparisonSupervisor:
                     else:
                         raise ComparisonError('protocol')
                 if self.owned.process.poll() is not None and event is None:
+                    if self.owned.resource_failure():
+                        raise ComparisonError(self.owned.failure)
                     if self.owned.process.returncode or terminal is None:
                         raise ComparisonError('child_failed')
                     break
             self.close()
+            # A queued terminal message and a zero leader exit are provisional.
+            # Final accounting includes descendants that ran during closure.
+            if self.owned.resource_failure():
+                raise ComparisonError(self.owned.failure)
             # Charge launch/import/dispatch before attachment and final domain
             # closure after controller finalization. They are inside whole time.
             result = terminal['result']

@@ -24,7 +24,8 @@ class DomainTests(unittest.TestCase):
 
     def controller(self, body, **changes):
         values = dict(memory_bytes=128 * 1024**2, tasks=16, cpu_percent=10,
-                      wall_seconds=12., processes=6, output_bytes=128 * 1024, close_seconds=2.)
+                      wall_seconds=12., user_cpu_seconds=8., processes=6,
+                      output_bytes=128 * 1024, close_seconds=2.)
         values.update(changes)
         script = self.root / ('controller-' + str(len(list(self.root.iterdir()))) + '.py')
         script.write_text('import os,sys,json,subprocess,time\nassert input()=="GO"\n' + body,
@@ -53,6 +54,9 @@ class DomainTests(unittest.TestCase):
         self.assertIsNone(owned.failure)
         capabilities = owned.capabilities()
         self.assertEqual(capabilities['containment']['status'], 'hard')
+        self.assertEqual(capabilities['user_cpu_time']['status'],
+                         'hard' if os.name == 'nt' else 'unsupported')
+        self.assertEqual(capabilities['cpu_time']['status'], 'unsupported')
         owned.terminate(); owned.close()
         self.assertTrue(owned.closure()['descendants_empty'])
         self.assertTrue(owned.closed)
@@ -157,7 +161,7 @@ class DomainTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 start_controller([sys.executable, '-c',
                     'from pathlib import Path;Path(' + repr(str(marker)) + ').touch()'],
-                    DomainLimits(128 * 1024**2, 16, 10, 10.))
+                    DomainLimits(128 * 1024**2, 16, 10, 10., 8.))
         self.assertFalse(marker.exists())
 
     @unittest.skipIf(os.name == 'nt', 'Linux unsupported backend fails closed')
@@ -178,7 +182,7 @@ class DomainTests(unittest.TestCase):
         client = binary / 'systemd-run'
         client.write_text('#!/bin/sh\nexec /usr/bin/sleep 30\n')
         client.chmod(0o700)
-        limits = DomainLimits(64 * 1024**2, 16, 10, 10., close_seconds=.5)
+        limits = DomainLimits(64 * 1024**2, 16, 10, 10., 8., close_seconds=.5)
         with patch.dict(os.environ, PATH=str(binary) + os.pathsep + os.environ['PATH']):
             with self.assertRaises(OSError) as caught:
                 start_controller(['/usr/bin/sleep', '20'], limits)

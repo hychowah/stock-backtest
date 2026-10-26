@@ -8,6 +8,7 @@ import ctypes
 from contextlib import suppress
 from dataclasses import dataclass
 import json
+import math
 import os
 from queue import Empty, Full, Queue
 import signal
@@ -20,13 +21,28 @@ import time
 _pending_processes = {}
 
 
+def user_cpu_ticks(seconds):
+    """Validate a finite threshold representable by Windows signed 100 ns ticks."""
+    try:
+        if type(seconds) not in (int, float) or not math.isfinite(seconds):
+            raise ValueError('Unsupported user CPU threshold.')
+        ticks = int(seconds * 10_000_000)
+        if not 0 < ticks < 2**63:
+            raise ValueError('Unsupported user CPU threshold.')
+        return ticks
+    except (OverflowError, TypeError):
+        raise ValueError('Unsupported user CPU threshold.') from None
+
+
 @dataclass(frozen=True)
 class ProcessLimits:
     """Bounds for known cooperative workers; not a filesystem/hostile-code sandbox.
 
     Native jobs enforce committed memory, active processes and CPU rate across
     ordinary descendants. Resident memory, disk and threads need separate
-    qualification. POSIX sessions do not prevent descendant escape.
+    qualification. Optional user_cpu_seconds sets an aggregate native job
+    user-time termination threshold. Kernel checks are periodic. Kernel time
+    is excluded. POSIX sessions do not prevent descendant escape.
     """
     committed_bytes: int
     processes: int
@@ -35,6 +51,7 @@ class ProcessLimits:
     frame_bytes: int = 64 * 1024
     queued_events: int = 128
     close_seconds: float = 5.
+    user_cpu_seconds: float | None = None
 
     def __post_init__(self):
         if (any(type(v) is not int or v <= 0 for v in (self.committed_bytes,
@@ -42,6 +59,8 @@ class ProcessLimits:
                 or self.cpu_percent > 100 or self.frame_bytes > self.output_bytes
                 or not 0 < self.close_seconds <= 30):
             raise ValueError('Unsupported process limits.')
+        if self.user_cpu_seconds is not None:
+            user_cpu_ticks(self.user_cpu_seconds)
 
 
 class OwnedProcess:
@@ -56,6 +75,9 @@ class OwnedProcess:
         self.reader = None
         self.process = None
         self._resumed = False
+        self._user_cpu_configuration = None
+        self._job_accounting = None
+        self._user_cpu_exceeded = False
         self.events = Queue(maxsize=limits.queued_events if limits else 128)
         _pending_processes[id(self)] = self
         try:
@@ -111,6 +133,7 @@ class OwnedProcess:
             _fields_ = [('basic',BasicLimits),('io',Counters),
                 ('process_memory',ctypes.c_size_t),('job_memory',ctypes.c_size_t),
                 ('peak_process_memory',ctypes.c_size_t),('peak_job_memory',ctypes.c_size_t)]
+        self._basic_limits_type = BasicLimits
         kernel = ctypes.WinDLL('kernel32',use_last_error=True)
         kernel.CreateJobObjectW.argtypes = (ctypes.c_void_p,w.LPCWSTR)
         kernel.CreateJobObjectW.restype = w.HANDLE
@@ -129,9 +152,19 @@ class OwnedProcess:
             limits.basic.flags |= 0x8 | 0x200  # active processes, job committed memory
             limits.basic.active_limit = self.limits.processes
             limits.job_memory = self.limits.committed_bytes
+            if self.limits.user_cpu_seconds is not None:
+                # Configure ONCE on the empty job. Setting JOB_TIME again
+                # would reset its accounting period and replenish the budget.
+                limits.basic.flags |= 0x4  # JOB_OBJECT_LIMIT_JOB_TIME
+                limits.basic.job_time = user_cpu_ticks(self.limits.user_cpu_seconds)
         try:
             if not kernel.SetInformationJobObject(job,9,ctypes.byref(limits),ctypes.sizeof(limits)):
                 raise ctypes.WinError(ctypes.get_last_error())
+            if self.limits is not None and self.limits.user_cpu_seconds is not None:
+                action = w.DWORD(0)  # JOB_OBJECT_TERMINATE_AT_END_OF_JOB
+                if not kernel.SetInformationJobObject(job, 6, ctypes.byref(action), ctypes.sizeof(action)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                self._verify_user_cpu()
             if not kernel.AssignProcessToJobObject(job,w.HANDLE(int(self.process._handle))):
                 raise ctypes.WinError(ctypes.get_last_error())
             if self.limits is not None:
@@ -143,6 +176,42 @@ class OwnedProcess:
         except BaseException:
             # Constructor failure uses the same registered closure path.
             raise
+
+    def _verify_user_cpu(self):
+        """Verify the threshold and termination action while the root is suspended."""
+        from ctypes import wintypes as w
+        basic, action = self._basic_limits_type(), w.DWORD()
+        for kind, value in ((2, basic), (6, action)):
+            if not self.kernel.QueryInformationJobObject(self.job, kind, ctypes.byref(value),
+                                                         ctypes.sizeof(value), None):
+                raise ctypes.WinError(ctypes.get_last_error())
+        ticks = user_cpu_ticks(self.limits.user_cpu_seconds)
+        if not basic.flags & 0x4 or basic.job_time != ticks or action.value != 0:
+            raise OSError('Experimental job user CPU threshold was not applied.')
+        self._user_cpu_configuration = dict(ticks=ticks, limit_flags=basic.flags,
+                                            end_action=action.value, verified_before_resume=True)
+
+    def _account_job(self):
+        """Own resource evidence through closure, including already exited work.
+
+        A successful child message does not override exhaustion found while
+        closing the domain. Keep final accounting before releasing job handles.
+        Kernel checks are periodic; this does not promise zero overshoot.
+        """
+        from ctypes import wintypes as w
+        class Accounting(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_int64) for name in
+                        ('user_ticks', 'kernel_ticks', 'period_user_ticks', 'period_kernel_ticks')] + [
+                        (name, w.DWORD) for name in ('faults', 'total', 'active', 'terminated')]
+        value = Accounting()
+        if not self.kernel.QueryInformationJobObject(self.job, 1, ctypes.byref(value), ctypes.sizeof(value), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        self._job_accounting = {name: getattr(value, name) for name, _ in value._fields_}
+        if (self._user_cpu_configuration is not None and
+                value.user_ticks >= self._user_cpu_configuration['ticks']):
+            self._user_cpu_exceeded = True
+            self.failure = self.failure or 'limit'
+        return self._job_accounting
 
     def _resume(self):
         """Start the primary thread only after containment and limits exist.
@@ -224,12 +293,19 @@ class OwnedProcess:
         self.process.stdin.close()
 
     def event(self, timeout=.25):
+        self.resource_failure()
         if self.failure:
             return dict(event='failed', reason=self.failure)
         try:
             return self.events.get(timeout=timeout)
         except Empty:
             return None if self.eof else {}
+
+    def resource_failure(self):
+        """Return current or retained failure; native details stay with the owner."""
+        if self.job is not None and self._user_cpu_configuration is not None:
+            self._account_job()
+        return self.failure
 
     def terminate(self):
         self._stop_tree(1)
@@ -283,18 +359,9 @@ class OwnedProcess:
                     time.sleep(.01)
                 self.descendants_empty = True
             return
-        from ctypes import wintypes as w
-        class Accounting(ctypes.Structure):
-            _fields_ = [(name,ctypes.c_int64) for name in
-                        ('user_time','kernel_time','period_user','period_kernel')] + [
-                        (name,w.DWORD) for name in
-                        ('faults','total','active','terminated')]
         deadline = time.monotonic()+self._close_seconds
         while True:
-            value = Accounting()
-            if not self.kernel.QueryInformationJobObject(self.job,1,ctypes.byref(value),ctypes.sizeof(value),None):
-                raise ctypes.WinError(ctypes.get_last_error())
-            if value.active == 0:
+            if self._account_job()['active'] == 0:
                 self.descendants_empty = True
                 return
             if time.monotonic()>deadline:
@@ -413,6 +480,9 @@ class OwnedProcess:
                            'hard' if native else 'unsupported', 'Windows job active-process limit'),
             cpu_rate=item(self.limits.cpu_percent if self.limits else None,
                          'hard' if native else 'unsupported', 'Windows job CPU hard cap'),
+            user_cpu_time=item(self.limits.user_cpu_seconds if self.limits else None,
+                         'hard' if native and self._user_cpu_configuration else 'unsupported',
+                         'Windows aggregate job user-time termination threshold; periodic checks'),
             resident_memory=item(None, 'unsupported', 'committed memory is not resident memory'),
             threads=item(None, 'unsupported', 'environment settings are not a hard thread limit'),
             disk=item(None, 'unsupported', 'directory sampling is not a quota'),
@@ -426,7 +496,12 @@ class OwnedProcess:
                                        (self.process.stdin, self.process.stdout)),
                     descendants_empty=self.descendants_empty,
                     descendant_scope='job' if os.name == 'nt' else 'cooperative_session_only',
-                    native_handles_released=self.job is None, closed=self.closed)
+                    native_handles_released=self.job is None, closed=self.closed,
+                    user_cpu=dict(configuration=dict(self._user_cpu_configuration)
+                                  if self._user_cpu_configuration is not None else None,
+                                  accounting=dict(self._job_accounting)
+                                  if self._job_accounting is not None else None,
+                                  exceeded=self._user_cpu_exceeded))
 
     def __enter__(self):
         return self

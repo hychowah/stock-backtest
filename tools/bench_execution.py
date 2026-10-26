@@ -17,7 +17,7 @@ import time
 
 import bench_admission as admission
 from bench_comparison import ComparisonError, ComparisonLedger, ComparisonProtocol, digest, encoded
-from bench_candidates_process import OwnedProcess, ProcessLimits
+from bench_candidates_process import OwnedProcess, ProcessLimits, user_cpu_ticks
 import bench_execution_inputs as inputs
 from bench_execution_policy import _memory
 
@@ -44,12 +44,18 @@ class ExecutionEnvelope:
     measure different resources; none proves total mapped residency. threads
     sets library configuration only. sampled_tree_threads additionally supplies
     Linux's combined process/thread task budget in supervised mode.
+
+    user_cpu_seconds bounds cumulative user-mode execution in the supervised
+    Windows application domain, including descendants and exited processes.
+    Kernel-mode time and outside supervision are excluded. Windows checks the
+    threshold periodically. WSL cumulative enforcement remains unsupported.
     """
     database_bytes: int
     output_bytes: int
     sampled_memory_bytes: int
     wall_seconds: float
     threads: int
+    user_cpu_seconds: float
     processes: int = 8
     cpu_percent: int = 25
     log_bytes: int = 1024 * 1024
@@ -65,6 +71,7 @@ class ExecutionEnvelope:
                 or not math.isfinite(self.wall_seconds) or self.wall_seconds <= 0):
             raise ComparisonError('unsupported')
         try:
+            user_cpu_ticks(self.user_cpu_seconds)
             self.process_limits()
         except ValueError:
             raise ComparisonError('unsupported') from None

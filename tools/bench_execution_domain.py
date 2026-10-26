@@ -18,7 +18,7 @@ import subprocess
 import time
 import uuid
 
-from bench_candidates_process import OwnedProcess, ProcessLimits
+from bench_candidates_process import OwnedProcess, ProcessLimits, user_cpu_ticks
 
 
 @dataclass(frozen=True)
@@ -27,11 +27,13 @@ class DomainLimits:
     tasks: int
     cpu_percent: int
     wall_seconds: float
+    user_cpu_seconds: float
     processes: int = 8
     output_bytes: int = 1024 * 1024
     close_seconds: float = 5.
 
     def __post_init__(self):
+        user_cpu_ticks(self.user_cpu_seconds)
         self.process_limits()
         if (type(self.tasks) is not int or self.tasks <= 0
                 or type(self.wall_seconds) not in (int, float)
@@ -40,7 +42,8 @@ class DomainLimits:
 
     def process_limits(self):
         return ProcessLimits(self.memory_bytes, self.processes, self.cpu_percent,
-                             output_bytes=self.output_bytes, close_seconds=self.close_seconds)
+                             output_bytes=self.output_bytes, close_seconds=self.close_seconds,
+                             user_cpu_seconds=self.user_cpu_seconds)
 
 
 class _UserService(OwnedProcess):
@@ -201,6 +204,8 @@ class _UserService(OwnedProcess):
             processes=item(p.tasks, 'hard', 'shared task budget; not an independent process budget'),
             cpu_rate=item(p.cpu_percent, 'hard', 'cpu.max quota; percent of discovered logical CPU count'),
             cpu_time=item(None, 'unsupported', 'allocation is not a cumulative CPU-time limit'),
+            user_cpu_time=item(p.user_cpu_seconds, 'unsupported',
+                              'no cumulative user-time enforcement; cpu.max limits allocation only'),
             disk=item(None, 'unsupported', 'no aggregate filesystem quota'),
             wall=item(p.wall_seconds, 'hard', 'service RuntimeMaxSec plus TimeoutStopSec; not blocked-kernel preemption'),
             transport=item(p.output_bytes, 'hard', 'bounded frames, total bytes and pending event queue'))
@@ -233,7 +238,7 @@ class _WindowsController(OwnedProcess):
         for resource in value.values():
             resource['scope'] = 'application_controller_and_descendants_including_compiler'
         value['cpu_time'] = dict(bound=None, status='unsupported',
-            mechanism='CPU rate is not cumulative CPU time', scope='application_domain')
+            mechanism='user-time threshold excludes kernel CPU time', scope='application_domain')
         value['wall'] = dict(bound=None, status='cooperative',
             mechanism='external supervisor deadline; not blocked-kernel preemption', scope='application_domain')
         return value
