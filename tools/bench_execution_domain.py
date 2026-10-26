@@ -53,9 +53,10 @@ class _UserService(OwnedProcess):
     remains in this cgroup. Arbitrary same-user cgroup migration is outside this
     known-source contract. No existing unit or shared scope is configured.
     """
-    def __init__(self, command, *, limits, env=None):
-        self.unit = 'cb02-domain-' + uuid.uuid4().hex + '.service'
+    def __init__(self, command, *, limits, env=None, hierarchy=None, role=None):
+        self.unit = (hierarchy[role] if hierarchy else 'cb02-domain-' + uuid.uuid4().hex + '.service')
         self.domain_limits = limits
+        self.hierarchy = hierarchy
         self.cgroup = None
         self.invocation = None
         self.configuration = None
@@ -79,6 +80,12 @@ class _UserService(OwnedProcess):
             TasksMax=str(limits.tasks), CPUQuota=str(limits.cpu_percent * (os.cpu_count() or 1)) + '%',
             RuntimeMaxSec=str(limits.wall_seconds), TimeoutStopSec=str(limits.close_seconds),
             KillMode='control-group', SendSIGKILL='yes', OOMPolicy='kill', NoNewPrivileges='yes')
+        if hierarchy:
+            properties['Slice'] = hierarchy['slice']
+            if role == 'application':
+                properties.update(BindsTo=hierarchy['helper'], After=hierarchy['helper'])
+            else:
+                properties.update(StartLimitIntervalSec='infinity', StartLimitBurst='1', Restart='no')
         prefix = ['systemd-run', '--user', '--quiet', '--pipe', '--wait', '--collect', '--unit=' + self.unit]
         for name, value in properties.items(): prefix += ['--property=' + name + '=' + value]
         # systemd-run --pipe passes descriptors to the service. Only explicit
@@ -132,6 +139,8 @@ class _UserService(OwnedProcess):
                         or quota == 'max' or int(quota) / int(period) >
                         expected.cpu_percent * (os.cpu_count() or 1) / 100 + .001):
                     raise OSError('Experimental service limits were not applied.')
+                if self.hierarchy and self.cgroup.parent.name != self.hierarchy['slice']:
+                    raise OSError('Experimental ancestor membership mismatch.')
                 self._creation_settled = True
                 return
             if self.process.poll() is not None or time.monotonic() >= deadline:
@@ -224,7 +233,7 @@ class _UserService(OwnedProcess):
         return value
 
 
-def start_controller(command, limits, *, env=None):
+def start_controller(command, limits, *, env=None, hierarchy=None, role=None):
     """Start one known experimental controller; no financial admission is granted.
 
     Windows contains the controller in its pre-bootstrap job. Linux requires
@@ -233,7 +242,7 @@ def start_controller(command, limits, *, env=None):
     if os.name == 'nt':
         return _WindowsController(command, env=env, limits=limits.process_limits())
     if os.sys.platform == 'linux':
-        return _UserService(command, env=env, limits=limits)
+        return _UserService(command, env=env, limits=limits, hierarchy=hierarchy, role=role)
     raise OSError('Experimental controller containment is unsupported.')
 
 
@@ -247,3 +256,204 @@ class _WindowsController(OwnedProcess):
         value['wall'] = dict(bound=None, status='cooperative',
             mechanism='external supervisor deadline; not blocked-kernel preemption', scope='application_domain')
         return value
+
+
+@dataclass(frozen=True)
+class LifetimeLimits:
+    """Aggregate charged-memory/task/CPU allocation for a private WSL hierarchy."""
+    memory_bytes: int
+    tasks: int
+    cpu_percent: int
+
+    def __post_init__(self):
+        if (any(type(v) is not int or v <= 0 for v in
+                (self.memory_bytes, self.tasks, self.cpu_percent)) or self.cpu_percent > 100):
+            raise ValueError('Unsupported lifetime limits.')
+
+
+class LifetimeDomain:
+    """Own supervisor and application resources through collection and closure.
+
+    Effective ancestor controls cover their shared lifetime. Application exit
+    does not release the boundary. Unknown creation or closure retains ownership
+    for explicit recovery. The caller registers this object before prepare().
+    Only generated transient units are changed. No persistent unit is installed.
+    """
+    def __init__(self, limits, application_limits):
+        if os.sys.platform != 'linux':
+            from bench_comparison import ComparisonError
+            raise ComparisonError('unsupported')
+        token = uuid.uuid4().hex
+        self.names = dict(slice='cb02life' + token + '.slice',
+                          helper='cb02-helper-' + token + '.service',
+                          application='cb02-application-' + token + '.service')
+        self.limits, self.application_limits = limits, application_limits
+        self.owned = None
+        self.created = self.closed = False
+        self.requested = False
+        self.go = False
+        self.application_settled = False
+        self.configuration = self.cgroup = None
+        self.final_memory_events = None
+        self.final_task_events = None
+
+    def _control(self, *args):
+        return subprocess.run(['systemctl', '--user', *args], capture_output=True,
+            text=True, timeout=self.application_limits.close_seconds)
+
+    def _state(self, unit):
+        r = self._control('show', unit, '--no-pager',
+            '--property=LoadState,ActiveState,ControlGroup,Job,Transient')
+        rows = dict(line.split('=', 1) for line in r.stdout.splitlines() if '=' in line)
+        if 'LoadState' not in rows: raise OSError('Lifetime state unavailable.')
+        return rows
+
+    def prepare(self):
+        # Same local user bus as the existing service backend, before creation.
+        runtime = os.environ.get('XDG_RUNTIME_DIR', '/run/user/' + str(os.getuid()))
+        if os.environ.get('DBUS_SESSION_BUS_ADDRESS', 'unix:path=' + runtime + '/bus') != 'unix:path=' + runtime + '/bus':
+            raise OSError('Lifetime bus binding unsupported.')
+        r = self._control('show', '--property=Version')
+        if r.returncode or not r.stdout.startswith('Version='):
+            raise OSError('Lifetime manager unavailable.')
+        p = self.limits
+        args = ['busctl', '--user', 'call', 'org.freedesktop.systemd1',
+            '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager',
+            'StartTransientUnit', 'ssa(sv)a(sa(sv))', self.names['slice'], 'fail', '5',
+            'MemoryMax', 't', str(p.memory_bytes), 'MemorySwapMax', 't', '0',
+            'TasksMax', 't', str(p.tasks), 'CPUQuotaPerSecUSec', 't',
+            str(p.cpu_percent * (os.cpu_count() or 1) * 10000),
+            'CollectMode', 's', 'inactive-or-failed', '0']
+        self.requested = True
+        result = subprocess.run(args, capture_output=True, text=True,
+                                timeout=self.application_limits.close_seconds)
+        deadline = time.monotonic() + self.application_limits.close_seconds
+        while True:
+            state = self._state(self.names['slice'])
+            if state.get('ControlGroup'):
+                group = Path('/sys/fs/cgroup') / state['ControlGroup'].lstrip('/')
+                if group.name != self.names['slice'] or '..' in group.parts:
+                    raise OSError('Lifetime group changed.')
+                self.cgroup = group
+                try:
+                    config = {n: (group/n).read_text().strip() for n in
+                              ('memory.max','memory.swap.max','pids.max','cpu.max')}
+                except FileNotFoundError: config = None
+                if config:
+                    quota, period = map(int, config['cpu.max'].split())
+                    if (int(config['memory.max']) != p.memory_bytes or config['memory.swap.max'] != '0'
+                            or int(config['pids.max']) != p.tasks
+                            or quota/period > p.cpu_percent*(os.cpu_count() or 1)/100+.001):
+                        raise OSError('Lifetime controls not applied.')
+                    self.configuration = config; self.created = True
+                    return
+            if result.returncode or time.monotonic() > deadline:
+                raise OSError('Lifetime creation unconfirmed.')
+            time.sleep(.01)
+
+    def start(self, command):
+        if not self.created: raise OSError('Lifetime is not configured.')
+        p, a = self.limits, self.application_limits
+        # Manager deadline includes a finite mechanical close interval. The
+        # caller still rejects whole-operation overruns at the original bound.
+        limits = DomainLimits(p.memory_bytes, p.tasks, p.cpu_percent,
+            a.wall_seconds + a.close_seconds, a.user_cpu_seconds,
+            processes=a.processes, output_bytes=a.output_bytes, close_seconds=a.close_seconds)
+        try:
+            self.owned = start_controller(command, limits, hierarchy=self.names, role='helper')
+        except BaseException as error:
+            self.owned = getattr(error, 'owned_process', None)
+            raise
+        self.verify_member(self.owned.cgroup)
+        return self.owned
+
+    def verify_member(self, group):
+        group = Path(group)
+        if group.parent != self.cgroup or group.name not in (self.names['helper'], self.names['application']):
+            raise OSError('Lifetime membership mismatch.')
+
+    def observe_application(self):
+        state = self._state(self.names['application'])
+        if state.get('ControlGroup'):
+            self.verify_member(Path('/sys/fs/cgroup') / state['ControlGroup'].lstrip('/'))
+            self.application_settled = True
+        return state
+
+    def application_created(self):
+        self.observe_application()
+        self.application_settled = True
+
+    def resource_failure(self):
+        if self.cgroup is not None:
+            for name, attribute in (('memory.events', 'final_memory_events'), ('pids.events', 'final_task_events')):
+                try: setattr(self, attribute, dict(line.split() for line in (self.cgroup/name).read_text().splitlines()))
+                except FileNotFoundError: pass
+        return (int((self.final_memory_events or {}).get('oom_kill', 0)) > 0
+                or int((self.final_task_events or {}).get('max', 0)) > 0)
+
+    def application_closed(self):
+        # Called only on the verified helper's closed-application event. This
+        # settles a completed creation or proves no request was made at all.
+        self.application_settled = True
+
+    def capability(self):
+        p = self.limits
+        return dict(status='hard', scope='supervisor_application_clients_readers_pinned_storage_collection',
+            mechanism='private transient ancestor cgroup', names=dict(self.names),
+            configuration=self.configuration, charged_memory_bytes=p.memory_bytes,
+            tasks=p.tasks, cpu_percent=p.cpu_percent,
+            memory_events=self.final_memory_events, task_events=self.final_task_events,
+            control_file_payload_bytes=2*1024**2+8192,
+            residual='caller_transport_initial_submission_and_closure_outside; no_total_residency_IO_or_cumulative_CPU')
+
+    def close(self):
+        if self.closed: return
+        # Stop helper first, preventing any further requests by its processes.
+        if self.owned is not None: self.owned.close()
+        if not self.go: self.application_settled = True
+        state = self.observe_application() if self.requested else {}
+        if state.get('LoadState') != 'not-found' and state:
+            stopped = self._control('stop', self.names['application'])
+            if stopped.returncode:
+                if not self.application_settled or self.observe_application()['LoadState'] != 'not-found':
+                    raise OSError('Application stop unconfirmed.')
+            self.application_settled = True
+        if self.requested and not self.application_settled:
+            raise TimeoutError('Application creation remains unresolved.')
+        self.resource_failure()
+        if self.cgroup is not None:
+            try:
+                self.final_memory_events = dict(line.split() for line in
+                                                (self.cgroup/'memory.events').read_text().splitlines())
+            except FileNotFoundError: pass
+        if self.requested:
+            state = self._state(self.names['slice'])
+            if not self.created and state.get('Transient') != 'yes':
+                # Slice names can synthesize a loaded inactive unit even when
+                # no transient creation has ever been observed. It is absence,
+                # not settlement of the registered manager request.
+                raise TimeoutError('Lifetime creation remains unresolved.')
+            if state.get('ControlGroup') and self.cgroup is None:
+                group = Path('/sys/fs/cgroup') / state['ControlGroup'].lstrip('/')
+                if group.name != self.names['slice'] or '..' in group.parts:
+                    raise OSError('Lifetime group changed.')
+                self.cgroup = group
+            if state['LoadState'] != 'not-found':
+                result = self._control('stop', self.names['slice'])
+                if result.returncode and (not self.created or self._state(self.names['slice'])['LoadState'] != 'not-found'):
+                    raise OSError('Lifetime stop unconfirmed.')
+                self.created = True
+            elif not self.created:
+                raise TimeoutError('Lifetime creation remains unresolved.')
+            deadline = time.monotonic() + self.application_limits.close_seconds
+            while True:
+                state = self._state(self.names['slice'])
+                empty = self.cgroup is None or not self.cgroup.exists()
+                if not empty:
+                    try: empty = 'populated 0' in (self.cgroup/'cgroup.events').read_text().splitlines()
+                    except FileNotFoundError: empty = True
+                if state.get('Job','0') in ('0','') and state.get('ActiveState') in ('inactive','failed') and empty: break
+                if state['LoadState'] == 'not-found' and empty: break
+                if time.monotonic() > deadline: raise TimeoutError('Lifetime closure unconfirmed.')
+                time.sleep(.01)
+        self.closed = True

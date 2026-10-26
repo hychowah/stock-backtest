@@ -65,6 +65,8 @@ class ExecutionEnvelope:
     # allowance. Native strict storage requests reject, with no weaker fallback.
     storage_bytes: int | None = None
     evidence_bytes: int | None = None
+    # Optional aggregate WSL supervisor/application lifetime declaration.
+    lifetime: dict | None = None
 
     def __post_init__(self):
         for value in (self.database_bytes, self.output_bytes, self.sampled_memory_bytes,
@@ -77,9 +79,12 @@ class ExecutionEnvelope:
         try:
             from bench_execution_storage import validate_limits
             validate_limits(self.storage_bytes, self.evidence_bytes)
+            if self.lifetime is not None:
+                from bench_execution_domain import LifetimeLimits
+                LifetimeLimits(**self.lifetime)
             user_cpu_ticks(self.user_cpu_seconds)
             self.process_limits()
-        except ValueError:
+        except (ValueError, TypeError):
             raise ComparisonError('unsupported') from None
 
     def process_limits(self):
