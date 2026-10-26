@@ -271,14 +271,58 @@ class LifetimeLimits:
             raise ValueError('Unsupported lifetime limits.')
 
 
+@dataclass(frozen=True)
+class NativeLifetimeLimits:
+    """Windows aggregate commit/process/rate/user-time; never WSL task limits."""
+    committed_bytes: int
+    processes: int
+    cpu_percent: int
+    user_cpu_seconds: float
+
+    def __post_init__(self):
+        if (type(self.committed_bytes) is not int or not 0 < self.committed_bytes < 2**63
+                or type(self.processes) is not int or not 0 < self.processes < 2**32):
+            raise ValueError('Unsupported native lifetime limits.')
+        self.process_limits()
+
+    def process_limits(self, *, output_bytes=1024*1024, close_seconds=5.):
+        return ProcessLimits(self.committed_bytes, self.processes, self.cpu_percent,
+            user_cpu_seconds=self.user_cpu_seconds, output_bytes=output_bytes,
+            close_seconds=close_seconds)
+
+
+def parse_lifetime(value):
+    """Validate exact resource meanings without platform conversion or effects."""
+    from bench_comparison import ComparisonError
+    try:
+        if not isinstance(value, dict): raise ValueError()
+        if set(value) == {'memory_bytes', 'tasks', 'cpu_percent'}:
+            return LifetimeLimits(**value)
+        if (set(value) == {'kind', 'committed_bytes', 'processes', 'cpu_percent', 'user_cpu_seconds'}
+                and value['kind'] == 'windows-job'):
+            return NativeLifetimeLimits(**{k:v for k,v in value.items() if k != 'kind'})
+    except (ValueError, TypeError, OverflowError):
+        pass
+    raise ComparisonError('unsupported')
+
+
 class LifetimeDomain:
     """Own supervisor and application resources through collection and closure.
 
     Effective ancestor controls cover their shared lifetime. Application exit
     does not release the boundary. Unknown creation or closure retains ownership
     for explicit recovery. The caller registers this object before prepare().
-    Only generated transient units are changed. No persistent unit is installed.
+    WSL changes only generated transient units. Windows reuses the existing
+    native job owner. No persistent unit or runtime registration is installed.
     """
+    def __new__(cls, limits, application_limits):
+        if cls is LifetimeDomain and isinstance(limits, NativeLifetimeLimits):
+            if os.name != 'nt':
+                from bench_comparison import ComparisonError
+                raise ComparisonError('unsupported')
+            return object.__new__(_WindowsLifetimeDomain)
+        return object.__new__(cls)
+
     def __init__(self, limits, application_limits):
         if os.sys.platform != 'linux':
             from bench_comparison import ComparisonError
@@ -456,4 +500,64 @@ class LifetimeDomain:
                 if state['LoadState'] == 'not-found' and empty: break
                 if time.monotonic() > deadline: raise TimeoutError('Lifetime closure unconfirmed.')
                 time.sleep(.01)
+        self.closed = True
+
+
+class _WindowsLifetimeDomain(LifetimeDomain):
+    """Own supervisor, application and finalization until confirmed closure.
+
+    Application exit does not release the ancestor job. Resource meanings are
+    explicit in the declaration. Unknown closure retains ownership for retry.
+    The invoking caller and its bounded reader remain outside this job.
+    """
+    def __init__(self, limits, application_limits):
+        self.limits, self.application_limits = limits, application_limits
+        self.owned = None
+        self.names = None
+        self.created = self.closed = self.go = False
+
+    def prepare(self):
+        # No handle or process exists before the registered start operation.
+        pass
+
+    def start(self, command):
+        try:
+            self.owned = _WindowsController(command, limits=self.limits.process_limits(
+                output_bytes=self.application_limits.output_bytes,
+                close_seconds=self.application_limits.close_seconds))
+        except BaseException as error:
+            self.owned = getattr(error, 'owned_process', None)
+            raise
+        self.created = True
+        return self.owned
+
+    def observe_application(self):
+        # Native inheritance and final job emptiness establish containment.
+        # No caller assertion settles an asynchronous manager request here.
+        return None
+
+    def application_created(self):
+        pass
+
+    def application_closed(self):
+        pass
+
+    def resource_failure(self):
+        return self.owned is not None and bool(self.owned.resource_failure())
+
+    def capability(self):
+        resources = self.owned.capabilities() if self.owned is not None else {}
+        for item in resources.values():
+            item['scope'] = 'helper_application_nested_descendants_and_finalization'
+        return dict(status='native_job', mechanism='suspended-start ancestor Job Object',
+            scope='helper_application_nested_descendants_and_finalization', resources=resources,
+            closure=self.owned.closure() if self.owned is not None else None,
+            control_file_payload_bytes=2*1024**2+8192,
+            residual='caller_reader_and_final_ownership_outside; no_residency_threads_disk_IO_or_total_CPU')
+
+    def close(self):
+        if self.closed: return
+        if self.owned is not None:
+            self.owned.close()
+            if not self.owned.closed: raise TimeoutError('Native lifetime closure unconfirmed.')
         self.closed = True

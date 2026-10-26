@@ -1,4 +1,4 @@
-"""Contain one experimental method process and all of its descendants.
+"""Contain one experimental process and all of its descendants.
 
 Windows uses an owned Job Object. POSIX uses a new process session for tests.
 The child waits for GO before attachment or creating workers. Native shutdown waits for job emptiness. Linux confirms cooperative session
@@ -75,6 +75,7 @@ class OwnedProcess:
         self.reader = None
         self.process = None
         self._resumed = False
+        self._native_configuration = None
         self._user_cpu_configuration = None
         self._job_accounting = None
         self._user_cpu_exceeded = False
@@ -134,6 +135,7 @@ class OwnedProcess:
                 ('process_memory',ctypes.c_size_t),('job_memory',ctypes.c_size_t),
                 ('peak_process_memory',ctypes.c_size_t),('peak_job_memory',ctypes.c_size_t)]
         self._basic_limits_type = BasicLimits
+        self._extended_limits_type = ExtendedLimits
         kernel = ctypes.WinDLL('kernel32',use_last_error=True)
         kernel.CreateJobObjectW.argtypes = (ctypes.c_void_p,w.LPCWSTR)
         kernel.CreateJobObjectW.restype = w.HANDLE
@@ -165,17 +167,51 @@ class OwnedProcess:
                 if not kernel.SetInformationJobObject(job, 6, ctypes.byref(action), ctypes.sizeof(action)):
                     raise ctypes.WinError(ctypes.get_last_error())
                 self._verify_user_cpu()
-            if not kernel.AssignProcessToJobObject(job,w.HANDLE(int(self.process._handle))):
-                raise ctypes.WinError(ctypes.get_last_error())
             if self.limits is not None:
                 class CpuRate(ctypes.Structure):
                     _fields_ = [('flags', w.DWORD), ('rate', w.DWORD)]
                 cpu = CpuRate(0x1 | 0x4, self.limits.cpu_percent * 100)
+                self._cpu_rate_type = CpuRate
                 if not kernel.SetInformationJobObject(job, 15, ctypes.byref(cpu), ctypes.sizeof(cpu)):
                     raise ctypes.WinError(ctypes.get_last_error())
+            self._verify_native_limits()
+            if not kernel.AssignProcessToJobObject(job,w.HANDLE(int(self.process._handle))):
+                raise ctypes.WinError(ctypes.get_last_error())
         except BaseException:
             # Constructor failure uses the same registered closure path.
             raise
+
+    def _verify_native_limits(self):
+        """Verify before resume; retain configuration after native handle release.
+
+        Terminal messages never establish acceptance. The job handle belongs
+        only to this owner. Kernel kill-on-close also covers abrupt owner death.
+        """
+        from ctypes import wintypes as w
+        value, flags = self._extended_limits_type(), w.DWORD()
+        if not self.kernel.QueryInformationJobObject(self.job, 9, ctypes.byref(value),
+                                                      ctypes.sizeof(value), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        self.kernel.GetHandleInformation.argtypes = [w.HANDLE, ctypes.POINTER(w.DWORD)]
+        if not self.kernel.GetHandleInformation(self.job, ctypes.byref(flags)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not value.basic.flags & 0x2000 or flags.value & 1:
+            raise OSError('Experimental native lifetime ownership was not applied.')
+        retained = dict(limit_flags=value.basic.flags, inheritable=False,
+                        verified_before_resume=True)
+        if self.limits is not None:
+            rate = self._cpu_rate_type()
+            if not self.kernel.QueryInformationJobObject(self.job, 15, ctypes.byref(rate),
+                                                          ctypes.sizeof(rate), None):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if (value.basic.flags & (0x8|0x200) != (0x8|0x200)
+                    or value.basic.active_limit != self.limits.processes
+                    or value.job_memory != self.limits.committed_bytes
+                    or rate.flags != 5 or rate.rate != self.limits.cpu_percent*100):
+                raise OSError('Experimental native limits were not applied.')
+            retained.update(committed_bytes=value.job_memory, processes=value.basic.active_limit,
+                            cpu_flags=rate.flags, cpu_rate=rate.rate)
+        self._native_configuration = retained
 
     def _verify_user_cpu(self):
         """Verify the threshold and termination action while the root is suspended."""
@@ -497,6 +533,8 @@ class OwnedProcess:
                     descendants_empty=self.descendants_empty,
                     descendant_scope='job' if os.name == 'nt' else 'cooperative_session_only',
                     native_handles_released=self.job is None, closed=self.closed,
+                    native_configuration=(dict(self._native_configuration)
+                                          if self._native_configuration is not None else None),
                     user_cpu=dict(configuration=dict(self._user_cpu_configuration)
                                   if self._user_cpu_configuration is not None else None,
                                   accounting=dict(self._job_accounting)

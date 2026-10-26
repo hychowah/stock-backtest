@@ -42,7 +42,7 @@ class DeclarationTests(unittest.TestCase):
             owner.close();self.assertTrue(owner.closed)
 
 
-@unittest.skipUnless(sys.platform=='linux','Private WSL lifetime hierarchy; native increment deferred')
+@unittest.skipUnless(sys.platform=='linux','Private WSL lifetime hierarchy; native coverage uses test_bench_execution_native_lifetime')
 class LifetimeTests(unittest.TestCase):
     def setUp(self):
         self.base=fixtures.SupervisorTests('runTest');self.base.setUp()

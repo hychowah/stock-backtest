@@ -2,7 +2,7 @@
 
 Only bounded control transport and the controller's private terminal evidence
 cross this boundary. Application calculations, cloning and observation stay in
-the domain. An optional WSL ancestor also contains this supervision and collection work.
+the domain. An optional platform-specific ancestor also contains supervision and collection.
 The invoking caller remains outside that boundary. This is no hostile-code sandbox.
 """
 from dataclasses import asdict
@@ -15,7 +15,7 @@ import time
 
 import bench_admission as admission
 from bench_comparison import ComparisonError, encoded
-from bench_execution_domain import DomainLimits, LifetimeLimits, LifetimeDomain, start_controller
+from bench_execution_domain import DomainLimits, LifetimeDomain, parse_lifetime, start_controller
 from bench_execution_storage import ExperimentalStorage, PRIVATE_ROOT, CONTROL_BYTES, validate_limits, storage_io, failure_reason
 
 _pending_supervisors = {}
@@ -263,7 +263,7 @@ class ComparisonSupervisor(_ApplicationSupervisor):
         if e.get('storage_bytes') is not None:
             ExperimentalStorage(e['storage_bytes'], e['evidence_bytes'], spec['output'],
                 e['close_seconds'], protected=(spec['capture'], spec['source'], spec['observation_root']))
-        self.lifetime = LifetimeDomain(LifetimeLimits(**e['lifetime']), limits)
+        self.lifetime = LifetimeDomain(parse_lifetime(e['lifetime']), limits)
         spec.update(supervision_started=self.started, hierarchy=self.lifetime.names)
         raw = encoded(spec)
         if len(raw) > CONTROL_BYTES: raise ComparisonError('limit')
