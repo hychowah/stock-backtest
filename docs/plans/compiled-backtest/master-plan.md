@@ -1360,3 +1360,13 @@ hard-I/O and strict-cleanup semantics. Existing native controls and the document
 unsupported modern Job Object I/O API establish no complete route under current
 permissions. Obtain the required capability/access decision before another
 resource backend. This does not relax the declaration or authorize real access.
+
+
+The [native-browser planning checkpoint](phases/CB-02/execution/native-browser.md)
+records a conditional private browser owner and fixed-path executable presence.
+It implements no browser driver and qualifies no native UI behavior. The user
+approves a separately provided Windows test environment and offline real-input
+copies for later qualification, with the original installation untouched. Its
+connection and copy path remain unsupplied. The latest instruction is to stop
+at this checkpoint commit even though CB-02 remains unfinished. The filed record
+is the exact resume point; no real admission or resource gate is waived.
