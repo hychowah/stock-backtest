@@ -8,6 +8,9 @@ import ipaddress
 from urllib.parse import urlsplit
 import json
 import sqlite3
+import select
+import socket
+import time
 import sys
 import subprocess
 import webbrowser
@@ -20,6 +23,7 @@ import robustness
 import data_manager
 import cache_access
 import diagnostics
+import backtest_control
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -73,6 +77,22 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(302);self.send_header('Location','/data.html');self.send_header('Content-Length','0');self.end_headers();return
         super().do_GET()
 
+    def disconnect_check(self):
+        """Observe an aborted fetch without consuming any further request bytes."""
+        last_check=0.;gone=False
+        def cancelled():
+            nonlocal last_check,gone
+            now=time.monotonic()
+            if gone or now-last_check<.05:return gone
+            last_check=now
+            try:
+                readable,_,_=select.select([self.connection],[],[],0)
+                if readable:gone=self.connection.recv(1,socket.MSG_PEEK)==b''
+            except OSError:
+                gone=True
+            return gone
+        return cancelled
+
     def do_POST(self):
         if self.launcher_request():return
 
@@ -89,7 +109,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not 0<length<=16384:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
-            with cache_access.daily() as db:
+            with backtest_control.cancel_when(self.disconnect_check()), cache_access.daily() as db:
+                backtest_control.checkpoint()
                 db.execute('PRAGMA cache_size=-131072')
                 if self.path=='/api/robustness':
                     configuration=robustness.plan(db,**request)
@@ -97,7 +118,12 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 calculate=schedules.backtest_dates if 'dates' in request else schedules.backtest
                 result=calculate(db,**request)
+                backtest_control.checkpoint()
             self.reply(200,result)
+        except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
+            # Contexts close databases and wait for worker cleanup before cache
+            # ownership is released. Completed trial transactions remain saved.
+            return
         except (ValueError,TypeError,sqlite3.Error) as error:
             diagnostics.failure('schedule.failed',error,mode='robustness' if self.path=='/api/robustness' else 'schedule')
             self.reply(400,dict(error=str(error)))
@@ -122,13 +148,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.end_headers()
         def event(payload):
+            backtest_control.checkpoint()
             self.wfile.write((json.dumps(payload,allow_nan=False)+'\n').encode())
             self.wfile.flush()
         try:
             event(dict(type='configuration',configuration=configuration))
             result=robustness.run(db,configuration,progress=event)
             event(dict(type='complete',result=result))
-        except (BrokenPipeError,ConnectionResetError):
+        except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # The completed trial transactions remain cached; stop before the
             # next trial when the browser disconnects.
             return

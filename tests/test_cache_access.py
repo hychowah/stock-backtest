@@ -58,6 +58,7 @@ class AccessTests(unittest.TestCase):
                 db=SimpleNamespace(execute=lambda *a:None,close=lambda:close_probes.append(self.probe()))
                 def calculate(*args,**kwargs):entered.set();finish.wait(10);return {'result':'complete'}
                 handler=object.__new__(serve.Handler)
+                handler.disconnect_check=lambda:lambda:False
                 handler.path=path;handler.client_address=('127.0.0.1',1)
                 handler.server=SimpleNamespace();handler.headers={'Host':'127.0.0.1:3000','Content-Length':'2'}
                 handler.rfile=io.BytesIO(b'{}');handler.reply=lambda status,payload:responses.append(status)

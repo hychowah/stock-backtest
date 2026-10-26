@@ -10,7 +10,7 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
 function response(events,{truncate=false}={}){
  const packed=Buffer.from(events.map(e=>JSON.stringify(e)).join('\n')+(truncate?'':'\n'));
  const pieces=[];for(let i=0;i<packed.length;i+=7)pieces.push(packed.subarray(i,i+7));
- let i=0;const reader={released:false,async read(){return i<pieces.length?{value:pieces[i++],done:false}:{done:true}},releaseLock(){this.released=true}};
+ let i=0;const reader={released:false,async read(){return i<pieces.length?{value:pieces[i++],done:false}:{done:true}},async cancel(){this.cancelled=true},releaseLock(){this.released=true}};
  return {body:{getReader:()=>reader},reader};
 }
 (async()=>{
@@ -21,6 +21,16 @@ function response(events,{truncate=false}={}){
  ctx.response=response([{type:'configuration',configuration:{seed:987,months:24,start:'2015-01-01',end:'2020-01-01',requested:2,options:{}}},{type:'progress',completed:1,total:2}],{truncate:true});
  await assert.rejects(()=>call('RobustnessView.read(response,progress)'),/ended before all trials completed/);assert(ctx.response.reader.released);
  assert.equal(node('random-seed').value,'987');assert.equal(node('robustness-replay').hidden,false);
+ const savedSeed=node('random-seed').value;
+ ctx.response=response([{type:'configuration',configuration:{seed:456}}]);
+ await assert.rejects(()=>call('RobustnessView.read(response,progress,()=>false)'),/cancelled/);
+ assert(ctx.response.reader.cancelled);assert(ctx.response.reader.released);
+ assert.equal(node('random-seed').value,savedSeed,'A stopped stream cannot overwrite the next run’s settings.');
+ node('repeat-random').checked=true;node('random-seed').value='321';
+ ctx.response=response([{type:'configuration',configuration:{seed:987,months:24,start:'2015-01-01',end:'2020-01-01',requested:2,options:{}}},{type:'complete',result:batch}]);
+ await call('RobustnessView.read(response,progress)');
+ assert.equal(node('random-seed').value,'321','An active repeat setting stays editable during a run.');
+ node('repeat-random').checked=false;
  let replayed;ctx.replay=c=>replayed=c;call('RobustnessView.init(()=>{},replay)');node('robustness-replay').handlers.click();assert.equal(replayed.seed,987);assert.equal(replayed.months,24);assert.equal(JSON.parse(saved.get('backtest-experiment')).seed,987);
  node('random-seed').value='';call('RobustnessView.init(()=>{},replay)');assert.equal(node('random-seed').value,'987');
  ctx.response=response([{type:'error',message:'Calculation failed'}]);

@@ -6,6 +6,48 @@ const fields={metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_ca
 let currentScreen=null,currentLatest=null;
 let screeningMode='latest';
 let filterConditions=[];
+// Keep the submitted settings with each visible result. Editing controls never
+// relabels an older result as the new strategy.
+const displayedSettings=new Map(),resultNotes=new Map(),resultPills=new Map();
+function viewKey(){return screeningMode==='latest'?'latest':document.getElementById('schedule-kind').value==='custom'?'custom':'january';}
+function settingsSignature(settings){
+  return JSON.stringify(settings,(_key,value)=>typeof value==='number' && !Number.isFinite(value)?String(value):value && typeof value==='object' && !Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
+}
+function currentSettings(){
+  const {first,last,...options}=readOptions(),view=viewKey();
+  if(view==='latest')return {mode:'latest',...options};
+  if(view==='january')return {mode:'january',first,last,...options};
+  const settings={mode:'custom',...options,start:document.getElementById('trade-start').value,end:document.getElementById('trade-end').value,months:+document.getElementById('rebalance-months').value};
+  if(document.getElementById('date-testing').value==='random'){
+    settings.mode='random';settings.trials=+document.getElementById('random-trials').value;
+    if(document.getElementById('repeat-random').checked)settings.seed=+document.getElementById('random-seed').value;
+  }
+  return settings;
+}
+function rememberResult(settings){
+  const view=viewKey();
+  displayedSettings.set(view,settingsSignature(settings));
+  resultPills.set(view,document.querySelector('.pill').textContent);
+  resultNotes.set(view,['screen-coverage','screen-status','range-note'].map(id=>[id,document.getElementById(id).textContent,document.getElementById(id).className]));
+  updateResultsState();
+}
+function updateResultsState(){
+  const view=viewKey(),saved=displayedSettings.get(view),state=document.getElementById('results-state');
+  let signature=null;try{signature=settingsSignature(currentSettings());}catch(_){}
+  const stale=saved!==undefined && saved!==signature;
+  state.className='screen-message'+(stale||saved===undefined?' warning':'');
+  state.textContent=stale?'Settings changed — displayed results do not match the current settings. Select '+(view==='latest'?'Screen latest':'Run backtest')+' to update them. Downloads still use the displayed results.':saved===undefined?'No results for these settings yet. Select '+(view==='latest'?'Screen latest.':'Run backtest.'):'Results match the current settings.';
+  if(ScheduleView.isRunning())state.textContent+=' A backtest is running with the settings submitted at its start.';
+  for(const id of ['latest-view','backtest-view','custom-view'])document.getElementById(id).setAttribute('data-results-stale',String(stale));
+}
+function settingsChanged(changed,run=true){
+  if(+fromYear.value>+toYear.value){if(changed==='from')toYear.value=fromYear.value;else fromYear.value=toYear.value;}
+  if(+rankFrom.value>+rankTo.value && ['rank-from','rank-to'].includes(changed)){
+    if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
+  }
+  updateResultsState();
+  if(run && document.getElementById('auto-run').checked && !ScheduleView.isRunning())applyRange();
+}
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function selectedHoldings(year){return currentScreen?.years.find(y=>y.year===+year)?.holdings??[];}
@@ -142,10 +184,16 @@ function setModeVisibility(){
   document.getElementById('historical-help').hidden=latest||custom;
   document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
-  document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
+  if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
+  const previous=latest?currentLatest:custom?null:currentScreen;
+  if(previous)updateMetricLabels(previous.options);
+  if(resultPills.has(viewKey()))document.querySelector('.pill').textContent=resultPills.get(viewKey());
+  for(const [id,text,className] of resultNotes.get(viewKey())||['screen-coverage','screen-status','range-note'].map(id=>[id,'',''])){
+    const target=document.getElementById(id);target.textContent=text;target.className=className;
+  }
 }
 function switchMode(mode){
-  screeningMode=mode;setModeVisibility();applyRange();
+  screeningMode=mode;setModeVisibility();settingsChanged();
 }
 function applyLatest(){
   try{currentLatest=StockScreener.latestScreen(screeningData,readOptions());}
@@ -168,8 +216,10 @@ function applyLatest(){
   status.className=r.stocks.length<r.requested?'screen-message warning':'screen-message';
   document.getElementById('range-note').textContent=`Latest picks · ${r.asof} · ranks ${o.rank_from}–${o.rank_to} after filters. No January holding returns or future performance are used in this list.`;
   document.querySelector('.pill').textContent=r.asof;
+  rememberResult(currentSettings());
 }
 function applyRange(changed){
+  updateResultsState();
   if(+fromYear.value>+toYear.value){if(changed==='from')toYear.value=fromYear.value;else fromYear.value=toYear.value;}
   if(+rankFrom.value>+rankTo.value && ['rank-from','rank-to'].includes(changed)){
     if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
@@ -222,6 +272,7 @@ function applyRange(changed){
   document.getElementById('detail').textContent='Hover over or focus a bar to see its return.';
   document.querySelector('.pill').textContent=`${first} — ${last}${last===2026?'*':''}`;
   updateWarnings();
+  rememberResult(currentSettings());
 }
 function downloadLatest(){
   if(!currentLatest)return;
@@ -244,20 +295,20 @@ function downloadSelection(kind){
 }
 initializeFilters();
 ScheduleView.init();
-document.getElementById('schedule-kind').addEventListener('change',()=>{setModeVisibility();applyRange();});
+document.getElementById('schedule-kind').addEventListener('change',()=>{setModeVisibility();settingsChanged();});
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
 document.getElementById('mode-backtest').addEventListener('click',()=>switchMode('backtest'));
 document.getElementById('download-latest').addEventListener('click',e=>{e.preventDefault();downloadLatest();});
-fromYear.addEventListener('change',()=>applyRange('from'));
-toYear.addEventListener('change',()=>applyRange('to'));
-rankFrom.addEventListener('change',()=>applyRange('rank-from'));
-rankTo.addEventListener('change',()=>applyRange('rank-to'));
+fromYear.addEventListener('change',()=>settingsChanged('from'));
+toYear.addEventListener('change',()=>settingsChanged('to'));
+rankFrom.addEventListener('change',()=>settingsChanged('rank-from'));
+rankTo.addEventListener('change',()=>settingsChanged('rank-to'));
 document.getElementById('strategy-form').addEventListener('submit',e=>{e.preventDefault();applyRange();});
-document.getElementById('reset-range').addEventListener('click',()=>{fromYear.value='1996';toYear.value='2025';applyRange();});
-document.getElementById('reset-ranks').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='50';applyRange();});
-document.getElementById('top100').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='100';applyRange();});
-document.getElementById('reset-strategy').addEventListener('click',()=>{resetFilters();rankFrom.value='1';rankTo.value='50';applyRange();});
+document.getElementById('reset-range').addEventListener('click',()=>{fromYear.value='1996';toYear.value='2025';settingsChanged();});
+document.getElementById('reset-ranks').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='50';settingsChanged();});
+document.getElementById('top100').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='100';settingsChanged();});
+document.getElementById('reset-strategy').addEventListener('click',()=>{resetFilters();rankFrom.value='1';rankTo.value='50';settingsChanged();});
 document.getElementById('holding-year').addEventListener('change',showHoldingYear);
 document.querySelectorAll('.holding-years details').forEach(el=>el.addEventListener('toggle',()=>{if(el.open)renderStockTable(+el.id.replace('holdings-',''));}));
 document.getElementById('download-returns').addEventListener('click',e=>{e.preventDefault();downloadSelection('returns');});
@@ -266,17 +317,34 @@ applyRange();
 
 document.getElementById('add-filter').addEventListener('click',()=>{
   if(filterConditions.length<50)filterConditions.push({field:'return_1y',op:'gt',value:''});
-  renderConditions();
+  renderConditions();settingsChanged(undefined,false);
 });
 document.getElementById('filter-conditions').addEventListener('input',event=>{
   const target=event.target;
-  if(target.dataset.key)filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;
+  if(target.dataset.key){filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;settingsChanged(undefined,false);}
 });
 document.getElementById('filter-conditions').addEventListener('change',event=>{
   const target=event.target;
-  if(target.dataset.key)filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;
+  if(target.dataset.key){filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;settingsChanged();}
 });
 document.getElementById('filter-conditions').addEventListener('click',event=>{
   const index=event.target.dataset.remove;
-  if(index!==undefined){filterConditions.splice(Number(index),1);renderConditions();}
+  if(index!==undefined){filterConditions.splice(Number(index),1);renderConditions();settingsChanged();}
 });
+
+const autoRun=document.getElementById('auto-run');
+autoRun.checked=true;
+try{autoRun.checked=localStorage.getItem('backtest-auto-run')!=='false';}catch(_){}
+autoRun.addEventListener('change',()=>{
+  try{localStorage.setItem('backtest-auto-run',String(autoRun.checked));}catch(_){}
+  settingsChanged();
+});
+document.getElementById('strategy-form').addEventListener('input',event=>{
+  if(event.target.id!=='auto-run')settingsChanged(undefined,false);
+});
+document.getElementById('strategy-form').addEventListener('change',event=>{
+  const id=event.target.id;
+  if(['auto-run','from-year','to-year','rank-from','rank-to','schedule-kind'].includes(id)||event.target.dataset.key)return;
+  settingsChanged();
+});
+document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());

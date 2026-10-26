@@ -397,6 +397,7 @@ class ServiceTests(unittest.TestCase):
     def request(self,payload,origin=None):
         handler=object.__new__(self.serve.Handler)
         handler.server=SimpleNamespace(lifecycle=None)
+        handler.disconnect_check=lambda:lambda:False
         body=json.dumps(payload).encode()
         handler.path='/api/schedule';handler.rfile=io.BytesIO(body)
         handler.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}

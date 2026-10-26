@@ -160,6 +160,7 @@ class RobustnessTests(unittest.TestCase):
         def handler(path,payload):
             obj=object.__new__(serve.Handler);body=json.dumps(payload).encode()
             obj.server=SimpleNamespace(lifecycle=None)
+            obj.disconnect_check=lambda:lambda:False
             obj.path=path;obj.rfile=io.BytesIO(body);obj.wfile=io.BytesIO()
             obj.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}
             obj.statuses=[];obj.send_response=obj.statuses.append

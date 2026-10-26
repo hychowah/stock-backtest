@@ -12,6 +12,7 @@ import research as r
 import metrics
 import cache_access
 import books as financial_books
+import backtest_control
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
 VERSION = 3
@@ -176,6 +177,7 @@ def price(db,symbol,day,column,forward=False,slack=None):
 def histories(db):
     broad,legacy={},{}
     for record in db.execute('SELECT * FROM statements ORDER BY rowid'):
+        backtest_control.checkpoint()
         row=dict(record);symbol=row.pop('symbol')
         row.update(fiscal=date.fromisoformat(row['fiscal']),known=date.fromisoformat(row['known']),enterprise=row['enterprise_value'])
         row['yield']=row['ebitda_yield']
@@ -210,6 +212,7 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         spy_return=spy[str(exit_day)]/spy[str(entry)]-1
     snapshots=[];pairs=[];filter_rows=[]
     for symbol,s in statements[pool].items():
+        backtest_control.checkpoint()
         if symbol not in cached or (pool=='legacy' and symbol not in ranks):continue
         lookup=lambda day,column,forward,slack:price(db,symbol,day,column,forward=forward,slack=slack)
         row=financial_books.snapshot(s,entry,exit_day,lookup,(entry.year,symbol) in r.revalue.BANKRUPT)
@@ -291,6 +294,7 @@ def backtest_dates(db, *, dates, start, end, months=12, **options):
 
 def backtest_periods(db, periods, *, months, **options):
     """Prepare missing books atomically and apply the shared SQL screener."""
+    backtest_control.checkpoint()
     started=time.perf_counter()
     allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters'}
     if set(options)-allowed:raise ValueError('Unknown screening option.')
@@ -302,6 +306,7 @@ def backtest_periods(db, periods, *, months, **options):
     results=[]
     with db:
         for entry,exit_day in periods:
+            backtest_control.checkpoint()
             period_id=prepare_period(db,entry,exit_day,books,cached,pool)
             stocks=r._select(db,period=(period_id,period_id),**options)
             for stock in stocks:
@@ -310,6 +315,7 @@ def backtest_periods(db, periods, *, months, **options):
                 stock['contribution_pp']=stock['return_value']/len(stocks)*100
             spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
             results.append(dict(entry=str(entry),exit=str(exit_day),holdings=stocks,names=len(stocks),portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,spy=spy,is_final_period=exit_day==periods[-1][1]))
+        backtest_control.checkpoint()
     growth=spy_growth=1.
     for period in results:
         if growth is not None:growth=growth*(1+period['portfolio']) if period['portfolio'] is not None else None

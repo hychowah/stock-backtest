@@ -84,3 +84,15 @@ launcher to the feature worktree. Do not clear stable books for a test.
 Benchmark admission remains closed. This coordination note grants no execution,
 deployment, server stop/restart, market-data download or production cutover.
 Existing unrelated working-tree edits remain outside each task's commit.
+
+## Agreed exception: website run controls (26 October 2026)
+
+The user assigned main the narrow cancellation change for manual website runs.
+Main owns the auto-run toggle, Stop control and notices for changed settings.
+A request-local cancellation check observes a browser disconnect in
+`website/serve_app.py`. `scripts/backtest_control.py` supplies optional checks in
+`scripts/schedules.py` and `scripts/book_batch.py`. Standalone callers keep their
+existing interfaces. Financial formulas, request fields, result shapes, saved
+books and lock ordering stay the same. In-flight workers finish under the
+existing cleanup before cache ownership ends. The engine branch can integrate
+these checks deliberately with its replacement engine.

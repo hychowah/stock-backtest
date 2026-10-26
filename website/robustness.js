@@ -8,15 +8,16 @@ const RobustnessView=(()=>{
   function remember(next){
     configuration=next;
     try{localStorage.setItem('backtest-experiment',JSON.stringify(next));}catch(_){}
-    node('random-seed').value=String(next.seed);
+    if(!node('repeat-random').checked)node('random-seed').value=String(next.seed);
     node('robustness-replay').hidden=false;
     node('robustness-replay-note').textContent='Date set saved. Replay uses the same dates, filters and window, including after an interrupted run.';
   }
-  async function read(response,progress){
+  async function read(response,progress,isCurrent=()=>true){
     if(!response.body?.getReader)return response.json();
     const reader=response.body.getReader(),decoder=new TextDecoder();
     let buffer='',complete=null;
     function line(text){
+      if(!isCurrent())throw Error('Request cancelled.');
       if(!text.trim())return;
       const event=JSON.parse(text);
       if(event.type==='configuration'){remember(event.configuration);progress(event);}
@@ -35,7 +36,10 @@ const RobustnessView=(()=>{
       if(buffer.trim())line(buffer);
       if(!complete)throw Error('The server connection ended before all trials completed. Restart the launcher, then select Replay saved date test to reuse completed books.');
       return complete;
-    }finally{reader.releaseLock();}
+    }finally{
+      try{if(!isCurrent())await reader.cancel?.();}
+      finally{reader.releaseLock();}
+    }
   }
   function chart(){
     const key=node('robustness-measure').value||'cagr';
