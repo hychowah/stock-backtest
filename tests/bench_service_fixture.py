@@ -113,6 +113,11 @@ class SyntheticService:
     a new interpreter against the same synthetic saved data. Unknown closure
     retains this owner and its controls for explicit retry.
     """
+    start_seconds = START_SECONDS
+    client_seconds = CLIENT_SECONDS
+    close_seconds = CLOSE_SECONDS
+    max_response = MAX_RESPONSE
+
     def __init__(self, fixture, request, **scenario):
         self.fixture, self.request_spec = fixture, request
         self.control = fixture.root / ('http-' + uuid.uuid4().hex)
@@ -127,16 +132,13 @@ class SyntheticService:
         request = dict(self.request_spec, control=str(self.control), scenario=self.scenario)
         path = self.control / 'request.json'; path.write_bytes(encoded(request))
         _pending_services[id(self)] = self
-        command = [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
-            'import sys;sys.path[:0]=sys.argv[1:3];from bench_service_fixture import child;child(sys.argv[3])',
-            str(ROOT / 'tests'), str(ROOT / 'tools'), str(path)]
+        command = self.command(path)
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', NUMBA_NUM_THREADS='2',
                    OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
         try:
-            self.owned = OwnedProcess(command, env=env,
-                limits=ProcessLimits(512 * 1024**2, 8, 25, close_seconds=5.))
+            self.owned = OwnedProcess(command, env=env, limits=self.limits())
             self.owned.start()
-            ready = self.wait('ready', START_SECONDS)
+            ready = self.wait('ready', self.start_seconds)
             self.port = ready['port']
             if ready['host'] != '127.0.0.1' or self.port in (0, 3000):
                 raise AssertionError('Invalid disposable service address.')
@@ -148,7 +150,16 @@ class SyntheticService:
             except BaseException: error.synthetic_service = self
             raise
 
-    def wait(self, event, seconds=CLIENT_SECONDS):
+    def command(self, path):
+        return [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
+            'import sys;sys.path[:0]=sys.argv[1:3];from bench_service_fixture import child;child(sys.argv[3])',
+            str(ROOT / 'tests'), str(ROOT / 'tools'), str(path)]
+
+    def limits(self):
+        return ProcessLimits(512 * 1024**2, 8, 25, close_seconds=5.)
+
+    def wait(self, event, seconds=None):
+        seconds = self.client_seconds if seconds is None else seconds
         until = time.monotonic() + seconds
         while time.monotonic() < until:
             value = self.owned.event(.02)
@@ -162,19 +173,19 @@ class SyntheticService:
 
     @contextmanager
     def connection(self):
-        client = http.client.HTTPConnection('127.0.0.1', self.port, timeout=CLIENT_SECONDS)
+        client = http.client.HTTPConnection('127.0.0.1', self.port, timeout=self.client_seconds)
         self.clients.add(client)
         try: yield client
         finally: client.close(); self.clients.discard(client)
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, *, status=200):
         with self.connection() as client:
             body = None if payload is None else encoded(payload)
             client.request(method, path, body, {'Content-Type': 'application/json'})
             response = client.getresponse()
-            raw = response.read(MAX_RESPONSE + 1)
-            assert response.status == 200, (response.status, raw[:200])
-            assert len(raw) <= MAX_RESPONSE
+            raw = response.read(self.max_response + 1)
+            assert response.status == status, (response.status, raw[:200])
+            assert len(raw) <= self.max_response
             length = response.getheader('Content-Length')
             if length is not None: assert int(length) == len(raw)
             if path == '/api/robustness':
@@ -190,7 +201,7 @@ class SyntheticService:
             if not self.stop_sent and self.owned.process.poll() is None:
                 (self.control / 'stop').touch()
                 self.stop_sent = True
-            self.owned.process.wait(timeout=CLOSE_SECONDS)
+            self.owned.process.wait(timeout=self.close_seconds)
             self.owned.close()
             if not self.owned.closed: raise TimeoutError('Synthetic service closure is unconfirmed.')
             while not self.owned.events.empty():
