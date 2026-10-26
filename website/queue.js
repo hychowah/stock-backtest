@@ -39,8 +39,10 @@ const BacktestQueue=(()=>{
     node('queue-pause').textContent=paused?'Resume queue':'Pause queue';
     node('queue-pause').disabled=busy||!available;
     node('queue-refresh').disabled=busy;
-    node('queue-add').textContent=editing?'Save queued test':pending?'Retry pending submission':'Add current test to queue';
-    node('queue-add').disabled=busy||!available||(!editing&&!pending&&records.length>=limit);
+    for(const id of ['queue-add','queue-add-next']){
+      node(id).textContent=editing?'Save queued test':pending?'Retry queue submission':'Add to queue';
+      node(id).disabled=busy||!available||(!editing&&!pending&&records.length>=limit);
+    }
     node('queue-cancel-edit').hidden=!editing;node('queue-cancel-edit').disabled=busy;
     node('queue-edit-note').hidden=!isManaging();
     node('queue-edit-note').textContent=editing?'This test is held while you edit the strategy controls. Auto-run is suspended. Save the queued test to release it, or cancel to keep its previous settings.':'Auto-run is suspended while the queue has waiting or running tests. Change the strategy controls and add another test. Run backtest still starts an immediate test.';
@@ -107,6 +109,11 @@ const BacktestQueue=(()=>{
   }
   async function add(){
     await perform(async()=>{
+      if(!editing&&!pending&&!['custom','random'].includes(callbacks.settings().mode)&&callbacks.configure){
+        callbacks.prepare?.();callbacks.configure();
+        message('Queue setup is ready. Choose fixed or random dates and adjust the settings, then select Add to queue beside Run backtest. No test has started.');
+        return;
+      }
       if(editing){
         await mutate('/'+editing.id+'/update',{...specification(),revision:editing.revision},{success:'Queued test updated. It can run with the new settings.'});
         editing.draft.end();editing=null;node('queue-name').value='';return;
@@ -151,7 +158,7 @@ const BacktestQueue=(()=>{
   }
   function init(config){
     callbacks=config;
-    node('queue-add').addEventListener('click',add);
+    for(const id of ['queue-add','queue-add-next'])node(id).addEventListener('click',add);
     node('queue-refresh').addEventListener('click',()=>perform(refresh));
     node('queue-pause').addEventListener('click',()=>perform(()=>mutate('/pause',{paused:!paused},{success:paused?'Queue resumed.':'Queue paused. The active test can finish.'})));
     node('queue-cancel-edit').addEventListener('click',()=>editing?action('release',editing.id):undefined);

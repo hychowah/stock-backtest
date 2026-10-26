@@ -401,6 +401,10 @@ display labels. Opening it does not calculate.
 `website/queue.js` manages queue controls. Auto-run is suspended while the queue
 has waiting/running work or an active edit. Adding, copying or editing an item
 turns Auto-run off for batch setup. Explicit Run remains available.
+The Add to queue action stays beside Run backtest in the strategy toolbar.
+From latest or January mode, it opens custom-date setup with Auto-run off and
+does not submit a calculation. A second click submits the selected fixed/random
+settings. View queue links to the list below the form.
 Parameter edits never mutate submitted tests. Preserve acknowledged queue
 mutations if a list refresh fails, and ignore stale list responses. Checks:
 `python3 tests/test_queue.py` on WSL and native Windows,

@@ -37,8 +37,11 @@ cancel. Keep the server computer awake and its terminal open. Temporary results
 last 24 hours, up to four recent runs, until the server exits. Use **Save displayed
 backtest** to keep a completed result in the library.
 
-Use **Backtest queue** for overnight fixed or random-date tests. Add the current
-custom-date settings, change parameters and add another test. Edit, hold, reorder
+Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
+tests. From latest or January mode, the first click opens custom-date settings
+and turns off Auto-run without starting a test. Set your parameters, then select
+**Add to queue** again. Use **View queue** to see the list below the strategy
+controls. Change parameters and add another test. Edit, hold, reorder
 or delete waiting tests. Pause the queue to let the active test finish without
 starting another. Stop cancels only the selected active test. Auto-run is
 suspended while the queue has waiting or running work. Adding, copying or

@@ -433,5 +433,10 @@ document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleVi
 SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest});
 BacktestQueue.init({beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
   prepare:()=>{autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
+  configure:()=>{
+    screeningMode='backtest';document.getElementById('schedule-kind').value='custom';
+    setModeVisibility();settingsChanged(undefined,false);
+    document.getElementById('schedule-choice').scrollIntoView?.({behavior:'smooth',block:'center'});
+  },
   metricLabel:id=>sourceCatalog().metrics[id]?.label||id,filterLabel:id=>sourceCatalog().filters[id]?.label||id});
 ScheduleView.resume();

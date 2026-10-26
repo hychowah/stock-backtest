@@ -12,3 +12,6 @@
 #queue-list details{font-size:13px;color:#536762}
 #queue-list details p{margin:8px 0;overflow-wrap:anywhere}
 @media(max-width:700px){#queue-list>li{grid-template-columns:minmax(0,1fr)}.queue-actions{max-width:100%;justify-content:flex-start}.queue-add>button{flex:1 1 100%}}
+.strategy-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.strategy-actions #queue-add{border:2px solid #20775e;color:#193e36;font-weight:600;min-height:44px}
+.strategy-actions #queue-link{display:inline-flex;align-items:center;min-height:44px;padding:0 8px;color:#20775e}

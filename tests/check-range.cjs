@@ -379,6 +379,33 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
  queueRows=[];await run('BacktestQueue.refresh()');
  console.log('Passed: held draft ownership across queue open/copy, saved-library opening and manual recovery; save/cancel/delete and failed admission release the form.');
 
+ // The visible queue action opens setup without launching an immediate test.
+ let submissions=0;
+ ctx.fetch=async(url,options={})=>{
+   assert.equal(url,'/api/backtest-queue','Queue setup must never submit an immediate calculation');
+   if(options.method==='POST'){
+     submissions++;
+     const body=JSON.parse(options.body);
+     const record={...body,state:'queued',position:queueRows.length+1,revision:1};
+     queueRows.push(record);return {ok:true,json:async()=>record};
+   }
+   return {ok:true,json:async()=>({limit:100,paused:true,records:queueRows})};
+ };
+ for(const entry of ['latest','backtest']){
+   run(`switchMode('${entry}')`);el('schedule-kind').value='january';run('setModeVisibility()');
+   el('auto-run').checked=true;
+   await el('queue-add').handlers.click();
+   assert.equal(run('currentSettings().mode'),'custom');assert.equal(el('auto-run').checked,false);
+   assert.equal(storage.get('backtest-auto-run'),'false');assert.equal(submissions,0);
+   assert(el('queue-status').textContent.includes('No test has started'));
+ }
+ el('rank-to').value='12';run('settingsChanged()');assert.equal(submissions,0);
+ await el('queue-add-next').handlers.click();assert.equal(submissions,1);
+ assert.equal(queueRows[0].options.rank_to,12);assert.equal(queueRows[0].mode,'custom');
+ assert.equal(el('queue-add').textContent,'Add to queue');
+ queueRows=[];await run('BacktestQueue.refresh()');
+ console.log('Passed: Add to queue opens manual setup from latest/January without calculation, then submits the chosen settings to the queue.');
+
 run("filterConditions=[];switchMode('latest')");
 el('add-filter').handlers.click();
 for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','peg','roe','current_ratio','interest_coverage','debt_equity']) {
