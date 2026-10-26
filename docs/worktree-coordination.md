@@ -97,6 +97,21 @@ books and lock ordering stay the same. In-flight workers finish under the
 existing cleanup before cache ownership ends. The engine branch can integrate
 these checks deliberately with its replacement engine.
 
+The user's follow-up assigns main the server-owned run adapter. New
+`website/backtest_jobs.py` and `website/backtest-runs.js` separate browser
+connections from job lifetime. `/api/backtest-runs/<id>` adds submission,
+status/result and explicit Stop actions. Existing `/api/schedule` and
+`/api/robustness` contracts remain unchanged. The adapter calls the existing
+engine functions and optional cancellation context. It changes no engine
+formula, worker, transaction, progress field or cache lock. A narrow
+`Server.server_close()` hook stops and joins these threads before existing
+lifetime ownership ends. Main owns this adapter, its browser integration and
+tests. The engine branch can integrate it deliberately with the earlier checks.
+The additive `/api/backtest-runs/<id>/status` route omits holdings while browser
+recovery checks current server status across saved run IDs. Full result retrieval
+keeps the original run route and payload. Admission and Stop markers stay in the
+browser transport module; views do not select the submission operation.
+
 ## Agreed exception: saved backtest results (26 October 2026)
 
 The user assigned main the narrow adapter for saving random-trial stock details.

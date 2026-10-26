@@ -30,6 +30,13 @@ January books or custom trade dates with monthly, quarterly, half-yearly or
 yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)
 directly for the saved latest/January views; custom schedules use the local service.
 
+Custom and random-date backtests run on the server. Locking your phone,
+refreshing, or closing the page does not stop them. Reopen the same address in
+the same browser to recover progress or the result. Use **Stop backtest** to
+cancel. Keep the server computer awake and its terminal open. Temporary results
+last 24 hours, up to four recent runs, until the server exits. Use **Save displayed
+backtest** to keep a completed result in the library.
+
 Choose **Manage backtest data** to inspect saved files and date coverage.
 Choose a stock group or enter symbols. **Download missing data** fills missing
 financial symbols and price ranges with your local FMP key. **Rebuild prepared

@@ -1,7 +1,7 @@
 /* Custom dated books use the local prepared daily cache. Rendering consumes
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
-  let requestNumber=0,running=false,timer=null,startedAt=0,buttonText='',controller=null,inspectedTrial=null;
+  let requestNumber=0,running=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
   const hasResults=()=>!!ResultArtifacts.forView('custom');
   function displayedResult(){
     const artifact=ResultArtifacts.forView('custom');
@@ -16,14 +16,14 @@ const ScheduleView=(()=>{
   }
   function startBusy(){
     running=true;startedAt=Date.now();
-    const button=node('run-screen');buttonText=button.textContent;
+    const button=node('run-screen');
     button.disabled=true;
     node('stop-backtest').hidden=false;
     button.textContent='Backtesting…';
     node('custom-view').setAttribute('aria-busy','true');
     node('schedule-progress').hidden=false;
     node('schedule-message').className='';
-    node('schedule-message').textContent=hasResults()?'Backtest in progress. Previous results remain below until it finishes.':'Backtest in progress. Results will appear here when ready.';
+    node('schedule-message').textContent='Backtest runs on the server. You can lock your phone or close this page. Reopen this address to retrieve the result.'+(hasResults()?' Previous results remain below until it finishes.':'');
     const tick=()=>node('schedule-elapsed').textContent=elapsed();
     tick();timer=setInterval(tick,1000);
     updateResultsState();
@@ -32,10 +32,11 @@ const ScheduleView=(()=>{
     if(timer!==null){clearInterval(timer);timer=null;}
     if(running){
       node('run-screen').disabled=false;
-      node('run-screen').textContent=buttonText;
+      node('run-screen').textContent=viewKey()==='latest'?'Screen latest':'Run backtest';
     }
-    running=false;controller=null;
+    running=false;activeRun=null;
     node('stop-backtest').hidden=true;
+    node('stop-backtest').disabled=false;
     node('schedule-progress').hidden=true;
     node('custom-view').setAttribute('aria-busy','false');
     updateResultsState();
@@ -96,7 +97,6 @@ const ScheduleView=(()=>{
   }
   async function run(options,override=null,replay=null){
     if(running)return;
-    const number=++requestNumber;
     if(typeof location==='undefined' || location.protocol==='file:'){
       node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
     }
@@ -108,28 +108,43 @@ const ScheduleView=(()=>{
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
+    await follow(BacktestRuns.create(random?'random':'custom',body));
+  }
+  async function follow(run){
+    if(running)return;
+    const number=++requestNumber,body=run.options,random=run.mode==='random';
+    activeRun=run;
     node('screen-error').textContent='';
     node('schedule-progress-detail').textContent=body.start+' → '+body.end+' · every '+body.months+' month(s). '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
     node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
-    controller=new AbortController();
     startBusy();
+    startedAt=run.submitted;
     try{
-      const headers={'Content-Type':'application/json'};
-      if(random)headers['X-Backtest-Details']='holdings';
-      const response=await fetch(random?'/api/robustness':'/api/schedule',{method:'POST',headers,body:JSON.stringify(body),signal:controller.signal});
-      if(number!==requestNumber){await response.body?.cancel();return;}
-      if(!response.ok){
-        if(response.status===404)throw Error('This tab is connected to an older server. Run start.cmd again and use the new browser tab it opens. Refreshing this tab alone does not update the server.');
-        const error=await response.json();throw Error(error.error||'Schedule calculation failed.');
-      }
-      const next=random?await RobustnessView.read(response,event=>{
-        if(number===requestNumber && (event.type==='progress'||event.type==='preparation')){
+      let rememberedSeed=null;
+      const state=await BacktestRuns.follow(run,state=>{
+        if(state.state==='reconnecting'){
+          node('schedule-progress-detail').textContent='Connection lost. Reconnecting to the server run. You can reopen this address later.';return;
+        }
+        if(state.configuration && state.configuration.seed!==rememberedSeed){
+          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration);
+        }
+        if(state.state==='stopping'){
+          node('schedule-progress-detail').textContent='Stopping on the server. Waiting for workers and cache cleanup.';return;
+        }
+        const event=state.progress;
+        if(event && (event.type==='progress'||event.type==='preparation')){
           node('trial-progress').value=event.completed;node('trial-progress').max=event.total;
           const books=event.total_new_books>0?' · preparing books '+event.calculated_books+'/'+event.total_new_books+' with '+event.workers+' worker'+(event.workers===1?'':'s'):'';
           node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · every '+body.months+' month(s).';
         }
-      },()=>number===requestNumber):await response.json();
-      if(number!==requestNumber)return;
+      },{current:()=>number===requestNumber});
+      if(number!==requestNumber || !state)return;
+      if(state.state==='cancelled'){
+        node('schedule-message').textContent='Backtest stopped.'+(hasResults()?' Previous results remain displayed.':' Select Run backtest when ready.');
+        return;
+      }
+      if(state.state==='failed')throw Error(state.error);
+      const next=state.result;
       completeResult({mode:random?'random':'custom',...body},next);
       if(random){
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
@@ -138,8 +153,7 @@ const ScheduleView=(()=>{
       }
       node('schedule-message').className='backtest-complete';
     }catch(error){if(number===requestNumber){
-      const message=error instanceof TypeError?'Could not reach the server. If you closed it, restart start.cmd and run this backtest again.':error.message;
-      node('screen-error').textContent=message+(hasResults()?' The previous results remain displayed.':' Try running the backtest again.');
+      node('screen-error').textContent=error.message+(hasResults()?' The previous results remain displayed.':' Try running the backtest again.');
       node('schedule-message').textContent='Backtest failed after '+elapsed()+'.';
       node('schedule-message').className='backtest-failed';
     }}finally{if(number===requestNumber)stopBusy();}
@@ -153,6 +167,19 @@ const ScheduleView=(()=>{
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
   }
+  async function resume(){
+    if(typeof location==='undefined'||location.protocol==='file:')return;
+    if(running||!BacktestRuns.pending())return;
+    startBusy();
+    node('stop-backtest').hidden=true;
+    node('schedule-progress-detail').textContent='Checking saved runs on the server…';
+    let run;
+    try{run=await BacktestRuns.recover(()=>{node('schedule-progress-detail').textContent='Reconnecting to check saved runs…';});}
+    finally{stopBusy();}
+    if(!run){node('screen-error').textContent='No previous run is available. It may have stopped, failed or expired. Run the backtest again.';return;}
+    restoreBacktestSettings({mode:run.mode,...run.options});
+    return follow(run);
+  }
   function inspect(index){inspectedTrial=index;render();}
   function show(artifact){
     inspectedTrial=null;
@@ -164,10 +191,10 @@ const ScheduleView=(()=>{
     node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
   }
   function cancel(){
-    if(!running)return;
-    requestNumber++;controller?.abort();stopBusy();
-    node('schedule-message').textContent='Backtest stopped.'+(hasResults()?' Previous results remain displayed.':' Select Run backtest when ready.')+' A new run may wait for cleanup.';
-    node('schedule-message').className='';
+    if(!running||!activeRun)return;
+    BacktestRuns.stop(activeRun);
+    node('stop-backtest').disabled=true;
+    node('schedule-message').textContent='Stop requested. The server will confirm after worker and cache cleanup. If disconnected, this request will retry when the page reconnects.';
   }
-  return {run,init,cancel,show,isRunning:()=>running};
+  return {run,init,resume,cancel,show,isRunning:()=>running};
 })();

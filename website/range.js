@@ -31,6 +31,10 @@ function applyPresentation(presentation={}){
 }
 function publishResult(artifact){
   const completed=ResultArtifacts.publish(artifact);
+  if((completed.kind==='random'?'custom':completed.kind)!==viewKey()){
+    if(['custom','random'].includes(completed.kind))ScheduleView.show(completed);
+    updateResultsState();return;
+  }
   applyPresentation(completed.presentation);
   syncCatalogControls();renderConditions();updateMetricLabels(completed.settings);
   if(completed.kind==='latest')renderLatest(completed.result);
@@ -190,7 +194,6 @@ function januaryPresentation(result){
 }
 function setModeVisibility(){
   const latest=screeningMode==='latest',custom=!latest && document.getElementById('schedule-kind').value==='custom';
-  if(!custom)ScheduleView.cancel();
   document.getElementById('schedule-choice').hidden=latest;
   document.getElementById('schedule-controls').hidden=!custom;
   document.getElementById('custom-view').hidden=!custom;
@@ -315,10 +318,13 @@ function syncCatalogControls(){
 function restoreSavedBacktest(snapshot){
   const artifact=ResultArtifacts.decode(snapshot);
   if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
-  ScheduleView.cancel();
-  const settings=artifact.settings;
+  restoreBacktestSettings(artifact.settings,artifact.catalog,artifact.result.configuration?.seed);
+  publishResult(artifact);
+  if(artifact.kind!=='january')document.getElementById('schedule-message').textContent='Saved backtest restored. No calculation was run.';
+}
+function restoreBacktestSettings(settings,catalog=sourceCatalog(),seed=settings.seed){
   screeningMode='backtest';
-  document.getElementById('schedule-kind').value=artifact.kind==='january'?'january':'custom';
+  document.getElementById('schedule-kind').value=settings.mode==='january'?'january':'custom';
   setModeVisibility();
 
   const set=(id,value,label=value)=>{
@@ -328,22 +334,21 @@ function restoreSavedBacktest(snapshot){
   };
   for(const [key,id] of Object.entries(fields)){
     const value=settings[key];
-    set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(artifact.catalog.metrics[value]?.label||value):value);
+    set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
   }
   set('rank-from',settings.rank_from??1);set('rank-to',settings.rank_to??50);
   filterConditions=(settings.filters||[]).map(condition=>({...condition}));
-  if(artifact.kind==='january'){
+  if(settings.mode==='january'){
     set('from-year',settings.first);set('to-year',settings.last);
   }else{
     set('trade-start',settings.start);set('trade-end',settings.end);set('rebalance-months',settings.months);
-    set('date-testing',artifact.kind==='random'?'random':'single');
-    if(artifact.kind==='random'){
-      set('random-trials',settings.trials);set('random-seed',artifact.result.configuration.seed);
-      document.getElementById('repeat-random').checked=true;document.getElementById('random-seed').disabled=false;
+    set('date-testing',settings.mode==='random'?'random':'single');
+    if(settings.mode==='random'){
+      set('random-trials',settings.trials);set('random-seed',seed??42);
+      document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
     }
   }
-  publishResult(artifact);
-  if(artifact.kind!=='january')document.getElementById('schedule-message').textContent='Saved backtest restored. No calculation was run.';
+  renderConditions();
 }
 initializeFilters();
 ScheduleView.init();
@@ -402,3 +407,4 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
 SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest});
+ScheduleView.resume();

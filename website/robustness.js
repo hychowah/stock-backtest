@@ -120,5 +120,5 @@ const RobustnessView=(()=>{
     node('robustness-download').addEventListener('click',download);
     node('robustness-inspect').addEventListener('click',()=>{const result=getResult(),index=+node('robustness-trial').value;return result?inspect(result.trials[index],result.configuration,result.trial_results?.[index],index):undefined;});
   }
-  return {read,render,init};
+  return {read,render,init,remember};
 })();

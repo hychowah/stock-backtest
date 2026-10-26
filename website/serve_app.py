@@ -25,6 +25,7 @@ import cache_access
 import diagnostics
 import backtest_control
 import saved_backtests
+import backtest_jobs
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -32,6 +33,14 @@ SAVED_BACKTESTS=saved_backtests.Store()
 
 
 class Server(ThreadingHTTPServer):
+    def __init__(self,*args,**kwargs):
+        self.backtest_jobs=backtest_jobs.Jobs()
+        super().__init__(*args,**kwargs)
+
+    def server_close(self):
+        self.backtest_jobs.close()
+        super().server_close()
+
     def handle_error(self,request,client_address):
         error=sys.exc_info()[1]
         diagnostics.failure('http.failed',error)
@@ -66,6 +75,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.launcher_request():return
+        if self.path.startswith('/api/backtest-runs/'):
+            self.backtest_run_request();return
         if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
             self.saved_backtest_request();return
         if self.path=='/data.html':
@@ -99,6 +110,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.launcher_request():return
+        if self.path.startswith('/api/backtest-runs/'):
+            self.backtest_run_request();return
 
         if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
             self.saved_backtest_request();return
@@ -139,6 +152,33 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith('/api/backtests/'):
             self.saved_backtest_request();return
         self.reply(404,dict(error='Unknown endpoint.'))
+
+    def backtest_run_request(self):
+        origin=self.headers.get('Origin')
+        if origin and origin!='http://'+self.headers.get('Host',''):
+            self.reply(403,dict(error='Open the website to manage backtest runs.'));return
+        path=self.path.removeprefix('/api/backtest-runs/').split('/')
+        identifier=path[0]
+        jobs=self.server.backtest_jobs
+        try:
+            if self.command=='GET' and len(path)==1:
+                self.reply(200,jobs.snapshot(identifier))
+            elif self.command=='GET' and path[1:]==['status']:
+                self.reply(200,jobs.snapshot(identifier,include_result=False))
+            elif self.command=='POST' and path[1:]==['stop']:
+                self.reply(202,jobs.cancel(identifier))
+            elif self.command=='POST' and len(path)==1:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=16384:raise ValueError('Invalid request size.')
+                def invalid(value):raise ValueError('Backtest values must be finite.')
+                request=json.loads(self.rfile.read(length),parse_constant=invalid)
+                if not isinstance(request,dict):raise ValueError('Expected backtest options.')
+                self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options')))
+            else:self.reply(404,dict(error='Unknown run action.'))
+        except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
+        except backtest_jobs.Busy as error:self.reply(409,dict(error=str(error)))
+        except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+        except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
 
     def saved_backtest_request(self):
         origin=self.headers.get('Origin')
