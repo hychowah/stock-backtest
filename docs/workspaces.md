@@ -36,6 +36,11 @@ reviewed. Commit authorized source changes before deliberate publication.
 
 From Windows Terminal, run `backtest-web.cmd`. The installed command calls the Windows runtime launcher. It asks the current WSL deployment tool to retain the installed revision, then starts native Windows Python in the same terminal. Ctrl+C stops the server. WSL must be available to run this deployment step.
 
+The source launcher also works from the WSL network path. It locates
+`tools/deploy.py` relative to the command file. It does not require CMD to use
+that network path as its working directory. This launcher fix is in source
+until a committed revision containing it is installed.
+
 The running server does not load WSL edits. The installed launcher already delegates
 to the current WSL tool, so its normal next invocation uses this revision rule.
 The updated native forwarding of an explicit revision is source-only until it
