@@ -73,3 +73,8 @@ website to free slots. Reaching the limit never removes an older record.
 limit across server instances. Each complete snapshot is compressed inside its
 record. A failed save keeps existing records. This database does not participate
 in financial-cache freshness or rebuilds.
+
+Saved snapshots support versions 1 and 2 within the same database table. Version 2
+uses semantic presentation fields instead of DOM IDs and CSS classes. The browser
+converts version-1 records when opening them. Reading old records never rewrites
+their stored contents. Both formats preserve the original stock rows and returns.

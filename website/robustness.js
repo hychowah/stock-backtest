@@ -4,7 +4,7 @@ const RobustnessView=(()=>{
   const node=id=>document.getElementById(id);
   const pct=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let result=null,configuration=null;
+  let configuration=null,getResult=()=>null;
   function remember(next){
     configuration=next;
     try{localStorage.setItem('backtest-experiment',JSON.stringify(next));}catch(_){}
@@ -41,7 +41,7 @@ const RobustnessView=(()=>{
       finally{reader.releaseLock();}
     }
   }
-  function chart(){
+  function chart(result){
     const key=node('robustness-measure').value||'cagr';
     const label={cagr:'CAGR',total_return:'Total return',excess_cagr:'CAGR difference vs SPY (pp)'}[key];
     const complete=result.trials.filter(t=>Number.isFinite(t.cagr));
@@ -89,9 +89,9 @@ const RobustnessView=(()=>{
     if(series.every(s=>!s.sd))node('robustness-chart-note').textContent+=' Each series has identical returns; no bell curves are fitted.';
   }
   function render(next){
-    result=next;node('robustness-results').hidden=false;
+    const result=next;node('robustness-results').hidden=false;
     remember(result.configuration);
-    chart();
+    chart(result);
     const d=result.distributions;
     node('robustness-mean').textContent=pct(d.cagr.mean);
     node('robustness-median').textContent=pct(d.cagr.median);
@@ -104,6 +104,7 @@ const RobustnessView=(()=>{
     node('robustness-trial').value='0';
   }
   function download(){
+    const result=getResult();
     if(!result)return;
     const keys=['trial','start','first_trade','end','cash_days','periods','cagr','spy_cagr','excess_cagr','total_return','growth','spy_growth','empty_periods','short_periods','seed','months','dates'];
     const rows=[keys,...result.trials.map(t=>keys.map(k=>k==='dates'?t.dates.join(';'):k==='seed'?result.configuration.seed:k==='months'?result.configuration.months:t[k]))];
@@ -111,12 +112,13 @@ const RobustnessView=(()=>{
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='random-dates-seed-'+result.configuration.seed+'.csv';link.click();URL.revokeObjectURL(url);
   }
-  function init(inspect,replay){
+  function init(inspect,replay,readResult=()=>null){
+    getResult=readResult;
     try{const saved=JSON.parse(localStorage.getItem('backtest-experiment'));if(saved)remember(saved);}catch(_){}
     node('robustness-replay').addEventListener('click',()=>configuration?replay(configuration):undefined);
-    node('robustness-measure').addEventListener('change',()=>result&&chart());
+    node('robustness-measure').addEventListener('change',()=>{const result=getResult();if(result)chart(result);});
     node('robustness-download').addEventListener('click',download);
-    node('robustness-inspect').addEventListener('click',()=>result?inspect(result.trials[+node('robustness-trial').value],result.configuration,result.trial_results?.[+node('robustness-trial').value]):undefined);
+    node('robustness-inspect').addEventListener('click',()=>{const result=getResult(),index=+node('robustness-trial').value;return result?inspect(result.trials[index],result.configuration,result.trial_results?.[index],index):undefined;});
   }
   return {read,render,init};
 })();

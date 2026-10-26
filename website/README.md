@@ -242,3 +242,26 @@ stored rows. It does not recalculate the book. The website opts into full trial
 results with `X-Backtest-Details: holdings`. Existing summary-only API clients
 keep their existing response. Save a completed new run; older summary-only
 results do not contain enough evidence for a complete random backtest record.
+
+### Completed-result ownership and saved-record compatibility
+
+`result-artifacts.js` owns one immutable completed artifact per view. Its submitted
+settings, result, catalog and semantic presentation context travel together.
+Fresh calculation and saved-record opening use the same publication and rendering
+path. Renderers, downloads, stale-setting notices and the library read this
+artifact. The library owns record operations and the shared record list.
+
+Version-2 saved snapshots store coverage text, warning severity, range notes and
+period labels without page selectors or CSS classes. The browser decodes
+version-1 records into this format when opening them. Stored version-1 records
+are not rewritten. Saved labels take precedence while displaying saved results.
+New calculations use the current catalog. Random trial inspection reads the
+selected trial from the same completed artifact.
+
+An acknowledged save or deletion updates the visible list immediately. A
+background refresh reconciles other sessions' records. A refresh failure reports
+that the action succeeded and the list could not be refreshed. Older list
+responses cannot replace a newer acknowledged change.
+
+Check `node tests/check-result-artifacts.cjs` alongside the saved-library and range
+checks. The library checks include failed refreshes and out-of-order responses.

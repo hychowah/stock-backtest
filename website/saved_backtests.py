@@ -26,7 +26,7 @@ class Missing(ValueError):
 
 def validate(snapshot):
     """Check completeness, without reinterpreting financial calculations."""
-    if not isinstance(snapshot,dict) or snapshot.get('version')!=1:
+    if not isinstance(snapshot,dict) or snapshot.get('version') not in (1,2):
         raise ValueError('Unsupported saved backtest format.')
     kind=snapshot.get('kind')
     if kind not in ('january','custom','random'):
@@ -57,6 +57,8 @@ def validate(snapshot):
     catalog=snapshot.get('catalog')
     if catalog is not None and (not isinstance(catalog,dict) or not isinstance(catalog.get('metrics'),dict) or not isinstance(catalog.get('filters'),dict)):
         raise ValueError('Saved display labels are invalid.')
+    if snapshot['version']==2 and not isinstance(snapshot.get('presentation'),dict):
+        raise ValueError('Saved presentation context is required.')
     return snapshot
 
 

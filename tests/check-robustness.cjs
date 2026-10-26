@@ -36,7 +36,7 @@ function response(events,{truncate=false}={}){
  ctx.response=response([{type:'error',message:'Calculation failed'}]);
  await assert.rejects(()=>call('RobustnessView.read(response,progress)'),/Calculation failed/);assert(ctx.response.reader.released);
  ctx.batch=batch;let inspected;
- ctx.inspect=(trial,config)=>inspected={trial,config};call('RobustnessView.init(inspect);RobustnessView.render(batch)');
+ ctx.inspect=(trial,config)=>inspected={trial,config};call('RobustnessView.init(inspect,()=>{},()=>batch);RobustnessView.render(batch)');
  assert.equal(node('robustness-results').hidden,false);assert.equal(node('robustness-mean').textContent,'15.00%');
  assert.equal(node('random-seed').value,'42');assert(node('robustness-distribution').innerHTML.includes('Strategy CAGR'));
  assert(node('robustness-chart').innerHTML.includes('<rect'));

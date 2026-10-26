@@ -48,6 +48,18 @@ class StoreTests(unittest.TestCase):
             self.assertNotIn('snapshot',self.store.list()[0])
         self.assertEqual(len(self.store.list()),3)
 
+    def test_both_formats_roundtrip_without_rewriting_legacy_records(self):
+        legacy=self.store.save('Legacy',snapshot())
+        with closing(sqlite3.connect(self.path)) as db:
+            original=db.execute('SELECT snapshot FROM records WHERE id=?',(legacy['id'],)).fetchone()[0]
+        modern=snapshot();modern['version']=2;modern.pop('context')
+        modern['presentation']=dict(coverage='Original coverage',notice=dict(text='Warning',severity='warning'),rangeNote='Original dates',periodLabel='2015')
+        record=self.store.save('Modern',modern)
+        self.assertEqual(self.store.get(record['id'])['snapshot'],modern)
+        self.assertEqual(self.store.get(legacy['id'])['snapshot'],snapshot())
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute('SELECT snapshot FROM records WHERE id=?',(legacy['id'],)).fetchone()[0],original)
+
     def test_limit_never_evicts_and_deleting_one_frees_one_slot(self):
         records=[self.store.save('Book '+str(i),snapshot()) for i in range(20)]
         with self.assertRaises(saved.Full):self.store.save('Overflow',snapshot())

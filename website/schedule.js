@@ -1,7 +1,12 @@
 /* Custom dated books use the local prepared daily cache. Rendering consumes
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
-  let result=null,requestNumber=0,running=false,timer=null,startedAt=0,buttonText='',hasResults=false,controller=null;
+  let requestNumber=0,running=false,timer=null,startedAt=0,buttonText='',controller=null,inspectedTrial=null;
+  const hasResults=()=>!!ResultArtifacts.forView('custom');
+  function displayedResult(){
+    const artifact=ResultArtifacts.forView('custom');
+    return artifact?.kind==='random'?artifact.result.trial_results?.[inspectedTrial]:artifact?.result;
+  }
   const node=id=>document.getElementById(id);
   const format=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -18,7 +23,7 @@ const ScheduleView=(()=>{
     node('custom-view').setAttribute('aria-busy','true');
     node('schedule-progress').hidden=false;
     node('schedule-message').className='';
-    node('schedule-message').textContent=hasResults?'Backtest in progress. Previous results remain below until it finishes.':'Backtest in progress. Results will appear here when ready.';
+    node('schedule-message').textContent=hasResults()?'Backtest in progress. Previous results remain below until it finishes.':'Backtest in progress. Results will appear here when ready.';
     const tick=()=>node('schedule-elapsed').textContent=elapsed();
     tick();timer=setInterval(tick,1000);
     updateResultsState();
@@ -36,6 +41,7 @@ const ScheduleView=(()=>{
     updateResultsState();
   }
   function csv(kind){
+    const result=displayedResult();
     if(!result)return;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
     const observations=kind==='holdings'?result.periods.flatMap(p=>p.holdings.map(h=>({...h,period_start:p.entry,period_end:p.exit,metric:result.options.metric??'ev_ebitda'}))):result.periods;
@@ -62,6 +68,7 @@ const ScheduleView=(()=>{
     node('schedule-chart').innerHTML=html;
   }
   function stocks(){
+    const result=displayedResult();
     if(!result)return;
     const period=result.periods[+node('schedule-period').value];
     if(!period)return;
@@ -72,6 +79,8 @@ const ScheduleView=(()=>{
     node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions are stock return divided by actual stock count; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
   }
   function render(){
+    const result=displayedResult();
+    if(!result)return;
     node('schedule-results').hidden=false;
     node('schedule-dates').textContent=result.start+' → '+result.end+' · every '+result.months+' month(s)';
     node('schedule-cagr').textContent=format(result.cagr);
@@ -121,23 +130,16 @@ const ScheduleView=(()=>{
         }
       },()=>number===requestNumber):await response.json();
       if(number!==requestNumber)return;
-      renderingCatalog={metrics:screeningData.metrics,filters:screeningData.filter_catalog};
+      completeResult({mode:random?'random':'custom',...body},next);
       if(random){
-        RobustnessView.render(next);hasResults=true;
-        rememberResult({mode:'random',...body},next);
-        node('schedule-results').hidden=true;
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
-        node('schedule-message').className='backtest-complete';
-        return;
+      }else{
+        node('schedule-message').textContent='Backtest complete · '+next.periods.length+' holding periods · '+elapsed()+' elapsed.';
       }
-      if(!override)node('robustness-results').hidden=true;
-      result=next;render();hasResults=true;
-      rememberResult({mode:'custom',...body},next);
-      node('schedule-message').textContent='Backtest complete · '+result.periods.length+' holding periods · '+elapsed()+' elapsed.';
       node('schedule-message').className='backtest-complete';
     }catch(error){if(number===requestNumber){
       const message=error instanceof TypeError?'Could not reach the server. If you closed it, restart start.cmd and run this backtest again.':error.message;
-      node('screen-error').textContent=message+(hasResults?' The previous results remain displayed.':' Try running the backtest again.');
+      node('screen-error').textContent=message+(hasResults()?' The previous results remain displayed.':' Try running the backtest again.');
       node('schedule-message').textContent='Backtest failed after '+elapsed()+'.';
       node('schedule-message').className='backtest-failed';
     }}finally{if(number===requestNumber)stopBusy();}
@@ -146,25 +148,26 @@ const ScheduleView=(()=>{
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration,stored)=>stored?inspect(stored):run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration));
+    RobustnessView.init((trial,configuration,stored,index)=>stored?inspect(index):run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
   }
-  function inspect(stored){result=stored;render();hasResults=true;}
-  function restore(stored,kind){
-    if(kind==='random'){
-      RobustnessView.render(stored);node('schedule-results').hidden=true;
+  function inspect(index){inspectedTrial=index;render();}
+  function show(artifact){
+    inspectedTrial=null;
+    if(artifact.kind==='random'){
+      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
     }else{
-      result=stored;render();node('robustness-results').hidden=true;
+      render();node('robustness-results').hidden=true;
     }
-    hasResults=true;node('schedule-message').textContent='Saved backtest restored. No calculation was run.';node('schedule-message').className='';
+    node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
   }
   function cancel(){
     if(!running)return;
     requestNumber++;controller?.abort();stopBusy();
-    node('schedule-message').textContent='Backtest stopped.'+(hasResults?' Previous results remain displayed.':' Select Run backtest when ready.')+' A new run may wait for cleanup.';
+    node('schedule-message').textContent='Backtest stopped.'+(hasResults()?' Previous results remain displayed.':' Select Run backtest when ready.')+' A new run may wait for cleanup.';
     node('schedule-message').className='';
   }
-  return {run,init,cancel,restore,isRunning:()=>running};
+  return {run,init,cancel,show,isRunning:()=>running};
 })();

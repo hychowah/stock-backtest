@@ -362,3 +362,12 @@ The optional `robustness.run(..., capture=observer)` receives each completed
 trial's original result. Observers must not mutate it. Preserve the default
 summary-only result and all existing calculation/progress contracts. Saved
 random records require ordered `trial_results` for every completed trial.
+
+`website/result-artifacts.js` owns the immutable completed artifact for each
+browser view. Publish fresh and reopened results through this same boundary.
+Views, downloads, setting-match notices and saving must read that artifact;
+keep live form edits separate. Persist semantic presentation fields, not DOM
+selectors or CSS classes. Decode version-1 saved records without rewriting them.
+Confirmed library mutations must remain successful if list reconciliation fails.
+Ignore list responses that precede a newer acknowledged mutation. Check
+`node tests/check-result-artifacts.cjs` and the saved-library/range checks.

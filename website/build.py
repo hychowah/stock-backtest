@@ -129,7 +129,7 @@ def main(output=None):
     packed = json.dumps(screening_data,separators=(',', ':')).replace('<', chr(92)+'u003c')
     range_script = 'const holdingsData='+json.dumps(holdings).replace('<', chr(92)+'u003c')+';'+(ROOT/'range.js').read_text()
     scripts = '<script id="screening-data" type="application/json">'+packed+'</script>'
-    scripts += '<script>'+(ROOT/'saved-backtests.js').read_text()+'</script><script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+(ROOT/'robustness.js').read_text()+'</script><script>'+(ROOT/'schedule.js').read_text()+'</script><script>'+range_script+'</script>'
+    scripts += '<script>'+(ROOT/'result-artifacts.js').read_text()+'</script><script>'+(ROOT/'saved-backtests.js').read_text()+'</script><script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+(ROOT/'robustness.js').read_text()+'</script><script>'+(ROOT/'schedule.js').read_text()+'</script><script>'+range_script+'</script>'
     page = page.replace('</head>', '<style>'+(ROOT/'contributions.css').read_text()+'\n'+(ROOT/'responsive.css').read_text()+'</style></head>')
     scripts += '<script>'+(ROOT/'responsive.js').read_text()+'</script>'
     # Keep scroll instructions and keyboard access in the static fallback too.
