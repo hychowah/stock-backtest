@@ -133,12 +133,17 @@ class NumericalPortfolioTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):adapter.backtest(**request)
         self.assertFalse(adapter.db.in_transaction)
         before=[tuple(row) for row in adapter.db.execute('SELECT * FROM snapshots')]
-        checkpoints=0
+        staged=0
+        import numerical_portfolios
+        original_stage=numerical_portfolios.stage_book
+        def stage(*args,**kwargs):
+            nonlocal staged
+            result=original_stage(*args,**kwargs);staged+=1
+            return result
         def cancel_between_books():
-            nonlocal checkpoints
-            checkpoints+=1
-            if checkpoints==2:raise RuntimeError('fictional between-book cancel')
+            if staged:raise RuntimeError('fictional between-book cancel')
         with patch.object(s.backtest_control,'checkpoint',side_effect=cancel_between_books), \
+                patch('numerical_portfolios.stage_book',side_effect=stage), \
                 patch.object(provider,'evaluate',wraps=original) as called:
             with self.assertRaisesRegex(RuntimeError,'between-book'):
                 adapter.backtest_periods([(date(2015,1,2),date(2016,1,4)),

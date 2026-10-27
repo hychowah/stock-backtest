@@ -27,7 +27,7 @@ Format 1, temporal interface 1 and factor interface 1 stay the same. This source
 change does not create a new financial policy version or rewrite old evidence.
 
 CB-09 adds an offline complete-result diagnostic. `NumericalPortfolio` in
-`tools/numerical_portfolios.py` borrows an explicitly owned attachment and the
+`scripts/numerical_portfolio.py` borrows an explicitly owned attachment and the
 accepted complete-book provider. It stages one complete eligible book at a time
 in private memory, calls the existing SQL selector and uses the same portfolio
 reducer as ordinary schedules. It opens no default application database and
@@ -40,10 +40,10 @@ The [financial result contract](portfolio-results.md) defines version 1 outside
 existing job payloads. Complete holding rows, status strings, nulls and array
 order stay intact. Fixed monthly requests and explicit weekly dates use the
 same reducer. Explicit dates retain their existing monthly envelope. This adds
-no website control, selected-only optimization, production routing or persistent
-runtime. Historical benchmark admission stays closed.
+no website control, selected-only optimization or production routing.
+CB-11 adds the explicit runtime described below. Historical benchmark admission stays closed.
 
-CB-10 adds an offline random adapter in `tools/numerical_trials.py`. It composes
+CB-10 adds an offline random adapter in `scripts/numerical_random.py`. It composes
 the complete-result diagnostic with generation-bound completed-trial checkpoints.
 The shared robustness consumer preserves summaries and ordered full capture.
 Whole-plan and current-input checks precede checkpoint lookup. Recovery uses the
@@ -150,7 +150,10 @@ inputs change. Close evaluators and all borrowed array views
 before closing the attachment. Borrowed views expire when attachment closes.
 
 Each attachment holds an OS-locked lease outside its immutable directory.
-Idle attachments can keep old mappings while publication selects new inputs.
+An attachment stays inside its caller's financial ownership scope, including
+idle reuse. Coordinated publication waits for that scope to end. An old
+attachment can remain leased during a private low-level publication test, but
+that test does not permit an application to release financial ownership early.
 Close releases SQLite and mappings before the lease. Failed close retains a
 strong owner and the lease for explicit retry. Process death releases its OS
 lock. Retirement can then reclaim its abandoned lease.
@@ -275,3 +278,158 @@ the attachment. Its close clears retained results and compiled callables.
 Callers still own source and financial access through freshness validation,
 calculation and final closure. See the [CB-06 record](plans/compiled-backtest/phases/CB-06.md)
 for verification scope and memory observations.
+
+## Explicit persistent runtime (CB-11)
+
+`scripts/numerical_runtime.py` supplies `NumericalRuntime`. Current website routes,
+startup, data preparation, jobs and the queue still use the ordinary engine.
+This source capability has no job IDs, queue service or user-result store.
+An authorized caller must explicitly construct or inject it. The shared
+application adapter remains `website/backtest_jobs.py:calculate`.
+
+Construct the runtime with an explicit source root, new private scratch folder,
+numerical generation path, derived checkpoint path and Python interpreter.
+`with NumericalRuntime(...) as runtime:` starts one owned child. Call
+`runtime.calculate(mode, options, progress=None, configuration=None,
+planned=None, capture=None, cancelled=None)`. `custom` returns the ordinary fixed
+result. `random` returns the ordinary summary and ordered `trial_results`, as
+the shared application adapter does. Optional capture observes complete trials.
+Settings and IPC values are detached. Full result schemas and order stay intact.
+The `planned` argument reuses recorded dates. Omitted random seeds still come
+from `robustness.plan`; there is no second planner.
+
+Public startup and calculation share one operation lock. A second caller
+receives a busy error immediately. There is no pending submission queue.
+The lock covers process construction, owner adoption, readiness and calculation.
+Closure first requests Stop, then waits for that operation to settle. A late
+constructor must adopt its owner and close it; it cannot publish readiness after
+Stop. A close deadline during construction retains the runtime even when its
+process owner has not yet been returned. It never reports successful closure. Reject dispatch if the calling thread
+already holds the supplied or current financial coordinator. In particular,
+the current queue preholds this lock. Later application integration must resolve
+that ownership boundary before dispatch. CB-11 changes no queue routing.
+
+The child takes shared source ownership before calculation imports. It disables
+credential access by setting the existing key path to a private nonexistent file.
+It then takes financial ownership. One financial session spans attachment,
+prewarming, every job and idle reuse. The child validates current inputs before
+result or checkpoint lookup. It also checks the loaded calculation source.
+Changed source requires a new process. Each child also attaches at most one
+input generation. A different current pointer fails before creating another
+provider or dispatcher. Existing error cleanup closes that runtime. A new
+explicit runtime can attach the replacement; no automatic restart occurs.
+This process boundary prevents repeated generation changes from accumulating
+unqualified compiler allocations. `attached_generations` is zero during setup
+and one after attachment. There is no same-process replacement counter.
+Coordinated publication normally waits for the runtime to close. The replacement
+fixture models a private pointer change, verifies one provider construction and
+complete old-resource closure, then uses a fresh child. Its checkpoint binding
+misses the old generation. It does not bypass production financial ownership.
+
+`scripts/numerical_books.py`, `numerical_numba.py`, `numerical_portfolio.py`,
+`numerical_workspace.py` and `numerical_random.py` own the promoted calculation
+code. The old tool modules remain compatibility imports. Complete eligible
+books still precede the existing SQL selector. No selected-only return path or
+ordinary `book_batch` workers run inside the runtime. `numerical_matrix.py`
+prewarms the accepted writable contiguous float64 signature without fast math
+or a disk compiler cache. Numba alone supplies parallel work. The default is
+`min(4, CPU count)` native threads. Serial qualification uses one thread.
+There is no process pool or trial parallel layer.
+
+Reuse has distinct accounting. Defaults are:
+
+| Resource | Bound and behavior |
+| --- | --- |
+| Compiled matrix LRU | 16 MiB of exact numerical input keys, output buffers and Python metadata. Oversized entries finish without retention. |
+| Detached fixed-result LRU | Separate 16 MiB. Exact generation and submitted options. Oversized results finish without retention. |
+| Complete-book and matrix workspace | Separate conservative 64 MiB checks. One complete book at a time. |
+| Complete result graph | 256 MiB. Conservative planned-period/holding admission, then incremental selected-period and completed-trial accounting. Oversized work fails without truncation. |
+| IPC | 1 MiB request, 1 MiB stats, 64 MiB payload file, 16 KiB control frame and 16 pending parent events. Each callback is acknowledged before another payload is written. |
+| Runtime diagnostics | Last 128 small events and the latest detached statistics. |
+| Completed random trials | CB-10's independent 256 MiB serialized payload / 32-experiment defaults. |
+
+The fixed-result cache is separate from numerical reuse. It is not a book-cache
+hit counter. The complete-book path actually calls the matrix LRU. Repeated
+threshold values can reuse identical numerical matrices while SQL runs again.
+Disable fixed-result retention to measure this separately. FactorEvaluator uses
+the same strict matrix abstraction with zero matrix retention; its existing
+16 MiB entry-factor cache remains separate.
+
+These numbers account owned work. They are not allocator, whole-process memory,
+resident-memory or disk limits. Compiler memory, mapped residency, Python/IPC
+copies and caller-held detached results are additional. `last_stats` reports
+retained bytes, conservative workspace values, current sampled working set and
+OS peak working set separately. OS peak includes cold compilation. A sample
+is not a hard limit or full-universe capacity qualification.
+
+`numerical_identity.compiler_identity` exposes a reproducible compiler signature
+and its complete fields. It binds transitive local source content, policy,
+field schema, catalog, bankruptcy set, Python/NumPy/Numba/llvmlite, platform,
+byte order, target triple/CPU/features, configured CPU, thread count, threading
+layer and strict/cache settings. Generation identity also participates in each
+matrix key. Hashing edited source cannot update already loaded code.
+
+Windows reads GO and later commands through one bounded raw UTF-8 frame parser.
+It normalizes CRLF and preserves commands read alongside GO. The control reader
+polls `PeekNamedPipe`. Binary `os.read` reads only bytes reported available.
+It never blocks a Windows CRT/text stdin read while native DLLs load. The reader
+still runs during cold imports, so cancellation and parent-death EOF remain
+observable. POSIX retains its ordinary text reader. A truncated or oversized
+Windows frame fails closed. The native import regression uses this actual
+parser with a live reader and NumPy/Numba imports in one contained process.
+
+Cancellation uses `backtest_control.Cancelled`, the caller predicate and explicit
+runtime shutdown. Cold startup observes the same policy. Native arithmetic runs
+in chunks of at most 1,024 rows by default. Price queries use chunks of 2,048.
+Python row stages check at least every 128 rows, plus calendar, book, SQL and
+trial boundaries. Input validation, a cold compiler call, one bounded report
+search, SQL operations and serialization can still delay a checkpoint. There is
+no hard cooperative cancellation deadline. The parent polls every 50 ms and
+allows up to 30 seconds for the operation's cooperative drain by default.
+Owner closure then has a separate grace period of up to 30 seconds before
+termination. Process and descendant confirmation follows. These are separate
+stages, not a total cancellation deadline. A test with each grace period set
+to 0.5 seconds can therefore take about one second before confirmed forced
+closure. Smaller fixture settings exercise that fallback; they are not a
+measured real-data cancellation guarantee.
+
+Startup records source-owned, financial-owned, session-import and
+session-construct-prewarm stages before readiness. A timeout identifies the last
+safe stage. The private diagnostics.json file keeps the bounded parent history.
+A cancelled or failed call closes its runtime before its primary outcome is
+raised. After confirmed cleanup, an observed `backtest_control.Cancelled` stays
+`Cancelled`, including when cooperative drain times out or transport fails.
+The original callback exception also remains the primary exception. Cleanup
+mechanisms must not turn Stop into an ordinary job failure. Up to eight secondary
+exceptions attach as `runtime_secondary_errors`; diagnostics contain their types
+only. Diagnostic publication errors cannot replace the primary outcome.
+
+Unconfirmed cleanup raises `ClosureError`, which retains `numerical_runtime`,
+`primary_error` and `cleanup_error`. It does not raise a completed `Cancelled`
+outcome. Retry `close()` after the active constructor or callback settles. The
+caller can resolve the stored primary outcome only after closure is confirmed.
+A stalled callback can outlive forced process termination; the runtime remains
+explicitly uncertain until that caller drains. Closure states
+are new, starting, ready, running, stopping, closed and failed-closure. No call
+is accepted after shutdown begins. Partial or uncertain closure keeps a strong
+retryable owner. A terminal message alone never establishes completion of close.
+
+Cleanup closes checkpoint and private SQL connections, providers, retained
+buffers, borrowed views, mappings and the generation lease. Both OS source and
+financial lock handles remain open until terminal process exit. The child uses
+`os._exit` only after explicit resource closure, inside both ownership scopes.
+Process exit ends compiler state, native teams and the control reader, and the
+OS releases those lock handles. The parent confirms process exit, EOF, reader
+closure and descendant emptiness before reporting closed. Windows uses a Job
+Object assigned before a suspended venv redirector resumes. Linux confirms a
+cooperative session and known descendants; it does not prevent hostile session
+escape. EOF cancels idle and active children after parent death. The Windows
+Job also closes on owner death.
+
+Private synthetic checks are `tests/test_numerical_runtime.py` and
+`tests/test_numerical_matrix.py`. They cover serial/parallel full results,
+ordered recovery/capture, actual matrix reuse, bounded rejection, stale inputs,
+changed loaded source, startup/callback/cancel failures, parent death, owned
+descendants and file release. OS/platform observations and any approved sample
+results belong to the CB-11 phase record. This contract claims no installed
+runtime change, new speed comparison or production routing qualification.

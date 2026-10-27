@@ -19,26 +19,7 @@ from numba import njit, prange
 from numerical_policy import FACTOR_VERSION
 
 
-def compile_matrix(policy, outputs=None):
-    """Compile the accepted float64 arithmetic without reordering operations.
-
-    Omitted outputs preserve the complete experimental executor contract.
-    Compilation has no disk cache and uses no relaxed floating-point rules.
-    """
-    selected = policy.output_names if outputs is None else tuple(outputs)
-    namespace = {}
-    exec(policy.python_source('_row', outputs=outputs), namespace)
-    row_function = njit(fastmath=False, cache=False, error_model='numpy')(namespace['_row'])
-    width = len(selected)
-    @njit(parallel=True, fastmath=False, cache=False, error_model='numpy')
-    def calculate(matrix):
-        result = np.empty((len(matrix), width), dtype=np.float64)
-        for row in prange(len(matrix)):
-            values = row_function(matrix[row])
-            for column in range(width): result[row, column] = values[column]
-        return result
-    calculate(np.ones((1, len(policy.input_names)), dtype=np.float64))
-    return calculate
+from numerical_matrix import compile_matrix, CompiledMatrix
 
 
 def _immutable(value):
@@ -139,7 +120,8 @@ class FactorEvaluator:
         self._cache = OrderedDict()
         self.stats = dict(hits=0, misses=0, retained_bytes=0, retained_entries=0,
                           peak_workspace_bound=0, returned_payload_bytes=0)
-        try: self._calculate = compile_matrix(self.policy, self.outputs)
+        try: self._calculate = CompiledMatrix(self.policy, self.identity, self.outputs,
+                cache_bytes=0, workspace_bytes=max_batch_bytes)
         except BaseException:
             self.close()
             raise
@@ -283,6 +265,7 @@ class FactorEvaluator:
         self._cache.clear()
         self.stats.update(retained_bytes=0, retained_entries=0)
         self.temporal.close()
+        if getattr(self, '_calculate', None) is not None: self._calculate.close()
         self.inputs = self.policy = self._calculate = None
         self.closed = True
 

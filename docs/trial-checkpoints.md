@@ -3,7 +3,8 @@
 CB-10 adds offline numerical random recovery. Current application requests still
 use `backtest_jobs.calculate`, ordinary schedules and `book_batch`. The existing
 queue and saved library own user records. No application route selects this
-diagnostic. No numerical startup, persistent runtime or weekly control is added.
+diagnostic. CB-11 supplies an explicit persistent numerical capability.
+Automatic startup, routing and weekly controls remain later work.
 
 ## Interface and ownership
 
@@ -11,10 +12,10 @@ diagnostic. No numerical startup, persistent runtime or weekly control is added.
 one disposable SQLite path. It does not discover a default cache or user store.
 
 ```python
-binding = numerical_trials.checkpoint_binding(portfolio, configuration)
+binding = numerical_random.checkpoint_binding(portfolio, configuration)
 with trial_checkpoints.Store(private_path) as store:
     experiment = store.open(binding)
-    result = numerical_trials.run(portfolio, configuration, experiment,
+    result = numerical_random.run(portfolio, configuration, experiment,
                                   capture=observe_completed_trial)
 ```
 
@@ -32,7 +33,8 @@ and start no worker. They do not own ordinary saved candidate books.
 
 ## Calculation identity
 
-One source-owned builder binds these values:
+`scripts/numerical_random.py` owns the builder. The old
+`tools/numerical_trials.py` is a compatibility import. The builder binds:
 
 - Exact numerical generation, source-derived policy and field schema.
 - Financial result contract version 1.
@@ -125,3 +127,23 @@ corruption, binding changes, full recovery, full capture and ordinary numerical
 agreement across both pools, metrics, ranks, filters and all five month settings.
 These checks supply no financial capacity or performance claim. Native and
 durable consumer checks belong to the phase verification record.
+
+## Persistent runtime boundary
+
+The explicit CB-11 runtime opens this derived store inside its child-owned
+financial session. It validates current inputs and loaded calculation source
+before checkpoint-only recovery. A changed generation rejects the active child
+before another provider is constructed. A fresh explicit runtime uses a new
+generation binding and misses those checkpoints. It closes the store before its SQL workspace,
+provider and input attachment. Source and financial OS handles stay held until
+terminal process exit ends native teams. Current queue and library ownership
+and durable snapshots retain their existing behavior.
+
+The compiler signature adds the catalog, bankruptcy set and source-owned
+compiler boundary. Execution versions and thread limits remain in the checkpoint
+binding. Changed binding fields open a new experiment. This safely misses older
+CB-10 calculations; it does not rewrite or invalidate durable user snapshots.
+Read [numerical-generations.md](numerical-generations.md) for the compiler fields,
+result/IPC limits and closure contract. Runtime random results include ordered
+`trial_results` for the application-adapter shape; the borrowed diagnostic
+`run` function keeps its existing summary-only result and optional capture.

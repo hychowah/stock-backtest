@@ -1,0 +1,374 @@
+"""Explicit, persistent numerical child; no application route or job service.
+
+One active synchronous call, no backlog. Child holds source then financial
+ownership through idle reuse. Closing confirms process/descendant/transport exit.
+Never dispatch while the calling thread already owns the financial coordinator.
+"""
+from contextlib import suppress
+from copy import deepcopy
+import json
+import os
+from pathlib import Path
+from queue import Full, Queue
+from threading import Event, Lock, RLock
+import sys
+import time
+
+from process_owner import OwnedProcess
+
+MAX_REQUEST_BYTES = 1024*1024
+MAX_PAYLOAD_BYTES = 64*1024**2
+FRAME_BYTES = 16*1024
+_PENDING = {}
+
+
+def encoded(value, limit):
+    payload = json.dumps(value,allow_nan=False,separators=(',',':')).encode('utf-8')
+    if len(payload) > limit: raise ValueError('Numerical IPC payload exceeds its byte bound.')
+    return payload
+
+
+def write_payload(path, value, limit):
+    data = encoded(value,limit)
+    temporary = path.with_suffix('.pending')
+    with temporary.open('wb') as handle: handle.write(data)
+    temporary.replace(path)
+
+
+def read_payload(path, limit):
+    with path.open('rb') as handle: data = handle.read(limit+1)
+    if len(data) > limit: raise ValueError('Numerical IPC payload exceeds its byte bound.')
+    return json.loads(data)
+
+
+class ClosureError(TimeoutError):
+    """Cleanup is unconfirmed; retain the runtime and retry close explicitly.
+
+    primary_error preserves the operation outcome but is not raised as Cancelled
+    until closure is established. Application callers must not infer completion.
+    """
+    def __init__(self, runtime, primary_error=None, cleanup_error=None):
+        super().__init__('Numerical cleanup is unconfirmed. Retry close after the active operation settles.')
+        self.numerical_runtime = runtime
+        self.primary_error = primary_error
+        self.cleanup_error = cleanup_error
+
+
+
+class RuntimeProcess(OwnedProcess):
+    """Keep containment; use finite frames/queue for a long-lived transport.
+
+    Total diagnostic bytes are counted without a lifetime byte limit. Each
+    frame is bounded before decode. One acknowledged callback is in flight.
+    """
+    def __init__(self, *args, close_seconds=30., **kwargs):
+        self.close_seconds = close_seconds
+        super().__init__(*args,**kwargs)
+
+    @property
+    def _close_seconds(self): return self.close_seconds
+
+    def _created(self):
+        self.events = Queue(maxsize=16)
+
+    def _read(self):
+        try:
+            while True:
+                line = self.process.stdout.readline(FRAME_BYTES+1)
+                if not line:
+                    self.eof = True; break
+                self.output_bytes += len(line.encode('utf-8'))
+                if len(line.encode('utf-8')) > FRAME_BYTES:
+                    self.failure = 'protocol'; continue
+                try: event = json.loads(line)
+                except ValueError:
+                    self.failure = 'protocol'; continue
+                if not isinstance(event,dict):
+                    self.failure = 'protocol'; continue
+                try: self.events.put_nowait(event)
+                except Full: self.failure = 'protocol'
+        except (OSError,ValueError): self.failure = self.failure or 'child_failed'
+
+    def capabilities(self):
+        result = super().capabilities()
+        result['transport'].update(bound=FRAME_BYTES,
+            mechanism='16 KiB frames and 16 pending events; no lifetime output byte cap')
+        return result
+
+    def start(self):
+        self.process.stdin.write('GO\n'); self.process.stdin.flush()
+
+
+class NumericalRuntime:
+    """Explicit capability compatible with the shared calculate adapter.
+
+    source_root must contain this source bootstrap. scratch must be a new private
+    directory. session_factory is a trusted injected capability, never user form
+    input. Tests can supply their own source-owned fictional Session factory.
+    The parent retains this owner on failed closure; close() can be retried.
+    """
+    def __init__(self, *, source_root, scratch, generation_path=None, checkpoint_path=None,
+                 threads=None, python=None, session_factory='numerical_session:Session',
+                 session_options=None, coordinator=None, start_seconds=120., close_seconds=30.):
+        self.root, self.scratch = Path(source_root).absolute(), Path(scratch).absolute()
+        cap = min(4,os.cpu_count() or 1)
+        threads = cap if threads is None else threads
+        if type(threads) is not int or not 1 <= threads <= cap:
+            raise ValueError('Numerical threads must be between one and min(4, CPU count).')
+        if not 0 < start_seconds <= 300 or not 0 < close_seconds <= 30:
+            raise ValueError('Invalid numerical lifecycle timeout.')
+        self.coordinator = coordinator
+        self.configuration = dict(source_root=str(self.root),scratch=str(self.scratch),threads=threads,
+            generation_path=str(generation_path or self.root/'data'/'numerical'),
+            checkpoint_path=str(checkpoint_path or self.root/'data'/'numerical-trials.sqlite'),
+            cache_lock=str(coordinator.path if coordinator is not None else self.root/'data'/'website-data-0.lock'),
+            session_factory=session_factory,session_options=deepcopy(session_options or {}),
+            close_seconds=close_seconds)
+        encoded(self.configuration,MAX_REQUEST_BYTES)
+        self.python = str(python or sys.executable)  # Never resolve a venv redirector/symlink.
+        self.start_seconds,self.close_seconds = start_seconds,close_seconds
+        self.state = 'new'
+        self.owner = None
+        self.diagnostics = []
+        self.last_stats = {}
+        self.last_stage = 'new'
+        self._go_sent = False
+        self._closure = RLock()
+        self._call = Lock(); self._state = RLock(); self._write = Lock(); self._stop = Event()
+
+    def _admit(self):
+        coordinators = [self.coordinator]
+        loaded = sys.modules.get('cache_access')
+        if loaded is not None: coordinators.append(loaded.workspace)
+        if any(value is not None and getattr(value.state,'held',False) for value in coordinators):
+            raise ValueError('Release calling-thread financial ownership before numerical dispatch.')
+
+    def _check_cancel(self,cancelled=None):
+        import backtest_control
+        backtest_control.checkpoint()
+        if self._stop.is_set() or cancelled is not None and cancelled():
+            raise backtest_control.Cancelled()
+
+    def start(self, *, cancelled=None):
+        self._admit()
+        if not self._call.acquire(blocking=False):
+            raise ValueError('Numerical runtime already has one active call.')
+        try:
+            try: return self._start_owned(cancelled)
+            except BaseException as error:
+                primary,secondary = self._observed_error(error,cancelled)
+                self._raise_after_cleanup(primary,secondary)
+        finally: self._call.release()
+
+    def _observed_error(self,error,cancelled=None):
+        # Stop can break a transport during startup or a stalled callback.
+        # Observe the caller predicate before classifying that pipe failure.
+        if isinstance(error,(OSError,RuntimeError)) and not isinstance(error,ClosureError):
+            try: self._check_cancel(cancelled)
+            except BaseException as observed: return observed,[error]
+        return error,[]
+
+    def _start_owned(self,cancelled=None):
+        # The operation lock spans constructor creation, adoption and readiness.
+        # close cannot report success while a constructor can still return an owner.
+        self._check_cancel(cancelled)
+        with self._state:
+            if self.state == 'ready': return self
+            if self.state != 'new': raise ValueError('Numerical runtime cannot start in its current state.')
+            self.state = 'starting'
+            _PENDING[id(self)] = self
+        self.scratch.mkdir(parents=True,exist_ok=False)
+        write_payload(self.scratch/'launch.json',self.configuration,MAX_REQUEST_BYTES)
+        environment = dict(os.environ,NUMBA_NUM_THREADS=str(self.configuration['threads']),
+            OMP_NUM_THREADS=str(self.configuration['threads']),OPENBLAS_NUM_THREADS='1',
+            MKL_NUM_THREADS='1',NUMEXPR_NUM_THREADS='1',PYTHONDONTWRITEBYTECODE='1')
+        try:
+            owner = RuntimeProcess([self.python,'-I','-B',str(self.root/'scripts'/'numerical_runtime_child.py'),
+                                     str(self.scratch/'launch.json')],env=environment,close_seconds=self.close_seconds)
+        except BaseException as error:
+            with self._state: self.owner = getattr(error,'owned_process',None)
+            raise
+        with self._state: self.owner = owner
+        self._check_cancel(cancelled)
+        owner.start()
+        self._go_sent = True
+        deadline = time.monotonic()+self.start_seconds
+        while True:
+            self._check_cancel(cancelled)
+            if time.monotonic() > deadline:
+                raise TimeoutError('Numerical runtime initialization timed out at '+self.last_stage+'.')
+            event = self._event()
+            if event.get('event') == 'diagnostic': self._diagnostic(event); continue
+            if event.get('event') == 'ready':
+                self._check_cancel(cancelled)
+                with self._state:
+                    if self._stop.is_set() or self.state != 'starting':
+                        import backtest_control
+                        raise backtest_control.Cancelled()
+                    self.last_stats = read_payload(self.scratch/'stats.json',MAX_REQUEST_BYTES) if event.get('stats') else {}
+                    self.state = 'ready'
+                return self
+            if event.get('event') == 'error': raise ValueError(event.get('message','Numerical initialization failed.'))
+
+    def _diagnostic(self,event):
+        self.last_stage = str(event.get('stage','unknown'))[:128]
+        self.diagnostics.append(event)
+        if len(self.diagnostics)>128: del self.diagnostics[:-128]
+        write_payload(self.scratch/'diagnostics.json',self.diagnostics,MAX_REQUEST_BYTES)
+
+    def _send(self, event):
+        data = encoded(event,FRAME_BYTES).decode('utf-8')+'\n'
+        with self._write:
+            self.owner.process.stdin.write(data); self.owner.process.stdin.flush()
+
+    def _event(self):
+        event = self.owner.event(.05)
+        if event is None or event.get('event') == 'failed':
+            raise RuntimeError('Numerical child exited or its bounded transport failed.')
+        return event
+
+    def calculate(self, mode, options, progress=None, configuration=None, *, planned=None,
+                  capture=None, cancelled=None):
+        """Return the existing fixed/random payload after child calculation.
+
+        Caller cancellation is optional and also respects backtest_control's
+        current context. A callback failure cancels/drains the child before it
+        propagates. Navigation policy stays with the caller, not this runtime.
+        """
+        self._admit()
+        if not self._call.acquire(blocking=False): raise ValueError('Numerical runtime already has one active call.')
+        primary_error = None
+        cancel_sent = False
+        cancel_deadline = None
+        try:
+            if self.state == 'new': self._start_owned(cancelled)
+            with self._state:
+                if self.state != 'ready': raise ValueError('Numerical runtime is stopping or closed.')
+                request = dict(mode=mode,options=deepcopy(options),planned=deepcopy(planned),capture=capture is not None)
+                write_payload(self.scratch/'request.json',request,MAX_REQUEST_BYTES)
+                self.state = 'running'
+            self._send(dict(command='calculate'))
+            while True:
+                try:
+                    self._check_cancel(cancelled)
+                except BaseException as error:
+                    if primary_error is None: primary_error = error
+                if primary_error is not None and not cancel_sent:
+                    cancel_deadline = time.monotonic()+self.close_seconds
+                    self._send(dict(command='cancel')); cancel_sent = True
+                if cancel_deadline is not None and time.monotonic() > cancel_deadline:
+                    raise TimeoutError('Numerical cancellation did not reach a checkpoint before closure.')
+                event = self._event()
+                kind = event.get('event')
+                if not kind: continue
+                if kind == 'diagnostic':
+                    self._diagnostic(event)
+                elif kind in ('configuration','progress','capture'):
+                    try:
+                        if primary_error is None:
+                            value = read_payload(self.scratch/'payload.json',MAX_PAYLOAD_BYTES)
+                            if kind == 'configuration' and configuration is not None: configuration(value)
+                            elif kind == 'progress' and progress is not None: progress(value)
+                            elif kind == 'capture' and capture is not None: capture(event['number'],value)
+                    except BaseException as error:
+                        if primary_error is None: primary_error = error
+                    self._send(dict(command='ack'))
+                elif kind in ('result','error','cancelled'):
+                    self.last_stats = read_payload(self.scratch/'stats.json',MAX_REQUEST_BYTES) if event.get('stats') else {}
+                    if primary_error is not None: raise primary_error
+                    if kind == 'cancelled':
+                        import backtest_control
+                        raise backtest_control.Cancelled()
+                    if kind == 'error': raise ValueError(event.get('message','Numerical calculation failed.'))
+                    result = read_payload(self.scratch/'payload.json',MAX_PAYLOAD_BYTES)
+                    self._check_cancel(cancelled)
+                    with self._state:
+                        if self._stop.is_set() or self.state != 'running':
+                            import backtest_control
+                            raise backtest_control.Cancelled()
+                        self.state = 'ready'
+                    return result
+                else: raise RuntimeError('Unknown numerical child event.')
+        except BaseException as error:
+            secondary = []
+            if primary_error is None:
+                primary_error,secondary = self._observed_error(error,cancelled)
+            elif error is not primary_error: secondary.append(error)
+            self._raise_after_cleanup(primary_error,secondary)
+        finally:
+            self._call.release()
+
+    def _raise_after_cleanup(self,primary,secondary=()):
+        try: self._close_owned()
+        except BaseException as cleanup_error:
+            # Cancellation is not a completed outcome while ownership is unknown.
+            self.state = 'failed-closure'
+            _PENDING[id(self)] = self
+            failure = ClosureError(self,primary,cleanup_error)
+            self._record_secondary(failure,[*secondary,cleanup_error])
+            raise failure from cleanup_error
+        self._record_secondary(primary,secondary)
+        raise primary
+
+    def _record_secondary(self,primary,secondary):
+        if not secondary:return
+        primary.runtime_secondary_errors = tuple(secondary[-8:])
+        for error in secondary[-8:]:
+            # Diagnostics must not replace the established operation outcome.
+            with suppress(BaseException):
+                self._diagnostic(dict(event='diagnostic',stage='cleanup-secondary',error_type=type(error).__name__))
+
+    def _close_owned(self):
+        with self._closure: self._finish_close()
+
+    def _finish_close(self):
+        # Caller holds the operation lock, so no late constructor/adoption exists.
+        with self._state:
+            if self.state == 'closed' and (self.owner is None or self.owner.closed): return
+            self.state = 'stopping'; self._stop.set()
+        if self.owner is not None:
+            if self.owner.process.poll() is None:
+                if not self._go_sent: self.owner.terminate()
+                else:
+                    with suppress(OSError,ValueError): self._send(dict(command='close'))
+            try: self.owner.close()
+            except BrokenPipeError as error:
+                # An interrupted buffered write can raise while closing stdin,
+                # after process/domain exit. Retry the COMPLETE owner proof;
+                # this pipe error alone never establishes successful closure.
+                self.owner.close()
+                with suppress(BaseException):
+                    self._diagnostic(dict(event='diagnostic',stage='cleanup-secondary',error_type=type(error).__name__))
+        with self._state: self.state = 'closed'
+        _PENDING.pop(id(self),None)
+
+    def close(self):
+        with self._state:
+            self._stop.set()
+            if self.state != 'closed':
+                self.state = 'stopping'; _PENDING[id(self)] = self
+        if not self._call.acquire(timeout=self.close_seconds):
+            # A constructor/callback can still be active. Retain this runtime
+            # even if no owner has been adopted yet. Never claim terminal close.
+            cleanup_error = None
+            with self._closure:
+                with self._state: owner = self.owner
+                if owner is not None:
+                    try: owner.terminate()
+                    except BaseException as error: cleanup_error = error
+            with self._state: self.state = 'failed-closure'
+            _PENDING[id(self)] = self
+            raise ClosureError(self,cleanup_error=cleanup_error)
+        try:
+            try: self._close_owned()
+            except BaseException as error:
+                with self._state: self.state = 'failed-closure'
+                _PENDING[id(self)] = self
+                raise ClosureError(self,cleanup_error=error) from error
+        finally: self._call.release()
+
+    def closure(self):
+        return dict(state=self.state,process=self.owner.closure() if self.owner is not None else None)
+
+    def __enter__(self): return self.start()
+    def __exit__(self,*exc): self.close()

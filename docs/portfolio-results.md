@@ -100,7 +100,7 @@ the existing baseline helpers. Dated holdings gain no invented price fields.
 
 ## Offline numerical adapter
 
-`tools/numerical_portfolios.py` supplies `NumericalPortfolio(inputs, provider)`.
+`scripts/numerical_portfolio.py` supplies `NumericalPortfolio(inputs, provider)`.
 Inputs and the accepted complete-book provider are explicit borrowed objects.
 The caller owns source before imports and cache ownership before attachment.
 An attached input's existing `validate()` runs before requests. The adapter
@@ -114,7 +114,7 @@ the versioned diagnostic envelope. Explicit periods need no nominal interval.
 The adapter owns one private in-memory SQL workspace. It requests one complete
 eligible book at a time, checks count and identity, stages snapshots, ranking
 pairs and requested thresholds, and calls unchanged `research._select`.
-`tools/portfolio_workspace.py` retains the existing staging operation for both
+`scripts/numerical_workspace.py` retains the existing staging operation for both
 the diagnostic adapter and historical runner. Every staging replaces derived
 rows, including empty books and alternating pools. No price history or annual
 statement cache is copied into this workspace.
@@ -136,13 +136,14 @@ absolute and relative float differences. It never sorts arrays or drops fields
 to obtain agreement.
 
 The ordinary application continues to use prepared SQL books through schedules.
-This diagnostic adds no application route, persistent runtime, job service,
-user store, weekly control or capacity qualification. Historical benchmark
+The explicit CB-11 runtime can own this diagnostic across jobs. Current
+application routing stays unchanged. The runtime adds no job service, user
+store, weekly control or capacity qualification. Historical benchmark
 admission stays closed.
 
 ## Completed random trials
 
-CB-10 adds `tools/numerical_trials.py`. It borrows this portfolio and an explicit
+CB-10 adds `scripts/numerical_random.py`. It borrows this portfolio and an explicit
 checkpoint experiment. Its `checkpoint_binding(portfolio, configuration)`
 validates current inputs, the full recorded date plan and screening options.
 `run(portfolio, configuration, experiment, progress=None, capture=None)` returns
@@ -164,3 +165,21 @@ at version 1. Durable browser snapshots keep their separate existing versions.
 
 The [checkpoint contract](trial-checkpoints.md) describes identities, atomic
 publication, retention and the separation from saved-library and queue evidence.
+
+## Persistent capability ownership
+
+CB-11 promotes the tool implementations into source modules. Compatibility
+imports preserve existing diagnostic callers. `NumericalPortfolio` still owns
+one affine in-memory SQL workspace. It now also copies immutable SPY sessions
+there so the ordinary `robustness.plan` can construct random configurations.
+It retains at most one staged complete book; every new stage replaces it.
+The workspace stays open across successful runtime jobs and closes before the
+provider and input attachment. A transaction is not held while idle.
+
+A runtime-specific optional result workspace budget rejects oversized planned
+results and accounts selected periods before aggregation. Ordinary diagnostic
+callers keep the previous interface and no new default limit. Full result rows
+are never truncated. Runtime fixed-result retention and matrix-output reuse are
+separate finite caches. Completed random retention remains with CB-10.
+Read [numerical-generations.md](numerical-generations.md) for the runtime's
+source/financial/process lifetime and exact budgets.

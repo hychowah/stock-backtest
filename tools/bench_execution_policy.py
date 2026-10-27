@@ -16,7 +16,8 @@ import time
 from types import MappingProxyType
 import uuid
 
-from bench_candidates_process import OwnedProcess
+if __name__ != '__main__':
+    from bench_candidates_process import OwnedProcess
 import bench_execution_inputs as inputs_module
 import bench_input_artifacts as artifacts
 from bench_input_store import _memory_bytes

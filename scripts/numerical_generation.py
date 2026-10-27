@@ -366,8 +366,8 @@ class GenerationStore:
     """Publish immutable base inputs; never bind identity to mutable saved books.
 
     The coordinator is acquired before source connections, mappings and leases.
-    Long-lived idle attachments retain only their generation lease. Jobs still
-    use ordinary project ownership through calculation and resource closure.
+    Callers retain financial ownership through idle attachment reuse,
+    calculation and final resource closure. The runtime uses one such session.
     """
     def __init__(self, schedules, path=STORE, coordinator=None):
         self.s, self.path = schedules, Path(path)

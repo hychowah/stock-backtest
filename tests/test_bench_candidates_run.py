@@ -50,7 +50,9 @@ class SourceInventoryTests(unittest.TestCase):
             for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py', 'portfolio_workspace.py'):
                 shutil.copy2(ROOT / 'tools' / name, tools / name)
             scripts = root / 'scripts'; scripts.mkdir()
-            for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py'):
+            for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py',
+                'numerical_books.py','numerical_numba.py','numerical_matrix.py','numerical_workspace.py','process_owner.py','numerical_identity.py',
+                'numerical_random.py','numerical_portfolio.py','numerical_runtime.py','numerical_runtime_child.py','numerical_session.py'):
                 shutil.copy2(ROOT / 'scripts' / name, scripts / name)
             implementation = root / relative
             with patch.object(runner, 'ROOT', root):

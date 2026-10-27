@@ -280,7 +280,11 @@ def source_files():
     files += [ROOT / 'tools' / name for name in
               ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py',
                'portfolio_workspace.py')]
-    files += [ROOT / 'scripts' / name for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py')]
+    files += [ROOT / 'scripts' / name for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py',
+        'numerical_books.py', 'numerical_numba.py', 'numerical_matrix.py',
+        'numerical_workspace.py', 'process_owner.py', 'numerical_identity.py',
+        'numerical_random.py', 'numerical_portfolio.py', 'numerical_runtime.py',
+        'numerical_runtime_child.py', 'numerical_session.py')]
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
     return list(dict.fromkeys(files))

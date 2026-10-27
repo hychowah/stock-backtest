@@ -21,8 +21,10 @@ week/month calendar and monthly compatibility adapters. CB-09 adds one shared
 complete financial-result reducer and an offline numerical diagnostic; see its
 [record](phases/CB-09.md) for verification and audit status. CB-10 completes
 generation-bound offline random recovery and verifies durable snapshot
-independence; see its [record](phases/CB-10.md). SQL and complete-book
-evaluation remain in use. Weekly website controls, runtime and routing remain
+independence; see its [record](phases/CB-10.md). CB-11 delivers the explicit
+persistent bounded runtime; its [record](phases/CB-11.md) tracks verified
+behavior and the completed independent audits. SQL and complete-book evaluation
+remain in use. Weekly website controls, startup integration and routing remain
 later work.
 No production engine or running server routing changes here.
 
@@ -1513,7 +1515,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-08 | Complete | [Calendar contract and phase record](phases/CB-08.md); version-1 week/month planning, exact monthly compatibility, WSL/native verification and independent audit; weekly controls remain unavailable |
 | CB-09 | Complete | [Complete financial-result contract and phase record](phases/CB-09.md); shared reducer, offline numerical diagnostic, WSL/native verification and independent audit; unchanged job/snapshot envelopes; SQL and complete-book returns retained |
 | CB-10 | Complete | Generation-bound offline recovery, complete trial capture, bounded retention and durable snapshot compatibility pass WSL/native verification and independent audit. See [CB-10](phases/CB-10.md). |
-| CB-11 | Planned production hardening | Existing job/queue adapter reusable; persistent numerical runtime and caller-specific cleanup pending; comparison lifetime project retired |
+| CB-11 | Complete | [Explicit persistent runtime](phases/CB-11.md); WSL/native numerical and lifecycle checks pass. Independent final design review and smart-commit audit are clear. Current routing stays unchanged. |
 | CB-12 | Planned | Revision safeguard and source/job/queue owners reusable; isolated numerical startup, restart and freshness integration pending |
 | CB-13 | Planned | Current job recovery, queue, library and ResultArtifacts reusable; candidate preview/compatibility pending; stable default retained |
 | CB-14 | Planned | Candidate financial, coverage, lifecycle and durable-evidence qualification pending; comparative speed gate waived |

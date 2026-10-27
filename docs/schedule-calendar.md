@@ -140,3 +140,9 @@ The schedule, robustness and book-batch suites check financial evaluation,
 reuse, interruption and completed-trial recovery. Native and WSL qualification
 results belong to the CB-08 phase record. This document makes no new speed or
 production-capacity claim.
+
+
+CB-11's explicit runtime also uses `robustness.plan` over the immutable sessions
+in its private SQL workspace. It adds no calendar planner or website control.
+The recorded-plan, default-seed, explicit-date and result-envelope contracts stay
+the same. Runtime use retains financial ownership across all reused jobs.
