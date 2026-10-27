@@ -154,7 +154,8 @@ class BookBatchTests(unittest.TestCase):
         db.rollback()
         with self.assertRaisesRegex(ValueError,'changed'):b.open_reader(path,'different generation')
         db.execute("INSERT INTO metadata VALUES('daily_inputs','{}')");db.commit()
-        with self.assertRaisesRegex(ValueError,'stale'):b.open_reader(path,'{}')
+        with patch.object(s,'fingerprint',return_value={'synthetic':True}),self.assertRaisesRegex(ValueError,'stale'):
+            b.open_reader(path,'{}')
 
     def test_another_writer_completing_the_same_book_is_idempotent(self):
         entry=date(2015,1,1);end=date(2015,7,1)

@@ -3,6 +3,7 @@ import hashlib
 from contextlib import closing, ExitStack
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -17,6 +18,32 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'website'), str(ROOT / 'scripts')]
 import deploy
 import runtime_access
+
+
+@unittest.skipUnless(sys.platform=='win32','Windows batch entry checks require native Windows.')
+class BatchEntryTests(unittest.TestCase):
+    def command(self,launcher,*arguments,cwd):
+        return subprocess.run([os.environ.get('COMSPEC','cmd.exe'),'/d','/c','call',str(launcher),*arguments],
+                              cwd=cwd,stdin=subprocess.DEVNULL,capture_output=True,text=True,timeout=20)
+
+    def test_batch_entry_uses_its_own_script_from_an_unrelated_directory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/'launcher with spaces';(root/'tools').mkdir(parents=True)
+            elsewhere=Path(folder)/'elsewhere';elsewhere.mkdir()
+            for name in ('backtest-web.cmd','start.cmd'):shutil.copy2(ROOT/name,root/name)
+            (root/'tools/deploy.py').write_text('import json,sys\nprint(json.dumps(sys.argv[1:]))\n')
+            result=self.command(root/'backtest-web.cmd','--no-browser','--port','4312',cwd=elsewhere)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertEqual(json.loads(result.stdout.splitlines()[-1]),['--native-launch','--no-browser','--port','4312'])
+
+    def test_batch_entry_from_the_unc_source_path(self):
+        if not str(ROOT).startswith('\\\\'):self.skipTest('Run from the WSL source UNC path to check this entry.')
+        with tempfile.TemporaryDirectory() as elsewhere:
+            # Help exercises real batch/Python resolution without publishing
+            # source, starting a server or touching runtime financial data.
+            result=self.command(ROOT/'backtest-web.cmd','--help',cwd=elsewhere)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn('usage: deploy.py',result.stdout)
 
 
 class DeploymentRevisionTests(unittest.TestCase):
@@ -246,7 +273,7 @@ class DeploymentTests(unittest.TestCase):
     def test_preserves_runtime_assets_and_source_mtime(self):
         files = {'scripts/engine.py': 'one', 'README.md': 'source'}
         manifest = self.manifest(files)
-        for name in ('raw/prices.json', 'data/research.sqlite', deploy.REPORT,
+        for name in ('raw/prices.json', 'data/research.sqlite', 'data/backtest-queue.sqlite', deploy.REPORT,
                      'website/local/index.html', 'website/.openai/hosting.json'):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +284,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.root / 'scripts/engine.py').stat().st_mtime_ns, before)
         self.assertEqual((self.root / deploy.REPORT).read_bytes(), b'Windows-owned')
         self.assertEqual((self.root / 'data/research.sqlite').read_bytes(), b'Windows-owned')
+        self.assertEqual((self.root / 'data/backtest-queue.sqlite').read_bytes(), b'Windows-owned')
         self.assertEqual(deploy.read_json(self.root / deploy.MANIFEST)['commit'], 'a' * 40)
         self.assertFalse((self.root / deploy.PENDING).exists())
 
@@ -337,7 +365,7 @@ class DeploymentTests(unittest.TestCase):
         for name in ('../escape', '/absolute', 'folder\\file', 'file:stream', './file'):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 deploy.source_path(name)
-        for name in ('raw/a.json', 'data/research.sqlite', deploy.REPORT, '.git/config',
+        for name in ('raw/a.json', 'data/research.sqlite', 'data/backtest-queue.sqlite', deploy.REPORT, '.git/config',
                      '.git-local/HEAD', '.venv/file', '.env', 'website/local/index.html',
                      'Raw/a.json', 'DATA/deployment.json', 'RESULTS/SUMMARY-EXITS.TXT'):
             with self.subTest(name=name):

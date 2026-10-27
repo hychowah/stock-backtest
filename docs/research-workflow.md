@@ -194,11 +194,40 @@ upgraded in place, retaining all 300 existing books without parsing JSON prices.
 
 ### Running and interrupted backtests
 
-The custom-backtest page shows an indeterminate spinner and elapsed time while
-awaiting the server. It does not invent a completion percentage. Controls are
-locked against duplicate submissions, previous results remain labelled, and
-completion or failure restores the controls. Switching views clears the visible
-loading state and ignores the old response; it does not stop server computation.
+Custom and random backtests run in a server-owned thread. The browser saves an
+unguessable run ID before submission. It follows `/api/backtest-runs/<id>/status`
+with short polling requests. This route omits the large result. The browser
+retrieves completed holdings from `/api/backtest-runs/<id>`. Repeated submissions
+with that ID reuse the same run.
+Each run has a separate browser recovery record. The record tracks server
+acceptance and Stop intent. A refresh before acceptance retries the same
+submission ID. Once accepted, recovery retrieves the run and never starts
+expired work again. A rejected submission in another tab does not remove
+the accepted run's recovery record.
+Recovery checks saved candidates against current server status. It selects
+active work first. Otherwise, it selects the newest available completed run.
+It skips failed, stopped and expired candidates.
+Locking a phone, refreshing, closing the page or changing views does not cancel
+the calculation. Reopen the same address in the same browser to restore the
+submitted settings and retrieve progress or the completed result. Browser
+storage must remain available. A lost connection retries without starting a new
+calculation. The earlier synchronous schedule and streamed random APIs remain
+available for existing callers.
+
+The page shows a spinner and elapsed time. It does not invent a completion
+percentage. Settings remain editable. Edits do not change the submitted run or
+queue a second run. The Run button prevents duplicate submissions. Previous
+results remain labelled until a new run finishes. Use **Stop backtest** to send
+an explicit stop request. The controls stay busy until the server confirms
+worker cleanup and database closure. A Stop request made while disconnected
+retries when this browser reconnects.
+
+`website/backtest_jobs.py` accepts one active run per server. It uses the
+existing engine cancellation checks and `cache_access.daily()` ownership.
+Shutdown requests a stop and joins the thread before server lifetime ownership
+ends. Finished results remain in server memory for 24 hours, up to four recent
+runs. They are temporary and disappear when the server exits. Use the existing
+saved-backtest library to retain a result. The server computer must stay awake.
 
 Dated books for a request are written inside a SQLite transaction. Closing the
 server before commit rolls those writes back on recovery. Previously committed
@@ -207,8 +236,66 @@ the schedule; unfinished requests are not resumed. `tests/test_schedules.py`
 checks rollback after `KeyboardInterrupt`, then forcibly kills a real SQLite
 writer while a new period is uncommitted, reopens the file, runs
 `PRAGMA integrity_check`, verifies prior row counts, and retries the schedule.
-`tests/check-range.cjs` checks loading/timer state, duplicate suppression,
-completion, server/connection failures and mode-switch cleanup.
+`tests/test_backtest_jobs.py` checks real HTTP disconnects, reconnects, explicit
+stops, idempotent submission, retention and shutdown ownership on WSL and native
+Windows. `tests/check-backtest-runs.cjs` checks browser transport and stored-ID
+recovery. `tests/check-range.cjs` checks loading/timer state, duplicate
+suppression, completion, reconnects and changes of view.
+
+### Overnight queue
+
+Use **Backtest queue** for fixed or random-date tests. Select the custom calendar,
+set parameters and add the current test. Change settings to add more tests.
+Auto-run is suspended while waiting/running queue work exists. Adding, copying
+or editing a queue item also turns it off so setup stays manual between fast
+cached tests. Explicit Run still starts an immediate test. Queue tests run one at a time. Browser closure
+does not affect them. Keep the server computer awake and its terminal open.
+
+Edit holds a waiting item so it cannot start with incomplete edits. Save changes
+to release it. Cancel keeps the original parameters. Held edits survive page and
+server restarts. Move up/down changes waiting order. Copy settings creates a new
+test without changing the original. Pause lets the active item finish but does
+not claim another item. Stop cancels the selected item and waits for normal
+worker cleanup. Failed items remain visible; the consumer continues to the next.
+
+The strategy form owns a queued edit session. While that session is active,
+opening a queue or saved-library result, copying another test, or recovering a
+manual run cannot replace its settings. Save or cancel the edit first. The same
+form boundary handles every restoration source. A failed server hold releases
+the local form session without leaving the controls reserved.
+
+Up to 100 records, including completed results, persist in
+`data/backtest-queue.sqlite`. There is no automatic eviction. Open a result to
+restore its immutable artifact and downloads without running it again. The queue
+is separate from the 20-record saved library. Delete confirms removal of only
+the selected test/result. A deleted-ID receipt prevents a lost acknowledgement
+from recreating it. Keep the queue database during cache cleanup and deployment.
+
+One OS lock, `data/backtest-queue.lock`, elects a consumer across server
+instances. Queue database transactions close before financial ownership starts.
+The queue calls the ordinary website calculation adapter. It waits through
+financial cache contention instead of failing every queued test. Server shutdown
+requeues unfinished work after engine cleanup. A successor recovers abandoned
+running items only after obtaining the consumer lock. Pending Stop requests
+remain cancelled. A random seed is recorded at admission. Once planned, the full
+trial date plan is recorded and reused after interruption. Changing waiting
+calculation parameters discards the previous plan. Renaming a test keeps its
+dates. Tests use the saved financial data available when they execute. Completed artifacts retain their original priced evidence.
+
+The same-origin `/api/backtest-queue` API lists metadata with GET and enqueues
+with POST. Enqueue supplies an idempotent 32-character hex ID, name, mode,
+options, catalog and semantic presentation. `GET /<id>` includes the completed
+snapshot. `POST /pause` accepts a boolean `paused`. Item POST actions are
+`hold`, `release`, `update`, `move` and `stop`; DELETE removes an item.
+Mutations carry its current `revision`. Move supplies `direction: -1` or `1`.
+Update supplies new settings/labels and requires a held item. A revision conflict
+returns 409. Listing never loads result blobs or the full random date plan.
+
+Check `python3 tests/test_queue.py` on WSL/native Windows and
+`node tests/check-queue.cjs`, plus the existing background-run, website, saved
+library and deployment checks. Synthetic tests cover serial execution, failed
+tests, holds, revisions, pause, cancellation, consumer competition, process death,
+cache contention and exact random-date recovery.
 
 ### Random independent rebalances
 

@@ -88,15 +88,18 @@ def summarize_trials(configuration, rows, started):
                 note='Each trial independently samples one trading date in every rebalance block, including a final partial block. Actual holding intervals vary. All trials use the same window, with zero-return cash until their first trade for both strategy and paired SPY. Mean CAGR averages trial CAGRs; it is not the return of one portfolio. Incomplete trials remain listed and are excluded from paired statistics. Scenarios overlap; percentiles are not confidence intervals.')
 
 
-def run(db, configuration, progress=None, *, workers=None):
+def run(db, configuration, progress=None, *, workers=None, capture=None):
     """Plan shared books upfront; calculate ahead and commit each complete trial.
 
     Workers only read immutable prepared inputs. One parent writes books and
     applies the ordinary screener; retrying a seed reuses completed trials.
+    An optional observer receives each completed trial's full result. It must
+    not mutate that result. Ordinary callers still receive only the summary.
     """
     started=time.perf_counter();rows=[];execution={}
     for number,result,stats in book_batch.evaluate_trials(db,configuration,progress,workers):
         rows.append(summarize(result,number,configuration['samples'][number-1]))
+        if capture is not None:capture(number,result)
         execution=dict(stats)
     result=summarize_trials(configuration,rows,started)
     result['execution']=execution

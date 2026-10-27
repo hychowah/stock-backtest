@@ -120,6 +120,7 @@ def main(output=None):
     <div class="latest-facts"><span>Selected stocks<strong id="latest-count">{len(latest_stocks)}</strong></span><span>Median market cap<strong id="latest-median-cap">{latest_cap}</strong></span><span>Median selected metric yield<strong id="latest-median-yield">{latest_yield}</strong></span></div>
     <div class="latest-table"><table class="stock-table"><thead><tr>{''.join('<th'+(' data-metric-multiple' if h=='EV/EBITDA' else ' data-metric-yield' if h=='EBITDA/EV' else '')+'>'+h+'</th>' for h in latest_heads)}</tr></thead><tbody id="latest-body">{''.join(latest_rows) if latest_rows else '<tr><td colspan="13">No stocks match these filters.</td></tr>'}</tbody></table></div><p class="hint">Market cap and EV are estimates at the displayed date using dividend-adjusted prices and report net debt. “Available from” is the assumed fiscal year-end plus 90 days, not a verified publication date. No holding return or contribution exists yet for these picks.</p></section>'''
     page = page.replace('__LATEST_PANEL__', latest_panel)
+    page = page.replace('__BACKTEST_QUEUE__',(ROOT/'queue.html').read_text())
     with (output/'latest-picks.csv').open('w',newline='',encoding='utf-8') as handle:
         latest_fields=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','fiscal','known','price_date']
         writer=csv.DictWriter(handle,fieldnames=latest_fields,extrasaction='ignore',lineterminator='\n')
@@ -129,8 +130,8 @@ def main(output=None):
     packed = json.dumps(screening_data,separators=(',', ':')).replace('<', chr(92)+'u003c')
     range_script = 'const holdingsData='+json.dumps(holdings).replace('<', chr(92)+'u003c')+';'+(ROOT/'range.js').read_text()
     scripts = '<script id="screening-data" type="application/json">'+packed+'</script>'
-    scripts += '<script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+(ROOT/'robustness.js').read_text()+'</script><script>'+(ROOT/'schedule.js').read_text()+'</script><script>'+range_script+'</script>'
-    page = page.replace('</head>', '<style>'+(ROOT/'contributions.css').read_text()+'\n'+(ROOT/'responsive.css').read_text()+'</style></head>')
+    scripts += '<script>'+(ROOT/'result-artifacts.js').read_text()+'</script><script>'+(ROOT/'saved-backtests.js').read_text()+'</script><script>'+(ROOT/'screener.js').read_text()+'</script><script>'+(ROOT/'contributions.js').read_text()+'</script><script>'+(ROOT/'robustness.js').read_text()+'</script><script>'+(ROOT/'backtest-runs.js').read_text()+'</script><script>'+(ROOT/'schedule.js').read_text()+'</script><script>'+(ROOT/'queue.js').read_text()+'</script><script>'+range_script+'</script>'
+    page = page.replace('</head>', '<style>'+(ROOT/'contributions.css').read_text()+'\n'+(ROOT/'responsive.css').read_text()+'\n'+(ROOT/'queue.css').read_text()+'</style></head>')
     scripts += '<script>'+(ROOT/'responsive.js').read_text()+'</script>'
     # Keep scroll instructions and keyboard access in the static fallback too.
     page = re.sub(r'<div class="(scroll|table-wrap|latest-table)">',

@@ -30,6 +30,35 @@ January books or custom trade dates with monthly, quarterly, half-yearly or
 yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)
 directly for the saved latest/January views; custom schedules use the local service.
 
+Custom and random-date backtests run on the server. Locking your phone,
+refreshing, or closing the page does not stop them. Reopen the same address in
+the same browser to recover progress or the result. Use **Stop backtest** to
+cancel. Keep the server computer awake and its terminal open. Temporary results
+last 24 hours, up to four recent runs, until the server exits. Use **Save displayed
+backtest** to keep a completed result in the library.
+
+Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
+tests. From latest or January mode, the first click opens custom-date settings
+and turns off Auto-run without starting a test. Set your parameters, then select
+**Add to queue** again. Use **View queue** to see the list below the strategy
+controls. Change parameters and add another test. Edit, hold, reorder
+or delete waiting tests. Pause the queue to let the active test finish without
+starting another. Stop cancels only the selected active test. Auto-run is
+suspended while the queue has waiting or running work. Adding, copying or
+editing a queue item also turns Auto-run off for continued batch setup.
+Open completed results from the queue without calculating again.
+Save or cancel an active edit before opening or copying another result. This
+keeps the held test's draft parameters intact.
+Reordering does not invalidate an edit. If a response is lost, the queue checks
+the saved edit receipt or offers a retry of the same request. If another browser
+ends the hold, your form becomes available and keeps its current settings.
+
+The queue holds up to 100 records, including completed results. It persists in
+`data/backtest-queue.sqlite` until you delete individual records. It is separate
+from temporary manual runs and the 20-slot saved library. Server restart resumes
+interrupted work with its recorded random dates; held edits stay held. Keep the
+server computer awake and its terminal open overnight.
+
 Choose **Manage backtest data** to inspect saved files and date coverage.
 Choose a stock group or enter symbols. **Download missing data** fills missing
 financial symbols and price ranges with your local FMP key. **Rebuild prepared

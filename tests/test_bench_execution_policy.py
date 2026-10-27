@@ -15,7 +15,9 @@ import bench_execution_policy as policy
 import bench_input_artifacts as artifacts
 import test_bench_execution_inputs as workspace_tests
 
-SIGNATURE = 'a2217f9de7cb4f3dd56fea035f5e1f11fc16fd6f5bed72e944e89f127aab98da'
+# Reviewed-main cancellation checkpoints change schedules.py source identity.
+# Financial expression/code digests below remain bound to the same calculations.
+SIGNATURE = 'c4d2a589cee888638bde1472bec2d27cde08446dd47aaaeafd859741824edbbf'
 
 
 class PolicyTests(unittest.TestCase):

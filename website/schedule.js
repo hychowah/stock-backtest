@@ -1,7 +1,12 @@
 /* Custom dated books use the local prepared daily cache. Rendering consumes
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
-  let result=null,requestNumber=0,running=false,timer=null,startedAt=0,locked=[],buttonText='',hasResults=false;
+  let requestNumber=0,running=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
+  const hasResults=()=>!!ResultArtifacts.forView('custom');
+  function displayedResult(){
+    const artifact=ResultArtifacts.forView('custom');
+    return artifact?.kind==='random'?artifact.result.trial_results?.[inspectedTrial]:artifact?.result;
+  }
   const node=id=>document.getElementById(id);
   const format=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -11,28 +16,33 @@ const ScheduleView=(()=>{
   }
   function startBusy(){
     running=true;startedAt=Date.now();
-    const button=node('run-screen');buttonText=button.textContent;
-    locked=[...new Set([button,...node('strategy-form').querySelectorAll('input,select,button')])].map(control=>[control,!!control.disabled]);
-    locked.forEach(([control])=>control.disabled=true);
+    const button=node('run-screen');
+    button.disabled=true;
+    node('stop-backtest').hidden=false;
     button.textContent='Backtesting…';
     node('custom-view').setAttribute('aria-busy','true');
     node('schedule-progress').hidden=false;
     node('schedule-message').className='';
-    node('schedule-message').textContent=hasResults?'Backtest in progress. Previous results remain below until it finishes.':'Backtest in progress. Results will appear here when ready.';
+    node('schedule-message').textContent='Backtest runs on the server. You can lock your phone or close this page. Reopen this address to retrieve the result.'+(hasResults()?' Previous results remain below until it finishes.':'');
     const tick=()=>node('schedule-elapsed').textContent=elapsed();
     tick();timer=setInterval(tick,1000);
+    updateResultsState();
   }
   function stopBusy(){
     if(timer!==null){clearInterval(timer);timer=null;}
     if(running){
-      locked.forEach(([control,disabled])=>control.disabled=disabled);
-      node('run-screen').textContent=buttonText;
+      node('run-screen').disabled=false;
+      node('run-screen').textContent=viewKey()==='latest'?'Screen latest':'Run backtest';
     }
-    running=false;locked=[];
+    running=false;activeRun=null;
+    node('stop-backtest').hidden=true;
+    node('stop-backtest').disabled=false;
     node('schedule-progress').hidden=true;
     node('custom-view').setAttribute('aria-busy','false');
+    updateResultsState();
   }
   function csv(kind){
+    const result=displayedResult();
     if(!result)return;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
     const observations=kind==='holdings'?result.periods.flatMap(p=>p.holdings.map(h=>({...h,period_start:p.entry,period_end:p.exit,metric:result.options.metric??'ev_ebitda'}))):result.periods;
@@ -59,16 +69,19 @@ const ScheduleView=(()=>{
     node('schedule-chart').innerHTML=html;
   }
   function stocks(){
+    const result=displayedResult();
     if(!result)return;
     const period=result.periods[+node('schedule-period').value];
     if(!period)return;
-    const metric=screeningData.metrics[result.options.metric??'ev_ebitda'].label;
+    const metric=metricLabel(result.options.metric??'ev_ebitda');
     node('schedule-multiple-head').textContent=metric+' (×)';
     node('schedule-stock-body').innerHTML=period.holdings.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
     const group=ReturnContributions.analyze(period.holdings);
     node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions are stock return divided by actual stock count; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
   }
   function render(){
+    const result=displayedResult();
+    if(!result)return;
     node('schedule-results').hidden=false;
     node('schedule-dates').textContent=result.start+' → '+result.end+' · every '+result.months+' month(s)';
     node('schedule-cagr').textContent=format(result.cagr);
@@ -84,7 +97,6 @@ const ScheduleView=(()=>{
   }
   async function run(options,override=null,replay=null){
     if(running)return;
-    const number=++requestNumber;
     if(typeof location==='undefined' || location.protocol==='file:'){
       node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
     }
@@ -96,38 +108,52 @@ const ScheduleView=(()=>{
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
+    await follow(BacktestRuns.create(random?'random':'custom',body));
+  }
+  async function follow(run){
+    if(running)return;
+    const number=++requestNumber,body=run.options,random=run.mode==='random';
+    activeRun=run;
     node('screen-error').textContent='';
     node('schedule-progress-detail').textContent=body.start+' → '+body.end+' · every '+body.months+' month(s). '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
     node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
     startBusy();
+    startedAt=run.submitted;
     try{
-      const response=await fetch(random?'/api/robustness':'/api/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!response.ok){
-        if(response.status===404)throw Error('This tab is connected to an older server. Run start.cmd again and use the new browser tab it opens. Refreshing this tab alone does not update the server.');
-        const error=await response.json();throw Error(error.error||'Schedule calculation failed.');
-      }
-      const next=random?await RobustnessView.read(response,event=>{
-        if(number===requestNumber && (event.type==='progress'||event.type==='preparation')){
+      let rememberedSeed=null;
+      const state=await BacktestRuns.follow(run,state=>{
+        if(state.state==='reconnecting'){
+          node('schedule-progress-detail').textContent='Connection lost. Reconnecting to the server run. You can reopen this address later.';return;
+        }
+        if(state.configuration && state.configuration.seed!==rememberedSeed){
+          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration);
+        }
+        if(state.state==='stopping'){
+          node('schedule-progress-detail').textContent='Stopping on the server. Waiting for workers and cache cleanup.';return;
+        }
+        const event=state.progress;
+        if(event && (event.type==='progress'||event.type==='preparation')){
           node('trial-progress').value=event.completed;node('trial-progress').max=event.total;
           const books=event.total_new_books>0?' · preparing books '+event.calculated_books+'/'+event.total_new_books+' with '+event.workers+' worker'+(event.workers===1?'':'s'):'';
           node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · every '+body.months+' month(s).';
         }
-      }):await response.json();
-      if(number!==requestNumber)return;
-      if(random){
-        RobustnessView.render(next);hasResults=true;
-        node('schedule-results').hidden=true;
-        node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
-        node('schedule-message').className='backtest-complete';
+      },{current:()=>number===requestNumber});
+      if(number!==requestNumber || !state)return;
+      if(state.state==='cancelled'){
+        node('schedule-message').textContent='Backtest stopped.'+(hasResults()?' Previous results remain displayed.':' Select Run backtest when ready.');
         return;
       }
-      if(!override)node('robustness-results').hidden=true;
-      result=next;render();hasResults=true;
-      node('schedule-message').textContent='Backtest complete · '+result.periods.length+' holding periods · '+elapsed()+' elapsed.';
+      if(state.state==='failed')throw Error(state.error);
+      const next=state.result;
+      completeResult({mode:random?'random':'custom',...body},next);
+      if(random){
+        node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
+      }else{
+        node('schedule-message').textContent='Backtest complete · '+next.periods.length+' holding periods · '+elapsed()+' elapsed.';
+      }
       node('schedule-message').className='backtest-complete';
     }catch(error){if(number===requestNumber){
-      const message=error instanceof TypeError?'Could not reach the server. If you closed it, restart start.cmd and run this backtest again.':error.message;
-      node('screen-error').textContent=message+(hasResults?' The previous results remain displayed.':' Try running the backtest again.');
+      node('screen-error').textContent=error.message+(hasResults()?' The previous results remain displayed.':' Try running the backtest again.');
       node('schedule-message').textContent='Backtest failed after '+elapsed()+'.';
       node('schedule-message').className='backtest-failed';
     }}finally{if(number===requestNumber)stopBusy();}
@@ -136,11 +162,40 @@ const ScheduleView=(()=>{
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration)=>run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration));
+    RobustnessView.init((trial,configuration,stored,index)=>stored?inspect(index):run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
   }
-  function cancel(){requestNumber++;stopBusy();node('schedule-message').textContent='';}
-  return {run,init,cancel};
+  async function resume(){
+    if(typeof location==='undefined'||location.protocol==='file:')return;
+    if(running||!BacktestRuns.pending())return;
+    startBusy();
+    node('stop-backtest').hidden=true;
+    node('schedule-progress-detail').textContent='Checking saved runs on the server…';
+    let run;
+    try{run=await BacktestRuns.recover(()=>{node('schedule-progress-detail').textContent='Reconnecting to check saved runs…';});}
+    finally{stopBusy();}
+    if(!run){node('screen-error').textContent='No previous run is available. It may have stopped, failed or expired. Run the backtest again.';return;}
+    try{restoreBacktestSettings({mode:run.mode,...run.options});}
+    catch(error){node('screen-error').textContent=error.message;return;}
+    return follow(run);
+  }
+  function inspect(index){inspectedTrial=index;render();}
+  function show(artifact){
+    inspectedTrial=null;
+    if(artifact.kind==='random'){
+      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
+    }else{
+      render();node('robustness-results').hidden=true;
+    }
+    node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
+  }
+  function cancel(){
+    if(!running||!activeRun)return;
+    BacktestRuns.stop(activeRun);
+    node('stop-backtest').disabled=true;
+    node('schedule-message').textContent='Stop requested. The server will confirm after worker and cache cleanup. If disconnected, this request will retry when the page reconnects.';
+  }
+  return {run,init,resume,cancel,show,isRunning:()=>running};
 })();

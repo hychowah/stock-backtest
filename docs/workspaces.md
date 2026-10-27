@@ -4,6 +4,12 @@ Edit and commit source in WSL. Run the server, saved-data preparation and full-d
 
 The original legacy folder is retained as a fallback. It is not the active development checkout. The WSL repository preserves its saved history in `.git-local`. A `.git` pointer enables ordinary Git commands. The Windows runtime has no separate Git repository.
 
+Frontend and unrelated backend work continue on `main`. The linked
+`cb02/input-ownership` worktree owns the new backtest engine. Read
+[worktree-coordination.md](worktree-coordination.md) before changing shared
+calculation, cache, worker, API or startup contracts. The feature worktree does
+not replace the registered deployment source.
+
 ## Daily commands
 
 From the WSL source checkout:
@@ -29,6 +35,11 @@ gates pass. The two existing portable-snapshot edits stay in WSL until separatel
 reviewed. Commit authorized source changes before deliberate publication.
 
 From Windows Terminal, run `backtest-web.cmd`. The installed command calls the Windows runtime launcher. It asks the current WSL deployment tool to retain the installed revision, then starts native Windows Python in the same terminal. Ctrl+C stops the server. WSL must be available to run this deployment step.
+
+The source launcher also works from the WSL network path. It locates
+`tools/deploy.py` relative to the command file. It does not require CMD to use
+that network path as its working directory. This launcher fix is in source
+until a committed revision containing it is installed.
 
 The running server does not load WSL edits. The installed launcher already delegates
 to the current WSL tool, so its normal next invocation uses this revision rule.

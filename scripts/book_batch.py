@@ -18,6 +18,7 @@ from threading import Thread
 import time
 
 import schedules as s
+import backtest_control
 
 DEFAULT_WORKERS=4
 MIN_PARALLEL_BOOKS=64
@@ -174,11 +175,13 @@ def evaluate_trials(db,configuration,progress=None,workers=None):
                           saved_books=stats['saved_books'],reused_books=planned['reused_books']))
     def notice(force=False):
         nonlocal last_notice
+        backtest_control.checkpoint()
         now=time.perf_counter()
         if force or now-last_notice>=.2:
             event('preparation');last_notice=now
     with calculations(db,planned['jobs'],count,notice) as results:
         for number,(dates,missing) in enumerate(zip(configuration['samples'],planned['trials']),1):
+            backtest_control.checkpoint()
             started=time.perf_counter();event('progress')
             if missing:
                 # Spill large monthly/broad-pool trials rather than retaining all
@@ -196,7 +199,10 @@ def evaluate_trials(db,configuration,progress=None,workers=None):
                         # Take the writer lock only after the whole trial is
                         # calculated. A second server may have saved a shared book.
                         if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
-                        for unused in missing:s.store_period(db,pickle.load(staged))
+                        for unused in missing:
+                            backtest_control.checkpoint()
+                            s.store_period(db,pickle.load(staged))
+                        backtest_control.checkpoint()
                     stats['write_seconds']+=time.perf_counter()-writing
                     stats['saved_books']+=len(missing)
             result=s.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],

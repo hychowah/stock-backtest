@@ -56,3 +56,47 @@ hash. The report cutoff is a source input; generated report contents are a
 publication identity. An unfinished `research.sqlite.publication.json` blocks
 readers. Preparation completes that verified publication before checking cache
 freshness. Keep its referenced `results/baseline-history/` files for recovery.
+
+## Saved backtests
+
+`saved-backtests.sqlite` contains user-saved backtests. It is separate from the
+rebuildable research and schedule databases. Keep this file during cache cleanup,
+rebuilds and source deployment. Back it up with your local user data.
+
+The website stores at most 20 complete records. Each record keeps the submitted
+settings, traded stocks, holding-period returns, result summaries and display
+labels. Opening a record reads its stored results without running a calculation.
+Changed data does not rewrite a saved record. Delete individual records in the
+website to free slots. Reaching the limit never removes an older record.
+
+`website/saved_backtests.py` owns this database. SQLite transactions enforce the
+limit across server instances. Each complete snapshot is compressed inside its
+record. A failed save keeps existing records. This database does not participate
+in financial-cache freshness or rebuilds.
+
+Saved snapshots support versions 1 and 2 within the same database table. Version 2
+uses semantic presentation fields instead of DOM IDs and CSS classes. The browser
+converts version-1 records when opening them. Reading old records never rewrites
+their stored contents. Both formats preserve the original stock rows and returns.
+
+## Overnight backtest queue
+
+`backtest-queue.sqlite` is durable user data. Keep it during preparation, cleanup
+and source deployment. It stores up to 100 fixed or random-date test records,
+including completed results. Results are compressed version-2 snapshots with
+their submitted settings and display labels. They stay until explicit deletion.
+The 20-slot saved library remains independent.
+
+The queue also stores order, pause state, held edits, revisions, progress and
+random seeds. A started random test records its full date plan for interruption
+recovery. Changing waiting calculation parameters discards that old plan.
+Renaming a test keeps its dates. The queue does not participate in research
+freshness and never downloads market data.
+
+`backtest-queue.lock` elects one consumer across server instances. Keep ownership
+through worker completion and financial database closure. Queue transactions
+end before the consumer requests financial ownership. A stopped consumer leaves
+unfinished work waiting. An abrupt exit releases the OS lock; its successor
+recovers running items only after acquiring that lock. Pending Stop requests
+remain stopped. Deleted items keep only a small submission receipt to prevent
+an acknowledgement retry from recreating them.

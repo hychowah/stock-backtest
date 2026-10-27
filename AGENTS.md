@@ -4,6 +4,21 @@ This folder is a standalone US stock backtest. It is not a a different research 
 
 The folder can move. Scripts resolve paths from their own file. Keep `raw/` with the Windows runtime code. The WSL source checkout does not hold a second full cache. The FMP key stays at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
 
+## Parallel development boundary
+
+The `main` worktree continues frontend and unrelated backend development. The
+`cb02/input-ownership` worktree owns the new backtest engine and its supporting
+financial/cache contracts. Before choosing files for a task, read
+[docs/worktree-coordination.md](docs/worktree-coordination.md).
+
+On main, preserve calculation rules, engine interfaces, prepared schemas,
+freshness checks, worker/lock ownership and benchmark code. Keep edits to shared
+files narrow. Avoid broad refactors, renames and formatting changes in these
+areas. If a feature needs an overlapping change, identify the affected contract
+and agree its owning branch before editing that part. Existing task agreements
+can supply that coordination. Continue independent work while an overlap is
+unresolved. This boundary keeps both worktrees active and limits merge conflicts.
+
 ## Git in this environment
 
 The authoritative source checkout is `<wsl-checkout>` in
@@ -336,3 +351,87 @@ They take source ownership before short cache ownership and yield at checkpoints
 They release ownership before calculation. This does not qualify zero-delay
 access or the installed older runtime. Keep `data/website-data-*.lock.live/`
 ignored. Real benchmark admission stays closed.
+## Saved backtest library
+
+`website/saved_backtests.py` owns durable user records in
+`data/saved-backtests.sqlite`. This is not a rebuildable cache. Preserve it during
+preparation, cleanup and source deployment. `website/saved-backtests.js` saves the
+last completed result and its submitted settings, even when controls have pending
+edits. Opening a record restores stored stock rows, returns, labels and downloads
+without calculation. Cap the library at 20 records atomically across instances.
+Never evict an existing record automatically. Delete only the record selected by
+the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
+`node tests/check-saved-backtests.cjs` and the existing range/control checks.
+
+Existing `/api/robustness` streaming clients opt into full trial details with
+`X-Backtest-Details: holdings`. Background jobs and queued random tests capture
+full trial holdings through `backtest_jobs.calculate`.
+The optional `robustness.run(..., capture=observer)` receives each completed
+trial's original result. Observers must not mutate it. Preserve the default
+summary-only result and all existing calculation/progress contracts. Saved
+random records require ordered `trial_results` for every completed trial.
+
+`website/result-artifacts.js` owns the immutable completed artifact for each
+browser view. Publish fresh and reopened results through this same boundary.
+Views, downloads, setting-match notices and saving must read that artifact;
+keep live form edits separate. Persist semantic presentation fields, not DOM
+selectors or CSS classes. Decode version-1 saved records without rewriting them.
+Confirmed library mutations must remain successful if list reconciliation fails.
+Ignore list responses that precede a newer acknowledged mutation. Check
+`node tests/check-result-artifacts.cjs` and the saved-library/range checks.
+
+## Overnight backtest queue
+
+`website/backtest_queue.py` owns durable fixed/random test records in
+`data/backtest-queue.sqlite`. Preserve this file during rebuilds, cleanup and
+deployment. It is separate from financial caches and the 20-slot saved library.
+Keep up to 100 visible records without automatic eviction. Only explicit
+deletion removes a selected test and its result. Retain a small deleted-ID
+receipt so retrying an unacknowledged submission cannot recreate it.
+
+`data/backtest-queue.lock` elects one consumer across local server instances.
+Only the consumer holding this OS lock may recover interrupted running rows.
+End queue database transactions before requesting financial cache ownership.
+Use the existing `backtest_jobs.calculate` adapter and engine cancellation
+checks. Retain queue/source/financial ownership through worker completion and
+financial database closure. Cache contention defers queue work. It must not
+turn a batch into failed tests after a manual-run lock timeout.
+
+Pause prevents the next claim. Held edits do not execute. Only waiting tests
+can change settings or order. An edit has a stable ID and settings version.
+Queue position changes keep that edit valid. Save and Cancel retain one edit
+receipt per test. Exact retries remain safe after execution starts. A new hold
+replaces the preceding receipt. Ordinary mutation revisions still protect
+queue actions and older clients. Existing durable records upgrade in place.
+Server shutdown requeues interrupted work; an explicit Stop stays cancelled.
+Record a random seed at admission and the full date plan before execution.
+Reuse that plan after interruption. Changing waiting calculation parameters
+discards its previous plan. Renaming a test keeps its dates. Each completed
+result is an immutable version-2 artifact with all trial holdings and original
+display labels. Opening it does not calculate.
+
+`website/queue.js` manages queue controls. Auto-run is suspended while the queue
+has waiting/running work or an active edit. Adding, copying or editing an item
+turns Auto-run off for batch setup. Explicit Run remains available.
+The Add to queue action stays beside Run backtest in the strategy toolbar.
+From latest or January mode, it opens custom-date setup with Auto-run off and
+does not submit a calculation. A second click submits the selected fixed/random
+settings. View queue links to the list below the form.
+Parameter edits never mutate submitted tests. Preserve acknowledged queue
+mutations if a list refresh fails, and ignore stale list responses. Checks:
+`python3 tests/test_queue.py` on WSL and native Windows,
+`node tests/check-queue.cjs`, existing background-run/range/library checks and
+`python3 tests/test_deployment.py` on both platforms.
+
+`StrategyDraft` in `website/range.js` owns the strategy form. A queued edit
+reserves a form session before requesting its server hold. Only that session
+can restore settings until a save, cancel, deletion or server reconciliation
+ends it. Reconcile the session by its edit ID and version. An externally ended
+or replaced hold releases the form without replacing its current settings.
+Retry an unacknowledged hold or Save/Cancel with the same identity and payload.
+Queue result opening/copying, saved-library opening and manual recovery use
+the same restoration boundary. They must refuse replacement with a clear
+save-or-cancel message instead of overwriting a held draft. A definitively
+rejected hold must release its local form session. An unacknowledged hold keeps
+the session for reconciliation or retry. Do not add queue-specific restoration guards
+to individual callers. Check these interactions in `tests/check-range.cjs`.

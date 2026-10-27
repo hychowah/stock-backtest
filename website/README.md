@@ -213,3 +213,56 @@ Normal builds, startup and data-panel rebuilds write ignored `website/local/`. T
 Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 
 Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
+
+## Save and reopen completed backtests
+
+Use **Save displayed backtest** after a historical run. Give it a name if useful.
+The save keeps the settings used for the displayed result, all traded stocks,
+and all stock and period returns. Pending control edits are not included.
+A stopped or failed run does not replace the last completed result.
+
+Open **Open or delete saved backtests** to reopen a record. Opening restores its
+settings, charts, stock tables and downloads without rerunning a calculation.
+Records stay available after browser and server restarts. They are stored on the
+server computer in `data/saved-backtests.sqlite`, outside the rebuildable caches.
+The library is shared by browser sessions using that runtime. A saved HTML file
+needs the local service to use the library.
+
+The maximum is 20 records. When full, delete a chosen record before saving
+another. Deletion asks for confirmation and removes only that record. It does
+not remove the result currently displayed in the page.
+
+Check with `python3 tests/test_saved_backtests.py`,
+`node tests/check-saved-backtests.cjs`, and the ordinary range controls check.
+Run the persistence checks with native Windows Python too.
+
+Random-date saves include every trial's exact trade dates, stock rows and period
+returns, plus the seed and distribution summary. Trial inspection uses these
+stored rows. It does not recalculate the book. Current background jobs and queued
+random tests capture full trial holdings through `backtest_jobs.calculate`.
+Existing `/api/robustness` streaming clients can opt into full trial results with
+`X-Backtest-Details: holdings`. Summary-only clients keep their existing response. Save a completed new run; older summary-only
+results do not contain enough evidence for a complete random backtest record.
+
+### Completed-result ownership and saved-record compatibility
+
+`result-artifacts.js` owns one immutable completed artifact per view. Its submitted
+settings, result, catalog and semantic presentation context travel together.
+Fresh calculation and saved-record opening use the same publication and rendering
+path. Renderers, downloads, stale-setting notices and the library read this
+artifact. The library owns record operations and the shared record list.
+
+Version-2 saved snapshots store coverage text, warning severity, range notes and
+period labels without page selectors or CSS classes. The browser decodes
+version-1 records into this format when opening them. Stored version-1 records
+are not rewritten. Saved labels take precedence while displaying saved results.
+New calculations use the current catalog. Random trial inspection reads the
+selected trial from the same completed artifact.
+
+An acknowledged save or deletion updates the visible list immediately. A
+background refresh reconciles other sessions' records. A refresh failure reports
+that the action succeeded and the list could not be refreshed. Older list
+responses cannot replace a newer acknowledged change.
+
+Check `node tests/check-result-artifacts.cjs` alongside the saved-library and range
+checks. The library checks include failed refreshes and out-of-order responses.

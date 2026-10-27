@@ -8,6 +8,9 @@ import ipaddress
 from urllib.parse import urlsplit
 import json
 import sqlite3
+import select
+import socket
+import time
 import sys
 import subprocess
 import webbrowser
@@ -20,12 +23,27 @@ import robustness
 import data_manager
 import cache_access
 import diagnostics
+import backtest_control
+import saved_backtests
+import backtest_jobs
+import backtest_queue
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
+SAVED_BACKTESTS=saved_backtests.Store()
 
 
 class Server(ThreadingHTTPServer):
+    def __init__(self,*args,**kwargs):
+        self.backtest_jobs=backtest_jobs.Jobs()
+        self.backtest_queue=backtest_queue.Queue()
+        super().__init__(*args,**kwargs)
+
+    def server_close(self):
+        self.backtest_queue.close()
+        self.backtest_jobs.close()
+        super().server_close()
+
     def handle_error(self,request,client_address):
         error=sys.exc_info()[1]
         diagnostics.failure('http.failed',error)
@@ -60,6 +78,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.launcher_request():return
+        if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
+            self.queue_request();return
+        if self.path.startswith('/api/backtest-runs/'):
+            self.backtest_run_request();return
+        if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
+            self.saved_backtest_request();return
         if self.path=='/data.html':
             body=data_page().encode('utf-8')
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8')
@@ -73,8 +97,31 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(302);self.send_header('Location','/data.html');self.send_header('Content-Length','0');self.end_headers();return
         super().do_GET()
 
+    def disconnect_check(self):
+        """Observe an aborted fetch without consuming any further request bytes."""
+        last_check=0.;gone=False
+        def cancelled():
+            nonlocal last_check,gone
+            now=time.monotonic()
+            if gone or now-last_check<.05:return gone
+            last_check=now
+            try:
+                readable,_,_=select.select([self.connection],[],[],0)
+                if readable:gone=self.connection.recv(1,socket.MSG_PEEK)==b''
+            except OSError:
+                gone=True
+            return gone
+        return cancelled
+
     def do_POST(self):
         if self.launcher_request():return
+        if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
+            self.queue_request();return
+        if self.path.startswith('/api/backtest-runs/'):
+            self.backtest_run_request();return
+
+        if self.path=='/api/backtests' or self.path.startswith('/api/backtests/'):
+            self.saved_backtest_request();return
 
         if self.path.startswith('/api/data/'):
             self.data_request();return
@@ -89,7 +136,8 @@ class Handler(SimpleHTTPRequestHandler):
             if not 0<length<=16384:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
-            with cache_access.daily() as db:
+            with backtest_control.cancel_when(self.disconnect_check()), cache_access.daily() as db:
+                backtest_control.checkpoint()
                 db.execute('PRAGMA cache_size=-131072')
                 if self.path=='/api/robustness':
                     configuration=robustness.plan(db,**request)
@@ -97,10 +145,112 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 calculate=schedules.backtest_dates if 'dates' in request else schedules.backtest
                 result=calculate(db,**request)
+                backtest_control.checkpoint()
             self.reply(200,result)
+        except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
+            # Contexts close databases and wait for worker cleanup before cache
+            # ownership is released. Completed trial transactions remain saved.
+            return
         except (ValueError,TypeError,sqlite3.Error) as error:
             diagnostics.failure('schedule.failed',error,mode='robustness' if self.path=='/api/robustness' else 'schedule')
             self.reply(400,dict(error=str(error)))
+
+    def do_DELETE(self):
+        if self.path.startswith('/api/backtest-queue/'):
+            self.queue_request();return
+        if self.path.startswith('/api/backtests/'):
+            self.saved_backtest_request();return
+        self.reply(404,dict(error='Unknown endpoint.'))
+
+    def queue_request(self):
+        origin=self.headers.get('Origin')
+        if origin and origin!='http://'+self.headers.get('Host',''):
+            self.reply(403,dict(error='Open the website to manage the backtest queue.'));return
+        queue=self.server.backtest_queue;store=queue.store
+        collection=self.path=='/api/backtest-queue'
+        path=[] if collection else self.path.removeprefix('/api/backtest-queue/').split('/')
+        try:
+            queue.start()
+            if self.command=='GET':
+                if not collection and len(path)!=1:
+                    self.reply(404,dict(error='Unknown queue action.'));return
+                self.reply(200,store.listing() if collection else store.get(path[0]));return
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0<length<=262144:raise ValueError('Invalid queue request size.')
+            def invalid(value):raise ValueError('Queue values must be finite.')
+            request=json.loads(self.rfile.read(length),parse_constant=invalid)
+            if not isinstance(request,dict):raise ValueError('Expected queue options.')
+            if self.command=='POST' and collection:
+                result=store.enqueue(request)
+            elif self.command=='POST' and path==['pause']:
+                result=store.pause(request.get('paused'))
+            elif self.command=='POST' and len(path)==2:
+                result=store.change(path[0],path[1],request)
+            elif self.command=='DELETE' and len(path)==1:
+                result=store.change(path[0],'delete',request)
+            else:self.reply(404,dict(error='Unknown queue action.'));return
+            queue.wake.set();self.reply(200,result)
+        except backtest_queue.Missing as error:self.reply(404,dict(error=str(error)))
+        except backtest_queue.Conflict as error:self.reply(409,dict(error=str(error)))
+        except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+        except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+        except (OSError,sqlite3.Error) as error:
+            diagnostics.failure('queue.request_failed',error)
+            self.reply(500,dict(error='Could not access the backtest queue. Existing records were kept. Check the server log.'))
+
+    def backtest_run_request(self):
+        origin=self.headers.get('Origin')
+        if origin and origin!='http://'+self.headers.get('Host',''):
+            self.reply(403,dict(error='Open the website to manage backtest runs.'));return
+        path=self.path.removeprefix('/api/backtest-runs/').split('/')
+        identifier=path[0]
+        jobs=self.server.backtest_jobs
+        try:
+            if self.command=='GET' and len(path)==1:
+                self.reply(200,jobs.snapshot(identifier))
+            elif self.command=='GET' and path[1:]==['status']:
+                self.reply(200,jobs.snapshot(identifier,include_result=False))
+            elif self.command=='POST' and path[1:]==['stop']:
+                self.reply(202,jobs.cancel(identifier))
+            elif self.command=='POST' and len(path)==1:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=16384:raise ValueError('Invalid request size.')
+                def invalid(value):raise ValueError('Backtest values must be finite.')
+                request=json.loads(self.rfile.read(length),parse_constant=invalid)
+                if not isinstance(request,dict):raise ValueError('Expected backtest options.')
+                self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options')))
+            else:self.reply(404,dict(error='Unknown run action.'))
+        except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
+        except backtest_jobs.Busy as error:self.reply(409,dict(error=str(error)))
+        except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+        except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+
+    def saved_backtest_request(self):
+        origin=self.headers.get('Origin')
+        if origin and origin!='http://'+self.headers.get('Host',''):
+            self.reply(403,dict(error='Open the website to manage saved backtests.'));return
+        identifier=self.path.removeprefix('/api/backtests/');collection=self.path=='/api/backtests'
+        try:
+            if self.command=='GET':
+                self.reply(200,dict(limit=saved_backtests.LIMIT,records=SAVED_BACKTESTS.list()) if collection else SAVED_BACKTESTS.get(identifier))
+            elif self.command=='DELETE' and not collection:
+                SAVED_BACKTESTS.delete(identifier);self.reply(200,dict(deleted=True,id=identifier))
+            elif self.command=='POST' and collection:
+                length=int(self.headers.get('Content-Length','0'))
+                if length>saved_backtests.MAX_BYTES:
+                    self.reply(413,dict(error='This backtest is too large to save as one record.'));return
+                if length<=0:raise ValueError('Expected a completed backtest.')
+                def invalid_constant(value):raise ValueError('Saved values must be finite.')
+                request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
+                if not isinstance(request,dict):raise ValueError('Expected a completed backtest.')
+                self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
+            else:self.reply(405,dict(error='Unsupported saved-backtest action.'))
+        except saved_backtests.Full as error:self.reply(409,dict(error=str(error)))
+        except saved_backtests.Missing as error:self.reply(404,dict(error=str(error)))
+        except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+        except (OSError,sqlite3.Error) as error:
+            diagnostics.failure('saved_backtest.failed',error)
+            self.reply(500,dict(error='Could not access saved backtests. Your existing records were kept. Check the development log.'))
 
     def data_request(self):
         if not self.data_allowed():self.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return
@@ -122,13 +272,19 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.end_headers()
         def event(payload):
+            backtest_control.checkpoint()
             self.wfile.write((json.dumps(payload,allow_nan=False)+'\n').encode())
             self.wfile.flush()
         try:
             event(dict(type='configuration',configuration=configuration))
-            result=robustness.run(db,configuration,progress=event)
+            if getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings':
+                details=[]
+                result=robustness.run(db,configuration,progress=event,capture=lambda number,trial:details.append(trial))
+                result['trial_results']=details
+            else:
+                result=robustness.run(db,configuration,progress=event)
             event(dict(type='complete',result=result))
-        except (BrokenPipeError,ConnectionResetError):
+        except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # The completed trial transactions remain cached; stop before the
             # next trial when the browser disconnects.
             return
@@ -206,6 +362,7 @@ def run_server(args,lifecycle,parser):
     if lifecycle:lifecycle.attach(server)
     else:server.daemon_threads=False
     try:
+        if not recovery:server.backtest_queue.start()
         print('Server attached to this terminal. Press Ctrl+C to stop.',flush=True)
         print(f'Open http://127.0.0.1:{port} — custom schedules use saved data only.',flush=True)
         diagnostics.event('server.ready',port=port)

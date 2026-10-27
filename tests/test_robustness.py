@@ -140,6 +140,40 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(events[-1]['type'],'complete')
         self.assertEqual(events[-1]['result']['completed'],2)
 
+    def test_optional_capture_keeps_full_trial_results_without_changing_summary(self):
+        configuration=self.config(trials=3,seed=42)
+        captured=[]
+        result=r.run(self.db,configuration,capture=lambda number,trial:captured.append((number,trial)))
+        self.assertEqual([number for number,trial in captured],[1,2,3])
+        self.assertNotIn('trial_results',result)
+        for (number,trial),summary in zip(captured,result['trials']):
+            ordinary=s.backtest_dates(self.db,dates=configuration['samples'][number-1],start=configuration['start'],end=configuration['end'],months=configuration['months'],**configuration['options'])
+            self.assertEqual({k:v for k,v in trial.items() if k!='seconds'},{k:v for k,v in ordinary.items() if k!='seconds'})
+            self.assertEqual(trial['cagr'],summary['cagr'])
+            self.assertTrue(trial['periods'][0]['holdings'])
+        replay=r.run(self.db,configuration)
+        self.assertEqual(result['distributions'],replay['distributions'])
+
+    def test_opt_in_stream_keeps_every_trial_holding_and_default_contract(self):
+        configuration=self.config(trials=2,seed=42)
+        def stream(headers):
+            handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO();handler.headers=headers
+            handler.send_response=lambda *args:None
+            handler.send_header=lambda *args:None;handler.end_headers=lambda:None
+            handler.stream_batch(self.db,configuration)
+            return [json.loads(line) for line in handler.wfile.getvalue().splitlines()]
+        events=stream({'X-Backtest-Details':'holdings'})
+        result=events[-1]['result']
+        self.assertEqual(events[-1]['type'],'complete')
+        self.assertEqual(len(result['trial_results']),2)
+        for detail,summary in zip(result['trial_results'],result['trials']):
+            self.assertEqual(len(detail['periods']),summary['periods'])
+            self.assertEqual(detail['cagr'],summary['cagr'])
+            self.assertEqual(detail['periods'][0]['holdings'][0]['symbol'],'A')
+        plain=stream({})[-1]['result']
+        self.assertNotIn('trial_results',plain)
+        self.assertEqual(plain['distributions'],result['distributions'])
+
     def test_interrupted_stream_publishes_replay_identity_before_work(self):
         handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO()
         handler.send_response=lambda *args:None
@@ -160,6 +194,7 @@ class RobustnessTests(unittest.TestCase):
         def handler(path,payload):
             obj=object.__new__(serve.Handler);body=json.dumps(payload).encode()
             obj.server=SimpleNamespace(lifecycle=None)
+            obj.disconnect_check=lambda:lambda:False
             obj.path=path;obj.rfile=io.BytesIO(body);obj.wfile=io.BytesIO()
             obj.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}
             obj.statuses=[];obj.send_response=obj.statuses.append
