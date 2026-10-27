@@ -148,7 +148,8 @@ class PreparedGeneration:
     def _prepared(self, inventory, daily, research, report_hash):
         engine = {}
         for path in (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
-                     Path(self.s.__file__).with_name('schedule_calendar.py')):
+                     Path(self.s.__file__).with_name('schedule_calendar.py'),
+                     Path(self.s.__file__).with_name('portfolio_results.py')):
             info = path.stat()
             engine[path.name] = [info.st_size, info.st_mtime_ns]
         expected = dict(version=self.s.VERSION, inputs=inventory, engine=engine)

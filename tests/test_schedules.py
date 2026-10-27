@@ -18,6 +18,15 @@ import schedules as s
 
 
 class CalendarTests(unittest.TestCase):
+    def test_daily_fingerprint_tracks_portfolio_reducer(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'portfolio_results.py';path.write_text('# first')
+            with patch.object(s.r,'signature',return_value={'private-fixture':1}),patch.object(s.portfolio_results,'__file__',str(path)):
+                before=s.fingerprint()
+                path.write_text('# changed portfolio source')
+                after=s.fingerprint()
+        self.assertNotEqual(before['engine']['portfolio_results.py'],after['engine']['portfolio_results.py'])
+
     def test_daily_fingerprint_tracks_calendar_source(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
@@ -25,7 +34,7 @@ class CalendarTests(unittest.TestCase):
                 before=s.fingerprint()
                 path.write_text('# changed calendar source')
                 after=s.fingerprint()
-        self.assertEqual(set(before['engine']),{'schedules.py','book_batch.py','schedule_calendar.py'})
+        self.assertEqual(set(before['engine']),{'schedules.py','book_batch.py','schedule_calendar.py','portfolio_results.py'})
         self.assertNotEqual(before['engine']['schedule_calendar.py'],after['engine']['schedule_calendar.py'])
 
     def sessions(self,first,last):

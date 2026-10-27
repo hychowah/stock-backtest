@@ -18,12 +18,30 @@ report binding. It rejects pending deployment or baseline publication. It does
 not prepare raw inputs, download data or change the canonical report. A stale
 cache requires the ordinary offline preparation before numerical export.
 
-The CB-08 calendar adapter changes the whole-source hash of `schedules.py`.
-The daily engine fingerprint also includes `schedule_calendar.py`. Existing
+The CB-08 calendar adapter and CB-09 portfolio reducer change the whole-source
+hash of `schedules.py`. The daily engine fingerprint includes
+`schedule_calendar.py` and `portfolio_results.py`. Existing
 daily caches need ordinary offline preparation, followed by numerical export.
 Older artifacts cannot validate as current. Financial formulas stay the same.
 Format 1, temporal interface 1 and factor interface 1 stay the same. This source
 change does not create a new financial policy version or rewrite old evidence.
+
+CB-09 adds an offline complete-result diagnostic. `NumericalPortfolio` in
+`tools/numerical_portfolios.py` borrows an explicitly owned attachment and the
+accepted complete-book provider. It stages one complete eligible book at a time
+in private memory, calls the existing SQL selector and uses the same portfolio
+reducer as ordinary schedules. It opens no default application database and
+does not invoke the historical measurement runner. Close its private workspace
+and the provider before closing the attachment. Keep source-before-import and
+source-before-cache ownership throughout. The existing attachment validator
+still checks current inputs before a diagnostic request.
+
+The [financial result contract](portfolio-results.md) defines version 1 outside
+existing job payloads. Complete holding rows, status strings, nulls and array
+order stay intact. Fixed monthly requests and explicit weekly dates use the
+same reducer. Explicit dates retain their existing monthly envelope. This adds
+no website control, selected-only optimization, production routing, random
+recovery or persistent runtime. Historical benchmark admission stays closed.
 
 `attach` verifies the current artifact, opens its buffers and records read-only,
 prints its identity and load observations, then closes it. It still checks

@@ -12,6 +12,7 @@ import cache_access
 import books as financial_books
 import backtest_control
 import schedule_calendar
+import portfolio_results
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
 VERSION = 3
@@ -34,7 +35,7 @@ def fingerprint():
     # Preparation already validated every raw price file. Normal requests inspect
     # only the compact research signature, not thousands of raw files.
     sources=[Path(__file__),Path(__file__).with_name('book_batch.py'),
-             Path(schedule_calendar.__file__)]
+             Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
     return dict(version=VERSION, inputs=r.signature(),
                 engine={p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
@@ -253,20 +254,18 @@ def backtest_dates(db, *, dates, start, end, months=12, **options):
     """Evaluate explicit trades, holding cash before the first trade for both sides."""
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     first,final,periods=dated_periods(dates,start,end,months,sessions)
-    result=backtest_periods(db,periods,months=months,**options)
-    result['first_trade']=result['start']
-    result['start']=str(first)
-    result['cash_days']=(periods[0][0]-first).days
-    duration=(final-first).days/365.25
-    result['cagr']=result['growth']**(1/duration)-1 if result['growth'] is not None else None
-    result['spy_cagr']=result['spy_growth']**(1/duration)-1
-    return result
+    return _backtest_periods(db,periods,months=months,common_start=first,**options)
 
 
 def backtest_periods(db, periods, *, months, **options):
+    return _backtest_periods(db,periods,months=months,**options)
+
+
+def _backtest_periods(db, periods, *, months, common_start=None, **options):
     """Prepare missing books atomically and apply the shared SQL screener."""
     backtest_control.checkpoint()
     started=time.perf_counter()
+    periods=portfolio_results.validate_periods(periods,common_start)
     allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters'}
     if set(options)-allowed:raise ValueError('Unknown screening option.')
     r._select(db,period=(-1,-1),**options)
@@ -274,25 +273,16 @@ def backtest_periods(db, periods, *, months, **options):
     missing=any(prepared_period(db,a,b,pool) is None for a,b in periods)
     books=histories(db) if missing else None
     cached=cached_symbols(db) if missing else set()
-    results=[]
+    def select_period(entry,exit_day):
+        period_id=prepare_period(db,entry,exit_day,books,cached,pool)
+        stocks=r._select(db,period=(period_id,period_id),**options)
+        spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
+        return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:
-        for entry,exit_day in periods:
-            backtest_control.checkpoint()
-            period_id=prepare_period(db,entry,exit_day,books,cached,pool)
-            stocks=r._select(db,period=(period_id,period_id),**options)
-            for stock in stocks:
-                stock.pop('year')
-                stock['weight']=1/len(stocks)
-                stock['contribution_pp']=stock['return_value']/len(stocks)*100
-            spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
-            results.append(dict(entry=str(entry),exit=str(exit_day),holdings=stocks,names=len(stocks),portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,spy=spy,is_final_period=exit_day==periods[-1][1]))
-        backtest_control.checkpoint()
-    growth=spy_growth=1.
-    for period in results:
-        if growth is not None:growth=growth*(1+period['portfolio']) if period['portfolio'] is not None else None
-        spy_growth*=1+period['spy']
-    duration=(periods[-1][1]-periods[0][0]).days/365.25
-    return dict(periods=results,start=str(periods[0][0]),end=str(periods[-1][1]),months=months,options=options,growth=growth,spy_growth=spy_growth,cagr=growth**(1/duration)-1 if growth is not None else None,spy_cagr=spy_growth**(1/duration)-1,seconds=time.perf_counter()-started,coverage='Cached-price companies only; additional early exits have not received the original manual review. Stopped proceeds stay in cash until the next rebalance. Equal weights reset each period; no transaction costs.')
+        result=portfolio_results.evaluate(periods,select_period,common_start=common_start,
+                                          checkpoint=backtest_control.checkpoint)
+    result.update(months=months,options=options,seconds=time.perf_counter()-started)
+    return result
 
 
 if __name__=='__main__':

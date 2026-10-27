@@ -138,7 +138,7 @@ def freshness(root, budget):
         if number % 1024 == 0: budget.check()
         info = path.stat(); prices[path.name] = [info.st_size, info.st_mtime_ns]
     engine = {}
-    for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py'):
+    for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py'):
         info = (root / 'scripts' / name).stat(); engine[name] = [info.st_size, info.st_mtime_ns]
     return dict(inputs=inventory, prices=prices, daily_inputs=dict(version=3, inputs=inventory, engine=engine))
 

@@ -60,7 +60,7 @@ class WorkspaceTests(unittest.TestCase):
         self.freshness = dict(inputs={'raw/universe.json': [2, 1], 'raw/px': ['directory', 1],
             'historical_through': '2026-10-21'}, prices={'A.json': [100, 1234]})
         self.freshness['daily_inputs'] = dict(version=3, inputs=self.freshness['inputs'],
-            engine={'schedules.py': [123, 456], 'book_batch.py': [234, 567], 'schedule_calendar.py': [345, 678]})
+            engine={'schedules.py': [123, 456], 'book_batch.py': [234, 567], 'schedule_calendar.py': [345, 678], 'portfolio_results.py': [456, 789]})
         with closing(sqlite3.connect(self.capture / 'research.sqlite')) as research, closing(sqlite3.connect(self.capture / 'schedules.sqlite')) as daily:
             fill(SimpleNamespace(research=research, daily=daily,
                 write_report=lambda content: (self.capture / 'report.txt').write_bytes(content)))
@@ -137,6 +137,11 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_missing_calendar_freshness_dependency_rejects_without_fallback(self):
         del self.manifest['originals']['freshness']['daily_inputs']['engine']['schedule_calendar.py']
+        self.write_manifest()
+        self.assert_reason('incomplete',self.owner().__enter__)
+
+    def test_missing_portfolio_freshness_dependency_rejects_without_fallback(self):
+        del self.manifest['originals']['freshness']['daily_inputs']['engine']['portfolio_results.py']
         self.write_manifest()
         self.assert_reason('incomplete',self.owner().__enter__)
 
@@ -342,7 +347,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assert_reason('incomplete', self.owner().__enter__)
         path.write_bytes(saved)
         for name in ('scripts/books.py', 'scripts/paths.py', 'scripts/diagnostics.py', 'scripts/book_batch.py',
-                     'scripts/schedule_calendar.py'):
+                     'scripts/schedule_calendar.py', 'scripts/portfolio_results.py'):
             expected = self.manifest['originals']['sources'].pop(name); self.write_manifest()
             self.assert_reason('incomplete', self.owner().__enter__)
             self.manifest['originals']['sources'][name] = expected

@@ -41,7 +41,7 @@ class ExecutionTests(unittest.TestCase):
         observed = signature(SimpleNamespace(ROOT=f.source, RAW=raw, RESULTS=f.source / 'results',
             __file__=str(f.source / 'scripts/research.py'), **modules))
         engine = {name: [path.stat().st_size, path.stat().st_mtime_ns]
-                  for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py') for path in [f.source / 'scripts' / name]}
+                  for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py') for path in [f.source / 'scripts' / name]}
         f.freshness['inputs'] = observed
         f.freshness['daily_inputs'] = dict(version=3, inputs=observed, engine=engine)
         with closing(sqlite3.connect(f.capture / 'research.sqlite')) as r, closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as d:
@@ -128,6 +128,10 @@ class ExecutionTests(unittest.TestCase):
         with patch.object(execution.admission, 'require_execution'), \
                 patch.object(owner, '_command', side_effect=lambda request: self.fixture_command(owner, request)):
             with owner:
+                helper='portfolio_workspace.py'
+                expected=hashlib.sha256((ROOT/'tools'/helper).read_bytes()).hexdigest()
+                self.assertEqual(owner.protocol.value['environment']['tool_sources'][helper],expected)
+                self.assertEqual(hashlib.sha256((owner._tools/helper).read_bytes()).hexdigest(),expected)
                 owner.compare()
                 with self.assertRaisesRegex(ComparisonError, 'incomplete'):
                     _ = owner.result
@@ -165,13 +169,14 @@ class ExecutionTests(unittest.TestCase):
         self.assertIsNone(owner._owned)
 
     def test_report_journal_source_and_prepared_replacements_stop_the_pair(self):
-        for kind in ('report', 'journal', 'source', 'calendar', 'prepared'):
+        for kind in ('report', 'journal', 'source', 'calendar', 'portfolio', 'prepared'):
             with self.subTest(kind=kind):
                 f = self.fixture
                 path = {'report': f.source / 'results/summary-exits.txt',
                         'journal': f.source / 'data/research.sqlite.publication.json',
                         'source': f.source / 'scripts/metrics.py',
                         'calendar': f.source / 'scripts/schedule_calendar.py',
+                        'portfolio': f.source / 'scripts/portfolio_results.py',
                         'prepared': f.source / 'data/research.sqlite'}[kind]
                 original = path.read_bytes() if path.exists() else None
                 info = path.stat() if original is not None else None

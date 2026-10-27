@@ -32,7 +32,8 @@ def environment(envelope):
                 packages={name: version(name) for name in ('numpy', 'numba', 'llvmlite')},
                 envelope=asdict(envelope),
                 tool_sources={path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                              for path in sorted(Path(__file__).parent.glob('bench_*.py'))})
+                              for path in sorted((*Path(__file__).parent.glob('bench_*.py'),
+                                                  Path(__file__).with_name('portfolio_workspace.py')))})
 
 
 @dataclass(frozen=True)
@@ -209,7 +210,8 @@ class MeasurementExecution:
             self._tools = workspace._folder / 'tools'
             self._tools.mkdir()
             self._tool_hashes = {}
-            for path in Path(__file__).parent.glob('bench_*.py'):
+            for path in (*Path(__file__).parent.glob('bench_*.py'),
+                         Path(__file__).with_name('portfolio_workspace.py')):
                 data = path.read_bytes()
                 self._tool_hashes[path.name] = hashlib.sha256(data).hexdigest()
                 (self._tools / path.name).write_bytes(data)

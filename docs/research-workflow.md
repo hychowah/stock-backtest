@@ -162,6 +162,13 @@ session rolling and seeded sampling. Read the
 [calendar contract](schedule-calendar.md) for its version and old-request mapping.
 Website and financial-facing requests keep the five existing month counts.
 `scripts/schedules.py` owns the daily SQLite index and dated books.
+`scripts/portfolio_results.py` reduces ordered selected books into complete
+dated results. It owns equal weights, signed contributions, compounding and
+common-window cash. It reads no files. The
+[financial result contract](portfolio-results.md) preserves complete holding
+rows and existing application envelopes. An offline numerical diagnostic uses
+the same reducer after complete-book calculation and unchanged SQL selection.
+This diagnostic does not route website requests to a new engine.
 `data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
 calculation code change. Repeated preparation validates source freshness without
 parsing prices. Newly requested entry/exit pairs are computed once and persisted;

@@ -110,10 +110,14 @@ validation. Jobs, queues, saved results and batch workers keep their interfaces.
 
 Weekly calendar dates can be supplied to the existing explicit-date evaluator.
 That evaluator still returns legacy monthly metadata, including its default
-`months=12`. This verifies date/financial separation. It is not a weekly
-presentation or result-contract implementation.
+`months=12`. CB-09 shares its portfolio reducer with an offline numerical
+diagnostic. The separate [financial result contract](portfolio-results.md)
+keeps complete holdings and financial fields without adding a version to
+existing application payloads. This verifies date/financial separation. It
+adds no weekly presentation or website control.
 
-The daily-cache engine fingerprint includes `schedule_calendar.py`. Its existing
+The daily-cache engine fingerprint includes `schedule_calendar.py` and the
+CB-09 `portfolio_results.py` reducer. Its existing
 capture and generation validators include the same dependency. A changed source
 requires ordinary offline preparation. There is no new identity mechanism or
 database schema version. Private source exports already include Python modules.

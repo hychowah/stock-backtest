@@ -15,9 +15,9 @@ import bench_execution_policy as policy
 import bench_input_artifacts as artifacts
 import test_bench_execution_inputs as workspace_tests
 
-# CB-08 calendar adapters change the schedules.py whole-source identity.
+# CB-09 reducer integration changes the schedules.py whole-source identity.
 # Financial expression/code digests below remain bound to the same calculations.
-SIGNATURE = 'a81afa42775313a181ea49685492931852f99caaee8463f1c9e9ebcba3b94e98'
+SIGNATURE = '7541942b9d4f858d6509494baebb9cc34a467965e24c31f306d438da9958e8ab'
 
 
 class PolicyTests(unittest.TestCase):

@@ -1,0 +1,193 @@
+"""Offline complete-book portfolio diagnostic. No runtime discovery or routing.
+
+The caller owns source before import/cache access, validates and holds its input
+attachment, and closes the borrowed provider before that attachment. This adapter
+owns only its private SQL workspace. It never opens an application database.
+"""
+from datetime import date
+import math
+import sqlite3
+import time
+
+import portfolio_results
+from portfolio_workspace import stage_book
+
+
+class NumericalPortfolio:
+    """Compose an explicitly supplied complete-book provider with existing SQL.
+
+    inputs can be an already validated AttachedInputs or fictional NumericInputs.
+    provider is the accepted complete-book evaluator for exactly those inputs.
+    Work stays bounded to one complete candidate book at a time. No factors are
+    ranked before period-specific entry/exit eligibility has been applied.
+    """
+    def __init__(self, inputs, provider):
+        self.inputs, self.provider, self.s = inputs, provider, inputs.s
+        self.closed = False
+        self.db = sqlite3.connect(':memory:')
+        self.db.row_factory = sqlite3.Row
+        try:
+            self._validate_inputs()
+            self.db.executescript(self.s.SCHEMA)
+            self.db.executemany('INSERT INTO companies VALUES(?,?,?,?)', inputs.companies)
+            self.db.commit()
+        except BaseException:
+            self.close()
+            raise
+
+    def _validate_inputs(self):
+        if self.closed or self.inputs.closed:
+            raise ValueError('Numerical portfolio or input attachment is closed.')
+        if self.provider.inputs is not self.inputs:
+            raise ValueError('Complete-book provider belongs to different inputs.')
+        # Production attachments retain their existing current-input validator.
+        # NumericInputs is confined to explicitly owned fictional fixtures.
+        validate = getattr(self.inputs, 'validate', None)
+        if validate is not None: validate()
+
+    def _calendar(self):
+        return self.s.schedule_calendar.SessionCalendar(
+            [date.fromisoformat(day) for day in sorted(self.inputs.sessions)])
+
+    def backtest(self, *, start, end, months=12, **options):
+        self._validate_inputs()
+        configuration = self.s.schedule_calendar.legacy_configuration(
+            dict(start=start, end=end, months=months))
+        periods = self._calendar().fixed(configuration, checkpoint=self.s.backtest_control.checkpoint)
+        return self.backtest_periods(periods, months=months, **options)
+
+    def backtest_dates(self, *, dates, start, end, months=12, **options):
+        self._validate_inputs()
+        self.s.schedule_calendar.legacy_configuration(dict(start=start, end=end, months=months))
+        first, final, periods = self._calendar().explicit(
+            dates, start, end, checkpoint=self.s.backtest_control.checkpoint)
+        return self.backtest_periods(periods, months=months, common_start=first, **options)
+
+    def backtest_periods(self, periods, *, months=12, common_start=None, **options):
+        started = time.perf_counter()
+        periods = portfolio_results.validate_periods(periods, common_start)
+        self._validate_inputs()
+        # This unchanged selector validates options before any provider work or
+        # SQL writes, including unknown keyword arguments and strict filters.
+        try:
+            self.s.r._select(self.db, period=(-1, -1), **options)
+        except TypeError as error:
+            raise ValueError('Unknown screening option.') from error
+        self.provider.begin(dict(options=options))
+        pool = options.get('pool', 'legacy')
+
+        def select_period(entry, exit_day):
+            requested = (str(entry), str(exit_day), pool)
+            response = self.provider.evaluate([requested])
+            if not isinstance(response, list) or len(response) != 1:
+                raise ValueError('Complete-book provider changed the result count.')
+            book = response[0]
+            self._check_book(book, requested)
+            try:
+                period_id = stage_book(self.db, book, pool)
+            except (sqlite3.Error, TypeError, ValueError, KeyError) as error:
+                raise ValueError('Complete-book SQL staging contract differs.') from error
+            holdings = self.s.r._select(self.db, period=(period_id, period_id), **options)
+            return dict(entry=requested[0], exit=requested[1], holdings=holdings, spy=book['period'][2])
+
+        with self.db:
+            result = portfolio_results.evaluate(periods, select_period, common_start=common_start,
+                checkpoint=self.s.backtest_control.checkpoint)
+        result.update(months=months, options=options, seconds=time.perf_counter()-started)
+        return dict(contract_version=portfolio_results.CONTRACT_VERSION, result=result)
+
+    def _check_book(self, book, requested):
+        if (not isinstance(book, dict) or not {'entry', 'exit', 'pool', 'period',
+                'snapshots', 'metrics', 'filters'}.issubset(book)
+                or (book['entry'], book['exit'], book['pool']) != requested
+                or not isinstance(book['period'], (tuple, list)) or len(book['period']) != 6
+                or tuple(book['period'][:2]) != requested[:2]):
+            raise ValueError('Complete-book provider changed a requested book identity.')
+        if any(not isinstance(book[key], list) for key in ('snapshots', 'metrics', 'filters')):
+            raise ValueError('Complete-book provider returned malformed rows.')
+        if (any(type(value) not in (int, float) or not math.isfinite(value)
+                for value in book['period'][2:4]) or book['period'][2] < -1
+                or any(type(value) is not int or value < 0 for value in book['period'][4:])):
+            raise ValueError('Complete-book provider returned malformed period values.')
+        bound = self.provider.limits.get('max_candidate_rows', 250000)
+        if len(book['snapshots']) > bound:
+            raise ValueError('Complete book exceeds the existing candidate row bound.')
+        for key, width in (('snapshots', 13), ('metrics', 4), ('filters', 3)):
+            if any(not isinstance(row, (tuple, list)) or len(row) != width for row in book[key]):
+                raise ValueError('Complete-book provider changed a row schema.')
+        symbols = {row[0] for row in book['snapshots']}
+        if len(symbols) != len(book['snapshots']):
+            raise ValueError('Complete-book provider returned duplicate holdings.')
+        for row in book['snapshots']:
+            if (not isinstance(row[0], str) or not row[0]
+                    or row[1] is not None and (type(row[1]) is not int or row[1] < 1)
+                    or any(type(value) not in (int, float) or not math.isfinite(value) for value in row[5:12])
+                    or row[11] < -1 or row[12] not in portfolio_results.STATUSES):
+                raise ValueError('Complete-book provider returned malformed snapshot values.')
+            try:
+                fiscal, buy, sell = (date.fromisoformat(value) for value in row[2:5])
+                entry, exit_day = (date.fromisoformat(value) for value in requested[:2])
+            except (ValueError, TypeError):
+                raise ValueError('Complete-book provider returned malformed snapshot dates.') from None
+            if (tuple(map(str, (fiscal, buy, sell))) != tuple(row[2:5])
+                    or not entry <= buy < exit_day or not buy <= sell <= exit_day):
+                raise ValueError('Complete-book provider changed actual entry/exit eligibility.')
+        if any(row[0] not in symbols for key in ('metrics', 'filters') for row in book[key]):
+            raise ValueError('Complete-book provider returned orphan financial rows.')
+        for key in ('metrics', 'filters'):
+            if any(not isinstance(row[1], str) or
+                   any(type(value) not in (int, float) or not math.isfinite(value) for value in row[2:])
+                   for row in book[key]):
+                raise ValueError('Complete-book provider returned malformed financial values.')
+
+    def close(self):
+        if not self.closed:
+            self.db.close()
+            self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def compare_results(reference, observed):
+    """Inspect complete ordered payloads; exclude only root runtime seconds.
+
+    Structural/category failures and numeric differences have separate paths.
+    Tolerance is the existing fixed 1e-12 relative/absolute rule. Arrays are never
+    sorted, fields never projected, and integer identities remain exact.
+    """
+    structural, numeric = [], []
+    maximum_absolute = maximum_relative = 0.
+
+    def walk(a, b, path):
+        nonlocal maximum_absolute, maximum_relative
+        if type(a) is not type(b):
+            structural.append(dict(path=path, reason='type'))
+        elif type(a) is float:
+            if not math.isfinite(a) or not math.isfinite(b):
+                numeric.append(dict(path=path, reason='nonfinite'))
+                return
+            absolute = abs(a-b)
+            relative = absolute/max(abs(a), abs(b)) if a or b else 0.
+            maximum_absolute, maximum_relative = max(maximum_absolute, absolute), max(maximum_relative, relative)
+            if not math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12):
+                numeric.append(dict(path=path, absolute=absolute, relative=relative))
+        elif isinstance(a, dict):
+            left, right = set(a), set(b)
+            if path == '$': left.discard('seconds'); right.discard('seconds')
+            if left != right: structural.append(dict(path=path, reason='keys'))
+            for key in a:
+                if key in left & right: walk(a[key], b[key], path+'.'+key)
+        elif isinstance(a, list):
+            if len(a) != len(b): structural.append(dict(path=path, reason='length'))
+            for index, (x, y) in enumerate(zip(a, b)):
+                walk(x, y, path+'['+str(index)+']')
+        elif a != b:
+            structural.append(dict(path=path, reason='value'))
+
+    walk(reference, observed, '$')
+    return dict(exact=not structural and not numeric, structural=structural, numeric=numeric,
+                maximum_absolute=maximum_absolute, maximum_relative=maximum_relative)

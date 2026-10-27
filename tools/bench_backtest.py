@@ -277,7 +277,7 @@ def main():
                                    excluded='Common benchmark-only database cloning/reset; OS page cache is not flushed',
                                    production_changes=False, parent_cpu_only=True),
                   source_hashes={str(p.relative_to(ROOT)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest()
-                                 for p in (ROOT/'scripts'/name for name in ('schedules.py','book_batch.py','robustness.py','schedule_calendar.py'))},runs=[])
+                                 for p in (ROOT/'scripts'/name for name in ('schedules.py','book_batch.py','robustness.py','schedule_calendar.py','portfolio_results.py'))},runs=[])
     if args.reference_report:
         report['reference_report']=str(args.reference_report)
     args.output.parent.mkdir(parents=True, exist_ok=True)

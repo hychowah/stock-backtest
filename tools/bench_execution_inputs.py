@@ -232,7 +232,7 @@ def _manifest(folder):
     _require(type(daily['version']) is int and daily['version'] == artifacts.DAILY_VERSION, 'unsupported')
     _require(daily['inputs'] == freshness['inputs'], 'mismatch')
     _inventory(daily['engine'])
-    _require(set(daily['engine']) == {'schedules.py', 'book_batch.py', 'schedule_calendar.py'})
+    _require(set(daily['engine']) == {'schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py'})
     return value, raw
 
 
