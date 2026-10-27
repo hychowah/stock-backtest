@@ -13,9 +13,9 @@ Application integration boundaries updated after reviewed-main integration: 27 O
 Status: CB-00 and CB-01 are complete. **CB-02 is complete by the user's
 method-selection decision on 26 October 2026. Numba is accepted.** Further
 comparative benchmarking is waived. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
-[phase record](phases/CB-04.md). CB-05 source hardening is implemented.
-Its required real-symbol verification is blocked by the missing approved offline
-input source; see the [CB-05 record](phases/CB-05.md). CB-05 is not complete.
+[phase record](phases/CB-04.md). CB-05 is complete. Synthetic checks and new private FMP real-symbol
+checks pass on WSL and native Windows; see the [CB-05 record](phases/CB-05.md).
+CB-06 is the next ready implementation phase.
 No production engine or running server routing changes here.
 
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
@@ -31,7 +31,8 @@ The [integration checkpoint](integration-checkpoint.md), commit `71e2548`, merge
 reviewed main `b64130a` into the engine branch. Its synthetic WSL/native and
 private WSL browser checks establish compatibility on the existing engine path.
 They do not qualify candidate routing, real-data capacity or the installed runtime.
-CB-05 remains incomplete. No later phase is completed by this plan update.
+At that plan update, CB-05 remained incomplete. The later real-symbol
+continuation completes CB-05 only. No later phase is completed by that update.
 
 Current source already owns manual background jobs, the overnight queue and
 complete saved-result snapshots. Candidate execution must fit those boundaries:
@@ -1470,7 +1471,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-02 | Complete by user decision; further comparison waived | [Method selection](phases/CB-02/method-selection.md); retained wave and execution evidence keeps its original limits |
 | CB-03 | Skipped | User accepts Numba; no alternative comparison scheduled |
 | CB-04 | Complete | [Phase record](phases/CB-04.md); bounded offline export, immutable publication/recovery, read-only attachment and reader-safe retirement; synthetic WSL/native verification |
-| CB-05 | Implemented; verification blocked | [Phase record](phases/CB-05.md); private synthetic WSL/native checks; required real-symbol coverage awaits an approved input copy |
+| CB-05 | Complete | [Phase record](phases/CB-05.md); private synthetic checks and new FMP real-symbol checks pass on WSL/native; exact temporal agreement |
 | CB-06 | Planned hardening | Retain source-derived catalog, specialization and dependency planning |
 | CB-07 | Conditional replacement | Shared SQL is demonstrated; generic native selection is not |
 | CB-08 | Planned | Weekly rules proposed, not implemented |
@@ -1489,10 +1490,11 @@ pass and CB-15 verifies cutover. The program is complete when the qualified date
 
 CB-04 completes the offline artifact lifecycle in WSL source. Its
 [handoff](phases/CB-04.md) defines format 1 and attachment ownership.
-CB-05 now hardens the temporal interface over this artifact and the accepted
-Numba searches. Its next step is the required real-symbol verification using an
-approved offline input copy, or an explicit user decision to defer that gate.
-Do not start dependent phases while that requirement remains unresolved. Startup integration remains in CB-12. The CB-02 comparison route is retired. The following
+CB-05 hardens the temporal interface over this artifact and the accepted
+Numba searches. Its required real-symbol gate now passes on new private FMP
+inputs, alongside the earlier adversarial fixtures. CB-06 is ready for detailed
+independent design. The three-symbol evidence does not qualify full-universe
+coverage, real stopped names or production capacity. Startup integration remains in CB-12. The CB-02 comparison route is retired. The following
 paragraphs retain the earlier execution evidence and its qualification limits. Numba remains
 the working direction. Its wave5 full matrix is exact. Its cached-F2 median of 4.66× failed the
 historical 5× gate and exceeds the subsequently retired 4× minimum on that historical identity; wave6 is rejected; wave7's additional guard treatment never ran on real
