@@ -19,6 +19,7 @@ import numpy as np
 
 from bench_methods_arrays import ArrayPrices
 from bench_policy_program import PolicyProgram, FINANCIAL_FIELDS
+from numerical_generation import TEMPORAL_VERSION
 LOOKUP_FIELDS = ('fiscal_raw', 'raw_entry', 'adjusted_entry', 'adjusted_exit',
                  'screen_adjusted', 'trailing_1y', 'trailing_3y')
 
@@ -27,6 +28,8 @@ class NumericInputs:
     """Load immutable source rows and contiguous sparse numeric histories once."""
     def __init__(self,source,schedules):
         began = time.perf_counter()
+        self.closed = False
+        self.temporal_version = TEMPORAL_VERSION
         self.s = schedules
         self.books = schedules.histories(source)
         self.cached = schedules.cached_symbols(source)
@@ -141,6 +144,7 @@ class NumericInputs:
             if isinstance(value,np.ndarray):setattr(self,key,np.empty(0))
         self.pool_offsets.clear();self.pool_report_ids.clear()
         self.pool_known.clear();self.pool_fiscal.clear()
+        self.closed = True
 
 
 class RequestPlan:

@@ -139,3 +139,40 @@ do not claim durability through arbitrary hardware or filesystem failure.
 CB-04 verification uses private synthetic inputs. It does not qualify real-data
 capacity or make a new speed comparison. See the
 [phase record](plans/compiled-backtest/phases/CB-04.md) for exact observations.
+
+## Temporal interface 1
+
+CB-05 adds `scripts/numerical_temporal.py`. Its `TemporalEvaluator(inputs)`
+borrows an open attachment. It does not compile factors or open another database.
+The caller still owns source and cache through job validation and closure.
+Close the evaluator before closing the attachment.
+
+`select_reports(entries)` accepts a one-dimensional integer array of date
+ordinals. It returns cached and legacy report-ID matrices, in that order.
+Columns use original symbol IDs. An unavailable report has ID `-1`.
+The known date must be strictly before entry. The source maximum report age
+is inclusive. Equal-date variants retain their prepared order.
+
+`resolve(symbols, days, columns, forwards)` accepts four equal-length vectors.
+Symbol IDs use original order; `-1` means missing. Series `0` is valuation.
+Series `1` is dividend-adjusted. Directions must be Boolean. Days must be valid
+date ordinals. Empty batches use typed arrays. Invalid dimensions, IDs, dates
+or lengths raise `ValueError` before native indexing. Closed evaluators and
+closed inputs also raise `ValueError`.
+
+Search includes an exact target date in either direction. Results retain
+request order. Missing prices have day `0` and value `NaN`. The two series
+never fill each other. Search returns the nearest observation without a time
+limit. The existing source snapshot policy applies calendar-day tolerances,
+short-holding exclusions and stopped-price exits. Financial policy is unchanged.
+
+The existing sparse Numba kernels now have one implementation in this source
+module. The benchmark adapter retains compatibility names and delegates to it.
+The Python differential path stays separate. SQL selection, aggregation and
+independent `revalue` remain unchanged. This does not change website routing.
+
+Format 1 now requires `binding.temporal_version` equal to integer `1`.
+The binding also hashes the temporal source. An older artifact without that
+contract must be exported again. Unsupported versions fail verification.
+The file layout and publication protocol stay at format 1. Temporal semantics,
+financial policy and compiler versions remain separate identities.

@@ -301,7 +301,7 @@ def source_files():
     files = [Path(__file__), Path(previous.__file__), Path(baseline.__file__)]
     files += [ROOT / 'tools' / name for name in
               ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py')]
-    files += [ROOT / 'scripts' / name for name in ('numerical_policy.py', 'numerical_decisions.py')]
+    files += [ROOT / 'scripts' / name for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py')]
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
     return list(dict.fromkeys(files))

@@ -38,6 +38,7 @@ from numerical_policy import PolicyProgram
 from paths import ROOT
 
 FORMAT = 1
+TEMPORAL_VERSION = 1
 STORE = ROOT / 'data' / 'numerical'
 CHUNK = 4096
 MAX_MANIFEST = 4 * 1024 * 1024
@@ -297,6 +298,7 @@ class AttachedInputs:
         self.s, self.policy = schedules, policy
         self.signature = manifest['identity']
         self._binding = manifest['binding']
+        self.temporal_version = self._binding['temporal_version']
         self.generation = json.dumps(manifest['binding']['daily'])
         self.database_path = str(folder / 'records.sqlite')
         self.bankrupt = frozenset(schedules.r.revalue.BANKRUPT)
@@ -382,9 +384,9 @@ class GenerationStore:
             daily = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
         policy = PolicyProgram(s, bankrupt=s.r.revalue.BANKRUPT)
         source = {p.name: _sha(p) for p in policy.source_paths}
-        for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py'):
+        for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py'):
             source[name] = _sha(Path(__file__).with_name(name))
-        return dict(daily=daily, prices=s.r.price_sources(), report=_sha(s.r.RESULTS / 'summary-exits.txt'),
+        return dict(temporal_version=TEMPORAL_VERSION, daily=daily, prices=s.r.price_sources(), report=_sha(s.r.RESULTS / 'summary-exits.txt'),
                     policy=policy.signature, sources=source), policy
 
     def _pointer(self):
@@ -405,6 +407,8 @@ class GenerationStore:
             raise ValueError('Malformed numerical manifest.')
         if not isinstance(manifest['binding'], dict) or not isinstance(manifest['arrays'], dict) or not isinstance(manifest['files'], dict):
             raise ValueError('Malformed numerical manifest fields.')
+        if type(manifest['binding'].get('temporal_version')) is not int or manifest['binding']['temporal_version'] != TEMPORAL_VERSION:
+            raise ValueError('Unsupported temporal interface version.')
         core = {key: manifest[key] for key in ('format', 'binding', 'arrays', 'files')}
         if manifest.get('format') != FORMAT or manifest.get('identity') != identity or hashlib.sha256(_json(core)).hexdigest() != identity:
             raise ValueError('Incompatible or corrupt numerical manifest.')

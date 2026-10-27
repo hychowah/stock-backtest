@@ -13,48 +13,14 @@ from numba import njit, prange
 from bench_candidates import PythonExecutor
 
 
-@njit(parallel=True,fastmath=False,cache=False)
-def _reports(entries,offsets,identities,known,fiscal,max_age):
-    symbols = len(offsets)-1
-    output = np.full((len(entries),symbols),-1,dtype=np.int32)
-    for flat in prange(len(entries)*symbols):
-        book,symbol = flat//symbols,flat%symbols
-        begin,end = offsets[symbol],offsets[symbol+1]
-        left,right = begin,end
-        while left<right:
-            middle = left+(right-left)//2
-            if known[middle]<entries[book]:left=middle+1
-            else:right=middle
-        position = left-1
-        if position>=begin and entries[book]-fiscal[position]<=max_age:
-            output[book,symbol] = identities[position]
-    return output
-
-
-@njit(parallel=True,fastmath=False,cache=False)
-def _resolve(symbols,targets,columns,forwards,raw_offsets,raw_days,raw_values,
-             adjusted_offsets,adjusted_days,adjusted_values):
-    actual = np.zeros(len(targets),dtype=np.int32)
-    values = np.full(len(targets),np.nan,dtype=np.float64)
-    for index in prange(len(targets)):
-        symbol = symbols[index]
-        if symbol<0:continue
-        if columns[index]==0:offsets,days,prices=raw_offsets,raw_days,raw_values
-        else:offsets,days,prices=adjusted_offsets,adjusted_days,adjusted_values
-        begin,end = offsets[symbol],offsets[symbol+1]
-        left,right = begin,end
-        while left<right:
-            middle = left+(right-left)//2
-            if days[middle]<targets[index] or (not forwards[index] and days[middle]==targets[index]):left=middle+1
-            else:right=middle
-        position = left if forwards[index] else left-1
-        if begin<=position<end:actual[index],values[index]=days[position],prices[position]
-    return actual,values
+# Compatibility names retain the single source-owned kernel implementation.
+from numerical_temporal import TemporalEvaluator, _reports, _resolve
 
 
 class NumbaExecutor(PythonExecutor):
     def __init__(self,inputs,policy=None,limits=None):
         super().__init__(inputs,policy,limits)
+        self.temporal = TemporalEvaluator(inputs)
         began = time.perf_counter()
         numba.set_num_threads(min(int(self.limits.get('threads',4)),4,numba.config.NUMBA_NUM_THREADS))
         namespace = {}
@@ -152,15 +118,14 @@ class NumbaExecutor(PythonExecutor):
         return accepted
 
     def select_reports(self,entries):
-        inputs = self.inputs
-        return tuple(_reports(entries,inputs.pool_offsets[pool],inputs.pool_report_ids[pool],
-            inputs.pool_known[pool],inputs.pool_fiscal[pool],inputs.s.financial_books.run.MAX_AGE.days)
-            for pool in ('cached','legacy'))
+        return self.temporal.select_reports(entries)
 
     def resolve(self,symbols,days,columns,forwards):
-        inputs = self.inputs
-        return _resolve(symbols,days,columns,forwards,inputs.raw_offsets,inputs.raw_days,
-            inputs.raw_values,inputs.adjusted_offsets,inputs.adjusted_days,inputs.adjusted_values)
+        return self.temporal.resolve(symbols,days,columns,forwards)
+
+    def close(self):
+        self.temporal.close()
+        super().close()
 
     def calculate(self,matrix):
         return self._calculate(matrix)

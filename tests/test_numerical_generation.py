@@ -26,7 +26,7 @@ class GenerationTests(unittest.TestCase):
         self.root = self.fixture.root
         self.report = self.root / 'summary-exits.txt'
         self.report.write_text('Through 2016-12-30\nSynthetic unchanged report\n')
-        self.binding = dict(daily={}, prices={}, report=ng._sha(self.report),
+        self.binding = dict(temporal_version=ng.TEMPORAL_VERSION, daily={}, prices={}, report=ng._sha(self.report),
                             policy=ng.PolicyProgram(self.s).signature, sources={})
         self.owner = ng.cache_access.WorkspaceAccess(self.root / 'cache.lock')
         self.store = ng.GenerationStore(self.s, self.root / 'numerical', self.owner)
