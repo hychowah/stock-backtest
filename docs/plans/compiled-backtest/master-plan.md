@@ -1473,7 +1473,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-04 | Complete | [Phase record](phases/CB-04.md); bounded offline export, immutable publication/recovery, read-only attachment and reader-safe retirement; synthetic WSL/native verification |
 | CB-05 | Complete | [Phase record](phases/CB-05.md); private synthetic checks and new FMP real-symbol checks pass on WSL/native; exact temporal agreement |
 | CB-06 | Complete | [Phase record](phases/CB-06.md); full entry-date catalog, separate validity, portable schema, bounded local reuse and WSL/native verification |
-| CB-07 | Conditional replacement | Shared SQL is demonstrated; generic native selection is not |
+| CB-07 | Complete; SQL retained | [Boundary decision and verification](phases/CB-07.md); generic native selection remains unimplemented |
 | CB-08 | Planned | Weekly rules proposed, not implemented |
 | CB-09 | Planned hardening | Common aggregation reusable; complete job/snapshot result compatibility pending; selected-only returns unimplemented |
 | CB-10 | Planned hardening | Atomic replay and current full-trial capture reusable; generation-bound recovery and durable snapshot compatibility remain distinct and pending |
