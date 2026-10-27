@@ -15,7 +15,7 @@ method-selection decision on 26 October 2026. Numba is accepted.** Further
 comparative benchmarking is waived. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
 [phase record](phases/CB-04.md). CB-05 is complete. Synthetic checks and new private FMP real-symbol
 checks pass on WSL and native Windows; see the [CB-05 record](phases/CB-05.md).
-CB-06 is the next ready implementation phase.
+CB-06 now delivers the entry-date factor interface; see its [record](phases/CB-06.md).
 No production engine or running server routing changes here.
 
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
@@ -1472,7 +1472,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-03 | Skipped | User accepts Numba; no alternative comparison scheduled |
 | CB-04 | Complete | [Phase record](phases/CB-04.md); bounded offline export, immutable publication/recovery, read-only attachment and reader-safe retirement; synthetic WSL/native verification |
 | CB-05 | Complete | [Phase record](phases/CB-05.md); private synthetic checks and new FMP real-symbol checks pass on WSL/native; exact temporal agreement |
-| CB-06 | Planned hardening | Retain source-derived catalog, specialization and dependency planning |
+| CB-06 | Complete | [Phase record](phases/CB-06.md); full entry-date catalog, separate validity, portable schema, bounded local reuse and WSL/native verification |
 | CB-07 | Conditional replacement | Shared SQL is demonstrated; generic native selection is not |
 | CB-08 | Planned | Weekly rules proposed, not implemented |
 | CB-09 | Planned hardening | Common aggregation reusable; complete job/snapshot result compatibility pending; selected-only returns unimplemented |
@@ -1492,8 +1492,8 @@ CB-04 completes the offline artifact lifecycle in WSL source. Its
 [handoff](phases/CB-04.md) defines format 1 and attachment ownership.
 CB-05 hardens the temporal interface over this artifact and the accepted
 Numba searches. Its required real-symbol gate now passes on new private FMP
-inputs, alongside the earlier adversarial fixtures. CB-06 is ready for detailed
-independent design. The three-symbol evidence does not qualify full-universe
+inputs, alongside the earlier adversarial fixtures. CB-06 delivers the complete
+entry-date factor interface under its independent design. The three-symbol evidence does not qualify full-universe
 coverage, real stopped names or production capacity. Startup integration remains in CB-12. The CB-02 comparison route is retired. The following
 paragraphs retain the earlier execution evidence and its qualification limits. Numba remains
 the working direction. Its wave5 full matrix is exact. Its cached-F2 median of 4.66× failed the

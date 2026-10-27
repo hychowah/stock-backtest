@@ -11,6 +11,7 @@ import numpy as np
 from numba import njit, prange
 
 from bench_candidates import PythonExecutor
+from numerical_factors import compile_matrix
 
 
 # Compatibility names retain the single source-owned kernel implementation.
@@ -23,22 +24,12 @@ class NumbaExecutor(PythonExecutor):
         self.temporal = TemporalEvaluator(inputs)
         began = time.perf_counter()
         numba.set_num_threads(min(int(self.limits.get('threads',4)),4,numba.config.NUMBA_NUM_THREADS))
-        namespace = {}
-        exec(self.policy.python_source('_row'),namespace)
-        row_function = njit(fastmath=False,cache=False,error_model='numpy')(namespace['_row'])
         width = len(self.policy.output_names)
-        @njit(parallel=True,fastmath=False,cache=False,error_model='numpy')
-        def calculate(matrix):
-            result = np.empty((len(matrix),width),dtype=np.float64)
-            for row in prange(len(matrix)):
-                values = row_function(matrix[row])
-                for column in range(width):result[row,column] = values[column]
-            return result
+        calculate = compile_matrix(self.policy)
         self._calculate = calculate
         self.select_reports(np.empty(0,dtype=np.int32))
         self.resolve(np.empty(0,dtype=np.int32),np.empty(0,dtype=np.int32),
                      np.empty(0,dtype=np.int8),np.empty(0,dtype=np.bool_))
-        calculate(np.ones((1,len(self.policy.input_names)),dtype=np.float64))
         decision_signatures = {}
         if self.candidate_assembly == 'compiled':
             decision_namespace = {}

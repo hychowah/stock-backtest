@@ -52,7 +52,7 @@ the canonical report content hash, the source-derived policy signature and
 relevant source-content hashes. Mutable dated books, saved trial results,
 database sizes, absolute project paths and observation times are excluded.
 There is no persisted executable state or pickle. Compiler and runtime identity
-remain a separate later contract.
+belong to evaluator execution identity and stay outside the persisted input format.
 
 Each numerical buffer is a non-object, little-endian NPY file. The manifest
 records its dtype and shape. `raw_*` names retain compatibility with the tested
@@ -176,3 +176,61 @@ The binding also hashes the temporal source. An older artifact without that
 contract must be exported again. Unsupported versions fail verification.
 The file layout and publication protocol stay at format 1. Temporal semantics,
 financial policy and compiler versions remain separate identities.
+
+## Factor interface 1
+
+CB-06 adds `scripts/numerical_factors.py`. `FactorEvaluator(inputs)` borrows an
+open attachment. It calculates entry-date valuations, both ranking pairs and
+requested threshold fields. It does not need an exit date or future returns.
+It does not apply the original candidate buffer, financial thresholds, ranking
+or portfolio selection. The website still uses its existing engine.
+
+```python
+with FactorEvaluator(inputs) as factors:
+    batches = factors.evaluate(entry_days, pool='cached', threshold_fields=None)
+```
+
+Entry days are a one-dimensional integer array of date ordinals. The pool is
+`cached` or `legacy`. `None` requests all 18 threshold fields. An empty collection
+requests neither threshold values nor trailing price lookups. Both ranking pairs
+are always present. Results keep entry request order, including repetitions.
+Rows use original symbol IDs and selected report IDs. Reports absent at entry
+produce no row. A row with unavailable valuation prices has invalid valuation.
+Each ranking pair and threshold has a separate validity array. A missing PEG,
+ROE, trailing return or three-year history does not invalidate other fields.
+
+`EntryFactors.valuation` contains market cap, enterprise value and EBITDA in
+USD. Each ranking pair contains multiple and yield. Thresholds use the existing
+display units. Invalid values are NaN. Validity arrays define availability.
+`PolicyProgram.fields` binds display descriptors, outputs and validity rules to
+the authoritative metric catalog. `field_schema` identifies that binding and
+the source-derived entry and trailing projections. Consumers need no formulas.
+The policy module still imports without NumPy or Numba.
+
+Entry guards and trailing dates come from the existing source. Fiscal and entry
+price tolerances are not new factor settings. Trailing anniversaries still
+clamp leap days. Prepared annual averages preserve `statistics.mean` rounding.
+The strict Numba compiler is shared with the retained candidate executor. Full
+candidate output remains unchanged. Factor projections omit exit, bankruptcy
+and Treasury dependencies. Current source policy and `1e-12` tolerance remain.
+
+The generation binding now requires integer `factor_version=1` and a field
+schema hash. It also hashes the factor module. Older artifacts require ordinary
+offline export again. Format 1, the arrays and publication protocol do not
+change. Compiler versions and execution identity stay outside persisted format.
+
+Each evaluator retains results in memory with deterministic LRU eviction. The
+default retention budget is 16 MiB. It counts retained result buffers and Python
+indexing metadata. Oversized entries are returned without retention. The default
+request workspace bound is 64 MiB, using conservative row accounting before
+factor allocations. These are workload bounds, not process-memory limits.
+Caller-held results and compiler memory are separate. Returned arrays have
+detached, immutable bytes owners. Results survive evaluator and input closure.
+
+Reuse binds the input generation, policy and field schema, factor and temporal
+versions, compiler execution identity, entry day, pool and normalized fields.
+No disk cache or cross-process factor store is added. Close the evaluator before
+the attachment. Its close clears retained results and compiled callables.
+Callers still own source and financial access through freshness validation,
+calculation and final closure. See the [CB-06 record](plans/compiled-backtest/phases/CB-06.md)
+for verification scope and memory observations.

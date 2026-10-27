@@ -158,20 +158,12 @@ class RequestPlan:
         self.options = dict(request.get('options', request))
         self.needed = frozenset(condition['field'] for condition in
                                 self.options.get('filters', []) or [])
-        dependencies = set()
-        def collect(node):
-            if node[0] == 'input':
-                dependencies.add(node[1])
-            else:
-                for child in node[1:]:
-                    if isinstance(child, tuple): collect(child)
         # Both ranking pairs remain exposed to the unchanged SQL selector. The
         # mandatory slots also support source guards before numeric use.
         outputs = ('cap', 'ev', 'ebitda', 'return_value', 'multiple', 'yield_value',
                    'metric3_multiple', 'metric3_yield')
         outputs += tuple('filter_' + field for field in self.needed)
-        for name in outputs:
-            collect(inputs.policy.expanded(name))
+        dependencies = inputs.policy.dependencies(outputs)
         self.slots = tuple(sorted({0, 1, 3} | {slot for slot, field in enumerate(LOOKUP_FIELDS)
                                                    if field in dependencies and slot != 2}))
         self.books = ()

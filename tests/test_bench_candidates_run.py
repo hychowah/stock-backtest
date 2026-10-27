@@ -40,7 +40,7 @@ def agreed_method(requests):
 
 class SourceInventoryTests(unittest.TestCase):
     def test_extracted_policy_mutation_rejects_before_database_or_executor_access(self):
-        for relative in ('tools/bench_policy_program.py', 'scripts/numerical_policy.py', 'scripts/numerical_decisions.py', 'scripts/numerical_temporal.py', 'scripts/numerical_generation.py'):
+        for relative in ('tools/bench_policy_program.py', 'scripts/numerical_policy.py', 'scripts/numerical_decisions.py', 'scripts/numerical_temporal.py', 'scripts/numerical_generation.py', 'scripts/numerical_factors.py'):
             with self.subTest(implementation=relative): self.check_mutation(relative)
 
     def check_mutation(self, relative):
@@ -50,7 +50,7 @@ class SourceInventoryTests(unittest.TestCase):
             for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py'):
                 shutil.copy2(ROOT / 'tools' / name, tools / name)
             scripts = root / 'scripts'; scripts.mkdir()
-            for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py'):
+            for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py'):
                 shutil.copy2(ROOT / 'scripts' / name, scripts / name)
             implementation = root / relative
             with patch.object(runner, 'ROOT', root):

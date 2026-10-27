@@ -34,7 +34,7 @@ import numpy as np
 
 import cache_access
 import cache_assets
-from numerical_policy import PolicyProgram
+from numerical_policy import PolicyProgram, FACTOR_VERSION
 from paths import ROOT
 
 FORMAT = 1
@@ -299,6 +299,8 @@ class AttachedInputs:
         self.signature = manifest['identity']
         self._binding = manifest['binding']
         self.temporal_version = self._binding['temporal_version']
+        self.factor_version = self._binding['factor_version']
+        self.field_schema = self._binding['field_schema']
         self.generation = json.dumps(manifest['binding']['daily'])
         self.database_path = str(folder / 'records.sqlite')
         self.bankrupt = frozenset(schedules.r.revalue.BANKRUPT)
@@ -384,9 +386,10 @@ class GenerationStore:
             daily = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
         policy = PolicyProgram(s, bankrupt=s.r.revalue.BANKRUPT)
         source = {p.name: _sha(p) for p in policy.source_paths}
-        for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py'):
+        for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_factors.py'):
             source[name] = _sha(Path(__file__).with_name(name))
-        return dict(temporal_version=TEMPORAL_VERSION, daily=daily, prices=s.r.price_sources(), report=_sha(s.r.RESULTS / 'summary-exits.txt'),
+        return dict(temporal_version=TEMPORAL_VERSION, factor_version=FACTOR_VERSION, field_schema=policy.field_schema,
+                    daily=daily, prices=s.r.price_sources(), report=_sha(s.r.RESULTS / 'summary-exits.txt'),
                     policy=policy.signature, sources=source), policy
 
     def _pointer(self):
@@ -409,6 +412,10 @@ class GenerationStore:
             raise ValueError('Malformed numerical manifest fields.')
         if type(manifest['binding'].get('temporal_version')) is not int or manifest['binding']['temporal_version'] != TEMPORAL_VERSION:
             raise ValueError('Unsupported temporal interface version.')
+        if (type(manifest['binding'].get('factor_version')) is not int or
+                manifest['binding']['factor_version'] != FACTOR_VERSION or
+                not _valid_id(manifest['binding'].get('field_schema'))):
+            raise ValueError('Unsupported factor interface version or field schema.')
         core = {key: manifest[key] for key in ('format', 'binding', 'arrays', 'files')}
         if manifest.get('format') != FORMAT or manifest.get('identity') != identity or hashlib.sha256(_json(core)).hexdigest() != identity:
             raise ValueError('Incompatible or corrupt numerical manifest.')

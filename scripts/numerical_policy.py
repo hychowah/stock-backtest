@@ -19,10 +19,26 @@ from numerical_decisions import CandidateDecisionProgram
 FINANCIAL_FIELDS = ('pe', 'pb', 'fcf', 'fcf_yield', 'price_fcf',
                     'profit_margin', 'roe', 'current_ratio', 'interest_coverage',
                     'debt_equity', 'peg')
+FACTOR_VERSION = 1
 
 
 def _tree(function):
     return ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
+
+
+def _schema_tree(node):
+    """Canonical semantic AST, including Python 3.11/3.12 function nodes.
+
+    Python 3.12 adds empty type_params metadata to ordinary functions. It does
+    not change this policy. Retain nonempty fields and ignore source locations.
+    """
+    def walk(value):
+        if isinstance(value, ast.AST):
+            return [type(value).__name__, {name: walk(item) for name, item in ast.iter_fields(value)
+                    if not (name == 'type_params' and not item)}]
+        if isinstance(value, list): return [walk(item) for item in value]
+        return value
+    return json.dumps(walk(node), sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
 class _Symbol:
@@ -225,6 +241,91 @@ class PolicyProgram:
         evaluated = m.evaluate(numeric_observation,history)
         self.filter_order = tuple(m.filter_values(numeric_observation,evaluated,date(2015,1,2),
                                     lambda day,*args:(day,1.),annual))
+        self.ranking_outputs = {'ev_ebitda': ('multiple', 'yield_value'),
+                                'ev_ebitda_3y': ('metric3_multiple', 'metric3_yield')}
+        # This is a binding to the source catalog, not a formula registry.
+        self.fields = {
+            'metrics': {key: dict(descriptor=dict(value), outputs=self.ranking_outputs[key],
+                                 validity='average_3y' if key == 'ev_ebitda_3y' else 'entry')
+                        for key, value in m.METRICS.items()},
+            'thresholds': {key: dict(descriptor=dict(value), outputs=('filter_' + key,),
+                validity='finite' if key in FINANCIAL_FIELDS else 'pair' if key in m.METRICS
+                else 'trailing' if key in ('return_1y', 'return_3y') else 'entry')
+                           for key, value in m.FILTERS.items()}}
+        self._entry, entry_source = self._entry_adapter(snapshot)
+        self.trailing, trailing_source = self._trailing_adapter(filters)
+        self.field_schema = hashlib.sha256(json.dumps(dict(version=FACTOR_VERSION,
+            fields=self.fields, entry=entry_source, trailing=trailing_source),
+            sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+    def dependencies(self, outputs):
+        """Return required numeric inputs without changing expression order."""
+        result = set()
+        def walk(node):
+            if node[0] == 'input': result.add(node[1])
+            elif node[0] != 'const':
+                for child in node[1:]: walk(child)
+        for name in outputs: walk(self.expanded(name))
+        return frozenset(result)
+
+    def projection(self, outputs):
+        """Select outputs and their derived prerequisites in original order."""
+        required = set()
+        def add(name):
+            if name in required: return
+            required.add(name)
+            def walk(node):
+                if node[0] == 'var': add(node[1])
+                elif node[0] not in ('input', 'const'):
+                    for child in node[1:]: walk(child)
+            walk(self.expression_map[name])
+        for name in outputs: add(name)
+        return tuple(name for name in self.output_names if name in required)
+
+    def _entry_adapter(self, snapshot):
+        """Project the source prefix before adjusted holding-entry decisions."""
+        tree = copy.deepcopy(snapshot)
+        boundary = next((i for i, node in enumerate(tree.body) if isinstance(node, ast.Assign)
+                        and isinstance(node.targets[0], ast.Name) and node.targets[0].id == 'start'), None)
+        if boundary is None: raise ValueError('Unsupported entry policy boundary.')
+        tree.body = tree.body[:boundary]
+        allowed = {'statement', 'entry_day', 'lookup', 'cap', 'ev', 'ebitda', 'fiscal_px', 'entry_px'}
+        if any(isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id not in allowed
+               for node in tree.body for n in ast.walk(node)):
+            raise ValueError('Unsupported entry policy dependency.')
+        tree.name = '_entry'
+        tree.args.args = [ast.arg(arg=n) for n in ('statement', 'entry_day', 'lookup', 'numeric_values')]
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                name = node.targets[0].id
+                if name in ('cap', 'ev', 'ebitda'):
+                    node.value = ast.Subscript(ast.Name('numeric_values', ast.Load()), ast.Constant(name), ast.Load())
+        tree.body.append(ast.Return(ast.Constant(True)))
+        module = ast.fix_missing_locations(ast.Module(body=[tree], type_ignores=[]))
+        namespace = {}
+        exec(compile(module, '<source-derived entry>', 'exec'), namespace)
+        return namespace['_entry'], _schema_tree(module)
+
+    def _trailing_adapter(self, filters):
+        """Project source target dates, lookup tolerances and endpoint guards."""
+        tree = copy.deepcopy(filters)
+        loop = next(node for node in tree.body if isinstance(node, ast.For))
+        guard = next(node for node in loop.body if isinstance(node, ast.If))
+        if guard.orelse or len(guard.body) != 1 or not isinstance(guard.body[0], ast.Assign):
+            raise ValueError('Unsupported trailing field guard.')
+        guard.body[0].value = ast.Constant(True)
+        end = next(node for node in tree.body if isinstance(node, ast.Assign)
+                   and isinstance(node.targets[0], ast.Name) and node.targets[0].id == 'end')
+        tree.name = '_trailing'
+        tree.args.args = [ast.arg(arg=n) for n in ('day', 'lookup')]
+        tree.args.defaults = []
+        tree.body = [*(node for node in tree.body if isinstance(node, ast.ImportFrom)),
+                     ast.Assign([ast.Name('values', ast.Store())], ast.Dict([], [])),
+                     end, loop, ast.Return(ast.Name('values', ast.Load()))]
+        module = ast.fix_missing_locations(ast.Module(body=[tree], type_ignores=[]))
+        namespace = dict(self.s.metrics.filter_values.__globals__)
+        exec(compile(module, '<source-derived trailing availability>', 'exec'), namespace)
+        return namespace['_trailing'], _schema_tree(module)
 
     def _lower(self,node,*,names=None,lookups=None):
         names = names or {}
@@ -270,7 +371,7 @@ class PolicyProgram:
             return (node[0],*(walk(child) for child in node[1:]))
         return walk(self.expression_map[name])
 
-    def python_source(self,name='_policy_row'):
+    def python_source(self,name='_policy_row', outputs=None):
         def emit(node):
             op = node[0]
             if op=='input':return f'x[{self.input_index[node[1]]}]'
@@ -280,9 +381,11 @@ class PolicyProgram:
             if op=='if':return f'({emit(node[2])} if {emit(node[1])} else {emit(node[3])})'
             operator = {'add':'+','sub':'-','mul':'*','div':'/'}[op]
             return f'({emit(node[1])} {operator} {emit(node[2])})'
+        selected = self.output_names if outputs is None else tuple(outputs)
+        required = set(self.projection(selected))
         statements = [f'def {name}(x):']
-        statements.extend(f'    {key} = {emit(value)}' for key,value in self.expressions)
-        statements.append('    return ('+', '.join(self.output_names)+',)')
+        statements.extend(f'    {key} = {emit(value)}' for key,value in self.expressions if key in required)
+        statements.append('    return ('+', '.join(selected)+',)')
         return '\n'.join(statements)+'\n'
 
     def evaluate(self,matrix):
