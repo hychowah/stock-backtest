@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS jobs (
  created_at TEXT NOT NULL, started TEXT, finished TEXT, seed INTEGER,
  progress TEXT, configuration TEXT, error TEXT, cagr REAL, snapshot BLOB, plan TEXT
 );
+CREATE TABLE IF NOT EXISTS edits (
+ job_id TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
+ state TEXT NOT NULL, request_hash TEXT
+);
 '''
 
 
@@ -71,10 +75,12 @@ class Store:
         return row
 
     @staticmethod
-    def metadata(row):
+    def metadata(db,row):
         spec=json.loads(row['spec'])
         result={key:row[key] for key in ('id','name','position','revision','state','created_at','started','finished','error','cagr')}
+        edit=db.execute('SELECT id,revision,state FROM edits WHERE job_id=?',(row['id'],)).fetchone()
         return dict(**result,mode=spec['mode'],options=spec['options'],
+                    edit=dict(edit) if edit else None,
                     progress=json.loads(row['progress']) if row['progress'] else None,
                     configuration=json.loads(row['configuration']) if row['configuration'] else None)
 
@@ -111,22 +117,22 @@ class Store:
             if previous:
                 if previous['state']=='deleted':raise Conflict('This test was deleted. Add it again as a new test.')
                 if previous['original_hash']!=identity:raise Conflict('This queue ID already belongs to a different submission.')
-                return self.metadata(previous)
+                return self.metadata(db,previous)
             if db.execute("SELECT COUNT(*) FROM jobs WHERE state!='deleted'").fetchone()[0]>=LIMIT:
                 raise Conflict('The queue has 100 records. Delete a chosen record before adding another.')
             position=db.execute('SELECT COALESCE(MAX(position),0)+1 FROM jobs').fetchone()[0]
             db.execute('INSERT INTO jobs(id,name,spec,original_hash,position,state,created_at,seed) VALUES(?,?,?,?,?,?,?,?)',
                        (identifier,name,spec,identity,position,'queued',now(),seed))
-            return self.metadata(self.row(db,identifier))
+            return self.metadata(db,self.row(db,identifier))
 
     def listing(self):
         with self.database() as db:
             return dict(limit=LIMIT,paused=bool(db.execute('SELECT paused FROM control').fetchone()[0]),
-                        records=[self.metadata(row) for row in db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state!='deleted' ORDER BY position,id")])
+                        records=[self.metadata(db,row) for row in db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state!='deleted' ORDER BY position,id")])
 
     def get(self,identifier):
         with self.database() as db:
-            row=self.row(db,identifier,include_snapshot=True);result=self.metadata(row)
+            row=self.row(db,identifier,include_snapshot=True);result=self.metadata(db,row)
             packed=row['snapshot']
         if packed is not None:result['snapshot']=json.loads(zlib.decompress(packed))
         return result
@@ -137,23 +143,50 @@ class Store:
         return dict(paused=paused)
 
     def change(self,identifier,action,request):
+        """An edit version protects settings; ordinary revisions also track order.
+
+        Keep the latest edit and its completion receipt per job. Retrying its
+        exact Save/Cancel is safe after execution starts. A newer hold replaces
+        that receipt and invalidates the previous editor, without losing jobs.
+        Legacy clients still use the ordinary revision for every mutation.
+        """
         with self.database() as db:
             row=self.row(db,identifier)
-            if request.get('revision')!=row['revision']:raise Conflict('This test changed in another browser. Refresh the queue.')
+            edit=db.execute('SELECT * FROM edits WHERE job_id=?',(identifier,)).fetchone()
+            token=request.get('edit_id')
+            fingerprint=None
+            if token is not None:
+                if not isinstance(token,str) or not re.fullmatch('[0-9a-f]{32}',token):raise ValueError('Invalid queue edit ID.')
+                if action=='hold' and edit and edit['id']==token:
+                    return self.metadata(db,row)
+                if action in ('update','release'):
+                    if not edit or edit['id']!=token or request.get('edit_revision')!=edit['revision']:
+                        raise Conflict('This edit has ended or was replaced. Refresh the queue.')
+                    content={key:request.get(key) for key in ('name','mode','options','catalog','presentation')} if action=='update' else {}
+                    fingerprint=hashlib.sha256(encode(dict(action=action,content=content)).encode()).hexdigest()
+                    if edit['state']!='active':
+                        if edit['request_hash']==fingerprint:return self.metadata(db,row)
+                        raise Conflict('This edit has already ended. Refresh the queue.')
+            if not (token is not None and action in ('update','release')) and request.get('revision')!=row['revision']:
+                raise Conflict('This test changed in another browser. Refresh the queue.')
             state=row['state']
             if action=='delete':
                 if state in ('running','stopping'):raise Conflict('Stop the running test before deleting it.')
                 # Keep only the submission receipt, so a lost-ack retry cannot
                 # resurrect an explicitly deleted test or its holdings.
                 db.execute("UPDATE jobs SET state='deleted',name='',spec='{}',snapshot=NULL,progress=NULL,configuration=NULL,plan=NULL,seed=NULL,error=NULL,cagr=NULL,revision=revision+1 WHERE id=?",(identifier,))
+                db.execute('DELETE FROM edits WHERE job_id=?',(identifier,))
                 return dict(id=identifier,deleted=True)
             if action=='stop':
                 target='stopping' if state in ('running','stopping') else 'cancelled' if state in ('queued','held') else state
                 db.execute('UPDATE jobs SET state=?,revision=revision+1 WHERE id=?',(target,identifier))
+                db.execute("UPDATE edits SET state='ended',request_hash=NULL WHERE job_id=? AND state='active'",(identifier,))
             elif action in ('hold','release','update','move'):
                 if state not in ('queued','held'):raise Conflict('Only waiting tests can be edited or moved.')
                 if action=='hold':
                     db.execute("UPDATE jobs SET state='held',revision=revision+1 WHERE id=?",(identifier,))
+                    db.execute('INSERT OR REPLACE INTO edits(job_id,id,revision,state) VALUES(?,?,?,?)',
+                               (identifier,token or secrets.token_hex(16),row['revision']+1,'active'))
                 elif action=='release':
                     db.execute("UPDATE jobs SET state='queued',revision=revision+1 WHERE id=?",(identifier,))
                 elif action=='update':
@@ -173,7 +206,10 @@ class Store:
                         db.execute('UPDATE jobs SET position=?,revision=revision+1 WHERE id=?',(row['position'],neighbor['id']))
                         db.execute('UPDATE jobs SET position=?,revision=revision+1 WHERE id=?',(neighbor['position'],identifier))
             else:raise ValueError('Unknown queue action.')
-            return self.metadata(self.row(db,identifier))
+            if action in ('update','release'):
+                db.execute('UPDATE edits SET state=?,request_hash=? WHERE job_id=? AND state=\'active\'',
+                           ('saved' if action=='update' else 'cancelled',fingerprint,identifier))
+            return self.metadata(db,self.row(db,identifier))
 
     def recover(self):
         """Only the exclusive consumer may recover an interrupted predecessor."""

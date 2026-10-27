@@ -345,9 +345,9 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
    if(action==='hold'&&rejectHold)return {ok:false,status:409,json:async()=>({error:'The test already started.'})};
    if(options.method==='DELETE'){queueRows=queueRows.filter(row=>row.id!==id);return {ok:true,json:async()=>({id,deleted:true})};}
    record.revision++;
-   if(action==='hold')record.state='held';
-   if(action==='release')record.state='queued';
-   if(action==='update')Object.assign(record,{mode:body.mode,options:body.options,name:body.name,state:'queued'});
+   if(action==='hold'){record.state='held';record.edit={id:body.edit_id,revision:record.revision,state:'active'};}
+   if(action==='release'){record.state='queued';record.edit.state='cancelled';}
+   if(action==='update'){Object.assign(record,{mode:body.mode,options:body.options,name:body.name,state:'queued'});record.edit.state='saved';}
    return {ok:true,json:async()=>JSON.parse(JSON.stringify(record))};
  };
  await run('BacktestQueue.refresh();');await run('BacktestQueue.action("edit",waitingId)');

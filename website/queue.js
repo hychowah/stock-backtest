@@ -10,6 +10,51 @@ const BacktestQueue=(()=>{
   const isManaging=()=>!!editing||records.some(record=>['queued','held','running','stopping'].includes(record.state));
   function message(text,error=false){node('queue-status').textContent=text;node('queue-status').className=error?'backtest-failed':'hint';}
   function remember(value){pending=value;try{value?localStorage.setItem(storageKey,JSON.stringify(value)):localStorage.removeItem(storageKey);}catch(_){} }
+  const identifier=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+  function endEdit(clearName=false){
+    editing.draft.end();editing=null;
+    if(clearName)node('queue-name').value='';
+  }
+  // The server edit identity, not queue position or a response arriving, owns
+  // this form session. Reconciliation never replaces an already loaded draft.
+  function reconcileEdit(){
+    if(!editing)return;
+    const record=records.find(record=>record.id===editing.id),edit=record?.edit;
+    if(record?.state==='held'&&edit?.id===editing.token&&edit.state==='active'){
+      if(editing.loading){
+        editing.revision=edit.revision;editing.loading=false;node('queue-name').value=record.name;
+        callbacks.prepare?.();editing.draft.restore({mode:record.mode,...record.options});
+        node('strategy-heading').scrollIntoView?.({behavior:'smooth',block:'start'});
+      }
+      if(edit.revision===editing.revision)return;
+    }
+    // A hold with no acknowledgement may still be in flight. Retry its same
+    // identity rather than abandoning a hold that can still reach the server.
+    if(editing.loading&&record?.revision===editing.baseRevision)return;
+    endEdit();
+    message('The queued edit has ended'+(edit?.state==='saved'?' and its changes were saved':'')+'. Your current form settings are still here.');
+  }
+  async function acquireEdit(){
+    const session=editing;
+    await mutate('/'+session.id+'/hold',{revision:session.baseRevision,edit_id:session.token},
+      {success:'Test held. Edit the strategy controls above, then select Save queued test.'});
+    reconcileEdit();
+  }
+  async function finishEdit(action){
+    if(editing.loading)await acquireEdit();
+    if(!editing)return;
+    const session=editing;
+    if(session.pending&&session.pending.action!==action)throw Error('Retry the pending Save or Cancel before changing this edit.');
+    session.pending??={action,body:{...(action==='update'?JSON.parse(JSON.stringify(specification())):{}),edit_id:session.token,edit_revision:session.revision}};
+    try{
+      await mutate('/'+session.id+'/'+action,session.pending.body,
+        {success:action==='update'?'Queued test updated. It can run with the new settings.':'Edit cancelled. Its previous settings are kept.'});
+    }catch(error){
+      if(error.status>=400&&error.status<500)session.pending=null;
+      throw error;
+    }
+    if(editing===session)endEdit(true);
+  }
   function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+settings.start+' → '+settings.end+' · ranks '+settings.rank_from+'–'+settings.rank_to;}
   function parameters(record){
     const o=record.options;
@@ -40,10 +85,11 @@ const BacktestQueue=(()=>{
     node('queue-pause').disabled=busy||!available;
     node('queue-refresh').disabled=busy;
     for(const id of ['queue-add','queue-add-next']){
-      node(id).textContent=editing?'Save queued test':pending?'Retry queue submission':'Add to queue';
-      node(id).disabled=busy||!available||(!editing&&!pending&&records.length>=limit);
+      node(id).textContent=editing?(editing.loading?'Retry edit request':editing.pending?.action==='update'?'Retry save':'Save queued test'):pending?'Retry queue submission':'Add to queue';
+      node(id).disabled=busy||!available||editing?.pending?.action==='release'||(!editing&&!pending&&records.length>=limit);
     }
-    node('queue-cancel-edit').hidden=!editing;node('queue-cancel-edit').disabled=busy;
+    node('queue-cancel-edit').hidden=!editing;node('queue-cancel-edit').disabled=busy||editing?.pending?.action==='update';
+    node('queue-cancel-edit').textContent=editing?.pending?.action==='release'?'Retry cancel':'Cancel edit';
     node('queue-edit-note').hidden=!isManaging();
     node('queue-edit-note').textContent=editing?'This test is held while you edit the strategy controls. Auto-run is suspended. Save the queued test to release it, or cancel to keep its previous settings.':'Auto-run is suspended while the queue has waiting or running tests. Change the strategy controls and add another test. Run backtest still starts an immediate test.';
     const states={queued:'Waiting',held:'Held for editing',running:'Running',stopping:'Stopping',complete:'Complete',failed:'Failed',cancelled:'Stopped'};
@@ -81,9 +127,10 @@ const BacktestQueue=(()=>{
     if(number!==refreshNumber||revision!==mutation)return;
     if(!Array.isArray(value.records))throw Error('The queue response is invalid.');
     if(available&&JSON.stringify({records,paused,limit})===JSON.stringify({records:value.records,paused:value.paused,limit:value.limit}))return;
-    records=value.records;paused=value.paused;limit=value.limit;available=true;render();
+    records=value.records;paused=value.paused;limit=value.limit;available=true;reconcileEdit();render();
   }
   async function mutate(path,body,{method='POST',success='Queue updated.'}={}){
+    mutation++;
     const value=await request(path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     mutation++;
     if(value.deleted)records=records.filter(record=>record.id!==value.id);
@@ -97,7 +144,16 @@ const BacktestQueue=(()=>{
     try{
       await task();
       try{await refresh();}catch(_){message(node('queue-status').textContent+' The list could not be refreshed. Select Refresh queue to check progress.');}
-    }catch(error){message(error.message,true);}
+    }catch(error){
+      const session=editing,loading=session?.loading;
+      if(loading&&error.status>=400&&error.status<500){endEdit();message(error.message,true);return;}
+      if(session){
+        try{await refresh();}catch(_){}
+        if(editing!==session)return;
+        if(loading&&!editing.loading){message('Test held. The lost response was recovered. You can edit its settings.');return;}
+      }
+      message(error.message,true);
+    }
     finally{busy=false;render();}
   }
   function specification(){
@@ -115,10 +171,10 @@ const BacktestQueue=(()=>{
         return;
       }
       if(editing){
-        await mutate('/'+editing.id+'/update',{...specification(),revision:editing.revision},{success:'Queued test updated. It can run with the new settings.'});
-        editing.draft.end();editing=null;node('queue-name').value='';return;
+        if(editing.loading)await acquireEdit();else await finishEdit('update');
+        return;
       }
-      if(!pending){const bytes=crypto.getRandomValues(new Uint8Array(16));remember({id:Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''),...specification()});}
+      if(!pending)remember({id:identifier(),...specification()});
       try{
         await mutate('',pending,{success:'Test added to the queue. You can change the settings and add another.'});
         callbacks.prepare?.();
@@ -141,19 +197,16 @@ const BacktestQueue=(()=>{
       }
       if(action==='edit'){
         const draft=callbacks.beginEdit(id);
-        try{
-          const held=await mutate('/'+id+'/hold',{revision:record.revision},{success:'Test held. Edit the strategy controls above, then select Save queued test.'});
-          editing={id,revision:held.revision,draft};node('queue-name').value=held.name;
-          callbacks.prepare?.();draft.restore({mode:held.mode,...held.options});
-          node('strategy-heading').scrollIntoView?.({behavior:'smooth',block:'start'});return;
-        }catch(error){draft.end();if(editing?.draft===draft)editing=null;throw error;}
+        editing={id,token:identifier(),baseRevision:record.revision,revision:null,loading:true,pending:null,draft};
+        await acquireEdit();return;
       }
+      if(action==='release'&&editing?.id===id){await finishEdit('release');return;}
       const options={revision:record.revision};
       if(action==='up'||action==='down')options.direction=action==='up'?-1:1;
       await mutate('/'+id+(action==='confirm'?'':'/'+(action==='up'||action==='down'?'move':action)),options,
         {method:action==='confirm'?'DELETE':'POST',success:action==='confirm'?'Selected test deleted.':action==='stop'?'Stop requested. The next test starts after cleanup.':'Queue updated.'});
       if(action==='confirm')pendingDelete=null;
-      if(editing?.id===id&&['confirm','release'].includes(action)){editing.draft.end();editing=null;node('queue-name').value='';}
+      reconcileEdit();
     });
   }
   function init(config){

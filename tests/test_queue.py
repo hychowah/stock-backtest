@@ -1,5 +1,5 @@
 """Durable queue transactions, consumer ownership and real engine recovery."""
-from contextlib import ExitStack
+from contextlib import closing, ExitStack
 from http.client import HTTPConnection
 import json
 from pathlib import Path
@@ -47,6 +47,18 @@ class StoreTests(unittest.TestCase):
     def change(self,record,action,**options):
         return self.store.change(record['id'],action,dict(revision=record['revision'],**options))
 
+    def test_existing_queue_keeps_held_records_when_edit_receipts_are_added(self):
+        submission=request('Existing held test');name,spec,seed=self.store.specification(submission)
+        with closing(sqlite3.connect(self.store.path)) as db, db:
+            db.executescript(queue.SCHEMA.split('CREATE TABLE IF NOT EXISTS edits')[0])
+            db.execute('INSERT INTO jobs(id,name,spec,original_hash,position,revision,state,created_at) VALUES(?,?,?,?,?,?,?,?)',
+                       (submission['id'],name,spec,'old receipt',1,7,'held','2026-10-26'))
+        existing=self.store.get(submission['id'])
+        self.assertEqual(existing['name'],name);self.assertEqual(existing['revision'],7);self.assertIsNone(existing['edit'])
+        released=self.change(existing,'release');held=self.hold(released)
+        self.assertEqual(held['state'],'held');self.assertEqual(held['options'],submission['options'])
+        self.assertEqual(queue.Store(self.store.path).get(held['id'])['edit'],held['edit'])
+
     def test_idempotent_submission_survives_edits_and_deletion(self):
         submission=request();item=self.store.enqueue(submission)
         self.assertEqual(self.store.enqueue(submission)['id'],item['id'])
@@ -82,6 +94,51 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.get(stopping['id'])['state'],'cancelled')
         self.assertEqual(self.store.get(held['id'])['state'],'held')
         with self.assertRaises(queue.Conflict):self.change(first,'hold')
+
+    def hold(self,item,token=None):
+        return self.change(item,'hold',edit_id=token or uuid.uuid4().hex)
+
+    def edit_request(self,held,**values):
+        return dict(edit_id=held['edit']['id'],edit_revision=held['edit']['revision'],**values)
+
+    def test_edit_version_survives_own_and_neighbor_reordering(self):
+        first=self.store.enqueue(request('First'));second=self.store.enqueue(request('Second'))
+        held=self.hold(first)
+        moved=self.change(held,'move',direction=1)
+        self.assertNotEqual(moved['revision'],held['revision'])
+        self.assertEqual(moved['edit'],held['edit'])
+        self.change(self.store.get(second['id']),'move',direction=1)
+        body=self.edit_request(held,**{k:v for k,v in request('Edited').items() if k!='id'})
+        saved=self.store.change(first['id'],'update',body)
+        self.assertEqual(saved['name'],'Edited');self.assertEqual(saved['edit']['state'],'saved')
+
+    def test_save_and_cancel_receipts_survive_execution_and_restart(self):
+        for action in ('update','release'):
+            item=self.store.enqueue(request(action));held=self.hold(item)
+            token=held['edit']['id']
+            retry_hold=self.store.change(item['id'],'hold',dict(revision=item['revision'],edit_id=token))
+            self.assertEqual(retry_hold['revision'],held['revision'])
+            body=self.edit_request(held)
+            if action=='update':body.update({k:v for k,v in request('Saved').items() if k!='id'})
+            done=self.store.change(item['id'],action,body)
+            self.store.claim();self.store.finish(item['id'],'failed',error='Fixture completion')
+            reopened=queue.Store(self.store.path)
+            replay=reopened.change(item['id'],action,body)
+            self.assertEqual(replay['state'],'failed');self.assertEqual(replay['edit'],done['edit'])
+            self.assertEqual(replay['name'],done['name'])
+            if action=='update':
+                with self.assertRaises(queue.Conflict):reopened.change(item['id'],action,dict(body,name='Changed retry'))
+            with self.assertRaises(queue.Conflict):reopened.change(item['id'],'release' if action=='update' else 'update',body)
+
+    def test_replaced_edit_cannot_save_and_deleted_edit_cannot_return(self):
+        item=self.store.enqueue(request());first=self.hold(item)
+        second=self.hold(first)
+        self.assertNotEqual(first['edit']['id'],second['edit']['id'])
+        body=self.edit_request(first,**{k:v for k,v in request('Stale').items() if k!='id'})
+        with self.assertRaises(queue.Conflict):self.store.change(item['id'],'update',body)
+        self.change(second,'delete')
+        with self.store.database() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM edits').fetchone()[0],0)
+        with self.assertRaises(queue.Missing):self.store.change(item['id'],'release',self.edit_request(second))
 
     def test_invalid_requests_and_atomic_capacity_across_stores(self):
         for invalid in (request(mode='latest'),request(name=''),request(options={}),request(options={'start':'2015','end':'2016','min_ev':float('inf')})):

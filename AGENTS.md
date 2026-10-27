@@ -390,7 +390,11 @@ financial database closure. Cache contention defers queue work. It must not
 turn a batch into failed tests after a manual-run lock timeout.
 
 Pause prevents the next claim. Held edits do not execute. Only waiting tests
-can change settings or order. Mutation revisions reject stale editors.
+can change settings or order. An edit has a stable ID and settings version.
+Queue position changes keep that edit valid. Save and Cancel retain one edit
+receipt per test. Exact retries remain safe after execution starts. A new hold
+replaces the preceding receipt. Ordinary mutation revisions still protect
+queue actions and older clients. Existing durable records upgrade in place.
 Server shutdown requeues interrupted work; an explicit Stop stays cancelled.
 Record a random seed at admission and the full date plan before execution.
 Reuse that plan after interruption. Changing waiting calculation parameters
@@ -413,9 +417,13 @@ mutations if a list refresh fails, and ignore stale list responses. Checks:
 
 `StrategyDraft` in `website/range.js` owns the strategy form. A queued edit
 reserves a form session before requesting its server hold. Only that session
-can restore settings until a confirmed save, cancel or deletion ends it.
+can restore settings until a save, cancel, deletion or server reconciliation
+ends it. Reconcile the session by its edit ID and version. An externally ended
+or replaced hold releases the form without replacing its current settings.
+Retry an unacknowledged hold or Save/Cancel with the same identity and payload.
 Queue result opening/copying, saved-library opening and manual recovery use
 the same restoration boundary. They must refuse replacement with a clear
-save-or-cancel message instead of overwriting a held draft. A failed hold must
-release its local form session. Do not add queue-specific restoration guards
+save-or-cancel message instead of overwriting a held draft. A definitively
+rejected hold must release its local form session. An unacknowledged hold keeps
+the session for reconciliation or retry. Do not add queue-specific restoration guards
 to individual callers. Check these interactions in `tests/check-range.cjs`.

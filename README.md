@@ -49,6 +49,9 @@ editing a queue item also turns Auto-run off for continued batch setup.
 Open completed results from the queue without calculating again.
 Save or cancel an active edit before opening or copying another result. This
 keeps the held test's draft parameters intact.
+Reordering does not invalidate an edit. If a response is lost, the queue checks
+the saved edit receipt or offers a retry of the same request. If another browser
+ends the hold, your form becomes available and keeps its current settings.
 
 The queue holds up to 100 records, including completed results. It persists in
 `data/backtest-queue.sqlite` until you delete individual records. It is separate
