@@ -8,6 +8,8 @@ Wave5 measurement expansion: 25 October 2026.
 
 Program direction revised after the full matrix and program review: 25 October 2026.
 
+Application integration boundaries updated after reviewed-main integration: 27 October 2026.
+
 Status: CB-00 and CB-01 are complete. **CB-02 is complete by the user's
 method-selection decision on 26 October 2026. Numba is accepted.** Further
 comparative benchmarking is waived. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
@@ -21,6 +23,47 @@ authority. It supersedes earlier instructions to finish the measurement owner,
 qualify benchmark-only resources, run another pilot or enforce a 4×/10× release
 gate. Earlier measurements, failures and unsupported capabilities remain
 historical evidence. They are not recast as passing qualification.
+
+## Current application integration boundary — 27 October 2026
+
+The user accepts the two recommendations from the independent plan review.
+The [integration checkpoint](integration-checkpoint.md), commit `71e2548`, merges
+reviewed main `b64130a` into the engine branch. Its synthetic WSL/native and
+private WSL browser checks establish compatibility on the existing engine path.
+They do not qualify candidate routing, real-data capacity or the installed runtime.
+CB-05 remains incomplete. No later phase is completed by this plan update.
+
+Current source already owns manual background jobs, the overnight queue and
+complete saved-result snapshots. Candidate execution must fit those boundaries:
+
+| Boundary | Responsibility and retained contract |
+|---|---|
+| Application calculation | `website/backtest_jobs.py:calculate` is the shared entry for background jobs and queued fixed/random tests. The candidate runtime supplies calculation behind it. Existing schedule/NDJSON routes remain compatibility adapters to the same engine capability. |
+| Job lifetime | Browser navigation does not cancel server-owned jobs. Explicit Stop and server shutdown request cooperative cleanup. Temporary manual-job results retain their existing expiry and restart behavior. |
+| Durable queue | `website/backtest_queue.py` owns admission, ordering, seed/date plans, held edits and retry receipts. Shutdown requeues interrupted work; explicit Stop stays cancelled. Native worker scheduling stays inside the numerical runtime. |
+| Durable user evidence | `data/saved-backtests.sqlite` and `data/backtest-queue.sqlite` preserve completed snapshots independently of current input freshness. `website/result-artifacts.js` supplies fresh and reopened views, original labels and downloads without recalculation. |
+| Reusable calculation state | Generation-bound checkpoints, prepared books and factor caches can be reused only with matching identities. Their invalidation and bounded retention must not remove durable user evidence. |
+
+Use `backtest_control` and the existing financial coordinator. Legacy request
+cancellation observes disconnects. Background jobs survive disconnection.
+Queue retries retain their recorded plan and edit identity. Every caller keeps
+worker, database and mapping cleanup inside financial and source ownership.
+The runtime closes borrowed evaluators before their input attachments.
+
+CB-09/CB-10 define complete evaluator results and generation-bound recovery.
+CB-11/CB-12 own the candidate runtime and its startup/closure inside current
+application lifetimes. CB-13 connects that capability through the existing
+adapter and immutable browser artifacts. CB-14/CB-15 qualify compatibility and
+rollback across manual jobs, queued tests and durable saved results.
+Do not add another job service or user-result store to implement these phases.
+
+This is a plan-only adjustment to existing boundaries. No code-structure design
+is needed. The architecture guide already describes these current-source owners
+and the unchanged engine route. No guide content or checked-date update is needed.
+The independent commit audit is recorded in
+[the plan-update audit](main-integration-plan.audit.md). No new financial or
+performance run is claimed. The historical phase and measurement records retain
+their original scope and results.
 
 The wave summaries below preserve the earlier sequence and its original gates.
 
@@ -1096,103 +1139,241 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 **Outcome:** One numerical path turns selected stocks into complete dated portfolio results.
 
-**Work:** Reuse the current shared portfolio aggregation, stopped exits, weights, contributions, coverage and SPY comparison. Harden its versioned result/inspection contract. Selected-only return calculation remains a separate unimplemented optimization; require membership and full-value proof before replacing complete-book return evaluation. Keep period eligibility before selection. Support existing months and explicit weekly dates without duplicating aggregation.
+**Work:** Reuse shared portfolio aggregation, stopped exits, weights,
+contributions, coverage and SPY comparison. Harden the versioned result and
+inspection contract. Selected-only returns remain a separate unimplemented
+optimization; require membership and full-value proof before replacing
+complete-book evaluation. Keep period eligibility before selection. Support
+existing months and explicit weekly dates without duplicating aggregation.
 
-**Deliverables:** Fixed and explicit-date evaluator plus a diagnostic adapter. Retain the existing reference route for comparison.
+**Deliverables:** Fixed and explicit-date evaluator plus a diagnostic adapter.
+Preserve complete holding rows, dates, values, statuses and ordering for current
+job results, snapshots and exports. Retain the reference route for comparison.
 
-**Verification:** Full holding/date/value/status parity against current schedules on isolated inputs. Check January books against the verified baseline, all existing frequencies, week-length explicit periods, bankruptcy fixtures, empty/short books, common-window cash, final marks and contribution order. Preserve `1e-12` tolerances.
+**Verification:** Compare full holding/date/value/status results with current
+schedules on isolated inputs. Check January books against the verified baseline,
+all existing frequencies, explicit weekly periods, bankruptcy fixtures,
+empty/short books, common-window cash, final marks and contribution order.
+Preserve `1e-12` tolerances. Existing result consumers must need no formula changes.
 
-**Handoff:** Complete financial result schema and evidence that selected-only returns preserve membership. Do not add random-job persistence in this phase.
+**Handoff:** Complete financial result schema for `backtest_jobs.calculate` and
+existing compatibility routes, plus selected-only membership evidence if that
+optimization is implemented. Durable snapshots retain submitted settings,
+catalog labels and presentation fields around this result. Do not add random-job
+persistence or another user-result store in this phase.
 
 ### CB-10 Run random trials with durable recovery
 
 **Outcome:** Random experiments use the new evaluator and preserve completed work after interruption.
 
-**Work:** Promote the demonstrated atomic trial store and exact replay into production recovery and old-evidence compatibility. Retain deterministic samples, fresh default seeds and distinct trial identities. Harden unique-entry/factor reuse, interrupted-commit recovery, generation rejection and bounded growth. Do not build another random driver or trial store solely because its phase ID follows portfolio evaluation.
+**Work:** Promote the demonstrated atomic trial store and exact replay into
+production calculation recovery. Retain deterministic samples, fresh default
+seeds, distinct trial identities and recorded queue date plans. Harden
+unique-entry/factor reuse, interrupted commits, generation rejection and bounded
+growth for derived checkpoints. Reuse the existing random driver and user stores.
+Generation rejection applies to calculation reuse. It must not invalidate an
+old completed snapshot merely because current inputs changed.
 
-**Deliverables:** Random experiment driver, compact result/checkpoint storage, saved-trial inspection and replay support. Add retention controls or a documented bounded policy for result growth.
+Preserve the summary-only `robustness.run` default and optional `capture`
+observer. The shared application adapter captures ordered full `trial_results`
+for background and queued random tests. Preserve every completed trial's dates,
+periods and holdings, plus submitted settings, original labels and presentation.
+Keep queue settings versions and edit/retry receipts independent of checkpoints.
 
-**Verification:** Same seeds and existing settings match current experiments. Incomplete trials remain visible and paired distributions agree. Simulate interruption before/during/after commit, duplicate sampled schedules, filter changes and input-generation changes. Retry reuses only matching completed work. A new seed remains the default.
+**Deliverables:** Generation-bound calculation checkpoints, saved-trial
+inspection and replay support. Bound derived storage with retention controls or
+a documented policy. Preserve existing queue/library limits and user-controlled
+deletion. Reopening durable snapshots uses `ResultArtifacts` without calculation.
+No cache retention policy may delete those user records.
 
-**Handoff:** Recovery contract, storage-size measurements and real progress units. Remove candidate-row writes from this path; do not remove old user books.
+**Verification:** Same seeds and existing settings match current experiments.
+Incomplete trials stay visible and paired distributions agree. Simulate
+interruption before/during/after commit, duplicate schedules, filter changes and
+input-generation changes. Retry reuses only matching work and recorded queue
+plans. Old completed snapshots must still reopen and export after generation
+changes. Check full trial/holding order and both default and capture contracts.
+A new seed remains the default for a new unseeded experiment.
+
+**Handoff:** Separate contracts for reusable checkpoints and durable user
+snapshots, storage-size measurements and real progress units. Remove
+candidate-row writes from this path; preserve old books, saved results and queue
+records. This phase does not replace queue admission or library persistence.
 
 ### CB-11 Add the persistent bounded runtime
 
 **Outcome:** One server reuses open numeric inputs and native code without unbounded memory or orphan work.
 
-**Work:** Harden persistent generation attachment, prewarming, factor caches, task queues, invalidation and terminal lifecycle for production. Reuse the demonstrated ownership contracts. Comparative MeasurementExecution qualification is retired. Select one bounded parallelism layer and verify cancellation and closure in normal application use.
+**Work:** Harden persistent generation attachment, prewarming, factor caches,
+invalidation and terminal lifecycle behind `backtest_jobs.calculate`. Keep
+bounded native task scheduling inside the runtime. The durable overnight queue
+remains owned by `backtest_queue`; do not add a candidate job service. Reuse
+source/cache ownership and `backtest_control` cancellation. Select one bounded
+parallelism layer. Comparative MeasurementExecution qualification stays retired.
 
-**Deliverables:** Runtime resource owner, worker/thread cap, cache limits, stage diagnostics and shutdown protocol.
+Caller lifetimes remain distinct. Legacy requests cancel on disconnect.
+Background jobs survive navigation and cancel on explicit Stop or server
+shutdown. Queue shutdown requeues interrupted work; explicit Stop stays
+cancelled. Close workers, databases, borrowed evaluators and mappings before
+financial and source ownership ends. Preserve existing result/progress shapes.
 
-**Verification:** Serial and parallel results agree. Stress repeated filter changes, invalidation, aborted requests, Ctrl+C, launcher replacement and two local servers. Test Windows mapping release before deletion. Confirm no nested thread multiplication, stale compiled globals or cross-generation cache reuse. Measure peak working set and memory after repeated jobs.
+**Deliverables:** Runtime resource owner, worker/thread cap, cache limits,
+stage diagnostics and shutdown protocol usable by the existing adapter and
+legacy compatibility routes.
 
-**Handoff:** Chosen parallel policy, cancellation bound, memory budget and compiler-cache signature. Do not rely on garbage collection alone to release mapped files.
+**Verification:** Serial and parallel results agree. Stress repeated filters,
+invalidation, legacy disconnects, background navigation/recovery, explicit Stop,
+queue shutdown/restart, Ctrl+C, launcher replacement and two local servers.
+Test Windows mapping release before deletion. Check nested thread multiplication,
+stale compiled globals and cross-generation reuse. Measure peak working set and
+memory after repeated jobs. Completion is published only after engine cleanup.
+
+**Handoff:** Chosen parallel policy, caller-specific cancellation/closure
+contract, cancellation bound, memory budget and compiler-cache signature.
+Do not rely on garbage collection alone to release mapped files.
 
 ### CB-12 Integrate preparation startup and data control
 
 **Outcome:** Candidate preparation and startup work in isolation. The normal
 launcher retains the stable engine until full readiness and CB-15 cutover.
 
-**Work:** Extend dependency preparation in order: recover/verify research publication, prepare compatible base data, publish the numerical generation, prepare native runtime and rebuild stale website output. Add a pinned tested dependency environment. Preserve panel recovery when raw inputs are missing. Integrate stale-generation evidence with every relevant successful or partial coordinated download/repair. Preserve immediate direct-edit detection with equivalent current inventory checks.
+**Work:** Prepare dependencies in order: recover/verify research publication,
+prepare compatible base data, publish the numerical generation, prepare native
+runtime and rebuild stale website output. Add a pinned tested environment.
+Preserve data-panel recovery with missing raw inputs. Bind stale-generation
+evidence to successful and partial coordinated downloads/repairs. Preserve
+immediate direct-edit detection with equivalent current inventory checks.
+
+Attach the runtime inside existing server source ownership before accepting
+candidate work. Keep job/queue startup and shutdown in their existing owners.
+Join those owners and close runtime resources before source ownership ends.
+Preserve durable queue/library files during startup, rebuilds and publication.
+Candidate freshness failure must not make completed stored results unreadable.
 
 **Deliverables:** Isolated candidate launcher/data-panel integration, a verified
-stable revision/restart safeguard, runtime/dependency instructions, compact
-generation checks and preparation status. Existing standard-library reference
-commands remain available without installing the new numerical stack.
+stable revision/restart safeguard, dependency instructions, compact generation
+checks and preparation status. Reference commands remain available without the
+new numerical stack.
 
 **Verification:** Stable restart remains on the known-good engine. Candidate
 setup, dependency failure and publication failure leave the live website usable.
-Do not publish development HEAD over it. Unchanged candidate restart avoids re-export. Changed inputs trigger correct preparation. Baseline publication recovery still precedes readers. Test missing dependencies, supported/unsupported Python versions, unavailable package network, offline installed operation, moved paths, invalid raw data, partial downloads, rebuild failure and simultaneous local launches. Keep all existing lock and secret-safe logging behavior.
+Do not publish development HEAD over it. Unchanged candidate restart avoids
+re-export. Changed inputs trigger correct preparation. Baseline publication
+recovery precedes readers. Test missing dependencies, Python compatibility,
+unavailable package network, offline operation, moved paths, invalid raw data,
+partial downloads, rebuild failure and simultaneous launches. Preserve secret-safe
+logging and lock ordering. Check durable queue recovery, held edits and saved
+result access after candidate startup failure and ordinary restart.
 
-**Handoff:** Tested Windows launch command and offline behavior. Initial package installation is separate from market-data downloading; running a strategy must not fetch market data.
+**Handoff:** Tested Windows launch command, ownership/closure order and offline
+behavior. Package installation is separate from market-data downloading.
+Running a strategy must not fetch market data.
 
 ### CB-13 Integrate the website and API
 
-**Outcome:** Users can run the replacement through the existing website. Existing
-month workflows can ship in a separate opt-in preview before the weekly
-extension is ready. The stable website remains the normal entry point.
+**Outcome:** Users can run the replacement through the existing website.
+Existing month workflows can ship in an isolated opt-in preview before the
+weekly extension is ready. The stable website remains the normal entry point.
 
-**Work:** Route candidate dated schedule and robustness requests through an
-explicit opt-in engine selection in the isolated preview. Keep the stable
-instance, source, data ownership and default launcher intact. Adapt NDJSON events and progress text to actual work units. Add versioned saved settings, trial inspection, exports and errors. Expose week/month controls only after their calendar and evaluator checks pass. Ensure old saved requests have a defined route. Keep January/latest/static fallback behavior intact.
+**Work:** Select the candidate engine behind `backtest_jobs.calculate` in the
+isolated preview. Both `/api/backtest-runs` and the durable queue use this
+application boundary. Keep legacy `/api/schedule` and `/api/robustness` as
+compatibility adapters to the same engine capability. Preserve their existing
+payloads, streaming detail opt-in and caller-specific cancellation semantics.
+Keep stable source, data ownership and default launcher intact.
 
-**Deliverables:** Working local UI/API flow, browser checks and a documented rollback setting. Update the guide to distinguish opt-in source from the default running engine.
+Reuse current browser run recovery, `StrategyDraft` form ownership and
+`ResultArtifacts` publication. Preserve full saved settings, trial inspection,
+original catalog labels, semantic presentation, CSVs and errors. Held queue
+edits must survive retry/reconciliation and block unrelated settings restoration.
+Opening or exporting stored results must not submit another calculation.
+Expose week/month controls only after calendar and evaluator checks pass.
+Define versioned mappings for old month requests and snapshots. Keep
+January/latest/static fallback behavior intact.
 
-**Verification:** Exercise a complete 24-trial run, changing filters, seed replay, weekly settings, cancellation/disconnection, saved trial inspection, CSVs and empty selections. Prove that preview preparation, execution and failure do not block the stable website or its backtests. Check desktop/mobile presentation when browser tools are available. Run existing range, screener, robustness, contributions and data-panel checks as affected. Build local output only.
+**Deliverables:** Compatible job/queue and legacy UI/API flows, browser checks
+and a rollback setting. Update the guide to distinguish preview source from the
+default running engine. Reuse existing job and user-result stores.
 
-For an existing-month milestone, mark weekly checks pending and keep weekly
-controls unavailable. Run those checks before delivering the extension. Do not
-mark the whole phase or program complete from the earlier milestone.
+**Verification:** Run 24 complete trials, changed filters, seed/date-plan replay,
+weekly settings, full trial inspection, CSVs and empty selections. Exercise
+legacy disconnect cancellation, background disconnection/recovery, explicit Stop,
+server shutdown, queue restart/retry/held-edit reconciliation and reopening both
+old and candidate saved results. Verify original labels and all trial holdings.
+Prove preview preparation, execution and failure leave stable service usable.
+Check desktop/mobile controls and range, screener, robustness, contributions,
+data-panel, job, queue, saved-library and immutable-artifact suites. Build local
+output only.
 
-**Handoff:** API compatibility notes and browser evidence. Do not refresh or stage `website/dist/` as an incidental build action.
+For an existing-month milestone, leave weekly checks pending and controls
+unavailable. Do not mark the whole phase or program complete from that milestone.
+
+**Handoff:** Compatibility notes for requests, complete results, saved schemas,
+caller lifetimes and actual browser exports. Do not refresh or stage
+`website/dist/` as an incidental build action.
 
 ### CB-14 Qualify correctness and operations
 
 **Outcome:** A reproducible decision to cut over or continue optimization.
 
-**Work:** Run catalog/rank/interval differential coverage, 100-trial annual stress and bounded weekly reference cases. Run candidate weekly capacity tests only after a safe pilot. Check cold/restart performance, repeated filters, recovery, memory and file growth. Repeat a measurement only when a failure or changed implementation justifies it.
+**Work:** Run catalog/rank/interval differential coverage, 100-trial annual
+stress and bounded weekly reference cases. Run weekly capacity checks after a
+safe pilot. Check cold/restart behavior, repeated filters, recovery, memory and
+file growth. Repeat measurements only when failures or changed implementation
+justify them. Qualify existing manual-job, queue and durable-result workflows
+through the candidate adapter.
 
-**Deliverables:** Tracked qualification report with settings, hashes, versions, maximum numeric differences, raw-output locations, per-case timings and explicit gate verdicts. Update experiment documentation with the new evidence while retaining historical results.
+**Deliverables:** Qualification report with settings, hashes, versions, maximum
+numeric differences, output locations, timings and gate verdicts. Retain
+historical results. Separate generation-bound reuse evidence from durable
+snapshot compatibility and caller-lifetime evidence.
 
-**Verification:** All required correctness and operational checks pass on Windows.
-The ongoing website availability contract passes during candidate preparation,
-execution, failure and restart. Stable code, dependencies and caches remain usable. Paired performance gates are waived. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
+**Verification:** Required correctness and operational checks pass on Windows.
+Stable website availability passes during candidate preparation, execution,
+failure and restart. Stable dependencies, caches and saved evidence remain usable.
+Paired performance gates are waived. The complete trailing-filter supplement
+passes parity and coverage checks. Startup, fresh research, changed filters,
+saved-result reopening and weekly research meet agreed absolute budgets.
+Verify legacy disconnects, background recovery, explicit Stop cleanup, queue
+shutdown/requeue, held edits, retries and recorded plans. Old and new snapshots
+must reopen through `ResultArtifacts` and export full original details after
+input-generation changes. No gain may depend on relaxed precision, missing
+filters, omitted persistence or warm selected-result caches. Keep unverified
+cases explicit.
 
-**Handoff:** Pass/fail table. If a gate fails, leave the engine opt-in and write the smallest evidence-led follow-up phase. Do not label the program complete.
+**Handoff:** Pass/fail table. A failed gate keeps the engine opt-in and gets the
+smallest evidence-led follow-up. Do not label the program complete.
 
 ### CB-15 Cut over and close the program
 
 **Outcome:** The qualified engine is the default for dated backtests, with clear recovery and fallback instructions.
 
-**Work:** Change the default only after all CB-14 checks and agreed budgets pass,
-including the availability, interval, saved-data compatibility and rollback gates.
-Until then, keep the stable engine and its normal restart path available. Remove temporary prototype integration and obsolete default routing. Retain the reference/rollback path and old caches through a documented migration period. Update README, workflow, data documentation, root instructions and the architecture guide to the implemented state. Document adding metrics, extending data, rebuilding generations, inspecting saved trials and rolling back.
+**Work:** Change the adapter's default only after all CB-14 readiness and agreed
+budget checks pass. Keep the stable engine and restart path available until
+then. Remove temporary prototype routing. Retain reference/rollback code, old
+caches and durable user records. Update implemented-state documentation and the
+guide. Document metrics, data extensions, generation rebuilding, trial inspection
+and rollback.
 
-**Deliverables:** Default route, final user guide and program completion record. Retain historical timing records and describe any new operational observations with their actual settings. Do not claim a new 4×/10× qualification. Before cutover, record the actual stable revision, environment, database/report generation, compatible saved-result route and immutable artifact locations. Keep them until the user accepts retirement; do not invent an automatic expiry. Rollback deliberately selects that retained revision, restores its compatible routing and reuses its preserved assets. Test rollback in isolation before changing the default. Never recompute old evidence silently or delete stable books.
+**Deliverables:** Default route, final guide and completion record. Preserve
+historical timings; make no new 4×/10× claim. Before cutover, record the actual
+stable revision, environment, database/report generation, immutable artifacts
+and compatible queue/library schemas. Keep these until user-approved retirement.
+Rollback deliberately selects the retained revision and compatible routing.
+Any saved-schema change needs a tested compatible read or recovery route.
+Test rollback in isolation; never silently recompute old evidence or delete
+stable books, saved snapshots, queue plans or edit receipts.
 
-**Verification:** Native Windows launcher smoke test, representative browser flow, offline operation and the required regression checks. Confirm the canonical report is unchanged unless a separately verified data revision explains it. Confirm old books and raw data remain available. Compare the complete commit diff with the architecture guide.
+**Verification:** Native Windows launcher, offline operation and regression
+checks pass. Exercise manual background Run/Stop/recovery, queued execution and
+restart/retry, held edits, saved-result opening and full CSVs before and after
+isolated rollback. Confirm old and new snapshots remain readable. Preserve
+canonical report binding unless a separately verified data revision explains
+a change. Preserve raw data and old books. Compare the full commit diff with
+the architecture guide.
 
-**Handoff:** Final commands, qualified dependency versions, measured operating limits, rollback procedure and remaining limitations. No automatic hosted publication or portable snapshot refresh is part of this phase.
+**Handoff:** Final commands, dependency versions, operating limits, rollback
+procedure and remaining limits. No automatic hosted publication or portable
+snapshot refresh is part of this phase.
 
 ## Automatic agent implementation protocol
 
@@ -1293,13 +1474,13 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-06 | Planned hardening | Retain source-derived catalog, specialization and dependency planning |
 | CB-07 | Conditional replacement | Shared SQL is demonstrated; generic native selection is not |
 | CB-08 | Planned | Weekly rules proposed, not implemented |
-| CB-09 | Planned hardening | Common aggregation demonstrated; selected-only returns remain unimplemented |
-| CB-10 | Planned hardening | Atomic trial evidence/replay demonstrated; production recovery/compatibility pending |
-| CB-11 | Planned production hardening | Persistent runtime, bounded normal resources and stress; comparison lifetime project retired |
-| CB-12 | Planned | Wave8 request-start revision selection reusable; isolated startup, actual restart, immediate detection and operational budgets remain required |
-| CB-13 | Planned | Isolated preview; stable website remains default |
-| CB-14 | Planned | Financial, coverage and operational qualification retained; comparative speed gate waived |
-| CB-15 | Planned | Stable default stays until all CB-14 readiness gates pass |
+| CB-09 | Planned hardening | Common aggregation reusable; complete job/snapshot result compatibility pending; selected-only returns unimplemented |
+| CB-10 | Planned hardening | Atomic replay and current full-trial capture reusable; generation-bound recovery and durable snapshot compatibility remain distinct and pending |
+| CB-11 | Planned production hardening | Existing job/queue adapter reusable; persistent numerical runtime and caller-specific cleanup pending; comparison lifetime project retired |
+| CB-12 | Planned | Revision safeguard and source/job/queue owners reusable; isolated numerical startup, restart and freshness integration pending |
+| CB-13 | Planned | Current job recovery, queue, library and ResultArtifacts reusable; candidate preview/compatibility pending; stable default retained |
+| CB-14 | Planned | Candidate financial, coverage, lifecycle and durable-evidence qualification pending; comparative speed gate waived |
+| CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition
 
