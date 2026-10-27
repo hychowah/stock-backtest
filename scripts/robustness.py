@@ -73,6 +73,27 @@ def summarize_trials(configuration, rows, started):
                 note='Each trial independently samples one trading date in every rebalance block, including a final partial block. Actual holding intervals vary. All trials use the same window, with zero-return cash until their first trade for both strategy and paired SPY. Mean CAGR averages trial CAGRs; it is not the return of one portfolio. Incomplete trials remain listed and are excluded from paired statistics. Scenarios overlap; percentiles are not confidence intervals.')
 
 
+def consume_trials(configuration, completed, *, capture=None, started=None):
+    """Consume ordered complete results; storage and progress belong upstream.
+
+    Streams must publish/commit before yielding. Capture receives the original
+    detached result, including on recovery, and must not mutate it.
+    """
+    if started is None: started=time.perf_counter()
+    rows=[];execution={}
+    for number,result,stats in completed:
+        if type(number) is not int or number != len(rows)+1 or number > configuration['requested']:
+            raise ValueError('Completed trials must be contiguous and ordered.')
+        rows.append(summarize(result,number,configuration['samples'][number-1]))
+        if capture is not None:capture(number,result)
+        execution=dict(stats)
+    if len(rows) != configuration['requested']:
+        raise ValueError('Completed trial count differs from the recorded plan.')
+    result=summarize_trials(configuration,rows,started)
+    result['execution']=execution
+    return result
+
+
 def run(db, configuration, progress=None, *, workers=None, capture=None):
     """Plan shared books upfront; calculate ahead and commit each complete trial.
 
@@ -81,11 +102,6 @@ def run(db, configuration, progress=None, *, workers=None, capture=None):
     An optional observer receives each completed trial's full result. It must
     not mutate that result. Ordinary callers still receive only the summary.
     """
-    started=time.perf_counter();rows=[];execution={}
-    for number,result,stats in book_batch.evaluate_trials(db,configuration,progress,workers):
-        rows.append(summarize(result,number,configuration['samples'][number-1]))
-        if capture is not None:capture(number,result)
-        execution=dict(stats)
-    result=summarize_trials(configuration,rows,started)
-    result['execution']=execution
-    return result
+    started=time.perf_counter()
+    return consume_trials(configuration,book_batch.evaluate_trials(db,configuration,progress,workers),
+                          capture=capture,started=started)

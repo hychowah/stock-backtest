@@ -19,7 +19,9 @@ CB-06 delivers the entry-date factor interface; see its [record](phases/CB-06.md
 CB-07 is complete with SQL deliberately retained. CB-08 delivers the shared
 week/month calendar and monthly compatibility adapters. CB-09 adds one shared
 complete financial-result reducer and an offline numerical diagnostic; see its
-[record](phases/CB-09.md) for verification and audit status. SQL and complete-book
+[record](phases/CB-09.md) for verification and audit status. CB-10 completes
+generation-bound offline random recovery and verifies durable snapshot
+independence; see its [record](phases/CB-10.md). SQL and complete-book
 evaluation remain in use. Weekly website controls, runtime and routing remain
 later work.
 No production engine or running server routing changes here.
@@ -1510,7 +1512,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-07 | Complete; SQL retained | [Boundary decision and verification](phases/CB-07.md); generic native selection remains unimplemented |
 | CB-08 | Complete | [Calendar contract and phase record](phases/CB-08.md); version-1 week/month planning, exact monthly compatibility, WSL/native verification and independent audit; weekly controls remain unavailable |
 | CB-09 | Complete | [Complete financial-result contract and phase record](phases/CB-09.md); shared reducer, offline numerical diagnostic, WSL/native verification and independent audit; unchanged job/snapshot envelopes; SQL and complete-book returns retained |
-| CB-10 | Planned hardening | Atomic replay and current full-trial capture reusable; generation-bound recovery and durable snapshot compatibility remain distinct and pending |
+| CB-10 | Complete | Generation-bound offline recovery, complete trial capture, bounded retention and durable snapshot compatibility pass WSL/native verification and independent audit. See [CB-10](phases/CB-10.md). |
 | CB-11 | Planned production hardening | Existing job/queue adapter reusable; persistent numerical runtime and caller-specific cleanup pending; comparison lifetime project retired |
 | CB-12 | Planned | Revision safeguard and source/job/queue owners reusable; isolated numerical startup, restart and freshness integration pending |
 | CB-13 | Planned | Current job recovery, queue, library and ResultArtifacts reusable; candidate preview/compatibility pending; stable default retained |

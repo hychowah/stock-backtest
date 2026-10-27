@@ -123,3 +123,39 @@ def evaluate(periods, select_period, *, common_start=None, checkpoint=None):
     if common_start is not None:
         result.update(first_trade=str(periods[0][0]), cash_days=(periods[0][0]-first).days)
     return result
+
+
+def validate_completed(result):
+    """Check detached explicit-date evidence through the existing reducer.
+
+    Recovery must not treat corrupt or incomplete evidence as an empty trial.
+    Extra provider fields are preserved. No alternate financial formula lives
+    here: evaluate reconstructs its own fields in the original arithmetic order.
+    """
+    try:
+        if (not isinstance(result, dict) or not isinstance(result['periods'], list)
+                or type(result['months']) is not int or result['months'] not in (1,3,6,12,24)
+                or not isinstance(result['options'], dict) or not _finite(result['seconds'])
+                or result['seconds'] < 0 or type(result['cash_days']) is not int
+                or any(result[key] is not None and not _finite(result[key])
+                       for key in ('growth','cagr'))
+                or any(not _finite(result[key]) for key in ('spy_growth','spy_cagr'))):
+            raise ValueError('Malformed completed financial result.')
+        pairs=[(date.fromisoformat(p['entry']),date.fromisoformat(p['exit'])) for p in result['periods']]
+        books=iter(result['periods'])
+        rebuilt=evaluate(pairs,lambda *args:dict(next(books)),common_start=date.fromisoformat(result['start']))
+        for key,value in rebuilt.items():
+            if key == 'periods':
+                for original,period in zip(result[key],value):
+                    if (type(original.get('names')) is not int
+                            or type(original.get('is_final_period')) is not bool
+                            or original.get('portfolio') is not None and not _finite(original['portfolio'])
+                            or any(not _finite(stock.get(key)) for stock in original['holdings']
+                                   for key in ('weight','contribution_pp'))
+                            or any(original.get(k) != v for k,v in period.items())):
+                        raise ValueError('Completed period evidence differs.')
+            elif key not in result or result[key] != value:
+                raise ValueError('Completed financial evidence differs.')
+    except (KeyError, TypeError, StopIteration, OverflowError) as error:
+        raise ValueError('Malformed completed financial result.') from error
+    return result

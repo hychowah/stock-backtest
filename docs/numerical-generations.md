@@ -40,8 +40,24 @@ The [financial result contract](portfolio-results.md) defines version 1 outside
 existing job payloads. Complete holding rows, status strings, nulls and array
 order stay intact. Fixed monthly requests and explicit weekly dates use the
 same reducer. Explicit dates retain their existing monthly envelope. This adds
-no website control, selected-only optimization, production routing, random
-recovery or persistent runtime. Historical benchmark admission stays closed.
+no website control, selected-only optimization, production routing or persistent
+runtime. Historical benchmark admission stays closed.
+
+CB-10 adds an offline random adapter in `tools/numerical_trials.py`. It composes
+the complete-result diagnostic with generation-bound completed-trial checkpoints.
+The shared robustness consumer preserves summaries and ordered full capture.
+Whole-plan and current-input checks precede checkpoint lookup. Recovery uses the
+recorded dates and never samples replacements. Full hits bypass provider work
+and SQL staging. The borrowed provider remains owned by its caller.
+
+Checkpoint payload retention defaults to 256 MiB and 32 experiments. SQLite
+overhead, free pages and journals are separate from that payload budget. Only
+derived experiments can be evicted. Ordinary books and durable queue/library
+snapshots remain independent and readable after generation changes. See the
+[checkpoint contract](trial-checkpoints.md). This source change adds no routing
+or numerical-generation format change. The new completed-result validator changes
+the reducer source fingerprint; prepare and export current private inputs before
+attachment reuse.
 
 `attach` verifies the current artifact, opens its buffers and records read-only,
 prints its identity and load observations, then closes it. It still checks

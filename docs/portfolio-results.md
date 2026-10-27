@@ -136,6 +136,31 @@ absolute and relative float differences. It never sorts arrays or drops fields
 to obtain agreement.
 
 The ordinary application continues to use prepared SQL books through schedules.
-This diagnostic adds no application route, persistent runtime, random recovery,
-job service, user store, weekly control or capacity qualification. Historical
-benchmark admission stays closed.
+This diagnostic adds no application route, persistent runtime, job service,
+user store, weekly control or capacity qualification. Historical benchmark
+admission stays closed.
+
+## Completed random trials
+
+CB-10 adds `tools/numerical_trials.py`. It borrows this portfolio and an explicit
+checkpoint experiment. Its `checkpoint_binding(portfolio, configuration)`
+validates current inputs, the full recorded date plan and screening options.
+`run(portfolio, configuration, experiment, progress=None, capture=None)` returns
+an envelope with `diagnostic_version`, `contract_version`, `checkpoint_identity`
+and the existing random `result`. The result remains summary-only. Optional
+capture receives every original full trial in order, including recovered trials.
+
+`robustness.consume_trials` owns the shared completed-trial consumption loop.
+The ordinary driver still prepares books and emits its existing progress through
+`book_batch`. Both streams retain `summarize`, `summarize_trials`, paired coverage
+and distribution arithmetic. A stream with missing or unordered trial numbers
+fails. Duplicate schedules retain separate trial numbers and capture entries.
+
+`portfolio_results.validate_completed` checks explicit-date evidence through the
+same reducer. It verifies complete periods, holdings, weights, contributions,
+growth, cash and coverage. Recovery rejects malformed or corrupt evidence. It
+does not substitute an empty trial or a zero return. The result contract stays
+at version 1. Durable browser snapshots keep their separate existing versions.
+
+The [checkpoint contract](trial-checkpoints.md) describes identities, atomic
+publication, retention and the separation from saved-library and queue evidence.

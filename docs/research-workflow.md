@@ -310,6 +310,13 @@ cache contention and exact random-date recovery.
 
 ### Random independent rebalances
 
+The offline numerical diagnostic now has separate completed-trial checkpoints.
+It uses the same ordered summary and capture consumer as the ordinary driver.
+Current website routing and ordinary saved-book recovery stay unchanged.
+Checkpoint retention applies only to derived calculations. Saved-library and
+completed queue snapshots remain readable after current input changes. See the
+[checkpoint contract](trial-checkpoints.md) for identity and retention rules.
+
 `scripts/robustness.py` owns the random-date application adapter, fresh-seed
 policy and distribution summaries. It uses `scripts/schedule_calendar.py` to
 divide the requested calendar window into nominal frequency blocks anchored
