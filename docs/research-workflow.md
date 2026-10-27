@@ -157,8 +157,12 @@ CAGR and growth unavailable. Choose any period to see its stocks, valuations,
 return contributions and top-10 gain/loss pies. CSV exports include period dates,
 actual stock entry/exit dates, selected metrics, weights and contributions.
 
-`scripts/schedules.py` owns the anchored calendar, daily SQLite index and dated
-books. `data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
+`scripts/schedule_calendar.py` owns calendar configuration, anchored boundaries,
+session rolling and seeded sampling. Read the
+[calendar contract](schedule-calendar.md) for its version and old-request mapping.
+Website and financial-facing requests keep the five existing month counts.
+`scripts/schedules.py` owns the daily SQLite index and dated books.
+`data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
 calculation code change. Repeated preparation validates source freshness without
 parsing prices. Newly requested entry/exit pairs are computed once and persisted;
 filter, metric or rank changes reuse those books and shared SQL selection.
@@ -299,9 +303,10 @@ cache contention and exact random-date recovery.
 
 ### Random independent rebalances
 
-`scripts/robustness.py` owns seeded date sampling and distribution summaries.
-It divides the requested calendar window into nominal frequency blocks anchored
-to the lower bound and independently samples one cached SPY session in each
+`scripts/robustness.py` owns the random-date application adapter, fresh-seed
+policy and distribution summaries. It uses `scripts/schedule_calendar.py` to
+divide the requested calendar window into nominal frequency blocks anchored
+to the lower bound and independently sample one cached SPY session in each
 nonempty block for each trial. The final partial block participates, and the end
 mark is fixed. Samples across trials may coincide; the UI reports the number of
 distinct schedules. Trial count is configurable from 1 to 100 (default 24).

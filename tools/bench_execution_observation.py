@@ -99,7 +99,7 @@ class CurrentObservation:
         research = metadata(root / 'data/research.sqlite', checkpoint)
         daily = metadata(root / 'data/schedules.sqlite', checkpoint)
         engine = {}
-        for name in ('schedules.py', 'book_batch.py'):
+        for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py'):
             checkpoint(); info = (root / 'scripts' / name).stat()
             engine[name] = [info.st_size, info.st_mtime_ns]
         report = file_hash(root / 'results/summary-exits.txt', checkpoint)

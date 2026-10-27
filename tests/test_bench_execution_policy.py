@@ -15,9 +15,9 @@ import bench_execution_policy as policy
 import bench_input_artifacts as artifacts
 import test_bench_execution_inputs as workspace_tests
 
-# Reviewed-main cancellation checkpoints change schedules.py source identity.
+# CB-08 calendar adapters change the schedules.py whole-source identity.
 # Financial expression/code digests below remain bound to the same calculations.
-SIGNATURE = 'c4d2a589cee888638bde1472bec2d27cde08446dd47aaaeafd859741824edbbf'
+SIGNATURE = 'a81afa42775313a181ea49685492931852f99caaee8463f1c9e9ebcba3b94e98'
 
 
 class PolicyTests(unittest.TestCase):

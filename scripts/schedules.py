@@ -1,7 +1,5 @@
 """Cached daily prices and reusable dated backtest books. No network access."""
-from bisect import bisect_left, bisect_right
-from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 import argparse
 import json
@@ -13,6 +11,7 @@ import metrics
 import cache_access
 import books as financial_books
 import backtest_control
+import schedule_calendar
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
 VERSION = 3
@@ -34,7 +33,8 @@ CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
 def fingerprint():
     # Preparation already validated every raw price file. Normal requests inspect
     # only the compact research signature, not thousands of raw files.
-    sources=[Path(__file__),Path(__file__).with_name('book_batch.py')]
+    sources=[Path(__file__),Path(__file__).with_name('book_batch.py'),
+             Path(schedule_calendar.__file__)]
     return dict(version=VERSION, inputs=r.signature(),
                 engine={p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
@@ -134,34 +134,10 @@ def prepare(path=DATABASE, source=r.DATABASE):
 
 
 def schedule(start, end, months, sessions):
-    """Anchor every target to the original day; holidays roll forward.
-
-    Clamp invalid month days (31 April, leap anniversaries) without drifting the
-    next target. End is an inclusive mark date, rolled back to an available session.
-    """
-    start,end=date.fromisoformat(start),date.fromisoformat(end)
-    if not sessions:raise ValueError('The daily cache has no trading sessions.')
-    if months not in (1,3,6,12,24) or type(months) is not int:
-        raise ValueError('Rebalance interval must be 1, 3, 6, 12 or 24 months.')
-    if start<date(1996,1,1) or start>=end or end>sessions[-1]:
-        raise ValueError(f'Choose increasing dates from 1996-01-01 through {sessions[-1]}.')
-    final=sessions[bisect_right(sessions,end)-1]
-    boundaries=[]
-    offset=0
-    while True:
-        absolute=start.year*12+start.month-1+offset
-        year,month=divmod(absolute,12);month+=1
-        target=date(year,month,min(start.day,monthrange(year,month)[1]))
-        if target>=final:
-            break
-        index=bisect_left(sessions,target)
-        actual=sessions[index]
-        if actual<final and (not boundaries or boundaries[-1]!=actual):
-            boundaries.append(actual)
-        offset+=months
-    if not boundaries:
-        raise ValueError('No complete trading interval in the selected dates.')
-    return list(zip(boundaries,boundaries[1:]+[final]))
+    """Adapt the established monthly interface to the shared pure calendar."""
+    configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+    return schedule_calendar.SessionCalendar(sessions).fixed(
+        configuration,checkpoint=backtest_control.checkpoint)
 
 
 def price(db,symbol,day,column,forward=False,slack=None):
@@ -267,15 +243,10 @@ def backtest(db, *, start, end, months=12, **options):
 
 
 def dated_periods(dates,start,end,months,sessions):
-    """Validate explicit trades and return their common window and periods."""
-    window=schedule(start,end,months,sessions)
-    first,final=window[0][0],window[-1][1]
-    trades=[date.fromisoformat(day) for day in dates]
-    available=set(sessions)
-    if not trades or trades!=sorted(set(trades)) or any(day not in available or not first<=day<final for day in trades):
-        raise ValueError('Sampled trades must be increasing cached sessions inside the backtest window.')
-    periods=list(zip(trades,trades[1:]+[final]))
-    return first,final,periods
+    """Keep legacy month validation; explicit trades need no nominal schedule."""
+    schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+    return schedule_calendar.SessionCalendar(sessions).explicit(
+        dates,start,end,checkpoint=backtest_control.checkpoint)
 
 
 def backtest_dates(db, *, dates, start, end, months=12, **options):

@@ -41,7 +41,7 @@ class ExecutionTests(unittest.TestCase):
         observed = signature(SimpleNamespace(ROOT=f.source, RAW=raw, RESULTS=f.source / 'results',
             __file__=str(f.source / 'scripts/research.py'), **modules))
         engine = {name: [path.stat().st_size, path.stat().st_mtime_ns]
-                  for name in ('schedules.py', 'book_batch.py') for path in [f.source / 'scripts' / name]}
+                  for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py') for path in [f.source / 'scripts' / name]}
         f.freshness['inputs'] = observed
         f.freshness['daily_inputs'] = dict(version=3, inputs=observed, engine=engine)
         with closing(sqlite3.connect(f.capture / 'research.sqlite')) as r, closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as d:
@@ -165,12 +165,13 @@ class ExecutionTests(unittest.TestCase):
         self.assertIsNone(owner._owned)
 
     def test_report_journal_source_and_prepared_replacements_stop_the_pair(self):
-        for kind in ('report', 'journal', 'source', 'prepared'):
+        for kind in ('report', 'journal', 'source', 'calendar', 'prepared'):
             with self.subTest(kind=kind):
                 f = self.fixture
                 path = {'report': f.source / 'results/summary-exits.txt',
                         'journal': f.source / 'data/research.sqlite.publication.json',
                         'source': f.source / 'scripts/metrics.py',
+                        'calendar': f.source / 'scripts/schedule_calendar.py',
                         'prepared': f.source / 'data/research.sqlite'}[kind]
                 original = path.read_bytes() if path.exists() else None
                 info = path.stat() if original is not None else None

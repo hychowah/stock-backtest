@@ -28,7 +28,7 @@ class GenerationTests(unittest.TestCase):
             (self.root / 'raw' / name).write_text('[]')
         modules = {}
         for name in ('baseline', 'research', 'metrics', 'books', 'cache_assets',
-                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch'):
+                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch', 'schedule_calendar'):
             path = self.root / 'scripts' / (name + '.py')
             path.write_text('# fixture ' + name)
             modules[name] = SimpleNamespace(__file__=str(path))
@@ -60,7 +60,8 @@ class GenerationTests(unittest.TestCase):
     def prepare(self):
         signature = self.r.signature()
         engine = {path.name: [path.stat().st_size, path.stat().st_mtime_ns] for path in
-            (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'))}
+            (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
+             Path(self.s.__file__).with_name('schedule_calendar.py'))}
         self.write_metadata(self.s.DATABASE, dict(daily_inputs=dict(version=self.s.VERSION,
                             inputs=signature, engine=engine)))
         self.write_metadata(self.r.DATABASE, dict(version=self.r.SCHEMA_VERSION,
@@ -111,6 +112,15 @@ class GenerationTests(unittest.TestCase):
                 if added.exists(): added.unlink()
                 self.asset.write_text('[]')
                 self.prepare()
+
+    def test_calendar_dependency_changes_require_daily_preparation(self):
+        old=self.attach()
+        path=self.root/'scripts/schedule_calendar.py'
+        path.write_text('# changed private calendar fixture')
+        with self.assertRaises(ValueError): old.validate()
+        with self.assertRaises(ValueError): self.attach()
+        self.prepare()
+        self.attach().validate()
 
     def test_symlink_files_and_endpoint_directories_follow_current_policy(self):
         target = self.root / 'target.json'; target.write_text('{}')

@@ -18,6 +18,16 @@ import schedules as s
 
 
 class CalendarTests(unittest.TestCase):
+    def test_daily_fingerprint_tracks_calendar_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
+            with patch.object(s.r,'signature',return_value={'private-fixture':1}),patch.object(s.schedule_calendar,'__file__',str(path)):
+                before=s.fingerprint()
+                path.write_text('# changed calendar source')
+                after=s.fingerprint()
+        self.assertEqual(set(before['engine']),{'schedules.py','book_batch.py','schedule_calendar.py'})
+        self.assertNotEqual(before['engine']['schedule_calendar.py'],after['engine']['schedule_calendar.py'])
+
     def sessions(self,first,last):
         days=[]
         while first<=last:
@@ -56,6 +66,23 @@ class BacktestTests(unittest.TestCase):
             for day,price in zip(['2014-06-30','2015-01-02','2015-04-01','2015-07-01'],prices):
                 self.db.execute('INSERT INTO prices VALUES(?,?,?,?)',(symbol,day,price,price))
         self.db.commit()
+
+    def test_weekly_dates_use_ordinary_financial_evaluation_with_legacy_metadata(self):
+        sessions=[date.fromisoformat(row[0]) for row in self.db.execute('SELECT day FROM sessions ORDER BY day')]
+        calendar=s.schedule_calendar.SessionCalendar(sessions)
+        configuration=dict(version=1,start='2015-01-01',end='2015-07-01',interval=dict(unit='week',count=1))
+        dates=[str(a) for a,b in calendar.fixed(configuration)]
+        self.assertEqual(dates,['2015-01-02','2015-04-01'])
+        self.assertEqual(calendar.sample(configuration,1,42)['samples'][0],dates)
+        # Explicit evaluation has no reason to reconstruct a monthly schedule.
+        with patch.object(s,'schedule',side_effect=AssertionError('No nominal schedule for explicit trades')):
+            result=s.backtest_dates(self.db,dates=dates,start=configuration['start'],end=configuration['end'],rank_to=1)
+        self.assertEqual(result['months'],12)  # Existing evaluator metadata; no weekly result claim.
+        self.assertEqual([p['portfolio'] for p in result['periods']],[.5,-.5])
+        self.assertEqual(result['growth'],.75)
+        self.assertEqual(result['spy_growth'],1.1*1.1)
+        self.assertEqual(result['cash_days'],0)
+        self.assertEqual(result['periods'],s.backtest(self.db,start=configuration['start'],end=configuration['end'],months=3,rank_to=1)['periods'])
 
     def test_financial_ratios_use_selected_report_and_reuse_books(self):
         self.db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[

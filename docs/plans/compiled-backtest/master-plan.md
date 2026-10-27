@@ -15,7 +15,11 @@ method-selection decision on 26 October 2026. Numba is accepted.** Further
 comparative benchmarking is waived. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
 [phase record](phases/CB-04.md). CB-05 is complete. Synthetic checks and new private FMP real-symbol
 checks pass on WSL and native Windows; see the [CB-05 record](phases/CB-05.md).
-CB-06 now delivers the entry-date factor interface; see its [record](phases/CB-06.md).
+CB-06 delivers the entry-date factor interface; see its [record](phases/CB-06.md).
+CB-07 is complete with SQL deliberately retained. CB-08 delivers the shared
+week/month calendar and monthly compatibility adapters; see its
+[record](phases/CB-08.md) for verification and audit status. Weekly website
+controls and financial-result integration remain later work.
 No production engine or running server routing changes here.
 
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
@@ -539,7 +543,7 @@ A failed gate is evidence for changing the work, not evidence that the gate pass
 | Database role | Keep verified research data, SQL selection and compact trial storage. Replace candidate staging or selection only for a measured limitation. | Generic native selection and selected-only return evaluation are not demonstrated; any replacement needs exact parity and measured benefit. |
 | Analytical alternatives | DuckDB and Polars remain historical evidence. | No alternative comparison is required for this program. |
 | Deployment | Preserve the stable installed website and restart revision until full replacement readiness; qualify candidates separately. | Website-safe isolation, protected publication, shutdown, generation replacement and memory tests on native Windows. |
-| Weekly intervals | Add an explicit calendar extension. Proposed week means seven calendar days, with session rolling. | Freeze exact rules in CB-08 before exposing controls. |
+| Weekly intervals | CB-08 defines calendar configuration version 1: 1–104 weeks or 1–24 months. A week is seven calendar days. Existing month requests map in memory. | Calendar implementation and compatibility evidence are in CB-08. Weekly evaluator, capacity and website checks remain before controls. |
 | Freshness | Retain immediate request-time detection under the existing path/size/mtime rule. | Equivalent scan evidence and stale-generation checks; no startup-only substitution. |
 | User experience | Set absolute time budgets for installation, restart, fresh research, changed filters, reopening and weekly research before final runtime/cache decisions. | User-agreed prospective budgets and native measurements; annual relative speed alone is insufficient. |
 
@@ -639,13 +643,41 @@ Keep financial calculations under one owned policy/catalog path. Consumers must 
 
 ## Interval contract
 
-Current fixed and random schedule controls support 1, 3, 6, 12 and 24 months. Weekly and other intermediate intervals are new behavior in this program.
+Website controls and financial-facing requests still support 1, 3, 6, 12 and
+24 months. CB-08 adds the separate standard-library calendar owner in
+`scripts/schedule_calendar.py`. Its [contract](../../schedule-calendar.md)
+defines planning for 1–104 calendar weeks and 1–24 calendar months. It does not
+add weekly website controls, result labels or an engine route.
 
-The proposed extension uses explicit **week** or **month** units. One week is seven calendar days. Targets stay anchored to the original starting date. Monthly targets clamp month ends. Targets roll forward to saved SPY sessions; the final mark rolls backward. A month is not a fixed number of days. A week is not silently interpreted as five sessions.
+Calendar configuration version 1 has exactly `version`, `start`, `end` and
+`interval`. The interval has exactly `unit` and `count`. Units are `week` or
+`month`; counts are integers in the stated ranges. This version is independent
+of database schemas, numerical artifacts and ResultArtifacts. Legacy
+`start`/`end`/`months` requests map in memory to version-1 monthly configurations.
+Only the five existing month counts are accepted in that form. Omitted months
+means 12; explicit null fails. Mixed, unknown and ambiguous forms fail even when
+their values appear equivalent. Existing saved records are not rewritten.
 
-CB-08 must freeze the accepted count ranges and compatibility mapping. The intended range includes one to 104 weeks and one to 24 months. Keep existing `months` requests and explicit-date inspection working. Introduce a versioned interval representation for new requests and saved configurations.
+Every target stays anchored to the original requested start. A week is seven
+calendar days. Monthly targets clamp the original day at month end without
+drifting later targets. The common start rolls forward to a saved SPY session.
+The inclusive end mark rolls backward. An end after the last saved session is
+rejected. At least two sessions must remain in the window. Fixed targets roll
+forward; duplicate rolled entries merge and entries at the final mark are
+excluded. 104 weeks and 24 months remain different intervals.
 
-Random trials continue to sample one available SPY session independently from each nominal interval block. Preserve one final partial block and common-window cash. Deduplicate rolled fixed targets. Test holiday-heavy weeks, leap dates, month ends, very short adjacent random holding periods and empty session blocks. Do not present new weekly sampling as behavior already supported by the old planner.
+Random blocks use nominal anchored boundaries, with half-open `[left, right)`
+bounds. The last block ends at the final mark. Retain a nonempty partial final
+block. Skip empty blocks without a draw. Sample one ascending saved-session
+population per block using `random.Random(seed).choice`, in trial-major then
+block-major order. Existing monthly samples remain exact. Explicit-date
+validation resolves the common window directly and has no interval dependency.
+The existing evaluator and its monthly result metadata remain unchanged.
+
+Calendar correctness is separate from weekly financial-result compatibility,
+capacity and website qualification. Those remain in CB-09 through CB-14.
+The old random planner did not support weekly trials. Historical benchmark
+admission remains closed.
 
 ## Historical comparison specification; operational checks retained
 
@@ -1474,7 +1506,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-05 | Complete | [Phase record](phases/CB-05.md); private synthetic checks and new FMP real-symbol checks pass on WSL/native; exact temporal agreement |
 | CB-06 | Complete | [Phase record](phases/CB-06.md); full entry-date catalog, separate validity, portable schema, bounded local reuse and WSL/native verification |
 | CB-07 | Complete; SQL retained | [Boundary decision and verification](phases/CB-07.md); generic native selection remains unimplemented |
-| CB-08 | Planned | Weekly rules proposed, not implemented |
+| CB-08 | Complete | [Calendar contract and phase record](phases/CB-08.md); version-1 week/month planning, exact monthly compatibility, WSL/native verification and independent audit; weekly controls remain unavailable |
 | CB-09 | Planned hardening | Common aggregation reusable; complete job/snapshot result compatibility pending; selected-only returns unimplemented |
 | CB-10 | Planned hardening | Atomic replay and current full-trial capture reusable; generation-bound recovery and durable snapshot compatibility remain distinct and pending |
 | CB-11 | Planned production hardening | Existing job/queue adapter reusable; persistent numerical runtime and caller-specific cleanup pending; comparison lifetime project retired |

@@ -250,11 +250,15 @@ class CaptureTests(unittest.TestCase):
         signature = isolated('research', 'signature', namespace)
         prices = isolated('research', 'price_sources', namespace)
         fingerprint = isolated('schedules', 'fingerprint', dict(Path=Path, VERSION=3,
-            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(signature=signature)))
-        for change in ('initial', 'added', 'removed', 'cutoff'):
+            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(signature=signature),
+            schedule_calendar=SimpleNamespace(__file__=str(self.root / 'scripts/schedule_calendar.py'))))
+        for change in ('initial', 'added', 'removed', 'cutoff', 'calendar'):
             if change == 'added': (self.root / 'raw/financial-inputs/income/B.json').write_text('{}')
             elif change == 'removed': (self.root / 'raw/financial-inputs/income/B.json').unlink()
             elif change == 'cutoff': (self.root / capture.REPORT).write_text('Through 2025-12-31\n')
+            elif change == 'calendar':
+                path=self.root / 'scripts/schedule_calendar.py'
+                path.write_bytes(path.read_bytes()+b'\n# changed calendar fixture\n')
             observed = capture.freshness(self.root, capture.Budget(None, None))
             self.assertEqual(observed, dict(inputs=signature(), prices=prices(), daily_inputs=fingerprint()))
 

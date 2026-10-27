@@ -18,6 +18,13 @@ report binding. It rejects pending deployment or baseline publication. It does
 not prepare raw inputs, download data or change the canonical report. A stale
 cache requires the ordinary offline preparation before numerical export.
 
+The CB-08 calendar adapter changes the whole-source hash of `schedules.py`.
+The daily engine fingerprint also includes `schedule_calendar.py`. Existing
+daily caches need ordinary offline preparation, followed by numerical export.
+Older artifacts cannot validate as current. Financial formulas stay the same.
+Format 1, temporal interface 1 and factor interface 1 stay the same. This source
+change does not create a new financial policy version or rewrite old evidence.
+
 `attach` verifies the current artifact, opens its buffers and records read-only,
 prints its identity and load observations, then closes it. It still checks
 current input metadata. An artifact hash alone does not prove current inputs.

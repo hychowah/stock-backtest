@@ -7,8 +7,6 @@ intervals vary. Portfolio and paired SPY hold zero-return cash before the first
 sampled trade; CAGR uses a common start/end window. Percentiles describe
 correlated historical scenarios, not confidence intervals or one portfolio.
 """
-from bisect import bisect_right
-from calendar import monthrange
 from datetime import date
 import math
 import random
@@ -17,6 +15,7 @@ import time
 
 import schedules
 import book_batch
+import schedule_calendar
 
 
 def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
@@ -27,26 +26,12 @@ def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
         raise ValueError('Choose a whole-number seed between 0 and 4294967295.')
     schedules.r._select(db,period=(-1,-1),**options)
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
-    window=schedules.schedule(start,end,months,sessions)
-    lower=date.fromisoformat(start);final=window[-1][1]
-    blocks=[];offset=0
-    while True:
-        absolute=lower.year*12+lower.month-1+offset
-        year,month=divmod(absolute,12);month+=1
-        left=date(year,month,min(lower.day,monthrange(year,month)[1]))
-        if left>=final:break
-        absolute+=months;year,month=divmod(absolute,12);month+=1
-        right=min(date(year,month,min(lower.day,monthrange(year,month)[1])),final)
-        choices=[day for day in sessions if left<=day<right]
-        if choices:blocks.append(dict(start=str(left),end=str(right),sessions=[str(day) for day in choices]))
-        offset+=months
-    generator=random.Random(seed)
-    samples=[[generator.choice(block['sessions']) for block in blocks] for _ in range(trials)]
-    if not blocks:raise ValueError('No trading sessions available for random-date trials.')
-    return dict(start=start,end=end,window_start=str(window[0][0]),window_end=str(final),
+    calendar=schedule_calendar.SessionCalendar(sessions)
+    configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+    sampled=calendar.sample(configuration,trials,seed,checkpoint=schedules.backtest_control.checkpoint)
+    return dict(start=start,end=end,window_start=sampled['window_start'],window_end=sampled['window_end'],
                 months=months,seed=seed,requested=trials,options=options,
-                blocks=[dict(start=b['start'],end=b['end'],available=len(b['sessions'])) for b in blocks],
-                samples=samples)
+                blocks=sampled['blocks'],samples=sampled['samples'])
 
 
 def percentile(values, probability):
