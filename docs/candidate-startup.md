@@ -2,7 +2,8 @@
 
 CB-12 adds a separate preparation entry. The normal launcher and installed
 website keep the ordinary engine. This entry also calculates through the
-ordinary engine. CB-13 will connect persistent numerical dispatch.
+ordinary engine. CB-13A gives all calculation routes one application owner.
+CB-13B will connect persistent numerical dispatch.
 
 Use an explicitly owned private source export with its own saved raw files,
 report, databases, logs, local build and durable stores. A different port alone
@@ -122,6 +123,29 @@ Normal publication still retains its recorded installed revision. Candidate
 source cannot change that selection. Operational checks use private fixtures.
 They do not act on the installed website.
 
-CB-13 must replace ordinary financial preholding with one application engine
-owner before persistent numerical dispatch serves `backtest_jobs.calculate`.
-No weekly control, numerical route or default-engine cutover is added here.
+## Application calculation admission
+
+CB-13A adds `backtest_jobs.Calculations`. Each server gives one owner to its
+background jobs, queue and legacy schedule/random routes. All enter through
+`backtest_jobs.calculate`. Callers do not prehold financial ownership. The owner
+acquires it, checks current readiness, opens the daily database and closes that
+database before releasing ownership. Earlier status responses are advisory.
+
+Interactive callers keep bounded waiting. Queue callers wait cancellably and
+report contention. Only a typed admission-contention error is retried. Once
+execution begins, its errors are never retried as admission. Unavailable inputs
+defer queue work. Explicit Stop still wins. Random jobs and queue results keep
+all trial holdings. Legacy streams collect those details only with their
+existing `X-Backtest-Details: holdings` opt-in.
+
+Shutdown publishes queue stop intent before closing calculation admission.
+An admission waiter therefore requeues on shutdown. A durable explicit Stop
+still stays cancelled. Application owners then join.
+Accepted calls drain through their existing job/request cleanup. Late request
+bodies cannot begin calculation. Stored result reads and queue edits do not
+enter calculation admission.
+
+All calculation routes still use the ordinary engine. CB-13B must coordinate
+resident numerical ownership, freshness inspection and retirement before parent
+data operations. Weekly controls and full browser compatibility remain CB-13C.
+The normal launcher and installed revision stay unchanged.

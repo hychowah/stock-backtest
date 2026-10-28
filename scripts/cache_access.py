@@ -19,6 +19,10 @@ from paths import ROOT
 OBSERVATION_PROTOCOL = 1
 
 
+class Contention(ValueError):
+    """Ownership was not acquired before the admission deadline."""
+
+
 def _file_lock(handle, acquire):
     handle.seek(0)
     if os.name == 'nt':
@@ -143,7 +147,7 @@ class WorkspaceAccess:
     def _hold(self,timeout):
         message='Another backtest or data operation owns the shared cache. Let it finish, then retry.'
         deadline=time.monotonic()+timeout
-        if not self.lock.acquire(timeout=timeout):raise ValueError(message)
+        if not self.lock.acquire(timeout=timeout):raise Contention(message)
         handle=None;locked=False
         try:
             if getattr(self.state,'held',False):
@@ -165,7 +169,7 @@ class WorkspaceAccess:
                     locked=True;break
                 except OSError as error:
                     if error.errno not in (errno.EACCES,errno.EAGAIN,errno.EDEADLK):raise
-                    if time.monotonic()>=deadline:raise ValueError(message) from None
+                    if time.monotonic()>=deadline:raise Contention(message) from None
                     time.sleep(min(.05,max(0,deadline-time.monotonic())))
             self.state.held=True
             try:yield

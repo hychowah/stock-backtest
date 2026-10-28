@@ -248,10 +248,16 @@ class Store:
 
 class Queue:
     """One durable consumer; UI mutations remain available during calculation."""
-    def __init__(self,store=None):
+    def __init__(self,store=None,*,calculations=None):
         self.store=store or Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
         self.owner=cache_access.WorkspaceAccess(self.store.path.with_suffix('.lock'))
-        self.ready=lambda:True
+        self.calculations=calculations if calculations is not None else backtest_jobs.Calculations()
+
+    @property
+    def ready(self):return self.calculations.ready
+
+    @ready.setter
+    def ready(self,value):self.calculations.ready=value
 
     def start(self):
         with self.lock:
@@ -289,34 +295,13 @@ class Queue:
         def progress(event):
             nonlocal last_progress
             stamp=time.monotonic()
-            if stamp-last_progress>.3:
+            if event is None or event.get('type')=='waiting' or stamp-last_progress>.3:
                 self.store.progress(identifier,'progress',event);last_progress=stamp
-        @contextmanager
-        def financial():
-            # A long manual run or data rebuild must defer queued work, rather
-            # than consume the queue as failures after the usual lock timeout.
-            waiting=False
-            while True:
-                backtest_control.checkpoint()
-                ownership=cache_access.access(timeout=.25)
-                try:ownership.__enter__()
-                except ValueError:
-                    if not waiting:
-                        self.store.progress(identifier,'progress',dict(type='waiting',message='Waiting for another backtest or data operation.'));waiting=True
-                    self.stopping.wait(.1);continue
-                break
-            try:
-                if waiting:self.store.progress(identifier,'progress',None)
-                yield
-            finally:ownership.__exit__(None,None,None)
         try:
             with backtest_control.cancel_when(stopped):
-                with financial():
-                    if not self.ready():
-                        self.store.finish(identifier,'queued')
-                        return
-                    result=backtest_jobs.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
-                                                   planned=json.loads(job['plan']) if job['plan'] else None)
+                result=backtest_jobs.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
+                                               planned=json.loads(job['plan']) if job['plan'] else None,
+                                               owner=self.calculations,admission='queue')
                 backtest_control.checkpoint()
             snapshot=dict(version=2,kind=spec['mode'],settings=dict(mode=spec['mode'],**spec['options']),
                           result=result,catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
@@ -324,11 +309,17 @@ class Queue:
             self.store.finish(identifier,'complete',snapshot=snapshot)
         except backtest_control.Cancelled:
             self.store.finish(identifier,'queued' if self.stopping.is_set() else 'cancelled')
+        except (backtest_jobs.Unavailable,backtest_jobs.Busy):
+            self.store.finish(identifier,'queued')
         except Exception as error:
             diagnostics.failure('queue.test_failed',error)
             message=str(error) if isinstance(error,(ValueError,TypeError)) else 'Test failed. Check the server development log.'
             self.store.finish(identifier,'failed',error=message)
 
-    def close(self):
+    def request_stop(self):
+        """Publish shutdown intent before shared admission can wake a waiter."""
         self.stopping.set();self.wake.set()
+
+    def close(self):
+        self.request_stop()
         if self.thread:self.thread.join()

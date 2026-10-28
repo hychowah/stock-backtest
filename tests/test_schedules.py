@@ -432,7 +432,7 @@ class ServiceTests(unittest.TestCase):
 
     def request(self,payload,origin=None):
         handler=object.__new__(self.serve.Handler)
-        handler.server=SimpleNamespace(lifecycle=None)
+        handler.server=SimpleNamespace(lifecycle=None,calculations=self.serve.backtest_jobs.Calculations())
         handler.disconnect_check=lambda:lambda:False
         body=json.dumps(payload).encode()
         handler.path='/api/schedule';handler.rfile=io.BytesIO(body)

@@ -244,7 +244,7 @@ class MutationAndHttpTests(unittest.TestCase):
             def ready():
                 self.assertTrue(getattr(owner.state,'held',False));return False
             consumer.ready=ready
-            with patch.object(cache_access,'workspace',owner),patch.object(backtest_queue.backtest_jobs,'calculate') as calculate:
+            with patch.object(cache_access,'workspace',owner),patch.object(backtest_queue.backtest_jobs.schedules,'connect') as calculate:
                 consumer._run(store.claim())
             calculate.assert_not_called();self.assertEqual(store.get(record['id'])['state'],'queued')
 
@@ -255,7 +255,7 @@ class MutationAndHttpTests(unittest.TestCase):
             def ready():
                 self.assertTrue(getattr(owner.state,'held',False));return False
             jobs.ready=ready
-            with patch.object(cache_access,'workspace',owner),patch.object(backtest_jobs,'calculate') as calculate:
+            with patch.object(cache_access,'workspace',owner),patch.object(backtest_jobs.schedules,'connect') as calculate:
                 identifier='a'*32;jobs.start(identifier,'custom',{})
                 jobs.runs[identifier]['thread'].join(3)
             calculate.assert_not_called();self.assertEqual(jobs.snapshot(identifier)['state'],'failed')
@@ -270,7 +270,7 @@ class MutationAndHttpTests(unittest.TestCase):
                 store.change(record['id'],'stop',dict(revision=current['revision']))
                 return False
             consumer.ready=ready
-            with patch.object(cache_access,'workspace',owner),patch.object(backtest_queue.backtest_jobs,'calculate') as calculate:
+            with patch.object(cache_access,'workspace',owner),patch.object(backtest_queue.backtest_jobs.schedules,'connect') as calculate:
                 consumer._run(claimed)
             calculate.assert_not_called();self.assertEqual(store.get(record['id'])['state'],'cancelled')
 

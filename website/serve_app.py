@@ -19,7 +19,6 @@ import launcher
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT.parent/'scripts'))
 import schedules
-import robustness
 import data_manager
 import cache_access
 import diagnostics
@@ -35,11 +34,23 @@ SAVED_BACKTESTS=saved_backtests.Store()
 
 class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
-        self.backtest_jobs=backtest_jobs.Jobs()
-        self.backtest_queue=backtest_queue.Queue()
+        self.calculations=backtest_jobs.Calculations()
+        self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
+        self.backtest_queue=backtest_queue.Queue(calculations=self.calculations)
         super().__init__(*args,**kwargs)
 
+    def shutdown(self):
+        self.close_calculation_admission()
+        super().shutdown()
+
+    def close_calculation_admission(self):
+        # Queue cancellation must already mean shutdown when admission closes.
+        # Store.finish still gives a durable explicit Stop precedence.
+        self.backtest_queue.request_stop()
+        self.calculations.close()
+
     def server_close(self):
+        self.close_calculation_admission()
         self.backtest_queue.close()
         self.backtest_jobs.close()
         super().server_close()
@@ -147,18 +158,16 @@ class Handler(SimpleHTTPRequestHandler):
             if not 0<length<=16384:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
-            with backtest_control.cancel_when(self.disconnect_check()), cache_access.daily() as db:
+            with backtest_control.cancel_when(self.disconnect_check()):
                 backtest_control.checkpoint()
-                if not self.require_calculation():return
-                db.execute('PRAGMA cache_size=-131072')
                 if self.path=='/api/robustness':
-                    configuration=robustness.plan(db,**request)
-                    self.stream_batch(db,configuration)
+                    self.stream_batch(request)
                     return
-                calculate=schedules.backtest_dates if 'dates' in request else schedules.backtest
-                result=calculate(db,**request)
+                result=backtest_jobs.calculate('custom',request,None,None,owner=self.server.calculations)
                 backtest_control.checkpoint()
             self.reply(200,result)
+        except backtest_jobs.Unavailable:
+            self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # Contexts close databases and wait for worker cleanup before cache
             # ownership is released. Completed trial transactions remain saved.
@@ -280,29 +289,35 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError,TypeError):
             self.reply(400,dict(error='Invalid data options, or another data job is running. Check dates, stock symbols and selected data types.'))
 
-    def stream_batch(self,db,configuration):
-        self.send_response(200)
-        self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
-        self.send_header('Cache-Control','no-store')
-        self.end_headers()
+    def stream_batch(self,options,*,planned=None):
+        """Adapt calculation callbacks to the legacy stream after planning.
+
+        Pre-configuration failures remain HTTP errors. Once headers are sent,
+        calculation failures use an error frame. No database belongs here.
+        """
+        started=False
         def event(payload):
             backtest_control.checkpoint()
             self.wfile.write((json.dumps(payload,allow_nan=False)+'\n').encode())
             self.wfile.flush()
+        def configuration(value):
+            nonlocal started
+            self.send_response(200)
+            self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
+            self.send_header('Cache-Control','no-store')
+            self.end_headers()
+            started=True
+            event(dict(type='configuration',configuration=value))
         try:
-            event(dict(type='configuration',configuration=configuration))
-            if getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings':
-                details=[]
-                result=robustness.run(db,configuration,progress=event,capture=lambda number,trial:details.append(trial))
-                result['trial_results']=details
-            else:
-                result=robustness.run(db,configuration,progress=event)
+            result=backtest_jobs.calculate('random',options,event,configuration,planned=planned,
+                owner=self.server.calculations,details=getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings')
             event(dict(type='complete',result=result))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # The completed trial transactions remain cached; stop before the
             # next trial when the browser disconnects.
             return
         except Exception as error:
+            if not started:raise
             diagnostics.failure('robustness.failed',error)
             try:event(dict(type='error',message=str(error)))
             except (BrokenPipeError,ConnectionResetError):pass
@@ -328,6 +343,7 @@ def close_candidate_owners(server,candidate):
     import signal
     previous=signal.signal(signal.SIGINT,signal.SIG_IGN)
     try:
+        server.close_calculation_admission()
         while True:
             try:
                 DATA_JOBS.close()
@@ -400,8 +416,7 @@ def run_server(args,lifecycle,parser,*,candidate=None):
     server.candidate_preparation=candidate
     if candidate is not None:
         ready=lambda:candidate.status().get('state')=='current'
-        server.backtest_queue.ready=ready
-        server.backtest_jobs.ready=ready
+        server.calculations.ready=ready
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)
@@ -417,6 +432,7 @@ def run_server(args,lifecycle,parser,*,candidate=None):
         server.serve_forever()
     except KeyboardInterrupt:pass
     finally:
+        server.close_calculation_admission()
         if candidate is not None:close_candidate_owners(server,candidate)
         else:
             DATA_JOBS.close()

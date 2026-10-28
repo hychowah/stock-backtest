@@ -34,8 +34,9 @@ and accepted source-guard execution do not require that translator. Explicit
 compiled-guard execution binds its own generated-program identity. Conservative
 source freshness and numerical-expression validation remain required. The changed
 policy identity requires a fresh offline numerical export. See the
-[policy contract](../../numerical-generations.md). CB-13 admission and routing
-remain planned work.
+[policy contract](../../numerical-generations.md). CB-13A now consolidates
+ordinary calculation admission behind one server-owned boundary. Persistent
+preview dispatch remains CB-13B; browser/weekly completion remains CB-13C.
 
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
 authority. It supersedes earlier instructions to finish the measurement owner,
@@ -1325,6 +1326,23 @@ Running a strategy must not fetch market data.
 
 ### CB-13 Integrate the website and API
 
+The detailed [CB-13 design](phases/CB-13A.design.md) splits integration into
+three coherent increments. Before CB-13A, callers preheld financial ownership
+in different places. The CB-11 child holds that ownership while idle.
+Dispatching the child from those callers would deadlock. CB-13A now supplies
+the common application boundary before persistent preview execution:
+
+- **CB-13A:** One ordinary `Calculations` owner for jobs, queue and legacy
+  routes. It owns admission, readiness and cleanup. No numerical routing.
+- **CB-13B:** Persistent isolated preview dispatch behind that boundary.
+  Resolve idle freshness and data-operation retirement together.
+- **CB-13C:** Complete browser/calendar compatibility, weekly controls and
+  the remaining full CB-13 verification.
+
+Each increment receives its own design, verification and smart-commit record.
+The whole phase remains incomplete until all retained checks pass. This split
+changes neither the stable default nor CB-14/CB-15 acceptance gates.
+
 **Outcome:** Users can run the replacement through the existing website.
 Existing month workflows can ship in an isolated opt-in preview before the
 weekly extension is ready. The stable website remains the normal entry point.
@@ -1533,7 +1551,10 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-10 | Complete | Generation-bound offline recovery, complete trial capture, bounded retention and durable snapshot compatibility pass WSL/native verification and independent audit. See [CB-10](phases/CB-10.md). |
 | CB-11 | Complete | [Explicit persistent runtime](phases/CB-11.md); WSL/native numerical and lifecycle checks pass. Independent final design review and smart-commit audit are clear. Current routing stays unchanged. |
 | CB-12 | Complete | [Isolated preparation/startup](phases/CB-12.md); WSL/native checks pass. Final design review and smart-commit audit are clear after the shutdown admission repair. Ordinary routing retained. |
-| CB-13 | Planned | Current job recovery, queue, library and ResultArtifacts reusable; candidate preview/compatibility pending; stable default retained |
+| CB-13 | In progress | [CB-13A](phases/CB-13A.md) consolidates ordinary admission; persistent preview dispatch (CB-13B) and browser/weekly compatibility (CB-13C) remain pending. Stable default retained. |
+| CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
+| CB-13B | Planned | Persistent isolated numerical preview admission; coordinate idle freshness, data operations and child retirement behind the shared application boundary. |
+| CB-13C | Planned | Complete browser/calendar compatibility and retained CB-13 checks; weekly controls remain unavailable until qualified. |
 | CB-14 | Planned | Candidate financial, coverage, lifecycle and durable-evidence qualification pending; comparative speed gate waived |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 

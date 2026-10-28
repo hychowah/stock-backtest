@@ -322,9 +322,11 @@ Closure first requests Stop, then waits for that operation to settle. A late
 constructor must adopt its owner and close it; it cannot publish readiness after
 Stop. A close deadline during construction retains the runtime even when its
 process owner has not yet been returned. It never reports successful closure. Reject dispatch if the calling thread
-already holds the supplied or current financial coordinator. In particular,
-the current queue preholds this lock. Later application integration must resolve
-that ownership boundary before dispatch. CB-11 changes no queue routing.
+already holds the supplied or current financial coordinator. CB-13A removes
+caller preholding from jobs, queue and legacy routes. One server-owned
+`backtest_jobs.Calculations` now owns ordinary financial admission and cleanup.
+Numerical dispatch remains unavailable. CB-13B must coordinate resident child
+ownership, status and parent data operations before selecting that runtime.
 
 The child takes shared source ownership before calculation imports. It disables
 credential access by setting the existing key path to a private nonexistent file.

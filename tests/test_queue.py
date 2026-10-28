@@ -273,6 +273,16 @@ class ConsumerTests(unittest.TestCase):
             self.assertEqual(self.store.get(item['id'])['state'],'running')
         self.release.set();self.assertEqual(self.terminal(item['id'])['state'],'complete')
 
+    def test_explicit_stop_cancels_queue_wait_without_acquiring_financial_ownership(self):
+        item=self.store.enqueue(request())
+        with self.owner.hold():
+            self.consumer.start()
+            wait_for(self,lambda:(self.store.get(item['id'])['progress'] or {}).get('type')=='waiting')
+            active=self.store.get(item['id'])
+            self.store.change(item['id'],'stop',{'revision':active['revision']})
+            self.assertEqual(self.terminal(item['id'])['state'],'cancelled')
+            self.assertFalse(self.entered.is_set());self.assertEqual(self.closed,[])
+
     def test_server_shutdown_requeues_interrupted_work_and_reuses_seed(self):
         item=self.store.enqueue(request(mode='random',options=dict(request()['options'],trials=2)))
         self.consumer.start();self.assertTrue(self.entered.wait(5))
@@ -289,6 +299,47 @@ class ConsumerTests(unittest.TestCase):
         self.assertEqual(complete['snapshot']['result']['configuration']['samples'],first_plan['samples'])
         self.assertEqual(len(complete['snapshot']['result']['trial_results']),2)
         self.assertTrue(complete['snapshot']['result']['trial_results'][0]['periods'][0]['holdings'])
+
+    def test_shared_server_shutdown_requeues_admission_waiter_and_preserves_explicit_stop(self):
+        self.release.set()
+        for explicit_stop in (False,True):
+            with self.subTest(explicit_stop=explicit_stop):
+                store=queue.Store(self.folder/('shutdown-'+str(explicit_stop)+'.sqlite'))
+                consumer=queue.Queue(store)
+                item=store.enqueue(request(mode='random',options=dict(request()['options'],trials=2,seed=42)))
+                server=serve.Server(('127.0.0.1',0),serve.Handler)
+                server.calculations=consumer.calculations
+                server.backtest_jobs.calculations=consumer.calculations
+                server.backtest_queue=consumer
+                listener=Thread(target=server.serve_forever);listener.start()
+                try:
+                    with self.owner.hold():
+                        consumer.start()
+                        wait_for(self,lambda:(store.get(item['id'])['progress'] or {}).get('type')=='waiting')
+                        if explicit_stop:
+                            active=store.get(item['id'])
+                            store.change(item['id'],'stop',{'revision':active['revision']})
+                        server.shutdown();listener.join(3)
+                        wait_for(self,lambda:store.get(item['id'])['state'] in ('queued','cancelled'))
+                        self.assertEqual(store.get(item['id'])['state'],'cancelled' if explicit_stop else 'queued')
+                        wait_for(self,lambda:not consumer.thread.is_alive())
+                        self.assertEqual(self.closed,[])
+                    server.server_close()
+                    # A fresh server owner can recover queued work. It must not
+                    # resurrect an explicitly stopped record.
+                    recovered=queue.Queue(queue.Store(store.path));recovered.start()
+                    try:
+                        if explicit_stop:
+                            self.assertEqual(store.get(item['id'])['state'],'cancelled')
+                        else:
+                            result=wait_for(self,lambda:(row if (row:=store.get(item['id']))['state'] in ('complete','failed') else None))
+                            self.assertEqual(result['state'],'complete');self.assertEqual(result['configuration']['seed'],42)
+                            self.assertEqual(len(result['snapshot']['result']['trial_results']),2)
+                    finally:recovered.close()
+                finally:
+                    if listener.is_alive():server.shutdown();listener.join(3)
+                    server.server_close()
+                self.closed.clear()
 
     def test_real_http_queue_admission_mutations_results_and_origins(self):
         class Handler(serve.Handler):
