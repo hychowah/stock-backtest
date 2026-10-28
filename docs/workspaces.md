@@ -47,6 +47,12 @@ The updated native forwarding of an explicit revision is source-only until it
 is deliberately installed. Use the WSL command above for an explicit revision
 with the older installed launcher.
 
+The separate [candidate preparation entry](candidate-startup.md) requires an
+explicit private source export. It rejects registered or installed roots and
+source checkouts. It binds only loopback and cannot replace a managed server.
+It verifies and closes a numerical child before ordinary application owners
+start. Candidate setup never changes the installed revision or normal launcher.
+
 For an already-installed revision without contacting WSL, run native Python directly:
 
 ```powershell

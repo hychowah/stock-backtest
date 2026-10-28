@@ -251,6 +251,7 @@ class Queue:
     def __init__(self,store=None):
         self.store=store or Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
         self.owner=cache_access.WorkspaceAccess(self.store.path.with_suffix('.lock'))
+        self.ready=lambda:True
 
     def start(self):
         with self.lock:
@@ -264,6 +265,7 @@ class Queue:
                 with self.owner.hold(timeout=.1):
                     self.store.recover()
                     while not self.stopping.is_set():
+                        if not self.ready():self.wake.wait(.5);self.wake.clear();continue
                         job=self.store.claim()
                         if job is None:self.wake.wait(.5);self.wake.clear();continue
                         self._run(job)
@@ -310,6 +312,9 @@ class Queue:
         try:
             with backtest_control.cancel_when(stopped):
                 with financial():
+                    if not self.ready():
+                        self.store.finish(identifier,'queued')
+                        return
                     result=backtest_jobs.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
                                                    planned=json.loads(job['plan']) if job['plan'] else None)
                 backtest_control.checkpoint()

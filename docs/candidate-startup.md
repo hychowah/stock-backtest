@@ -1,0 +1,127 @@
+# Isolated candidate preparation
+
+CB-12 adds a separate preparation entry. The normal launcher and installed
+website keep the ordinary engine. This entry also calculates through the
+ordinary engine. CB-13 will connect persistent numerical dispatch.
+
+Use an explicitly owned private source export with its own saved raw files,
+report, databases, logs, local build and durable stores. A different port alone
+does not isolate data. The entry rejects local registration, deployment records
+and Git checkouts. It never discovers another root or contacts an installed
+server. Preparation also rejects a root different from its loaded application.
+
+## Environment and command
+
+The pinned stack is NumPy 2.5.4, Numba 0.68.0 and llvmlite 0.50.0.
+Tested interpreters are CPython 3.12.1 on Windows and CPython 3.14.4 on WSL.
+The compatibility check accepts these CPython minor versions and exact package
+versions. Other Python minor versions require qualification first.
+
+Create a separate environment for the target operating system. Package setup
+is an explicit operation. With previously obtained matching wheels, use:
+
+```powershell
+<private-python> -m pip install --no-index --find-links <owned-wheel-directory> -r requirements-numerical.txt
+<private-python> website/serve_candidate.py --private-root <absolute-private-source-export> --no-browser
+```
+
+The entry defaults to loopback and an available ephemeral port. Its terminal
+prints the address. An explicit private port is allowed; port 3000 is rejected.
+There is no managed-server replacement option. No deployment or installed
+revision changes. Preserve the exact environment interpreter path. Do not
+resolve a venv redirector or symlink to another Python executable.
+
+Startup never invokes pip, an installer or package networking. Missing wheels,
+packages or compatible Python leave the ordinary entry available. Reference
+commands and normal `website/serve.py` do not need the numerical stack.
+Package setup and market-data downloads are separate. Strategy execution never
+downloads market data. This isolated entry disables credentials before full
+application imports. The panel can inspect and rebuild saved files. Its explicit
+download action cannot obtain a credential here.
+
+## Preparation and lifetime
+
+`scripts/numerical_preparation.py` supplies one `Preparation` capability:
+
+```python
+owner = Preparation(private_source_root, python=exact_environment_python)
+report = owner.prepare(progress=report_stage, cancelled=is_cancelled)
+status = owner.status()
+owner.invalidate()  # Within coordinated download or repair ownership.
+owner.close()       # Retry if closure remains unconfirmed.
+```
+
+Acquire shared source ownership before application imports. Keep it through
+application shutdown and confirmed preparation closure. Redirect `run.KEY_PATH`
+to a private nonexistent path before full application imports, as the entry does.
+
+Preparation follows this order:
+
+1. Check installed dependency metadata without importing native packages.
+2. Recover verified research publication before prepared readers or input checks.
+3. Validate saved inputs and prepare the research and compatible daily databases.
+4. Recover and publish the numerical generation under financial ownership.
+5. Release parent financial ownership. Start the genuine numerical child. It
+   attaches inputs and prewarms code under its own financial ownership.
+6. Close the child. Prove terminal process, descendant, pipe and handle closure.
+7. Reacquire financial ownership. Confirm current inputs and rebuild stale HTML.
+8. Publish a detached preparation report. Start ordinary application owners.
+
+A separate preparation lock serializes this operation across candidate ports.
+Source ownership comes first. Preparation serialization comes before financial
+ownership. Child dispatch never occurs inside parent financial ownership.
+Ordinary cache contention can defer or fail preparation safely.
+
+The successful report describes a closed verification operation. It is not a
+resident runtime or numerical calculation capability. Prewarmed compiler memory
+ends with the child. No ordinary queue or data owner shares that child.
+CB-11's budgets, strict arithmetic and closure proof still apply.
+
+Each verification keeps its bounded runtime request, statistics and diagnostic
+files in a unique private `tmp/candidate-runtime-*` directory. Successful and
+failed attempts retain these files for diagnosis. Repeated starts can therefore
+grow disk use. These per-operation bounds are not a disk quota. Remove retained
+private evidence only after its owners have closed and required review is done.
+
+## Freshness and recovery
+
+`data/numerical-preparation.json` is rebuildable evidence. Its compact digest
+binds current research metadata, the complete current price-file inventory,
+full report content, local source contents and numerical pointer. Status reads
+the inventory again. Direct edits, additions and removals remain detectable
+under the existing path/size/mtime rule. A same-size raw edit with restored
+modification time remains outside that rule. Publication journals block
+readiness. Existing preparation and attachment retain full artifact and report
+verification. A busy status means cache ownership is unavailable, not that a
+freshness check passed.
+
+An unchanged restart verifies and reuses the generation without export.
+A changed restart prepares current inputs and publishes a generation when
+needed. Successful, failed and cancelled coordinated download attempts mark
+readiness stale inside financial ownership. Completed partial writes remain
+saved. Retry preparation after repairs.
+
+The panel shows candidate status. Candidate rebuild uses the startup operation.
+Dependency, saved-input, publication and build failures keep the source data
+panel and durable result readers available. New runs, legacy schedule requests
+and queue submissions stay blocked until recovery. The queue does not claim
+new work while candidate status is stale. Held edits, settings versions,
+receipts and completed snapshots remain in their existing stores. Opening or
+exporting a stored result does not calculate.
+
+Unconfirmed child closure retains the strong runtime owner. No recovery
+listener or completed data-job status is published while closure is uncertain.
+Shutdown joins data, job, queue and HTTP owners, closes retained runtime
+resources, then releases source ownership. Preparation never clears or replaces
+the durable library or queue databases.
+Data shutdown first closes admission under the same lock used to start jobs.
+An accepted HTTP request that finishes reading its body later cannot clear
+cancellation or start a new rebuild after the data owner has joined.
+
+Normal publication still retains its recorded installed revision. Candidate
+source cannot change that selection. Operational checks use private fixtures.
+They do not act on the installed website.
+
+CB-13 must replace ordinary financial preholding with one application engine
+owner before persistent numerical dispatch serves `backtest_jobs.calculate`.
+No weekly control, numerical route or default-engine cutover is added here.

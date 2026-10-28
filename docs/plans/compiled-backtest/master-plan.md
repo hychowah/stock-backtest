@@ -24,8 +24,8 @@ generation-bound offline random recovery and verifies durable snapshot
 independence; see its [record](phases/CB-10.md). CB-11 delivers the explicit
 persistent bounded runtime; its [record](phases/CB-11.md) tracks verified
 behavior and the completed independent audits. SQL and complete-book evaluation
-remain in use. Weekly website controls, startup integration and routing remain
-later work.
+remain in use. CB-12 adds isolated closed preparation and startup verification.
+Weekly website controls and numerical calculation routing remain later work.
 No production engine or running server routing changes here.
 
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
@@ -1288,6 +1288,13 @@ Join those owners and close runtime resources before source ownership ends.
 Preserve durable queue/library files during startup, rebuilds and publication.
 Candidate freshness failure must not make completed stored results unreadable.
 
+CB-12's independent design resolves the current ordinary-route constraint.
+The CB-11 child retains exclusive financial ownership while idle. Candidate
+preparation therefore starts, attaches and prewarms a genuine child, then proves
+its closure before ordinary queue/data owners start. Its detached report records
+verification, not a resident runtime or retained compiled memory. CB-13 must
+resolve admission at the shared calculation adapter before persistent dispatch.
+
 **Deliverables:** Isolated candidate launcher/data-panel integration, a verified
 stable revision/restart safeguard, dependency instructions, compact generation
 checks and preparation status. Reference commands remain available without the
@@ -1516,7 +1523,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-09 | Complete | [Complete financial-result contract and phase record](phases/CB-09.md); shared reducer, offline numerical diagnostic, WSL/native verification and independent audit; unchanged job/snapshot envelopes; SQL and complete-book returns retained |
 | CB-10 | Complete | Generation-bound offline recovery, complete trial capture, bounded retention and durable snapshot compatibility pass WSL/native verification and independent audit. See [CB-10](phases/CB-10.md). |
 | CB-11 | Complete | [Explicit persistent runtime](phases/CB-11.md); WSL/native numerical and lifecycle checks pass. Independent final design review and smart-commit audit are clear. Current routing stays unchanged. |
-| CB-12 | Planned | Revision safeguard and source/job/queue owners reusable; isolated numerical startup, restart and freshness integration pending |
+| CB-12 | Complete | [Isolated preparation/startup](phases/CB-12.md); WSL/native checks pass. Final design review and smart-commit audit are clear after the shutdown admission repair. Ordinary routing retained. |
 | CB-13 | Planned | Current job recovery, queue, library and ResultArtifacts reusable; candidate preview/compatibility pending; stable default retained |
 | CB-14 | Planned | Candidate financial, coverage, lifecycle and durable-evidence qualification pending; comparative speed gate waived |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
@@ -1532,7 +1539,9 @@ CB-05 hardens the temporal interface over this artifact and the accepted
 Numba searches. Its required real-symbol gate now passes on new private FMP
 inputs, alongside the earlier adversarial fixtures. CB-06 delivers the complete
 entry-date factor interface under its independent design. The three-symbol evidence does not qualify full-universe
-coverage, real stopped names or production capacity. Startup integration remains in CB-12. The CB-02 comparison route is retired. The following
+coverage, real stopped names or production capacity. CB-12 provides isolated
+closed startup verification. Numerical calculation routing remains in CB-13.
+The CB-02 comparison route is retired. The following
 paragraphs retain the earlier execution evidence and its qualification limits. Numba remains
 the working direction. Its wave5 full matrix is exact. Its cached-F2 median of 4.66× failed the
 historical 5× gate and exceeds the subsequently retired 4× minimum on that historical identity; wave6 is rejected; wave7's additional guard treatment never ran on real

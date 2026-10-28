@@ -28,6 +28,10 @@ data/*.sqlite
 data/*.sqlite-*
 data/*.building*
 data/numerical/
+data/numerical-preparation.json
+data/numerical-preparation.json.download
+data/numerical-preparation.lock
+data/numerical-preparation.lock.live/
 
 # Rebuildable local website output; tracked dist is an explicit portable snapshot.
 website/local/

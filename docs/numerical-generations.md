@@ -1,7 +1,8 @@
 # Offline numerical generations
 
 CB-04 adds an offline input artifact. It does not route website requests to
-Numba. Automatic startup integration belongs to CB-12. The installed website
+Numba. CB-12 adds separate closed candidate preparation; see
+[candidate startup](candidate-startup.md). The installed website
 and the independent `scripts/revalue.py` stay on their existing paths.
 
 Use the tested NumPy environment. From the project folder, run:
@@ -281,8 +282,10 @@ for verification scope and memory observations.
 
 ## Explicit persistent runtime (CB-11)
 
-`scripts/numerical_runtime.py` supplies `NumericalRuntime`. Current website routes,
-startup, data preparation, jobs and the queue still use the ordinary engine.
+`scripts/numerical_runtime.py` supplies `NumericalRuntime`. Current website
+calculations, jobs and the queue still use the ordinary engine. The separate
+CB-12 candidate preparation entry verifies and closes this runtime before
+ordinary application owners start. Normal startup does not select it.
 This source capability has no job IDs, queue service or user-result store.
 An authorized caller must explicitly construct or inject it. The shared
 application adapter remains `website/backtest_jobs.py:calculate`.

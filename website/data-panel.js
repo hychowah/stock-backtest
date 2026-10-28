@@ -40,6 +40,8 @@ const DataPanel=(()=>{
     node('data-error').textContent=job.error??'';
     node('data-warnings').textContent=job.warning??'';
     node('data-log').textContent=state.log_file?'Development log: '+state.log_file:'Development logging is unavailable. Check the server terminal.';
+    const candidate=node('data-candidate');candidate.hidden=!state.candidate;
+    if(state.candidate)candidate.textContent=state.candidate.busy?'Candidate status is waiting for cache ownership. Stored results remain available.':`Isolated candidate preparation: ${state.candidate.state}. ${state.candidate.state==='current'?'Runtime verification is closed. Calculations use the ordinary engine.':'Rebuild prepared data to retry. Stored results remain available.'}`;
     const progress=node('data-progress-bar');progress.hidden=!busy;
     if(job.total>0){progress.max=job.total;progress.value=job.completed;}else progress.removeAttribute('value');
     if(state.report && state.report.checked_at!==lastReport?.checked_at)renderReport(state.report);

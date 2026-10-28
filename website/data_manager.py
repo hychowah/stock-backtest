@@ -21,6 +21,7 @@ import run
 import fmp_download
 import diagnostics
 import baseline
+import backtest_control
 
 ROOT=r.ROOT
 RAW=r.RAW
@@ -326,14 +327,18 @@ def _download(o,emit,stop,client):
 
 
 class Jobs:
-    def __init__(self):
+    def __init__(self,preparation=None):
+        self.preparation=preparation
         self.lock=Lock();self.cancel=Event()
+        self.closing=False
         self.thread=None;self.report=None;self.rebuilt=False
         self.state=dict(running=False,action=None,message='Check the saved data to see coverage.',completed=0,total=0,error=None,warning='')
 
     def snapshot(self):
         path=diagnostics.log_path()
-        with self.lock:return dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
+        with self.lock:result=dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
+        if self.preparation is not None:result['candidate']=self.preparation.status()
+        return result
 
     def emit(self,**values):
         with self.lock:self.state.update(values)
@@ -345,6 +350,7 @@ class Jobs:
         if action not in ('check','download','rebuild'):raise ValueError('Choose check, download or rebuild.')
         o=options(request)
         with self.lock:
+            if self.closing:raise ValueError('The server is stopping. Reopen the data panel after restart.')
             if self.state['running']:raise ValueError('A data job is already running. Wait for it or cancel it.')
             self.cancel.clear();self.state=dict(running=True,action=action,message='Waiting for the current backtest to finish…',completed=0,total=0,error=None,warning='')
             self.thread=Thread(target=self.work,args=(action,o),daemon=False)
@@ -354,6 +360,16 @@ class Jobs:
     def work(self,action,o):
         diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
         try:
+            if action=='rebuild' and self.preparation is not None:
+                # Runtime dispatch occurs outside calling-thread financial
+                # ownership. Preparation proves child closure before returning.
+                self.preparation.prepare(progress=self.emit,cancelled=self.cancel.is_set)
+                self.rebuilt=True
+                with cache_access.access():report=inspect(o,self.emit,self.stop)
+                with self.lock:self.report=report
+                self.emit(message='Candidate preparation and website rebuild complete.',warning=' '.join(report.get('warnings',[])))
+                diagnostics.event('data.completed',action=action)
+                return
             # Audit and replacement share the same lock as custom backtests.
             with cache_access.access():
                 self.stop()
@@ -364,13 +380,18 @@ class Jobs:
                     subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     self.rebuilt=True
                     report=inspect(o,self.emit,self.stop)
-                elif action=='download':report=download(o,self.emit,self.stop)
+                elif action=='download':
+                    try:report=download(o,self.emit,self.stop)
+                    finally:
+                        if self.preparation is not None:
+                            self.rebuilt=False
+                            self.preparation.invalidate()
                 else:report=inspect(o,self.emit,self.stop)
                 with self.lock:self.report=report
                 self.emit(warning=' '.join(report.get('warnings',[])))
                 self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
                 diagnostics.event('data.completed',action=action)
-        except Cancelled:
+        except (Cancelled,backtest_control.Cancelled):
             diagnostics.event('data.cancelled',action=action)
             self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
         except (ValueError,FileNotFoundError) as error:
@@ -383,6 +404,16 @@ class Jobs:
             self.emit(error=message,message='Data job failed. Existing completed files were kept.')
         except Exception as error:
             diagnostics.failure('data.failed',error,action=action)
+            # Retain an uncertain preparation owner. It cannot become a
+            # completed data job while runtime resources may remain alive.
+            if self.preparation is not None and getattr(error,'numerical_runtime',None) is not None:
+                self.emit(error='Candidate closure is unconfirmed. Shutdown must finish before continuing.',
+                          message='Waiting for candidate runtime closure…')
+                while self.preparation.runtime is not None:
+                    try:self.preparation.close()
+                    except Exception:
+                        import time
+                        time.sleep(.25)
             self.emit(error='Data operation failed. Check the development log below for details, then retry.',message='Data job failed. Existing completed files were kept.')
         finally:self.emit(running=False)
 
@@ -392,5 +423,12 @@ class Jobs:
         return self.snapshot()
 
     def close(self):
-        self.cancel.set()
-        if self.thread:self.thread.join()
+        # Admission and cancellation share start()'s lock. An accepted HTTP
+        # handler may finish reading its body after shutdown begins; it must
+        # never clear cancellation or create a new owner after this join.
+        with self.lock:
+            self.closing=True
+            self.cancel.set()
+            thread=self.thread
+        if thread:thread.join()
+        if self.preparation is not None:self.preparation.close()

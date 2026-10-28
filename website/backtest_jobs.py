@@ -48,6 +48,7 @@ class Jobs:
         self.lock=RLock()
         self.runs={}
         self.closing=False
+        self.ready=None
 
     def start(self,identifier,mode,options):
         if not re.fullmatch(r'[a-f0-9]{32}',identifier):
@@ -102,7 +103,14 @@ class Jobs:
             with self.lock:run['configuration']=value
         try:
             with backtest_control.cancel_when(run['stop'].is_set):
-                result=calculate(run['mode'],run['options'],progress,configuration)
+                if self.ready is None:
+                    result=calculate(run['mode'],run['options'],progress,configuration)
+                else:
+                    # Candidate freshness and ordinary execution share the
+                    # financial snapshot. This does not select a new engine.
+                    with cache_access.access():
+                        if not self.ready():raise ValueError('Candidate preparation is unavailable. Rebuild from the data panel.')
+                        result=calculate(run['mode'],run['options'],progress,configuration)
             # Publish only after worker cleanup, database closure and cache release.
             with self.lock:
                 run['result']=result

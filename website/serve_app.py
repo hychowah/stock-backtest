@@ -76,6 +76,16 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:return False
         return local and host in ('127.0.0.1','localhost','::1') and self.headers.get('Origin','http://'+self.headers.get('Host',''))=='http://'+self.headers.get('Host','')
 
+    def calculation_ready(self):
+        candidate=getattr(self.server,'candidate_preparation',None)
+        if candidate is None:return True
+        return candidate.status().get('state')=='current'
+
+    def require_calculation(self):
+        if self.calculation_ready():return True
+        self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
+        return False
+
     def do_GET(self):
         if self.launcher_request():return
         if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
@@ -127,6 +137,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.data_request();return
         if self.path not in ('/api/schedule','/api/robustness'):
             self.reply(404,dict(error='Unknown endpoint.'));return
+        if not self.require_calculation():return
         origin=self.headers.get('Origin')
         expected='http://'+self.headers.get('Host','')
         if origin and origin!=expected:
@@ -138,6 +149,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
             with backtest_control.cancel_when(self.disconnect_check()), cache_access.daily() as db:
                 backtest_control.checkpoint()
+                if not self.require_calculation():return
                 db.execute('PRAGMA cache_size=-131072')
                 if self.path=='/api/robustness':
                     configuration=robustness.plan(db,**request)
@@ -170,7 +182,7 @@ class Handler(SimpleHTTPRequestHandler):
         collection=self.path=='/api/backtest-queue'
         path=[] if collection else self.path.removeprefix('/api/backtest-queue/').split('/')
         try:
-            queue.start()
+            if self.calculation_ready() and (not getattr(self.server,'data_recovery',False) or DATA_JOBS.rebuilt):queue.start()
             if self.command=='GET':
                 if not collection and len(path)!=1:
                     self.reply(404,dict(error='Unknown queue action.'));return
@@ -181,6 +193,7 @@ class Handler(SimpleHTTPRequestHandler):
             request=json.loads(self.rfile.read(length),parse_constant=invalid)
             if not isinstance(request,dict):raise ValueError('Expected queue options.')
             if self.command=='POST' and collection:
+                if not self.require_calculation():return
                 result=store.enqueue(request)
             elif self.command=='POST' and path==['pause']:
                 result=store.pause(request.get('paused'))
@@ -213,6 +226,7 @@ class Handler(SimpleHTTPRequestHandler):
             elif self.command=='POST' and path[1:]==['stop']:
                 self.reply(202,jobs.cancel(identifier))
             elif self.command=='POST' and len(path)==1:
+                if not self.require_calculation():return
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=16384:raise ValueError('Invalid request size.')
                 def invalid(value):raise ValueError('Backtest values must be finite.')
@@ -309,19 +323,36 @@ def ensure_ready():
     print('Local caches and website are ready.',flush=True)
 
 
-def main():
+def close_candidate_owners(server,candidate):
+    """Finish application joins before the candidate entry releases source."""
+    import signal
+    previous=signal.signal(signal.SIGINT,signal.SIG_IGN)
+    try:
+        while True:
+            try:
+                DATA_JOBS.close()
+                server.server_close()
+                candidate.close()
+                return
+            except KeyboardInterrupt:continue
+    finally:signal.signal(signal.SIGINT,previous)
+
+
+def main(*,candidate=None,arguments=None):
+    global DATA_JOBS
+    if candidate is not None:DATA_JOBS=data_manager.Jobs(preparation=candidate)
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,default=3000)
     parser.add_argument('--host',default='0.0.0.0')
     parser.add_argument('--no-browser',action='store_true',help='Start without opening a browser')
     parser.add_argument('--managed',action='store_true',help='Replace this project’s previous server and keep this terminal attached')
-    args=parser.parse_args()
+    args=parser.parse_args(arguments)
     path=diagnostics.configure()
     print('Development log: '+diagnostics.relative_path(path) if path else 'Development log unavailable. Terminal logging remains active.',flush=True)
     diagnostics.event('server.starting',port=args.port,managed=args.managed)
     try:
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
-        with context as lifecycle:run_server(args,lifecycle,parser)
+        with context as lifecycle:run_server(args,lifecycle,parser,candidate=candidate)
     except KeyboardInterrupt:
         print('Website stopped.',flush=True)
     except (OSError,ValueError,RuntimeError) as error:
@@ -332,12 +363,21 @@ def main():
         diagnostics.close()
 
 
-def run_server(args,lifecycle,parser):
+def run_server(args,lifecycle,parser,*,candidate=None):
     try:
-        with cache_access.access():
-            recovery=data_manager.source_problem()
-            if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
-            else:ensure_ready()
+        if candidate is not None:
+            from numerical_preparation import PreparationError
+            try:
+                candidate.prepare(progress=lambda **value:print(value['message'],flush=True))
+                recovery=False
+            except PreparationError as error:
+                recovery=True
+                print(str(error),flush=True)
+        else:
+            with cache_access.access():
+                recovery=data_manager.source_problem()
+                if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
+                else:ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
         diagnostics.failure('startup.failed',error)
         parser.exit(1,'Could not prepare the local website: '+str(error)+'\n')
@@ -357,6 +397,11 @@ def run_server(args,lifecycle,parser):
             parser.exit(1,f'Cannot start the local website service: {retry_error}\n')
         print(f'Port {args.port} is already in use; opening a fresh website instance.',flush=True)
     server.data_recovery=recovery
+    server.candidate_preparation=candidate
+    if candidate is not None:
+        ready=lambda:candidate.status().get('state')=='current'
+        server.backtest_queue.ready=ready
+        server.backtest_jobs.ready=ready
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)
@@ -372,5 +417,7 @@ def run_server(args,lifecycle,parser):
         server.serve_forever()
     except KeyboardInterrupt:pass
     finally:
-        DATA_JOBS.close()
-        if not lifecycle:server.server_close()
+        if candidate is not None:close_candidate_owners(server,candidate)
+        else:
+            DATA_JOBS.close()
+            if not lifecycle:server.server_close()
