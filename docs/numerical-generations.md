@@ -252,6 +252,20 @@ the authoritative metric catalog. `field_schema` identifies that binding and
 the source-derived entry and trailing projections. Consumers need no formulas.
 The policy module still imports without NumPy or Numba.
 
+Source-guard execution, entry factors and generation preparation do not translate
+compiled guards. `PolicyProgram.decisions` constructs that optional capability
+only when explicitly requested. Unsupported compiled guard syntax fails that
+request. It does not prevent the source-guard path from preparing or calculating.
+Numerical expression and catalog validation still apply to both paths.
+
+The base policy signature binds source files and numerical expressions without
+generated guard code. A compiled guard program has a separate signature for its
+base policy, generated code and status labels. Only compiled-guard execution adds
+that signature to its compiler identity. Conservative source hashes remain in
+generation and calculation identities. This identity change requires a fresh
+offline numerical export; existing artifacts and derived checkpoints cannot be
+reused as current. Durable saved results remain independent.
+
 Entry guards and trailing dates come from the existing source. Fiscal and entry
 price tolerances are not new factor settings. Trailing anniversaries still
 clamp leap days. Prepared annual averages preserve `statistics.mean` rounding.

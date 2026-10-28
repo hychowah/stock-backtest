@@ -6,7 +6,7 @@ import platform
 import sys
 
 
-def compiler_identity(inputs, threads):
+def compiler_identity(inputs, threads, *, decisions=None):
     # Local import avoids importing the planner when only matrix kernels are used.
     from numerical_random import source_identity
     import numba
@@ -22,5 +22,7 @@ def compiler_identity(inputs, threads):
                     configured_features=numba.config.CPU_FEATURES),
         threads=threads,threading_layer=numba.config.THREADING_LAYER,
         fastmath=False,compiler_cache=False,error_model='numpy',dtype='float64')
+    if decisions is not None:
+        fields['candidate_decisions'] = decisions.signature
     signature=hashlib.sha256(json.dumps(fields,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
     return dict(signature=signature,fields=fields)

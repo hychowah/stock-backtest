@@ -6,6 +6,7 @@ NumPy is loaded only by matrix evaluation and financial specialization.
 import ast
 import copy
 from datetime import date
+from functools import cached_property
 import hashlib
 import inspect
 import json
@@ -13,8 +14,6 @@ import math
 from pathlib import Path
 import textwrap
 import types
-
-from numerical_decisions import CandidateDecisionProgram
 
 FINANCIAL_FIELDS = ('pe', 'pb', 'fcf', 'fcf_yield', 'price_fcf',
                     'profit_margin', 'roe', 'current_ratio', 'interest_coverage',
@@ -100,6 +99,8 @@ class PolicyProgram:
     specialization executes the authoritative calculator; only market-cap
     dependent operations become traced expressions. Unsupported numeric syntax,
     catalog changes or a changed expression shape fail rather than fall back.
+    Compiled guards are an optional capability, requested through ``decisions``.
+    Their translator and identity are not prerequisites for source execution.
     """
     def __init__(self, schedules, *, bankrupt=None):
         self.s = schedules
@@ -208,7 +209,6 @@ class PolicyProgram:
         self.expression_map = dict(expressions)
         self.output_names = tuple(name for name,unused in expressions)
         self.output_index = {name:i for i,name in enumerate(self.output_names)}
-        self.decisions = CandidateDecisionProgram(self, _tree)
         source_files = {Path(function.__code__.co_filename).resolve()
                         for function in (schedules.financial_books.snapshot,schedules.financial_books.eligible,
                                          m.current_multiple,m.financial_values,
@@ -224,8 +224,6 @@ class PolicyProgram:
                         minimum_cap=schedules.financial_books.run.MIN_MARKET_CAP,
                         minimum_ev=schedules.financial_books.run.MIN_EV,
                         bankruptcy=sorted(schedules.r.revalue.BANKRUPT if bankrupt is None else bankrupt),
-                        candidate_decisions=self.decisions.source,
-                        candidate_statuses=self.decisions.statuses,
                         spy_expression=self.spy_expression,
                         expressions=self.expressions)
         self.signature = hashlib.sha256(json.dumps(identity,sort_keys=True,
@@ -257,6 +255,16 @@ class PolicyProgram:
         self.field_schema = hashlib.sha256(json.dumps(dict(version=FACTOR_VERSION,
             fields=self.fields, entry=entry_source, trailing=trailing_source),
             sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+    @cached_property
+    def decisions(self):
+        """Translate and bind optional compiled guards on explicit request.
+
+        Unsupported guard syntax fails this capability, not source execution.
+        The base policy signature remains independent of generated guard code.
+        """
+        from numerical_decisions import CandidateDecisionProgram
+        return CandidateDecisionProgram(self, _tree)
 
     def dependencies(self, outputs):
         """Return required numeric inputs without changing expression order."""

@@ -27,6 +27,10 @@ with runtime_access.ownership(source):
     import schedules as s
     s.prepare()
     import numerical_generation as ng
+    import numerical_decisions
+    def reject_optional_translation(*args, **kwargs):
+        raise AssertionError('Offline preparation invoked optional compiled guards')
+    numerical_decisions.CandidateDecisionProgram = reject_optional_translation
     import numpy as np
     store=ng.GenerationStore(s)
     report=ng._sha(source/'results/summary-exits.txt')

@@ -33,7 +33,8 @@ class NumbaExecutor(PythonExecutor):
         began = time.perf_counter()
         numba.set_num_threads(min(int(self.limits.get('threads',4)),4,numba.config.NUMBA_NUM_THREADS))
         width = len(self.policy.output_names)
-        self.compiler = compiler_identity(inputs,int(numba.get_num_threads()))
+        decisions = self.policy.decisions if self.candidate_assembly == 'compiled' else None
+        self.compiler = compiler_identity(inputs,int(numba.get_num_threads()),decisions=decisions)
         calculate = CompiledMatrix(self.policy, (inputs.signature,self.compiler['signature']),
             cache_bytes=self.limits.get('matrix_cache_bytes',16*1024**2),
             workspace_bytes=self.limits.get('workspace_bytes',64*1024**2),
@@ -45,7 +46,7 @@ class NumbaExecutor(PythonExecutor):
         decision_signatures = {}
         if self.candidate_assembly == 'compiled':
             decision_namespace = {}
-            exec(self.policy.decisions.source, decision_namespace)
+            exec(decisions.source, decision_namespace)
             kernels = {name:njit(fastmath=False,cache=False,error_model='numpy')(
                 decision_namespace['_decision_'+name])
                 for name in ('snapshot','eligible','current','three')}

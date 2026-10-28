@@ -28,6 +28,15 @@ remain in use. CB-12 adds isolated closed preparation and startup verification.
 Weekly website controls and numerical calculation routing remain later work.
 No production engine or running server routing changes here.
 
+The cumulative design follow-up after CB-12 separates optional compiled guard
+translation from base policy construction. Generation preparation, entry factors
+and accepted source-guard execution do not require that translator. Explicit
+compiled-guard execution binds its own generated-program identity. Conservative
+source freshness and numerical-expression validation remain required. The changed
+policy identity requires a fresh offline numerical export. See the
+[policy contract](../../numerical-generations.md). CB-13 admission and routing
+remain planned work.
+
 The [method-selection decision](phases/CB-02/method-selection.md) is the current
 authority. It supersedes earlier instructions to finish the measurement owner,
 qualify benchmark-only resources, run another pilot or enforce a 4×/10× release

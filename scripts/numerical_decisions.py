@@ -4,6 +4,8 @@ Lookup values use validity flags, ordinal days and prices. No Python optional
 objects cross the compiled boundary. Source policy remains authoritative.
 """
 import ast
+import hashlib
+import json
 
 
 class CandidateDecisionProgram:
@@ -39,6 +41,9 @@ class CandidateDecisionProgram:
                     else 'numeric, average, average_valid')
             self.functions[kind] = f'def _decision_{kind}({args}):\n' + '\n'.join(body) + '\n'
         self.source = '\n'.join(self.functions.values())
+        self.signature = hashlib.sha256(json.dumps(dict(policy=policy.signature,
+            source=self.source, statuses=self.statuses), sort_keys=True,
+            separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
     @staticmethod
     def fail(detail):

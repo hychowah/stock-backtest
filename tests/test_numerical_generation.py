@@ -85,6 +85,29 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(self.store._pointer()['current'], first['identity'])
         self.assertEqual(ng._sha(self.report), report_sha)
 
+    def test_preparation_source_books_and_factors_do_not_translate_compiled_guards(self):
+        from numerical_numba import NumbaExecutor
+        from numerical_factors import FactorEvaluator
+        with patch('numerical_decisions.CandidateDecisionProgram',
+                   side_effect=AssertionError('Optional guard translator invoked')) as translator:
+            self.prepare()
+            inputs = self.attach()
+            inputs.validate()
+            fields = dict(filters=[dict(field=field,op='gt',value=-999999.)
+                                   for field in self.s.metrics.FILTERS])
+            with closing(NumbaExecutor(inputs, limits=dict(threads=2))) as executor:
+                for pool in ('legacy', 'cached'):
+                    book = ('2015-01-02', '2016-01-04', pool)
+                    actual = executor.evaluate([book],fields)[0]
+                    expected = self.s.compute_period(self.db, date(2015,1,2), date(2016,1,4),
+                        self.s.histories(self.db), self.s.cached_symbols(self.db), pool)
+                    self.assertTrue(shared.baseline.compare(expected, actual)['exact'])
+                self.assertNotIn('candidate_decisions', executor.compiler['fields'])
+            with closing(FactorEvaluator(inputs)) as factors:
+                self.assertTrue(factors.evaluate([date(2015,1,2).toordinal()]))
+            self.assertNotIn('decisions', vars(inputs.policy))
+            translator.assert_not_called()
+
     def test_python_and_numba_books_all_filters_pools_sql_and_aggregation(self):
         from bench_candidates_numba import NumbaExecutor
         self.prepare()
