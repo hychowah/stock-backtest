@@ -2,8 +2,9 @@
 
 This format preserves complete evidence without collecting all output in memory.
 It is a building block for CB-14 capacity work. The preview still uses its eager
-result protocol and existing limits. No application route, checkpoint format or
-saved snapshot version changes in this increment.
+result protocol and existing limits. Offline numerical production and version-2
+derived checkpoints now use the codec. No application route or saved snapshot
+version changes.
 
 `scripts/result_evidence.py` uses the standard library. It owns no database, job,
 file path, financial lock or publication. Existing resource owners must supply
@@ -38,6 +39,30 @@ reads records sequentially without collecting trials or periods. The owner must
 pin immutable bytes through reading. Use one active iterator per stream. Keeping
 all yielded records is an explicit eager caller choice, outside codec bounds.
 Random access indexes and read pins remain work for existing application stores.
+
+## Sealed trial views
+
+`writer.end_trial(summary)` returns a `TrialView` before batch completion.
+It binds the original trial number, byte range, physical SHA-256, period counts
+and scalar summary. Later appends do not change its range. `Reader.trials()`
+provides the same views over an already completed batch. A view owns no file.
+The caller must preserve its bytes through each operation. Use one traversal
+at a time for each stream. Writer appends restore their own stream position.
+Writing alone still supports write-only files. View traversal requires readable
+pinned bytes.
+
+`view.records()` validates the sealed range and yields bounded records.
+`view.periods()` assembles one complete period at a time. A period can exceed a
+record limit because its holdings have separate records. `view.copy_into(sink)`
+forwards complete periods and returns the original scalar summary. These methods
+do not retain earlier periods. They do not validate financial arithmetic.
+Checkpoint recovery additionally uses the shared financial reducer.
+
+Sealing a trial does not complete its batch. A cancelled or failed batch has no
+final manifest. Existing owners control publication after successful completion
+and required resource closure. A checkpoint can retain a sealed completed trial
+even when a later output callback fails. Its trial is separate from the failed
+batch. See the [checkpoint contract](trial-checkpoints.md).
 
 ## Records and completeness
 
@@ -95,8 +120,8 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 ## Remaining integration
 
 The [capacity design](plans/compiled-backtest/phases/CB-14.capacity-design.md)
-retains separate work for numerical output, checkpoints, runtime transfer,
+retains separate work for runtime transfer,
 oversized recorded plans, temporary job retention, queue/library persistence,
 ResultArtifacts, browser inspection and streamed exports. None is qualified by
-this codec alone. Existing Session preflight, 64 MiB IPC and snapshot limits
-remain. G03 and G06 remain failed. No default-engine or launcher change follows.
+the offline producer and checkpoint path. Existing Session preflight, 64 MiB IPC
+and snapshot limits remain. G03 and G06 remain failed. No default-engine or launcher change follows.

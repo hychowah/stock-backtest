@@ -1422,8 +1422,11 @@ split preserves the objective and every retained acceptance gate:
 5. Versioned ResultArtifacts readers, bounded inspection and streamed exports.
 6. Prospectively bounded pilot, then full-path capacity and operational qualification.
 
-The first increment does not resolve G03/G06, change snapshots or admit a larger
-request. Later increments use its interface. Ordinary default selection, the
+The first two increments do not resolve G03/G06, change snapshots or admit a larger
+preview request. Increment 2 adds bounded offline numerical production and compatible
+version-2 checkpoint recovery. Its [independent supplement](phases/CB-14.capacity2-design.md)
+and [verification record](phases/CB-14.capacity2.md) preserve the original design.
+Later increments use these interfaces. Ordinary default selection, the
 normal launcher, eager protocol limits and closed benchmark admission stay intact.
 Workflow budgets are reviewed later; they are not a prerequisite for independent
 bounded design and correctness work. No operational gate is waived.
@@ -1597,7 +1600,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity follow-up](phases/CB-14.capacity.md) adds incremental reduction and an unconnected bounded evidence codec. Five integration/qualification increments remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
+| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. Four integration/qualification increments remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition

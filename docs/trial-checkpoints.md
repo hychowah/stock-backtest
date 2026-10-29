@@ -31,6 +31,14 @@ and start no worker. They do not own ordinary saved candidate books.
 `experiment.save(number, result)` returns `retained`, `payload_bytes` and
 `evicted_experiments`. Callers do not manage the store's transactions.
 
+CB-14 adds `experiment.save_from(number, trial_view)` and
+`experiment.replay_into(number, emit_period)`. The first accepts a sealed
+`result_evidence.TrialView` and returns the same retention outcome. The second
+returns original scalar metadata without `periods`, or `None` for a missing row.
+It validates all evidence before forwarding periods. Forwarded output is still
+provisional until the call returns. Corruption raises; it never becomes a miss.
+These methods retain one complete period and bounded encoded buffers.
+
 ## Calculation identity
 
 `scripts/numerical_random.py` owns the builder. The old
@@ -67,12 +75,43 @@ Duplicate schedules remain distinct trials. Each row stores the complete
 original financial result, including ordered periods and holdings, nulls,
 statuses, options and timing. No candidate rows or borrowed views are persisted.
 
+Store version 2 retains existing version-1 canonical JSON TEXT rows verbatim.
+New bounded saves store a BLOB in the same `trials.payload` column. The BLOB
+starts with `CBTRIAL`, bytes `00 02`, a four-byte big-endian envelope length,
+and canonical finite JSON. Its envelope contains `format=1` for the sealed codec
+trial, experiment identity, original trial number, range hash, piece limit and
+record limit. The remaining bytes are the original sealed trial range. No
+second user-result store or staging directory is added.
+
+SQLite incremental BLOB access reads both representations in bounded buffers.
+The private `checkpoint_legacy.py` decoder checks canonical version-1 JSON
+spelling and ordered keys. It splits periods and individual holdings. Metadata
+and each holding must fit the codec's 8 MiB maximum record bound and 64-level
+nesting limit. A record beyond these limits fails explicitly on bounded replay;
+eager legacy reading retains
+its previous contract. Complete periods can exceed that record bound.
+
+All recovery paths verify stored byte length, SHA-256, exact experiment identity,
+trial numbering, recorded dates and financial arithmetic. Streamed financial
+validation reuses `portfolio_results.evaluate_into`. It does not calculate books
+or collect the trial. Eager `load/read` can explicitly collect new BLOB rows.
+The bounded driver never invokes those collecting adapters.
+
 Saving validates the result and recorded dates. One SQLite transaction owns the
 whole row and any retention eviction. SQLite uses full synchronous rollback
 journaling. Cancellation is checked before the transaction and before commit.
 An interruption before commit leaves no completed row. An interruption after
 commit leaves evidence available for retry. Progress or capture failure after
 commit does not erase it.
+
+Streamed saving validates its sealed source before retention. It reserves an
+exact-size SQLite BLOB, copies bounded buffers and validates the copied evidence
+inside that same transaction. The BLOB handle closes before commit. No partial
+BLOB is visible as a completed trial. Failed copies and cancelled evictions
+roll back together. A failed final output callback does not erase an earlier
+committed trial. Equal evidence is idempotent across representations, excluding
+only root seconds. Canonical per-field and per-holding hashes preserve number
+types, missing fields and extensions without serializing the whole trial.
 
 Re-saving identical financial evidence is idempotent. Root `seconds` can differ.
 The first committed result remains original evidence. Conflicting financial

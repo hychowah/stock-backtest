@@ -44,7 +44,9 @@ prevents a completion summary. Sink mutation cannot change computed finances.
 
 This incremental interface does not change the current numerical Session's
 result limits. Its application path still collects whole trials. The separate
-[evidence codec](result-evidence.md) is an unconnected capacity building block.
+[evidence codec](result-evidence.md) now supports bounded offline numerical
+production and checkpoint recovery. Preview requests retain their existing
+eager path and limits.
 
 ## Result fields
 
@@ -198,3 +200,37 @@ are never truncated. Runtime fixed-result retention and matrix-output reuse are
 separate finite caches. Completed random retention remains with CB-10.
 Read [numerical-generations.md](numerical-generations.md) for the runtime's
 source/financial/process lifetime and exact budgets.
+
+## Bounded offline production
+
+CB-14 adds `backtest_dates_into(emit_period, ...)` and
+`backtest_calendar_into(emit_period, ...)`. They use the same provider, complete
+book checks, SQL selector and incremental reducer. Their envelope has the same
+financial contract version. Its result contains original scalar fields, options,
+calendar or month metadata and seconds. It omits `periods` because the sink
+receives each complete detached period synchronously. No previous period is
+retained. Complete-book work and the current selected period remain bounded by
+the existing workspace budget. The eager methods keep their cumulative result
+admission and accounting. Session does not select these new methods.
+
+`numerical_random.run_into(portfolio, configuration, experiment, writer,
+progress=None)` emits all trials to a caller-owned evidence writer. It returns
+the ordinary summary envelope plus an `evidence` manifest. It does not accept
+`capture`. Existing `run(..., capture=...)` still delivers each original complete
+result, including when it explicitly collects a new-format checkpoint.
+
+Fresh calculation seals and retains each trial before completed progress.
+Recovery performs no provider work. Both paths count total, empty and short
+periods while forwarding them. `robustness.summarize(..., period_counts=...)`
+uses those counts with its existing arithmetic. `summarize_trials` still owns
+paired distributions. Only ordinary summary rows remain across trials.
+
+`portfolio_results.validate_completed_into(summary, periods, pairs, ...)`
+validates stored evidence through `evaluate_into`, one period at a time.
+It recomputes weights, contributions, returns, compounding, cash and coverage.
+It compares the original fields exactly, as the existing eager validator does.
+Extensions remain untouched. Missing, extra, reordered or corrupt periods fail.
+Emitted data remains provisional until the full validation returns. Current
+inputs and recorded plans are validated before checkpoint lookup. Cancellation
+or callback failure prevents final batch completion and preserves earlier
+committed checkpoints. The caller closes and publishes its output.

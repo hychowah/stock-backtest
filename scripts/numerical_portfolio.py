@@ -76,7 +76,30 @@ class NumericalPortfolio:
     def backtest_periods(self, periods, *, months=12, common_start=None, **options):
         return self._evaluate_periods(periods,dict(months=months),common_start=common_start,**options)
 
+    def backtest_dates_into(self, emit_period, *, dates, start, end, months=12, **options):
+        """Emit detached complete periods synchronously; return scalar metadata.
+
+        No previous period is retained. The caller owns output publication and
+        lifetime. This explicit operation does not alter eager admission.
+        """
+        if not callable(emit_period):raise ValueError('Choose a callable period sink.')
+        self._validate_inputs()
+        self.s.schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+        first,_,periods = self._calendar().explicit(
+            dates,start,end,checkpoint=self.s.backtest_control.checkpoint)
+        return self._reduce_periods(periods,dict(months=months),emit_period,common_start=first,**options)
+
+    def backtest_calendar_into(self, emit_period, **request):
+        if not callable(emit_period):raise ValueError('Choose a callable period sink.')
+        self._validate_inputs()
+        pairs,first,options,metadata=numerical_calendar.periods(
+            self._calendar().sessions,request,checkpoint=self.s.backtest_control.checkpoint)
+        return self._reduce_periods(pairs,metadata,emit_period,common_start=first,**options)
+
     def _evaluate_periods(self, periods, metadata, *, common_start=None, **options):
+        return self._reduce_periods(periods,metadata,None,common_start=common_start,**options)
+
+    def _reduce_periods(self, periods, metadata, emit_period, /, *, common_start=None, **options):
         started = time.perf_counter()
         periods = portfolio_results.validate_periods(periods, common_start)
         self._validate_inputs()
@@ -86,7 +109,7 @@ class NumericalPortfolio:
             self.s.r._select(self.db, period=(-1, -1), **options)
         except TypeError as error:
             raise ValueError('Unknown screening option.') from error
-        if self.result_workspace_bytes is not None:
+        if emit_period is None and self.result_workspace_bytes is not None:
             count = min(len(self.inputs.symbols),options.get('rank_to',50)-options.get('rank_from',1)+1)
             if len(periods)*(16384+4096*count) > self.result_workspace_bytes:
                 raise ValueError('Complete result exceeds the runtime result workspace bound.')
@@ -110,15 +133,19 @@ class NumericalPortfolio:
             self.s.backtest_control.checkpoint()
             holdings = self.s.r._select(self.db, period=(period_id, period_id), **options)
             selected = dict(entry=requested[0], exit=requested[1], holdings=holdings, spy=book['period'][2])
-            retained += retained_size(selected)+4096
+            retained = (retained if emit_period is None else 0)+retained_size(selected)+4096
             self.peak_result_graph_bytes = max(self.peak_result_graph_bytes,retained)
             if self.result_workspace_bytes is not None and retained > self.result_workspace_bytes:
                 raise ValueError('Complete result exceeds the runtime result workspace bound.')
             return selected
 
         with self.db:
-            result = portfolio_results.evaluate(periods, select_period, common_start=common_start,
-                checkpoint=self.s.backtest_control.checkpoint)
+            if emit_period is None:
+                result = portfolio_results.evaluate(periods, select_period, common_start=common_start,
+                    checkpoint=self.s.backtest_control.checkpoint)
+            else:
+                result = portfolio_results.evaluate_into(periods, select_period, emit_period,
+                    common_start=common_start,checkpoint=self.s.backtest_control.checkpoint)
         result.update(metadata, options=options, seconds=time.perf_counter()-started)
         size = retained_size(result)
         self.peak_result_graph_bytes = max(self.peak_result_graph_bytes,size)

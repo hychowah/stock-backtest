@@ -16,8 +16,8 @@ plus scalar encoder temporaries. The reducer retains its current book separately
 The caller declares a total byte ceiling and controls publication and cleanup.
 A failed writer is unusable; its incomplete output must never be published.
 
-This is an unconnected building block. It changes no application protocol,
-snapshot, checkpoint, routing or admission limit.
+Numerical diagnostics and derived checkpoints use this codec. Application
+protocols, snapshots, routing and eager admission limits remain unchanged.
 """
 from copy import deepcopy
 from datetime import date
@@ -186,6 +186,7 @@ class Writer:
         self.bytes_written = self.peak_piece_bytes = self.peak_record_bytes = 0
         self.failed = False
         self._order, self._digest = _Order(), hashlib.sha256()
+        self._trial_start = self._trial_digest = None
         self._write(dict(type='header',format_version=FORMAT_VERSION,
             result_contract=portfolio_results.CONTRACT_VERSION,trials=trials,metadata=metadata))
 
@@ -193,6 +194,7 @@ class Writer:
         if self.failed or self._order.footer is not None:
             raise ValueError('Evidence writer is failed or complete.')
         try:
+            self.stream.seek(self.bytes_written)
             if self.checkpoint is not None: self.checkpoint()
             _json_value(record,self.record_bytes)
             self._order.accept(record,self._digest.hexdigest())
@@ -211,6 +213,8 @@ class Writer:
                 for part in (header,data,checksum):
                     if self.stream.write(part) != len(part):
                         raise OSError('Evidence stream write was incomplete.')
+                if self._trial_digest is not None:
+                    for part in (header,data,checksum):self._trial_digest.update(part)
                 self.bytes_written += size
                 self.peak_piece_bytes = max(self.peak_piece_bytes,len(data))
                 buffer.clear()
@@ -238,7 +242,13 @@ class Writer:
             self.failed = True
             raise
 
+    @property
+    def expected_trials(self):return self._order.header['trials']
+
     def start_trial(self, number):
+        self.stream.seek(self.bytes_written)
+        self._trial_start = self.bytes_written
+        self._trial_digest = hashlib.sha256()
         self._write(dict(type='trial',number=number))
 
     def period(self, value):
@@ -257,6 +267,11 @@ class Writer:
 
     def end_trial(self, summary):
         self._write(dict(type='end_trial',periods=self._order.trial_periods,summary=summary))
+        # The writer already checked every record. Sealing must remain usable
+        # with write-only streams; traversal later requires readable pinned bytes.
+        view=TrialView._from_writer(self,summary)
+        self._trial_digest = None
+        return view
 
     def finish(self, summary):
         """Bind original batch metadata and return the completed manifest."""
@@ -304,51 +319,143 @@ class Reader:
     def records(self):
         return self._records()
 
+    def _observe(self,piece,record):
+        self.peak_piece_bytes=max(self.peak_piece_bytes,piece)
+        self.peak_record_bytes=max(self.peak_record_bytes,record)
+
     def _records(self):
-        self.stream.seek(0)
         order, digest = _Order(), hashlib.sha256()
-        self.bytes_read = 0
-        buffer = bytearray()
-        record_digest = hashlib.sha256()
-        while True:
-            if self.checkpoint is not None: self.checkpoint()
-            header = self.stream.read(_FRAME.size)
-            if not header:
-                if buffer or order.footer is None:
-                    raise ValueError('Evidence ended before completion.')
-                return
-            if len(header) != _FRAME.size:
-                raise ValueError('Truncated evidence frame.')
-            size,last = _FRAME.unpack(header)
-            if not 1 <= size <= self.piece_bytes or last not in (0,1):
-                raise ValueError('Evidence frame exceeds its piece bound or has invalid flags.')
-            self.bytes_read += _FRAME.size+size+_CHECKSUM_BYTES
-            if self.bytes_read > self.max_bytes:
-                raise ValueError('Evidence exceeds its total byte bound.')
-            if len(buffer)+size > self.record_bytes:
-                raise ValueError('Evidence exceeds its record byte bound.')
-            data = self.stream.read(size)
-            checksum = self.stream.read(_CHECKSUM_BYTES)
-            if len(data) != size or len(checksum) != _CHECKSUM_BYTES:
-                raise ValueError('Truncated evidence frame.')
-            if hashlib.sha256(bytes([last])+data).digest() != checksum:
-                raise ValueError('Evidence piece checksum differs.')
-            buffer.extend(data);record_digest.update(data)
-            self.peak_piece_bytes = max(self.peak_piece_bytes,size)
-            self.peak_record_bytes = max(self.peak_record_bytes,len(buffer))
-            if not last: continue
-            try: record = json.loads(buffer,object_pairs_hook=_object)
-            except (ValueError,UnicodeError,RecursionError) as error:
-                raise ValueError('Invalid evidence JSON.') from error
-            _json_value(record,self.record_bytes)
+        for record,raw_digest,start,end in _physical_records(self.stream,0,self.max_bytes,
+                self.piece_bytes,self.record_bytes,self.checkpoint,observe=self._observe):
+            self.bytes_read=end
             order.accept(record,digest.hexdigest())
-            if record['type'] == 'complete':
+            if record['type']=='complete':
                 if self._manifest is not None and record != self._manifest:
                     raise ValueError('Evidence changed after validation.')
-                # Completion cannot be exposed until EOF proves there are no
-                # trailing bytes, including an incomplete next frame.
-                if self.stream.read(1):
-                    raise ValueError('Evidence has trailing bytes.')
-            else: digest.update(record_digest.digest())
-            buffer.clear();record_digest = hashlib.sha256()
+                if self.stream.read(1):raise ValueError('Evidence has trailing bytes.')
+            else:digest.update(raw_digest)
             yield record
+        if order.footer is None:raise ValueError('Evidence ended before completion.')
+
+    def trials(self):
+        """Yield sealed trial views while retaining no earlier trial evidence."""
+        for _ in self._records():pass
+        start=None
+        for record,_,left,right in _physical_records(self.stream,0,self.max_bytes,
+                self.piece_bytes,self.record_bytes,self.checkpoint):
+            if record['type']=='trial':start=left;number=record['number']
+            elif record['type']=='end_trial':
+                sha=_range_digest(self.stream,start,right,self.checkpoint)
+                yield TrialView(self.stream,start=start,end=right,sha256=sha,number=number,
+                    piece_bytes=self.piece_bytes,record_bytes=self.record_bytes,checkpoint=self.checkpoint)
+                self.stream.seek(right)
+
+
+def _range_digest(stream,start,end,checkpoint):
+    position=stream.tell();stream.seek(start);digest=hashlib.sha256()
+    try:
+        remaining=end-start
+        while remaining:
+            if checkpoint is not None:checkpoint()
+            data=stream.read(min(65536,remaining))
+            if not data:raise ValueError('Truncated trial evidence.')
+            digest.update(data);remaining-=len(data)
+        return digest.hexdigest()
+    finally:stream.seek(position)
+
+
+def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,observe=None):
+    """Decode bounded physical records; owners supply structural validation."""
+    stream.seek(start);position=start;buffer=bytearray();digest=hashlib.sha256();left=start
+    while position<end:
+        if checkpoint is not None:checkpoint()
+        stream.seek(position)
+        header=stream.read(_FRAME.size)
+        if not header:
+            if buffer:raise ValueError('Evidence ended before completion.')
+            return
+        if len(header)!=_FRAME.size:raise ValueError('Truncated evidence frame.')
+        size,last=_FRAME.unpack(header)
+        if not 1<=size<=piece_bytes or last not in (0,1):
+            raise ValueError('Evidence frame exceeds its piece bound or has invalid flags.')
+        position+=_FRAME.size+size+_CHECKSUM_BYTES
+        if position>end:raise ValueError('Evidence exceeds its total byte bound.')
+        if len(buffer)+size>record_bytes:raise ValueError('Evidence exceeds its record byte bound.')
+        data=stream.read(size);checksum=stream.read(_CHECKSUM_BYTES)
+        if len(data)!=size or len(checksum)!=_CHECKSUM_BYTES:raise ValueError('Truncated evidence frame.')
+        if hashlib.sha256(bytes([last])+data).digest()!=checksum:
+            raise ValueError('Evidence piece checksum differs.')
+        buffer.extend(data);digest.update(data)
+        if observe is not None:observe(size,len(buffer))
+        if not last:continue
+        try:record=json.loads(buffer,object_pairs_hook=_object)
+        except (ValueError,UnicodeError,RecursionError) as error:raise ValueError('Invalid evidence JSON.') from error
+        _json_value(record,record_bytes)
+        yield record,digest.digest(),left,position
+        left=position;buffer.clear();digest=hashlib.sha256()
+    if buffer:raise ValueError('Evidence ended before completion.')
+
+
+class TrialView:
+    """A sealed range of caller-owned evidence, independent of batch completion.
+
+    Preserve its bytes through reading. Traversal retains bounded records and
+    the current complete period. This object owns no path or financial resource.
+    Append operations cannot change its range. A changed range fails validation.
+    """
+    def __init__(self,stream,*,start,end,sha256,number,piece_bytes=MAX_PIECE_BYTES,
+                 record_bytes=MAX_RECORD_BYTES,checkpoint=None):
+        _limits(end-start,piece_bytes,record_bytes)
+        if type(number) is not int or not 1<=number<=100:raise ValueError('Invalid sealed trial number.')
+        self.stream,self.start,self.end,self.sha256=stream,start,end,sha256
+        self.number,self.piece_bytes,self.record_bytes=number,piece_bytes,record_bytes
+        self.checkpoint=checkpoint
+        self._summary=None;self.period_count=0
+        for record in self.records():
+            if record['type']=='end_trial':
+                self._summary=record['summary'];self.period_count=record['periods']
+
+    @classmethod
+    def _from_writer(cls,writer,summary):
+        view=object.__new__(cls)
+        view.stream,view.start,view.end=writer.stream,writer._trial_start,writer.bytes_written
+        view.sha256,view.number=writer._trial_digest.hexdigest(),writer._order.trials
+        view.piece_bytes,view.record_bytes=writer.piece_bytes,writer.record_bytes
+        view.checkpoint=writer.checkpoint
+        view._summary=deepcopy(summary);view.period_count=writer._order.trial_periods
+        return view
+
+    @property
+    def summary(self):return deepcopy(self._summary)
+
+    def records(self):
+        if _range_digest(self.stream,self.start,self.end,self.checkpoint)!=self.sha256:
+            raise ValueError('Sealed trial evidence changed.')
+        order=_Order()
+        order.accept(dict(type='header',format_version=FORMAT_VERSION,
+            result_contract=portfolio_results.CONTRACT_VERSION,trials=1,metadata={}),None)
+        for record,_,_,_ in _physical_records(self.stream,self.start,self.end,
+                self.piece_bytes,self.record_bytes,self.checkpoint):
+            if record['type'] in ('header','complete'):raise ValueError('Invalid sealed trial record.')
+            checked=record
+            if record['type']=='trial':
+                if type(record['number']) is not int or record['number']!=self.number:raise ValueError('Sealed trial number differs.')
+                checked=dict(record,number=1)
+            order.accept(checked,None)
+            yield record
+        if order.trials!=1 or order.active_trial or order.active_period:
+            raise ValueError('Sealed trial ended before completion.')
+
+    def periods(self):
+        period=None
+        for record in self.records():
+            kind=record['type']
+            if kind=='period':period=dict(record['value'],holdings=[])
+            elif kind=='holding':period['holdings'].append(record['value'])
+            elif kind=='end_period':
+                yield period
+                period=None
+
+    def copy_into(self,emit_period):
+        for period in self.periods():emit_period(period)
+        return self.summary

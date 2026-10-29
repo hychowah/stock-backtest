@@ -127,3 +127,57 @@ def run(portfolio,configuration,experiment,progress=None,*,capture=None):
     result=robustness.consume_trials(config,completed(),capture=capture,started=started)
     return dict(diagnostic_version=DIAGNOSTIC_VERSION,contract_version=portfolio_results.CONTRACT_VERSION,
                 checkpoint_identity=experiment.identity,result=result)
+
+
+def run_into(portfolio,configuration,experiment,writer,progress=None):
+    """Produce complete evidence with one period retained; no full-result capture.
+
+    Validate current inputs before reuse. Seal and retain each trial before its
+    completed progress event. The caller owns the stream and final publication.
+    A callback failure leaves prior committed checkpoints and incomplete output.
+    """
+    started=time.perf_counter()
+    try:
+        binding=checkpoint_binding(portfolio,configuration)
+        if trial_checkpoints.canonical(binding)!=trial_checkpoints.canonical(experiment.binding):
+            raise ValueError('Checkpoint experiment belongs to a different calculation binding.')
+        config=binding['configuration']
+        if writer.expected_trials!=config['requested']:
+            raise ValueError('Evidence trial count differs from the recorded plan.')
+        stats=dict(recovered_trials=0,calculated_trials=0,retained_trials=0,unretained_trials=0,
+                   evicted_experiments=0,workers=0)
+        rows=[]
+        def event(completed,number):
+            if progress:progress(dict(type='progress',completed=completed,total=config['requested'],trial=number,**stats))
+        for number,dates in enumerate(config['samples'],1):
+            portfolio.s.backtest_control.checkpoint();event(number-1,number)
+            writer.start_trial(number)
+            counts=[0,0,0]
+            requested=config['options'].get('rank_to',50)-config['options'].get('rank_from',1)+1
+            def emit(period):
+                writer.period(period)
+                counts[0]+=1;counts[1]+=period['names']==0;counts[2]+=period['names']<requested
+            summary=experiment.replay_into(number,emit)
+            if summary is None:
+                evaluate=portfolio.backtest_calendar_into if 'calendar' in config else portfolio.backtest_dates_into
+                envelope=evaluate(emit,dates=dates,**numerical_calendar.request_fields(config),**config['options'])
+                if envelope['contract_version']!=portfolio_results.CONTRACT_VERSION:
+                    raise ValueError('Financial result contract differs.')
+                summary=envelope['result']
+                view=writer.end_trial(summary)
+                outcome=experiment.save_from(number,view)
+                stats['calculated_trials']+=1
+                stats['retained_trials' if outcome['retained'] else 'unretained_trials']+=1
+                stats['evicted_experiments']+=outcome['evicted_experiments']
+            else:
+                writer.end_trial(summary);stats['recovered_trials']+=1
+            rows.append(robustness.summarize(summary,number,dates,period_counts=counts))
+            event(number,number)
+        result=robustness.summarize_trials(config,rows,started);result['execution']=stats
+        portfolio.s.backtest_control.checkpoint()
+        manifest=writer.finish(result)
+        return dict(diagnostic_version=DIAGNOSTIC_VERSION,contract_version=portfolio_results.CONTRACT_VERSION,
+                    checkpoint_identity=experiment.identity,result=result,evidence=manifest)
+    except BaseException:
+        writer.failed=True
+        raise

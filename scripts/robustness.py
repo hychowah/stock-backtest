@@ -50,15 +50,19 @@ def distribution(values):
                 p90=percentile(values,.9),min=min(values),max=max(values),stddev=statistics.pstdev(values))
 
 
-def summarize(result, number, dates):
-    periods=result['periods']
+def summarize(result, number, dates, *, period_counts=None):
+    """Use the same arithmetic for collected trials and streamed period counts."""
     requested=result['options'].get('rank_to',50)-result['options'].get('rank_from',1)+1
+    if period_counts is None:
+        periods=result['periods']
+        period_counts=(len(periods),sum(p['names']==0 for p in periods),sum(p['names']<requested for p in periods))
+    total,empty,short=period_counts
     return dict(trial=number,start=result['start'],first_trade=result['first_trade'],end=result['end'],dates=dates,
-                cash_days=result['cash_days'],periods=len(periods),cagr=result['cagr'],spy_cagr=result['spy_cagr'],
+                cash_days=result['cash_days'],periods=total,cagr=result['cagr'],spy_cagr=result['spy_cagr'],
                 excess_cagr=result['cagr']-result['spy_cagr'] if result['cagr'] is not None else None,
                 total_return=result['growth']-1 if result['growth'] is not None else None,
                 growth=result['growth'],spy_growth=result['spy_growth'],
-                empty_periods=sum(p['names']==0 for p in periods),short_periods=sum(p['names']<requested for p in periods),seconds=result['seconds'])
+                empty_periods=empty,short_periods=short,seconds=result['seconds'])
 
 
 def summarize_trials(configuration, rows, started):

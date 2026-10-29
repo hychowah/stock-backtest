@@ -148,8 +148,26 @@ def validate_completed(result):
     Extra provider fields are preserved. No alternate financial formula lives
     here: evaluate reconstructs its own fields in the original arithmetic order.
     """
+    if not isinstance(result,dict) or not isinstance(result.get('periods'),list):
+        raise ValueError('Malformed completed financial result.')
     try:
-        if (not isinstance(result, dict) or not isinstance(result['periods'], list)
+        pairs=[(date.fromisoformat(p['entry']),date.fromisoformat(p['exit'])) for p in result['periods']]
+        validate_completed_into({k:v for k,v in result.items() if k!='periods'},iter(result['periods']),pairs)
+    except (KeyError,TypeError) as error:
+        raise ValueError('Malformed completed financial result.') from error
+    return result
+
+
+def validate_completed_into(summary, periods, pairs, emit_period=None, *, checkpoint=None):
+    """Validate original evidence through the reducer, one complete period at a time.
+
+    Recorded dates belong to the caller. No provider or financial inputs are
+    accessed. Emission is provisional until the final scalar comparison succeeds.
+    Extra period/holding/summary fields remain original evidence.
+    """
+    try:
+        result=summary
+        if (not isinstance(result, dict) or 'periods' in result
                 or not isinstance(result['options'], dict) or not _finite(result['seconds'])
                 or result['seconds'] < 0 or type(result['cash_days']) is not int
                 or any(result[key] is not None and not _finite(result[key])
@@ -157,21 +175,29 @@ def validate_completed(result):
                 or any(not _finite(result[key]) for key in ('spy_growth','spy_cagr'))):
             raise ValueError('Malformed completed financial result.')
         numerical_calendar.metadata(result)
-        pairs=[(date.fromisoformat(p['entry']),date.fromisoformat(p['exit'])) for p in result['periods']]
-        books=iter(result['periods'])
-        rebuilt=evaluate(pairs,lambda *args:dict(next(books)),common_start=date.fromisoformat(result['start']))
+        books=iter(periods)
+        original=None
+        def select(*args):
+            nonlocal original
+            original=next(books)
+            return original
+        def verify(period):
+            nonlocal original
+            if (type(original.get('names')) is not int
+                    or type(original.get('is_final_period')) is not bool
+                    or original.get('portfolio') is not None and not _finite(original['portfolio'])
+                    or any(not _finite(stock.get(key)) for stock in original['holdings']
+                           for key in ('weight','contribution_pp'))
+                    or any(original.get(k) != v for k,v in period.items())):
+                raise ValueError('Completed period evidence differs.')
+            if emit_period is not None:emit_period(original)
+            original=None
+        rebuilt=evaluate_into(pairs,select,verify,common_start=date.fromisoformat(result['start']),checkpoint=checkpoint)
+        sentinel=object()
+        if next(books,sentinel) is not sentinel:raise ValueError('Completed period count differs.')
         for key,value in rebuilt.items():
-            if key == 'periods':
-                for original,period in zip(result[key],value):
-                    if (type(original.get('names')) is not int
-                            or type(original.get('is_final_period')) is not bool
-                            or original.get('portfolio') is not None and not _finite(original['portfolio'])
-                            or any(not _finite(stock.get(key)) for stock in original['holdings']
-                                   for key in ('weight','contribution_pp'))
-                            or any(original.get(k) != v for k,v in period.items())):
-                        raise ValueError('Completed period evidence differs.')
-            elif key not in result or result[key] != value:
+            if key not in result or result[key] != value:
                 raise ValueError('Completed financial evidence differs.')
     except (KeyError, TypeError, StopIteration, OverflowError) as error:
         raise ValueError('Malformed completed financial result.') from error
-    return result
+    return summary
