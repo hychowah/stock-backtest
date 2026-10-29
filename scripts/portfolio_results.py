@@ -96,29 +96,44 @@ def _holdings(book, entry, exit_day):
 
 
 def evaluate(periods, select_period, *, common_start=None, checkpoint=None):
-    """Reduce complete selections in their original Python arithmetic order.
+    """Collect the incremental reduction into the existing detached contract."""
+    results = []
+    summary = evaluate_into(periods, select_period, results.append,
+        common_start=common_start, checkpoint=checkpoint)
+    return dict(periods=results, **summary)
+
+
+def evaluate_into(periods, select_period, emit_period, *, common_start=None, checkpoint=None):
+    """Emit each complete holding period in order.
+
+    Retain only aggregation state and the current period. The collecting adapter
+    preserves the existing financial result. The returned summary omits periods;
+    successful emission transfers detached evidence to the caller's sink. Sink
+    failures propagate. No partial completion summary is returned.
 
     Empty books remain visible and make strategy growth/CAGR unavailable. A
     common start adds the established explicit-date cash fields. Cash has zero
     return for both sides. Cancellation and provider errors propagate unchanged.
     """
     periods = validate_periods(periods, common_start)
-    results = []
+    growth=spy_growth=1.
     for entry, exit_day in periods:
         if checkpoint is not None: checkpoint()
         book = select_period(entry, exit_day)
         stocks = _holdings(book, entry, exit_day)
-        results.append(dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
+        period = dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
             names=len(stocks), portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,
-            spy=book['spy'], is_final_period=exit_day==periods[-1][1]))
-    if checkpoint is not None: checkpoint()
-    growth=spy_growth=1.
-    for period in results:
+            spy=book['spy'], is_final_period=exit_day==periods[-1][1])
         if growth is not None:growth=growth*(1+period['portfolio']) if period['portfolio'] is not None else None
         spy_growth*=1+period['spy']
+        emit_period(period)
+        # A sink may retain its detached period. This reducer must not retain
+        # the previous provider book while acquiring the next one.
+        del period, stocks, book
+    if checkpoint is not None: checkpoint()
     first = periods[0][0] if common_start is None else common_start
     duration=(periods[-1][1]-first).days/365.25
-    result = dict(periods=results, start=str(first), end=str(periods[-1][1]),
+    result = dict(start=str(first), end=str(periods[-1][1]),
         growth=growth, spy_growth=spy_growth, cagr=growth**(1/duration)-1 if growth is not None else None,
         spy_cagr=spy_growth**(1/duration)-1, coverage=COVERAGE)
     if common_start is not None:

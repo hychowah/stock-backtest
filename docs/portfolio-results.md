@@ -12,6 +12,7 @@ It does not rewrite jobs, queued tests or saved results.
 
 ```text
 evaluate(periods, select_period, common_start=None, checkpoint=None) -> result
+evaluate_into(periods, select_period, emit_period, common_start=None, checkpoint=None) -> summary
 select_period(entry, exit) -> {entry, exit, holdings, spy}
 ```
 
@@ -33,6 +34,17 @@ locks. Its caller retains source and financial ownership. The ordinary schedule
 adapter keeps missing-book preparation and evaluation inside its transaction.
 Cancellation still occurs before provider work and between periods. Result rows
 are detached copies. They remain usable after provider and database closure.
+
+`evaluate_into` emits one detached complete period at a time. It returns the
+same scalar result fields without `periods`. It retains aggregation state and
+the current book, plus the validated input date sequence. `evaluate` collects
+these emitted periods to preserve the existing result contract. Both use the
+same summation expressions and compounding order. A sink error propagates and
+prevents a completion summary. Sink mutation cannot change computed finances.
+
+This incremental interface does not change the current numerical Session's
+result limits. Its application path still collects whole trials. The separate
+[evidence codec](result-evidence.md) is an unconnected capacity building block.
 
 ## Result fields
 

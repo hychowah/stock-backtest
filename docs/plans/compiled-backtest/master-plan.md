@@ -1405,6 +1405,29 @@ caller lifetimes and actual browser exports. Do not refresh or stage
 
 ### CB-14 Qualify correctness and operations
 
+The [capacity design](phases/CB-14.capacity-design.md), filed before implementation
+on 29 October, traces eager accumulation through calculation, IPC, application
+retention, both durable stores and browser exports. It selects bounded immutable
+evidence within existing owners. The recorded 256 MiB admission failures remain.
+Removing that preflight alone would expose later whole-result limits.
+
+The capacity follow-up has six ordered increments within CB-14. This routine
+split preserves the objective and every retained acceptance gate:
+
+1. Incremental financial reduction and a versioned bounded evidence codec.
+   This first abstraction is initially disconnected from preview routing.
+2. Bounded numerical production and compatible checkpoint recovery.
+3. Bounded child/recorded-plan transport and temporary ownership in existing Jobs.
+4. Chunked durable snapshots in the existing queue and library stores.
+5. Versioned ResultArtifacts readers, bounded inspection and streamed exports.
+6. Prospectively bounded pilot, then full-path capacity and operational qualification.
+
+The first increment does not resolve G03/G06, change snapshots or admit a larger
+request. Later increments use its interface. Ordinary default selection, the
+normal launcher, eager protocol limits and closed benchmark admission stay intact.
+Workflow budgets are reviewed later; they are not a prerequisite for independent
+bounded design and correctness work. No operational gate is waived.
+
 **Outcome:** A reproducible decision to cut over or continue optimization.
 
 **Work:** Run catalog/rank/interval differential coverage, 100-trial annual
@@ -1574,7 +1597,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md): scoped numerical/filter evidence, native generation-replacement repair and explicit capacity failures. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
+| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity follow-up](phases/CB-14.capacity.md) adds incremental reduction and an unconnected bounded evidence codec. Five integration/qualification increments remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition

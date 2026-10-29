@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+import weakref
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
@@ -100,6 +101,40 @@ class PortfolioTests(unittest.TestCase):
         provider.side_effect=error
         with self.assertRaises(RuntimeError) as raised:p.evaluate([(self.a,self.b)],provider)
         self.assertIs(raised.exception,error)
+
+    def test_incremental_reducer_matches_collector_before_sink_mutation(self):
+        rows=[holding('A',1,-.2),holding('B',2,.4)]
+        books=[dict(entry=str(self.a),exit=str(self.b),holdings=rows,spy=.1),
+               dict(entry=str(self.b),exit=str(self.c),holdings=[],spy=-.1)]
+        pairs=[(self.a,self.b),(self.b,self.c)]
+        expected=p.evaluate(pairs,lambda *args:books.pop(0),common_start=date(2019,12,30))
+        books=[dict(entry=str(self.a),exit=str(self.b),holdings=rows,spy=.1),
+               dict(entry=str(self.b),exit=str(self.c),holdings=[],spy=-.1)]
+        emitted=[]
+        def emit(period):
+            emitted.append(deepcopy(period))
+            # Emission cannot let a sink change already computed finances.
+            period['portfolio']=999.;period['spy']=999.;period['holdings'].clear()
+        summary=p.evaluate_into(pairs,lambda *args:books.pop(0),emit,common_start=date(2019,12,30))
+        self.assertNotIn('periods',summary)
+        self.assertEqual(dict(periods=emitted,**summary),expected)
+
+    def test_incremental_reducer_releases_previous_book_and_propagates_sink_failure(self):
+        class Book(dict): pass
+        previous=None;calls=[]
+        def select(entry,exit_day):
+            nonlocal previous
+            if previous is not None:self.assertIsNone(previous())
+            book=Book(entry=str(entry),exit=str(exit_day),holdings=[],spy=.1)
+            previous=weakref.ref(book);calls.append(entry)
+            return book
+        summary=p.evaluate_into([(self.a,self.b),(self.b,self.c)],select,lambda value:None)
+        self.assertEqual(calls,[self.a,self.b]);self.assertIsNone(previous())
+        self.assertIsNone(summary['cagr'])
+        calls.clear();error=OSError('fictional sink failure')
+        with self.assertRaises(OSError) as raised:
+            p.evaluate_into([(self.a,self.b),(self.b,self.c)],select,Mock(side_effect=error))
+        self.assertIs(raised.exception,error);self.assertEqual(calls,[self.a])
 
 
 if __name__=='__main__':unittest.main()
