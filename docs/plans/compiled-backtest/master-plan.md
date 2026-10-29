@@ -193,6 +193,21 @@ correctness checks. Do not start another comparative benchmark or fabricate a
 passed speed/resource gate. This prose-only selection decision does not need a
 code-structure design report. It follows the independent smart-commit workflow.
 
+## User clarification: accepted performance and later usability review — 29 October 2026
+
+The user confirms that the observed speed is acceptable and the original target
+can be ignored. The [clarification record](phases/CB-14.performance-clarification.md)
+checks the saved Wave5 arithmetic: the slowest Numba three-seed median is 4.66×.
+This is historical evidence, not a new current-source measurement. The existing
+method-selection decision continues to waive comparative speed gates.
+
+Keep workflow-usability review in later CB-14 operational qualification, before
+default cutover. The reply supplies no absolute workflow budgets or additional
+input/access permission. Those decisions remain unresolved. Full-window capacity
+failures, correctness, freshness, compatibility and rollback requirements remain.
+Do not restart comparative benchmarking or treat the accepted speed as a waiver
+of those requirements.
+
 ## User-authorized performance acceptance update — 26 October 2026
 
 Historical decision, superseded by the later method-selection decision above.
