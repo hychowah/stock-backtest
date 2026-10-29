@@ -22,12 +22,13 @@ import baseline
 from paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
 CREATE TABLE financial_inputs (symbol TEXT, fiscal TEXT, values_json TEXT NOT NULL, PRIMARY KEY(symbol,fiscal));
+CREATE TABLE treasury10 (day TEXT PRIMARY KEY, yield_percent REAL NOT NULL) WITHOUT ROWID;
 CREATE TABLE screening_metrics (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, metric TEXT, multiple REAL NOT NULL, yield_value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,metric));
 CREATE TABLE filter_values (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, field TEXT, value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,field));
 CREATE TABLE baseline_prices (year INTEGER, symbol TEXT, fiscal_price_date TEXT, valuation_date TEXT, fiscal_price REAL, valuation_price REAL, entry_price REAL, exit_price REAL, PRIMARY KEY(year,symbol));
@@ -101,6 +102,12 @@ def after(series, day, slack):
     return series[i] if i<len(series) and (series[i][0]-day).days<=slack else None
 
 
+def ten_year_yield(db, day):
+    """Latest saved 10-year Treasury yield on or before the screen date (%)."""
+    row=db.execute('SELECT yield_percent FROM treasury10 WHERE day<=? ORDER BY day DESC LIMIT 1',(str(day),)).fetchone()
+    return row[0] if row else None
+
+
 def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
     def lookup(day,column,forward,slack):
         series=(light or div) if column=='price' else div
@@ -149,7 +156,8 @@ def prepare(path=DATABASE, force=False):
     spy=[row for row in all_spy if row[0]<=historical_end]
     sessions=[d for d,_ in spy]
     yields=[]
-    for r in json.loads((RAW/'treasury.json').read_text()):
+    treasury_rows=json.loads((RAW/'treasury.json').read_text())
+    for r in treasury_rows:
         day,value=run.parse_day(r.get('date')),run.num(r.get('month3'))
         if day is not None and value is not None:
             yields.append((day,value/100))
@@ -186,6 +194,11 @@ def prepare(path=DATABASE, force=False):
     db.row_factory=sqlite3.Row
     try:
         db.executescript(SCHEMA)
+        db.executemany('INSERT OR REPLACE INTO treasury10 VALUES(?,?)',
+                       [(str(day),value) for row in treasury_rows
+                        if (day:=run.parse_day(row.get('date'))) is not None
+                        and (value:=run.num(row.get('year10'))) is not None])
+        treasury10_by_day={day:ten_year_yield(db,day) for day in {latest_day}|{p[0] for p in periods.values()}}
         db.executemany('INSERT INTO companies VALUES(?,?,?,?)',[(s,r.get('name') or 'Unavailable',r.get('exchange') or 'Unavailable',r.get('sector') or 'Unavailable') for s,r in universe.items()])
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
         for year,(entry,end,spy_return,treasury) in periods.items():
@@ -247,7 +260,9 @@ def prepare(path=DATABASE, force=False):
                 for saved in db.execute('SELECT * FROM '+table+' WHERE symbol=?',(symbol,)).fetchall():
                     observation=dict(saved)
                     pairs=metrics.evaluate(observation,history)
-                    values=metrics.filter_values(observation,pairs,date.fromisoformat(saved[day_key]),lookup,financial_history)
+                    screen_day=date.fromisoformat(saved[day_key])
+                    treasury_day=periods[saved['year']][0] if mode=='historical' else latest_day
+                    values=metrics.filter_values(observation,pairs,screen_day,lookup,financial_history,treasury10_by_day[treasury_day])
                     db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
@@ -271,8 +286,8 @@ def prepare(path=DATABASE, force=False):
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
 
 
-def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None):
-    """Filter and rank either snapshot type using one selection policy."""
+def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
+    """Select ranks before or after user filters; keep ranks without refilling."""
     import math
     if any(type(v) is not int for v in (rank_from,rank_to)) or not 1 <= rank_from <= rank_to <= 5000:
         raise ValueError('Choose increasing integer ranks between 1 and 5000.')
@@ -286,38 +301,48 @@ def _select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metr
     if metric not in metrics.METRICS:
         raise ValueError('Choose a valid ranking metric.')
     filters=metrics.validate_filters(filters)
-    multiple,score='m.multiple','m.yield_value'
-    clauses=['s.pool=?','s.market_cap>=?','s.enterprise_value>=?',score+'>=?']
-    values=[('historical' if period is not None else 'latest'),metric,pool,min_cap,min_ev,min_yield]
-    for clause,value in [('s.market_cap<=?',max_cap),(multiple+'<=?',max_multiple),('c.sector=?',sector),('c.exchange=?',exchange)]:
-        if value is not None:
-            clauses.append(clause);values.append(value)
-    table,partition,ordering='latest_snapshots','','rank'
+    if selection_order not in ('filter_first','rank_first'):
+        raise ValueError('Choose filter first or rank first.')
+    mode='historical' if period is not None else 'latest'
+    table='snapshots' if period is not None else 'latest_snapshots'
+    base=['s.pool=?'];values=[mode,metric,pool]
     if period is not None:
-        table,partition,ordering='snapshots','PARTITION BY s.year ','year,rank'
-        clauses.append('s.year BETWEEN ? AND ?');values.extend(period)
+        base.append('s.year BETWEEN ? AND ?');values.extend(period)
+    clauses=['s.market_cap>=?','s.enterprise_value>=?','s.metric_yield>=?']
+    thresholds=[min_cap,min_ev,min_yield]
+    for clause,value in [('s.market_cap<=?',max_cap),('s.metric_multiple<=?',max_multiple),('s.sector=?',sector),('s.exchange=?',exchange)]:
+        if value is not None:
+            clauses.append(clause);thresholds.append(value)
     for condition in filters:
         comparator='<' if condition['op']=='lt' else '>'
         clauses.append('EXISTS (SELECT 1 FROM filter_values f WHERE f.symbol=s.symbol AND f.pool=s.pool AND f.year='+('s.year' if period is not None else '0')+' AND f.mode=? AND f.field=? AND f.value'+comparator+'?)')
-        values.extend(['historical' if period is not None else 'latest',condition['field'],condition['value']])
+        thresholds.extend([mode,condition['field'],condition['value']])
     join=' JOIN screening_metrics m ON m.symbol=s.symbol AND m.pool=s.pool AND '+('m.year=s.year' if period is not None else 'm.year=0')+' AND m.mode=? AND m.metric=?'
-    sql=f"""WITH ranked AS (
-      SELECT s.*,c.name,c.sector,c.exchange,{score} AS metric_yield,{multiple} AS metric_multiple,
-        ROW_NUMBER() OVER({partition}ORDER BY {score} DESC,candidate_rank ASC,s.symbol ASC) AS rank
-      FROM {table} s JOIN companies c USING(symbol){join} WHERE """+' AND '.join(clauses)+f') SELECT * FROM ranked WHERE rank BETWEEN ? AND ? ORDER BY {ordering}'
-    cursor=db.execute(sql,values+[rank_from,rank_to])
+    partition,ordering=('PARTITION BY s.year ','year,rank') if period is not None else ('','rank')
+    conditions=' AND '.join(clauses)
+    # Only the position of user conditions changes. Pool membership, available
+    # ranking pairs and deterministic ties always precede the requested ranks.
+    before=' WHERE '+conditions if selection_order=='filter_first' else ''
+    after=' AND '+conditions if selection_order=='rank_first' else ''
+    sql=f"""WITH candidates AS (
+      SELECT s.*,c.name,c.sector,c.exchange,m.yield_value AS metric_yield,m.multiple AS metric_multiple
+      FROM {table} s JOIN companies c USING(symbol){join} WHERE """+' AND '.join(base)+f"""), ranked AS (
+      SELECT s.*,ROW_NUMBER() OVER({partition}ORDER BY s.metric_yield DESC,s.candidate_rank ASC,s.symbol ASC) AS rank
+      FROM candidates s{before}) SELECT * FROM ranked s WHERE rank BETWEEN ? AND ?{after} ORDER BY {ordering}"""
+    arguments=values+(thresholds+[rank_from,rank_to] if selection_order=='filter_first' else [rank_from,rank_to]+thresholds)
+    cursor=db.execute(sql,arguments)
     fields=[c[0] for c in cursor.description]
     return [dict(zip(fields,row)) for row in cursor]
 
 
-def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None):
+def screen(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
     if any(type(v) is not int for v in (first,last)) or not 1996 <= first <= last <= 2026:
         raise ValueError('Choose increasing integer years within 1996–2026.')
-    return _select(db,period=(first,last),rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters)
+    return _select(db,period=(first,last),rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
 
 
-def latest_screen(db, *, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None):
-    return _select(db,rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters)
+def latest_screen(db, *, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
+    return _select(db,rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
 
 
 def aggregate(rows):
@@ -366,6 +391,7 @@ def main():
     p.add_argument('--first',type=int,default=1996);p.add_argument('--last',type=int,default=2026)
     p.add_argument('--rank-from',type=int,default=1);p.add_argument('--rank-to',type=int,default=50)
     p.add_argument('--top',type=int,help='Shortcut for ranks 1 through N')
+    p.add_argument('--selection-order',choices=['filter_first','rank_first'],default='filter_first')
     p.add_argument('--metric',choices=list(metrics.METRICS),default=metrics.DEFAULT_METRIC)
     p.add_argument('--pool',choices=['legacy','cached'],default='legacy')
     p.add_argument('--min-cap',type=float,default=100e6);p.add_argument('--max-cap',type=float)
@@ -385,7 +411,7 @@ def main():
                 counts={row[0]:row[1] for row in db.execute('SELECT pool,COUNT(*) FROM snapshots WHERE year=? GROUP BY pool',(p['year'],))}
                 print(f"{p['year']},{p['cached_candidates']},{counts.get('cached',0)},{counts.get('legacy',0)}")
             return
-        options={k:getattr(args,k) for k in ['first','last','rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange']}
+        options={k:getattr(args,k) for k in ['first','last','rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','selection_order']}
         if args.top is not None:
             options.update(rank_from=1,rank_to=args.top)
         rows=screen(db,**options)

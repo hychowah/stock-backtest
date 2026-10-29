@@ -45,7 +45,7 @@ python3 scripts/research.py screen --top 100 --output results/experiments/top100
 python3 scripts/research.py status
 ```
 
-Caps and EV are in nominal USD; minimum yield is a fraction (`0.15` means 15%). Sector and exchange filters match the cached text exactly. Filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). Stocks are selected each January and equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
+Caps and EV are in nominal USD; minimum yield is a fraction (`0.15` means 15%). Sector and exchange filters match the cached text exactly. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). Use `--selection-order rank_first` to select the requested ranks before applying user filters. Stocks are selected each January and equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
 `legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: all pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides. This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
@@ -388,10 +388,47 @@ transaction per book removed that overhead. The failed variant is retained in
 not the applied implementation. The production cache was unchanged by all runs.
 
 
+### Selection order
+
+**Selection order** applies to January, latest, fixed and random-date views.
+The default is **Filter first, then rank**. All user conditions pass first.
+Rank the matches and take the requested inclusive range.
+
+**Rank first, then filter** ranks the prepared pool and takes the requested
+range before applying user conditions. All user filters move together, including
+market-cap bounds, EV, selected yield/multiple, sector, exchange and additional
+conditions. There are no replacements. Survivors keep their original ranks.
+For example, if only ranks 2 and 7 pass a top-50 screen, hold those two stocks
+at 50% each. Ranks 10–20 test only that original 11-stock shortlist.
+
+Pool membership, financial eligibility, usable prices and available selected
+ranking metrics still precede both orders. The original pool's 250-name buffer
+and preparation floors remain. Missing threshold values fail only their own
+conditions. Tie order stays yield descending, candidate rank ascending with
+nulls first, then symbol ascending. Each January year ranks independently.
+
+Both orders reuse the same prepared records and dated books. Changing this
+setting needs no data download or new dated-book calculation. Source installation
+still needs the usual freshness check and offline rebuild. Empty and short books
+retain their existing warnings and CAGR rules. No cash allocation fills removed
+positions; each survivor gets an equal share of the portfolio.
+
+Python screen functions and schedule options accept
+`selection_order='filter_first'` or `selection_order='rank_first'`.
+The CLI accepts `--selection-order rank_first`. Omitted values retain the original
+filter-first behavior. Invalid values fail validation. Browser results, exports,
+background runs, queued settings, explicit-seed replay and saved artifacts retain
+the submitted order. Older saved records omit the field and restore filter-first
+without being rewritten or recalculated. Original ranks remain in CSV exports.
+An older queued test keeps its random plan when a name-only edit exposes the
+implicit filter-first default. Changing the order discards a waiting test's plan.
+Check `python3 tests/test_selection_order.py`, research, schedule, robustness,
+queue and saved-artifact tests, then browser/SQL parity and control checks.
+
 ### Multiple threshold conditions
 
 The website has an **Additional filters** list. Add one condition per metric,
-comparison and value. All conditions must pass before ranking. Comparisons are
+comparison and value. All conditions must pass at the chosen selection stage. Comparisons are
 strict: `lt` means less than; `gt` means more than. Two conditions can bound the
 same metric. Missing values fail only conditions that require those values.
 
@@ -422,6 +459,52 @@ filters = [
 
 After changing the catalog or calculations, prepare research and daily caches
 and rebuild the website. Changing condition values reuses prepared books.
+
+### Sales-based operating yield spread
+
+Add **Sales × 3-year avg operating margin / EV − US 10Y (pp)** under
+Additional filters. The formula is:
+
+```
+annual operating margin = operating income / revenue
+spread (pp) = selected annual revenue × mean(last 3 annual margins) / screen-date EV × 100 − Treasury yield (%)
+```
+
+Use three consecutive fiscal calendar years ending at the selected report.
+Each year's margin has equal weight. This is not a revenue-weighted margin.
+Use the selected report's revenue for sales and its `operatingIncome` field for
+operating income. Do not substitute EBIT. The existing 90-day availability lag,
+strict availability-before-screen rule and 800-day report-age limit still apply.
+Later reports cannot fill a missing year or field. Revenue and EV must be
+positive. Operating income and the resulting spread can be negative.
+
+Subtract the latest cached 10-year Treasury yield on or before the screening
+date. There is no added yield-age limit. January uses the book's screening
+session even if a stock's first buy price is a later session. Latest uses its
+exact saved SPY session. Dated books use their entry session. The filter uses
+percentage points: enter `5` for a spread above or below 5 pp.
+
+Schema version 8 adds `treasury10(day, yield_percent)` from saved `year10`
+fields in `raw/treasury.json`. The daily cache copies this table. Prepared
+`financial_inputs` now includes unambiguous USD `operatingIncome` values from
+full annual income statements. Both pools and all four website modes share
+`metrics.operating_yield_spread`. Missing history or Treasury values omit only
+this field. A stock fails only a condition that requires the missing field.
+Existing 3-month Treasury spreads and ranking metrics keep their formulas.
+
+Rebuild research, daily data and HTML after installing this source change.
+Preparation reuses saved files and does not download data. Full annual financial
+data supplies missing income-statement assets through the existing explicit
+download action. Treasury downloads keep the provider's full yield-curve rows.
+Existing valid raw inputs are retained. Provider fields are documented in
+[FMP annual statements](https://site.financialmodelingprep.com/datasets/fundamental-financial-statements)
+and [FMP Treasury curves](https://site.financialmodelingprep.com/datasets/economics).
+
+The request keeps the existing condition shape:
+
+```python
+filters = [{"field": "operating_yield_spread_3y", "op": "gt", "value": 5}]
+```
 
 
 ### Data control panel

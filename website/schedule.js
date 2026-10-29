@@ -89,7 +89,7 @@ const ScheduleView=(()=>{
     node('schedule-growth').textContent=result.growth===null?'—':'$'+result.growth.toFixed(2);
     const requested=(result.options.rank_to??50)-(result.options.rank_from??1)+1;
     const short=result.periods.filter(p=>p.names<requested).length,empty=result.periods.filter(p=>p.names===0).length;
-    node('schedule-coverage').textContent=result.coverage+' '+short+' short periods; '+empty+' empty periods. '+(empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+result.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(result.cash_days?' Both strategy and paired SPY hold cash until '+result.first_trade+' ('+result.cash_days+' days); CAGR uses the common window.':'');
+    node('schedule-coverage').textContent=result.coverage+' '+StockScreener.selectionDescription(result.options)+' '+short+' short periods; '+empty+' empty periods. '+(empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+result.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(result.cash_days?' Both strategy and paired SPY hold cash until '+result.first_trade+' ('+result.cash_days+' days); CAGR uses the common window.':'');
     chart(result.periods);
     node('schedule-rows').innerHTML=result.periods.map(p=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');

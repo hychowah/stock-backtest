@@ -98,6 +98,25 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(result['distributions']['spy_cagr']['n'],0)
         self.assertTrue(all(row['empty_periods']>0 for row in result['trials']))
 
+    def test_selection_order_survives_plan_and_reuses_random_books(self):
+        self.db.execute("INSERT INTO companies VALUES('B','B','NYSE','Technology')")
+        self.db.execute("INSERT INTO statements SELECT 'B',fiscal,known,market_cap,enterprise_value,ebitda/2,ebitda_yield/2 FROM statements WHERE symbol='A'")
+        self.db.execute("INSERT INTO prices SELECT 'B',day,price,adjusted FROM prices WHERE symbol='A'")
+        self.db.commit()
+        options=dict(trials=2,seed=11,pool='cached',sector='Technology')
+        first=self.config(**options);captured=[]
+        r.run(self.db,first,capture=lambda number,result:captured.append(result))
+        self.assertTrue(all(h['symbol']=='B' for result in captured for period in result['periods'] for h in period['holdings']))
+        after=self.config(**options,selection_order='rank_first')
+        self.assertEqual(after['samples'],first['samples'])
+        self.assertEqual(after['options']['selection_order'],'rank_first')
+        captured=[]
+        with patch.object(s,'compute_period',side_effect=AssertionError('Reuse prepared random books')):
+            result=r.run(self.db,after,capture=lambda number,result:captured.append(result))
+        self.assertEqual(result['incomplete'],2)
+        self.assertTrue(all(p['names']==0 for trial in captured for p in trial['periods']))
+        self.assertTrue(all(trial['options']['selection_order']=='rank_first' for trial in captured))
+
     def test_interrupted_batch_keeps_completed_trial_books_for_retry(self):
         config=self.config(trials=3)
         def interrupt(event):

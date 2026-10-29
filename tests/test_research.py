@@ -4,6 +4,7 @@ import io
 from contextlib import ExitStack, redirect_stdout, closing
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -35,6 +36,14 @@ class ResearchTests(unittest.TestCase):
             for options in ({'rank_to':1.5}, {'rank_to':5001}, {'min_yield':float('nan')}, {'min_cap':1e9,'max_cap':100}):
                 with self.subTest(select=select.__name__,options=options), self.assertRaises(ValueError):
                     select(self.db,**options)
+
+    def test_ten_year_treasury_asof_preserves_zero_negative_and_missing(self):
+        self.db.executemany('INSERT INTO treasury10 VALUES(?,?)',[
+            ('2015-01-02',0),('2015-01-05',-.1),('2015-01-06',4)])
+        self.assertIsNone(r.ten_year_yield(self.db,date(2015,1,1)))
+        self.assertEqual(r.ten_year_yield(self.db,date(2015,1,2)),0)
+        self.assertEqual(r.ten_year_yield(self.db,date(2015,1,4)),0)
+        self.assertEqual(r.ten_year_yield(self.db,date(2015,1,5)),-.1)
 
     def test_three_year_metric_and_missing_history(self):
         rows=[dict(fiscal=f'{y}-12-31',known=f'{y+1}-03-31',enterprise_value=999,ebitda=v) for y,v in [(2011,3),(2012,6),(2013,12),(2014,999)]]
@@ -223,6 +232,55 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0], 2)
         finally:
             db.close()
+
+    def test_operating_spread_preparation_and_browser_sql_parity(self):
+        r.financial_inputs.publish(r.RAW,'TEST','income-statement',[
+            dict(date=f'{year}-06-30',reportedCurrency='USD',revenue=100e6,operatingIncome=margin*100e6)
+            for year,margin in [(2012,.1),(2013,.2),(2014,.3),(2015,99)]],{},r.RAW/'coverage.json')
+        (r.RAW/'treasury.json').write_text(json.dumps([
+            dict(date='2014-12-31',month3=2,year10=3),
+            dict(date='2015-01-03',month3=2,year10=99),
+            dict(date='2015-10-20',month3=2,year10=4),
+            dict(date='2015-10-21',month3=2,year10=99)]))
+        # A delayed stock buy must not advance the January screen's Treasury rate.
+        path=r.RAW/'px'/'TEST.json';payload=json.loads(path.read_text())
+        payload['div'][1]['date']='2015-01-05';path.write_text(json.dumps(payload))
+        r.prepare(self.path)
+        root=Path(__file__).resolve().parents[1]
+        sys.path.insert(0,str(root/'website'))
+        import dataset
+        with patch.object(dataset,'connect',side_effect=lambda:r.connect(self.path)):
+            prepared=dataset.load_screening_data()
+        historical=[];latest=[];cases=[]
+        with closing(r.connect(self.path)) as db:
+            saved=[dict(row) for row in db.execute("SELECT * FROM filter_values WHERE field='operating_yield_spread_3y'")]
+            self.assertEqual(len(saved),4)
+            for row in saved:
+                self.assertAlmostEqual(row['value'],5 if row['mode']=='historical' else 100*20e6/270e6-4)
+            for pool in ('legacy','cached'):
+                for op,value in [('gt',4),('lt',4),('gt',5),('lt',5),('gt',0)]:
+                    options=dict(first=2015,last=2015,pool=pool,filters=[dict(field='operating_yield_spread_3y',op=op,value=value)])
+                    cases.append(options)
+                    historical.append([[h['symbol'],h['rank']] for h in r.screen(db,**options)])
+                    latest.append([[h['symbol'],h['rank']] for h in r.latest_screen(db,**{k:v for k,v in options.items() if k not in ('first','last')})])
+        code="""
+const fs=require('fs'),assert=require('assert'),engine=require(process.argv[1]);
+const {dataset,cases,historical,latest}=JSON.parse(fs.readFileSync(0,'utf8'));
+for(let i=0;i<cases.length;i++){
+ const rows=engine.screen(dataset,cases[i]).years.flatMap(y=>y.holdings);
+ assert.deepStrictEqual(rows.map(h=>[h.symbol,h.rank]),historical[i]);
+ assert.deepStrictEqual(engine.latestScreen(dataset,cases[i]).stocks.map(h=>[h.symbol,h.rank]),latest[i]);
+}
+"""
+        subprocess.run(['node','-e',code,str(root/'website'/'screener.js')],
+                       input=json.dumps(dict(dataset=prepared,cases=cases,historical=historical,latest=latest)),text=True,check=True)
+        # Missing Treasury inputs omit this filter, while ordinary picks remain.
+        (r.RAW/'treasury.json').write_text('[{"date":"2015-01-02","month3":2}]')
+        r.prepare(self.path,force=True)
+        with closing(r.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM filter_values WHERE field='operating_yield_spread_3y'").fetchone()[0],0)
+            self.assertEqual(len(r.latest_screen(db)),1)
+            self.assertEqual(r.latest_screen(db,filters=cases[0]['filters']),[])
 
     def test_preparation_stores_dated_financial_ratios_in_both_modes(self):
         ledger={}

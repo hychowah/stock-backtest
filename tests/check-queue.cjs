@@ -4,7 +4,7 @@ function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerH
 const copy=value=>JSON.parse(JSON.stringify(value));
 let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,preparations=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false;
 const editReceipts=new Map();
-let settings={mode:'custom',start:'2015-01-01',end:'2016-12-30',months:3,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,filters:[{field:'market_cap',op:'gt',value:100}]};
+let settings={selection_order:'rank_first',mode:'custom',start:'2015-01-01',end:'2016-12-30',months:3,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,filters:[{field:'market_cap',op:'gt',value:100}]};
 const snapshot={version:2,kind:'custom',settings:copy(settings),catalog:{metrics:{},filters:{}},presentation:{},result:{periods:[]}};
 const storage=new Map();
 const context=vm.createContext({console,crypto:require('node:crypto').webcrypto,Uint8Array,Date,location:{protocol:'http:'},document:{getElementById:node},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){},async fetch(url,options={}){
@@ -64,8 +64,9 @@ context.config={beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=c
 (async()=>{
   call('BacktestQueue.init(config)');await settle();assert(!node('queue-add').disabled);
   node('queue-name').value='<First & strategy>';await call('BacktestQueue.add()');
-  settings.rank_to=25;node('queue-name').value='Second';await call('BacktestQueue.add()');
+  settings.rank_to=25;settings.selection_order='filter_first';node('queue-name').value='Second';await call('BacktestQueue.add()');
   assert.equal(records.length,2);assert.equal(records[0].options.rank_to,50);assert.equal(records[1].options.rank_to,25);
+  assert.equal(records[0].options.selection_order,'rank_first');assert.equal(records[1].options.selection_order,'filter_first');
   assert.equal(preparations,2,'Queue additions keep parameter setup manual between fast cached tests');
   assert(node('queue-list').innerHTML.includes('&lt;First &amp; strategy&gt;'));assert(!node('queue-list').innerHTML.includes('<First & strategy>'));
   assert.equal(call('BacktestQueue.isManaging()'),true,'Queue construction must suspend automatic immediate runs');

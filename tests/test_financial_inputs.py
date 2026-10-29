@@ -41,6 +41,47 @@ class FinancialTests(unittest.TestCase):
         self.assertLess(values['profit_margin'],0);self.assertLess(values['fcf_yield'],0)
         self.assertEqual(self.values({}),{})
 
+    def test_operating_spread_equal_year_weights_current_sales_ev_and_units(self):
+        observation=dict(fiscal='2019-12-31',enterprise_value=200e6)
+        reports={f'{year}-12-31':dict(revenue=sales,operatingIncome=income,ebit=999e6)
+                 for year,sales,income in [(2017,50e6,5e6),(2018,100e6,20e6),(2019,200e6,60e6)]}
+        # Mean margin = (10% + 20% + 30%) / 3 = 20%, not sales-weighted.
+        self.assertAlmostEqual(metrics.operating_yield_spread(observation,reports,4),16)
+        self.assertAlmostEqual(metrics.operating_yield_spread(dict(observation,enterprise_value=400e6),reports,4),6)
+        reports['2020-12-31']=dict(revenue=1e12,operatingIncome=1e12)
+        reports['2019-12-30']=dict(revenue=1e12,operatingIncome=1e12)
+        self.assertAlmostEqual(metrics.operating_yield_spread(observation,reports,4),16)
+        for row in reports.values():row['operatingIncome']=-row['revenue']*.1
+        self.assertAlmostEqual(metrics.operating_yield_spread(observation,reports,0),-10)
+        self.assertAlmostEqual(metrics.operating_yield_spread(observation,reports,-1),-9)
+
+    def test_operating_spread_missing_inputs_never_fill_from_newer_reports(self):
+        observation=dict(fiscal='2019-12-31',enterprise_value=200e6)
+        reports={f'{year}-12-31':dict(revenue=100e6,operatingIncome=10e6)
+                 for year in (2017,2018,2019,2020)}
+        self.assertIsNone(metrics.operating_yield_spread(observation,reports,None))
+        for ev in (0,-1,None):
+            self.assertIsNone(metrics.operating_yield_spread(dict(observation,enterprise_value=ev),reports,4))
+        for field in ('revenue','operatingIncome'):
+            for year in (2017,2018,2019):
+                missing={day:dict(row) for day,row in reports.items()}
+                del missing[f'{year}-12-31'][field]
+                self.assertIsNone(metrics.operating_yield_spread(observation,missing,4))
+        for revenue in (0,-1):
+            reports['2018-12-31']['revenue']=revenue
+            self.assertIsNone(metrics.operating_yield_spread(observation,reports,4))
+        del reports['2018-12-31']
+        self.assertIsNone(metrics.operating_yield_spread(observation,reports,4))
+
+    def test_operating_income_is_validated_and_conflicting_variants_stay_absent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            raw=Path(folder);ledger={};endpoint='income-statement'
+            row=dict(date='2019-12-31',reportedCurrency='USD',revenue=100,operatingIncome=10)
+            with self.assertRaises(ValueError):
+                f.publish(raw,'A',endpoint,[dict(row,operatingIncome='invalid')],ledger,raw/'coverage.json')
+            f.publish(raw,'A',endpoint,[row,dict(row,operatingIncome=20)],ledger,raw/'coverage.json')
+            self.assertEqual(f.history(raw,'A'),{'2019-12-31':{'revenue':100}})
+
     def test_asset_receipts_empty_reuse_tamper_repair_and_resume(self):
         with tempfile.TemporaryDirectory() as folder:
             raw=Path(folder);ledger={};receipt=raw/'coverage.json';endpoint='income-statement'

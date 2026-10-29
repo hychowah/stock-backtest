@@ -17,7 +17,10 @@ const cases=[
  {first:2015,last:2020,pool:'cached',metric:'ev_ebitda_3y',max_multiple:8},
  {first:2015,last:2020,pool:'cached',filters:[{field:'return_1y',op:'gt',value:-10},{field:'return_3y',op:'lt',value:100},{field:'ev_ebitda',op:'lt',value:10}]},
  {first:2015,last:2020,filters:[{field:'market_cap',op:'gt',value:500},{field:'market_cap',op:'lt',value:500}]},
+ {first:2015,last:2020,pool:'cached',filters:[{field:'operating_yield_spread_3y',op:'gt',value:5}]},
+ {first:2015,last:2020,filters:[{field:'operating_yield_spread_3y',op:'lt',value:0}]},
 ];
+cases.push(...cases.map(options=>({...options,selection_order:'rank_first'})));
 if(!process.argv[2])throw Error('Run python3 tests/check_screener.py to generate independent SQLite expectations.');
 const references=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const expected=references.historical;
@@ -45,6 +48,8 @@ console.log(`Passed: browser/SQLite parity across ${cases.length} screens, inclu
 const latestCases=[{}, {pool:'cached',rank_to:100},{pool:'cached',min_cap:500e6,max_cap:5e9,min_yield:.15},{pool:'cached',sector:'Technology',exchange:'NASDAQ',max_multiple:8},{rank_from:10,rank_to:20},{sector:'No matching sector'},{pool:'cached',metric:'ev_ebitda_3y',rank_to:100,max_multiple:8}];
 latestCases.push({pool:'cached',filters:[{field:'fcf_yield',op:'gt',value:5}]});
 latestCases.push({pool:'cached',filters:[{field:'return_1y',op:'gt',value:-10},{field:'return_3y',op:'lt',value:100}]});
+latestCases.push({pool:'cached',filters:[{field:'operating_yield_spread_3y',op:'gt',value:5}]});
+latestCases.push(...latestCases.map(options=>({...options,selection_order:'rank_first'})));
 for(let i=0;i<latestCases.length;i++){
  const result=engine.latestScreen(dataset,latestCases[i]),expected=references.latest[i];
  assert.deepStrictEqual(result.stocks.map(h=>[h.symbol,h.rank]),expected.map(h=>[h.symbol,h.rank]));

@@ -33,7 +33,9 @@ const ResultArtifacts=(()=>{
     let submitted=artifact.settings;
     // Opening a fresh-date run exposes its actual seed for an exact replay.
     if(artifact.kind==='random'&&settings.seed!==undefined)submitted={...submitted,seed:artifact.result.configuration.seed};
-    return signature(submitted)===signature(settings);
+    // Older saved records used filter-first selection. Compare that default
+    // without adding fields to, or rewriting, the stored artifact.
+    return signature({selection_order:'filter_first',...submitted})===signature({selection_order:'filter_first',...settings});
   }
   return {create,decode,publish,matches,forView:key=>views.get(key)};
 })();

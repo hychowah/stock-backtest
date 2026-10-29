@@ -168,6 +168,19 @@ The `legacy` research pool preserves the original 250-candidate pre-price screen
 
 Yearly attribution uses `website/contributions.js` for browser calculations and `website/attribution.py` for the static fallback. Top contributors means the first `min(10, actual selected count)` stocks, ordered by signed contribution (return / actual selected count), with ties by symbol. Gain/loss pies are normalized separately; never draw negative slices or describe them as shares of net return. Check with `node tests/check-contributions.cjs`, `python3 tests/test_attribution.py`, and the existing range/control tests.
 
+## Selection order
+
+`selection_order` is `filter_first` by default. `rank_first` selects the requested
+inclusive rank range from the prepared pool before all user filters apply.
+Keep original ranks and add no replacements. Equal weights use the survivor
+count. Pool eligibility and available ranking metrics precede both orders.
+SQL and browser selection must agree in both modes and pools. Each historical
+year ranks independently. Orders reuse the same dated books and sampled plans.
+Preserve the order through manual jobs, queued tests, saved results and replay.
+Older saved settings omit it and mean filter-first. Do not rewrite these records
+or recalculate them when opened. Check `python3 tests/test_selection_order.py`,
+research/schedule/robustness/queue checks and browser/artifact controls.
+
 ## Latest-date website screening
 
 Schema version 2 prepares `latest_snapshots` separately from historical snapshots. Latest date means the latest cached SPY session. Require an exact-session dividend-adjusted price and cached `listed=True`; never reuse old stopped prices in the latest screen. Use the same 90-day lag, strict availability-before-date rule and 800-day report-age limit. No future return or contribution is stored for latest picks. `research.latest_screen()` and `StockScreener.latestScreen()` must agree. The website opens in latest mode; historical mode retains year controls.
@@ -260,7 +273,7 @@ port rather than reusing a possibly outdated API process.
 
 Schema version 5 adds `filter_values` separately from ranking pairs. Conditions
 use `field`, strict `lt` or `gt`, and a finite `value`. All conditions must pass
-before ranking. Missing values fail only conditions that need them. Use display
+at the chosen selection stage. Missing values fail only conditions that need them. Use display
 units: millions of USD, percent, or multiples. `metrics.filter_values()` owns
 threshold calculations for January, latest and dated books. Trailing returns
 use only adjusted prices on or before the screen date and its anniversary,

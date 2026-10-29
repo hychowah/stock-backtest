@@ -92,6 +92,7 @@ FILTERS = {
     'fcf_yield': dict(label='Free cash flow yield (%)', available=True),
     'price_fcf': dict(label='Price / free cash flow (×)', available=True),
     'profit_margin': dict(label='Net profit margin (%)', available=True),
+    'operating_yield_spread_3y': dict(label='Sales × 3-year avg operating margin / EV − US 10Y (pp)', available=True),
     'peg': dict(label='PEG — 3-year EPS growth (×)', available=True),
     'roe': dict(label='Return on average equity (%)', available=True),
     'current_ratio': dict(label='Current ratio (×)', available=True),
@@ -126,12 +127,13 @@ def validate_filters(filters):
     return filters
 
 
-def filter_values(observation, pairs, day, lookup, financials=None):
+def filter_values(observation, pairs, day, lookup, financials=None, treasury10=None):
     """Prepare threshold inputs at the screen date, never the future exit.
 
     Annual lookbacks use the same calendar day (Feb 29 clamps to Feb 28).
     Each endpoint uses an adjusted close on or before that day, within 7 days.
     Missing endpoints omit the value and exclude a stock only if filtered on it.
+    treasury10 is the saved 10-year yield in percent; None omits its spread.
     """
     from calendar import monthrange
     values={k:observation[k]/1e6 for k in ('market_cap','enterprise_value')}
@@ -143,8 +145,36 @@ def filter_values(observation, pairs, day, lookup, financials=None):
         start=lookup(target,'adjusted',False,7)
         if end and start and start[1]>0:
             values[f'return_{years}y']=(end[1]/start[1]-1)*100
-    if financials:values.update(financial_values(observation,financials))
+    if financials:
+        values.update(financial_values(observation,financials))
+        spread=operating_yield_spread(observation,financials,treasury10)
+        if spread is not None:values['operating_yield_spread_3y']=spread
     return values
+
+
+def operating_yield_spread(observation, reports, treasury10):
+    """Selected annual sales × mean of three annual margins / current EV.
+
+    Margins are operating income / revenue, with equal weight per fiscal year.
+    Require three consecutive years ending at the selected report. Treasury is
+    the screen-date 10-year yield in percent; the result is percentage points.
+    Missing inputs omit only this filter. Signed operating income stays signed.
+    """
+    if treasury10 is None or not math.isfinite(treasury10):return None
+    fiscal=str(observation['fiscal']);by_year={}
+    for day,row in sorted(reports.items()):
+        if day<=fiscal:by_year[int(day[:4])]=row
+    current=reports.get(fiscal,{})
+    sales=current.get('revenue');ev=observation.get('enterprise_value')
+    if sales is None or sales<=0 or ev is None or ev<=0:return None
+    margins=[]
+    for year in range(int(fiscal[:4])-2,int(fiscal[:4])+1):
+        report=by_year.get(year,{})
+        revenue=report.get('revenue');income=report.get('operatingIncome')
+        if revenue is None or revenue<=0 or income is None:return None
+        margins.append(income/revenue)
+    value=sales*statistics.mean(margins)/ev*100-treasury10
+    return value if math.isfinite(value) else None
 
 
 def financial_values(observation,reports):

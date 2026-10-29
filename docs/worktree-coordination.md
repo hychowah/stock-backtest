@@ -138,3 +138,46 @@ integrate this observer deliberately; no engine implementation is copied here.
 The independent library uses `data/saved-backtests.sqlite`. It stores complete
 user snapshots, capped atomically at 20 records. This durable file stays outside
 financial-cache freshness and rebuilds. Source deployment preserves it.
+
+## Agreed exception: operating-yield spread filter (29 October 2026)
+
+The user assigns main this narrow financial-filter addition. Main owns the new
+`operating_yield_spread_3y` threshold field, its input preparation, tests and
+website explanations. The formula uses selected annual revenue multiplied by
+the simple mean of operating income/revenue for three consecutive fiscal years,
+divided by screen-date EV. Subtract the latest cached US 10-year Treasury yield
+on or before the screen date. The threshold uses percentage points.
+
+`scripts/financial_inputs.py` adds `operatingIncome` to eligible saved annual
+inputs. `scripts/metrics.py` owns the formula and catalog entry. Research schema
+8 adds a `treasury10(day, yield_percent)` table from saved `year10` fields.
+`scripts/research.py` and `scripts/schedules.py` supply that input to the shared
+filter calculator. Both pools and all modes use the same formula. Existing
+filter request/result shapes, ranking, 3-month spreads, returns, cache ownership
+and benchmark code stay unchanged. Source changes trigger offline preparation
+and a website rebuild. Missing inputs omit the new value and exclude a stock
+only when that filter is active. There is no automatic market-data download.
+
+The engine branch can integrate this additive policy deliberately. Its numerical
+input adapters and qualification evidence must account for the new field before
+claiming support. Main does not change that branch or its benchmark contracts.
+
+## Agreed follow-up: selection order (29 October 2026)
+
+The user extends the main-owned filter work with a choice of selection order.
+Main owns the additive `selection_order` option and its SQL/browser selection,
+website control, saved-record compatibility, tests and documentation. Omission
+means `filter_first`. `rank_first` ranks the prepared pool, selects the inclusive
+requested range, then applies all user conditions without replacements. It keeps
+original ranks and equally weights survivors. Pool eligibility, metric formulas,
+tie policy, prepared schemas, worker ownership and cache locks do not change.
+
+`scripts/research.py` owns SQL policy and CLI validation. The only execution-edge
+change is accepting the option in `scripts/schedules.py`; existing generic
+options carry it through random plans, jobs and queue records. The website
+selector, form and immutable-artifact comparison carry the same default. Old
+saved records remain unchanged. Queue edit comparison treats an omitted order
+as filter-first, so a name-only edit retains an older random plan. An actual
+order change discards that waiting plan. The engine branch must integrate this option
+deliberately before claiming it supports the new policy. No engine-branch or
+benchmark files are changed by this task.

@@ -2,7 +2,7 @@ const allReturns=data.slice();
 const screeningData=JSON.parse(document.getElementById('screening-data').textContent);
 const rankFrom=document.getElementById('rank-from'),rankTo=document.getElementById('rank-to');
 const fromYear=document.getElementById('from-year'),toYear=document.getElementById('to-year');
-const fields={metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
+const fields={selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
 let screeningMode='latest';
 let filterConditions=[];
 function viewKey(){return screeningMode==='latest'?'latest':document.getElementById('schedule-kind').value==='custom'?'custom':'january';}
@@ -50,7 +50,7 @@ function scheduledPresentation(settings){
   return {
     coverage:'Custom dates use the local daily-cache service. Original candidate-set restrictions and cached-price coverage still apply.',
     notice:{text:'Results use the submitted stock filters and trade dates.',severity:'info'},
-    rangeNote:'Custom schedule: trade dates and interval determine holding periods. Results and CSV exports below use this schedule.',
+    rangeNote:'Custom schedule: trade dates and interval determine holding periods. '+StockScreener.selectionDescription(settings)+' Results and CSV exports below use this schedule.',
     periodLabel:settings.start+' → '+settings.end};
 }
 function updateResultsState(){
@@ -114,7 +114,7 @@ function readOptions(){
   const o={first:+fromYear.value,last:+toYear.value,rank_from:+rankFrom.value,rank_to:+rankTo.value};
   for(const [key,id] of Object.entries(fields)){
     const text=document.getElementById(id).value.trim();
-    if(['metric','pool','sector','exchange'].includes(key))o[key]=text||null;
+    if(['selection_order','metric','pool','sector','exchange'].includes(key))o[key]=text||null;
     else{
       if(!text && ['min_cap','min_ev','min_yield'].includes(key))throw Error('Fill in each minimum, or enter 0.');
       o[key]=text===''?null:Number(text)*(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1);
@@ -192,7 +192,7 @@ function januaryPresentation(result){
   if(extraStops)warnings.push(extraStops+' early trading stops fall outside the original top-50 exit review; these use the last available price.');
   const {first,last,rank_from,rank_to}=o;
   return {coverage,notice:{text:warnings.join(' ')||'Backtest updated. Every selected year has the requested number of stocks.',severity:warnings.length?'warning':'info'},
-    rangeNote:`${first}–${last} books, inclusive · ${result.first} to ${result.end}${last===2026?' · 2026 is partial':''}. Ranks ${rank_from}–${rank_to} after filtering, equal weight. CSV exports use the current selection.`,
+    rangeNote:`${first}–${last} books, inclusive · ${result.first} to ${result.end}${last===2026?' · 2026 is partial':''}. ${StockScreener.selectionDescription(o)} CSV exports use the current selection.`,
     periodLabel:`${first} — ${last}${last===2026?'*':''}`};
 }
 function setModeVisibility(){
@@ -237,9 +237,9 @@ function latestPresentation(r){
   const o=r.options;
   const meta=screeningData.latest.metadata;
   const coverage=`Latest cached session: ${r.asof}. Only cached currently-listed names with a price on that exact date are eligible. ${screeningData.latest.cached.length} valued names out of ${meta.eligible_financials} active names with eligible financials; coverage is incomplete.`+(o.pool==='legacy'?' Original candidate set keeps the pre-price 250-name buffer and report-level size floors.':'');
-  const text=r.stocks.length<r.requested?`Only ${r.stocks.length} picks are available for the requested ${r.requested} ranks after filtering on ${r.asof}.`:`Showing ${r.stocks.length} picks valued at the ${r.asof} cached close, re-ranked from ${r.matches} matching names.`;
+  const text=o.selection_order==='rank_first'?`${r.stocks.length} of the requested ${r.requested} ranks pass the filters on ${r.asof}. No replacements are added.`:r.stocks.length<r.requested?`Only ${r.stocks.length} picks are available for the requested ${r.requested} ranks after filtering on ${r.asof}.`:`Showing ${r.stocks.length} picks valued at the ${r.asof} cached close, re-ranked from ${r.matches} matching names.`;
   const severity=r.stocks.length<r.requested?'warning':'info';
-  const rangeNote=`Latest picks · ${r.asof} · ranks ${o.rank_from}–${o.rank_to} after filters. No January holding returns or future performance are used in this list.`;
+  const rangeNote=`Latest picks · ${r.asof} · ${StockScreener.selectionDescription(o)} No January holding returns or future performance are used in this list.`;
   return {coverage,notice:{text,severity},rangeNote,periodLabel:r.asof};
 }
 function applyRange(changed){
@@ -341,7 +341,7 @@ const StrategyDraft=(()=>{
       control.value=text;
     };
     for(const [key,id] of Object.entries(fields)){
-      const value=settings[key];
+      const value=key==='selection_order'?(settings[key]??StockScreener.defaults.selection_order):settings[key];
       set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
     }
     set('rank-from',settings.rank_from??1);set('rank-to',settings.rank_to??50);

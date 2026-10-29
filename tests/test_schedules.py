@@ -70,6 +70,23 @@ class BacktestTests(unittest.TestCase):
             result=s.backtest(self.db,**options,filters=[dict(field='pe',op='lt',value=10)])
         self.assertEqual(result['periods'][0]['names'],0)
 
+    def test_operating_spread_uses_entry_treasury_and_reuses_completed_books(self):
+        self.db.executemany('INSERT INTO treasury10 VALUES(?,?)',[
+            ('2014-12-31',3),('2015-01-05',99)])
+        self.db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[
+            ('A',f'{year}-06-30',json.dumps(dict(revenue=100e6,operatingIncome=margin*100e6)))
+            for year,margin in [(2012,.1),(2013,.2),(2014,.3),(2015,99)]])
+        options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
+        filters=[dict(field='operating_yield_spread_3y',op='gt',value=4)]
+        result=s.backtest(self.db,**options,filters=filters)
+        self.assertEqual([h['symbol'] for h in result['periods'][0]['holdings']],['A'])
+        self.assertAlmostEqual(self.db.execute("SELECT value FROM filter_values WHERE symbol='A' AND field='operating_yield_spread_3y'").fetchone()[0],5)
+        with patch.object(s,'compute_period',side_effect=AssertionError('Reuse books')):
+            unfiltered=s.backtest(self.db,**options)
+            self.assertEqual(unfiltered['periods'][0]['names'],2)
+            empty=s.backtest(self.db,**options,filters=[dict(filters[0],value=6)])
+            self.assertEqual(empty['periods'][0]['names'],0)
+
     def test_conditions_reuse_dated_books_and_exclude_missing_returns(self):
         options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
         initial=s.backtest(self.db,**options)
@@ -79,6 +96,19 @@ class BacktestTests(unittest.TestCase):
         empty=s.backtest(self.db,**options,filters=[dict(field='return_1y',op='gt',value=-100)])
         self.assertEqual(empty['periods'][0]['names'],0)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0],count)
+
+    def test_selection_order_reuses_books_and_weights_only_survivors(self):
+        options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',max_cap=150e6)
+        first=s.backtest(self.db,**options,rank_to=1)
+        self.assertEqual([(h['symbol'],h['rank']) for h in first['periods'][0]['holdings']],[('B',1)])
+        with patch.object(s,'compute_period',side_effect=AssertionError('Order must reuse books')):
+            empty=s.backtest(self.db,**options,rank_to=1,selection_order='rank_first')
+            self.assertEqual(empty['periods'][0]['names'],0);self.assertIsNone(empty['cagr'])
+            result=s.backtest(self.db,**options,rank_to=2,selection_order='rank_first')
+        survivor=result['periods'][0]['holdings'][0]
+        self.assertEqual((survivor['symbol'],survivor['rank'],survivor['weight']),('B',2,1))
+        self.assertEqual(result['growth'],2)
+        self.assertEqual(survivor['contribution_pp'],100)
 
     def test_array_and_sql_price_adapters_share_financial_policy(self):
         statement=s.histories(self.db)[0]['A'][0]
@@ -303,11 +333,14 @@ class PreparationTests(unittest.TestCase):
         self.context.enter_context(patch.object(s.r,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
 
     def test_publish_and_unchanged_skip(self):
+        db=sqlite3.connect(self.source)
+        db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)");db.commit();db.close()
         with patch.object(s.r,'prepare') as prerequisite:
             s.prepare(self.path,self.source)
         prerequisite.assert_called_once_with(self.source)
         original=self.path.read_bytes()
         db=s.connect(self.path)
+        self.assertEqual(s.r.ten_year_yield(db,date(2015,1,2)),3)
         self.assertEqual(db.execute('SELECT COUNT(*) FROM prices').fetchone()[0],1);db.close()
         with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')):
             s.prepare(self.path,self.source)

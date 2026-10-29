@@ -13,6 +13,11 @@ assert.equal(completed.result,result);assert.equal(completed.result.years[0].hol
 assert.throws(()=>completed.result.years[0].holdings[0].return_value=9,TypeError);
 assert.throws(()=>completed.catalog.metrics.ev_ebitda.label='Changed',TypeError);
 assert(Artifacts.matches(completed,{...completed.settings}));assert(!Artifacts.matches(completed,{...completed.settings,last:2020}));
+assert(Artifacts.matches(completed,{...completed.settings,selection_order:'filter_first'}));
+assert(!Artifacts.matches(completed,{...completed.settings,selection_order:'rank_first'}));
+const rankFirst=Artifacts.create({...completed.settings,selection_order:'rank_first'},result,catalog,presentation);
+assert(Artifacts.matches(rankFirst,{...rankFirst.settings}));
+assert(!Artifacts.matches(rankFirst,{...completed.settings}));
 const legacy={version:1,kind:'january',settings:{...completed.settings},result,catalog:completed.catalog,captured_at:'2026-10-26T00:00:00Z',context:{notes:[['screen-coverage','Old coverage','hint'],['screen-status','Old warning','screen-message warning'],['range-note','Old dates','hint']],pill:'Old period'}};
 const raw=JSON.stringify(legacy),decoded=Artifacts.decode(legacy);
 assert.equal(decoded.version,2);assert.equal(decoded.captured_at,legacy.captured_at);
