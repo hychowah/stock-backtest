@@ -329,6 +329,7 @@ def _download(o,emit,stop,client):
 class Jobs:
     def __init__(self,preparation=None):
         self.preparation=preparation
+        self.calculations=None
         self.lock=Lock();self.cancel=Event()
         self.closing=False
         self.thread=None;self.report=None;self.rebuilt=False
@@ -337,7 +338,7 @@ class Jobs:
     def snapshot(self):
         path=diagnostics.log_path()
         with self.lock:result=dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
-        if self.preparation is not None:result['candidate']=self.preparation.status()
+        if self.preparation is not None:result['candidate']=(self.calculations.status() if self.calculations is not None else self.preparation.status())
         return result
 
     def emit(self,**values):
@@ -358,6 +359,17 @@ class Jobs:
         return self.snapshot()
 
     def work(self,action,o):
+        if self.calculations is None:return self._work(action,o)
+        try:
+            with self.calculations.parent_operation(cancelled=self.cancel.is_set):
+                return self._work(action,o)
+        except backtest_control.Cancelled:
+            self.emit(running=False,message='Cancelled before data admission.')
+        except Exception as error:
+            diagnostics.failure('data.admission_failed',error)
+            self.emit(running=False,error='Candidate retirement or admission failed. Retry after closure.',message='Data operation did not start.')
+
+    def _work(self,action,o):
         diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
         try:
             if action=='rebuild' and self.preparation is not None:

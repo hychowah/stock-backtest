@@ -28,6 +28,57 @@ def main():
             assert initial['generation']['reused']
             output.write_text(json.dumps(dict(moved=True,generation=initial['generation'],closure=initial['closure'])))
             return
+        # Actual application dispatch and equivalent child-owned freshness.
+        from candidate_calculations import Candidate
+        import cache_access
+        owner=Candidate(candidate)
+        options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',rank_to=5)
+        result=owner.calculate('custom',options,None,None)
+        resident=owner.runtime
+        assert owner.status()['state']=='current'
+        assert owner.calculate('custom',options,None,None)==result
+        assert resident.last_stats['result_hits']>0
+        checks=[source/'requirements-numerical.txt',source/'website/serve_app.py',
+                source/'results/summary-exits.txt',source/'raw/px/ZZ000.json',
+                source/'data/numerical/current.json']
+        for path in checks:
+            saved=path.read_bytes();stamp=path.stat()
+            if path.name=='current.json':
+                path.write_text(json.dumps(dict(json.loads(saved),fixture_change=True)))
+            else:path.write_bytes(saved+b' ')
+            assert owner.status()['state']!='current',path
+            path.write_bytes(saved)
+            import os
+            os.utime(path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+            assert owner.status()['state']=='current',path
+        prices=source/'raw/px';directory_stamp=prices.stat()
+        extra=prices/'UNUSED.json';extra.write_text('{}')
+        assert owner.status()['state']=='stale'
+        extra.unlink()
+        import os
+        os.utime(prices,ns=(directory_stamp.st_atime_ns,directory_stamp.st_mtime_ns))
+        removed=prices/'ZZ001.json';saved=removed.read_bytes();stamp=removed.stat();removed.unlink()
+        assert owner.status()['state']=='stale'
+        removed.write_bytes(saved);os.utime(removed,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+        os.utime(prices,ns=(directory_stamp.st_atime_ns,directory_stamp.st_mtime_ns))
+        assert owner.status()['state']=='current'
+        for name in ('deployment.pending.json','research.sqlite.publication.json','numerical/publication.json'):
+            journal=source/'data'/name;journal.write_text('{}')
+            assert owner.status()['state']=='stale'
+            journal.unlink()
+        # Stale request rejection occurs before a cached numerical result.
+        journal=source/'data/numerical/publication.json';journal.write_text('{}')
+        import backtest_jobs
+        try:owner.calculate('custom',options,None,None)
+        except backtest_jobs.Unavailable:pass
+        else:raise AssertionError('Stale result reuse admitted')
+        assert owner.runtime is None
+        journal.unlink()
+        owner.calculate('custom',options,None,None)
+        with owner.parent_operation():
+            assert owner.runtime is None
+            with cache_access.access(timeout=0):pass
+        owner.close();owner.retire()
         pointer=source/'data/numerical'/initial['generation']['identity']
         inventory={p.name:(p.stat().st_mtime_ns,p.read_bytes()) for p in pointer.iterdir()}
         unchanged=candidate.prepare()

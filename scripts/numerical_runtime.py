@@ -108,7 +108,7 @@ class NumericalRuntime:
     The parent retains this owner on failed closure; close() can be retried.
     """
     def __init__(self, *, source_root, scratch, generation_path=None, checkpoint_path=None,
-                 threads=None, python=None, session_factory='numerical_session:Session',
+                 threads=None, python=None, preparation_status=False, session_factory='numerical_session:Session',
                  session_options=None, coordinator=None, start_seconds=120., close_seconds=30.):
         self.root, self.scratch = Path(source_root).absolute(), Path(scratch).absolute()
         cap = min(4,os.cpu_count() or 1)
@@ -122,7 +122,7 @@ class NumericalRuntime:
             generation_path=str(generation_path or self.root/'data'/'numerical'),
             checkpoint_path=str(checkpoint_path or self.root/'data'/'numerical-trials.sqlite'),
             cache_lock=str(coordinator.path if coordinator is not None else self.root/'data'/'website-data-0.lock'),
-            session_factory=session_factory,session_options=deepcopy(session_options or {}),
+            preparation_status=preparation_status,session_factory=session_factory,session_options=deepcopy(session_options or {}),
             close_seconds=close_seconds)
         encoded(self.configuration,MAX_REQUEST_BYTES)
         self.python = str(python or sys.executable)  # Never resolve a venv redirector/symlink.
@@ -208,7 +208,11 @@ class NumericalRuntime:
                     self.last_stats = read_payload(self.scratch/'stats.json',MAX_REQUEST_BYTES) if event.get('stats') else {}
                     self.state = 'ready'
                 return self
-            if event.get('event') == 'error': raise ValueError(event.get('message','Numerical initialization failed.'))
+            if event.get('event') == 'error':
+                if event.get('category') == 'contention':
+                    import cache_access
+                    raise cache_access.Contention('Another process owns the candidate financial cache.')
+                raise ValueError(event.get('message','Numerical initialization failed.'))
 
     def _diagnostic(self,event):
         self.last_stage = str(event.get('stage','unknown'))[:128]
@@ -226,6 +230,11 @@ class NumericalRuntime:
         if event is None or event.get('event') == 'failed':
             raise RuntimeError('Numerical child exited or its bounded transport failed.')
         return event
+
+    def inspect(self):
+        """Inspect current preparation under the child's financial ownership."""
+        deadline = time.monotonic() + 30
+        return self.calculate('__inspect__', {}, cancelled=lambda: time.monotonic() >= deadline)
 
     def calculate(self, mode, options, progress=None, configuration=None, *, planned=None,
                   capture=None, cancelled=None):
@@ -279,6 +288,9 @@ class NumericalRuntime:
                     if kind == 'cancelled':
                         import backtest_control
                         raise backtest_control.Cancelled()
+                    if kind == 'error' and event.get('category') == 'unavailable':
+                        import backtest_jobs
+                        raise backtest_jobs.Unavailable('Candidate inputs changed. Rebuild from the data panel.')
                     if kind == 'error': raise ValueError(event.get('message','Numerical calculation failed.'))
                     result = read_payload(self.scratch/'payload.json',MAX_PAYLOAD_BYTES)
                     self._check_cancel(cancelled)

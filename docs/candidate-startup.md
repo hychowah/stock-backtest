@@ -1,9 +1,9 @@
 # Isolated candidate preparation
 
 CB-12 adds a separate preparation entry. The normal launcher and installed
-website keep the ordinary engine. This entry also calculates through the
-ordinary engine. CB-13A gives all calculation routes one application owner.
-CB-13B will connect persistent numerical dispatch.
+website keep the ordinary engine. CB-13A gives all calculation routes one
+application owner. CB-13B connects persistent numerical dispatch only in this
+isolated entry.
 
 Use an explicitly owned private source export with its own saved raw files,
 report, databases, logs, local build and durable stores. A different port alone
@@ -145,7 +145,24 @@ Accepted calls drain through their existing job/request cleanup. Late request
 bodies cannot begin calculation. Stored result reads and queue edits do not
 enter calculation admission.
 
-All calculation routes still use the ordinary engine. CB-13B must coordinate
-resident numerical ownership, freshness inspection and retirement before parent
-data operations. Weekly controls and full browser compatibility remain CB-13C.
+CB-13B selects persistent numerical execution only in the isolated candidate
+entry. `candidate_calculations.Candidate` implements the shared calculation
+boundary. It serializes numerical calls with parent data operations. The child
+holds source then financial ownership while idle and during calculation.
+Status inspection runs in that child. Each calculation checks the same
+preparation inventory again before numerical result or checkpoint reuse.
+Busy status is advisory and does not claim fresh inputs.
+
+Data Check, Rebuild and Download first retire the resident child. They wait for
+confirmed closure before parent financial access. Read-only Check keeps current
+preparation valid. Mutation invalidates it, including partial writes. Rebuild
+retains publication recovery and closed verification. The next run starts a new
+child. Cross-process owners are never preempted. Interactive contention has a
+bounded wait; queue admission waits cancellably. Callback failures and Stop
+retire the child before a terminal outcome. Uncertain closure retains the owner
+and blocks data operations until retry proves closure. Shutdown closes
+admission, drains callers and retires the child before releasing source.
+
+Normal server construction and standalone calculations still use the ordinary
+engine. Weekly controls and full browser compatibility remain CB-13C.
 The normal launcher and installed revision stay unchanged.

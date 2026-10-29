@@ -3,6 +3,7 @@
 No application calculation import occurs until shared source ownership exists.
 The parent contains native redirectors before resume. EOF cancels idle/active work.
 """
+from contextlib import ExitStack
 import importlib
 import json
 import os
@@ -147,7 +148,11 @@ def main():
         factory_module,factory_name = configuration['session_factory'].split(':',1)
         if factory_module != 'numerical_session': sys.path.insert(0,str(ROOT/'tests'))
         session = None
-        with coordinator.hold(timeout=0):
+        with ExitStack() as financial:
+            try: financial.enter_context(coordinator.hold(timeout=0))
+            except cache_access.Contention:
+                emit(dict(event='error',category='contention'))
+                return
             try:
                 emit(dict(event='diagnostic',stage='financial-owned',pid=os.getpid()))
                 with backtest_control.cancel_when(stop.is_set):
@@ -182,7 +187,18 @@ def main():
                         with backtest_control.cancel_when(stop.is_set):
                             request = read_payload(scratch/'request.json',MAX_REQUEST_BYTES)
                             emit(dict(event='diagnostic',stage='validate-calculate'))
-                            result = session.calculate(request['mode'],request['options'],
+                            status = None
+                            if configuration.get('preparation_status'):
+                                from numerical_preparation import Preparation
+                                status = Preparation(ROOT).status()
+                            if request['mode'] == '__inspect__':
+                                result = status
+                            elif status is not None and status.get('state') != 'current':
+                                emit(dict(event='error',category='unavailable'))
+                                shutdown.set()
+                                continue
+                            else:
+                                result = session.calculate(request['mode'],request['options'],
                                 lambda value:callback('progress',value),lambda value:callback('configuration',value),
                                 planned=request['planned'],capture=(lambda number,value:callback('capture',value,number))
                                 if request['capture'] else None)

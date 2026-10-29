@@ -54,6 +54,7 @@ class Server(ThreadingHTTPServer):
         self.backtest_queue.close()
         self.backtest_jobs.close()
         super().server_close()
+        if hasattr(self.calculations,'retire'):self.calculations.retire()
 
     def handle_error(self,request,client_address):
         error=sys.exc_info()[1]
@@ -90,6 +91,8 @@ class Handler(SimpleHTTPRequestHandler):
     def calculation_ready(self):
         candidate=getattr(self.server,'candidate_preparation',None)
         if candidate is None:return True
+        if getattr(self.server.calculations,'preparation',None) is candidate:
+            return self.server.calculations.ready()
         return candidate.status().get('state')=='current'
 
     def require_calculation(self):
@@ -415,8 +418,11 @@ def run_server(args,lifecycle,parser,*,candidate=None):
     server.data_recovery=recovery
     server.candidate_preparation=candidate
     if candidate is not None:
-        ready=lambda:candidate.status().get('state')=='current'
-        server.calculations.ready=ready
+        from candidate_calculations import Candidate
+        server.calculations=Candidate(candidate)
+        server.backtest_jobs.calculations=server.calculations
+        server.backtest_queue.calculations=server.calculations
+        DATA_JOBS.calculations=server.calculations
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)
