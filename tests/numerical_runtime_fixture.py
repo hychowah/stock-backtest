@@ -50,9 +50,17 @@ class Session(numerical_session.Session):
         write_json(self.marker,values)
 
     def calculate(self,*args,**kwargs):
+        self._before_calculation(args[2])
+        return super().calculate(*args,**kwargs)
+
+    def calculate_into(self,*args,**kwargs):
+        self._before_calculation(args[3])
+        return super().calculate_into(*args,**kwargs)
+
+    def _before_calculation(self,progress):
         if self.fault == 'callback-stuck':
             import backtest_control
-            try: args[2](dict(type='progress',completed=0,total=1,trial=1))
+            try: progress(dict(type='progress',completed=0,total=1,trial=1))
             except backtest_control.Cancelled: pass
             self._mark(pid=os.getpid(),running=True)
             while True: time.sleep(.01)
@@ -65,7 +73,6 @@ class Session(numerical_session.Session):
             import subprocess,sys
             self.descendant = subprocess.Popen([sys.executable,'-I','-c','import time;time.sleep(60)'])
             self._mark(pid=os.getpid(),descendant=self.descendant.pid)
-        return super().calculate(*args,**kwargs)
 
     def measurements(self):
         values = super().measurements()

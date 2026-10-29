@@ -211,7 +211,8 @@ calendar or month metadata and seconds. It omits `periods` because the sink
 receives each complete detached period synchronously. No previous period is
 retained. Complete-book work and the current selected period remain bounded by
 the existing workspace budget. The eager methods keep their cumulative result
-admission and accounting. Session does not select these new methods.
+admission and accounting. Eager Session calculation does not select these methods. The explicit dormant
+`Session.calculate_into` operation uses them to write complete evidence.
 
 `numerical_random.run_into(portfolio, configuration, experiment, writer,
 progress=None)` emits all trials to a caller-owned evidence writer. It returns

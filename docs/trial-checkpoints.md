@@ -183,6 +183,14 @@ compiler boundary. Execution versions and thread limits remain in the checkpoint
 binding. Changed binding fields open a new experiment. This safely misses older
 CB-10 calculations; it does not rewrite or invalidate durable user snapshots.
 Read [numerical-generations.md](numerical-generations.md) for the compiler fields,
-result/IPC limits and closure contract. Runtime random results include ordered
+result/IPC limits and closure contract. Eager runtime random results include ordered
 `trial_results` for the application-adapter shape; the borrowed diagnostic
 `run` function keeps its existing summary-only result and optional capture.
+
+
+The explicit bounded runtime operation uses the same checkpoint binding and
+`run_into` path. Its child spool remains readable through sealed-trial retention.
+A later receiver, callback or transfer failure does not erase committed trials.
+Jobs owns a separate complete temporary copy after verified transfer. Checkpoint
+eviction cannot invalidate that copy. This does not route ordinary jobs or queues
+to bounded evidence. See [temporary ownership](result-evidence.md).

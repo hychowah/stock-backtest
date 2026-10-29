@@ -120,8 +120,65 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 ## Remaining integration
 
 The [capacity design](plans/compiled-backtest/phases/CB-14.capacity-design.md)
-retains separate work for runtime transfer,
-oversized recorded plans, temporary job retention, queue/library persistence,
-ResultArtifacts, browser inspection and streamed exports. None is qualified by
-the offline producer and checkpoint path. Existing Session preflight, 64 MiB IPC
+now has an explicit dormant runtime transfer and temporary Jobs owner. It
+retains separate work for queue/library persistence,
+ResultArtifacts, browser inspection and streamed exports. Full application capacity is not qualified by these private operations. Existing Session preflight, 64 MiB IPC
 and snapshot limits remain. G03 and G06 remain failed. No default-engine or launcher change follows.
+
+## Explicit runtime and temporary Jobs evidence
+
+CB-14 increment 3 adds a dormant `calculate_into` operation to Session, runtime
+and Candidate. `Jobs.start_evidence` calls this operation. Existing `start`,
+eager calculations, queue calls, legacy endpoints and browser routes keep their
+complete-result contracts and admission limits. The new operation has no capture
+parameter. Complete-trial observers still receive original complete trials.
+
+The child first writes one bounded readable spool. Sealed trial views remain
+available for checkpoint retention. After completion, `numerical_transfer` copies
+its exact bytes through one 64 KiB binary slot. Each transfer has a fresh identity,
+length and SHA-256. Each piece binds sequence, offset, length and hash. The parent
+acknowledges that identity and sequence after a successful write and slot closure.
+The child waits before replacing the slot. Final acknowledgement follows exact
+saved-byte verification and complete codec validation. Missing, corrupt, duplicate,
+reordered or interrupted transfers cannot publish a job result. Stop and callback
+failures retain the existing runtime retirement proof and original error.
+
+Recorded plans use a fixed runtime-owned file. Its versioned reference contains
+length, hash and file identity; it accepts no path. Serialization uses bounded
+buffers. Reading rejects links, replacement, duplicate keys, nonfinite numbers,
+truncation and changed content. Staged plans have a separate 16 MiB encoded bound.
+The complete decoded plan remains in memory for existing calendar/binding APIs.
+The 8 MiB codec metadata-record bound still applies independently. These are
+finite limits, not arbitrary-size plan support. Complete plan and submitted
+settings validation precede checkpoint lookup and calculation. Dates are never
+resampled. Eager requests retain their 1 MiB bound; eager payloads retain 64 MiB.
+Original configuration callbacks still receive the complete plan.
+
+Existing Jobs owns its private temporary workspace through `job_evidence`.
+It reserves both producer and receiver evidence ceilings, two staged-plan ceilings
+when a plan is supplied, and two 64 KiB slot buffers. The aggregate default is
+1 GiB of charged temporary evidence/input storage. It is a private dormant
+accounting policy, not a filesystem quota or accepted workflow budget. Runtime
+request, statistics and bounded callback files remain separate. SQLite checkpoint
+pages and journals remain under the checkpoint owner's separate accounting.
+
+While receiving, the whole reservation remains charged. On success, Jobs checks
+the copied bytes and codec again, then publishes its own immutable completed
+file. It removes staged inputs and charges actual surviving bytes. Failed input
+cleanup remains charged. Completed results have the existing four-run and
+24-hour retention. Admission exhaustion preserves earlier completed results.
+Retries bind operation kind, settings and a canonical hash of the complete plan.
+Eager result graphs retain their existing policy; they do not use this byte budget.
+
+`Jobs.open_evidence(id)` supplies a pinned Reader without financial ownership.
+Expiry or four-run retirement ends new access first. Existing readers keep their
+original bytes and charge until they close. Parent data operations retire the
+child before financial access; they do not invalidate the Jobs copy. Shutdown
+joins calculations and drains readers. Failed file cleanup retains ownership
+and charge for a later `Jobs.close()` retry. Unknown files are never removed.
+This workspace has no independent job registry, scheduler or durable user store.
+
+The new descriptor appears only in explicit evidence jobs. It is not a browser
+snapshot and cannot replace an eager `trial_results` value. Queue/library copies,
+ResultArtifacts readers and streamed exports remain later increments. Application
+routing stays eager until those consumers preserve complete evidence.

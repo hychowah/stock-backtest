@@ -72,6 +72,16 @@ class Candidate(backtest_jobs.Calculations):
 
     def calculate(self, mode, options, progress, configuration, *, planned=None,
                   admission='interactive', details=True):
+        return self._calculate(mode,options,progress,configuration,planned=planned,admission=admission,details=details)
+
+    def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
+                       admission='interactive', **limits):
+        """Explicit bounded capability; no application route selects it yet."""
+        return self._calculate(mode,options,progress,configuration,planned=planned,admission=admission,
+                               destination=destination,limits=limits)
+
+    def _calculate(self, mode, options, progress, configuration, *, planned=None,
+                   admission='interactive', details=True, destination=None, limits=None):
         if admission not in ('interactive','queue'): raise ValueError('Invalid calculation admission policy.')
         with self._operation(admission):
             try:
@@ -97,9 +107,13 @@ class Candidate(backtest_jobs.Calculations):
                             continue
                     break
                 if waiting and progress: progress(None)
-                result = self.runtime.calculate(mode, options, progress, configuration,
-                    planned=planned, cancelled=self.closed.is_set)
-                if not details: result.pop('trial_results', None)
+                if destination is not None:
+                    result=self.runtime.calculate_into(mode,options,destination,progress,configuration,
+                        planned=planned,cancelled=self.closed.is_set,**limits)
+                else:
+                    result = self.runtime.calculate(mode, options, progress, configuration,
+                        planned=planned, cancelled=self.closed.is_set)
+                    if not details: result.pop('trial_results', None)
                 self._checkpoint()
                 return result
             except ClosureError as error:

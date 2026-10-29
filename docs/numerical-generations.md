@@ -463,3 +463,26 @@ changed loaded source, startup/callback/cancel failures, parent death, owned
 descendants and file release. OS/platform observations and any approved sample
 results belong to the CB-11 phase record. This contract claims no installed
 runtime change, new speed comparison or production routing qualification.
+
+
+## Dormant bounded result operation
+
+`Session.calculate_into` composes existing incremental numerical producers, the
+codec and checkpoint owner. `NumericalRuntime.calculate_into(mode, options,
+destination, ..., max_bytes=...)` receives that complete evidence into an empty,
+readable, seekable binary stream. It returns a verified transfer receipt, manifest
+and original metadata. The stream remains caller-owned and provisional until
+the call succeeds. No complete-trial capture argument exists on this operation.
+
+`Candidate.calculate_into` uses the same admission, operation lock, freshness,
+parent handoff and confirmed-retirement paths as eager calculation. Existing Jobs
+can explicitly start evidence jobs and pin completed readers. No HTTP route,
+queue adapter, saved store or browser selects this operation. The ordinary and
+preview eager limits remain in force. Source/cache ordering, compiler ownership
+and daily-price/root validation adapters retain their existing contracts.
+
+The [evidence contract](result-evidence.md) specifies the acknowledged 64 KiB
+slot, separate 16 MiB staged-plan ceiling, complete-plan validation, Jobs storage
+reservation and reader lifetimes. These encoded-byte limits do not establish
+process-memory or disk quotas. Full-path capacity and operational qualification
+remain CB-14 work. CB-15 and default selection remain blocked.

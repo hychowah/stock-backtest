@@ -109,9 +109,11 @@ def main():
         from numerical_runtime import FRAME_BYTES, MAX_REQUEST_BYTES, MAX_PAYLOAD_BYTES, read_payload, write_payload
         import backtest_control
         import cache_access
+        import numerical_transfer
         from process_owner import close_own_session
         stop,shutdown,ack,exited = Event(),Event(),Event(),Event()
         commands = Queue(maxsize=1)
+        acknowledgements = numerical_transfer.Acknowledgements()
         def emit(event):
             line = json.dumps(event,allow_nan=False,separators=(',',':'))
             if len(line.encode('utf-8')) > FRAME_BYTES: raise ValueError('Numerical event exceeds its frame bound.')
@@ -122,6 +124,8 @@ def main():
                     value = json.loads(line)
                     command = value.get('command')
                     if command == 'ack': ack.set()
+                    elif command == 'transfer_ack':
+                        if not acknowledgements.accept(value):break
                     elif command == 'cancel': stop.set(); ack.set()
                     elif command == 'close':
                         shutdown.set(); stop.set(); ack.set()
@@ -183,6 +187,12 @@ def main():
                         emit(event)
                         while not ack.wait(.05): backtest_control.checkpoint()
                         backtest_control.checkpoint()
+                    def exchange(event,operation,sequence):
+                        backtest_control.checkpoint()
+                        acknowledgements.arm(operation,sequence)
+                        emit(event)
+                        while not acknowledgements.wait(.05):backtest_control.checkpoint()
+                        backtest_control.checkpoint()
                     try:
                         with backtest_control.cancel_when(stop.is_set):
                             request = read_payload(scratch/'request.json',MAX_REQUEST_BYTES)
@@ -198,10 +208,25 @@ def main():
                                 shutdown.set()
                                 continue
                             else:
-                                result = session.calculate(request['mode'],request['options'],
-                                lambda value:callback('progress',value),lambda value:callback('configuration',value),
-                                planned=request['planned'],capture=(lambda number,value:callback('capture',value,number))
-                                if request['capture'] else None)
+                                if request.get('operation')=='evidence':
+                                    planned=(numerical_transfer.read_plan(scratch,request['plan_reference'],backtest_control.checkpoint)
+                                        if request['plan_reference'] is not None else None)
+                                    with (scratch/'produced.evidence').open('x+b') as stream:
+                                        session.calculate_into(request['mode'],request['options'],stream,
+                                            lambda value:callback('progress',value),lambda value:callback('configuration',value),
+                                            planned=planned,**request['limits'])
+                                        stream.flush()
+                                        numerical_transfer.send(stream,scratch,exchange,max_bytes=request['limits']['max_bytes'],
+                                            checkpoint=backtest_control.checkpoint)
+                                        acknowledgements.check()
+                                    numerical_transfer.cleanup(scratch)
+                                    result=None
+                                else:
+                                    if 'plan_reference' in request:raise ValueError('Staged plans require the evidence operation.')
+                                    result = session.calculate(request['mode'],request['options'],
+                                    lambda value:callback('progress',value),lambda value:callback('configuration',value),
+                                    planned=request['planned'],capture=(lambda number,value:callback('capture',value,number))
+                                    if request['capture'] else None)
                             backtest_control.checkpoint()
                             write_payload(scratch/'payload.json',result,MAX_PAYLOAD_BYTES)
                             emit(dict(event='result',stats=stats()))

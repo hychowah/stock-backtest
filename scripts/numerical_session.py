@@ -15,6 +15,7 @@ import numerical_random
 from numerical_matrix import retained_size
 import schedules
 import trial_checkpoints
+import result_evidence
 from process_owner import process_metrics
 from collections import OrderedDict
 
@@ -35,7 +36,8 @@ class Session:
         self.stats = dict(result_hits=0,result_misses=0,result_retained_bytes=0,attached_generations=0,
                           peak_result_graph_bytes=0,result_workspace_bytes=self.result_workspace_bytes)
         try:
-            self.checkpoints = trial_checkpoints.Store(configuration['checkpoint_path'])
+            self.checkpoints = trial_checkpoints.Store(configuration['checkpoint_path'],
+                max_payload_bytes=configuration.get('checkpoint_payload_bytes',trial_checkpoints.DEFAULT_PAYLOAD_BYTES))
             self.validate()
         except BaseException as error:
             try: self.close()
@@ -135,6 +137,39 @@ class Session:
             raise ValueError('Complete result exceeds the runtime result workspace bound.')
         backtest_control.checkpoint()
         return result
+
+    def calculate_into(self, mode, options, stream, progress, configuration, *, planned=None,
+                       max_bytes, piece_bytes, record_bytes):
+        """Produce complete evidence without retaining previous periods.
+
+        The caller owns output storage and publication. This explicit operation
+        has no complete-trial observer and changes no eager admission guard.
+        """
+        self.validate()
+        if mode not in ('custom','random'):raise ValueError('Expected backtest mode and options.')
+        if planned is not None and mode!='random':raise ValueError('A recorded plan requires random mode.')
+        plan=None
+        if mode=='random':
+            plan=self.plan(options) if planned is None else numerical_random.validate_configuration(self.portfolio,planned)
+            if planned is not None:
+                submitted=dict(plan['options'],**numerical_calendar.request_fields(plan),
+                               trials=plan['requested'],seed=plan['seed'])
+                if any(key not in submitted or value!=submitted[key] for key,value in options.items()):
+                    raise ValueError('Submitted settings differ from the recorded random plan.')
+            configuration(deepcopy(plan))
+        writer=result_evidence.Writer(stream,trials=plan['requested'] if plan else 1,
+            metadata=dict(mode=mode,options=deepcopy(options),configuration=plan,
+                          generation=self.inputs.signature,source=self.loaded_source),
+            max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes,
+            checkpoint=backtest_control.checkpoint)
+        if plan is not None:
+            experiment=self.checkpoints.open(numerical_random.checkpoint_binding(self.portfolio,plan))
+            numerical_random.run_into(self.portfolio,plan,experiment,writer,progress)
+        else:
+            writer.start_trial(1)
+            result=self.portfolio.backtest_calendar_into(writer.period,**options)['result']
+            writer.end_trial(result);writer.finish(result)
+        backtest_control.checkpoint()
 
     def measurements(self):
         return dict(**self.stats,**process_metrics(),generation=self.inputs.signature,

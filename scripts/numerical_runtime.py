@@ -13,6 +13,7 @@ from queue import Full, Queue
 from threading import Event, Lock, RLock
 import sys
 import time
+import numerical_transfer
 
 from process_owner import OwnedProcess
 
@@ -244,6 +245,24 @@ class NumericalRuntime:
         current context. A callback failure cancels/drains the child before it
         propagates. Navigation policy stays with the caller, not this runtime.
         """
+        return self._calculate(mode,options,progress,configuration,planned=planned,
+            capture=capture,cancelled=cancelled)
+
+    def calculate_into(self, mode, options, destination, progress=None, configuration=None, *, planned=None,
+                       max_bytes, piece_bytes=1024*1024, record_bytes=8*1024*1024, cancelled=None):
+        """Receive complete evidence into provisional caller-owned binary storage.
+
+        No complete-trial capture is accepted here. The caller publishes only
+        after success. Eager callers keep their existing request and graph limits.
+        """
+        import result_evidence
+        if destination is None:raise ValueError('Choose an evidence destination.')
+        result_evidence._limits(max_bytes,piece_bytes,record_bytes)
+        return self._calculate(mode,options,progress,configuration,planned=planned,cancelled=cancelled,
+            destination=destination,limits=dict(max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes))
+
+    def _calculate(self, mode, options, progress, configuration, *, planned=None,
+                   capture=None, cancelled=None, destination=None, limits=None):
         self._admit()
         if not self._call.acquire(blocking=False): raise ValueError('Numerical runtime already has one active call.')
         primary_error = None
@@ -253,8 +272,19 @@ class NumericalRuntime:
             if self.state == 'new': self._start_owned(cancelled)
             with self._state:
                 if self.state != 'ready': raise ValueError('Numerical runtime is stopping or closed.')
-                request = dict(mode=mode,options=deepcopy(options),planned=deepcopy(planned),capture=capture is not None)
-                write_payload(self.scratch/'request.json',request,MAX_REQUEST_BYTES)
+            request = dict(mode=mode,options=deepcopy(options),
+                planned=deepcopy(planned) if destination is None else None,capture=capture is not None)
+            receiver=None
+            if destination is not None:
+                receiver=numerical_transfer.Receiver(destination,self.scratch,max_bytes=limits['max_bytes'],
+                    checkpoint=lambda:self._check_cancel(cancelled))
+                request.update(operation='evidence',limits=limits,planned=None,
+                    plan_reference=numerical_transfer.stage_plan(self.scratch,planned,
+                        lambda:self._check_cancel(cancelled)) if planned is not None else None)
+            write_payload(self.scratch/'request.json',request,MAX_REQUEST_BYTES)
+            with self._state:
+                self._check_cancel(cancelled)
+                if self.state != 'ready':raise ValueError('Numerical runtime is stopping or closed.')
                 self.state = 'running'
             self._send(dict(command='calculate'))
             while True:
@@ -282,6 +312,21 @@ class NumericalRuntime:
                     except BaseException as error:
                         if primary_error is None: primary_error = error
                     self._send(dict(command='ack'))
+                elif kind in ('transfer_begin','transfer_piece','transfer_end') and receiver is not None:
+                    if primary_error is not None:continue
+                    try:
+                        operation,sequence=receiver.accept(event)
+                        if kind=='transfer_end':
+                            receiver.finish()
+                            import result_evidence
+                            reader=result_evidence.Reader(destination,**limits,checkpoint=lambda:self._check_cancel(cancelled))
+                    except BaseException as error:
+                        # Caller-owned receiver failures have the same priority
+                        # as progress/capture failures, including concurrent Stop.
+                        primary_error=error
+                        raise
+                    self._check_cancel(cancelled)
+                    self._send(dict(command='transfer_ack',operation=operation,sequence=sequence))
                 elif kind in ('result','error','cancelled'):
                     self.last_stats = read_payload(self.scratch/'stats.json',MAX_REQUEST_BYTES) if event.get('stats') else {}
                     if primary_error is not None: raise primary_error
@@ -292,7 +337,10 @@ class NumericalRuntime:
                         import backtest_jobs
                         raise backtest_jobs.Unavailable('Candidate inputs changed. Rebuild from the data panel.')
                     if kind == 'error': raise ValueError(event.get('message','Numerical calculation failed.'))
-                    result = read_payload(self.scratch/'payload.json',MAX_PAYLOAD_BYTES)
+                    if receiver is not None:
+                        transfer=receiver.finish()
+                        result=dict(transfer=transfer,manifest=reader.manifest,metadata=reader.metadata)
+                    else:result = read_payload(self.scratch/'payload.json',MAX_PAYLOAD_BYTES)
                     self._check_cancel(cancelled)
                     with self._state:
                         if self._stop.is_set() or self.state != 'running':
@@ -351,6 +399,7 @@ class NumericalRuntime:
                 self.owner.close()
                 with suppress(BaseException):
                     self._diagnostic(dict(event='diagnostic',stage='cleanup-secondary',error_type=type(error).__name__))
+        if self.scratch.exists():numerical_transfer.cleanup(self.scratch)
         with self._state: self.state = 'closed'
         _PENDING.pop(id(self),None)
 
