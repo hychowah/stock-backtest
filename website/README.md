@@ -2,6 +2,22 @@
 
 Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. Opening `dist/index.html` directly still supports the saved latest and January views.
 
+## Automatic updates
+
+The registered Windows `backtest-web.cmd` starts the latest committed main and
+checks for new main commits every two seconds. A new commit automatically
+deploys and restarts the native server in the same terminal. Uncommitted saves
+and the engine branch do not trigger updates. Git is not fetched or pulled.
+Refresh the browser page after the server reports it is ready. Subsequent
+restarts do not open another tab.
+
+The archive is staged before shutdown. Server cleanup finishes before source
+replacement. An active manual run stops; interrupted queued work returns to
+waiting with its recorded dates. Saved backtests and raw data are preserved.
+Unavailable Git keeps the current server; a failed update retries automatically.
+Use `python3 tools/deploy.py --revision <commit> --start` from WSL for a fixed
+revision without watching. Ctrl+C stops the watcher and its server.
+
 ## Basic workflow
 
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.

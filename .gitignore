@@ -39,6 +39,7 @@ website/dist/.build-state.tmp
 data/website-server-*.json
 data/website-launch-*.lock
 data/website-owner-*.lock
+data/website-update-stop-*
 
 # Browser verification snapshots and screenshots.
 .playwright-mcp/

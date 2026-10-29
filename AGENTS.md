@@ -41,13 +41,16 @@ the repository automatically.
 
 Edit and commit only in the WSL source checkout. `<windows-runtime>`
 is the native Windows runtime, not a second repository. `python3 tools/deploy.py`
-exports committed source there. Normal publication retains the installed commit;
-a valid pending publication selects its recorded commit for recovery. Use
-`--revision <commit>` from WSL only for a deliberate revision change. A fresh
-runtime requires an explicit revision. Conflicting pending intent is rejected.
-`--start` deploys and starts native Python;
-`--check` deploys and runs the installed Windows checks. The installed Windows
-`backtest-web.cmd` performs the same deploy/start flow through WSL. Local paths
+exports committed source there. Standalone publication retains the installed
+commit; a valid pending publication selects its recorded commit for recovery.
+`--start` selects the latest committed `main`, starts native Python, and polls
+that branch every two seconds. A new commit triggers verified deployment and a
+server restart. Uncommitted edits and the engine worktree are excluded. Explicit
+`--revision <commit> --start` fixes one launch to that revision without watching.
+A fresh standalone publication requires an explicit revision; automatic startup
+selects main explicitly. Conflicting pending intent is rejected. `--check`
+deploys and runs the installed Windows checks. The installed Windows
+`backtest-web.cmd` performs the same supervised deploy/start flow through WSL. Local paths
 and interpreter registration live in ignored `data/workspace.json`.
 
 Preserve Windows-owned raw data, databases, logs, environments, local builds and
@@ -232,6 +235,28 @@ repair automatic rather than making users chain preparation commands. Source
 fingerprints use POSIX relative keys and exclude platform-specific directory
 sizes. `website/build_state.py` tracks normalized source contents and the prepared
 database generation. Test with `python3 tests/test_startup.py`.
+
+## Automatic server updates
+
+`tools/deploy.py --start` owns the terminal's native child and watches committed
+`refs/heads/main` every two seconds. The Windows launcher delegates to this WSL
+entry. Resolve each update to one exact commit before archiving. Stage source
+before stopping the old child. Complete any pending publication before selecting
+a newer revision. Missing Git information keeps the current server. Failed
+updates retry the recorded intent. A child stopped outside an update ends its
+old controller; it must not return and replace a newer terminal's server.
+
+The private `EBITDA_WEB_SUPERVISOR` identity selects one ignored
+`data/website-update-stop-<token>` marker per child. `website/serve.py` observes it
+before preparation and translates it into ordinary Ctrl+C cleanup. Wait for the
+child to exit before publication. Keep source ownership through worker completion,
+financial database closure and request cleanup. Never force-kill a server or
+replace source on timeout. Queued work returns to waiting. Active manual runs
+stop under existing cancellation semantics. Durable queue/library data is kept.
+Explicit `--revision` launches stay fixed. Direct native `website/serve.py` is
+also a fixed foreground launch. Test `python3 tests/test_auto_update.py`, deployment,
+launcher and startup checks in WSL and native Windows. Use private repositories
+and runtimes for automatic-update checks, never the engine branch or live cache.
 
 ## Random-date sensitivity
 

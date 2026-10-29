@@ -26,6 +26,8 @@ REPORT = 'results/summary-exits.txt'
 MANIFEST = 'data/deployment.json'
 PENDING = 'data/deployment.pending.json'
 CONFIG = 'data/workspace.json'
+UPDATE_POLL_SECONDS = 2
+SUPERVISOR_ENV = 'EBITDA_WEB_SUPERVISOR'
 
 
 def digest(path):
@@ -338,6 +340,119 @@ def native(config, *arguments):
     return subprocess.run([str(executable), '-X', 'utf8', '-B', *arguments], cwd=linux_path(config['runtime']), check=True)
 
 
+def main_revision():
+    """Read the committed main tip; unavailable Git never means an update."""
+    try:
+        commit = subprocess.check_output(git_command('rev-parse', '--verify', '--end-of-options',
+                            'refs/heads/main^{commit}'), stderr=subprocess.DEVNULL, timeout=5).decode().strip()
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+    return commit if re.fullmatch(r'[0-9a-f]{40}', commit) else None
+
+
+def install_latest(config, commit, *, before_publish=None):
+    """Finish recorded publication intent before selecting the newer main tip."""
+    if (linux_path(config['runtime']) / PENDING).exists():
+        recorded = deployment_revision(config)
+        deploy(config, before_publish=before_publish)
+        if recorded == commit:
+            return
+    deploy(config, commit, before_publish=before_publish)
+
+
+def spawn_server(config, arguments, supervisor):
+    """Keep native output in this terminal; mark only this controller's child."""
+    env = dict(os.environ, **{SUPERVISOR_ENV: supervisor})
+    # WSL forwards custom variables to Windows only when WSLENV names them.
+    shared = [part for part in env.get('WSLENV', '').split(':') if part]
+    if not any(part.split('/')[0].upper() == SUPERVISOR_ENV for part in shared):
+        shared.append(SUPERVISOR_ENV)
+    env['WSLENV'] = ':'.join(shared)
+    return subprocess.Popen([str(linux_path(config['python'])), '-X', 'utf8', '-B',
+                             config['runtime'] + '/website/serve.py', '--managed', *arguments],
+                            cwd=linux_path(config['runtime']),
+                            env=env)
+
+
+def request_child_stop(config, supervisor):
+    marker = linux_path(config['runtime']) / 'data' / ('website-update-stop-' + supervisor)
+    atomic_bytes(marker, b'stop\n')
+    return marker
+
+
+def stop_child(config, child, supervisor):
+    """Ask this child to stop, including while it is still preparing to bind.
+
+    The native entry observes its unique marker and performs ordinary Ctrl+C
+    cleanup. Never kill a process or release ownership on a wait timeout.
+    """
+    marker = linux_path(config['runtime']) / 'data' / ('website-update-stop-' + supervisor)
+    if child.poll() is None:
+        request_child_stop(config, supervisor)
+        child.wait(timeout=30)
+    marker.unlink(missing_ok=True)
+
+
+def verify_installed(config):
+    native(config, config['runtime'] + '/tools/deploy.py', '--native-check')
+    local = str(linux_path(config['runtime']) / 'website/local')
+    subprocess.run(['node', str(ROOT / 'tests/check-range.cjs'), local], check=True, cwd=ROOT)
+
+
+def follow_main(config, arguments, *, check=False):
+    """Serve committed main and replace the child after each successful update.
+
+    Publication owns shutdown, worker cleanup and source/cache locks. A failed
+    update retries its recorded journal before switching revisions. A child
+    stopped outside an update ends this controller, so an older terminal cannot
+    bring its server back. Cleanup targets this controller's identity only.
+    """
+    commit = main_revision()
+    if commit is None:
+        raise ValueError('Cannot read committed main. Check the source Git history and retry the launcher.')
+    install_latest(config, commit)
+    if check:
+        verify_installed(config)
+    supervisor = uuid.uuid4().hex
+    print('Automatic updates on: watching committed main every 2 seconds. Ctrl+C stops this server.', flush=True)
+    child = spawn_server(config, arguments, supervisor)
+    pending = None
+    warned = None
+    try:
+        while True:
+            if pending is None and child.poll() is not None:
+                return child.returncode
+            time.sleep(UPDATE_POLL_SECONDS)
+            latest = main_revision()
+            if pending is None:
+                if latest is None or latest == commit:
+                    continue
+                if child.poll() is not None:
+                    return child.returncode
+                pending = latest
+                print('New main commit ' + pending[:12] + '; updating and restarting the website.', flush=True)
+            try:
+                install_latest(config, pending, before_publish=lambda: stop_child(config, child, supervisor))
+            except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                notice = (pending, type(error).__name__)
+                if warned != notice:
+                    print('Website update could not finish (' + notice[1] + '). Retrying automatically; publication recovery is retained.', flush=True)
+                    warned = notice
+                continue
+            commit, pending, warned = pending, None, None
+            stop_child(config, child, supervisor)
+            # The first launch opens the browser. Subsequent replacements keep
+            # the terminal visible without opening another tab for every commit.
+            restart_arguments = arguments if '--no-browser' in arguments else [*arguments, '--no-browser']
+            supervisor = uuid.uuid4().hex
+            child = spawn_server(config, restart_arguments, supervisor)
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        if child.poll() is None:
+            stop_child(config, child, supervisor)
+
+
 def deployment_revision(config, requested=None):
     """Resolve one committed publication revision before runtime changes.
 
@@ -392,7 +507,7 @@ def deployment_revision(config, requested=None):
     return commit
 
 
-def deploy(config, revision=None):
+def deploy(config, revision=None, *, before_publish=None):
     # A pending transaction owns publication intent until recovery finishes.
     # Resolve its commit before staging; native publication verifies and completes
     # its retained payload under the existing locks.
@@ -407,6 +522,8 @@ def deploy(config, revision=None):
             subprocess.run(git_command('archive', '--format=tar', commit), stdout=handle, check=True)
         write_json(stage / 'request.json', dict(commit=commit, archive_sha256=digest(stage / 'source.tar'),
                    source=str(ROOT), distro=config['distro']))
+        if before_publish is not None:
+            before_publish()
         native(config, windows_path(stage / 'bootstrap.py'), '--native-publish', windows_path(stage), config['runtime'])
     except BaseException:
         # A native journal may refer to this payload. Retry must retain it.
@@ -465,8 +582,8 @@ def main():
         # Match start.cmd and propagate UTF-8 to native test/build children.
         os.environ['PYTHONUTF8'] = '1'
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--revision', help='Deliberately select a committed revision; default retains the installed revision or resumes pending publication')
-    parser.add_argument('--start', action='store_true', help='Deploy, then run native Windows server in this terminal')
+    parser.add_argument('--revision', help='Select a committed revision; with --start, freeze this launch instead of following main')
+    parser.add_argument('--start', action='store_true', help='Serve latest committed main and restart on updates; --revision freezes the launch')
     parser.add_argument('--collect-report', action='store_true', help='Collect a verified Windows report revision for review')
     parser.add_argument('--check', action='store_true', help='Deploy, then check installed native Windows paths and lifecycle')
     parser.add_argument('--native-publish', nargs=2, help=argparse.SUPPRESS)
@@ -498,16 +615,16 @@ def main():
             else:
                 if server_arguments and not options.start:
                     parser.error('Server arguments require --start.')
+                if options.start and options.revision is None:
+                    raise SystemExit(follow_main(config, server_arguments, check=options.check))
                 deploy(config, options.revision)
                 if options.check:
-                    native(config, config['runtime'] + '/tools/deploy.py', '--native-check')
-                    local = str(linux_path(config['runtime']) / 'website/local')
-                    subprocess.run(['node', str(ROOT / 'tests/check-range.cjs'), local], check=True, cwd=ROOT)
+                    verify_installed(config)
                 if options.start:
                     native(config, config['runtime'] + '/website/serve.py', '--managed', *server_arguments)
     except KeyboardInterrupt:
         raise SystemExit(130)
-    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print('Deployment stopped: ' + (str(error) if isinstance(error, (ValueError, RuntimeError)) else type(error).__name__), file=sys.stderr)
         raise SystemExit(1)
 

@@ -22,30 +22,46 @@ python3 tools/deploy.py --start
 ```
 
 Deployment exports one selected Git commit. It does not copy working-tree edits.
-Normal publication retains the installed commit from `data/deployment.json`.
-Committing experimental work does not change that default. A valid unfinished
-publication selects its recorded commit first. A missing or invalid installation
-record stops normal publication. A fresh runtime needs an explicit revision.
+Running `backtest-web.cmd` or `python3 tools/deploy.py --start` selects the latest
+committed `main` and watches that branch every two seconds. A new main commit
+stages source, gracefully stops the current native server, publishes the new
+commit and starts its replacement in the same terminal. No additional launch or
+deployment command is needed for later commits. Refresh an open browser page to
+load the new HTML. Restarts do not open another browser tab.
 
-Use `python3 tools/deploy.py --revision <commit> --start` from WSL to deliberately
-select another compatible committed revision. An explicit `--revision HEAD` also
-requests a change. Explicit selection does not qualify an experimental engine.
-Keep the installed stable engine until the compiled program's full readiness
-gates pass. The two existing portable-snapshot edits stay in WSL until separately
-reviewed. Commit authorized source changes before deliberate publication.
+The watcher follows `refs/heads/main`, including a deliberate change of its tip.
+It does not follow the engine worktree, the checked-out feature branch, remote
+repositories or uncommitted edits. It does not fetch or pull Git history. The
+compiled engine still needs its readiness gates before integration into main.
+The two pre-existing portable-snapshot edits stay in WSL until separately reviewed.
 
-From Windows Terminal, run `backtest-web.cmd`. The installed command calls the Windows runtime launcher. It asks the current WSL deployment tool to retain the installed revision, then starts native Windows Python in the same terminal. Ctrl+C stops the server. WSL must be available to run this deployment step.
+Use `python3 tools/deploy.py --revision <commit> --start` to run one fixed revision
+without automatic updates. `--revision HEAD` also freezes that resolved commit
+for this launch. With an older installed launcher, use this explicit command from
+WSL. Direct native startup below also stays fixed.
 
-The source launcher also works from the WSL network path. It locates
-`tools/deploy.py` relative to the command file. It does not require CMD to use
-that network path as its working directory. This launcher fix is in source
-until a committed revision containing it is installed.
+Plain `python3 tools/deploy.py` and `--check` retain the installed commit from
+`data/deployment.json` unless an explicit revision is supplied. A fresh standalone
+publication requires an explicit revision. Automatic `--start` selects main.
+An invalid installation record still stops publication. An unfinished publication
+is completed at its recorded commit before automatic startup selects newer main.
+A conflicting explicit revision is rejected until recovery completes.
 
-The running server does not load WSL edits. The installed launcher already delegates
-to the current WSL tool, so its normal next invocation uses this revision rule.
-The updated native forwarding of an explicit revision is source-only until it
-is deliberately installed. Use the WSL command above for an explicit revision
-with the older installed launcher.
+From Windows Terminal, run `backtest-web.cmd`. The installed command delegates to
+the current WSL deployment tool. WSL must be available. The source launcher also
+works from its WSL network path and finds its helper relative to the command file.
+Ctrl+C stops this launch's server and watcher. A normal child exit ends its old
+watcher, so a replacement terminal cannot be undone by the previous terminal.
+
+The source archive is ready before the old child receives its private stop
+marker. `website/serve.py` observes the marker even during startup preparation.
+It performs normal Ctrl+C cleanup. Publication waits for complete process exit,
+then uses the existing source-before-financial lock order. A timeout preserves
+ownership and retries. No forced process kill bypasses cleanup. Active manual
+runs stop. Interrupted queued tests return to waiting and retain their recorded
+dates. Saved results and user data survive. A missing Git observation keeps the
+current server. A failed update retries automatically; pending journals stay in
+place for recovery. A staging failure leaves the old server serving.
 
 For an already-installed revision without contacting WSL, run native Python directly:
 
@@ -102,7 +118,7 @@ Raw data remains outside Git. Back it up separately. Baseline revision history r
 
 ## Interrupted deployment
 
-Run `python3 tools/deploy.py` again. A pending publication retains its verified staging payload and completion journal. Default retry selects that transaction's commit, even if the final manifest still records the older commit. An explicit different revision is rejected before staging. Finish recovery first, then deliberately select another revision if needed. Native publication still verifies the retained payload under its existing locks. The server refuses to import application modules while a pending publication exists. Do not delete the journal, edit the manifest, or copy individual source files to bypass recovery.
+The automatic launcher retries unfinished updates. You can also run `python3 tools/deploy.py` again. A pending publication retains its verified staging payload and completion journal. Default retry selects that transaction's commit, even if the final manifest still records the older commit. An explicit different revision is rejected before staging. Finish recovery first, then deliberately select another revision if needed. Native publication still verifies the retained payload under its existing locks. The server refuses to import application modules while a pending publication exists. Do not delete the journal, edit the manifest, or copy individual source files to bypass recovery.
 
 The lock is acquired before the application module is imported. `website/serve.py` is the small entry point; `website/serve_app.py` holds the HTTP application. The ownership implementation is `website/runtime_access.py`.
 

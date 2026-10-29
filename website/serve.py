@@ -1,6 +1,36 @@
 """Stable native entry point: own installed source before application imports."""
 from pathlib import Path
+from contextlib import contextmanager
 import sys
+
+
+@contextmanager
+def _supervised_stop():
+    """Translate this launch's stop marker into ordinary Ctrl+C cleanup.
+
+    Start before preparation, so a new commit can also replace a server that
+    has not bound its listener. Workers keep their existing shutdown protocol.
+    """
+    import _thread
+    import os
+    import re
+    from threading import Event, Thread
+
+    token=os.environ.get('EBITDA_WEB_SUPERVISOR','')
+    if not re.fullmatch(r'[0-9a-f]{32}',token):
+        yield;return
+    marker=Path(__file__).resolve().parents[1]/'data'/('website-update-stop-'+token)
+    done=Event()
+    def poll():
+        while not done.wait(.1):
+            if marker.exists():
+                _thread.interrupt_main()
+                return
+    thread=Thread(target=poll,name='website-update-stop',daemon=True)
+    thread.start()
+    try:yield
+    finally:
+        done.set();thread.join()
 
 
 def _own_source():
@@ -18,12 +48,16 @@ def _own_source():
 
 
 if __name__ == '__main__':
-    _source_owner = _own_source()
     try:
-        import serve_app
-        serve_app.main()
-    finally:
-        _source_owner.__exit__(None, None, None)
+        with _supervised_stop():
+            _source_owner = _own_source()
+            try:
+                import serve_app
+                serve_app.main()
+            finally:
+                _source_owner.__exit__(None, None, None)
+    except KeyboardInterrupt:
+        pass
 elif __name__ == '__mp_main__':
     # Spawned calculation workers keep their own reader until process exit.
     # This also protects their imports if the owning server is killed.

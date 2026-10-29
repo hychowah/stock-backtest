@@ -12,7 +12,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'website'), str(ROOT / 'scripts')]
@@ -232,6 +232,13 @@ class DeploymentRevisionTests(unittest.TestCase):
                     patch.object(deploy, 'deploy') as publish:
                 deploy.main()
                 publish.assert_called_once_with(self.config, expected)
+
+    def test_archive_failure_does_not_request_server_shutdown(self):
+        deploy.write_json(self.root / deploy.MANIFEST, self.installed)
+        with patch.object(deploy.subprocess,'run',side_effect=OSError('fixture archive failure')),patch.object(deploy,'windows_path',side_effect=str),patch.object(deploy,'native') as publish:
+            stop=Mock()
+            with self.assertRaises(OSError):deploy.deploy(self.config,self.installed['commit'],before_publish=stop)
+        stop.assert_not_called();publish.assert_not_called()
 
     def test_native_parser_forwards_explicit_revision_and_default_has_no_head(self):
         deploy.write_json(self.root / deploy.CONFIG, self.config)

@@ -181,3 +181,21 @@ as filter-first, so a name-only edit retains an older random plan. An actual
 order change discards that waiting plan. The engine branch must integrate this option
 deliberately before claiming it supports the new policy. No engine-branch or
 benchmark files are changed by this task.
+
+## Agreed follow-up: automatic main updates (29 October 2026)
+
+The user requests automatic server restart and latest-version installation when
+an update exists. Main owns this launcher/publication policy change. Ordinary
+`--start` watches committed main; an explicit revision remains fixed. Standalone
+publication and `--check` retain their installed-revision defaults. This replaces
+the earlier fixed default for ordinary server launches. It does not authorize
+benchmark admission or an unqualified engine merge into main.
+
+`tools/deploy.py` owns the watch loop, exact revision selection, pending recovery,
+staging and native child lifecycle. A narrow pre-publication callback asks only
+its child to exit after the archive is ready. `website/serve.py` observes the
+launch's private stop marker before preparation. Its existing source ownership
+still precedes application imports and lasts through shutdown. Worker/cache
+contracts and the engine branch remain unchanged. Tests use disposable Git
+repositories and native runtime fixtures. Raw data, databases, reports and the
+two unrelated snapshot edits retain their current owners.
