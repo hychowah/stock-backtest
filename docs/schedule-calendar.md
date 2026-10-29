@@ -4,9 +4,10 @@ The source can plan fixed and random dates for 1–104 calendar weeks or 1–24
 calendar months. `scripts/schedule_calendar.py` owns these rules. It uses only
 the Python standard library. It reads no files and calculates no portfolios.
 
-The website and financial-facing planners still accept 1, 3, 6, 12 and 24 months.
-This change adds no website control, weekly result label or execution route.
-It does not update the installed server. SQL selection and financial rules
+The normal website and ordinary planners accept 1, 3, 6, 12 and 24 months.
+The isolated numerical preview also accepts versioned week/month requests.
+It exposes custom controls only after its capability response. This source
+change does not update the installed server. SQL selection and financial rules
 remain in their existing owners.
 
 ## Configuration version 1
@@ -114,7 +115,8 @@ That evaluator still returns legacy monthly metadata, including its default
 diagnostic. The separate [financial result contract](portfolio-results.md)
 keeps complete holdings and financial fields without adding a version to
 existing application payloads. This verifies date/financial separation. It
-adds no weekly presentation or website control.
+does not change the ordinary engine. The isolated preview uses the canonical
+metadata described below.
 
 The daily-cache engine fingerprint includes `schedule_calendar.py` and the
 CB-09 `portfolio_results.py` reducer. Its existing
@@ -146,3 +148,28 @@ CB-11's explicit runtime also uses `robustness.plan` over the immutable sessions
 in its private SQL workspace. It adds no calendar planner or website control.
 The recorded-plan, default-seed, explicit-date and result-envelope contracts stay
 the same. Runtime use retains financial ownership across all reused jobs.
+
+## Isolated preview requests and snapshots
+
+`scripts/numerical_calendar.py` separates calendar settings from selection.
+Send either legacy `start`, `end`, optional `months`, or one nested `calendar`
+with the version-1 configuration above. Mixed representations fail. Only the
+numerical preview accepts canonical execution. Fixed results use `calendar`
+instead of `months`; result `start` and `end` remain resolved session dates.
+Random plans use `calendar`, `window_start`, `window_end`, `seed`, `requested`,
+`options`, `blocks` and `samples`. No synthetic month count is added.
+
+Recorded-plan validation checks saved sessions, nominal blocks, sample count
+and bounds. It never draws replacement samples. Background run submission may
+include `planned` beside `mode` and `options`. Retries bind all three values.
+Submitted options must match the plan. Queue recovery retains its existing
+plan column. Canonical calendar metadata participates in checkpoint evidence.
+
+`website/calendar-settings.js` owns browser decoding, labels and settings
+comparison. Equivalent legacy/canonical monthly settings compare in memory.
+Original stored settings, labels and version-1/version-2 snapshots stay intact.
+The candidate capability endpoint is `/api/backtest-capabilities`; `calendar:1`
+enables 1–104 weeks and 1–24 months. Ordinary/direct-file pages retain presets.
+Stored canonical results remain readable and exportable without this capability.
+Legacy random CSV headers keep `months`. Canonical random CSVs use
+`interval_unit` and `interval_count`. Financial formulas and tolerance are unchanged.

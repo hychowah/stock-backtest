@@ -83,7 +83,7 @@ const ScheduleView=(()=>{
     const result=displayedResult();
     if(!result)return;
     node('schedule-results').hidden=false;
-    node('schedule-dates').textContent=result.start+' → '+result.end+' · every '+result.months+' month(s)';
+    node('schedule-dates').textContent=result.start+' → '+result.end+' · '+CalendarSettings.label(result);
     node('schedule-cagr').textContent=format(result.cagr);
     node('schedule-spy-cagr').textContent=format(result.spy_cagr);
     node('schedule-growth').textContent=result.growth===null?'—':'$'+result.growth.toFixed(2);
@@ -100,22 +100,25 @@ const ScheduleView=(()=>{
     if(typeof location==='undefined' || location.protocol==='file:'){
       node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
     }
+    try{
     const {first,last,...filters}=options;
     const random=!!replay || (!override && node('date-testing').value==='random');
-    const body=override?{...filters,...override}:{...filters,start:node('trade-start').value,end:node('trade-end').value,months:+node('rebalance-months').value};
-    if(replay){Object.assign(body,{...replay.options,start:replay.start,end:replay.end,months:replay.months,trials:replay.requested,seed:replay.seed});}
-    else if(random){
+    const body=replay?{...replay.options,...CalendarSettings.fields(replay),trials:replay.requested,seed:replay.seed}:
+      override?{...filters,...override}:{...filters,...CalendarSettings.read()};
+    if(!replay&&random){
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
-    await follow(BacktestRuns.create(random?'random':'custom',body));
+    if(body.calendar&&!CalendarSettings.supported()){node('screen-error').textContent='Custom week/month calculations require the isolated numerical preview.';return;}
+    await follow(BacktestRuns.create(random?'random':'custom',body,replay));
+    }catch(error){node('screen-error').textContent=error.message;}
   }
   async function follow(run){
     if(running)return;
     const number=++requestNumber,body=run.options,random=run.mode==='random';
     activeRun=run;
     node('screen-error').textContent='';
-    node('schedule-progress-detail').textContent=body.start+' → '+body.end+' · every '+body.months+' month(s). '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
+    node('schedule-progress-detail').textContent=CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
     node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
     startBusy();
     startedAt=run.submitted;
@@ -135,7 +138,7 @@ const ScheduleView=(()=>{
         if(event && (event.type==='progress'||event.type==='preparation')){
           node('trial-progress').value=event.completed;node('trial-progress').max=event.total;
           const books=event.total_new_books>0?' · preparing books '+event.calculated_books+'/'+event.total_new_books+' with '+event.workers+' worker'+(event.workers===1?'':'s'):'';
-          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · every '+body.months+' month(s).';
+          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · '+CalendarSettings.label(body)+'.';
         }
       },{current:()=>number===requestNumber});
       if(number!==requestNumber || !state)return;
@@ -159,10 +162,11 @@ const ScheduleView=(()=>{
     }}finally{if(number===requestNumber)stopBusy();}
   }
   function init(){
+    void CalendarSettings.init();
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration,stored,index)=>stored?inspect(index):run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    RobustnessView.init((trial,configuration,stored,index)=>stored?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));

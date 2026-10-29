@@ -165,6 +165,18 @@ class JobTests(unittest.TestCase):
         self.server.backtest_jobs.runs[self.identifier]['finished']=time.time()-86401
         self.assertEqual(self.request()[0],404)
 
+    def test_recorded_plan_submission_is_idempotent_and_rejects_changed_plan(self):
+        self.release.set()
+        options=dict(self.options,trials=2,seed=42)
+        planned=backtest_jobs.robustness.plan(self.db,**options)
+        payload=dict(mode='random',options=options,planned=planned)
+        self.assertEqual(self.request('POST',payload=payload)[0],202)
+        result=self.terminal()
+        self.assertEqual(result['configuration'],planned)
+        self.assertEqual(self.request('POST',payload=payload)[0],202)
+        altered=json.loads(json.dumps(payload));altered['planned']['seed']=43
+        self.assertEqual(self.request('POST',payload=altered)[0],400)
+
     def test_completed_result_retention_is_bounded(self):
         self.release.set()
         for digit in '12345':

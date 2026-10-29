@@ -10,6 +10,7 @@ import backtest_control
 from numerical_generation import GenerationStore
 from numerical_numba import NumbaExecutor
 from numerical_portfolio import NumericalPortfolio
+import numerical_calendar
 import numerical_random
 from numerical_matrix import retained_size
 import schedules
@@ -77,12 +78,23 @@ class Session:
     def plan(self, options):
         # The private SQL workspace contains immutable sessions. Use the ordinary
         # planner, including its fresh default seed and exact envelope.
+        if 'calendar' in options:
+            configuration,selection,_=numerical_calendar.decode_request(options)
+            selection.pop('trials',None);selection.pop('seed',None)
+            self.portfolio.s.r._select(self.portfolio.db,period=(-1,-1),**selection)
+            return numerical_calendar.plan(self.portfolio._calendar().sessions,options,
+                checkpoint=backtest_control.checkpoint)
         return robustness.plan(self.portfolio.db,**deepcopy(options))
 
     def calculate(self, mode, options, progress, configuration, *, planned=None, capture=None):
         self.validate()  # Always before result/checkpoint lookup, even a full hit.
         if mode == 'random':
             plan = self.plan(options) if planned is None else numerical_random.validate_configuration(self.portfolio,planned)
+            if planned is not None:
+                submitted=dict(plan['options'],**numerical_calendar.request_fields(plan),
+                    trials=plan['requested'],seed=plan['seed'])
+                if any(key not in submitted or value!=submitted[key] for key,value in options.items()):
+                    raise ValueError('Submitted settings differ from the recorded random plan.')
             count = min(len(self.inputs.symbols),plan['options'].get('rank_to',50)-plan['options'].get('rank_from',1)+1)
             estimate = sum(len(dates) for dates in plan['samples'])*(16384+4096*count)
             if estimate > self.result_workspace_bytes:
@@ -109,7 +121,8 @@ class Session:
                 result = deepcopy(result)
             else:
                 self.stats['result_misses'] += 1
-                evaluate = self.portfolio.backtest_dates if 'dates' in options else self.portfolio.backtest
+                evaluate = (self.portfolio.backtest_calendar if 'calendar' in options else
+                            self.portfolio.backtest_dates if 'dates' in options else self.portfolio.backtest)
                 result = evaluate(**options)['result']
                 if retained_size(OrderedDict([(key,result)])) <= self.result_bytes:
                     self.results[key] = deepcopy(result)

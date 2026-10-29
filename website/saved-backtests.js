@@ -7,7 +7,7 @@ const SavedBacktests=(()=>{
   function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
   function defaultName(snapshot){
     if(snapshot.kind==='january')return 'January '+snapshot.settings.first+'–'+snapshot.settings.last;
-    return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+snapshot.settings.start+' → '+snapshot.settings.end;
+    return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+(snapshot.settings.calendar?.start??snapshot.settings.start)+' → '+(snapshot.settings.calendar?.end??snapshot.settings.end);
   }
   function complete(snapshot){return snapshot && snapshot.kind!=='latest' && (snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
   function update(){

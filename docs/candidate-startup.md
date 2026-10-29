@@ -164,5 +164,11 @@ and blocks data operations until retry proves closure. Shutdown closes
 admission, drains callers and retires the child before releasing source.
 
 Normal server construction and standalone calculations still use the ordinary
-engine. Weekly controls and full browser compatibility remain CB-13C.
+engine. CB-13C adds candidate-only week/month controls and versioned calendar
+requests. Legacy month requests keep their original envelopes. Browser replay
+submits the full recorded plan. Saved snapshots retain their settings and labels;
+opening or exporting them does not calculate. See [calendar compatibility](schedule-calendar.md).
+Submission preflight accepts an advisory busy inspection. Queue readiness still
+requires current inputs. The child validates freshness before every execution
+and reuse. An unavailable status without busy still rejects submission.
 The normal launcher and installed revision stay unchanged.

@@ -15,6 +15,7 @@ import sqlite3
 import sys
 import time
 
+import numerical_calendar
 import portfolio_results
 import robustness
 import trial_checkpoints
@@ -58,23 +59,11 @@ def source_identity():
 def validate_configuration(portfolio,configuration):
     """Validate every recorded schedule; never resample a recovery plan."""
     portfolio._validate_inputs()
-    required={'start','end','window_start','window_end','months','seed','requested','options','blocks','samples'}
-    if type(configuration) is not dict or set(configuration) != required:
-        raise ValueError('Incomplete recorded random configuration.')
-    config=deepcopy(configuration)
-    # This validates finite JSON and the common binding fields before lookup.
+    config=numerical_calendar.validate_plan(portfolio._calendar().sessions,configuration,
+        checkpoint=portfolio.s.backtest_control.checkpoint)
     trial_checkpoints.binding_json(dict(generation='validation',policy='validation',schema='validation',
         result_contract=portfolio_results.CONTRACT_VERSION,implementation={'validation':True},
         execution={'validation':True},configuration=config))
-    if not isinstance(config['blocks'],list):raise ValueError('Invalid recorded blocks.')
-    calendar=portfolio._calendar()
-    portfolio.s.schedule_calendar.legacy_configuration(
-        dict(start=config['start'],end=config['end'],months=config['months']))
-    first,final=calendar.window(config['start'],config['end'])
-    if (str(first),str(final)) != (config['window_start'],config['window_end']):
-        raise ValueError('Recorded random window is unavailable in current inputs.')
-    for dates in config['samples']:
-        calendar.explicit(dates,config['start'],config['end'],checkpoint=portfolio.s.backtest_control.checkpoint)
     try:portfolio.s.r._select(portfolio.db,period=(-1,-1),**config['options'])
     except TypeError as error:raise ValueError('Unknown screening option.') from error
     return config
@@ -123,8 +112,8 @@ def run(portfolio,configuration,experiment,progress=None,*,capture=None):
             event(number-1,number)
             result=experiment.load(number)
             if result is None:
-                envelope=portfolio.backtest_dates(dates=dates,start=config['start'],end=config['end'],
-                                                 months=config['months'],**config['options'])
+                evaluate=portfolio.backtest_calendar if 'calendar' in config else portfolio.backtest_dates
+                envelope=evaluate(dates=dates,**numerical_calendar.request_fields(config),**config['options'])
                 if envelope['contract_version'] != portfolio_results.CONTRACT_VERSION:
                     raise ValueError('Financial result contract differs.')
                 result=envelope['result']

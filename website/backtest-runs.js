@@ -45,9 +45,9 @@ const BacktestRuns=(()=>{
     unsaved.delete(id);
     try{for(const suffix of ['',':accepted',':complete',':stop'])localStorage.removeItem(prefix+id+suffix);}catch(_){}
   }
-  function create(mode,options){
+  function create(mode,options,planned=null){
     const bytes=crypto.getRandomValues(new Uint8Array(16));
-    const run={id:Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''),mode,options,submitted:Date.now(),phase:'submitting',stop:false};
+    const run={id:Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''),mode,options,...(planned?{planned}:{}),submitted:Date.now(),phase:'submitting',stop:false};
     save(run);return run;
   }
   async function request(run,action){
@@ -56,7 +56,7 @@ const BacktestRuns=(()=>{
     try{
       const response=await fetch('/api/backtest-runs/'+run.id+(action==='stop'?'/stop':action==='status'?'/status':''),{
         method:['start','stop'].includes(action)?'POST':'GET',headers:{'Content-Type':'application/json'},cache:'no-store',signal:controller.signal,
-        ...(action==='start'?{body:JSON.stringify({mode:run.mode,options:run.options})}:{})});
+        ...(action==='start'?{body:JSON.stringify({mode:run.mode,options:run.options,...(run.planned?{planned:run.planned}:{})})}:{})});
       // Completed random runs can contain large holding lists. Allow transfer
       // time after headers arrive while still bounding a stalled connection.
       clearTimeout(timeout);timeout=setTimeout(()=>controller.abort(),180000);

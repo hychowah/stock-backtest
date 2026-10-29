@@ -11,6 +11,7 @@ This standard-library module opens no resources and takes no ownership.
 from copy import deepcopy
 from datetime import date
 import math
+import numerical_calendar
 
 CONTRACT_VERSION = 1
 COVERAGE = ('Cached-price companies only; additional early exits have not received '
@@ -134,13 +135,13 @@ def validate_completed(result):
     """
     try:
         if (not isinstance(result, dict) or not isinstance(result['periods'], list)
-                or type(result['months']) is not int or result['months'] not in (1,3,6,12,24)
                 or not isinstance(result['options'], dict) or not _finite(result['seconds'])
                 or result['seconds'] < 0 or type(result['cash_days']) is not int
                 or any(result[key] is not None and not _finite(result[key])
                        for key in ('growth','cagr'))
                 or any(not _finite(result[key]) for key in ('spy_growth','spy_cagr'))):
             raise ValueError('Malformed completed financial result.')
+        numerical_calendar.metadata(result)
         pairs=[(date.fromisoformat(p['entry']),date.fromisoformat(p['exit'])) for p in result['periods']]
         books=iter(result['periods'])
         rebuilt=evaluate(pairs,lambda *args:dict(next(books)),common_start=date.fromisoformat(result['start']))

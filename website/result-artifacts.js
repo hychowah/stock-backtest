@@ -33,7 +33,8 @@ const ResultArtifacts=(()=>{
     let submitted=artifact.settings;
     // Opening a fresh-date run exposes its actual seed for an exact replay.
     if(artifact.kind==='random'&&settings.seed!==undefined)submitted={...submitted,seed:artifact.result.configuration.seed};
-    return signature(submitted)===signature(settings);
+    const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
+    return signature(calendar?calendar.normalize(submitted):submitted)===signature(calendar?calendar.normalize(settings):settings);
   }
   return {create,decode,publish,matches,forView:key=>views.get(key)};
 })();

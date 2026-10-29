@@ -10,6 +10,8 @@ def main():
     source,tests=map(Path,sys.argv[1:3]);scenario=sys.argv[3]
     sys.path[:0]=[str(tests),str(tests.parent/'tools')]
     from bench_source_service_fixture import dependency_guard
+    import mimetypes
+    mimetypes.init()
     dependency_guard(source)
     sys.path[:0]=[str(source/'scripts'),str(source/'website')]
     import runtime_access
@@ -23,7 +25,7 @@ def main():
         elif scenario=='build':
             context.enter_context(patch.object(numerical_preparation.subprocess,'run',
                 side_effect=OSError('fictional build failure')))
-        if scenario=='ordinary':
+        if scenario.startswith('ordinary'):
             class WithoutNative:
                 def find_spec(self,fullname,path=None,target=None):
                     if fullname.split('.')[0] in ('numpy','numba','llvmlite'):
@@ -38,8 +40,9 @@ def main():
             Thread(target=stop,name='fixture-stop',daemon=True).start()
             return value
         context.enter_context(patch.object(serve_app,'Server',side_effect=server))
-        context.enter_context(patch.object(serve_app.backtest_jobs,'calculate',side_effect=AssertionError('Stored result requested calculation')))
-        if scenario=='ordinary':
+        if scenario not in ('workflow','ordinary-workflow'):
+            context.enter_context(patch.object(serve_app.backtest_jobs,'calculate',side_effect=AssertionError('Stored result requested calculation')))
+        if scenario.startswith('ordinary'):
             serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
         else:
             import serve_candidate

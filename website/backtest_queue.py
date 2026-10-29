@@ -96,7 +96,8 @@ class Store:
         if any(not isinstance(request['catalog'].get(key),dict) for key in ('metrics','filters')):
             raise ValueError('The test metric and filter labels are required.')
         options=request['options']
-        if not isinstance(options.get('start'),str) or not isinstance(options.get('end'),str):
+        dates=options.get('calendar',options)
+        if not isinstance(dates,dict) or not isinstance(dates.get('start'),str) or not isinstance(dates.get('end'),str):
             raise ValueError('Choose start and end dates.')
         spec={key:request[key] for key in ('mode','options','catalog','presentation')}
         packed=encode(spec)
@@ -232,7 +233,7 @@ class Store:
         if field not in ('progress','configuration'):raise ValueError('Invalid queue progress field.')
         with self.database() as db:
             if field=='configuration':
-                summary={key:value[key] for key in ('seed','requested','start','end','months') if key in value}
+                summary={key:value[key] for key in ('seed','requested','start','end','months','calendar') if key in value}
                 db.execute('UPDATE jobs SET configuration=?,plan=? WHERE id=?',(encode(summary),encode(value),identifier))
             else:db.execute('UPDATE jobs SET progress=? WHERE id=?',(encode(value),identifier))
 

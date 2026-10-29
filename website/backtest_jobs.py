@@ -38,6 +38,8 @@ class Calculations:
     snapshot; earlier status responses are advisory. This owner selects only
     the ordinary engine. It owns neither user records nor job lifetimes.
     """
+    calendar_version=None
+
     def __init__(self):
         self.ready=lambda:True
         self.lock=RLock()
@@ -126,17 +128,20 @@ class Jobs:
     @ready.setter
     def ready(self,value):self.calculations.ready=value
 
-    def start(self,identifier,mode,options):
+    def start(self,identifier,mode,options,*,planned=None):
         if not re.fullmatch(r'[a-f0-9]{32}',identifier):
             raise ValueError('Invalid backtest run ID.')
         if mode not in ('custom','random') or not isinstance(options,dict):
             raise ValueError('Expected backtest mode and options.')
         json.dumps(options,allow_nan=False)
+        json.dumps(planned,allow_nan=False)
+        if planned is not None and (mode!='random' or not isinstance(planned,dict)):
+            raise ValueError('A recorded plan requires random mode.')
         with self.lock:
             if self.closing:raise Busy('The server is stopping. Restart it before running a backtest.')
             existing=self.runs.get(identifier)
             if existing:
-                if existing['mode']!=mode or existing['options']!=options:
+                if existing['mode']!=mode or existing['options']!=options or existing.get('planned')!=planned:
                     raise ValueError('This run ID already has different settings.')
                 return self.snapshot(identifier)
             if any(run['state'] in ('running','stopping') for run in self.runs.values()):
@@ -146,7 +151,7 @@ class Jobs:
                 if now-self.runs[key].get('finished',now)>86400:del self.runs[key]
             while len(self.runs)>=4:del self.runs[next(iter(self.runs))]
             run=dict(id=identifier,mode=mode,options=deepcopy(options),state='running',started=now,
-                     progress=None,configuration=None,result=None,error=None,stop=Event())
+                     progress=None,configuration=None,result=None,error=None,stop=Event(),planned=deepcopy(planned))
             self.runs[identifier]=run
             thread=Thread(target=self._run,args=(run,),name='backtest-'+identifier[:8],daemon=False)
             run['thread']=thread
@@ -179,7 +184,8 @@ class Jobs:
             with self.lock:run['configuration']=value
         try:
             with backtest_control.cancel_when(run['stop'].is_set):
-                result=calculate(run['mode'],run['options'],progress,configuration,owner=self.calculations)
+                result=calculate(run['mode'],run['options'],progress,configuration,owner=self.calculations,
+                    **({'planned':run['planned']} if run.get('planned') is not None else {}))
             # Publish only after worker cleanup, database closure and cache release.
             with self.lock:
                 run['result']=result

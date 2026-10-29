@@ -65,8 +65,9 @@ def validate(snapshot):
 def information(snapshot):
     result=snapshot['result'];kind=snapshot['kind']
     configuration=result.get('configuration',{}) if kind=='random' else result
-    return dict(kind=kind,start=configuration.get('start',result.get('first')),
-                end=configuration.get('end',result.get('end')),
+    dates=configuration.get('calendar',configuration)
+    return dict(kind=kind,start=dates.get('start',result.get('first')),
+                end=dates.get('end',result.get('end')),
                 cagr=result.get('cagr') if kind!='random' else result.get('distributions',{}).get('cagr',{}).get('mean'),
                 trials=result.get('completed') if kind=='random' else None)
 

@@ -55,10 +55,10 @@ const BacktestQueue=(()=>{
     }
     if(editing===session)endEdit(true);
   }
-  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+settings.start+' → '+settings.end+' · ranks '+settings.rank_from+'–'+settings.rank_to;}
+  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+settings.rank_from+'–'+settings.rank_to;}
   function parameters(record){
     const o=record.options;
-    return `${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${o.start} → ${o.end} · every ${o.months??12} month(s) · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All cached stocks':'Original candidate set'}`;
+    return `${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · ${CalendarSettings.label(o)} · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All cached stocks':'Original candidate set'}`;
   }
   function renderRows(rows){
     const list=node('queue-list');

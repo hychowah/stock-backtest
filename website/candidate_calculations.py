@@ -68,6 +68,8 @@ class Candidate(backtest_jobs.Calculations):
                 return dict(state='unavailable', category='preparation failed')
         finally: self.operation.release()
 
+    calendar_version=1
+
     def calculate(self, mode, options, progress, configuration, *, planned=None,
                   admission='interactive', details=True):
         if admission not in ('interactive','queue'): raise ValueError('Invalid calculation admission policy.')

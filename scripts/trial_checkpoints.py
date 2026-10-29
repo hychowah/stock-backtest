@@ -19,6 +19,7 @@ import sqlite3
 
 import backtest_control
 import portfolio_results
+import numerical_calendar
 
 STORE_VERSION = 1
 DEFAULT_PAYLOAD_BYTES = 256*1024**2
@@ -60,9 +61,10 @@ def binding_json(binding):
             or any(not isinstance(row,list) or not row for row in config['samples'])
             or not isinstance(config.get('options'),dict)
             or type(config.get('seed')) is not int or not 0 <= config['seed'] <= 4294967295
-            or type(config.get('months')) is not int or config['months'] not in (1,3,6,12,24)
-            or any(type(config.get(key)) is not str for key in ('start','end','window_start','window_end'))):
+            or any(type(config.get(key)) is not str for key in ('window_start','window_end'))):
         raise ValueError('Incomplete recorded random plan.')
+    numerical_calendar.metadata(config)
+    numerical_calendar.decode_request(numerical_calendar.request_fields(config))
     return canonical(binding)
 
 
@@ -170,7 +172,7 @@ class Experiment:
         portfolio_results.validate_completed(result)
         config=self.binding['configuration']
         if (result['start'] != config['window_start'] or result['end'] != config['window_end']
-                or result['months'] != config['months'] or canonical(result['options']) != canonical(config['options'])
+                or numerical_calendar.metadata(result) != numerical_calendar.metadata(config) or canonical(result['options']) != canonical(config['options'])
                 or [period['entry'] for period in result['periods']] != config['samples'][number-1]):
             raise ValueError('Completed trial differs from its recorded plan.')
 

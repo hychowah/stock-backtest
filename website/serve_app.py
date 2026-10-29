@@ -96,12 +96,21 @@ class Handler(SimpleHTTPRequestHandler):
         return candidate.status().get('state')=='current'
 
     def require_calculation(self):
-        if self.calculation_ready():return True
+        # A busy inspection is advisory, not a failed execution admission.
+        # The calculation owner and child still validate admitted inputs.
+        candidate=getattr(self.server,'candidate_preparation',None)
+        if candidate is not None and getattr(self.server.calculations,'preparation',None) is candidate:
+            status=self.server.calculations.status()
+            allowed=status.get('state')=='current' or status.get('busy') is True
+        else:allowed=self.calculation_ready()
+        if allowed:return True
         self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
         return False
 
     def do_GET(self):
         if self.launcher_request():return
+        if self.path=='/api/backtest-capabilities':
+            self.reply(200,dict(calendar=self.server.calculations.calendar_version));return
         if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
             self.queue_request();return
         if self.path.startswith('/api/backtest-runs/'):
@@ -158,7 +167,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(403,dict(error='Open the local website to run a schedule.'));return
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=16384:raise ValueError('Invalid request size.')
+            if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
             with backtest_control.cancel_when(self.disconnect_check()):
@@ -240,11 +249,11 @@ class Handler(SimpleHTTPRequestHandler):
             elif self.command=='POST' and len(path)==1:
                 if not self.require_calculation():return
                 length=int(self.headers.get('Content-Length','0'))
-                if not 0<length<=16384:raise ValueError('Invalid request size.')
+                if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
                 def invalid(value):raise ValueError('Backtest values must be finite.')
                 request=json.loads(self.rfile.read(length),parse_constant=invalid)
                 if not isinstance(request,dict):raise ValueError('Expected backtest options.')
-                self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options')))
+                self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options'),planned=request.get('planned')))
             else:self.reply(404,dict(error='Unknown run action.'))
         except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
         except backtest_jobs.Busy as error:self.reply(409,dict(error=str(error)))
@@ -285,7 +294,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(404,dict(error='Unknown data action.'));return
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=16384:raise ValueError('Invalid request size.')
+            if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected data options.')
             self.reply(202,DATA_JOBS.cancel_job() if action=='cancel' else DATA_JOBS.start(action,request))

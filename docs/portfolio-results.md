@@ -51,10 +51,13 @@ No intermediate return, weight or contribution is rounded.
 | `options` | Complete submitted screening options, with their existing omissions and nulls. |
 | `seconds` | Adapter runtime diagnostic. It is the only field excluded from full-result agreement. |
 
-The reducer returns financial fields. The ordinary and diagnostic wrappers add
-`months`, `options` and `seconds`. Weekly dates supplied explicitly retain the
-existing default `months=12` metadata. This is compatibility with the current
-explicit-date envelope. It is not a weekly website label or control.
+The reducer returns financial fields. Ordinary and legacy numerical wrappers add
+`months`, `options` and `seconds`. Ordinary explicit-date calls retain their
+existing default `months=12`. Canonical numerical wrappers add `calendar` instead
+of `months`. Its requested bounds and versioned week/month interval remain
+separate from resolved result dates. Completed-result and checkpoint validation
+accept exactly one representation. Snapshot versions and financial contract
+version remain unchanged. See [calendar compatibility](schedule-calendar.md).
 
 Each period has exactly the existing fields:
 

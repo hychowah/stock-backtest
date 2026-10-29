@@ -14,7 +14,7 @@ function currentSettings(){
   const {first,last,...options}=readOptions(),view=viewKey();
   if(view==='latest')return {mode:'latest',...options};
   if(view==='january')return {mode:'january',first,last,...options};
-  const settings={mode:'custom',...options,start:document.getElementById('trade-start').value,end:document.getElementById('trade-end').value,months:+document.getElementById('rebalance-months').value};
+  const settings={mode:'custom',...options,...CalendarSettings.read()};
   if(document.getElementById('date-testing').value==='random'){
     settings.mode='random';settings.trials=+document.getElementById('random-trials').value;
     if(document.getElementById('repeat-random').checked)settings.seed=+document.getElementById('random-seed').value;
@@ -51,7 +51,7 @@ function scheduledPresentation(settings){
     coverage:'Custom dates use the local daily-cache service. Original candidate-set restrictions and cached-price coverage still apply.',
     notice:{text:'Results use the submitted stock filters and trade dates.',severity:'info'},
     rangeNote:'Custom schedule: trade dates and interval determine holding periods. Results and CSV exports below use this schedule.',
-    periodLabel:settings.start+' → '+settings.end};
+    periodLabel:CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
 }
 function updateResultsState(){
   const view=viewKey(),saved=currentArtifact(),state=document.getElementById('results-state');
@@ -89,6 +89,7 @@ function initializeFilters(){
   document.getElementById('trade-end').value=screeningData.latest.metadata.asof;
   document.getElementById('trade-end').max=screeningData.latest.metadata.asof;
   document.getElementById('rebalance-months').value='12';
+  if(document.getElementById('calendar-custom'))document.getElementById('calendar-custom').checked=false;
   document.getElementById('date-testing').value='single';
   document.getElementById('random-trials').value='24';
   document.getElementById('random-seed').value='42';
@@ -349,7 +350,7 @@ const StrategyDraft=(()=>{
     if(settings.mode==='january'){
       set('from-year',settings.first);set('to-year',settings.last);
     }else{
-      set('trade-start',settings.start);set('trade-end',settings.end);set('rebalance-months',settings.months);
+      CalendarSettings.restore(settings);
       set('date-testing',settings.mode==='random'?'random':'single');
       if(settings.mode==='random'){
         set('random-trials',settings.trials);set('random-seed',seed??42);

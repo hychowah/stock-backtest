@@ -9,6 +9,7 @@ import math
 import sqlite3
 import time
 
+import numerical_calendar
 import portfolio_results
 from numerical_workspace import stage_book
 from numerical_matrix import retained_size
@@ -67,7 +68,15 @@ class NumericalPortfolio:
             dates, start, end, checkpoint=self.s.backtest_control.checkpoint)
         return self.backtest_periods(periods, months=months, common_start=first, **options)
 
+    def backtest_calendar(self, **request):
+        pairs,first,options,metadata=numerical_calendar.periods(
+            self._calendar().sessions,request,checkpoint=self.s.backtest_control.checkpoint)
+        return self._evaluate_periods(pairs,metadata,common_start=first,**options)
+
     def backtest_periods(self, periods, *, months=12, common_start=None, **options):
+        return self._evaluate_periods(periods,dict(months=months),common_start=common_start,**options)
+
+    def _evaluate_periods(self, periods, metadata, *, common_start=None, **options):
         started = time.perf_counter()
         periods = portfolio_results.validate_periods(periods, common_start)
         self._validate_inputs()
@@ -110,7 +119,7 @@ class NumericalPortfolio:
         with self.db:
             result = portfolio_results.evaluate(periods, select_period, common_start=common_start,
                 checkpoint=self.s.backtest_control.checkpoint)
-        result.update(months=months, options=options, seconds=time.perf_counter()-started)
+        result.update(metadata, options=options, seconds=time.perf_counter()-started)
         size = retained_size(result)
         self.peak_result_graph_bytes = max(self.peak_result_graph_bytes,size)
         if self.result_workspace_bytes is not None and size > self.result_workspace_bytes:
