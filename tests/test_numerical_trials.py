@@ -28,9 +28,9 @@ s=shared.s
 class NumericalTrialsTests(unittest.TestCase):
     setUp=shared.SharedMethodsTests.setUp
 
-    def evaluator(self):
+    def evaluator(self, candidate_assembly='compiled'):
         inputs=NumericInputs(self.reader,s);self.addCleanup(inputs.close)
-        provider=NumbaExecutor(inputs,limits=dict(threads=2,request_plan=True,candidate_assembly='compiled'))
+        provider=NumbaExecutor(inputs,limits=dict(threads=2,request_plan=True,candidate_assembly=candidate_assembly))
         self.addCleanup(provider.close)
         portfolio=NumericalPortfolio(inputs,provider);self.addCleanup(portfolio.close)
         folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
@@ -39,6 +39,35 @@ class NumericalTrialsTests(unittest.TestCase):
 
     def config(self,**options):
         return robustness.plan(self.db,start='2015-01-02',end='2016-12-30',trials=3,seed=42,**options)
+
+    def test_100_annual_source_guard_trials_complete_trailing_and_mixed(self):
+        inputs,provider,portfolio,store=self.evaluator('source')
+        trailing=[dict(field=name,op='gt',value=0.) for name in ('return_1y','return_3y')]
+        observations=[]
+        for pool in ('legacy','cached'):
+            for filters in (trailing,trailing+[dict(field='pe',op='lt',value=20.)]):
+                config=robustness.plan(self.db,start='2015-01-05',end='2016-12-30',months=12,
+                    trials=100,seed=42,pool=pool,rank_to=100,metric='ev_ebitda_3y',
+                    min_cap=0.,min_ev=0.,filters=filters)
+                experiment=store.open(diagnostic.checkpoint_binding(portfolio,config))
+                self.assertEqual(experiment.read(),[])
+                expected=[];ordinary=robustness.run(self.db,config,workers=1,capture=lambda n,r:expected.append(r))
+                captured=[];actual=diagnostic.run(portfolio,config,experiment,capture=lambda n,r:captured.append(r))['result']
+                self.assertEqual((actual['completed'],actual['valid'],actual['incomplete']),(100,100,0))
+                self.assertEqual(actual['execution']['recovered_trials'],0)
+                self.assertEqual(actual['distributions'],ordinary['distributions'])
+                self.assertEqual(len(captured),100)
+                maximum_absolute=maximum_relative=0.
+                for left,right in zip(expected,captured,strict=True):
+                    agreement=compare_results(left,right);self.assertTrue(agreement['exact'],agreement)
+                    self.assertTrue(all(0<len(p['holdings'])<100 for p in right['periods']))
+                    maximum_absolute=max(maximum_absolute,agreement['maximum_absolute'])
+                    maximum_relative=max(maximum_relative,agreement['maximum_relative'])
+                observations.append(dict(configuration=config,seconds=actual['seconds'],
+                    execution=actual['execution'],maximum_absolute=maximum_absolute,
+                    maximum_relative=maximum_relative,storage=store.measurements()))
+        print(json.dumps(dict(check='100-annual-source-synthetic',scope='2015-2016 five companies; no full-window capacity',
+            observations=observations)),flush=True)
 
     def test_full_month_pool_metric_filter_rank_matrix_and_exact_recovery(self):
         inputs,provider,portfolio,store=self.evaluator();cases=0;holding_occurrences=0

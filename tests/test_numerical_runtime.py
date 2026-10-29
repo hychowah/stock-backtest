@@ -1,5 +1,6 @@
 """Explicit persistent runtime proof on disposable synthetic inputs only."""
 from copy import deepcopy
+from datetime import date
 from contextlib import closing
 import json
 import os
@@ -156,13 +157,15 @@ class RuntimeTests(unittest.TestCase):
 
     def test_actual_matrix_reuse_filter_changes_retention_eviction_and_thread_stability(self):
         value=self.make(session_options=dict(result_cache_bytes=0,matrix_cache_bytes=32*1024))
-        samples=[]
+        samples=[];tree_samples=[];file_samples=[]
         with value:
             for threshold in range(32):
                 options=self.options(filters=[dict(field='pe',op='lt',value=float(10+threshold))])
                 result=value.calculate('custom',options)
                 self.assertTrue(compare_results(self.fixture.s.backtest(self.fixture.db,**options),result)['exact'])
                 samples.append(deepcopy(value.last_stats))
+                tree_samples.append(value.owner.tree_usage())
+                file_samples.append(sum(p.stat().st_size for p in self.root.rglob('*') if p.is_file()))
             self.assertGreater(samples[-1]['matrix']['hits'],samples[0]['matrix']['hits'])
             self.assertLessEqual(samples[-1]['matrix']['retained_bytes'],32*1024)
             self.assertEqual(samples[-1]['result_retained_bytes'],0)
@@ -170,7 +173,9 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(samples[0]['sampled_threads'],samples[-1]['sampled_threads'])
             self.assertLessEqual(len(value.diagnostics),128)
         self.assert_closed(value)
-        print(json.dumps(dict(check='repeated-filter-memory',first=samples[0],last=samples[-1])),flush=True)
+        print(json.dumps(dict(check='repeated-filter-memory',first=samples[0],last=samples[-1],
+            tree_samples=tree_samples,logical_file_bytes=file_samples,
+            mapped_residency='not measured separately')),flush=True)
 
     def test_result_graph_and_ipc_budgets_reject_before_unbounded_accumulation(self):
         for mode,options in (('custom',self.options()),('random',self.options(trials=3,seed=1))):
@@ -180,6 +185,44 @@ class RuntimeTests(unittest.TestCase):
             self.assert_closed(value)
         with self.assertRaisesRegex(ValueError,'IPC payload'):
             runtime.encoded({'x':'fictional'},3)
+
+    def test_declared_weekly_pilot_fresh_complete_results_and_file_growth(self):
+        # CB-14.gates.md declares these safety limits before execution. They are
+        # fixture limits, not user acceptance budgets or full-window capacity.
+        import numerical_calendar
+        value=self.make(threads=2,session_options=dict(result_cache_bytes=0))
+        logical=lambda:sum(p.stat().st_size for p in self.root.rglob('*') if p.is_file())
+        before=logical();sizes=[];tree_samples=[]
+        with value:
+            options=dict(calendar=dict(version=1,start='2015-01-02',end='2016-12-30',
+                interval=dict(unit='week',count=1)),trials=24,seed=42,pool='cached',
+                rank_to=5,min_cap=0.,min_ev=0.,metric='ev_ebitda',
+                filters=[dict(field=n,op='gt',value=0.) for n in ('return_1y','return_3y')])
+            sessions=[date.fromisoformat(row[0]) for row in self.fixture.db.execute('SELECT day FROM sessions ORDER BY day')]
+            plan=numerical_calendar.plan(sessions,options)
+            started=time.monotonic()
+            result=value.calculate('random',options,planned=plan,
+                capture=lambda n,r:(sizes.append(logical()),tree_samples.append(value.owner.tree_usage())),
+                cancelled=lambda:time.monotonic()-started>180 or logical()>512*1024**2)
+            seconds=time.monotonic()-started;stats=deepcopy(value.last_stats)
+            self.assertEqual((result['completed'],result['valid'],result['execution']['recovered_trials']),(24,24,0))
+            self.assertEqual(len(result['trial_results']),24)
+            maximum_absolute=maximum_relative=0.
+            for dates,actual in zip(plan['samples'],result['trial_results'],strict=True):
+                expected=self.fixture.s.backtest_dates(self.fixture.db,dates=dates,
+                    start=options['calendar']['start'],end=options['calendar']['end'],months=12,**plan['options'])
+                expected.pop('months');expected['calendar']=options['calendar']
+                agreement=compare_results(expected,actual);self.assertTrue(agreement['exact'],agreement)
+                maximum_absolute=max(maximum_absolute,agreement['maximum_absolute'])
+                maximum_relative=max(maximum_relative,agreement['maximum_relative'])
+            self.assertLess(seconds,180);self.assertLess(max([logical(),*sizes]),512*1024**2)
+        self.assert_closed(value)
+        print(json.dumps(dict(check='declared-weekly-pilot',configuration=plan,seconds=seconds,
+            boundary='ready resident request through full result transport; setup separate; no HTTP/browser',
+            before_logical_bytes=before,after_logical_bytes=logical(),peak_observed_logical_bytes=max([logical(),*sizes]),
+            tree_samples=tree_samples,mapped_residency='not measured separately',
+            maximum_absolute=maximum_absolute,maximum_relative=maximum_relative,stats=stats,
+            closure=value.closure())),flush=True)
 
     def test_current_input_validation_before_result_or_checkpoint_reuse(self):
         value=self.make()

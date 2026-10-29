@@ -55,6 +55,8 @@ class CaptureTests(unittest.TestCase):
     def freshen(self, research, daily):
         observed = capture.freshness(self.root, capture.Budget(None, None))
         metadata(research, dict(inputs=observed['inputs'], prices=observed['prices']))
+        research.commit()
+        observed = capture.freshness(self.root, capture.Budget(None, None))
         metadata(daily, dict(daily_inputs=observed['daily_inputs']))
         research.commit(); daily.commit()
 
@@ -249,11 +251,15 @@ class CaptureTests(unittest.TestCase):
             namespace[name] = SimpleNamespace(__file__=str(self.root / 'scripts' / (name + '.py')))
         signature = isolated('research', 'signature', namespace)
         prices = isolated('research', 'price_sources', namespace)
+        binding = isolated('research', 'prepared_price_binding', dict(
+            DATABASE=self.root/'data/research.sqlite', Path=Path, closing=closing,
+            json=json, hashlib=hashlib, connect=lambda path:sqlite3.connect(path)))
         fingerprint = isolated('schedules', 'fingerprint', dict(Path=Path, VERSION=3,
-            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(signature=signature),
+            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(signature=signature,
+                DATABASE=self.root/'data/research.sqlite',prepared_price_binding=binding),
             schedule_calendar=SimpleNamespace(__file__=str(self.root / 'scripts/schedule_calendar.py')),
             portfolio_results=SimpleNamespace(__file__=str(self.root / 'scripts/portfolio_results.py'))))
-        for change in ('initial', 'added', 'removed', 'cutoff', 'calendar', 'portfolio'):
+        for change in ('initial', 'added', 'removed', 'cutoff', 'calendar', 'portfolio','price_edit'):
             if change == 'added': (self.root / 'raw/financial-inputs/income/B.json').write_text('{}')
             elif change == 'removed': (self.root / 'raw/financial-inputs/income/B.json').unlink()
             elif change == 'cutoff': (self.root / capture.REPORT).write_text('Through 2025-12-31\n')
@@ -263,8 +269,25 @@ class CaptureTests(unittest.TestCase):
             elif change == 'portfolio':
                 path=self.root / 'scripts/portfolio_results.py'
                 path.write_bytes(path.read_bytes()+b'\n# changed result fixture\n')
+            elif change == 'price_edit':
+                (self.root/'raw/px/A.json').write_text('[1,2,3]')
             observed = capture.freshness(self.root, capture.Budget(None, None))
             self.assertEqual(observed, dict(inputs=signature(), prices=prices(), daily_inputs=fingerprint()))
+
+    def test_missing_changed_daily_price_binding_and_unaccepted_prices_reject(self):
+        path=self.root/'data/schedules.sqlite'
+        for binding in (None,'changed'):
+            with closing(sqlite3.connect(path)) as db:
+                saved=capture.metadata(db)['daily_inputs']
+                if binding is None:saved.pop('prices')
+                else:saved['prices']=binding
+                metadata(db,dict(daily_inputs=saved));db.commit()
+            self.assert_reason('stale',self.run_capture)
+            self.destination=self.root/'tmp'/('after-'+str(binding))
+            with closing(sqlite3.connect(self.root/'data/research.sqlite')) as research,closing(sqlite3.connect(path)) as daily:
+                self.freshen(research,daily)
+        (self.root/'raw/px/A.json').write_text('[changed raw fixture]')
+        self.assert_reason('stale',self.run_capture)
 
 
 if __name__ == '__main__':

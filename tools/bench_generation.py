@@ -152,7 +152,11 @@ class PreparedGeneration:
                      Path(self.s.__file__).with_name('portfolio_results.py')):
             info = path.stat()
             engine[path.name] = [info.st_size, info.st_mtime_ns]
-        expected = dict(version=self.s.VERSION, inputs=inventory, engine=engine)
+        accepted_prices = research.get('prices')
+        if not isinstance(accepted_prices, dict):
+            raise ValueError('Research price inventory is missing; retry preparation.')
+        expected = dict(version=self.s.VERSION, inputs=inventory,
+                        prices=digest(accepted_prices), engine=engine)
         if daily.get('daily_inputs') != expected:
             raise ValueError('Daily prepared generation changed; retry preparation.')
         if research.get('version') != self.s.r.SCHEMA_VERSION or research.get('inputs') != inventory:

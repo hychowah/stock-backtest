@@ -177,7 +177,14 @@ Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
 Daily cache version 3 tracks this in `period_pools`. Compatible version-1/2 caches
-upgrade automatically at startup without reparsing prices or discarding books.
+upgrade automatically at startup without reparsing prices or discarding books
+when their complete prerequisite binding agrees. Daily inputs now include a digest
+of the price inventory accepted by committed research metadata. The digest covers
+filenames, sizes and modification times. Normal daily connections do not scan raw
+prices. After research preparation accepts an in-place price edit, daily prices
+and dated books must rebuild. Older caches without this binding cannot establish
+compatibility and take the ordinary rebuild path. This affects derived data only;
+durable library and queue snapshots remain independent.
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
 The default listener is `0.0.0.0:3000`; the browser opens

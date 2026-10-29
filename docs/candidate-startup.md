@@ -172,3 +172,22 @@ Submission preflight accepts an advisory busy inspection. Queue readiness still
 requires current inputs. The child validates freshness before every execution
 and reuse. An unavailable status without busy still rejects submission.
 The normal launcher and installed revision stay unchanged.
+
+## CB-14 qualification boundary
+
+Daily prices now bind to the inventory accepted by committed research metadata.
+An in-place price-file edit can leave the price directory timestamp unchanged.
+After research preparation accepts that edit, daily preparation must rebuild
+prices and derived dated books before numerical export. Normal daily connections
+read the accepted metadata binding without traversing raw price files. The
+binding preserves the existing filename/size/mtime rule. It is not a new content
+hash of raw prices. Legacy caches without sufficient price evidence rebuild.
+Durable library and queue snapshots remain separate from these derived caches.
+
+[CB-14](plans/compiled-backtest/phases/CB-14.md) records correctness and operational
+qualification. It remains incomplete. The default complete-result workspace
+rejects the declared full-window weekly cases and 100-trial annual top-50 case
+before calculation. Do not raise that limit alone or omit holdings to claim
+capacity. Prospective user workflow budgets, a broader authorized offline dataset
+and installed-runtime qualification access remain unresolved. The preview stays
+opt-in. Normal launcher selection and installed assets are unchanged.

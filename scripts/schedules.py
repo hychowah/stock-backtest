@@ -31,16 +31,16 @@ CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
 ''' + POOL_SCHEMA
 
 
-def fingerprint():
-    # Preparation already validated every raw price file. Normal requests inspect
-    # only the compact research signature, not thousands of raw files.
+def fingerprint(source=None):
+    # Daily prices bind to the validated research price inventory. Changed
+    # prepared inputs rebuild prices/books. Normal checks do not scan raw files.
     sources=[Path(__file__),Path(__file__).with_name('book_batch.py'),
              Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
-    return dict(version=VERSION, inputs=r.signature(),
+    return dict(version=VERSION, inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
                 engine={p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
 
-def connect(path=DATABASE):
+def connect(path=DATABASE,source=None):
     path=Path(path)
     if not path.exists():
         raise ValueError('Daily cache missing. Run: python3 scripts/schedules.py prepare')
@@ -48,7 +48,7 @@ def connect(path=DATABASE):
     db.row_factory=sqlite3.Row
     try:
         saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-        if saved!=fingerprint():
+        if saved!=fingerprint(source):
             raise ValueError('Daily cache changed. Run: python3 scripts/schedules.py prepare')
     except Exception:
         db.close();raise
@@ -67,7 +67,10 @@ def upgrade_daily_cache(path, inputs):
         with db:
             db.execute('BEGIN IMMEDIATE')
             saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-            if saved.get('version') not in (1,2) or inputs.get('version')!=VERSION or saved.get('inputs')!=inputs.get('inputs'):
+            if (saved.get('version') not in (1,2) or inputs.get('version')!=VERSION
+                    or saved.get('inputs')!=inputs.get('inputs')
+                    or not isinstance(saved.get('prices'),str)
+                    or saved['prices']!=inputs.get('prices')):
                 return False
             db.execute(POOL_SCHEMA)
             if saved['version']==1:
@@ -87,11 +90,11 @@ def prepare(path=DATABASE, source=r.DATABASE):
     # The public daily-cache command owns its prerequisite too. Users never
     # need to discover and run the dependency chain themselves.
     r.prepare(source)
-    inputs=fingerprint()
+    inputs=fingerprint(source)
     reference=r.connect(source,full_prices=True)
     if path.exists():
         try:
-            db=connect(path)
+            db=connect(path,source)
         except ValueError:
             if upgrade_daily_cache(path,inputs):
                 reference.close()
@@ -124,7 +127,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
                 print(f'Prepared daily prices {i}/{len(symbols)}',flush=True)
         db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in r.run.load_bars(r.RAW/'spy-div.json','adjClose')])
         db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if r.run.parse_day(row.get('date')) is not None and r.run.num(row.get('month3')) is not None])
-        if inputs!=fingerprint():
+        if inputs!=fingerprint(source):
             raise ValueError('Inputs changed during daily preparation; retry.')
         db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(inputs)))
         db.execute('INSERT INTO metadata VALUES(?,?)',('cached_symbols',json.dumps(symbols)))

@@ -19,6 +19,17 @@ report binding. It rejects pending deployment or baseline publication. It does
 not prepare raw inputs, download data or change the canonical report. A stale
 cache requires the ordinary offline preparation before numerical export.
 
+CB-14 also binds daily inputs to the price inventory accepted by the prepared
+research database. Editing an existing raw price file need not change its parent
+directory timestamp. Research preparation accepts the new file inventory first.
+The prior daily cache then fails validation until daily preparation rebuilds it.
+Numerical export rejects that mismatch. A new generation cannot bind new inventory
+evidence to old daily prices. The binding preserves filename/size/mtime semantics;
+it does not add raw content hashing or per-book raw-inventory scans.
+The explicit-root offline-capture and current prepared-generation adapters compare
+the same accepted inventory digest. Missing or mismatched evidence fails closed.
+Existing historical receipts are not rewritten. Benchmark admission stays closed.
+
 The CB-08 calendar adapter and CB-09 portfolio reducer change the whole-source
 hash of `schedules.py`. The daily engine fingerprint includes
 `schedule_calendar.py` and `portfolio_results.py`. Existing

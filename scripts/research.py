@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 from bisect import bisect_left, bisect_right
 import csv
+import hashlib
 from datetime import date
 import json
 from pathlib import Path
@@ -57,6 +59,24 @@ def signature():
 
 def price_sources():
     return {p.name: [p.stat().st_size,p.stat().st_mtime_ns] for p in sorted((RAW/'px').glob('*.json'))}
+
+
+def prepared_price_binding(path=DATABASE):
+    """Identify the price inventory accepted by committed research metadata.
+
+    Read no raw price files. Preparation owns inventory validation; ordinary
+    daily-cache checks bind to that validated prerequisite without rescanning it.
+    """
+    with closing(connect(path)) as db:
+        row=db.execute("SELECT value FROM metadata WHERE key='prices'").fetchone()
+        inventory=json.loads(row[0]) if row else None
+    if (not isinstance(inventory,dict) or any(
+            not isinstance(name,str) or Path(name).name!=name or not name.endswith('.json')
+            or not isinstance(stamp,list) or len(stamp)!=2
+            or any(type(value) is not int or value<0 for value in stamp)
+            for name,stamp in inventory.items())):
+        raise ValueError('Prepared price inventory is invalid. Run research.py prepare')
+    return hashlib.sha256(json.dumps(inventory,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
 
 
 def connect(path=DATABASE, check=True, full_prices=False):

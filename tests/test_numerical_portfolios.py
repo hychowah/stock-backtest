@@ -91,6 +91,59 @@ class NumericalPortfolioTests(unittest.TestCase):
             self.assertEqual(actual['periods'][0]['holdings'][0]['rank'],1)
             self.assertNotIn('A',[row[0] for row in adapter.db.execute('SELECT symbol FROM snapshots')])
 
+    def test_complete_trailing_mixed_short_and_empty_source_guard_matrix(self):
+        # Coverage expectations are part of the scenario. Matching empty results
+        # cannot qualify the complete trailing supplement.
+        trailing=[dict(field=name,op='gt',value=0.) for name in ('return_1y','return_3y')]
+        mixed=trailing+[dict(field='pe',op='lt',value=20.)]
+        inputs,provider,adapter=self.evaluator(candidate_assembly='source')
+        cases=[];maximum_absolute=maximum_relative=0.
+        for pool in ('legacy','cached'):
+            for metric in s.metrics.METRICS:
+                for ranks in ((1,50),(1,100),(2,3),(51,100)):
+                    for label,filters in [('trailing',trailing),('mixed',mixed)]:
+                        for months in (1,3,6,12,24):
+                            request=dict(start='2015-01-05',end='2016-12-30',months=months,
+                                pool=pool,metric=metric,rank_from=ranks[0],rank_to=ranks[1],
+                                min_cap=0.,min_ev=0.,filters=filters)
+                            expected=s.backtest(self.db,**request)
+                            actual=adapter.backtest(**request)['result']
+                            agreement=compare_results(expected,actual)
+                            self.assertTrue(agreement['exact'],(request,agreement))
+                            counts=[len(p['holdings']) for p in actual['periods']]
+                            self.assertTrue(all(n<ranks[1]-ranks[0]+1 for n in counts) if ranks!=(2,3) else True)
+                            if ranks[0]==51:
+                                self.assertTrue(all(n==0 for n in counts));self.assertIsNone(actual['cagr'])
+                            else:
+                                self.assertTrue(all(n>0 for n in counts),(request,counts))
+                                self.assertIsNotNone(actual['cagr'])
+                            maximum_absolute=max(maximum_absolute,agreement['maximum_absolute'])
+                            maximum_relative=max(maximum_relative,agreement['maximum_relative'])
+                            cases.append(dict(options=request,counts=counts))
+        # Each condition changes membership independently on owned fictional data.
+        adapter.close();provider.close();inputs.close()
+        with self.db:
+            self.db.execute("UPDATE prices SET adjusted=adjusted*2 WHERE symbol='A' AND day BETWEEN '2014-01-01' AND '2014-12-31'")
+            self.db.execute("UPDATE prices SET adjusted=adjusted*2 WHERE symbol='C' AND day BETWEEN '2012-01-01' AND '2012-12-31'")
+        inputs,provider,adapter=self.evaluator(candidate_assembly='source')
+        selected=[]
+        for filters in ([],trailing[:1],trailing[1:],trailing,mixed):
+            options=dict(start='2015-01-05',end='2015-02-27',rank_to=100,
+                         min_cap=0.,min_ev=0.,filters=filters)
+            actual=adapter.backtest(**options)['result']
+            agreement=compare_results(s.backtest(self.db,**options),actual)
+            self.assertTrue(agreement['exact'])
+            maximum_absolute=max(maximum_absolute,agreement['maximum_absolute'])
+            maximum_relative=max(maximum_relative,agreement['maximum_relative'])
+            selected.append({h['symbol'] for h in actual['periods'][0]['holdings']})
+        self.assertIn('A',selected[0]-selected[1])
+        self.assertIn('C',selected[0]-selected[2])
+        self.assertEqual(selected[3],selected[1]&selected[2])
+        self.assertIn('B',selected[3]-selected[4])
+        print(json.dumps(dict(check='complete-trailing-mixed-source',cases=cases,
+            selective_membership=[sorted(v) for v in selected],maximum_absolute=maximum_absolute,
+            maximum_relative=maximum_relative,tolerance=1e-12)),flush=True)
+
     def test_bankruptcy_stopped_exits_final_mark_and_empty_following_full(self):
         with patch.object(s.r.revalue,'BANKRUPT',{(2016,'STOP')}):
             inputs,provider,adapter=self.evaluator(candidate_assembly='compiled')

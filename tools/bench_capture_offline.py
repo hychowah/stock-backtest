@@ -140,7 +140,13 @@ def freshness(root, budget):
     engine = {}
     for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py'):
         info = (root / 'scripts' / name).stat(); engine[name] = [info.st_size, info.st_mtime_ns]
-    return dict(inputs=inventory, prices=prices, daily_inputs=dict(version=3, inputs=inventory, engine=engine))
+    # Match the daily prerequisite binding, including when current raw prices
+    # differ from the accepted research inventory. validate() rejects that state.
+    with database(root / DATABASES['research.sqlite'], budget, readonly=True) as db:
+        accepted = metadata(db).get('prices')
+    if not isinstance(accepted, dict): raise OfflineCaptureError('unsupported')
+    return dict(inputs=inventory, prices=prices, daily_inputs=dict(
+        version=3, inputs=inventory, prices=digest(accepted), engine=engine))
 
 
 def preflight(root):

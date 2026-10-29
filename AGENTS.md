@@ -206,7 +206,9 @@ completion independently of snapshot counts, including empty pools. A pool switc
 fills the missing pool in the same dated period; filters, ranks and metrics reuse
 its prepared rows. Keep completion markers and rows in the same transaction.
 Startup upgrades compatible version-1/2 caches in place, retaining daily prices
-and completed pools. Version-1 books mark both pools complete; version-2 books
+and completed pools. Daily inputs also bind to the price inventory accepted by research
+metadata. After accepted in-place price edits, rebuild daily prices before numeric
+export. Old caches without this binding cannot establish compatibility. Version-1 books mark both pools complete; version-2 books
 retain their individual markers. Changed research inputs still require preparation.
 
 ## Automatic local launcher

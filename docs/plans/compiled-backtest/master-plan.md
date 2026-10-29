@@ -28,7 +28,7 @@ persistent bounded runtime; its [record](phases/CB-11.md) tracks verified
 behavior and the completed independent audits. SQL and complete-book evaluation
 remain in use. CB-12 adds isolated closed preparation and startup verification.
 CB-13B connects persistent numerical calculation only in the isolated preview.
-CB-13C completes browser/calendar compatibility and qualified preview week/month controls. Normal launcher, production engine and
+CB-13C completes browser/calendar compatibility and qualified preview week/month controls. [CB-14 qualification](phases/CB-14.md) is in progress. Full-window capacity has a recorded admission failure; budgets and required access remain unresolved. Normal launcher, production engine and
 running server routing remain unchanged.
 
 The cumulative design follow-up after CB-12 separates optional compiled guard
@@ -1559,7 +1559,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | Planned | Candidate financial, coverage, lifecycle and durable-evidence qualification pending; comparative speed gate waived |
+| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md): scoped numerical/filter evidence, native generation-replacement repair and explicit capacity failures. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition

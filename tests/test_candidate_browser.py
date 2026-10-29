@@ -27,6 +27,123 @@ class WorkflowBrowser(NativeBrowser):
 
 @unittest.skipUnless(os.name=='nt','Actual native Chrome requires Windows.')
 class CandidateBrowserTests(unittest.TestCase):
+    def test_original_snapshots_and_csvs_after_real_generation_replacement(self):
+        # Durable snapshots retain completed evidence across input replacement.
+        # Opening/exporting neither calculates nor checks against current inputs.
+        with FictionalWorkspace() as workspace:
+            service=CandidateService(workspace).start()
+            storage=workspace.own(BrowserStorage())
+            browser=workspace.own(WorkflowBrowser(storage,service))
+            receipts=[];snapshots=[];exports={}
+            try:
+                browser.start();browser.viewport(1440,1000)
+                def navigate():
+                    browser.navigate('http://127.0.0.1:'+str(service.port)+'/')
+                    browser.wait("!!ResultArtifacts.forView('latest')")
+                def run():
+                    previous=browser.evaluate("ResultArtifacts.forView('custom')?.captured_at??null")
+                    browser.click('#run-screen')
+                    browser.wait("!document.querySelector('#run-screen').disabled&&ResultArtifacts.forView('custom')?.captured_at!=="+json.dumps(previous))
+                    self.assertEqual(browser.evaluate("document.querySelector('#screen-error').textContent"),'')
+                    return browser.evaluate("ResultArtifacts.forView('custom')")
+                def save(name,snapshot):
+                    row=browser.evaluate("(async()=>{const r=await fetch('/api/backtests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify("+
+                        json.dumps(dict(name=name,snapshot=snapshot))+ ")});if(!r.ok)throw Error('Save failed');return await r.json();})()")
+                    return row['id']
+                def open_saved(identifier,snapshot):
+                    browser.click('#refresh-backtests')
+                    browser.wait("!!document.querySelector('#saved-list [data-open=\""+identifier+"\"]')")
+                    browser.click('#saved-list [data-open="'+identifier+'"]')
+                    browser.wait("ResultArtifacts.forView('custom')?.captured_at==="+json.dumps(snapshot['captured_at']))
+                    expected=browser.evaluate('ResultArtifacts.decode('+json.dumps(snapshot)+')')
+                    self.assertEqual(browser.evaluate("ResultArtifacts.forView('custom')"),expected)
+                def download_all(identifier,snapshot):
+                    contents=[]
+                    def take(selector,rows):
+                        receipt,content=browser.download(selector);receipts.append(receipt)
+                        self.assertEqual(len(list(csv.DictReader(io.StringIO(content.decode('utf-8-sig'))))),len(rows))
+                        contents.append(content)
+                    result=snapshot['result']
+                    if snapshot['kind']=='random':
+                        take('#robustness-download',result['trials'])
+                        trials=result['trial_results']
+                    else:trials=[result]
+                    for index,trial in enumerate(trials):
+                        if snapshot['kind']=='random':
+                            browser.fill('#robustness-trial',str(index));browser.click('#robustness-inspect')
+                        take('#schedule-download-returns',trial['periods'])
+                        take('#schedule-download-holdings',[h for p in trial['periods'] for h in p['holdings']])
+                    return contents
+                navigate();browser.click('#auto-run');browser.click('#mode-backtest');browser.fill('#schedule-kind','custom')
+                for selector,value in [('#trade-start','2015-01-02'),('#trade-end','2015-02-27'),('#rank-to','3'),('#date-testing','random'),('#random-trials','3')]:browser.fill(selector,value)
+                browser.wait("!document.querySelector('#calendar-controls').hidden");browser.click('#calendar-custom')
+                candidate=run();original_result=candidate['result']
+                self.assertEqual((original_result['completed'],original_result['valid']),(3,3))
+                candidate['catalog']['metrics'][candidate['settings']['metric']]['label']='Original candidate metric'
+                candidate['presentation']['periodLabel']='Original candidate period'
+                snapshots.append(('Candidate original',candidate))
+                browser.click('#calendar-custom');browser.fill('#date-testing','single');browser.fill('#rebalance-months','1')
+                monthly=run()
+                for version in (1,2):
+                    old=json.loads(json.dumps(monthly));old['version']=version
+                    old['captured_at']='2026-10-29T00:00:0'+str(version)+'Z'
+                    old['catalog']['metrics'][old['settings']['metric']]['label']='Original monthly metric v'+str(version)
+                    if version==1:
+                        old['context']=dict(pill='Original monthly period v1',notes=[]);old.pop('presentation')
+                    else:old['presentation']['periodLabel']='Original monthly period v2'
+                    snapshots.append(('Old monthly v'+str(version),old))
+                ids=[save(name,snapshot) for name,snapshot in snapshots]
+                browser.click('details:has(#saved-list) summary')
+                for identifier,(_,snapshot) in zip(ids,snapshots,strict=True):
+                    open_saved(identifier,snapshot);exports[identifier]=download_all(identifier,snapshot)
+                old_inputs=workspace.input_inventory()
+                pointer=workspace.source/'data/numerical/current.json'
+                old_generation=json.loads(pointer.read_text())['current']
+                service.close()
+                # Change saved fictional prices, then use ordinary candidate
+                # preparation/publication. Do not patch freshness or identities.
+                for path in (workspace.source/'raw/px').glob('*.json'):
+                    value=json.loads(path.read_text())
+                    for row in value['div']:
+                        if row['date']>='2015-02-01':row['adjClose']*=1.2
+                    path.write_text(json.dumps(value),encoding='utf-8')
+                new_inputs=workspace.input_inventory();self.assertNotEqual(old_inputs,new_inputs)
+                service=CandidateService(workspace).start();browser.service=service;storage.owners.append(service)
+                new_generation=json.loads(pointer.read_text())['current']
+                self.assertNotEqual(old_generation,new_generation)
+                # A fresh numerical run really differs; its old checkpoints cannot
+                # masquerade as work from this new generation.
+                navigate();browser.click('details:has(#saved-list) summary')
+                open_saved(ids[0],candidate);browser.click('#robustness-replay')
+                browser.wait("!document.querySelector('#run-screen').disabled&&ResultArtifacts.forView('custom').captured_at!=="+json.dumps(candidate['captured_at']))
+                changed=browser.evaluate("ResultArtifacts.forView('custom').result")
+                self.assertEqual(changed['execution']['recovered_trials'],0)
+                print(json.dumps(dict(check='generation-fresh-result-probe',old_generation=old_generation,
+                    new_generation=new_generation,original_cagr=original_result['trial_results'][0]['cagr'],
+                    changed_cagr=changed['trial_results'][0]['cagr'])),flush=True)
+                self.assertNotEqual(changed['distributions'],original_result['distributions'])
+                service.close();service=CandidateService(workspace,scenario='ordinary').start()
+                browser.service=service;storage.owners.append(service)
+                navigate();browser.click('details:has(#saved-list) summary')
+                for identifier,(_,snapshot) in zip(ids,snapshots,strict=True):
+                    open_saved(identifier,snapshot)
+                    self.assertEqual(download_all(identifier,snapshot),exports[identifier])
+                self.assertEqual(browser.errors,[])
+                # Retain exact plans, original labels/settings and complete
+                # snapshots alongside CSV receipts after the fixture is removed.
+                (storage.root/'evidence/original-snapshots.json').write_text(json.dumps([
+                    dict(id=identifier,name=name,snapshot=snapshot)
+                    for identifier,(name,snapshot) in zip(ids,snapshots,strict=True)],
+                    sort_keys=True,allow_nan=False),encoding='utf-8')
+                print(json.dumps(dict(check='native-snapshots-generation-replacement',old_generation=old_generation,
+                    new_generation=new_generation,old_inputs=old_inputs,new_inputs=new_inputs,
+                    sources=workspace.sources,records=ids,downloads=receipts,
+                    byte_identical_exports=sum(map(len,exports.values())),fresh_recovered_trials=changed['execution']['recovered_trials'])),flush=True)
+            finally:
+                browser.close();service.close()
+                print(json.dumps(dict(browser_artifacts=storage.preserve(),check='native-generation-closure',
+                    closure=service.owner.closure(),browser=browser.owned.closure() if browser.owned else None)),flush=True)
+
     def test_candidate_controls_artifacts_replay_exports_and_drafts(self):
         with FictionalWorkspace() as workspace:
             service=CandidateService(workspace).start()

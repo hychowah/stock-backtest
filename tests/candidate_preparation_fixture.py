@@ -84,6 +84,42 @@ def main():
         unchanged=candidate.prepare()
         assert unchanged['generation']['reused']
         assert inventory=={p.name:(p.stat().st_mtime_ns,p.read_bytes()) for p in pointer.iterdir()}
+        # In-place raw edits leave directory metadata and report cutoff intact.
+        # Research must invalidate daily prices before a new numeric export.
+        from contextlib import closing
+        import schedules
+        from numerical_generation import GenerationStore
+        import os
+        prices=source/'raw/px';directory_stamp=prices.stat()
+        price=prices/'ZZ000.json';payload=json.loads(price.read_bytes())
+        for row in payload['div']:
+            if row['date']>='2015-02-01':row['adjClose']*=1.2
+        price.write_text(json.dumps(payload),encoding='utf-8')
+        os.utime(prices,ns=(directory_stamp.st_atime_ns,directory_stamp.st_mtime_ns))
+        cutoff=baseline.cutoff((source/'results/summary-exits.txt').read_text())
+        with cache_access.access():
+            research.prepare()
+            assert baseline.cutoff((source/'results/summary-exits.txt').read_text())==cutoff
+            try:GenerationStore(schedules).prepare()
+            except ValueError as error:assert 'Daily cache changed' in str(error)
+            else:raise AssertionError('Stale daily prices were exported as a new generation')
+        price_changed=candidate.prepare()
+        assert price_changed['generation']['identity']!=initial['generation']['identity']
+        owner=Candidate(candidate)
+        updated_result=owner.calculate('custom',options,None,None)
+        assert updated_result['cagr']!=result['cagr']
+        owner.close();owner.retire()
+        daily=source/'data/schedules.sqlite';daily_content=daily.read_bytes()
+        with cache_access.access(),patch.object(research,'price_sources',side_effect=AssertionError('Daily connect scanned raw inventory')):
+            with closing(schedules.connect()) as db:
+                actual=db.execute("SELECT adjusted FROM prices WHERE symbol='ZZ000' AND day='2015-02-02'").fetchone()[0]
+                assert actual==next(row['adjClose'] for row in payload['div'] if row['date']=='2015-02-02')
+        with patch.object(research,'bars',side_effect=AssertionError('Unchanged restart reparsed raw prices')):
+            assert candidate.prepare()['generation']['reused']
+        assert daily.read_bytes()==daily_content
+        print(json.dumps(dict(check='in-place-price-preparation',original_cagr=result['cagr'],
+            updated_cagr=updated_result['cagr'],generation=price_changed['generation']['identity'],
+            daily_adjusted=actual,unchanged_daily_bytes=True)),flush=True)
         import os
         prices=source/'raw/px';original_directory=prices.stat()
         extra=prices/'UNUSED.json';extra.write_text('{}')
