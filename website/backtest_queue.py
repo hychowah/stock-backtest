@@ -22,6 +22,7 @@ import backtest_control
 import backtest_jobs
 import cache_access
 import diagnostics
+import durable_evidence
 import saved_backtests
 
 DATABASE=Path(__file__).resolve().parents[1]/'data'/'backtest-queue.sqlite'
@@ -54,7 +55,8 @@ def encode(value):return json.dumps(value,allow_nan=False,separators=(',',':'),s
 
 
 class Store:
-    def __init__(self,path=DATABASE):self.path=Path(path)
+    def __init__(self,path=DATABASE,*,evidence_budget=durable_evidence.DEFAULT_BUDGET):
+        self.path=Path(path);self.evidence_budget=evidence_budget
 
     @contextmanager
     def database(self):
@@ -62,6 +64,7 @@ class Store:
         db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row
         try:
             db.executescript(SCHEMA)
+            durable_evidence.install(db)
             with db:
                 db.execute('BEGIN IMMEDIATE')
                 yield db
@@ -135,7 +138,9 @@ class Store:
         with self.database() as db:
             row=self.row(db,identifier,include_snapshot=True);result=self.metadata(db,row)
             packed=row['snapshot']
-        if packed is not None:result['snapshot']=json.loads(zlib.decompress(packed))
+        if packed is not None:
+            durable_evidence.eager_guard(packed)
+            result['snapshot']=json.loads(zlib.decompress(packed))
         return result
 
     def pause(self,paused):
@@ -176,6 +181,7 @@ class Store:
                 # Keep only the submission receipt, so a lost-ack retry cannot
                 # resurrect an explicitly deleted test or its holdings.
                 db.execute("UPDATE jobs SET state='deleted',name='',spec='{}',snapshot=NULL,progress=NULL,configuration=NULL,plan=NULL,seed=NULL,error=NULL,cagr=NULL,revision=revision+1 WHERE id=?",(identifier,))
+                durable_evidence.delete(db,identifier)
                 db.execute('DELETE FROM edits WHERE job_id=?',(identifier,))
                 return dict(id=identifier,deleted=True)
             if action=='stop':
@@ -236,6 +242,54 @@ class Store:
                 summary={key:value[key] for key in ('seed','requested','start','end','months','calendar') if key in value}
                 db.execute('UPDATE jobs SET configuration=?,plan=? WHERE id=?',(encode(summary),encode(value),identifier))
             else:db.execute('UPDATE jobs SET progress=? WHERE id=?',(encode(value),identifier))
+
+    def finish_evidence(self,identifier,metadata,reader):
+        """Explicit dormant completion. Queue intent owns publication precedence.
+
+        No engine or financial resource is acquired under this transaction.
+        Exact completion retries preserve the first bytes and revision.
+        """
+        with self.database() as db:
+            row=self.row(db,identifier,include_snapshot=True,include_plan=True)
+            if row['state']=='stopping':
+                db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE id=?",(now(),identifier))
+                return dict(id=identifier,state='cancelled')
+            if row['state']=='complete' and durable_evidence.is_evidence(row['snapshot']):
+                if not durable_evidence.matches(db,identifier,row['snapshot'],metadata,reader):
+                    raise Conflict('Completed evidence differs from the original snapshot.')
+                return dict(id=identifier,state='complete')
+            if row['state']!='running':raise Conflict('Only a running test can complete its evidence.')
+            spec=json.loads(row['spec'])
+            if (not durable_evidence.same(metadata.get('settings'),dict(mode=spec['mode'],**spec['options']))
+                    or not durable_evidence.same(metadata.get('catalog'),spec['catalog'])
+                    or not durable_evidence.same(metadata.get('presentation'),spec['presentation'])
+                    or metadata.get('kind')!=spec['mode']):
+                raise Conflict('Snapshot differs from the submitted queued test.')
+            plan=json.loads(row['plan']) if row['plan'] else None
+            if (not durable_evidence.same(reader.metadata.get('configuration'),plan)
+                    or spec['mode']=='random' and reader.metadata.get('options',{}).get('seed')!=row['seed']):
+                raise Conflict('Snapshot differs from the recorded queue plan.')
+            with durable_evidence.publication(db,identifier,metadata,reader,budget=self.evidence_budget) as packed:
+                db.execute("UPDATE jobs SET state='complete',snapshot=?,cagr=?,error=NULL,finished=?,revision=revision+1 WHERE id=?",
+                    (packed,saved_backtests.information(metadata)['cagr'],now(),identifier))
+                backtest_control.checkpoint();db.commit()
+            return dict(id=identifier,state='complete')
+
+    @contextmanager
+    def open_evidence(self,identifier):
+        """Detach a complete stored result before exposing an independent reader."""
+        if not self.path.exists():raise Missing('Queued test not found. Refresh the queue.')
+        db=sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True,timeout=10)
+        opened=None
+        try:
+            db.execute('BEGIN')
+            row=db.execute("SELECT substr(snapshot,1,?) FROM jobs WHERE id=? AND state='complete'",
+                (durable_evidence.MAX_ENVELOPE_BYTES+1,identifier)).fetchone()
+            if row is None:raise Missing('Completed queued evidence not found.')
+            opened=durable_evidence.detach(db,identifier,row[0],budget=self.evidence_budget)
+        finally:db.close()
+        try:yield opened
+        finally:opened.close()
 
     def finish(self,identifier,state,*,snapshot=None,error=None):
         packed=zlib.compress(encode(snapshot).encode(),3) if snapshot is not None else None

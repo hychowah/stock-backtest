@@ -3,8 +3,8 @@
 This format preserves complete evidence without collecting all output in memory.
 It is a building block for CB-14 capacity work. The preview still uses its eager
 result protocol and existing limits. Offline numerical production and version-2
-derived checkpoints now use the codec. No application route or saved snapshot
-version changes.
+derived checkpoints now use the codec. No application route changes. Explicit dormant durable operations now support
+[snapshot version 3](durable-evidence.md); eager snapshots remain versions 1/2.
 
 `scripts/result_evidence.py` uses the standard library. It owns no database, job,
 file path, financial lock or publication. Existing resource owners must supply
@@ -121,8 +121,8 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 
 The [capacity design](plans/compiled-backtest/phases/CB-14.capacity-design.md)
 now has an explicit dormant runtime transfer and temporary Jobs owner. It
-retains separate work for queue/library persistence,
-ResultArtifacts, browser inspection and streamed exports. Full application capacity is not qualified by these private operations. Existing Session preflight, 64 MiB IPC
+adds dormant queue/library persistence in increment 4. ResultArtifacts, browser
+inspection and streamed exports remain separate work. Full application capacity is not qualified by these private operations. Existing Session preflight, 64 MiB IPC
 and snapshot limits remain. G03 and G06 remain failed. No default-engine or launcher change follows.
 
 ## Explicit runtime and temporary Jobs evidence
@@ -179,6 +179,9 @@ and charge for a later `Jobs.close()` retry. Unknown files are never removed.
 This workspace has no independent job registry, scheduler or durable user store.
 
 The new descriptor appears only in explicit evidence jobs. It is not a browser
-snapshot and cannot replace an eager `trial_results` value. Queue/library copies,
-ResultArtifacts readers and streamed exports remain later increments. Application
-routing stays eager until those consumers preserve complete evidence.
+snapshot and cannot replace an eager `trial_results` value. [Queue/library copies](durable-evidence.md) now use shared bounded validation
+and atomic chunk publication inside their existing databases. Explicit opening
+detaches a charged temporary reader before releasing it to the caller. Deleting
+the source cannot invalidate that reader. ResultArtifacts readers and streamed
+exports remain increment 5. Application routing stays eager until those consumers
+preserve complete evidence.

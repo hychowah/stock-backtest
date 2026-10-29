@@ -152,10 +152,13 @@ not establish that high-water size.
 
 Retention affects reuse only. It never opens, clears, migrates or deletes
 ordinary saved books, `data/saved-backtests.sqlite` or
-`data/backtest-queue.sqlite`. Completed durable snapshots retain their original
+`data/backtest-queue.sqlite`. Completed eager version-1/2 snapshots retain their original
 settings, labels, presentation, dates and full holdings. Existing ResultArtifacts
 readers reopen and export them without calculation after input replacement or
 checkpoint eviction. Their existing limits and explicit deletion rules remain.
+Dormant [version-3 durable copies](durable-evidence.md) retain independent codec
+evidence inside the same user stores. Their explicit readers need no checkpoints;
+browser reader integration remains CB-14 capacity increment 5.
 
 ## Verification scope
 

@@ -477,7 +477,10 @@ the call succeeds. No complete-trial capture argument exists on this operation.
 `Candidate.calculate_into` uses the same admission, operation lock, freshness,
 parent handoff and confirmed-retirement paths as eager calculation. Existing Jobs
 can explicitly start evidence jobs and pin completed readers. No HTTP route,
-queue adapter, saved store or browser selects this operation. The ordinary and
+queue execution adapter or browser selects this operation. Explicit durable-store
+methods can copy pinned Jobs evidence without acquiring financial ownership.
+Their version-3 snapshots remain independent of current generations. See
+[durable evidence](durable-evidence.md). The ordinary and
 preview eager limits remain in force. Source/cache ordering, compiler ownership
 and daily-price/root validation adapters retain their existing contracts.
 
