@@ -1763,6 +1763,27 @@ All slower observations, earlier failures and source maps remain retained.
 Broader capacity, full-weekly output policy and installed compatibility remain
 unresolved. CB-14 remains incomplete; CB-15 remains blocked.
 
+
+The [source-derived ranking-input repair](phases/CB-14.capacity6.history.md)
+then removes the demonstrated unused history dependency without a cache, index
+or formula rewrite. Conservative adapters retain authoritative source bodies
+and guards, validate prepared substitutions and reject unsupported history or
+namespace use before execution. Scoped native and WSL checks pass; two native
+combined verification failures remain failed after hitting the unchanged
+aggregate CPU threshold. Independent complete groups verify the required scope.
+Ordinary databases stay current. Fresh numerical export preserves every array
+and record row, with a new implementation-bound generation. A fresh three-trial
+annual request (seed 43, 87 periods, 4,350 holdings) takes 70.422 candidate versus
+167.813 ordinary seconds. The original uses its normal four workers and reuses
+zero books. All original typed results and order agree exactly. Ratio 2.38296×
+is a material request gain, but does not establish the approximate 4× goal or
+broader capacity. Startup is separately 23.438 seconds. Historical one-trial
+observations are not matching before/after controls. Exact historical mutable
+pointer images are reproduced against their original hashes, explicitly marked
+as reconstructions; no earlier evidence is rewritten. Next complete remaining
+operational/capacity gates under declared admission. Full-weekly output policy,
+G15 permission and broader qualification stay open; CB-14 is incomplete.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.

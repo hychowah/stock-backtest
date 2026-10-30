@@ -112,6 +112,9 @@ class GenerationTests(unittest.TestCase):
         from bench_candidates_numba import NumbaExecutor
         self.prepare()
         inputs = self.attach()
+        self.assertTrue(inputs.histories['A'])
+        self.enterContext(patch.object(ng._Records, '__getitem__',
+            side_effect=AssertionError('Source assembly loaded an unused history')))
         fields = [dict(field=field,op='gt',value=-999999) for field in self.s.metrics.FILTERS]
         maximum_absolute=maximum_relative=0.
         for factory in (PythonExecutor, NumbaExecutor):

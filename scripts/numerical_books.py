@@ -332,10 +332,10 @@ class PythonExecutor:
             accepted[row] = True
             metric_observation = dict(symbol=symbol,fiscal=fiscal,market_cap=cap,
                 enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
-            pair = inputs.s.metrics.current_multiple(metric_observation,inputs.histories[symbol])
+            pair = policy._current(metric_observation)
             current_pair = pair
             average = inputs.average_3y[report]
-            pair = policy._three(metric_observation,inputs.histories[symbol],values,
+            pair = policy._three(metric_observation,values,
                                   None if np.isnan(average) else float(average))
             self._encode_candidate(results[book], symbol, int(ranks[book,symbol_id]) or None,
                                    observation, current_pair, pair, values, needed)

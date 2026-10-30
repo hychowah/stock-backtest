@@ -25,6 +25,65 @@ def _tree(function):
     return ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
 
 
+def _metric_tree(function):
+    """Accept only explicit, local metric expressions before removing inputs.
+
+    Namespace inspection, calls into arbitrary code and additional scopes can
+    hide parameter use. They are outside this adapter's supported source forms.
+    Ordinary calculators keep their full Python interfaces.
+    """
+    tree = _tree(function)
+    args = tree.args
+    if (tree.decorator_list or getattr(tree, 'type_params', [])
+            or [a.arg for a in args.args] != ['observation', 'history']
+            or args.posonlyargs or args.kwonlyargs or args.defaults
+            or args.vararg or args.kwarg or tree.returns
+            or any(a.annotation for a in args.args)):
+        raise ValueError('Unsupported source metric interface.')
+    allowed = (ast.FunctionDef, ast.arguments, ast.arg, ast.Assign, ast.If,
+               ast.Return, ast.Expr, ast.Constant, ast.Name, ast.Load, ast.Store,
+               ast.Subscript, ast.Tuple, ast.BinOp, ast.UnaryOp, ast.BoolOp,
+               ast.Compare, ast.IfExp, ast.Call, ast.Attribute,
+               ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd,
+               ast.And, ast.Or, ast.Not, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
+               ast.Gt, ast.GtE, ast.Is, ast.IsNot)
+    names = {'observation', 'history', 'math', 'annual_average'}
+    for node in ast.walk(tree):
+        if not isinstance(node, allowed) or isinstance(node, ast.FunctionDef) and node is not tree:
+            raise ValueError('Unsupported source metric structure.')
+        if isinstance(node, ast.Assign):
+            if (len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name)
+                    or node.targets[0].id in names
+                    or node.targets[0].id in ('numeric_values', 'supplied_average')):
+                raise ValueError('Unsupported source metric binding.')
+    names.update(node.targets[0].id for node in ast.walk(tree) if isinstance(node, ast.Assign))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Expr) and not (isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)):
+            raise ValueError('Unsupported source metric expression statement.')
+        if isinstance(node, ast.Name) and node.id not in names:
+            raise ValueError('Unsupported source metric dependency.')
+        if isinstance(node, ast.Attribute) and not (isinstance(node.value, ast.Name)
+                and node.value.id == 'math' and node.attr == 'isfinite'
+                and function.__globals__.get('math') is math):
+            raise ValueError('Unsupported source metric attribute.')
+        if isinstance(node, ast.Call) and not (
+                isinstance(node.func, ast.Name) and node.func.id == 'annual_average'
+                or isinstance(node.func, ast.Attribute) and node.func.attr == 'isfinite'):
+            raise ValueError('Unsupported source metric call.')
+    return tree
+
+
+def _compile_metric(tree, function):
+    if any(isinstance(node, ast.Name) and node.id in ('history', 'annual_average')
+           for node in ast.walk(tree)):
+        raise ValueError('Source metric requires unsupported annual history.')
+    tree.args.args = [arg for arg in tree.args.args if arg.arg != 'history']
+    module = ast.fix_missing_locations(ast.Module(body=[tree], type_ignores=[]))
+    namespace = dict(function.__globals__)
+    exec(compile(module, '<source-derived ranking metric>', 'exec'), namespace)
+    return namespace[tree.name]
+
+
 def _schema_tree(node):
     """Canonical semantic AST, including Python 3.11/3.12 function nodes.
 
@@ -232,7 +291,8 @@ class PolicyProgram:
         exec(self.python_source('_policy_row'), self._row_namespace)
         self._row = self._row_namespace['_policy_row']
         self._snapshot = self._snapshot_adapter(snapshot,schedules.financial_books.snapshot)
-        self._three = self._three_adapter(three,m.three_year_multiple)
+        self._current = self._current_adapter(m.current_multiple)
+        self._three = self._three_adapter(m.three_year_multiple)
         numeric_observation = dict(fiscal='2014-06-30',market_cap=150.,enterprise_value=200.,
                                    ev_ebitda=4.,ebitda_yield=.25)
         history = [dict(fiscal=f'{year}-06-30',ebitda=20.) for year in range(2011,2015)]
@@ -440,21 +500,47 @@ class PolicyProgram:
         exec(compile(module,'<source-derived snapshot>','exec'),namespace)
         return namespace[tree.name]
 
-    def _three_adapter(self,original_tree,function):
-        tree = copy.deepcopy(original_tree)
+    def _current_adapter(self, function):
+        """Execute the authoritative current-metric body without unused history.
+
+        Construction rejects source whose remaining behavior requires history.
+        """
+        tree = _metric_tree(function)
+        tree.name = '_source_current'
+        return _compile_metric(tree, function)
+
+    def _three_adapter(self,function):
+        """Execute source guards with prepared average and numeric outputs.
+
+        Validate substituted expressions and reject remaining history use.
+        """
+        tree = _metric_tree(function)
+        assignments = {name: [node for node in ast.walk(tree)
+                       if isinstance(node, ast.Assign) and node.targets[0].id == name]
+                       for name in ('average', 'multiple')}
+        if any(len(nodes) != 1 or nodes[0] not in tree.body for nodes in assignments.values()):
+            raise ValueError('Ambiguous source metric substitution.')
+        average, multiple = (assignments[name][0] for name in ('average', 'multiple'))
+        expected = ast.parse("annual_average(history, observation['fiscal'], 3)", mode='eval').body
+        if (ast.dump(average.value) != ast.dump(expected)
+                or function.__globals__.get('annual_average') is not self.s.metrics.annual_average
+                or self._lower(multiple.value, names={'average': ('input', 'average_3y')}) != self.expression_map['metric3_multiple']):
+            raise ValueError('Unsupported prepared source metric substitution.')
+        returns = [node for node in ast.walk(tree) if isinstance(node, ast.Return)
+                   and not (isinstance(node.value, ast.Constant) and node.value.value is None)]
+        for node in returns:
+            value = node.value
+            if (not isinstance(value, ast.Tuple) or len(value.elts) != 2
+                    or not isinstance(value.elts[0], ast.Name) or value.elts[0].id != 'multiple'
+                    or self._lower(value.elts[1], names={'multiple': ('var', 'metric3_multiple')}) != self.expression_map['metric3_yield']):
+                raise ValueError('Unsupported source metric result substitution.')
         tree.name = '_source_three_year'
         tree.args.args.extend([ast.arg(arg='numeric_values'),ast.arg(arg='supplied_average')])
-        for node in tree.body:
-            if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Name):
-                if node.targets[0].id=='average':node.value=ast.Name('supplied_average',ast.Load())
-                if node.targets[0].id=='multiple':
-                    node.value=ast.Subscript(ast.Name('numeric_values',ast.Load()),
-                               ast.Constant(self.output_index['metric3_multiple']),ast.Load())
-            if isinstance(node,ast.Return):
-                node.value=ast.Tuple([ast.Subscript(ast.Name('numeric_values',ast.Load()),
+        average.value = ast.Name('supplied_average', ast.Load())
+        multiple.value = ast.Subscript(ast.Name('numeric_values',ast.Load()),
+                           ast.Constant(self.output_index['metric3_multiple']),ast.Load())
+        for node in returns:
+            node.value=ast.Tuple([ast.Subscript(ast.Name('numeric_values',ast.Load()),
                             ast.Constant(self.output_index[key]),ast.Load())
                             for key in ('metric3_multiple','metric3_yield')],ast.Load())
-        module = ast.fix_missing_locations(ast.Module(body=[tree],type_ignores=[]))
-        namespace = dict(function.__globals__)
-        exec(compile(module,'<source-derived three-year metric>','exec'),namespace)
-        return namespace[tree.name]
+        return _compile_metric(tree, function)

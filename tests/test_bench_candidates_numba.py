@@ -173,7 +173,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
                 if observation is None or not source_tests.s.financial_books.eligible(pool,observation[3],observation[4]):continue
                 metric_observation = dict(fiscal=str(fiscal),enterprise_value=observation[4],
                                            ev_ebitda=observation[7],ebitda_yield=observation[6])
-                pair = policy._three(metric_observation,[],numeric[row],None if np.isnan(average) else average)
+                pair = policy._three(metric_observation,numeric[row],None if np.isnan(average) else average)
                 expected[row] = (1,*(date.fromisoformat(day).toordinal() for day in observation[:3]),
                                  policy.decisions.statuses.index(observation[-1])+1,1,int(pair is not None))
             np.testing.assert_array_equal(actual,expected)

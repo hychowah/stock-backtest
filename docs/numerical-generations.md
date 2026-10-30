@@ -48,6 +48,24 @@ and the provider before closing the attachment. Keep source-before-import and
 source-before-cache ownership throughout. The existing attachment validator
 still checks current inputs before a diagnostic request.
 
+CB-14 removes unused annual-history reads from source-derived ranking
+execution. The current-metric adapter executes the authoritative calculator
+body from `metrics.py`. The three-year adapter keeps its source guards and uses
+the prepared average and source-derived numeric outputs. It accepts the known
+`annual_average(history, observation['fiscal'], 3)` dependency only when that
+callback is the calculator used during export. Neither adapted interface takes
+an unused history argument. Selected-report reads remain unchanged.
+
+Construction rejects remaining history dependencies, dynamic namespace access,
+unsupported scopes and ambiguous or unrecognized substitutions before candidate
+results can be returned. Supported observation and average guards still execute
+and bind source identity. A valid ordinary formula outside this candidate subset
+remains available through ordinary calculation. There is no automatic fallback,
+new history cache or relaxed freshness check. The adapter source participates
+in normal generation binding; use ordinary numerical preparation to decide
+whether a new generation is needed. Research and daily preparation remain current
+when their own input fingerprints have not changed.
+
 The [financial result contract](portfolio-results.md) defines version 1 outside
 existing job payloads. Complete holding rows, status strings, nulls and array
 order stay intact. Fixed monthly requests and explicit weekly dates use the
