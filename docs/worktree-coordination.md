@@ -85,6 +85,26 @@ Benchmark admission remains closed. This coordination note grants no execution,
 deployment, server stop/restart, market-data download or production cutover.
 Existing unrelated working-tree edits remain outside each task's commit.
 
+## Custom-variable plan on hold — 30 October 2026
+
+The user put the custom-variable plan on hold until the new engine is finished.
+Phase 1 delivered contracts only. Phase 2 has inspection and preliminary design,
+with no provider implementation. Phases 2–7 must wait. This feature adds no new
+prerequisite to the current engine swap. Its proposed engine-branch assignment
+remains unapproved and is deferred during the hold.
+
+See the [master plan's hold and resume conditions](plans/custom-variables/master-plan.md#hold-and-resume).
+After engine completion, recheck the actual interfaces and agree ownership and
+narrow scope before protected edits. The earlier provider proposal does not
+authorize work during the hold. Unrelated work retains the existing boundaries.
+
+The [engine-owner handoff](plans/custom-variables/engine-handoff.md) records the
+code and remaining-plan impact. It is a coordination notice, not a request to
+extend the engine now. Committing main-side notes does not update the engine
+worktree's local files or notify its session. Have its owner read the handoff
+at the next coordination point. Existing main feature integration obligations
+remain separate from this held proposal.
+
 ## Agreed exception: website run controls (26 October 2026)
 
 The user assigned main the narrow cancellation change for manual website runs.

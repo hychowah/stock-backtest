@@ -11,6 +11,13 @@ The `main` worktree continues frontend and unrelated backend development. The
 financial/cache contracts. Before choosing files for a task, read
 [docs/worktree-coordination.md](docs/worktree-coordination.md).
 
+Custom-variable work is on hold by user decision until the new backtest engine
+is finished. Phase 1 is documentation only; Phase 2 is not implemented.
+Follow the [hold and resume conditions](docs/plans/custom-variables/master-plan.md#hold-and-resume)
+before continuing any phase of that feature.
+The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
+the notice needed at the next coordination point. It requests no engine change.
+
 On main, preserve calculation rules, engine interfaces, prepared schemas,
 freshness checks, worker/lock ownership and benchmark code. Keep edits to shared
 files narrow. Avoid broad refactors, renames and formatting changes in these

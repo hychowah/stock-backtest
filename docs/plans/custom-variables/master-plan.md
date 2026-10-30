@@ -2,14 +2,40 @@
 
 Date: 2026-10-30
 
-Status: Phase 1 contract documentation delivered on 2026-10-30. See the
-[phase record](phases/phase-01/README.md). Financial implementation ownership
-remains proposed, not agreed; Phase 2 protected implementation is blocked until
-that assignment is accepted. Phases 2–7 have not started.
+Status: **On hold by user decision on 2026-10-30 until the new backtest engine
+is finished.** Phase 1 contract documentation is complete. Phase 2 has inspection
+and preliminary design records only; no provider is implemented. Phases 3–7 have
+not started. All remaining custom-variable work is on hold, including the editor
+and library. Financial implementation ownership remains proposed, not agreed.
 This document does not authorize changes to engine-owned contracts,
 market-data downloads, benchmark admission, deployment, or production cutover.
 Engine observations below describe the planning session; recheck the owning
 worktree before implementation.
+
+## Hold and resume
+
+Finish the new engine first. Its owning compiled-backtest plan must record
+CB-14 qualification and CB-15 default cutover as complete before this feature
+resumes. Custom variables are not a prerequisite for that engine swap.
+
+The execution framework can be reused. Phase 2 needs coordinated financial-input,
+valuation and generation adapters. The full feature also changes scalar
+evaluation, selection and result evidence. Keep that work separate from the
+engine's unfinished qualification and browser/evidence work.
+
+Retain the Phase 1 contract and Phase 2 design as proposals for later review.
+After the engine is finished, recheck its HEAD, working tree, interfaces and
+handoffs. Revise the provider design against the finished engine, then agree one
+owning branch and narrow scope before protected edits. The earlier ownership
+question is deferred; it is not a request for approval during this hold.
+
+The [engine-owner handoff](engine-handoff.md) records what to communicate to
+that worktree. It identifies reusable implementation, later contract changes and
+existing main integration obligations. It adds no engine task or readiness gate.
+Preparing a main-side record does not notify a separate engine session.
+
+The existing website keeps its built-in metrics, filters and engine. No
+custom-variable runtime behavior was enabled by Phase 1 or the Phase 2 records.
 
 Phase 1 rechecked engine HEAD `a8cbb69` and its active working tree. Persistent
 isolated preview integration is present. CB-13 is recorded complete. CB-14
@@ -18,6 +44,15 @@ not verified for use. CB-15 remains blocked. The fixed policy catalog and
 pair-valued factor interface still require an explicit scalar-variable change.
 See [ownership and inspected interfaces](phases/phase-01/ownership.md) for source
 evidence and the distinction between existing agreements and proposed ownership.
+
+Phase 2 rechecked engine HEAD `3856d02`. That commit adds a hardware decision
+and stopped-session handoff; capacity5 source remains uncommitted. The engine
+working tree is actively changing. The earlier fixture failure is historical:
+the current source supplies its missing metadata, but this phase has not tested
+the repair. See the [current inspection](phases/phase-02/inspection.md) and
+[provider design and ownership scope](phases/phase-02/ownership.md), and
+[provider validation plan](phases/phase-02/validation-plan.md). No provider or
+custom-variable capability is implemented by these records.
 
 ## Design
 
@@ -192,14 +227,14 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | Phase | Abstraction delivered | Completion evidence and handoff |
 |---|---|---|
 | **1. Variable contract and ownership** | Contract documentation delivered; implementation ownership pending | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Financial and prepared-data edits remain blocked until ownership is agreed. |
-| **2. Parameter and history provider** | One point-in-time source for supported financial and market observations | Tests cover availability boundaries, stale reports, conflicting annual inputs, fiscal gaps, calendar boundaries, and missing prices. Later work asks for observations without interpreting raw files. |
-| **3. Formula evaluator** | Validation, expression evaluation, dependency resolution, and explanation | Reference tests cover arithmetic, units, nested expressions, saved dependencies, invalid denominators, cycles, and bounded work. Cache identities include definitions, policy, and input generation. |
-| **4. General scalar selection** | Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
-| **5. Durable variable library** | Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
-| **6. Variable editor and strategy integration** | One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
-| **7. Numerical backend qualification** | Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
+| **2. Parameter and history provider** | **On hold; incomplete.** Inspection and preliminary design filed | [Phase record](phases/phase-02/README.md), [proposed scope](phases/phase-02/ownership.md), [preliminary review](phases/phase-02/review.md) and [planned validation](phases/phase-02/validation-plan.md). Resume after the new engine is finished. Implementation, executed checks and final review remain required. |
+| **3. Formula evaluator** | **On hold; not started.** Validation, expression evaluation, dependency resolution, and explanation | Reference tests cover arithmetic, units, nested expressions, saved dependencies, invalid denominators, cycles, and bounded work. Cache identities include definitions, policy, and input generation. |
+| **4. General scalar selection** | **On hold; not started.** Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
+| **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
+| **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
+| **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
 
-Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Main can continue independent UI and library work against fixtures while engine-owned interfaces are settled.
+Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable UI and library work are also on hold. Unrelated website and engine development can continue under the existing worktree boundaries.
 
 Do not build automatic strategy search, arbitrary user code, cross-sectional ranking inside formulas, or silent missing-value substitution in the first release. These add separate semantics beyond the requested formula system.
 
@@ -216,6 +251,7 @@ Quarterly/TTM support is a later extension of the history provider. It requires 
 | How will the numerical engine expose variable requirements? | Review the proposed scalar contract against its current policy, factor, generation, and workspace interfaces before either branch implements it. |
 | Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
 
-This remains an implementation proposal. Phase 1 adds reviewable contracts and
-handoff records only. No product source, runtime data, or existing snapshots
-were changed by this phase.
+This remains an implementation proposal on hold until the new engine is finished.
+Phase 1 supplies reviewable contracts and handoffs. Phase 2 supplies inspection
+and preliminary design only. These records change no product source, runtime
+data or existing snapshots.
