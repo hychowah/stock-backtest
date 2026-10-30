@@ -30,7 +30,7 @@ persistent bounded runtime; its [record](phases/CB-11.md) tracks verified
 behavior and the completed independent audits. SQL and complete-book evaluation
 remain in use. CB-12 adds isolated closed preparation and startup verification.
 CB-13B connects persistent numerical calculation only in the isolated preview.
-CB-13C completes browser/calendar compatibility and qualified preview week/month controls. [CB-14 qualification](phases/CB-14.md) is in progress. Full-window capacity has a recorded admission failure; input, storage and compatibility prerequisites remain unresolved. Normal launcher, production engine and
+CB-13C completes browser/calendar compatibility and qualified preview week/month controls. [CB-14 qualification](phases/CB-14.md) is in progress. Full-window capacity has a recorded admission failure; ordinary independent input preparation and coverage now pass, while broader workload/storage qualification and installed compatibility remain unresolved. Normal launcher, production engine and
 running server routing remain unchanged.
 
 The cumulative design follow-up after CB-12 separates optional compiled guard
@@ -1676,6 +1676,26 @@ complete preparation/storage bounds, assess actual coverage, then declare one
 focused ordinary-method/Numba qualification. Broader capacity, current relative
 performance and installed compatibility remain unresolved. CB-14 is incomplete;
 CB-15 remains blocked. Eager defaults, routing and all existing limits remain.
+
+The [independent ordinary preparation checkpoint](phases/CB-14.capacity6.prepare.md)
+then closes preparation and coverage for that capture. A verified materializer
+makes a separate mutable working root. Ordinary research and daily preparation
+run unchanged under the existing native 2 GiB application limit. The independent
+baseline agrees on all 31 books and 1,550 holdings. Research and daily databases
+are 223,711,232 and 1,095,495,680 bytes. The report remains byte-identical, Through
+2026-10-20. Both pools select 50 holdings in each prepared year. Coverage retains
+missing observations, 22 price files without adjusted rows and historical gaps.
+This is cached-input coverage, not full-universe or full-window trial capacity.
+The new D: declaration includes retained failures within a 32 GiB aggregate
+allowance and a 12 GiB working workspace; the original 4 GiB root is unchanged.
+The [results](phases/CB-14.capacity6.prepare.results.json) bind native closure,
+46 declared tool cases, source archives and complete logs. Next bind a numerical
+generation and prospectively admit a focused full-window original-method/Numba
+comparison. Do not repeat completed preparation or prefix consumer workflows.
+The concrete [G15 isolated-copy proposal](phases/CB-14.installed-compatibility-scope.md)
+awaits separate installed-source/environment permission. Broader capacity,
+remaining operations and installed compatibility stay open. CB-14 is incomplete;
+CB-15 remains blocked. No normal routing, default, deployment or limit changes.
 
 ## Automatic agent implementation protocol
 

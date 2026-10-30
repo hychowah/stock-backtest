@@ -12,9 +12,10 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from datetime import date
 import gzip
 import hashlib
+import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
@@ -270,6 +271,147 @@ def _publish(destination, manifest, check):
     return dict(status='complete', root=str(destination), **marker)
 
 
+def _payload_plan(source, destination, before, maximum):
+    unit = _allocation_unit(destination.parent)
+    if unit <= 0: raise CopyError('invalid_allocation_unit')
+    allowance = 16*1024*len(before)+64*1024**2
+    estimated = sum(((r['bytes']+unit-1)//unit)*unit for r in before.values())+allowance
+    if estimated > maximum or shutil.disk_usage(destination.parent).free < maximum:
+        raise CopyError('storage_limit')
+    if before['results/summary-exits.txt']['bytes'] > BUFFER: raise CopyError('report_limit')
+    report = (source/'results/summary-exits.txt').read_bytes()
+    through = re.findall(rb'^Through (\d{4}-\d{2}-\d{2})\s*$', report, re.MULTILINE)
+    if len(through) != 1: raise CopyError('report_cutoff')
+    return dict(through=date.fromisoformat(through[0].decode()).isoformat(),
+                logical_bytes=sum(r['bytes'] for r in before.values()),
+                allocation_unit=unit, metadata_allowance=allowance,
+                estimated_charged_bytes=estimated, maximum_bytes=maximum,
+                report_sha256=hashlib.sha256(report).hexdigest())
+
+
+def _transfer_payload(source, destination, before, plan, check, expected=None):
+    """Copy and verify one exact payload; the caller owns admission/publication."""
+    hashes = {}; allocated = 0
+    parents = {(destination/name).parent for name in before}
+    parents.update(destination/name for name in DIRECTORIES)
+    for parent in sorted(parents): check(); _parents(parent)
+    def copy_file(item, stop):
+        name, row = item; target = destination/name
+        digest = _copy_file(source/name, target, row, stop); stop()
+        if expected is not None and digest != expected[name]: raise CopyError('source_changed')
+        return name, digest, _allocation(target)
+    def accept(result):
+        nonlocal allocated
+        name, digest, amount = result; hashes[name] = digest; allocated += amount
+        if allocated+plan['metadata_allowance'] > plan['maximum_bytes']: raise CopyError('storage_limit')
+    _file_pass(before.items(), copy_file, accept, check)
+    if _inventory(source, check) != before: raise CopyError('source_changed')
+    if _inventory(destination, check) != before: raise CopyError('destination_mismatch')
+    def verify(item, stop):
+        name, row = item; stop()
+        if _hash(source/name, stop) != hashes[name]: raise CopyError('source_changed')
+        if _hash(destination/name, stop) != hashes[name]: raise CopyError('destination_mismatch')
+        if (destination/name).stat().st_size != row['bytes']: raise CopyError('destination_mismatch')
+    _file_pass(before.items(), verify, lambda result: None, check)
+    if _inventory(source, check) != before: raise CopyError('source_changed')
+    if hashes['results/summary-exits.txt'] != plan['report_sha256']: raise CopyError('source_changed')
+    return dict(files={n:dict(**r, sha256=hashes[n]) for n,r in before.items()},
+                allocated_file_bytes=allocated, charged_bytes=allocated+plan['metadata_allowance'])
+
+
+def _fresh_paths(source, destination, maximum):
+    if type(maximum) is not int or not 0 < maximum <= MAX_BYTES: raise CopyError('invalid_budget')
+    if source == destination or source in destination.parents or destination in source.parents:
+        raise CopyError('overlapping_paths')
+    _ancestors(source); _ancestors(destination.parent)
+    if destination.exists() or destination.is_symlink(): raise CopyError('destination_exists')
+
+
+def _failure(error, destination, created, access=None):
+    deferred = isinstance(error, Deferred)
+    if isinstance(error, ValueError) and access is not None and access.live_pending(): deferred = True
+    result = dict(status='deferred' if deferred else 'failed',
+        reason=error.reason if isinstance(error, CopyError) else 'operation_failed',
+        error_type=type(error).__name__, errno=getattr(error, 'errno', None),
+        locations=[dict(file=Path(f.filename).name,line=f.lineno) for f in traceback.extract_tb(error.__traceback__)])
+    if created:
+        try:
+            with (destination/'failure.json').open('x',encoding='utf8') as stream: json.dump(result,stream,sort_keys=True)
+        except OSError: pass
+    return result
+
+
+def _unique_object(pairs):
+    if len({key for key,value in pairs})!=len(pairs): raise CopyError('invalid_manifest')
+    return dict(pairs)
+
+
+def _capture_manifest(source, expected, check):
+    if not isinstance(expected,str) or not re.fullmatch('[0-9a-f]{64}',expected): raise CopyError('manifest_identity')
+    for name in ('manifest.json.gz','complete.json'):
+        if not stat.S_ISREG(_plain(source/name).st_mode): raise CopyError('unsupported_file_type')
+    check()
+    if (source/'manifest.json.gz').stat().st_size > MANIFEST_BYTES or (source/'complete.json').stat().st_size > BUFFER:
+        raise CopyError('manifest_limit')
+    packed=(source/'manifest.json.gz').read_bytes()
+    if hashlib.sha256(packed).hexdigest()!=expected: raise CopyError('manifest_identity')
+    marker=json.loads((source/'complete.json').read_bytes(),object_pairs_hook=_unique_object)
+    if marker!={'version':1,'manifest_sha256':expected} or type(marker.get('version')) is not int:
+        raise CopyError('incomplete_capture')
+    with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream: decoded=stream.read(MANIFEST_BYTES+1)
+    if len(decoded)>MANIFEST_BYTES: raise CopyError('manifest_limit')
+    manifest=json.loads(decoded,object_pairs_hook=_unique_object); rows=manifest.get('files')
+    if type(manifest.get('version')) is not int or manifest['version']!=1 or manifest.get('kind')!='offline_saved_inputs' or not isinstance(rows,dict):
+        raise CopyError('invalid_manifest')
+    if not 1<=len(rows)<=MAX_FILES or not set(FILES)<=rows.keys(): raise CopyError('invalid_manifest')
+    folded=set()
+    for name,row in rows.items():
+        check(); parts=PurePosixPath(name).parts
+        if (not parts or PurePosixPath(name).as_posix()!=name or name.startswith('/') or '\\' in name or ':' in name or '\x00' in name
+                or any(p in ('.','..') or p.endswith(('.', ' ')) for p in parts)
+                or name.casefold() in folded or not (name in FILES or any(name.startswith(d+'/') for d in DIRECTORIES))):
+            raise CopyError('unsafe_manifest_path')
+        folded.add(name.casefold())
+        if (not isinstance(row,dict) or any(type(row.get(k)) is not int or row[k]<0 for k in ('bytes','mtime_ns'))
+                or not isinstance(row.get('sha256'),str) or not re.fullmatch('[0-9a-f]{64}',row['sha256'])):
+            raise CopyError('invalid_manifest')
+    if any(parent.as_posix().casefold() in folded for n in rows for parent in PurePosixPath(n).parents):
+        raise CopyError('manifest_collision')
+    if sum(r['bytes'] for r in rows.values())!=manifest.get('logical_bytes'): raise CopyError('invalid_manifest')
+    return manifest
+
+
+def materialize_inputs(completed_capture, fresh_destination, *, expected_manifest_sha256,
+                       checkpoint=lambda: None, max_bytes=MAX_BYTES):
+    """Materialize a completed capture into a fresh ordinary workspace.
+
+    Verify its manifest, exact payload and copied bytes before publishing input
+    provenance. The source capture remains unchanged. This receipt describes
+    initial inputs, not later prepared freshness.
+    """
+    source=Path(os.path.abspath(completed_capture)); destination=Path(os.path.abspath(fresh_destination)); created=False
+    try:
+        _fresh_paths(source,destination,max_bytes)
+        manifest=_capture_manifest(source,expected_manifest_sha256,checkpoint)
+        before={n:dict(bytes=r['bytes'],mtime_ns=r['mtime_ns']) for n,r in sorted(manifest['files'].items())}
+        if _inventory(source,checkpoint)!=before: raise CopyError('source_changed')
+        plan=_payload_plan(source,destination,before,max_bytes)
+        if plan['through']!=manifest.get('through'): raise CopyError('report_cutoff')
+        destination.mkdir(); created=True
+        copied=_transfer_payload(source,destination,before,plan,checkpoint,{n:r['sha256'] for n,r in manifest['files'].items()})
+        if _capture_manifest(source,expected_manifest_sha256,checkpoint)!=manifest: raise CopyError('source_changed')
+        record=dict(version=1,kind='initial_input_provenance',capture_manifest_sha256=expected_manifest_sha256,
+                    through=plan['through'],report_sha256=plan['report_sha256'],files=len(before),
+                    logical_bytes=plan['logical_bytes'],allocated_file_bytes=copied['allocated_file_bytes'],
+                    charged_bytes=copied['charged_bytes'],maximum_bytes=max_bytes,prepared_freshness=False)
+        pending=destination/'input-provenance.pending'
+        with pending.open('x',encoding='utf8') as stream:
+            json.dump(record,stream,sort_keys=True);stream.flush();os.fsync(stream.fileno())
+        checkpoint();pending.replace(destination/'input-provenance.json')
+        return dict(status='materialized',root=str(destination),**record)
+    except Exception as error: return _failure(error,destination,created)
+
+
 def copy_inputs(source, fresh_destination, *, checkpoint=lambda: None, max_bytes=MAX_BYTES):
     """Return a completed root or a retained failed/deferred attempt.
 
@@ -280,13 +422,7 @@ def copy_inputs(source, fresh_destination, *, checkpoint=lambda: None, max_bytes
     source = Path(os.path.abspath(source)); destination = Path(os.path.abspath(fresh_destination))
     created = False; access = None
     try:
-        if type(max_bytes) is not int or not 0 < max_bytes <= MAX_BYTES:
-            raise CopyError('invalid_budget')
-        if source == destination or source in destination.parents or destination in source.parents:
-            raise CopyError('overlapping_paths')
-        _ancestors(source); _ancestors(destination.parent)
-        if destination.exists() or destination.is_symlink():
-            raise CopyError('destination_exists')
+        _fresh_paths(source,destination,max_bytes)
         _ancestors(source/'data')
         checkpoint(); _pending(source)
         for name in ('website-source.lock', 'website-data-0.lock'):
@@ -315,82 +451,19 @@ def copy_inputs(source, fresh_destination, *, checkpoint=lambda: None, max_bytes
                 except ValueError:
                     raise Deferred('live_intent') from None
             _pending(source); before = _inventory(source, check)
-            logical = sum(row['bytes'] for row in before.values())
-            # Round each file to the measured destination allocation unit.
-            # Charge 16 KiB/file for metadata and 64 MiB for directories/receipts.
-            # This is conservative admission accounting, not a filesystem quota.
-            unit = _allocation_unit(destination.parent)
-            if unit <= 0:
-                raise CopyError('invalid_allocation_unit')
-            allowance = 16*1024*len(before)+64*1024**2
-            estimated = sum(((r['bytes']+unit-1)//unit)*unit for r in before.values())+allowance
-            if estimated > max_bytes or shutil.disk_usage(destination.parent).free < max_bytes:
-                raise CopyError('storage_limit')
-            if before['results/summary-exits.txt']['bytes'] > BUFFER:
-                raise CopyError('report_limit')
-            report = (source/'results/summary-exits.txt').read_bytes()
-            through = re.findall(rb'^Through (\d{4}-\d{2}-\d{2})\s*$', report, re.MULTILINE)
-            if len(through) != 1:
-                raise CopyError('report_cutoff')
-            through = date.fromisoformat(through[0].decode()).isoformat()
-            destination.mkdir(); created = True; hashes = {}; allocated = 0
-            for parent in sorted({(destination/name).parent for name in before}):
-                check(); _parents(parent)
-            def copy_file(item, stop):
-                name, row = item; target = destination/name
-                digest = _copy_file(source/name, target, row, stop)
-                stop()
-                return name, digest, _allocation(target)
-            def accept_copy(result):
-                nonlocal allocated
-                name, digest, amount = result
-                hashes[name] = digest; allocated += amount
-                if allocated+allowance > max_bytes:
-                    raise CopyError('storage_limit')
-            _file_pass(before.items(), copy_file, accept_copy, check)
-            if _inventory(source, check) != before:
-                raise CopyError('source_changed')
-            if _inventory(destination, check) != before:
-                raise CopyError('destination_mismatch')
-            def verify(item, stop):
-                name, row = item; stop()
-                if _hash(source/name, stop) != hashes[name]:
-                    raise CopyError('source_changed')
-                if _hash(destination/name, stop) != hashes[name]:
-                    raise CopyError('destination_mismatch')
-                if (destination/name).stat().st_size != row['bytes']:
-                    raise CopyError('destination_mismatch')
-            _file_pass(before.items(), verify, lambda result: None, check)
+            plan = _payload_plan(source,destination,before,max_bytes)
+            destination.mkdir(); created = True
+            copied = _transfer_payload(source,destination,before,plan,check)
             _pending(source)
             if _binding(source, check) != before_binding or _inventory(source, check) != before:
                 raise CopyError('source_changed')
-            if hashes['results/summary-exits.txt'] != hashlib.sha256(report).hexdigest():
-                raise CopyError('source_changed')
-            manifest = dict(version=1, kind='offline_saved_inputs', binding=before_binding,
-                through=through, files={n:dict(**r, sha256=hashes[n]) for n,r in before.items()},
-                logical_bytes=logical, allocated_file_bytes=allocated,
-                allocation_unit=unit, metadata_allowance=allowance, estimated_charged_bytes=estimated,
-                charged_bytes=allocated+allowance, maximum_bytes=max_bytes,
-                io_workers=IO_WORKERS, maximum_outstanding_files=IO_WORKERS,
-                callback_poll_seconds=POLL_SECONDS,
-                preparation=False, financial_calculation=False, originals_unchanged=True,
+            plan.pop('report_sha256')
+            manifest = dict(version=1,kind='offline_saved_inputs',binding=before_binding,**plan,**copied,
+                io_workers=IO_WORKERS,maximum_outstanding_files=IO_WORKERS,callback_poll_seconds=POLL_SECONDS,
+                preparation=False,financial_calculation=False,originals_unchanged=True,
                 concurrency='Offline source-exclusive capture. Concurrent new startup may wait or time out; older cache actors do not signal live intent.')
             check()
         # No source/cache owner or file handle escapes into publication.
         return _publish(destination, manifest, checkpoint)
     except Exception as error:
-        deferred = isinstance(error, Deferred)
-        if isinstance(error, ValueError) and access is not None and access.live_pending():
-            deferred = True
-        result = dict(status='deferred' if deferred else 'failed',
-            reason=error.reason if isinstance(error, CopyError) else 'operation_failed',
-            error_type=type(error).__name__, errno=getattr(error, 'errno', None),
-            locations=[dict(file=Path(f.filename).name,line=f.lineno) for f in traceback.extract_tb(error.__traceback__)])
-        if created:
-            # Failure metadata cannot confer completion or remove partial inputs.
-            try:
-                with (destination/'failure.json').open('x', encoding='utf8') as stream:
-                    json.dump(result, stream, sort_keys=True)
-            except OSError:
-                pass
-        return result
+        return _failure(error,destination,created,access)
