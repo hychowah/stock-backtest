@@ -145,3 +145,22 @@ Its sampled browser private bytes are 862,760,960; samples are not hard peaks.
 Entry and private-orchestration failures remain retained. No larger eager allowance
 or routing change follows. The next proposed resource observation uses the
 existing bounded interfaces at the same twelve-trial scope, after a new declaration.
+
+
+The [same-plan bounded real-input observation](plans/compiled-backtest/phases/CB-14.capacity6.bounded12.md)
+produces all twelve trials, 204 periods and 10,200 holdings. Original typed codec
+trials pass strict ordinary/eager comparisons after a retained private comparison
+repair. The actual consumer workflow fails the existing browser session deadline
+after 47 fresh periods and five complete CSVs. All completed CSV cells and bytes
+agree, but saving, ordinary reopening and the remaining 45 files are not reached.
+No complete bounded-workflow or resource-acceptance pass follows.
+
+Each request opens an independent stream and constructs a Reader. Reader
+construction validates the complete codec before page scanning. A read-only
+probe on this 6,532,415-byte file measures 6,532,415 validation bytes per reader,
+plus the requested-prefix scan. A final-period holdings request reads 13,050,888
+bytes in that isolated probe. Fresh Jobs also checks the complete physical file
+hash; that extra pass is outside those Reader/page counts. The probes do not
+isolate the cause of the complete browser delay. Existing validation, routing
+and all limits stay unchanged. Any request-lifetime optimization needs its own
+independent design. No new index or cache is selected.

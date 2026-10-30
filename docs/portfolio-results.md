@@ -253,3 +253,16 @@ semantics. All 50 CSVs match every original snapshot cell and all 25 paired
 filenames/byte sequences. The comparator and financial contract are unchanged.
 This prepared, short-window workflow supplies no full-universe, cold-workflow,
 full-window or operational-acceptance qualification.
+
+
+The [bounded same-plan observation](plans/compiled-backtest/phases/CB-14.capacity6.bounded12.md)
+retains all original typed financial evidence for twelve trials. Complete trials
+and trial summaries agree with ordinary explicit-date evaluation and the retained
+original eager trials. The complete batch is rebuilt with the existing robustness
+reducer and agrees too. Maximum absolute and normalized relative financial
+differences are zero. The private comparison first failed by comparing nested
+per-trial timing diagnostics across batches; that failed check remains retained.
+The repair uses each result's existing comparator boundary and changes no
+original input, type or tolerance. This financial component pass does not qualify
+the browser workflow: its session expires after 47 fresh periods and five CSVs.
+Saving and ordinary reopening are not reached.
