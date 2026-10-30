@@ -79,12 +79,36 @@ def _metadata_entries(directory, pattern):
 
 
 def signature():
+    """Return the current ordered input signature and report cutoff.
+
+    Every call discovers and inspects inputs afresh. Keys preserve lexical
+    paths relative to ROOT; discovery and metadata failures retain their
+    existing precedence. No inventory or derived prefix survives the call.
+    """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(cache_assets.__file__), Path(run.__file__), Path(revalue.__file__)]
     paths += [Path(financial_inputs.__file__)]
     entries = [(path, path.stat()) for path in paths]
-    entries += _metadata_entries(RAW/'financial-inputs', '*/*.json')
-    return dict({p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
+    financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
+    result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}
+    prefixes = {}
+    for path, info in financial:
+        parent = path.parent
+        # Exact spelling keeps case-distinct native directories distinct.
+        spelling = str(parent)
+        if spelling not in prefixes:
+            try:
+                relative = parent.relative_to(ROOT).as_posix()
+            except ValueError:
+                # Preserve the original full-path result or exception.
+                key = path.relative_to(ROOT).as_posix()
+            else:
+                prefixes[spelling] = '' if relative == '.' else relative + '/'
+                key = prefixes[spelling] + path.name
+        else:
+            key = prefixes[spelling] + path.name
+        result[key] = ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns]
+    return dict(result, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
 
 
 def price_sources():

@@ -1744,6 +1744,25 @@ calls and signature semantics. This one ordered pair is not a median, the full
 24-trial G08 workload or browser workflow qualification. G15 permission and
 full-weekly durable output policy remain unresolved. CB-14 remains incomplete.
 
+
+The [signature projection checkpoint](phases/CB-14.capacity6.projection.md)
+then retains every fresh metadata check while sharing checked lexical parent
+prefixes within each signature invocation. Complete native inventory bytes and
+financial inputs remain identical. Seven suites pass 117 cases on both
+platforms, with recorded platform skips; final error-order strengthening also
+passes the focused 15-case suite. Ordinary research/daily preparation and a
+fresh numerical export pass. All arrays and record rows match retained inputs.
+Default runtime readiness passes in 24.328 seconds. A new fresh one-trial
+annual pair gives 59.062 candidate versus 54.672 ordinary request seconds,
+ratio 0.92567×, with zero typed financial or ordering differences. This remains
+below the approximate 4× direction. A separate profile identifies 140,772
+history loads and 3,691,579 report decodes as the dominant assembly cost.
+Next independently design that material repair, preserving source policy and
+freshness; do not expand the workload or reopen method search automatically.
+All slower observations, earlier failures and source maps remain retained.
+Broader capacity, full-weekly output policy and installed compatibility remain
+unresolved. CB-14 remains incomplete; CB-15 remains blocked.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.

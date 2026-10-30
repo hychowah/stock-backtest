@@ -3,7 +3,9 @@ from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 import errno
+import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -26,6 +28,16 @@ def original_prices():
     return {p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sorted((r.RAW/'px').glob('*.json'))}
 
 
+def prior_signature():
+    """Pre-projection-repair boundary: collect metadata before building keys."""
+    paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
+    paths += [r.RAW/'px',r.Path(r.baseline.__file__),r.Path(r.__file__),r.Path(r.metrics.__file__),r.Path(r.books.__file__),r.Path(r.cache_assets.__file__),r.Path(r.run.__file__),r.Path(r.revalue.__file__)]
+    paths += [r.Path(r.financial_inputs.__file__)]
+    entries=[(p,p.stat()) for p in paths]
+    entries += r._metadata_entries(r.RAW/'financial-inputs','*/*.json')
+    return dict({p.relative_to(r.ROOT).as_posix():['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries},historical_through=str(r.baseline.cutoff((r.RESULTS/'summary-exits.txt').read_text(encoding='utf8'))))
+
+
 class InventoryTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
@@ -43,6 +55,58 @@ class InventoryTests(unittest.TestCase):
         for old,new in ((original_signature,r.signature),(original_prices,r.price_sources)):
             expected=old();actual=new();self.assertEqual(list(actual.items()),list(expected.items()))
             self.assertEqual([(type(k),type(v)) for k,v in actual.items()],[(type(k),type(v)) for k,v in expected.items()])
+            self.assertEqual(json.dumps(actual),json.dumps(expected))
+            self.assertEqual([[type(x) for x in v] for v in actual.values() if isinstance(v,list)],[[type(x) for x in v] for v in expected.values() if isinstance(v,list)])
+
+    def assert_same_failure(self,expected_type):
+        errors=[]
+        for call in (prior_signature,r.signature):
+            with self.assertRaises(expected_type) as caught:call()
+            error=caught.exception
+            errors.append((type(error),str(error),getattr(error,'errno',None),getattr(error,'filename',None)))
+        self.assertEqual(*errors)
+
+    def test_outside_dependency_and_metadata_failure_precedence(self):
+        outside=self.root.parent/(self.root.name+'-outside.py')
+        outside.write_text('outside');self.addCleanup(outside.unlink)
+        with patch.object(r.metrics,'__file__',str(outside)):
+            self.assert_same_failure(ValueError)
+            (self.root/'financial_inputs.py').unlink()
+            self.assert_same_failure(FileNotFoundError)
+
+    def test_financial_projection_containment_and_cutoff_precedence(self):
+        # An exact string prefix is not lexical path containment.
+        lookalike=self.root.parent/(self.root.name+'-lookalike')
+        with tempfile.TemporaryDirectory(dir=self.root.parent,prefix=lookalike.name) as name:
+            folder=Path(name);asset=folder/'A.json';asset.write_text('[]')
+            info=asset.stat()
+            with patch.object(r,'_metadata_entries',return_value=[(asset,info)]):
+                self.assert_same_failure(ValueError)
+                (self.root/'results/summary-exits.txt').write_text('invalid cutoff')
+                self.assert_same_failure(ValueError)
+
+    def test_absent_financial_parent_is_not_projected(self):
+        with patch.object(r,'_metadata_entries',return_value=[]):
+            self.assertEqual(list(r.signature().items()),list(prior_signature().items()))
+
+    def test_root_entry_and_root_parent_projection_fallback(self):
+        # Synthetic discovery also exercises a path whose parent is outside ROOT.
+        for asset in (self.root,self.root/'research.py'):
+            with patch.object(r,'_metadata_entries',return_value=[(asset,asset.stat())]):
+                self.assertEqual(list(r.signature().items()),list(prior_signature().items()))
+
+    @unittest.skipUnless(os.name=='nt','Native Windows lexical path spelling')
+    def test_native_case_distinct_parents_keep_exact_keys(self):
+        from pathlib import PureWindowsPath
+        paths=[PureWindowsPath('D:/Owned/raw/financial-inputs/Income/A.json'),
+               PureWindowsPath('D:/Owned/raw/financial-inputs/income/B.json')]
+        info=SimpleNamespace(st_mode=stat.S_IFREG,st_size=2,st_mtime_ns=11)
+        # These exact spellings can compare equal as Windows Paths. Metadata
+        # discovery has separate tests; projection must not coalesce prefixes.
+        with patch.object(r,'ROOT',PureWindowsPath('D:/Owned')),patch.object(r,'RAW',PureWindowsPath('D:/Owned/raw')),patch.object(r,'Path',PureWindowsPath),patch.object(PureWindowsPath,'stat',create=True,return_value=info),patch.object(r,'_metadata_entries',return_value=[(p,info) for p in paths]):
+            for module in (r,r.baseline,r.metrics,r.books,r.cache_assets,r.run,r.revalue,r.financial_inputs):
+                self.context.enter_context(patch.object(module,'__file__','D:/Owned/source.py'))
+            self.assertEqual(list(r.signature().items()),list(prior_signature().items()))
 
     def test_exact_discovery_order_types_hidden_case_directory_and_depth(self):
         for folder in (self.px,self.financial/'income'):
