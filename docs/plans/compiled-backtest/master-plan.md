@@ -14,7 +14,9 @@ Persistent isolated preview integration: 29 October 2026.
 
 Status: CB-00 and CB-01 are complete. **CB-02 is complete by the user's
 method-selection decision on 26 October 2026. Numba is accepted.** Further
-comparative benchmarking is waived. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
+the mandatory comparative matrix remains retired. The latest performance direction
+aims for about 4× over the original method, or close, with no absolute waiting-time
+limit. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
 [phase record](phases/CB-04.md). CB-05 is complete. Synthetic checks and new private FMP real-symbol
 checks pass on WSL and native Windows; see the [CB-05 record](phases/CB-05.md).
 CB-06 delivers the entry-date factor interface; see its [record](phases/CB-06.md).
@@ -28,7 +30,7 @@ persistent bounded runtime; its [record](phases/CB-11.md) tracks verified
 behavior and the completed independent audits. SQL and complete-book evaluation
 remain in use. CB-12 adds isolated closed preparation and startup verification.
 CB-13B connects persistent numerical calculation only in the isolated preview.
-CB-13C completes browser/calendar compatibility and qualified preview week/month controls. [CB-14 qualification](phases/CB-14.md) is in progress. Full-window capacity has a recorded admission failure; budgets and required access remain unresolved. Normal launcher, production engine and
+CB-13C completes browser/calendar compatibility and qualified preview week/month controls. [CB-14 qualification](phases/CB-14.md) is in progress. Full-window capacity has a recorded admission failure; input, storage and compatibility prerequisites remain unresolved. Normal launcher, production engine and
 running server routing remain unchanged.
 
 The cumulative design follow-up after CB-12 separates optional compiled guard
@@ -42,11 +44,34 @@ ordinary calculation admission behind one server-owned boundary.
 [CB-13B](phases/CB-13B.md) selects persistent isolated preview dispatch and
 coordinates child freshness with parent data-operation retirement. Browser/calendar compatibility is completed by [CB-13C](phases/CB-13C.md).
 
-The [method-selection decision](phases/CB-02/method-selection.md) is the current
-authority. It supersedes earlier instructions to finish the measurement owner,
+The [30 October performance direction](phases/CB-14.performance-direction.md)
+governs current acceptance. The [method-selection decision](phases/CB-02/method-selection.md)
+continues to select Numba. It supersedes earlier instructions to finish the measurement owner,
 qualify benchmark-only resources, run another pilot or enforce a 4×/10× release
 gate. Earlier measurements, failures and unsupported capabilities remain
 historical evidence. They are not recast as passing qualification.
+
+## Current performance direction — 30 October 2026
+
+The user sets no absolute waiting-time limit. Aim for about 4× faster than the
+original ordinary method, or close. Assess useful comparable evidence and report
+actual workflow times. Do not invent a strict per-case minimum or a numerical
+meaning for "close". Further optimization must justify its effort with a material
+measured gain. Prefer finishing readiness work over marginal speed improvements.
+
+This [decision](phases/CB-14.performance-direction.md) supersedes earlier missing
+absolute-budget blockers and the blanket waiver of further original-method
+comparison. It does not restore the full historical matrix, 10× target, method
+search or closed benchmark admission. Reuse existing evidence first. Where a
+material current question remains, plan the smallest representative comparison
+under separately qualified inputs and safety bounds. The recorded annual Numba
+medians of 4.66×–7.74× remain historical, not current-source qualification.
+
+All experiment deadlines, CPU/memory/storage limits, entry floors and ownership
+rules remain. Financial agreement, coverage, capacity, Windows operations,
+compatibility and rollback are still required. Preserve historical records and
+verdicts. No workload, protected-asset access or deployment is started by this
+acceptance update.
 
 ## Current application integration boundary — 27 October 2026
 
@@ -451,16 +476,16 @@ Use three deeper contracts instead: the measured evaluator, immutable generation
 lifecycle and service lifecycle. The phase IDs below name evidence and hardening
 responsibilities; they do not require separate implementations of known layers.
 
-Set prospective user workflow budgets before finalizing runtime and cache
-decisions. Installation, restart, fresh dates, changed filters, reopening and
-weekly research remain unresolved acceptance decisions. Benchmark stage limits
-cannot substitute for user budgets. Freeze the weekly calendar contract early
+The 30 October decision removes absolute user waiting-time budgets. Measure
+installation, restart, fresh dates, changed filters, reopening and weekly research.
+Retain their operational checks and every experiment safety bound. Assess
+performance against the original method with effort proportionate to the gain. Freeze the weekly calendar contract early
 enough to inform batching and capacity. Weekly support remains required for
 program completion. Do not add weekly controls before its correctness gate.
 
 ## Objective
 
-Implement the user-accepted Numba path for random-date stock-screen research. Preserve financial results and normal operation. The user accepts the observed performance; a new old-versus-new timing comparison or relative speed threshold is no longer required.
+Implement the user-accepted Numba path for random-date stock-screen research. Preserve financial results and normal operation. The user seeks about 4× faster performance than the original method, or close, with no absolute waiting-time limit. Use comparable evidence and stop speed work when further gains do not justify the effort. No strict per-case ratio is invented.
 
 The main workload is at least 24 random-date trials over **1997–2025**, usually with **12-month** rebalancing. The user changes filter settings between experiments. The intended interval range is **one week through two years**. Support fresh random dates and explicit-seed replay. Keep observations descriptive; do not invent a current-source speed claim.
 
@@ -528,9 +553,9 @@ service usable.
 **Full readiness gate:** Keep the stable engine as default until CB-14 passes
 all financial and coverage checks, the complete
 trailing-filter supplement, all promised month/week intervals and capacity
-checks, agreed workflow budgets, Native Windows startup/offline/lifecycle checks,
-and saved-data compatibility and rollback checks. Unresolved budgets or checks
-block cutover. CB-15 can then switch the default and verify the live workflow.
+checks, the current performance assessment, Native Windows startup/offline/lifecycle
+checks, and saved-data compatibility and rollback checks. Unresolved readiness
+checks block cutover. Absolute waiting-time budgets are not required. CB-15 can then switch the default and verify the live workflow.
 Keep the known-good engine and compatible old caches through the documented
 rollback period. Candidate failure must leave the stable service usable.
 
@@ -545,7 +570,8 @@ admits no runtime. Source-only imports remain available for synthetic fixtures.
 No live restart or deployment qualifies the later gates. Wave7 used
 isolated result files but held the production cache coordinator. That approach
 must not be repeated while protecting live use. That earlier CB-02 design had to solve website-safe measurement before another
-real-cache pilot. The user has now retired comparative measurement. This
+real-cache pilot. The historical comparative program is retired. The current relative assessment
+uses the 30 October direction and grants no execution admission. This
 availability-contract update did not implement or start that work. The wave8
 revision prerequisite remains separate from bound-input ownership and resource isolation.
 
@@ -571,7 +597,7 @@ A failed gate is evidence for changing the work, not evidence that the gate pass
 
 | Subject | Program direction | Evidence still required |
 |---|---|---|
-| Calculation model | Numba accepted; use tested calculations, source-owned guards and shared SQL/aggregation. Compiled guards are optional deferred work. | Production correctness, freshness, bounded normal operation and application readiness. No comparative pair or speed gate. |
+| Calculation model | Numba accepted; use tested calculations, source-owned guards and shared SQL/aggregation. Compiled guards are optional deferred work. | Production correctness, freshness, bounded normal operation and application readiness; useful original/candidate performance evidence under the 30 October direction. |
 | Data model | Immutable numeric inputs, sparse price histories, bounded entry-date factor batches. | Sparse versus dense access, measured memory and Windows mapping lifecycle. |
 | Method choice | Numba selected by user. Retain other methods as historical evidence. | No further alternative comparison scheduled; revisit only if the user changes direction after a concrete blocker. |
 | Policy ownership | All six candidate executors use source-derived financial expressions. Guard policy remains source-owned, including the optional compiled Numba decisions. SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
@@ -580,7 +606,7 @@ A failed gate is evidence for changing the work, not evidence that the gate pass
 | Deployment | Preserve the stable installed website and restart revision until full replacement readiness; qualify candidates separately. | Website-safe isolation, protected publication, shutdown, generation replacement and memory tests on native Windows. |
 | Weekly intervals | CB-08 defines calendar configuration version 1: 1–104 weeks or 1–24 months. A week is seven calendar days. Existing month requests map in memory. | Calendar implementation and compatibility evidence are in CB-08. Weekly evaluator, capacity and website checks remain before controls. |
 | Freshness | Retain immediate request-time detection under the existing path/size/mtime rule. | Equivalent scan evidence and stale-generation checks; no startup-only substitution. |
-| User experience | Set absolute time budgets for installation, restart, fresh research, changed filters, reopening and weekly research before final runtime/cache decisions. | User-agreed prospective budgets and native measurements; annual relative speed alone is insufficient. |
+| User experience | No absolute waiting-time limit by user decision. Aim for about 4× over the original method, or close; stop marginal optimization. | Comparable evidence, actual workflow times and native operational readiness; no invented per-case minimum. |
 
 The [24 October comparative research](method-research-2026-10-24.md) led to
 attempts of all six named methods in the [third wave](phases/CB-02/wave3/README.md).
@@ -753,27 +779,33 @@ The earlier requirement was at least 4× median speedup in each primary case, wi
 
 The six primary cases require 18 paired runs across the three seeds. Capture one baseline run per case first to check cost. Run the full matrix in resumable batches if needed. Do not silently reduce the protocol when a session ends.
 
-### User workflow budgets
+### User workflow measurements and acceptance
 
-The relative annual speed gate is waived. Normal startup and an interactive
-research workflow still need operational checks. Before qualification timing,
-record an absolute time budget and a measurement boundary for each workflow:
+The user sets no absolute waiting-time limit, as recorded in the
+[30 October direction](phases/CB-14.performance-direction.md). Missing maximum
+waits no longer block qualification. Measure complete workflows and judge
+performance against the original ordinary method, aiming for about 4× or close.
+Do not treat candidate eager versus candidate bounded delivery as that comparison.
 
-| Workflow | Required measurement | Budget status |
+| Workflow | Required measurement | Acceptance direction |
 |---|---|---|
-| First installation and first ready result | Dependency installation, preparation, attachment and compilation, with each cost separate | To be resolved before operational qualification |
-| Normal restart | Launcher start to ready service, then the first completed result | To be resolved before operational qualification |
-| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | To be resolved before workflow qualification; no paired speed gate |
-| Changed filters | Same dates with new settings; report permitted factor reuse and completion time | To be resolved before workflow qualification |
-| Saved-result reopening | Request to visible inspection and export-ready evidence | To be resolved before workflow qualification |
-| Weekly research | Short-window pilot, then the declared full-window workload, with resource caps | To be resolved before weekly capacity qualification |
+| First installation and first ready result | Dependency installation, preparation, attachment and compilation, with each cost separate | No absolute user deadline; retain startup/dependency/first-result checks |
+| Normal restart | Launcher start to ready service, then the first completed result | No absolute user deadline; retain restart/offline/lifecycle checks |
+| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | Comparable original/candidate evidence; approximate 4× goal |
+| Changed filters | Same dates with new settings; report permitted factor reuse and completion time | Disclose reuse on both sides; inspect material regressions and memory/file growth |
+| Saved-result reopening | Request to visible inspection and export-ready evidence | Report time and complete exports; no recalculation or loss of original evidence |
+| Weekly research | Declared full-window workload after safe pilot, with complete holdings and resource caps | No absolute user deadline; capacity and operational checks remain |
 
-Choose budgets from the intended user workflow. Do not select thresholds merely
-to match an observed timing. Proposed acceptance budgets require a user decision;
-missing budgets remain unresolved and block the relevant release qualification.
+Reuse valid existing performance evidence first. Where a material question remains,
+use the smallest representative comparison with matched inputs, dates, settings,
+reuse and measurement boundaries. Keep preparation and compilation separate.
+Do not reopen the mandatory six-case matrix, 10× target or method search. Seek
+material gains, not an optimization loop for small ratio changes. Safety deadlines
+and all resource limits remain independent of user acceptance.
+
 Wave5 attachment/setup took 52.73–152.03 seconds for its new cases. Those are
-historical setup observations, not acceptable-latency targets or full launcher
-measurements. No first-use or compiled-cache restart speed claim exists yet.
+historical observations, not full launcher measurements. Its annual speed ratios
+do not establish current-source browser, weekly or first-use performance.
 
 ### Capacity and operational checks
 
@@ -851,7 +883,7 @@ Split or merge remaining work when the evidence warrants it and record the chang
 |---|---|---|
 | Protect ongoing website use | Verify stable publication/restart and candidate resource/data isolation before work can affect the live website | Cross-cutting prerequisite; next CB-02 design and CB-12–CB-15 |
 | Accept the calculation method | Complete by user selection of Numba; further comparison work retired | CB-02 complete; CB-03 skipped |
-| Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; agreed workflow budgets | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
+| Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; actual workflow times under the current performance direction | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
 | Deliver faster existing workflows | Isolated opt-in preview for existing month intervals, filters, trial inspection and exports; preserve the stable website | CB-04–CB-07 and CB-09–CB-13 |
 | Add weekly research | Frozen calendar, correct explicit-date returns, useful latency and bounded resources | CB-08 and weekly extensions in CB-09–CB-14 |
 | Qualify and enable the default | Financial, coverage, workflow, weekly and operational gates pass | CB-14 and CB-15 |
@@ -880,7 +912,7 @@ Reuse sound work; implement only the missing capability or hardening.
 |---|---|---|
 | CB-00 | WSL source and native Windows deployment workflow | User's split-workspace request |
 | CB-01 | Reproducible current-engine baseline and frozen workloads | CB-00 and this plan |
-| CB-02 | Complete by user acceptance of Numba; further comparative work waived | Retained CB-01/CB-02 evidence and method-selection decision |
+| CB-02 | Complete by user acceptance of Numba; mandatory matrix retired | Retained CB-01/CB-02 evidence; current relative assessment belongs to CB-14 |
 | CB-03 | Skipped; no further alternative comparison scheduled | Numba selected by user |
 | CB-04 | Publish/attach/retire immutable numerical artifacts; reuse tested sparse inputs | Tested evaluator interface and user selection; retain financial and operational checks |
 | CB-05 | Harden demonstrated temporal primitives within the evaluator | Existing Numba report/price proofs; CB-04 artifact interface |
@@ -915,9 +947,11 @@ comparison protocol in this plan; archived timing ratios alone do not qualify an
 
 ### CB-02 Select the method (complete by user decision)
 
-**Current outcome:** Numba accepted. Comparative qualification is waived by
-the [method-selection decision](phases/CB-02/method-selection.md). The experiment
-sequence below keeps its original evidence and failed/unrun verdicts.
+**Current outcome:** Numba accepted by the
+[method-selection decision](phases/CB-02/method-selection.md). The mandatory
+historical matrix stays retired. CB-14 follows the
+[30 October relative assessment](phases/CB-14.performance-direction.md). The
+experiment sequence below keeps its original evidence and failed/unrun verdicts.
 
 
 **Outcome:** Evidence for choosing, revising or rejecting an optimization method
@@ -1448,8 +1482,8 @@ Automatic submission and queue execution remain eager. No limit or route changes
 No broader-universe or operational capacity gate passes from this increment.
 Later increments use these interfaces. Ordinary default selection, the
 normal launcher, eager protocol limits and closed benchmark admission stay intact.
-Workflow budgets are reviewed later; they are not a prerequisite for independent
-bounded design and correctness work. No operational gate is waived.
+The current user direction requires no absolute waiting-time budgets. Independent
+bounded correctness and retained operational checks remain required.
 
 The user's 30 October [hardware-based capacity decision](phases/CB-14.capacity-hardware-decision.md)
 adds a decision point within increment 6. G03/G06 record software admission
@@ -1524,9 +1558,11 @@ snapshot compatibility and caller-lifetime evidence.
 **Verification:** Required correctness and operational checks pass on Windows.
 Stable website availability passes during candidate preparation, execution,
 failure and restart. Stable dependencies, caches and saved evidence remain usable.
-Paired performance gates are waived. The complete trailing-filter supplement
-passes parity and coverage checks. Startup, fresh research, changed filters,
-saved-result reopening and weekly research meet agreed absolute budgets.
+The strict historical speed matrix stays retired. Assess comparable original/
+candidate evidence under the 30 October approximate 4× direction. The complete
+trailing-filter supplement passes parity and coverage checks. Measure startup,
+fresh research, changed filters, saved-result reopening and weekly research.
+No absolute user waiting-time budget is required; retain every safety limit.
 Verify legacy disconnects, background recovery, explicit Stop cleanup, queue
 shutdown/requeue, held edits, retries and recorded plans. Old and new snapshots
 must reopen through `ResultArtifacts` and export full original details after
@@ -1541,8 +1577,8 @@ smallest evidence-led follow-up. Do not label the program complete.
 
 **Outcome:** The qualified engine is the default for dated backtests, with clear recovery and fallback instructions.
 
-**Work:** Change the adapter's default only after all CB-14 readiness and agreed
-budget checks pass. Keep the stable engine and restart path available until
+**Work:** Change the adapter's default only after all CB-14 readiness checks and
+the current performance assessment pass. Keep the stable engine and restart path available until
 then. Remove temporary prototype routing. Retain reference/rollback code, old
 caches and durable user records. Update implemented-state documentation and the
 guide. Document metrics, data extensions, generation rebuilding, trial inspection
@@ -1580,12 +1616,15 @@ The fourth complete attempt passes all 204 periods, 10,200 holdings, original ty
 comparisons, normal saving, ordinary stored reopening and 50 complete CSV files.
 All 390,072 CSV cells and paired bytes agree. The three earlier attempts remain
 failed. This prepared prefix is not cold, full-window, full-universe or installed
-qualification. Operational acceptance budgets remain unresolved. Increment 6 and
+qualification. The later 30 October direction removes the absolute-budget
+blocker; other operational prerequisites remain. Increment 6 and
 CB-14 stay incomplete; CB-15 stays blocked. Eager defaults and all limits remain.
 
 The subsequent [policy decision review](phases/CB-14.capacity6.policy-review.md)
-retains that scope and lists the required operational budgets, qualification
-inputs, storage accounting and isolated compatibility decisions. It selects no
+retains that scope and lists the then-unresolved operational budgets, qualification
+inputs, storage accounting and isolated compatibility decisions. The later
+[performance direction](phases/CB-14.performance-direction.md) resolves the
+waiting-time questions without changing the remaining prerequisites. It selects no
 larger route or allowance. The recorded private-root census leaves about
 172 MiB under its existing logical ceiling; this is historical arithmetic, not
 new execution admission. Resolve dependent decisions before declaring another
@@ -1633,8 +1672,9 @@ Preserve the financial correctness contract, retained financial and operational 
 Run the phase's required checks, including native Windows checks where specified. Read failures, apply clear repairs and rerun affected checks until they pass. Dependency repair and bounded isolated experiments are part of the phase. Do not ask the user to run a routine preparation command or approve each test repair.
 
 Keep failed historical checks failed and unrun checks unrun. The user has
-waived future comparative speed gates and accepted Numba. Do not reopen a timing
-comparison automatically. Repair financial or operational failures within scope.
+accepted Numba. Follow the 30 October approximate 4× direction and proportional
+effort rule. Do not automatically reopen the historical comparison matrix or
+launch a new timing check without its input and safety prerequisites. Repair financial or operational failures within scope.
 Ask only for a critical scope, correctness, resource or acceptance decision.
 Do not weaken tolerance, omit a filter or claim an unrun check passed.
 
@@ -1683,7 +1723,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | Complete by user decision; further comparison waived | [Method selection](phases/CB-02/method-selection.md); retained wave and execution evidence keeps its original limits |
+| CB-02 | Complete by user decision; mandatory matrix retired | [Method selection](phases/CB-02/method-selection.md); retained evidence keeps its limits; current relative performance assessment is in CB-14 |
 | CB-03 | Skipped | User accepts Numba; no alternative comparison scheduled |
 | CB-04 | Complete | [Phase record](phases/CB-04.md); bounded offline export, immutable publication/recovery, read-only attachment and reader-safe retirement; synthetic WSL/native verification |
 | CB-05 | Complete | [Phase record](phases/CB-05.md); private synthetic checks and new FMP real-symbol checks pass on WSL/native; exact temporal agreement |
@@ -1698,13 +1738,13 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. [Increment 3](phases/CB-14.capacity3.md) adds dormant bounded child transfer, exact staged plans and Jobs-owned temporary evidence with reader pins. [Increment 4](phases/CB-14.capacity4.md) adds atomic complete durable copies and independent active readers in the existing stores. [Increment 5](phases/CB-14.capacity5.md) adds acquired ResultArtifacts readers, bounded inspection, complete attribution and streamed attachments, verified on private WSL/native fixtures and in the actual native browser. Automatic producers and current limits stay eager and unchanged. [The hardware decision](phases/CB-14.capacity-hardware-decision.md) requires actual memory/workflow measurements before route or limit changes in increment 6. [Increment 6](phases/CB-14.capacity6.md) begins with native hardware inventory, a small eager representation measurement and plan-only admission checks. Native four- and 24-trial eager workflows pass on a short-window 64-company fictional fixture after retained driver repairs and one memory deferral. The 24-trial result preserves 408 periods and 20,400 holdings, with 98 matching fresh/reopened CSVs and zero ordinary-reference numerical differences. Eager routing and limits stay unchanged. Hardware-based routing/limit selection and operational qualification remain. A [fresh FMP continuation](phases/CB-14.capacity6.real-inputs.md) adds a private 192-symbol cohort and a passing four-trial 2015 prefix with 68 periods, 3,400 holdings, strict original-API parity and 18 matching CSVs. The successful rerun uses prepared inputs and empty checkpoints. Source defects and failed attempts remain retained. The [twelve-trial continuation](phases/CB-14.capacity6.real12.md) preserves 204 periods and 10,200 holdings, with zero strict original-API differences and 50 matching CSVs. Failures and repairs remain retained. The [bounded same-plan observation](phases/CB-14.capacity6.bounded12.md) preserves complete numerical evidence but fails the browser session deadline after 47 fresh periods and five CSVs. Separate original-codec financial checks pass. Saving/reopening are not reached. The subsequent independent consumer designs and complete rerun close the same-plan twelve-trial consumer gate. The earlier failed observation remains failed. Current eager routing and limits stay unchanged. Full-universe/full-window inputs and capacity, workflow budgets and installed compatibility remain unresolved; comparative speed gates waived. Same-plan bounded consumer gate passes; see [consumer continuation](phases/CB-14.capacity6.consumer.md). The [policy review](phases/CB-14.capacity6.policy-review.md) records unresolved budgets, qualification inputs, storage and isolated compatibility decisions; no larger execution is admitted. |
+| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. [Increment 3](phases/CB-14.capacity3.md) adds dormant bounded child transfer, exact staged plans and Jobs-owned temporary evidence with reader pins. [Increment 4](phases/CB-14.capacity4.md) adds atomic complete durable copies and independent active readers in the existing stores. [Increment 5](phases/CB-14.capacity5.md) adds acquired ResultArtifacts readers, bounded inspection, complete attribution and streamed attachments, verified on private WSL/native fixtures and in the actual native browser. Automatic producers and current limits stay eager and unchanged. [The hardware decision](phases/CB-14.capacity-hardware-decision.md) requires actual memory/workflow measurements before route or limit changes in increment 6. [Increment 6](phases/CB-14.capacity6.md) begins with native hardware inventory, a small eager representation measurement and plan-only admission checks. Native four- and 24-trial eager workflows pass on a short-window 64-company fictional fixture after retained driver repairs and one memory deferral. The 24-trial result preserves 408 periods and 20,400 holdings, with 98 matching fresh/reopened CSVs and zero ordinary-reference numerical differences. Eager routing and limits stay unchanged. Hardware-based routing/limit selection and operational qualification remain. A [fresh FMP continuation](phases/CB-14.capacity6.real-inputs.md) adds a private 192-symbol cohort and a passing four-trial 2015 prefix with 68 periods, 3,400 holdings, strict original-API parity and 18 matching CSVs. The successful rerun uses prepared inputs and empty checkpoints. Source defects and failed attempts remain retained. The [twelve-trial continuation](phases/CB-14.capacity6.real12.md) preserves 204 periods and 10,200 holdings, with zero strict original-API differences and 50 matching CSVs. Failures and repairs remain retained. The [bounded same-plan observation](phases/CB-14.capacity6.bounded12.md) preserves complete numerical evidence but fails the browser session deadline after 47 fresh periods and five CSVs. Separate original-codec financial checks pass. Saving/reopening are not reached. The subsequent independent consumer designs and complete rerun close the same-plan twelve-trial consumer gate. The earlier failed observation remains failed. Current eager routing and limits stay unchanged. Full-universe/full-window inputs and capacity and installed compatibility remain unresolved. The 30 October direction removes absolute waiting-time budgets and seeks about 4× over the original method, or close, without marginal optimization. Same-plan bounded consumer gate passes; see [consumer continuation](phases/CB-14.capacity6.consumer.md). The [policy review](phases/CB-14.capacity6.policy-review.md) records the earlier decision questions. The [current direction](phases/CB-14.performance-direction.md) resolves absolute waiting-time budgets; input, storage and compatibility prerequisites remain. No larger execution is admitted. |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition
 
 The current website must remain usable until all replacement readiness gates
-pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
+pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, the current performance assessment is supported, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
 
 CB-04 completes the offline artifact lifecycle in WSL source. Its
 [handoff](phases/CB-04.md) defines format 1 and attachment ownership.
@@ -1739,6 +1779,7 @@ freshness, weekly, workflow and rollback requirements intact.
 
 | Date | Evidence and insight | Plan adjustment | Remaining decision |
 |---|---|---|---|
+| 30 October 2026 | The user sets no absolute waiting-time limit and seeks about 4× improvement over the original method, or close, with attention to diminishing returns. | Remove missing absolute-budget blockers. Reuse comparable evidence and plan only focused checks for material current questions. Keep Numba selected and avoid marginal optimization; the mandatory matrix and 10× target stay retired. | Broader input/storage feasibility, current evidence applicability and installed compatibility remain unresolved. Safety bounds and failed gate verdicts stay unchanged. |
 | 25 October 2026 | Six methods attempted; full Numba/Rust matrix exact, but cached-F2 fails at 4.66×/4.53×. Numba median duration is lower in all six cases by a small margin. | Focus CB-02 on Numba and shared request costs. Keep alternatives dormant and all primary gates intact. | Does a bounded intervention close the gap without weakening contracts? |
 | 25 October 2026 | All frozen F2 trials are incomplete. Setup is separate and startup/restart, filter changes and weekly capacity remain unqualified. | Retain F2; add complete trailing-filter coverage. Define workflow budgets before qualification. Separate existing-month delivery from weekly delivery. Allow early isolated operational proofs. | User acceptance budgets and full operational evidence remain unresolved. |
 | 25 October 2026 | Equivalent fresh scanning preserved immediate manual-edit detection across the full matrix. | Remove startup-only detection from the planned direction. Reuse demonstrated work and harden only missing capabilities. | Production publisher and lifecycle proofs remain required. |

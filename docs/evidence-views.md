@@ -3,6 +3,12 @@
 Source contract. Automatic producers remain eager. The CB-14 record gives the
 verification scope and remaining operational gates.
 
+The [30 October performance direction](plans/compiled-backtest/phases/CB-14.performance-direction.md)
+sets no absolute user waiting-time limit. It seeks about 4× over the original
+ordinary method, or close, with effort proportionate to the gain. Resource and
+experiment limits remain unchanged. Candidate eager/bounded observations do not
+measure that original-method speedup. Older budget questions are historical.
+
 Version-3 results use the same `ResultArtifacts` boundary for fresh Jobs,
 saved-library and queue opening. They preserve original settings, labels,
 summaries and complete evidence. Inspection and downloads need no current
