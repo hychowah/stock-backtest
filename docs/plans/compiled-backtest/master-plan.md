@@ -1697,6 +1697,19 @@ awaits separate installed-source/environment permission. Broader capacity,
 remaining operations and installed compatibility stay open. CB-14 is incomplete;
 CB-15 remains blocked. No normal routing, default, deployment or limit changes.
 
+The [broader numerical generation check](phases/CB-14.capacity6.generation.md)
+then exports all 7,231 cached symbols and verifies a closed current attachment
+under the same limits. The complete generation is 676,320,445 bytes. The owned
+check closes in 473.062 seconds, with unchanged ordinary databases and cutoff.
+This is preparation readiness, not a financial or relative-speed result.
+Pure codec arithmetic also makes the full-weekly limit decision concrete:
+fully populated 24/100 weekly plans need at least 655,431,600 / 2,730,965,000
+bytes for holding records alone. These conditional bounds exceed the current
+256 MiB durable ceiling before real value lengths and other records. No new
+trial is run, no failed gate is relabeled and no limit is raised. A complete
+workflow policy is required before weekly stress. The G15 proposal remains
+pending; CB-14 is incomplete and CB-15 stays blocked.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
