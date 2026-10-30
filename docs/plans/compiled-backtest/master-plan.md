@@ -1810,6 +1810,17 @@ This is an experiment-envelope decision; it changes no user waiting
 budget, financial rule, normal default, route or installed source. Full-weekly
 storage and G15 permission remain separate. CB-14 remains incomplete.
 
+The user then explicitly approves the
+[isolated installed-compatibility scope](phases/CB-14.installed-compatibility-scope.md).
+G15 access permission is resolved. Its qualification is still unrun.
+The [resumed attempts](phases/CB-14.resume-resources.md), eager `fresh24-3` and
+`compatibility-inventory1`, both defer before application creation at the
+unchanged physical-memory/commit entry floors. No installed path opens and no
+financial calculation starts. The CPU cutoff is absent from their declared
+application envelopes. Retain their exact helpers, declarations and closed
+receipts. Available memory, not an unanswered CPU/access decision, now prevents
+these native checks. This does not establish workload RAM exhaustion.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
