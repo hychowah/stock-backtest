@@ -1791,12 +1791,22 @@ threshold after progress acknowledges 22 calculated/retained trials and 0 recove
 No complete caller batch is delivered. All native processes, descendants,
 streams and handles close. Peak job commit 393,183,232 bytes does not establish
 RAM exhaustion. Earlier successful slices cannot complete this failed workflow.
-Bounded 24 delivery remains unrun; its existing per-trial validations are retained.
+The subsequent bounded 24 attempt also fails that historical CPU threshold,
+after progress acknowledges 20 calculated/retained trials and no recovery.
+It supplies no complete evidence; all native ownership closes. Its existing
+per-trial validations are retained.
 A [prepared proposal](phases/CB-14.capacity6.fresh24.proposed-envelope.json)
 requests one 600-user-second isolated retry, preserving all other deadlines,
 RAM/process/CPU-rate/storage bounds and fresh empty checkpoints. No proposed
-helper is exported or executed. Explicit approval is required before using the
-exception. This is an experiment-envelope decision; it changes no user waiting
+helper was exported or executed at that checkpoint. This historical proposal
+is superseded by the user's explicit removal of the cumulative CPU cutoff,
+recorded in the [current CPU policy](phases/CB-14.capacity6.cpu-policy.md).
+Future private application qualification uses `user_cpu_seconds=None`, with
+no replacement 600-second allowance. Other declared limits stay unchanged.
+The new host and entry template are prepared and hash-bound. Their native smoke
+was deferred at the unchanged memory entry floor; no child application started.
+The comparison with the original method remains the performance criterion.
+This is an experiment-envelope decision; it changes no user waiting
 budget, financial rule, normal default, route or installed source. Full-weekly
 storage and G15 permission remain separate. CB-14 remains incomplete.
 
