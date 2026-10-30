@@ -8,6 +8,8 @@ import csv
 import hashlib
 from datetime import date
 import json
+import os
+import stat
 from pathlib import Path
 import sqlite3
 import statistics
@@ -49,16 +51,44 @@ CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
 '''
 
 
+def _metadata_entries(directory, pattern):
+    """Return fresh metadata for the same paths selected by the inventory glob.
+
+    Preserve platform matching, link traversal and discovery errors. Results
+    are ordered and own no open directory handles. No metadata survives this
+    invocation. Only the existing one- and two-level patterns are used.
+    """
+    paths = sorted(directory.glob(pattern))
+    parents = {}
+    for path in paths:
+        parents.setdefault(str(path.parent), set()).add(path.name)
+    discovered = {}
+    for parent, names in parents.items():
+        try:
+            with os.scandir(parent) as entries:
+                selected = {str(Path(parent) / entry.name): entry for entry in entries if entry.name in names}
+        except OSError:
+            # Enumeration is an optimization, not an additional permission
+            # requirement. Path.stat retains the original metadata failures.
+            selected = {}
+        discovered.update(selected)
+    # Exact spelling also preserves distinct names in case-sensitive Windows
+    # directories. Evaluate metadata in the original sorted-path order.
+    return [(path, discovered[str(path)].stat() if str(path) in discovered else path.stat())
+            for path in paths]
+
+
 def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(cache_assets.__file__), Path(run.__file__), Path(revalue.__file__)]
     paths += [Path(financial_inputs.__file__)]
-    paths += sorted((RAW/'financial-inputs').glob('*/*.json'))
-    return dict({p.relative_to(ROOT).as_posix(): ['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths}, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
+    entries = [(path, path.stat()) for path in paths]
+    entries += _metadata_entries(RAW/'financial-inputs', '*/*.json')
+    return dict({p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
 
 
 def price_sources():
-    return {p.name: [p.stat().st_size,p.stat().st_mtime_ns] for p in sorted((RAW/'px').glob('*.json'))}
+    return {p.name: [info.st_size,info.st_mtime_ns] for p,info in _metadata_entries(RAW/'px', '*.json')}
 
 
 def prepared_price_binding(path=DATABASE):

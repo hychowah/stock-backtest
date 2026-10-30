@@ -1710,6 +1710,24 @@ trial is run, no failed gate is relabeled and no limit is raised. A complete
 workflow policy is required before weekly stress. The G15 proposal remains
 pending; CB-14 is incomplete and CB-15 stays blocked.
 
+The [broader annual readiness repair](phases/CB-14.capacity6.annual-ready.md)
+then records an accepted 24-annual plan but a failed default 120-second runtime
+startup before any financial trial. Component profiling identifies complete
+metadata inventories as the dominant cost. A narrow independently designed
+`research.py` helper uses fresh directory-entry metadata while preserving path
+discovery, output values, failures and every validation call. Native complete
+inventory bytes agree exactly with the original implementation. The affected
+seven suites pass 112 native cases, with one actual symlink-creation skip;
+actual native junctions and WSL links pass. Ordinary research/daily rebuild and
+verified numerical reuse preserve all financial inputs. A retained stale marker
+causes one failed export-collector assertion; scoped OS-lock verification and
+own-attachment closure pass without deleting it. Readiness attempt 3 starts in
+45.328 seconds within the unchanged 120-second deadline. Its complete outer
+closure is 55.750 seconds. This closes prepared runtime readiness at the measured
+scope, not cold/installed operation, financial speed or broader trial capacity.
+No deadline, source freshness, financial rule, limit, default or route changes.
+The focused original-method comparison remains next; G15 permission is pending.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
