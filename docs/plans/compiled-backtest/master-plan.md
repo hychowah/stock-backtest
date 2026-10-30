@@ -1784,6 +1784,22 @@ as reconstructions; no earlier evidence is rewritten. Next complete remaining
 operational/capacity gates under declared admission. Full-weekly output policy,
 G15 permission and broader qualification stay open; CB-14 is incomplete.
 
+
+The [fresh24 eager observation](phases/CB-14.capacity6.fresh24.md) then admits
+the 696-period annual plan but fails the unchanged 360-user-second application
+threshold after progress acknowledges 22 calculated/retained trials and 0 recovery.
+No complete caller batch is delivered. All native processes, descendants,
+streams and handles close. Peak job commit 393,183,232 bytes does not establish
+RAM exhaustion. Earlier successful slices cannot complete this failed workflow.
+Bounded 24 delivery remains unrun; its existing per-trial validations are retained.
+A [prepared proposal](phases/CB-14.capacity6.fresh24.proposed-envelope.json)
+requests one 600-user-second isolated retry, preserving all other deadlines,
+RAM/process/CPU-rate/storage bounds and fresh empty checkpoints. No proposed
+helper is exported or executed. Explicit approval is required before using the
+exception. This is an experiment-envelope decision; it changes no user waiting
+budget, financial rule, normal default, route or installed source. Full-weekly
+storage and G15 permission remain separate. CB-14 remains incomplete.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
