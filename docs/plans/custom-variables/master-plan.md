@@ -2,11 +2,22 @@
 
 Date: 2026-10-30
 
-Status: Proposed master plan. Saved at the user's request. Phase 1 has not
-started. This document does not authorize changes to engine-owned contracts,
+Status: Phase 1 contract documentation delivered on 2026-10-30. See the
+[phase record](phases/phase-01/README.md). Financial implementation ownership
+remains proposed, not agreed; Phase 2 protected implementation is blocked until
+that assignment is accepted. Phases 2–7 have not started.
+This document does not authorize changes to engine-owned contracts,
 market-data downloads, benchmark admission, deployment, or production cutover.
 Engine observations below describe the planning session; recheck the owning
 worktree before implementation.
+
+Phase 1 rechecked engine HEAD `a8cbb69` and its active working tree. Persistent
+isolated preview integration is present. CB-13 is recorded complete. CB-14
+capacity increments 1–4 are committed; increment 5 is partial, uncommitted and
+not verified for use. CB-15 remains blocked. The fixed policy catalog and
+pair-valued factor interface still require an explicit scalar-variable change.
+See [ownership and inspected interfaces](phases/phase-01/ownership.md) for source
+evidence and the distinction between existing agreements and proposed ownership.
 
 ## Design
 
@@ -180,7 +191,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 
 | Phase | Abstraction delivered | Completion evidence and handoff |
 |---|---|---|
-| **1. Variable contract and ownership** | Versioned definitions, temporal meanings, units, errors, and backend capability contract | Worked examples cover the user's formula, negative values, missing years, historical dates, and percentage conversion. Agree ownership of financial and prepared-data changes before editing shared contracts. |
+| **1. Variable contract and ownership** | Contract documentation delivered; implementation ownership pending | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Financial and prepared-data edits remain blocked until ownership is agreed. |
 | **2. Parameter and history provider** | One point-in-time source for supported financial and market observations | Tests cover availability boundaries, stale reports, conflicting annual inputs, fiscal gaps, calendar boundaries, and missing prices. Later work asks for observations without interpreting raw files. |
 | **3. Formula evaluator** | Validation, expression evaluation, dependency resolution, and explanation | Reference tests cover arithmetic, units, nested expressions, saved dependencies, invalid denominators, cycles, and bounded work. Cache identities include definitions, policy, and input generation. |
 | **4. General scalar selection** | Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
@@ -205,4 +216,6 @@ Quarterly/TTM support is a later extension of the history provider. It requires 
 | How will the numerical engine expose variable requirements? | Review the proposed scalar contract against its current policy, factor, generation, and workspace interfaces before either branch implements it. |
 | Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
 
-This is a planning proposal. No source, runtime data, or existing snapshots were changed.
+This remains an implementation proposal. Phase 1 adds reviewable contracts and
+handoff records only. No product source, runtime data, or existing snapshots
+were changed by this phase.
