@@ -76,21 +76,37 @@ class BrowserStorage:
         return self
 
     def inventory(self):
+        """Fresh complete recursive sample; no inventory survives between calls.
+
+        Keep all category ceilings, reject links and propagate unexpected file
+        errors. An entry that disappears during observation can be absent.
+        """
         totals = dict(root=0, profile_cache=0, downloads=0, evidence=0)
-        for path in self.root.rglob('*'):
-            if path.is_symlink():
-                raise BrowserFailure('Unexpected browser storage link.')
-            if path.is_file():
-                try: size = path.stat().st_size
-                except FileNotFoundError:
-                    # Chrome can rename a completed .crdownload between these
-                    # observations. This inventory is a sample, not a quota.
-                    continue
-                totals['root'] += size
-                if path.parts[len(self.root.parts)] in ('profile', 'cache'):
-                    totals['profile_cache'] += size
-                for name in ('downloads', 'evidence'):
-                    if path.is_relative_to(self.root/name): totals[name] += size
+        pending = [(str(self.root), None)]
+        while pending:
+            directory, category = pending.pop()
+            try: entries = os.scandir(directory)
+            except FileNotFoundError: continue
+            with entries as children:
+                for entry in children:
+                    try:
+                        if entry.is_symlink():
+                            raise BrowserFailure('Unexpected browser storage link.')
+                        group = category if category is not None else entry.name
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append((entry.path, group))
+                        elif entry.is_file(follow_symlinks=False):
+                            size = entry.stat(follow_symlinks=False).st_size
+                            totals['root'] += size
+                            if group in ('profile', 'cache'): totals['profile_cache'] += size
+                            # Match the original Path.is_relative_to semantics
+                            # for attachments on case-insensitive Windows paths.
+                            attachment = group.lower() if os.name == 'nt' else group
+                            if attachment in ('downloads', 'evidence'): totals[attachment] += size
+                    except FileNotFoundError:
+                        # Chrome can rename a completed .crdownload between
+                        # observations. This sample is not a filesystem quota.
+                        continue
         for name, value in totals.items():
             if value > LIMITS[name+'_bytes']:
                 raise BrowserLimit('Browser logical storage bound: '+name)

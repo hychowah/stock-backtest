@@ -41,6 +41,32 @@ pin immutable bytes through reading. Use one active iterator per stream. Keeping
 all yielded records is an explicit eager caller choice, outside codec bounds.
 Random access indexes and read pins remain work for existing application stores.
 
+`reader.reopen(other_stream)` opens an independent reader of those exact validated
+contents. Initial validation records the physical length and SHA-256 of the bytes
+it actually decodes. Reopening hashes the complete other stream in buffers of at
+most 64 KiB. Changed content, truncation and trailing bytes fail before metadata
+or rows are exposed, including changes outside a requested prefix. Cancellation
+checks continue between buffers. The owner must keep both streams immutable.
+Each stream has its own seek position. Ordinary `records()` keeps its existing
+checks, including after reopening.
+
+This proof stays with the validated reader. It retains only its existing bounded
+header/footer, limits, length and hash. It has no rows, offsets, index, registry
+or persistent cache. It cannot admit unvalidated evidence. Acquired display owners
+use this operation for request streams. Initial Jobs publication, acquisition
+and durable destination validation still perform complete codec validation.
+
+`reader.verified_records()` traverses an exact validated snapshot. It verifies
+the complete physical length/hash again immediately before yielding any record.
+This includes a suffix that the consumer will not visit. It then decodes bounded
+records with the same framing, piece checksums, limits, duplicate-key handling
+and cancellation checks. The complete proof supplies semantic value and order
+validation, so those checks are not repeated. Fields, insertion order, numeric
+types and signed zero are unchanged. The caller must preserve immutable bytes
+throughout traversal. This is not protection against a concurrent hostile writer.
+`evidence_views` selects this operation for pages and CSV traversal. Initial
+construction, ordinary `records()` and sealed-trial validation stay unchanged.
+
 ## Sealed trial views
 
 `writer.end_trial(summary)` returns a `TrialView` before batch completion.

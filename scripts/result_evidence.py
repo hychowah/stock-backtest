@@ -306,9 +306,59 @@ class Reader:
         self.checkpoint = checkpoint
         self.bytes_read = self.peak_piece_bytes = self.peak_record_bytes = 0
         self._header = self._manifest = None
-        for record in self._records():
+        physical = hashlib.sha256()
+        for record in self._records(physical=physical):
             if record['type'] == 'header': self._header = record
             elif record['type'] == 'complete': self._manifest = record
+        # Bind the proof to the exact pieces consumed by complete validation.
+        self._proof = (self.bytes_read, physical.digest())
+
+    def reopen(self, stream):
+        """Open an independent reader after its complete bytes match this proof.
+
+        The caller owns stream lifetime and immutability. No record collection
+        or seek position is shared. Initial construction still validates every
+        record; this operation verifies exact content, including unread suffixes.
+        """
+        if stream is self.stream:raise ValueError('An independent evidence stream is required.')
+        self._verify_stream(stream)
+        reader=object.__new__(Reader)
+        reader.stream,reader.max_bytes=stream,self.max_bytes
+        reader.piece_bytes,reader.record_bytes=self.piece_bytes,self.record_bytes
+        reader.checkpoint=self.checkpoint
+        reader.bytes_read=reader.peak_piece_bytes=reader.peak_record_bytes=0
+        reader._header,reader._manifest=deepcopy(self._header),deepcopy(self._manifest)
+        reader._proof=self._proof
+        return reader
+
+    def _verify_stream(self,stream):
+        length, expected = self._proof
+        stream.seek(0);physical=hashlib.sha256();size=0
+        while True:
+            if self.checkpoint is not None:self.checkpoint()
+            data=stream.read(min(65536,length-size+1))
+            if not data:break
+            size+=len(data)
+            if size>length:raise ValueError('Evidence changed after validation.')
+            physical.update(data)
+        if size!=length or physical.digest()!=expected:
+            raise ValueError('Evidence changed after validation.')
+        stream.seek(0)
+
+    def verified_records(self):
+        """Traverse exact, completely validated contents through bounded records.
+
+        Before yielding, verify the entire stream, including an unvisited suffix.
+        The original semantic validation remains authoritative. The caller owns
+        stream lifetime and immutable bytes. records() keeps its independent
+        validation behavior. No record collection or index is retained.
+        """
+        self._verify_stream(self.stream)
+        for record,_,_,end in _physical_records(self.stream,0,self._proof[0],
+                self.piece_bytes,self.record_bytes,self.checkpoint,
+                observe=self._observe,validate_values=False):
+            self.bytes_read=end
+            yield record
 
     @property
     def metadata(self): return deepcopy(self._header['metadata'])
@@ -323,10 +373,10 @@ class Reader:
         self.peak_piece_bytes=max(self.peak_piece_bytes,piece)
         self.peak_record_bytes=max(self.peak_record_bytes,record)
 
-    def _records(self):
+    def _records(self, *, physical=None):
         order, digest = _Order(), hashlib.sha256()
         for record,raw_digest,start,end in _physical_records(self.stream,0,self.max_bytes,
-                self.piece_bytes,self.record_bytes,self.checkpoint,observe=self._observe):
+                self.piece_bytes,self.record_bytes,self.checkpoint,observe=self._observe,physical=physical):
             self.bytes_read=end
             order.accept(record,digest.hexdigest())
             if record['type']=='complete':
@@ -364,7 +414,7 @@ def _range_digest(stream,start,end,checkpoint):
     finally:stream.seek(position)
 
 
-def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,observe=None):
+def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,observe=None,physical=None,validate_values=True):
     """Decode bounded physical records; owners supply structural validation."""
     stream.seek(start);position=start;buffer=bytearray();digest=hashlib.sha256();left=start
     while position<end:
@@ -383,6 +433,8 @@ def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,obser
         if len(buffer)+size>record_bytes:raise ValueError('Evidence exceeds its record byte bound.')
         data=stream.read(size);checksum=stream.read(_CHECKSUM_BYTES)
         if len(data)!=size or len(checksum)!=_CHECKSUM_BYTES:raise ValueError('Truncated evidence frame.')
+        if physical is not None:
+            physical.update(header);physical.update(data);physical.update(checksum)
         if hashlib.sha256(bytes([last])+data).digest()!=checksum:
             raise ValueError('Evidence piece checksum differs.')
         buffer.extend(data);digest.update(data)
@@ -390,7 +442,7 @@ def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,obser
         if not last:continue
         try:record=json.loads(buffer,object_pairs_hook=_object)
         except (ValueError,UnicodeError,RecursionError) as error:raise ValueError('Invalid evidence JSON.') from error
-        _json_value(record,record_bytes)
+        if validate_values:_json_value(record,record_bytes)
         yield record,digest.digest(),left,position
         left=position;buffer.clear();digest=hashlib.sha256()
     if buffer:raise ValueError('Evidence ended before completion.')

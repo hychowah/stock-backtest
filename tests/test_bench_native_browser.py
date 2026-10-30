@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch
 from urllib.parse import quote
 
@@ -120,19 +121,106 @@ class OwnershipTests(unittest.TestCase):
 
     def test_inventory_handles_download_rename_but_keeps_other_errors(self):
         storage=self.storage();path=storage.root/'downloads'/'inflight.crdownload';path.write_bytes(b'partial')
-        original_file=Path.is_file;original_stat=Path.stat
-        def renamed(value,*args,**kwargs):
-            found=original_file(value,*args,**kwargs)
-            if value==path and found:path.unlink()
-            return found
-        with patch.object(Path,'is_file',renamed):
+        original_scan=os.scandir;opened=[];closed=[]
+        class Entry:
+            def __init__(self,entry,action):self.entry,self.action=entry,action
+            def __getattr__(self,key):return getattr(self.entry,key)
+            def stat(self,**kwargs):
+                if Path(self.entry.path)==path:self.action()
+                return self.entry.stat(**kwargs)
+        @contextmanager
+        def scan(directory,action):
+            opened.append(str(directory))
+            try:
+                with original_scan(directory) as entries:
+                    yield (Entry(entry,action) for entry in entries)
+            finally:closed.append(str(directory))
+        def renamed():
+            path.unlink()
+            raise FileNotFoundError('Renamed before metadata acquisition')
+        with patch('bench_native_browser.os.scandir',side_effect=lambda directory:scan(directory,renamed)):
             self.assertEqual(storage.inventory()['downloads'],0)
-        self.assertFalse(path.exists());path.write_bytes(b'partial')
-        def inaccessible(value,*args,**kwargs):
-            if value==path:raise PermissionError('Unexpected access failure')
-            return original_stat(value,*args,**kwargs)
-        with patch.object(Path,'stat',inaccessible):
+        self.assertFalse(path.exists());self.assertTrue(closed);self.assertCountEqual(opened,closed);path.write_bytes(b'partial')
+        def inaccessible():raise PermissionError('Unexpected access failure')
+        with patch('bench_native_browser.os.scandir',side_effect=lambda directory:scan(directory,inaccessible)):
+            before=len(closed)
             with self.assertRaises(PermissionError):storage.inventory()
+            self.assertGreater(len(closed),before)
+            self.assertCountEqual(opened,closed)
+
+    def test_inventory_rejects_link_before_classification_on_every_platform(self):
+        storage=self.storage();original=os.scandir
+        class Link:
+            def is_symlink(self):return True
+            def is_dir(self,**kwargs):raise AssertionError('Link was followed')
+        @contextmanager
+        def scan(directory):
+            with original(directory):yield iter([Link()])
+        with patch('bench_native_browser.os.scandir',side_effect=scan):
+            with self.assertRaises(BrowserFailure):storage.inventory()
+
+    def test_inventory_counts_nested_and_unknown_files_and_each_exact_ceiling(self):
+        storage=self.storage()
+        sizes={'profile/sub/a':3,'cache/b':5,'downloads/sub/c':7,'evidence/sub/d':11,
+               'temp/e':13,'unknown/downloads/f':17,'root-file':19,'empty-file':0}
+        for name,size in sizes.items():
+            path=storage.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'x'*size)
+        (storage.root/'empty-directory').mkdir()
+        expected=dict(root=75,profile_cache=8,downloads=7,evidence=11)
+        self.assertEqual(storage.inventory(),expected)
+        for category,total in expected.items():
+            with self.subTest(category=category),patch.dict(LIMITS,{category+'_bytes':total}):
+                self.assertEqual(storage.inventory(),expected)
+                with patch.dict(LIMITS,{category+'_bytes':total-1}):
+                    with self.assertRaisesRegex(BrowserLimit,category):storage.inventory()
+
+    def test_inventory_rejects_file_directory_broken_and_loop_links(self):
+        storage=self.storage();target=storage.root/'temp/target';target.mkdir()
+        (target/'value').write_bytes(b'owned')
+        for name,destination,directory in (('file',target/'value',False),('directory',target,True),
+                                            ('broken',target/'missing',False),('loop',storage.root,True)):
+            with self.subTest(link=name):
+                link=storage.root/'temp'/('link-'+name)
+                try:
+                    try:link.symlink_to(destination,target_is_directory=directory)
+                    except OSError as error:self.skipTest('Native link creation unavailable: '+type(error).__name__)
+                    with self.assertRaises(BrowserFailure):storage.inventory()
+                finally:link.unlink(missing_ok=True)
+
+    def test_attachment_category_preserves_platform_path_case_rules(self):
+        storage=self.storage()
+        for name in ('downloads','evidence'):
+            directory=storage.root/name;upper=storage.root/name.upper()
+            if os.name=='nt':directory.rename(upper)
+            else:upper.mkdir()
+            try:
+                (upper/'value').write_bytes(b'owned')
+                self.assertEqual(storage.inventory()[name],5 if os.name=='nt' else 0)
+            finally:
+                (upper/'value').unlink()
+                if os.name=='nt':upper.rename(directory)
+                else:upper.rmdir()
+
+    def test_inventory_tolerates_disappearing_directory_but_not_other_scan_errors(self):
+        storage=self.storage();folder=storage.root/'downloads/disappearing';folder.mkdir()
+        original=os.scandir
+        def disappearing(directory):
+            if Path(directory)==folder:folder.rmdir()
+            return original(directory)
+        with patch('bench_native_browser.os.scandir',side_effect=disappearing):
+            self.assertEqual(storage.inventory()['downloads'],0)
+        for error in (PermissionError('denied'),OSError('unexpected')):
+            with patch('bench_native_browser.os.scandir',side_effect=error):
+                with self.assertRaises(type(error)):storage.inventory()
+
+    def test_checkpoint_retains_quarter_second_inventory_cadence(self):
+        storage=self.storage();browser=NativeBrowser(storage);self.addCleanup(browser.close)
+        browser.started=0;browser.last_inventory=0
+        with patch('bench_native_browser.time.monotonic',return_value=.249),patch.object(storage,'inventory') as inventory:
+            browser.checkpoint();inventory.assert_not_called()
+        with patch('bench_native_browser.time.monotonic',return_value=.25),patch.object(storage,'inventory') as inventory:
+            browser.checkpoint();inventory.assert_called_once_with()
+        self.assertEqual(browser.last_inventory,.25)
 
     def test_pending_events_and_storage_have_separate_frozen_bounds(self):
         storage = self.storage(); browser = NativeBrowser(storage)

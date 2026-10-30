@@ -35,7 +35,7 @@ def records(reader,trial):
     integer(trial,1)
     if trial>reader.manifest['trials']:raise ValueError('Stored trial not found.')
     active=False
-    for record in reader.records():
+    for record in reader.verified_records():
         if record['type']=='trial':active=record['number']==trial
         if active:yield record
         if active and record['type']=='end_trial':return

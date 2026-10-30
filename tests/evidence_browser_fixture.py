@@ -76,12 +76,12 @@ def seed(server,source):
     Path(source/'data/evidence-fixture.json').write_text(json.dumps(records,allow_nan=False),encoding='utf-8')
     # Test-only transport pause after headers and the first bounded piece.
     # The counting pass is unchanged. Exact bytes and Content-Length are kept.
-    original_csv=result_exports.csv;state=local()
-    def controlled_csv(reader,kind,trial=1):
+    original_chunks=result_exports.Prepared.chunks;state=local()
+    def controlled_chunks(export):
         state.calls=getattr(state,'calls',0)+1
         controlled=(source/'data/evidence-export-pause').exists() and state.calls%2==0
         first=True
-        for chunk in original_csv(reader,kind,trial):
+        for chunk in original_chunks(export):
             if not controlled:yield chunk;continue
             for offset in range(0,len(chunk),128):
                 if not first:
@@ -90,7 +90,7 @@ def seed(server,source):
                         if time.monotonic()>deadline:raise TimeoutError('Fictional export pause expired')
                         time.sleep(.01)
                 first=False;yield chunk[offset:offset+128]
-    result_exports.csv=controlled_csv
+    result_exports.Prepared.chunks=controlled_chunks
 
 
 def forbid_read_dependencies(context,serve_app):

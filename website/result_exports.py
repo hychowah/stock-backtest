@@ -48,7 +48,24 @@ def string(value):
     return str(value)
 
 
+def _selection(reader,kind,trial):
+    if kind=='random':
+        configuration=reader.manifest['summary'].get('configuration')
+        if not configuration:raise ValueError('This result has no random-trial summary.')
+        return 'random-dates-seed-'+string(configuration['seed'])+'.csv',None
+    if kind not in ('holdings','returns'):raise ValueError('Unknown complete export.')
+    for record in evidence_views.records(reader,trial):
+        if record['type']=='end_trial':
+            summary=record['summary']
+            return ('scheduled-'+kind+'-'+summary['start']+'-'+summary['end']+'.csv',
+                    summary['options'].get('metric','ev_ebitda'))
+
+
 def rows(reader,kind,trial):
+    yield from _rows(reader,kind,trial,_selection(reader,kind,trial)[1])
+
+
+def _rows(reader,kind,trial,metric):
     if kind=='random':
         summary=reader.manifest['summary'];configuration=summary.get('configuration')
         if not configuration:raise ValueError('This result has no random-trial summary.')
@@ -61,7 +78,6 @@ def rows(reader,kind,trial):
             else:values['months']=configuration['months']
             yield [values.get(k) for k in keys]
     elif kind in ('holdings','returns'):
-        info=evidence_views.trial(reader,trial);metric=info['summary']['options'].get('metric','ev_ebitda')
         keys=HOLDINGS if kind=='holdings' else RETURNS;yield keys
         for record in evidence_views.records(reader,trial):
             if record['type']=='period':
@@ -74,19 +90,37 @@ def rows(reader,kind,trial):
 
 
 def filename(reader,kind,trial=1):
-    if kind=='random':
-        configuration=reader.manifest['summary'].get('configuration')
-        if not configuration:raise ValueError('This result has no random-trial summary.')
-        return 'random-dates-seed-'+string(configuration['seed'])+'.csv'
-    if kind not in ('holdings','returns'):raise ValueError('Unknown complete export.')
-    info=evidence_views.trial(reader,trial)['summary']
-    return 'scheduled-'+kind+'-'+info['start']+'-'+info['end']+'.csv'
+    return _selection(reader,kind,trial)[0]
+
+
+class Prepared:
+    """One attachment borrowing a pinned reader; no rows or bytes are retained.
+
+    Resolve selection once and count exact output before headers. chunks() starts
+    a fresh bounded traversal with identical formatting. Passes are sequential;
+    the caller owns reader lifetime and transport closure. Never share requests.
+    """
+    def __init__(self,reader,kind,trial):
+        self.reader,self.kind,self.trial=reader,kind,trial
+        self.filename,self.metric=_selection(reader,kind,trial)
+        self.content_length=sum(len(chunk) for chunk in self.chunks())
+
+    def chunks(self):
+        return _csv(_rows(self.reader,self.kind,self.trial,self.metric))
+
+
+def prepare(reader,kind,trial=1):
+    return Prepared(reader,kind,trial)
 
 
 def csv(reader,kind,trial=1):
     """Retain at most one codec record, one cell spelling and a 64 KiB byte chunk."""
+    yield from _csv(rows(reader,kind,trial))
+
+
+def _csv(rows):
     buffer=bytearray();first_row=True
-    for row in rows(reader,kind,trial):
+    for row in rows:
         tokens=[] if first_row else ['\r\n'];first_row=False
         for index,value in enumerate(row):
             if index:tokens.append(',')

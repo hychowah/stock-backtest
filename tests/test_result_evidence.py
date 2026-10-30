@@ -9,7 +9,7 @@ import struct
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]/'scripts'),str(Path(__file__).parent)]
 import result_evidence as evidence
@@ -94,6 +94,82 @@ def repack(records):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_verified_records_preserve_types_order_and_ordinary_validation(self):
+        stream=io.BytesIO();write(stream)
+        reader=evidence.Reader(stream,max_bytes=LIMIT)
+        expected=list(reader.records())
+        with patch.object(evidence._Order,'accept',side_effect=AssertionError('Repeated order validation')), \
+             patch.object(evidence,'_json_value',side_effect=AssertionError('Repeated value validation')):
+            observed=list(reader.verified_records())
+            self.assertEqual(repr(observed),repr(expected))
+            with self.assertRaisesRegex(AssertionError,'value validation'):list(reader.records())
+        # Ordinary traversal still detects a checksum-valid replacement.
+        expected[0]['metadata']['settings']['seed']=43
+        stream.seek(0);stream.truncate();stream.write(repack(expected))
+        with self.assertRaisesRegex(ValueError,'changed'):list(reader.records())
+        with self.assertRaisesRegex(ValueError,'changed'):next(reader.verified_records())
+
+    def test_verified_records_recheck_complete_content_after_reopen(self):
+        stream=io.BytesIO();write(stream)
+        data=stream.getvalue();reader=evidence.Reader(stream,max_bytes=LIMIT)
+        independent=io.BytesIO(data);other=reader.reopen(independent)
+        original=list(reader.records())
+        different=deepcopy(original);different[-2]['summary']['seconds']=99.
+        malformed=deepcopy(original);malformed[-2]['periods']=999
+        for changed in (data[:-1],data+b'x',b'x'+data[1:],data[:-1]+bytes([data[-1]^1]),
+                        repack(different),repack(malformed)):
+            independent.seek(0);independent.truncate();independent.write(changed)
+            with self.assertRaisesRegex(ValueError,'changed'):next(other.verified_records())
+        independent.seek(0);independent.truncate();independent.write(data)
+        self.assertEqual(repr(list(other.verified_records())),repr(original))
+        checkpoint=Mock(side_effect=RuntimeError('cancelled'));other.checkpoint=checkpoint
+        with self.assertRaisesRegex(RuntimeError,'cancelled'):next(other.verified_records())
+
+    def test_reopen_binds_complete_validated_bytes_without_redecoding(self):
+        stream=io.BytesIO();_,expected=write(stream)
+        data=stream.getvalue();reader=evidence.Reader(stream,max_bytes=LIMIT)
+        # Hash precisely the framed bytes, including split records and footer.
+        self.assertEqual(reader._proof,(len(data),hashlib.sha256(data).digest()))
+        independent=io.BytesIO(data)
+        with patch.object(evidence._Order,'accept',side_effect=AssertionError('Repeated semantic validation')):
+            other=reader.reopen(independent)
+        self.assertEqual(collect(other),expected)
+        first=reader.records();second=other.records()
+        self.assertEqual(next(first),next(second))
+        next(first);self.assertEqual(next(second)['type'],'trial')
+        self.assertEqual(collect(other),expected)
+        self.assertFalse(independent.closed)
+        with self.assertRaisesRegex(ValueError,'independent'):reader.reopen(stream)
+
+    def test_reopen_rejects_changed_suffix_valid_replacement_and_malformed_bytes(self):
+        stream=io.BytesIO();write(stream)
+        data=stream.getvalue();reader=evidence.Reader(stream,max_bytes=LIMIT)
+        original=list(reader.records())
+        different=deepcopy(original);different[-2]['summary']['seconds']=99.
+        valid=repack(different)
+        evidence.Reader(io.BytesIO(valid),max_bytes=LIMIT)
+        malformed=deepcopy(original);malformed[-2]['periods']=999
+        bad=repack(malformed)
+        for changed in (data[:-1],data+b'\x00',b'x'+data[1:],data[:-1]+bytes([data[-1]^1]),valid,bad):
+            with self.subTest(length=len(changed)):
+                with self.assertRaisesRegex(ValueError,'changed'):reader.reopen(io.BytesIO(changed))
+        with self.assertRaises(ValueError):evidence.Reader(io.BytesIO(bad),max_bytes=LIMIT)
+
+    def test_reopen_checks_cancellation_and_uses_bounded_reads(self):
+        stream=io.BytesIO();write(stream)
+        cancelled=False
+        def checkpoint():
+            if cancelled:raise RuntimeError('cancelled')
+        reader=evidence.Reader(stream,max_bytes=LIMIT,checkpoint=checkpoint)
+        class Bounded(io.BytesIO):
+            def read(self,n=-1):
+                self_test.assertTrue(0<n<=65536)
+                return super().read(n)
+        self_test=self
+        reader.reopen(Bounded(stream.getvalue()))
+        cancelled=True
+        with self.assertRaisesRegex(RuntimeError,'cancelled'):reader.reopen(Bounded(stream.getvalue()))
+
     def test_complete_round_trip_types_nulls_extensions_order_and_file_lifetime(self):
         with tempfile.TemporaryDirectory(prefix='evidence-fixture-') as directory:
             path=Path(directory)/'owned.evidence'

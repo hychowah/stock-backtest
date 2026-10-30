@@ -105,10 +105,10 @@ const ScheduleView=(()=>{
     node(id+'-pages').hidden=false;node(id+'-back').disabled=cursor===0;node(id+'-next').disabled=next===null;
     node(id+'-page').textContent=label+' · '+total+' total';
   }
-  async function storedHoldings(state,cursor=0){
+  async function storedHoldings(state,cursor=0,firstPage=null){
     const period=state.period,sequence=++state.holdingSequence;
     try{
-      const page=await state.reader.holdings(state.trial,period,cursor);
+      const page=await (firstPage??state.reader.holdings(state.trial,period,cursor));
       if(!valid(state)||state.period!==period||state.holdingSequence!==sequence)return;
       state.holdingCursor=page.cursor;state.holdingNext=page.next;
       const metric=metricLabel(state.info.summary.options.metric??'ev_ebitda');node('schedule-multiple-head').textContent=metric+' (×)';
@@ -122,15 +122,20 @@ const ScheduleView=(()=>{
     node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
     node('schedule-stock-body').innerHTML='';state.holdingCursor=0;state.holdingNext=null;
     node('schedule-attribution').textContent='Reading contributions from all selected stocks…';
-    void storedHoldings(state);
+    // One bounded first page serves this table and attribution operation.
+    // Both attribution passes keep original order. Replacement fences every
+    // response before consumption or publication; no prior period is retained.
+    const firstPage=state.reader.holdings(state.trial,period,0);
+    void storedHoldings(state,0,firstPage);
     try{
       const group=await ReturnContributions.analyzeStored(selected.value.names,async visit=>{
-        let cursor=0;
+        let page=await firstPage;
         do{
-          const page=await state.reader.holdings(state.trial,period,cursor);
           if(!valid(state)||state.period!==period||state.stockSequence!==sequence)throw Error('This period view was replaced.');
-          page.rows.forEach(visit);cursor=page.next;
-        }while(cursor!==null);
+          page.rows.forEach(visit);
+          if(page.next===null)break;
+          page=await state.reader.holdings(state.trial,period,page.next);
+        }while(true);
       });
       if(!valid(state)||state.period!==period||state.stockSequence!==sequence)return;
       node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions use all '+group.count+' selected stocks; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';

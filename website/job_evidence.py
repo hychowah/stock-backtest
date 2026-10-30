@@ -122,12 +122,12 @@ class Workspace:
         return result_evidence.Reader(stream,**entry['limits'])
 
     @contextmanager
-    def fork_pinned(self,entry):
+    def fork_pinned(self,entry,reader):
         """An acquired display pin keeps retired bytes alive for independent reads."""
         with self.condition:
             if not entry['pins'] or entry['staging']:raise ValueError('Evidence has no owning pin.')
             stream=(entry['path']/'completed.evidence').open('rb')
-        try:yield self.read(entry,stream)
+        try:yield reader.reopen(stream)
         finally:stream.close()
 
     @contextmanager

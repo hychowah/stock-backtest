@@ -290,11 +290,12 @@ class Handler(SimpleHTTPRequestHandler):
             if self.command!='GET':raise ValueError('Unsupported evidence operation.')
             with jobs.read_artifact(identifier) as (metadata,reader):
                 if len(path)==3 and path[0]=='export':
-                    kind=path[1];trial=int(path[2]);name=result_exports.filename(reader,kind,trial)
+                    kind=path[1];trial=int(path[2]);export=result_exports.prepare(reader,kind,trial)
+                    name=export.filename
                     # Count through a bounded pass before headers. Content-Length
                     # makes a later interrupted transfer detectably incomplete.
-                    length=sum(len(chunk) for chunk in result_exports.csv(reader,kind,trial))
-                    chunks=result_exports.csv(reader,kind,trial)
+                    length=export.content_length
+                    chunks=export.chunks()
                     first=next(chunks,b'')
                     self.connection.settimeout(30)
                     self.send_response(200);self.send_header('Content-Type','text/csv; charset=utf-8')

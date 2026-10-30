@@ -228,7 +228,7 @@ class Jobs:
             durable_evidence.validate_metadata(metadata,reader)
             class Opened:
                 def __init__(opened):opened.reader=reader;opened.metadata=metadata
-                def open_reader(opened):return self.evidence.fork_pinned(entry)
+                def open_reader(opened):return self.evidence.fork_pinned(entry,reader)
                 def close(opened):pass  # The enclosing source context owns the pin.
             yield Opened()
         finally:pin.__exit__(None,None,None)

@@ -89,6 +89,12 @@ the denominator. Signed ordering, symbol ties, original addition order and
 separate gain/loss normalization match eager attribution. Table pages do not
 change attribution.
 
+The current selection requests its first holdings page once. The initial table
+and both attribution passes share that bounded immutable page. Each pass fetches
+any subsequent pages in original order. Moving the table does not change the
+attribution input. Period, sequence and artifact fences still reject late replies.
+There is no page map, cross-selection reuse or general transport cache.
+
 `website/result_exports.py` emits complete UTF-8 attachment bytes in chunks of at
 most 64 KiB. It preserves eager CSV columns, row order, quoted cells, escaped
 quotes, CRLF separators, no final separator, numeric spelling and filenames.
@@ -101,6 +107,15 @@ same immutable bytes. Disconnects and read failures close the transport and pin.
 They cannot turn a partial file into a complete-length successful attachment.
 An active export survives release of its display and deletion of its source.
 Shutdown can interrupt it and then drains the request before deleting bytes.
+
+`result_exports.prepare(reader, kind, trial)` prepares one attachment within that
+request pin. It resolves the original scalar trial summary once. It retains the
+filename, metric and exact content length, with no stock rows or CSV body.
+`chunks()` performs a fresh bounded formatting pass. Scheduled attachments use
+three prefix traversals: summary selection, counting and streaming. They do not
+repeat presentation coverage inspection for filename and CSV passes. Standalone
+`csv()` stays lazy, and standalone `filename()` does not count a file. Existing
+formatting and the first-chunk-before-headers rule remain unchanged.
 
 The formatter follows JavaScript finite-number spelling, including integral
 floats, signed zero and exponent boundaries. Tests compare seeded float64 values
@@ -155,12 +170,33 @@ after 47 fresh periods and five complete CSVs. All completed CSV cells and bytes
 agree, but saving, ordinary reopening and the remaining 45 files are not reached.
 No complete bounded-workflow or resource-acceptance pass follows.
 
-Each request opens an independent stream and constructs a Reader. Reader
-construction validates the complete codec before page scanning. A read-only
+At the time of that failed observation, each request opened an independent stream
+and constructed a Reader. Reader construction validated the complete codec before
+page scanning. A read-only
 probe on this 6,532,415-byte file measures 6,532,415 validation bytes per reader,
 plus the requested-prefix scan. A final-period holdings request reads 13,050,888
 bytes in that isolated probe. Fresh Jobs also checks the complete physical file
 hash; that extra pass is outside those Reader/page counts. The probes do not
-isolate the cause of the complete browser delay. Existing validation, routing
-and all limits stay unchanged. Any request-lifetime optimization needs its own
-independent design. No new index or cache is selected.
+isolate the cause of the complete browser delay. Those historical receipts remain
+unchanged.
+
+The subsequent [consumer fix](plans/compiled-backtest/phases/CB-14.capacity6.consumer.md)
+profiles the actual service and browser path. Repeated complete semantic decoding
+dominates early requests. Prefix decoding is meaningful for late requests. Physical
+hashing is a small part of their cost. The independent design keeps complete
+validation at initial construction and binds its proof to the exact decoded
+physical bytes. Acquired Jobs and durable displays use `Reader.reopen` for each
+independent request stream. That operation checks the complete physical length
+and hash before returning. Changed unread suffixes fail too. Ordinary record traversal
+retains its existing checks. No validation is inferred from file metadata.
+This proof has no rows or offsets and lives only with the acquired reader.
+Request pins, deletion, expiry, release and shutdown keep their existing owners.
+After a retained failed complete rerun, the independent design supplement adds
+`verified_records()` at this existing consumer boundary. Each traversal confirms
+the whole physical proof before exposing records, including an unvisited suffix.
+It then decodes bounded records without repeating semantic value/order validation
+already established for those exact bytes. Framing, checksums, limits, JSON
+decoding and cancellation remain. Ordinary codec iteration and initial complete
+validation keep their existing behavior. Exports use this same traversal boundary;
+their counting, output passes and byte formatting remain unchanged.
+No index, persistent cache, format, formula, automatic route or limit changes.

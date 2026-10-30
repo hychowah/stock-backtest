@@ -95,6 +95,20 @@ class ViewTests(unittest.TestCase):
             first,second=list(pool.map(inspect,(1,2)))
         self.assertEqual(first[1],second[1]);self.assertNotEqual(first[0]['summary']['seconds'],second[0]['summary']['seconds'])
 
+    def test_request_rebinding_rejects_corruption_outside_requested_prefix(self):
+        record,_,_=self.stored();self.acquire(record=record)
+        opened=self.jobs.readers.entries['a'*32]['opened']
+        # The display was valid. A later change to its final byte must reject
+        # even a first-period request, before any selected rows are exposed.
+        with opened.path.open('r+b') as stream:
+            stream.seek(-1,2);value=stream.read(1);stream.seek(-1,2)
+            stream.write(bytes([value[0]^1]))
+        with self.assertRaisesRegex(ValueError,'changed'):
+            with self.jobs.read_artifact('a'*32):self.fail('Corrupt reader escaped')
+        self.assertEqual(self.jobs.readers.measurements()['requests'],0)
+        self.jobs.release_reader('a'*32)
+        self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
+
     def test_release_and_shutdown_drain_request_pins(self):
         record,_,_=self.stored();self.acquire(record=record)
         with self.jobs.read_artifact('a'*32) as (_,reader):
@@ -157,6 +171,46 @@ class ViewTests(unittest.TestCase):
         values=[-0.,1.,1e-7,1e-6,1e20,1e21,1.2345678901234567,1.0000000000000001e18]
         self.assertEqual([result_exports.number(v) for v in values],['0','1','1e-7','0.000001','100000000000000000000','1e+21','1.2345678901234567','1000000000000000100'])
         self.assertEqual(result_exports.filename(reader,'holdings',1),'scheduled-holdings-2019-12-30-2020-04-02.csv')
+
+    def test_prepared_attachment_resolves_selection_once_and_matches_legacy_bytes(self):
+        for mode in ('custom','random'):
+            reader,_,originals=source(mode)
+            if mode=='random':
+                # The durable fixture's abbreviated summary is not an export
+                # fixture. Supply its original explicit dates before sealing.
+                summary=reader.manifest['summary'];metadata=reader.metadata
+                for row,dates in zip(summary['trials'],metadata['configuration']['samples'],strict=True):row['dates']=dates
+                stream=io.BytesIO();writer=result_evidence.Writer(stream,trials=2,metadata=metadata,max_bytes=4*1024**2)
+                for n,original in enumerate(originals,1):
+                    writer.start_trial(n)
+                    for period in original['periods']:writer.period(period)
+                    writer.end_trial({k:v for k,v in original.items() if k!='periods'})
+                writer.finish(summary);reader=result_evidence.Reader(stream,max_bytes=4*1024**2)
+            for kind in ('holdings','returns','random') if mode=='random' else ('holdings','returns'):
+                expected=b''.join(result_exports.csv(reader,kind))
+                name=result_exports.filename(reader,kind)
+                with patch.object(evidence_views,'records',wraps=evidence_views.records) as scans:
+                    export=result_exports.prepare(reader,kind)
+                    self.assertEqual(export.filename,name)
+                    self.assertEqual(export.content_length,len(expected))
+                    chunks=list(export.chunks())
+                    self.assertEqual(b''.join(chunks),expected)
+                    self.assertTrue(all(0<len(chunk)<=65536 for chunk in chunks))
+                    self.assertEqual(scans.call_count,0 if kind=='random' else 3)
+                # The request object stores selection scalars and the borrowed
+                # reader, not row collections or an encoded attachment.
+                self.assertEqual(set(vars(export)),{'reader','kind','trial','filename','metric','content_length'})
+                self.assertIs(export.reader,reader)
+        reader,_,_=source('custom')
+        with patch.object(result_exports,'_csv',side_effect=AssertionError('Unexpected formatting')):
+            self.assertTrue(result_exports.filename(reader,'returns'))
+        invalid=result_exports.csv(reader,'unknown')  # Existing lazy error timing.
+        with self.assertRaises(ValueError):next(invalid)
+        for kind,trial in (('unknown',1),('holdings',99),('returns',0)):
+            with self.assertRaises(ValueError):result_exports.prepare(reader,kind,trial)
+        reader.stream.seek(-1,2);value=reader.stream.read(1);reader.stream.seek(-1,2)
+        reader.stream.write(bytes([value[0]^1]))
+        with self.assertRaisesRegex(ValueError,'changed'):result_exports.prepare(reader,'returns')
 
     def test_csv_number_and_complete_bytes_against_javascript(self):
         node=shutil.which('node')
@@ -281,7 +335,7 @@ process.stdout.write(JSON.stringify(out));});"""
         worker=Thread(target=server.serve_forever);worker.start()
         def close():server.shutdown();worker.join(5);server.server_close()
         self.addCleanup(close)
-        original=result_exports.csv;state=local();entered=Event();resume=Event()
+        original=result_exports.Prepared.chunks;state=local();entered=Event();resume=Event()
         self.addCleanup(resume.set)
         def slow(*args):
             state.calls=getattr(state,'calls',0)+1
@@ -291,13 +345,13 @@ process.stdout.write(JSON.stringify(out));});"""
                 entered.set()
                 if not resume.wait(5):raise TimeoutError('Fixture export pause expired')
                 yield chunk[32:]
-        with patch.object(result_exports,'csv',slow),patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')):
+        with patch.object(result_exports.Prepared,'chunks',slow),patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')):
             for index,disconnect in enumerate((False,True)):
                 with self.subTest(disconnect=disconnect):
                     entered.clear();resume.clear()
                     record,_,_=self.stored('custom');identifier=('a' if index==0 else 'b')*32
                     self.acquire(identifier,record)
-                    with self.jobs.read_artifact(identifier) as (_,reader):expected=b''.join(original(reader,'holdings',1))
+                    with self.jobs.read_artifact(identifier) as (_,reader):expected=b''.join(result_exports.csv(reader,'holdings',1))
                     client=HTTPConnection(*server.server_address,timeout=10)
                     try:
                         client.request('GET','/api/backtest-runs/'+identifier+'/reader/export/holdings/1')
