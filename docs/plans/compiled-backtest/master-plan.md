@@ -1821,6 +1821,22 @@ application envelopes. Retain their exact helpers, declarations and closed
 receipts. Available memory, not an unanswered CPU/access decision, now prevents
 these native checks. This does not establish workload RAM exhaustion.
 
+The user subsequently removes the available-physical-memory entry floor for
+private CB-14 qualification. The [current admission policy](phases/CB-14.physical-admission-policy.json)
+keeps observed memory in reports, hard job caps, commit-headroom and disk checks.
+It supersedes both the old8GiB floor and the unexecuted2GiB inventory proposal.
+The [new complete annual attempt and installed inventory](phases/CB-14.capacity6.fresh24.retry4.md)
+pass independently: fresh24-4 calculates and retains all24 trials, with no
+recovery,696 periods and34,800 holdings. Request through complete JSON is
+456.891seconds; startup24.437seconds is separate. Peak application job commit
+417,361,920bytes is below2GiB; no working-set or speedup claim follows.
+The read-only installed inventory verifies312 manifest-owned files, Python3.12.1
+and a pip-only environment. It closes under a stricter512MiB job cap. No installed
+source or user data changes; content copying and compatibility execution are
+still unrun. Full24 ordinary financial agreement, matching performance and
+browser workflow remain unverified. G03/G06 and broader qualification remain
+open. CB-14 is incomplete; CB-15 stays blocked.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
