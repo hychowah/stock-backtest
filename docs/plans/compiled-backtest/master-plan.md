@@ -1420,7 +1420,8 @@ split preserves the objective and every retained acceptance gate:
 3. Bounded child/recorded-plan transport and temporary ownership in existing Jobs.
 4. Chunked durable snapshots in the existing queue and library stores.
 5. Versioned ResultArtifacts readers, bounded inspection and streamed exports.
-6. Prospectively bounded pilot, then full-path capacity and operational qualification.
+6. Prospectively bounded pilot, hardware-based route/limit decision, then full-path
+   capacity and operational qualification.
 
 The first three increments do not resolve G03/G06, change snapshots or admit a larger
 preview request. Increment 2 adds bounded offline numerical production and compatible
@@ -1433,13 +1434,31 @@ keeps calculation/transport ownership separate from Jobs retention and read pins
 [Increment 4](phases/CB-14.capacity4.md) adds dormant version-3 chunked snapshots
 in the existing queue and library databases. Its [independent supplement](phases/CB-14.capacity4-design.md)
 keeps atomic durable copies separate from detached active-reader lifetimes.
-The next step is increment 5: ResultArtifacts readers, bounded inspection and
-streamed exports. Do not route the application to bounded evidence before
-browser consumers preserve all complete evidence.
+Increment 5 has a [partial implementation checkpoint](phases/CB-14.capacity5.md)
+and a filed [independent supplement](phases/CB-14.capacity5-design.md). Its first
+expanded WSL check stops at an invalid version-2 test fixture. Native/browser
+verification, pilots and documentation remain unfinished. No implementation
+commit or capacity pass is claimed. Resume that check before continuing
+increment 5's ResultArtifacts readers, bounded inspection and streamed exports.
+Do not route the application to bounded evidence before browser consumers
+preserve all complete evidence.
 Later increments use these interfaces. Ordinary default selection, the
 normal launcher, eager protocol limits and closed benchmark admission stay intact.
 Workflow budgets are reviewed later; they are not a prerequisite for independent
 bounded design and correctness work. No operational gate is waived.
+
+The user's 30 October [hardware-based capacity decision](phases/CB-14.capacity-hardware-decision.md)
+adds a decision point within increment 6. G03/G06 record software admission
+failures under the current complete-result policy. They do not prove that the
+user's hardware ran out of memory. The 256 MiB eager result allowance and the
+private test host's containment limits are separate from available machine RAM.
+Keep the additive increment-5 work and its verification. Before changing routing
+or limits, measure actual result bytes, memory use and complete workflow costs
+on authorized hardware. Compare the existing route with a safely scoped higher
+allowance, the bounded route, or a combination where applicable. Retain all
+evidence and correctness requirements. Add further capacity machinery only for
+a measured need. This decision grants no new access, larger experiment, limit
+change or increment-6 execution in the current increment-5 task.
 
 **Outcome:** A reproducible decision to cut over or continue optimization.
 
@@ -1610,7 +1629,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. [Increment 3](phases/CB-14.capacity3.md) adds dormant bounded child transfer, exact staged plans and Jobs-owned temporary evidence with reader pins. [Increment 4](phases/CB-14.capacity4.md) adds atomic complete durable copies and independent active readers in the existing stores. Two integration/qualification increments remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
+| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. [Increment 3](phases/CB-14.capacity3.md) adds dormant bounded child transfer, exact staged plans and Jobs-owned temporary evidence with reader pins. [Increment 4](phases/CB-14.capacity4.md) adds atomic complete durable copies and independent active readers in the existing stores. [Increment 5](phases/CB-14.capacity5.md) has uncommitted partial source and a stopped WSL fixture check; native/browser verification remains unfinished. [The hardware decision](phases/CB-14.capacity-hardware-decision.md) requires actual memory/workflow measurements before route or limit changes in increment 6. Two integration/qualification increments remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition
