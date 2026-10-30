@@ -133,3 +133,15 @@ empty numerical checkpoints. Four unavailable historical Treasury observations
 remain explicit input gaps outside this prefix. This diverse cohort has
 present-day selection bias. It supplies no full-universe, full-window, cold
 workflow or acceptance qualification. Eager routing and all limits stay unchanged.
+
+
+The [retained-input twelve-trial continuation](plans/compiled-backtest/phases/CB-14.capacity6.real12.md)
+passes on the same cohort and calendar with empty numerical checkpoints. All
+204 periods, 10,200 holdings and 50 fresh/reopened CSVs are complete. Strict
+original-API comparisons have zero numerical differences. Every CSV cell and
+paired byte sequence agrees. Ordinary reopening forbids financial dependencies.
+The successful workflow reuses preparation and can reuse ordinary reference books.
+Its sampled browser private bytes are 862,760,960; samples are not hard peaks.
+Entry and private-orchestration failures remain retained. No larger eager allowance
+or routing change follows. The next proposed resource observation uses the
+existing bounded interfaces at the same twelve-trial scope, after a new declaration.

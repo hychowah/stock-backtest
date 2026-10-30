@@ -242,3 +242,14 @@ Emitted data remains provisional until the full validation returns. Current
 inputs and recorded plans are validated before checkpoint lookup. Cancellation
 or callback failure prevents final batch completion and preserves earlier
 committed checkpoints. The caller closes and publishes its output.
+
+
+The [12-trial retained-input pilot](plans/compiled-backtest/phases/CB-14.capacity6.real12.md)
+adds strict original-API agreement for all twelve weekly trials on the same
+192-symbol private cohort. All 204 periods and 10,200 holdings agree with ordinary
+explicit-date evaluation. Maximum absolute and normalized relative differences
+are zero. Complete browser values are checked separately under JavaScript JSON
+semantics. All 50 CSVs match every original snapshot cell and all 25 paired
+filenames/byte sequences. The comparator and financial contract are unchanged.
+This prepared, short-window workflow supplies no full-universe, cold-workflow,
+full-window or operational-acceptance qualification.
