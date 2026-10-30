@@ -113,3 +113,13 @@ contracts for complete evidence and byte ownership. CB-14 remains incomplete.
 G03/G06 remain software-admission failures, not proof of hardware RAM exhaustion.
 Operational gates remain unresolved; CB-15 is blocked. Increment 6 must use actual
 hardware and workflow observations before choosing routing or higher limits.
+
+Initial [increment-6 observations](plans/compiled-backtest/phases/CB-14.capacity6.md)
+retain eager routing and every existing limit. They separate physical RAM,
+changing available memory, recursive graph accounting and encoded result bytes.
+The small fictional representation probe does not qualify a larger workload.
+The native four- and 24-trial eager workflows pass on 64 fictional companies
+over a four-month weekly window. Complete inspection, ordinary-reference parity,
+saving, ordinary-service reopening and all 116 CSV downloads pass. This supports
+the unchanged eager policy for that scope. Broader-input and full-window
+capacity, workflow acceptance and final route/limit selection remain open.

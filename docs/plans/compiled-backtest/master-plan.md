@@ -1464,6 +1464,22 @@ evidence and correctness requirements. Add further capacity machinery only for
 a measured need. This decision grants no new access, larger experiment, limit
 change or increment-6 execution in the current increment-5 task.
 
+Initial [increment-6 observations](phases/CB-14.capacity6.md) separate the native
+host's physical RAM from available memory and private Job limits. A small
+3,200-holding representation probe measures encoded JSON, recursive graph
+accounting, codec bytes, eager storage and complete CSVs. Plan-only probes retain
+the eager request and result-admission failures. The native browser driver needs
+two routine diagnostic repairs, and one attempt defers at the filed memory floor.
+All attempts remain recorded. The four-trial workflow then passes. A separately
+filed 24-trial pilot over the same four-month weekly window also passes. It keeps
+all 408 periods and 20,400 holdings. All ordinary-reference comparisons have zero
+numeric differences, and all 98 fresh/reopened CSVs agree. Startup, first-job
+cold child creation, engine work, complete transfer, saving, reopening, inspection
+and downloads retain separate measurement boundaries. Existing eager routing and
+limits remain adequate for this measured scope. No broader-universe, full-window,
+acceptance or policy-expansion gate passes. Keep failures and exact resume inputs.
+A new independent design is unnecessary for this measurement-only checkpoint.
+
 **Outcome:** A reproducible decision to cut over or continue optimization.
 
 **Work:** Run catalog/rank/interval differential coverage, 100-trial annual
@@ -1633,7 +1649,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. [Increment 3](phases/CB-14.capacity3.md) adds dormant bounded child transfer, exact staged plans and Jobs-owned temporary evidence with reader pins. [Increment 4](phases/CB-14.capacity4.md) adds atomic complete durable copies and independent active readers in the existing stores. [Increment 5](phases/CB-14.capacity5.md) adds acquired ResultArtifacts readers, bounded inspection, complete attribution and streamed attachments, verified on private WSL/native fixtures and in the actual native browser. Automatic producers and current limits stay eager and unchanged. [The hardware decision](phases/CB-14.capacity-hardware-decision.md) requires actual memory/workflow measurements before route or limit changes in increment 6. Increment 6 hardware-based routing/limit selection and operational qualification remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
+| CB-14 | In progress; not ready for CB-15 | [Qualification checkpoint](phases/CB-14.md) retains scoped numerical/filter evidence, the freshness repair and capacity failures. The [capacity foundation](phases/CB-14.capacity.md) adds incremental reduction and the bounded evidence codec. [Increment 2](phases/CB-14.capacity2.md) adds offline bounded numerical production, sealed trial views and compatible atomic checkpoint streams. [Increment 3](phases/CB-14.capacity3.md) adds dormant bounded child transfer, exact staged plans and Jobs-owned temporary evidence with reader pins. [Increment 4](phases/CB-14.capacity4.md) adds atomic complete durable copies and independent active readers in the existing stores. [Increment 5](phases/CB-14.capacity5.md) adds acquired ResultArtifacts readers, bounded inspection, complete attribution and streamed attachments, verified on private WSL/native fixtures and in the actual native browser. Automatic producers and current limits stay eager and unchanged. [The hardware decision](phases/CB-14.capacity-hardware-decision.md) requires actual memory/workflow measurements before route or limit changes in increment 6. [Increment 6](phases/CB-14.capacity6.md) begins with native hardware inventory, a small eager representation measurement and plan-only admission checks. Native four- and 24-trial eager workflows pass on a short-window 64-company fictional fixture after retained driver repairs and one memory deferral. The 24-trial result preserves 408 periods and 20,400 holdings, with 98 matching fresh/reopened CSVs and zero ordinary-reference numerical differences. Eager routing and limits stay unchanged. Hardware-based routing/limit selection and operational qualification remain. Workflow budgets, broader inputs and installed compatibility remain unresolved; comparative speed gates waived. |
 | CB-15 | Planned | Stable default retained until CB-14 passes; candidate job/queue/library compatibility and isolated rollback required |
 
 ## Completion definition
