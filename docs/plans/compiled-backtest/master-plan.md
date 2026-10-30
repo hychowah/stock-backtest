@@ -1728,6 +1728,22 @@ scope, not cold/installed operation, financial speed or broader trial capacity.
 No deadline, source freshness, financial rule, limit, default or route changes.
 The focused original-method comparison remains next; G15 permission is pending.
 
+
+The [full-window annual pair](phases/CB-14.capacity6.annual-pair.md) then
+compares one fresh 29-period, 1,450-holding trial against the original ordinary
+SQL dated method on the same accepted inputs. Original typed trials, summaries
+and full batch have zero financial or ordering differences. Matching calculation
+to complete JSON takes 94.610 seconds for the candidate and 57.125 for ordinary,
+a 0.60379× ratio. Candidate startup is separately 44.406 seconds. This material
+regression is retained; no approximate 4× or broader capacity claim follows.
+A direct immutable-record transaction probe shows no useful improvement and
+causes no production change. Source metadata profiling instead identifies
+repeated relative-path conversion as a substantial validation cost. Next assess
+a narrow independently designed key-projection repair, retaining all freshness
+calls and signature semantics. This one ordered pair is not a median, the full
+24-trial G08 workload or browser workflow qualification. G15 permission and
+full-weekly durable output policy remain unresolved. CB-14 remains incomplete.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
