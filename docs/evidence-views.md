@@ -123,3 +123,13 @@ over a four-month weekly window. Complete inspection, ordinary-reference parity,
 saving, ordinary-service reopening and all 116 CSV downloads pass. This supports
 the unchanged eager policy for that scope. Broader-input and full-window
 capacity, workflow acceptance and final route/limit selection remain open.
+
+A separate [fresh FMP prefix](plans/compiled-backtest/phases/CB-14.capacity6.real-inputs.md)
+uses 192 private symbols and four weekly trials in January–May 2015. It preserves
+68 periods and 3,400 holdings. Original API results pass strict ordinary-reference
+comparison. Complete browser values, saving, ordinary stored reopening and all
+18 CSV downloads pass. The successful rerun reuses preparation and starts with
+empty numerical checkpoints. Four unavailable historical Treasury observations
+remain explicit input gaps outside this prefix. This diverse cohort has
+present-day selection bias. It supplies no full-universe, full-window, cold
+workflow or acceptance qualification. Eager routing and all limits stay unchanged.

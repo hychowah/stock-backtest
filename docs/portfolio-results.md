@@ -153,6 +153,12 @@ categorical mismatch paths from numeric mismatch paths. It records maximum
 absolute and relative float differences. It never sorts arrays or drops fields
 to obtain agreement.
 
+Use the original engine result or original API JSON for this strict Python
+comparison. A JavaScript round-trip can encode an integral float as an integer
+token. It is not the original typed diagnostic. Check complete browser values
+separately under JavaScript JSON semantics. Do not coerce the Python comparison
+inputs or relax its type, schema or numerical checks.
+
 The ordinary application continues to use prepared SQL books through schedules.
 The explicit CB-11 runtime can own this diagnostic across jobs. Current
 application routing stays unchanged. The runtime adds no job service, user
