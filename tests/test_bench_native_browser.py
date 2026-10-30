@@ -118,6 +118,22 @@ class OwnershipTests(unittest.TestCase):
         with self.assertRaises(BrowserFailure): storage.close()
         service.closed=True; storage.close()
 
+    def test_inventory_handles_download_rename_but_keeps_other_errors(self):
+        storage=self.storage();path=storage.root/'downloads'/'inflight.crdownload';path.write_bytes(b'partial')
+        original_file=Path.is_file;original_stat=Path.stat
+        def renamed(value,*args,**kwargs):
+            found=original_file(value,*args,**kwargs)
+            if value==path and found:path.unlink()
+            return found
+        with patch.object(Path,'is_file',renamed):
+            self.assertEqual(storage.inventory()['downloads'],0)
+        self.assertFalse(path.exists());path.write_bytes(b'partial')
+        def inaccessible(value,*args,**kwargs):
+            if value==path:raise PermissionError('Unexpected access failure')
+            return original_stat(value,*args,**kwargs)
+        with patch.object(Path,'stat',inaccessible):
+            with self.assertRaises(PermissionError):storage.inventory()
+
     def test_pending_events_and_storage_have_separate_frozen_bounds(self):
         storage = self.storage(); browser = NativeBrowser(storage)
         self.addCleanup(browser.close)

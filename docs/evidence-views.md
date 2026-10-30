@@ -1,0 +1,115 @@
+# Acquired result readers
+
+Source contract. Automatic producers remain eager. The CB-14 record gives the
+verification scope and remaining operational gates.
+
+Version-3 results use the same `ResultArtifacts` boundary for fresh Jobs,
+saved-library and queue opening. They preserve original settings, labels,
+summaries and complete evidence. Inspection and downloads need no current
+financial generation, calculation readiness or calculation. Automatic submission
+and queue execution remain eager. Current eager limits are unchanged.
+
+## Ownership
+
+Existing Jobs owns a finite collection of acquired read lifetimes through
+`job_evidence.Readers`. It is separate from the four calculation-run slots.
+Acquisition reserves one of 16 display slots before opening outside the state
+lock. A client supplies an unguessable 32-character hexadecimal identity.
+An exact retry returns the same acquisition. Conflicting reuse fails.
+
+Fresh acquisition pins the original Jobs file. Durable acquisition adopts the
+existing charged detached `Opened` lifetime. Source expiry or deletion ends new
+acquisition. It cannot invalidate an acquired display. Each request opens an
+independent stream through its owner, so concurrent requests share no seek
+position. At most 32 requests can hold pins at once. Excess admission fails
+explicitly; it never evicts a displayed result or user record.
+
+Release ends new requests. Active request pins retain the bytes until closure.
+Shutdown closes admission, drains acquisitions and requests, then releases the
+display lifetimes before temporary Jobs storage. Failed cleanup retains an owner
+and its charge for retry. Jobs and durable storage keep their separate existing
+byte budgets. Reader counts are admission limits, not memory or disk quotas.
+
+`ResultArtifacts` releases the old display and aborts its outstanding detail
+requests on replacement. Page departure sends a release too. An unsuccessful
+departure notification can retain an orphan until service shutdown. There is no
+automatic crash reclamation or display eviction. Durable temporary-file cleanup
+after abrupt process death retains its separate documented limitation.
+
+## Additive HTTP operations
+
+All paths below start with `/api/backtest-runs/<reader-id>/reader`.
+
+| Method and suffix | Operation |
+| --- | --- |
+| `POST` | Acquire from `{source: {kind: "run" / "saved" / "queue", id: source_id}, display: context}`. Fresh Jobs need the original catalog, presentation and capture time in `display`. Durable sources keep stored context. |
+| `GET /page/trial/<trial>/0` | Read one trial summary, period count and short/empty counts. |
+| `GET /page/periods/<trial>/<cursor>` | Read bounded period rows in original order. |
+| `GET /page/holdings/<trial>/<period>/<cursor>` | Read bounded stock rows in original rank order. |
+| `GET /export/<kind>/<trial>` | Download complete `holdings`, `returns` or `random` CSV. |
+| `DELETE` | Release the display. Existing request pins remain valid. |
+
+Trials and periods are one-based integers. Cursors are immutable zero-based row
+offsets. Pages return identity, rows, cursor, next offset and total count. A null
+next offset means completion. Normal pages target 256 KiB and at most 64 rows.
+One codec-valid record can exceed the target, up to the codec's existing 8 MiB
+ceiling. Responses have a separate 32 MiB bound. Page sizing, response admission and
+HTTP output use one UTF-8 JSON serializer. Lone surrogates remain JSON escapes.
+Byte checks measure the bytes sent, so ASCII expansion cannot reject an otherwise
+valid maximum-size Unicode record. A page never drops stored rows.
+Following every next cursor visits each matching row exactly once.
+
+`website/evidence_views.py` scans validated immutable evidence. It has no index,
+financial input, database path or scheduler. It retains bounded rows rather than
+assembling complete trials or periods. An index or other performance layer needs
+a measured requirement before implementation.
+
+The old eager GET routes retain version-1/2 responses. A version-3 record returns
+an explicit `requires_reader` error. The library accepts `{name, reader}` on its
+existing POST route. It pins complete server evidence through `save_evidence`;
+it never trusts a browser descriptor as a complete result. Existing library caps,
+queue receipts, held edits, exact plans and Stop/shutdown rules stay with their
+original owners. Old records reopen without rewriting their stored bytes.
+
+## Browser composition and exports
+
+One immutable artifact owns completed metadata. Mutable forms remain separate.
+Library opening, queue opening and recovery restore through `StrategyDraft`.
+A held draft refuses replacement and releases an unaccepted acquisition. Opening
+tickets, artifact identities and selection revisions fence late responses.
+
+The schedule view retains one period page and one stock page. Navigation reaches
+every period and stock. Charts identify their displayed range. Every random trial
+remains selectable, including incomplete trials. Version-3 inspection always reads
+stored evidence; it never falls back to calculation.
+
+Attribution traverses every selected holding in two ordered bounded passes.
+It retains aggregates and the top ten rows. The complete stock count supplies
+the denominator. Signed ordering, symbol ties, original addition order and
+separate gain/loss normalization match eager attribution. Table pages do not
+change attribution.
+
+`website/result_exports.py` emits complete UTF-8 attachment bytes in chunks of at
+most 64 KiB. It preserves eager CSV columns, row order, quoted cells, escaped
+quotes, CRLF separators, no final separator, numeric spelling and filenames.
+Random schedule exports use the selected trial. Downloads use ordinary attachment
+navigation, without whole-result browser flattening or a CSV Blob.
+
+The service acquires the request pin and validates selection before headers.
+A bounded counting pass supplies Content-Length, then a second pass streams the
+same immutable bytes. Disconnects and read failures close the transport and pin.
+They cannot turn a partial file into a complete-length successful attachment.
+An active export survives release of its display and deletion of its source.
+Shutdown can interrupt it and then drains the request before deleting bytes.
+
+The formatter follows JavaScript finite-number spelling, including integral
+floats, signed zero and exponent boundaries. Tests compare seeded float64 values
+with JavaScript; actual browser downloads supply complete CSV byte comparisons.
+Encoded limits do not bound decoded JSON, compiler state, mapped residency or
+browser memory. HTTP streaming alone proves no browser-memory limit.
+
+Read the [codec](result-evidence.md) and [durable storage](durable-evidence.md)
+contracts for complete evidence and byte ownership. CB-14 remains incomplete.
+G03/G06 remain software-admission failures, not proof of hardware RAM exhaustion.
+Operational gates remain unresolved; CB-15 is blocked. Increment 6 must use actual
+hardware and workflow observations before choosing routing or higher limits.

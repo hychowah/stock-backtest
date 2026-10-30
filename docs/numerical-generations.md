@@ -476,8 +476,10 @@ the call succeeds. No complete-trial capture argument exists on this operation.
 
 `Candidate.calculate_into` uses the same admission, operation lock, freshness,
 parent handoff and confirmed-retirement paths as eager calculation. Existing Jobs
-can explicitly start evidence jobs and pin completed readers. No HTTP route,
-queue execution adapter or browser selects this operation. Explicit durable-store
+can explicitly start evidence jobs and pin completed readers. No calculation submission route or
+queue execution adapter selects this operation. Additive HTTP reader operations
+can inspect, save and export its completed bytes through ResultArtifacts.
+These read operations neither calculate nor check current financial readiness. Explicit durable-store
 methods can copy pinned Jobs evidence without acquiring financial ownership.
 Their version-3 snapshots remain independent of current generations. See
 [durable evidence](durable-evidence.md). The ordinary and

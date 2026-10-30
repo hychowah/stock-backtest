@@ -2,6 +2,7 @@
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
   let requestNumber=0,running=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
+  let bounded=null;
   const hasResults=()=>!!ResultArtifacts.forView('custom');
   function displayedResult(){
     const artifact=ResultArtifacts.forView('custom');
@@ -42,6 +43,8 @@ const ScheduleView=(()=>{
     updateResultsState();
   }
   function csv(kind){
+    const artifact=ResultArtifacts.forView('custom');
+    if(artifact?.version===3){ResultArtifacts.reader(artifact).download(kind,artifact.kind==='random'?inspectedTrial+1:1);return;}
     const result=displayedResult();
     if(!result)return;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
@@ -69,6 +72,7 @@ const ScheduleView=(()=>{
     node('schedule-chart').innerHTML=html;
   }
   function stocks(){
+    if(bounded&&ResultArtifacts.current(bounded.artifact)){void storedStocks(bounded);return;}
     const result=displayedResult();
     if(!result)return;
     const period=result.periods[+node('schedule-period').value];
@@ -95,6 +99,72 @@ const ScheduleView=(()=>{
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
     node('schedule-period').value=String(result.periods.length-1);stocks();
   }
+  function valid(state){return bounded===state&&ResultArtifacts.current(state.artifact);}
+  function readError(state,error){if(valid(state)&&error.name!=='AbortError')node('screen-error').textContent=error.message;}
+  function navigation(id,cursor,next,total,label){
+    node(id+'-pages').hidden=false;node(id+'-back').disabled=cursor===0;node(id+'-next').disabled=next===null;
+    node(id+'-page').textContent=label+' · '+total+' total';
+  }
+  async function storedHoldings(state,cursor=0){
+    const period=state.period,sequence=++state.holdingSequence;
+    try{
+      const page=await state.reader.holdings(state.trial,period,cursor);
+      if(!valid(state)||state.period!==period||state.holdingSequence!==sequence)return;
+      state.holdingCursor=page.cursor;state.holdingNext=page.next;
+      const metric=metricLabel(state.info.summary.options.metric??'ev_ebitda');node('schedule-multiple-head').textContent=metric+' (×)';
+      node('schedule-stock-body').innerHTML=page.rows.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
+      navigation('schedule-holdings',page.cursor,page.next,page.total,'Stocks '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
+    }catch(error){if(state.period===period&&state.holdingSequence===sequence)readError(state,error);}
+  }
+  async function storedStocks(state){
+    const period=+node('schedule-period').value,sequence=++state.stockSequence;state.period=period;
+    const selected=state.page.rows.find(row=>row.number===period);if(!selected)return;
+    node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
+    node('schedule-stock-body').innerHTML='';state.holdingCursor=0;state.holdingNext=null;
+    node('schedule-attribution').textContent='Reading contributions from all selected stocks…';
+    void storedHoldings(state);
+    try{
+      const group=await ReturnContributions.analyzeStored(selected.value.names,async visit=>{
+        let cursor=0;
+        do{
+          const page=await state.reader.holdings(state.trial,period,cursor);
+          if(!valid(state)||state.period!==period||state.stockSequence!==sequence)throw Error('This period view was replaced.');
+          page.rows.forEach(visit);cursor=page.next;
+        }while(cursor!==null);
+      });
+      if(!valid(state)||state.period!==period||state.stockSequence!==sequence)return;
+      node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions use all '+group.count+' selected stocks; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
+    }catch(error){if(state.period===period&&state.stockSequence===sequence)readError(state,error);}
+  }
+  async function storedPeriods(state,cursor=0){
+    const sequence=++state.periodSequence;state.period=null;state.stockSequence++;
+    node('schedule-period-back').disabled=true;node('schedule-period-next').disabled=true;
+    node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
+    try{
+      const page=await state.reader.periods(state.trial,cursor);
+      if(!valid(state)||state.periodSequence!==sequence)return;
+      state.page=page;state.period=null;
+      chart(page.rows.map(row=>row.value));
+      node('schedule-rows').innerHTML=page.rows.map(({value:p})=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
+      node('schedule-period').innerHTML=page.rows.map(({number,value:p})=>`<option value="${number}">${number}. ${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
+      node('schedule-period').value=String(page.rows[0]?.number??'');
+      navigation('schedule-period',page.cursor,page.next,page.total,'Chart and table: periods '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
+      void storedStocks(state);
+    }catch(error){if(state.periodSequence===sequence)readError(state,error);}
+  }
+  async function storedRender(artifact,trial){
+    const state={artifact,trial,reader:ResultArtifacts.reader(artifact),periodSequence:0,holdingSequence:0,stockSequence:0};bounded=state;
+    node('schedule-results').hidden=false;node('schedule-rows').innerHTML='';node('schedule-stock-body').innerHTML='';node('schedule-chart').innerHTML='';node('schedule-period').innerHTML='';node('schedule-attribution').textContent='Reading stored evidence…';
+    try{
+      state.info=await state.reader.trial(trial);if(!valid(state))return;
+      const r=state.info.summary;
+      node('schedule-dates').textContent=r.start+' → '+r.end+' · '+CalendarSettings.label(r);
+      node('schedule-cagr').textContent=format(r.cagr);node('schedule-spy-cagr').textContent=format(r.spy_cagr);
+      node('schedule-growth').textContent=r.growth===null?'—':'$'+r.growth.toFixed(2);
+      node('schedule-coverage').textContent=r.coverage+' '+state.info.short+' short periods; '+state.info.empty+' empty periods. '+(state.info.empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+r.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(r.cash_days?' Both strategy and paired SPY hold cash until '+r.first_trade+' ('+r.cash_days+' days); CAGR uses the common window.':'');
+      await storedPeriods(state);
+    }catch(error){readError(state,error);}
+  }
   async function run(options,override=null,replay=null){
     if(running)return;
     if(typeof location==='undefined' || location.protocol==='file:'){
@@ -115,7 +185,7 @@ const ScheduleView=(()=>{
   }
   async function follow(run){
     if(running)return;
-    const number=++requestNumber,body=run.options,random=run.mode==='random';
+    const number=++requestNumber,body=run.options,random=run.mode==='random',isCurrent=ResultArtifacts.opening();
     activeRun=run;
     node('screen-error').textContent='';
     node('schedule-progress-detail').textContent=CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
@@ -147,12 +217,17 @@ const ScheduleView=(()=>{
         return;
       }
       if(state.state==='failed')throw Error(state.error);
-      const next=state.result;
-      completeResult({mode:random?'random':'custom',...body},next);
+      if(!isCurrent())return;
+      let next=state.result;
+      if(state.evidence){
+        const artifact=await ResultArtifacts.acquire({kind:'run',id:run.id},{catalog:sourceCatalog(),presentation:scheduledPresentation({mode:run.mode,...body}),captured_at:new Date().toISOString()});
+        if(!isCurrent()){ResultArtifacts.release(artifact);return;}
+        next=artifact.result;publishResult(artifact);
+      }else completeResult({mode:random?'random':'custom',...body},next);
       if(random){
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
       }else{
-        node('schedule-message').textContent='Backtest complete · '+next.periods.length+' holding periods · '+elapsed()+' elapsed.';
+        node('schedule-message').textContent='Backtest complete · '+(state.evidence?.manifest.periods??next.periods.length)+' holding periods · '+elapsed()+' elapsed.';
       }
       node('schedule-message').className='backtest-complete';
     }catch(error){if(number===requestNumber){
@@ -166,10 +241,14 @@ const ScheduleView=(()=>{
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration,stored,index)=>stored?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    RobustnessView.init((trial,configuration,stored,index)=>stored||ResultArtifacts.forView('custom')?.version===3?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
+    node('schedule-period-back').addEventListener('click',()=>{if(bounded?.page)void storedPeriods(bounded,Math.max(0,bounded.page.cursor-64));});
+    node('schedule-period-next').addEventListener('click',()=>{if(bounded?.page&&bounded.page.next!==null)void storedPeriods(bounded,bounded.page.next);});
+    node('schedule-holdings-back').addEventListener('click',()=>{if(bounded)void storedHoldings(bounded,Math.max(0,bounded.holdingCursor-64));});
+    node('schedule-holdings-next').addEventListener('click',()=>{if(bounded&&bounded.holdingNext!==null)void storedHoldings(bounded,bounded.holdingNext);});
   }
   async function resume(){
     if(typeof location==='undefined'||location.protocol==='file:')return;
@@ -185,13 +264,13 @@ const ScheduleView=(()=>{
     catch(error){node('screen-error').textContent=error.message;return;}
     return follow(run);
   }
-  function inspect(index){inspectedTrial=index;render();}
+  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if(artifact?.version===3)void storedRender(artifact,index+1);else render();}
   function show(artifact){
-    inspectedTrial=null;
+    inspectedTrial=null;bounded=null;node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){
       RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
     }else{
-      render();node('robustness-results').hidden=true;
+      if(artifact.version===3)void storedRender(artifact,1);else render();node('robustness-results').hidden=true;
     }
     node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
   }

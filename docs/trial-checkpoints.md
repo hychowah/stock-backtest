@@ -156,9 +156,10 @@ ordinary saved books, `data/saved-backtests.sqlite` or
 settings, labels, presentation, dates and full holdings. Existing ResultArtifacts
 readers reopen and export them without calculation after input replacement or
 checkpoint eviction. Their existing limits and explicit deletion rules remain.
-Dormant [version-3 durable copies](durable-evidence.md) retain independent codec
+Explicit [version-3 durable copies](durable-evidence.md) retain independent codec
 evidence inside the same user stores. Their explicit readers need no checkpoints;
-browser reader integration remains CB-14 capacity increment 5.
+[acquired browser readers](evidence-views.md) are additive in CB-14 capacity
+increment 5. Automatic submission and queue execution remain eager.
 
 ## Verification scope
 

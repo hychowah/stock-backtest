@@ -81,7 +81,11 @@ class BrowserStorage:
             if path.is_symlink():
                 raise BrowserFailure('Unexpected browser storage link.')
             if path.is_file():
-                size = path.stat().st_size
+                try: size = path.stat().st_size
+                except FileNotFoundError:
+                    # Chrome can rename a completed .crdownload between these
+                    # observations. This inventory is a sample, not a quota.
+                    continue
                 totals['root'] += size
                 if path.parts[len(self.root.parts)] in ('profile', 'cache'):
                     totals['profile_cache'] += size

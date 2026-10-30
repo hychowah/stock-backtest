@@ -288,6 +288,15 @@ class Opened:
     @property
     def metadata(self):return deepcopy(self._metadata)
 
+    @contextmanager
+    def open_reader(self):
+        """Borrow an independent seek position while this lifetime stays owned."""
+        if self.closed:raise ValueError('Evidence reader is closed.')
+        with self.path.open('rb') as stream:
+            yield result_evidence.Reader(stream,max_bytes=self.reader.max_bytes,
+                piece_bytes=self.reader.piece_bytes,record_bytes=self.reader.record_bytes,
+                checkpoint=backtest_control.checkpoint)
+
     def close(self):
         if self.closed:return
         try:

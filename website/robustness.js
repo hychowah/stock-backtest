@@ -104,6 +104,8 @@ const RobustnessView=(()=>{
     node('robustness-trial').value='0';
   }
   function download(){
+    const artifact=typeof ResultArtifacts!=='undefined'?ResultArtifacts.forView('custom'):null;
+    if(artifact?.kind==='random'&&artifact.version===3){ResultArtifacts.reader(artifact).download('random');return;}
     const result=getResult();
     if(!result)return;
     const keys=['trial','start','first_trade','end','cash_days','periods','cagr','spy_cagr','excess_cagr','total_return','growth','spy_growth','empty_periods','short_periods','seed',...(result.configuration.calendar?['interval_unit','interval_count']:['months']),'dates'];

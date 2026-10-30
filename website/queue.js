@@ -119,7 +119,7 @@ const BacktestQueue=(()=>{
     const response=await fetch('/api/backtest-queue'+path,{cache:'no-store',...options});
     let value;
     try{value=await response.json();}catch(_){const error=Error('The queue service is unavailable. Start the updated website and reload this page.');error.status=response.status;throw error;}
-    if(!response.ok){const error=Error(value.error||'Could not access the queue.');error.status=response.status;throw error;}
+    if(!response.ok){const error=Error(value.error||'Could not access the queue.');error.status=response.status;error.requires_reader=value.requires_reader;throw error;}
     return value;
   }
   async function refresh(){
@@ -188,8 +188,13 @@ const BacktestQueue=(()=>{
     if(action==='keep'){pendingDelete=null;render();return;}
     await perform(async()=>{
       if(action==='open'){
-        const value=await request('/'+id);if(!value.snapshot)throw Error('This result is not ready yet.');
-        callbacks.open(value.snapshot);message('Opened “'+record.name+'” from its stored results.');return;
+        const isCurrent=ResultArtifacts.opening();let value;
+        try{value=await request('/'+id);}
+        catch(error){if(!error.requires_reader)throw error;value={snapshot:await ResultArtifacts.acquire({kind:'queue',id})};}
+        if(!value.snapshot)throw Error('This result is not ready yet.');
+        if(!isCurrent()){ResultArtifacts.release(value.snapshot);return;}
+        try{callbacks.open(value.snapshot);}catch(error){ResultArtifacts.release(value.snapshot);throw error;}
+        message('Opened “'+record.name+'” from its stored results.');return;
       }
       if(action==='copy'){
         callbacks.prepare?.();callbacks.restore({mode:record.mode,...record.options});node('queue-name').value=(record.name+' copy').slice(0,120);

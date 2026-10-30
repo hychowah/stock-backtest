@@ -18,6 +18,7 @@ const ctx=vm.createContext({document:{getElementById:node},Date,console,location
  if(method==='GET'&&!id&&holdNextList){holdNextList=false;await new Promise(resolve=>releaseList=resolve);}
  return {ok:status<400,status,json:async()=>JSON.parse(packed)};
 }});
+ctx.ResultArtifacts={opening:()=>()=>true,release:()=>{}};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/saved-backtests.js'),'utf8'),ctx);
 const call=code=>vm.runInContext(code,ctx);ctx.snapshot=snapshot;ctx.result=result;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));

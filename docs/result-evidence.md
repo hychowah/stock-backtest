@@ -3,8 +3,9 @@
 This format preserves complete evidence without collecting all output in memory.
 It is a building block for CB-14 capacity work. The preview still uses its eager
 result protocol and existing limits. Offline numerical production and version-2
-derived checkpoints now use the codec. No application route changes. Explicit dormant durable operations now support
-[snapshot version 3](durable-evidence.md); eager snapshots remain versions 1/2.
+derived checkpoints now use the codec. Additive read routes connect
+[snapshot version 3](durable-evidence.md) through [acquired readers](evidence-views.md).
+Automatic calculation and queue execution remain eager; their snapshots remain versions 1/2.
 
 `scripts/result_evidence.py` uses the standard library. It owns no database, job,
 file path, financial lock or publication. Existing resource owners must supply
@@ -121,8 +122,9 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 
 The [capacity design](plans/compiled-backtest/phases/CB-14.capacity-design.md)
 now has an explicit dormant runtime transfer and temporary Jobs owner. It
-adds dormant queue/library persistence in increment 4. ResultArtifacts, browser
-inspection and streamed exports remain separate work. Full application capacity is not qualified by these private operations. Existing Session preflight, 64 MiB IPC
+adds explicit queue/library persistence in increment 4. Increment 5 connects
+ResultArtifacts, bounded inspection and complete HTTP attachments. The producer
+operation remains explicit; automatic submission and queue execution stay eager. Full application capacity is not qualified by these private operations. Existing Session preflight, 64 MiB IPC
 and snapshot limits remain. G03 and G06 remain failed. No default-engine or launcher change follows.
 
 ## Explicit runtime and temporary Jobs evidence

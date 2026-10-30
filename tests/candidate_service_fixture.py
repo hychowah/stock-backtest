@@ -35,11 +35,27 @@ def main():
         original=serve_app.Server
         def server(*args,**kwargs):
             value=original(*args,**kwargs)
+            if scenario=='evidence':
+                serve=value.serve_forever
+                def serve_evidence():
+                    from evidence_browser_fixture import seed
+                    try:seed(value,source)
+                    except BaseException:
+                        import traceback
+                        (source/'data/evidence-fixture-failure.txt').write_text(traceback.format_exc(),encoding='utf-8')
+                        raise
+                    serve()
+                value.serve_forever=serve_evidence
             def stop():
                 if sys.stdin.readline()=='close\n':value.shutdown()
             Thread(target=stop,name='fixture-stop',daemon=True).start()
             return value
         context.enter_context(patch.object(serve_app,'Server',side_effect=server))
+        if scenario=='ordinary-evidence':
+            from evidence_browser_fixture import forbid_read_dependencies
+            forbid_read_dependencies(context,serve_app)
+        if scenario=='evidence':
+            context.enter_context(patch.object(serve_app.backtest_queue.Queue,'start',return_value=None))
         if scenario not in ('workflow','ordinary-workflow'):
             context.enter_context(patch.object(serve_app.backtest_jobs,'calculate',side_effect=AssertionError('Stored result requested calculation')))
         if scenario.startswith('ordinary'):

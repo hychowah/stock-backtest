@@ -18,6 +18,7 @@ import robustness
 import schedules
 import job_evidence
 import numerical_transfer
+import durable_evidence
 
 
 class Missing(ValueError):
@@ -124,6 +125,7 @@ class Jobs:
         self.closing=False
         self.calculations=calculations if calculations is not None else Calculations()
         self.evidence=job_evidence.Workspace(evidence_root,max_bytes=evidence_bytes)
+        self.readers=job_evidence.Readers()
 
     @property
     def ready(self):return self.calculations.ready
@@ -209,6 +211,38 @@ class Jobs:
         try:yield self.evidence.read(entry,stream)
         finally:pin.__exit__(None,None,None)
 
+    @contextmanager
+    def display_evidence(self,identifier,display):
+        """Acquire original job evidence for a display, independently of expiry."""
+        with self.lock:
+            self.snapshot(identifier)
+            run=self.runs[identifier]
+            if run['state']!='complete' or run.get('_evidence') is None:raise Missing('Complete evidence is unavailable.')
+            entry=run['_evidence'];pin=self.evidence.pin(entry);stream=pin.__enter__()
+        try:
+            reader=self.evidence.read(entry,stream)
+            metadata=dict(version=3,kind=run['mode'],settings=dict(mode=run['mode'],**deepcopy(run['options'])),
+                result=reader.manifest['summary'],catalog=display.get('catalog'),
+                presentation=display.get('presentation'),captured_at=display.get('captured_at'))
+            durable_evidence.encode(metadata,durable_evidence.MAX_METADATA_BYTES)
+            durable_evidence.validate_metadata(metadata,reader)
+            class Opened:
+                def __init__(opened):opened.reader=reader;opened.metadata=metadata
+                def open_reader(opened):return self.evidence.fork_pinned(entry)
+                def close(opened):pass  # The enclosing source context owns the pin.
+            yield Opened()
+        finally:pin.__exit__(None,None,None)
+
+    def acquire_reader(self,identifier,source,opener):
+        with self.lock:
+            if self.closing:raise Busy('The server is stopping.')
+        return self.readers.acquire(identifier,source,opener)
+
+    def release_reader(self,identifier):self.readers.release(identifier)
+
+    def read_artifact(self,identifier):
+        return self.readers.pin(identifier)
+
     def cancel(self,identifier):
         with self.lock:
             self.snapshot(identifier)
@@ -261,4 +295,5 @@ class Jobs:
                 run['stop'].set()
                 threads.append(run['thread'])
         for thread in threads:thread.join()
+        self.readers.close()
         self.evidence.close()

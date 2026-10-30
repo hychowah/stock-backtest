@@ -45,8 +45,9 @@ prevents a completion summary. Sink mutation cannot change computed finances.
 This incremental interface does not change the current numerical Session's
 result limits. Its application path still collects whole trials. The separate
 [evidence codec](result-evidence.md) now supports bounded offline numerical
-production and checkpoint recovery. Preview requests retain their existing
-eager path and limits.
+production and checkpoint recovery. Preview calculation requests retain their existing
+eager path and limits. Additive [version-3 readers](evidence-views.md) inspect and
+export original stored evidence without changing financial arithmetic or tolerance.
 
 ## Result fields
 

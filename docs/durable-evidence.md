@@ -2,9 +2,10 @@
 
 The queue and saved library have additive evidence operations. They store complete
 results inside their existing databases. Opening needs no calculation, candidate
-readiness, financial generation or checkpoint. This source capability is dormant.
-The application, queue consumer and browser still use eager version-1/2 snapshots.
-Version 3 must not be sent to those consumers as a complete eager result.
+readiness, financial generation or checkpoint. The additive acquired-reader path connects
+version 3 through ResultArtifacts for inspection, saving and complete attachments.
+Automatic submission and queue execution still use eager version-1/2 results.
+Read the [reader contract](evidence-views.md) for acquisition and browser lifetime.
 
 ## Operations and ownership
 
@@ -94,7 +95,7 @@ synchronous rollback-journal behavior. No automatic vacuum or eviction is added.
 
 ## Limits, storage and cleanup
 
-The dormant operation has a 256 MiB per-copy evidence ceiling. Application
+The explicit operation has a 256 MiB per-copy evidence ceiling. Application
 metadata is at most 8 MiB encoded. Incremental encoding rejects oversized
 metadata before constructing its complete encoded value. The envelope is at most 32 MiB. Codec piece
 and record limits retain their separate 1 MiB and 8 MiB maxima. Copies read and
@@ -130,14 +131,14 @@ file scavenging is not implemented. Such reclamation remains operational work.
 ## Compatibility and verification
 
 Eager `save`, `get`, validators, HTTP routes, complete-trial capture and browser
-ResultArtifacts keep their existing contracts. Old version-1/2 compressed BLOBs
+ResultArtifacts keep their eager contracts. Old version-1/2 compressed BLOBs
 are read without rewriting them. Explicit `open_evidence` accepts version 3;
 legacy records continue through eager `get`. Eager `get` rejects version 3 with
-an explicit reader-required error and preserves the record. Browser reader,
-inspection and streamed export integration is capacity increment 5.
+an explicit reader-required error and preserves the record. Additive browser readers, bounded inspection and streamed attachments are
+provided by [capacity increment 5](evidence-views.md). Automatic producers remain eager.
 
 Focused checks are `tests/test_durable_evidence.py`, existing library, queue,
 Jobs, codec, runtime and candidate checks. They use private fictional assets on
-WSL and native Windows. Complete record traversal is storage/export groundwork;
-it is not a browser or HTTP export implementation. G03/G06 remain failed. CB-14
+WSL and native Windows. The shared store remains independent of browser and HTTP transport.
+`tests/test_evidence_views.py` covers acquired lifetimes and HTTP attachments. G03/G06 remain failed. CB-14
 is incomplete and CB-15 remains blocked. Operational gates are not waived.

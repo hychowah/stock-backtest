@@ -109,7 +109,7 @@ const BacktestRuns=(()=>{
       try{
         let state=await reconcile(run);
         if(!current())return null;
-        if(state.state==='complete'&&!state.result)state=await request(run,null);
+        if(state.state==='complete'&&!state.result&&!state.evidence)state=await request(run,null);
         if(!current())return null;
         update(state);
         if(['complete','failed','cancelled'].includes(state.state)){

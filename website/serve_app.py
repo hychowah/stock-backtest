@@ -26,6 +26,9 @@ import backtest_control
 import saved_backtests
 import backtest_jobs
 import backtest_queue
+import durable_evidence
+import evidence_views
+import result_exports
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -68,6 +71,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def reply(self,status,payload):
         body=json.dumps(payload,allow_nan=False).encode()
+        self.json_reply(status,body)
+
+    def json_reply(self,status,body):
         self.send_response(status)
         self.send_header('Content-Type','application/json')
         self.send_header('Cache-Control','no-store')
@@ -189,6 +195,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(400,dict(error=str(error)))
 
     def do_DELETE(self):
+        if self.path.startswith('/api/backtest-runs/'):
+            self.backtest_run_request();return
         if self.path.startswith('/api/backtest-queue/'):
             self.queue_request();return
         if self.path.startswith('/api/backtests/'):
@@ -203,7 +211,7 @@ class Handler(SimpleHTTPRequestHandler):
         collection=self.path=='/api/backtest-queue'
         path=[] if collection else self.path.removeprefix('/api/backtest-queue/').split('/')
         try:
-            if self.calculation_ready() and (not getattr(self.server,'data_recovery',False) or DATA_JOBS.rebuilt):queue.start()
+            if (collection or self.command!='GET') and self.calculation_ready() and (not getattr(self.server,'data_recovery',False) or DATA_JOBS.rebuilt):queue.start()
             if self.command=='GET':
                 if not collection and len(path)!=1:
                     self.reply(404,dict(error='Unknown queue action.'));return
@@ -226,6 +234,7 @@ class Handler(SimpleHTTPRequestHandler):
             queue.wake.set();self.reply(200,result)
         except backtest_queue.Missing as error:self.reply(404,dict(error=str(error)))
         except backtest_queue.Conflict as error:self.reply(409,dict(error=str(error)))
+        except durable_evidence.RequiresReader as error:self.reply(409,dict(error=str(error),requires_reader=True))
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
         except (OSError,sqlite3.Error) as error:
@@ -240,6 +249,8 @@ class Handler(SimpleHTTPRequestHandler):
         identifier=path[0]
         jobs=self.server.backtest_jobs
         try:
+            if path[1:2]==['reader']:
+                self.evidence_request(identifier,path[2:]);return
             if self.command=='GET' and len(path)==1:
                 self.reply(200,jobs.snapshot(identifier))
             elif self.command=='GET' and path[1:]==['status']:
@@ -260,6 +271,67 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
 
+    def evidence_request(self,identifier,path):
+        """Explicit reader operations. Never acquire financial ownership or readiness."""
+        jobs=self.server.backtest_jobs;started=False
+        try:
+            if self.command=='DELETE' and not path:
+                jobs.release_reader(identifier);self.reply(200,dict(released=True));return
+            if self.command=='POST' and not path:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=durable_evidence.MAX_METADATA_BYTES:raise ValueError('Invalid reader request size.')
+                request=durable_evidence.decode(self.rfile.read(length));source=request.get('source',{})
+                kind=source.get('kind');record_id=source.get('id')
+                if kind=='run':opener=lambda:jobs.display_evidence(record_id,request.get('display',{}))
+                elif kind=='saved':opener=lambda:SAVED_BACKTESTS.open_evidence(record_id)
+                elif kind=='queue':opener=lambda:self.server.backtest_queue.store.open_evidence(record_id)
+                else:raise ValueError('Unknown evidence source.')
+                self.reply(200,jobs.acquire_reader(identifier,request,opener));return
+            if self.command!='GET':raise ValueError('Unsupported evidence operation.')
+            with jobs.read_artifact(identifier) as (metadata,reader):
+                if len(path)==3 and path[0]=='export':
+                    kind=path[1];trial=int(path[2]);name=result_exports.filename(reader,kind,trial)
+                    # Count through a bounded pass before headers. Content-Length
+                    # makes a later interrupted transfer detectably incomplete.
+                    length=sum(len(chunk) for chunk in result_exports.csv(reader,kind,trial))
+                    chunks=result_exports.csv(reader,kind,trial)
+                    first=next(chunks,b'')
+                    self.connection.settimeout(30)
+                    self.send_response(200);self.send_header('Content-Type','text/csv; charset=utf-8')
+                    self.send_header('Content-Length',str(length))
+                    self.send_header('Content-Disposition','attachment; filename="'+name+'"')
+                    self.send_header('Cache-Control','no-store');self.end_headers()
+                    started=True
+                    self.close_connection=True
+                    try:
+                        self.wfile.write(first)
+                        for chunk in chunks:
+                            if jobs.closing:raise backtest_control.Cancelled()
+                            self.wfile.write(chunk)
+                        self.wfile.flush()
+                    except (OSError,ValueError,backtest_control.Cancelled):
+                        # An interrupted attachment has no complete-length proof.
+                        # Close the transport and request pin, never report success.
+                        try:self.connection.shutdown(socket.SHUT_RDWR)
+                        except OSError:pass
+                    return
+                if len(path)==4 and path[0]=='page':
+                    selection=dict(operation=path[1],trial=int(path[2]),cursor=int(path[3]))
+                elif len(path)==5 and path[0:2]==['page','holdings']:
+                    selection=dict(operation='holdings',trial=int(path[2]),period=int(path[3]),cursor=int(path[4]))
+                else:raise ValueError('Unknown evidence action.')
+                value=dict(identity=identifier,**evidence_views.read(reader,selection))
+                self.json_reply(200,evidence_views.encode(value))
+        except (saved_backtests.Missing,backtest_queue.Missing,backtest_jobs.Missing) as error:self.reply(404,dict(error=str(error)))
+        except (ValueError,TypeError,KeyError) as error:
+            if not started:self.reply(400,dict(error=str(error)))
+            else:self.close_connection=True
+        except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+        except (OSError,sqlite3.Error) as error:
+            diagnostics.failure('evidence.request_failed',error)
+            if not started:self.reply(500,dict(error='Could not read stored evidence. Existing records were kept.'))
+            else:self.close_connection=True
+
     def saved_backtest_request(self):
         origin=self.headers.get('Origin')
         if origin and origin!='http://'+self.headers.get('Host',''):
@@ -278,10 +350,15 @@ class Handler(SimpleHTTPRequestHandler):
                 def invalid_constant(value):raise ValueError('Saved values must be finite.')
                 request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
                 if not isinstance(request,dict):raise ValueError('Expected a completed backtest.')
-                self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
+                if 'reader' in request:
+                    with self.server.backtest_jobs.read_artifact(request['reader']) as (metadata,reader):
+                        record=SAVED_BACKTESTS.save_evidence(request.get('name'),metadata,reader)
+                    self.reply(201,record)
+                else:self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
             else:self.reply(405,dict(error='Unsupported saved-backtest action.'))
         except saved_backtests.Full as error:self.reply(409,dict(error=str(error)))
         except saved_backtests.Missing as error:self.reply(404,dict(error=str(error)))
+        except durable_evidence.RequiresReader as error:self.reply(409,dict(error=str(error),requires_reader=True))
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (OSError,sqlite3.Error) as error:
             diagnostics.failure('saved_backtest.failed',error)
