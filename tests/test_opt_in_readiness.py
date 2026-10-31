@@ -1,19 +1,16 @@
-"""Supported experimental selection and rejection on owned fictional inputs."""
-from collections import OrderedDict
+"""Supported experimental selection and catalog validation on owned fictional inputs."""
 from copy import deepcopy
 from datetime import date
-from io import BytesIO
 import sys
 from pathlib import Path
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 ROOT = Path(__file__).absolute().parents[1]
 sys.path[:0] = [str(ROOT/'tests'), str(ROOT/'scripts'), str(ROOT/'tools')]
 import test_numerical_portfolios as portfolios
 import numerical_random
-from numerical_policy import PolicyProgram, UNSUPPORTED_THRESHOLDS
-from numerical_session import Session
+from numerical_policy import PolicyProgram
 import robustness
 
 
@@ -51,41 +48,9 @@ class ReadinessTests(unittest.TestCase):
                     self.assertEqual(config, before)
         self.assertEqual(max(differences), 0.)
 
-    def test_capability_catalog_and_every_reuse_boundary_reject_spread(self):
+    def test_full_capability_catalog_and_unknown_future_fields_fail(self):
         inputs, provider, portfolio = self.evaluator(candidate_assembly='source')
-        self.assertEqual(set(inputs.policy.fields['thresholds']),
-                         set(self.s.metrics.FILTERS)-UNSUPPORTED_THRESHOLDS)
-        options = dict(pool='cached', filters=[dict(field='operating_yield_spread_3y', op='gt', value=5.)])
-        request = dict(start='2015-01-05', end='2016-12-30', months=12, **options)
-        before = deepcopy(request)
-        config = robustness.plan(self.db, **request, trials=2, seed=42)
-        session = Session.__new__(Session)
-        session.portfolio = portfolio
-        session.validate = Mock()
-        session.inputs = inputs
-        session.results = OrderedDict()
-        session.checkpoints = Mock()
-        session.checkpoints.open.side_effect = AssertionError('No checkpoint access')
-        with patch.object(provider, 'begin', side_effect=AssertionError('No provider work')):
-            for call in (
-                lambda: portfolio.backtest(**request),
-                lambda: session.plan(dict(request, trials=2, seed=42)),
-                lambda: session.plan(dict(calendar=dict(version=1,start=request['start'],end=request['end'],
-                    interval=dict(unit='week',count=1)), trials=2, seed=42, **options)),
-                lambda: numerical_random.validate_configuration(portfolio, config),
-                lambda: numerical_random.checkpoint_binding(portfolio, config),
-                lambda: session.calculate('custom', request, None, None),
-                lambda: session.calculate('random', dict(request,trials=2,seed=42), None, None, planned=config),
-                lambda: session.calculate_into('random', request, BytesIO(), None, None, planned=config,
-                    max_bytes=1024**2,piece_bytes=1024,record_bytes=1024),
-            ):
-                with self.assertRaisesRegex(ValueError, 'experimental does not support filter operating_yield_spread_3y'):
-                    call()
-        session.checkpoints.open.assert_not_called()
-        self.assertEqual(request, before)
-        with self.assertRaisesRegex(ValueError, 'experimental does not support'):
-            provider.evaluate([('2015-01-05','2016-12-30','cached')],options)
-        # Catalog additions still fail preparation instead of silently disappearing.
+        self.assertEqual(set(inputs.policy.fields['thresholds']), set(self.s.metrics.FILTERS))
         with patch.dict(self.s.metrics.FILTERS, {'unknown_future_field':dict(available=True)}):
             with self.assertRaisesRegex(ValueError,'Unsupported threshold catalog'):
                 PolicyProgram(self.s)

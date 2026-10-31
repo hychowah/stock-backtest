@@ -486,9 +486,12 @@ to individual callers. Check these interactions in `tests/check-range.cjs`.
 ## Experimental engine readiness
 
 CB-14 reconciles schema-8 preparation and both selection orders. The numerical
-policy recognizes Original's full threshold catalog but explicitly rejects
-`operating_yield_spread_3y` in experimental requests. Keep that rejection before
-result or checkpoint reuse. Unknown future catalogs must fail preparation.
+policy supports Original's full threshold catalog, including
+`operating_yield_spread_3y`. Annual specialization executes the authoritative
+spread calculator. Dated inputs use the latest saved 10-year Treasury yield on
+or before entry. Missing inputs omit only this threshold. Prepare a current
+numerical generation after upgrading; old generations and checkpoints must not
+be reused as current. Unknown future catalogs must fail preparation.
 Candidate application calls confirm runtime closure before publishing every
 outcome. No idle application child may retain financial ownership between calls.
 Disk checkpoints remain reusable; cross-call compiler memory is not retained.
@@ -506,8 +509,8 @@ CB-15 adds `website/engine_selection.py` behind existing calculation owners.
 Original remains the default. `options.engine` is `original` or `experimental`;
 omission always means Original. Preserve it in accepted jobs, queue receipts,
 held edits, recovery and browser replay. Keep engine metadata outside financial
-plans. Route readiness and calendar checks by the pinned choice. Original
-accepts legacy monthly presets; version-1 calendars require experimental.
+plans. Route readiness and calendar checks by the pinned choice. Both engines
+accept the legacy monthly presets and version-1 week/month calendars.
 Unsupported experimental settings fail explicitly with no fallback.
 Normal startup and ordinary rebuild do not require numerical packages. The
 separate data-panel Prepare experimental engine action owns optional setup.
@@ -519,3 +522,18 @@ CB-15 source alone does not authorize main integration, publication or restart.
 The user subsequently authorized the isolated main integration described in
 `docs/plans/compiled-backtest/phases/CB-15.integration.md`. This does not authorize
 publication, deployment, push or installed restart. Custom variables stay held.
+
+## Website engine alignment
+
+`website/original_calculations.py` and `candidate_calculations.py` own separate
+execution lifetimes. `calculation_contract.py` supplies identity, shared errors
+and admission lifecycle without job dependencies. `backtest_jobs.Calculations`
+remains a compatibility name for Original. `engine_selection.Selectable` is the
+single application router. Jobs and queue consumers do not choose an adapter.
+`scripts/calendar_requests.py` owns financial-free request/plan policy;
+`numerical_calendar.py` is a compatibility import. Preserve legacy planner hashes.
+`website/engine-controls.js` owns execution controls and advisory capabilities;
+`calendar-settings.js` owns dates and labels. Latest and January remain shared
+prepared-data views. Stored-result readers never infer producer from a selector.
+Check `tests/test_website_engine_alignment.py`, engine/candidate/calendar/batch/
+queue/library checks and the actual native `tests/test_selectable_browser.py`.

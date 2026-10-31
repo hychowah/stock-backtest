@@ -69,6 +69,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(attached.sessions, old.sessions)
         self.assertEqual(attached.treasury_days, old.treasury_days)
         self.assertEqual(attached.treasury_values, old.treasury_values)
+        self.assertEqual(attached.ten_year_yield.rows, old.ten_year_yield.rows)
         self.assertEqual(list(attached.report_rows), list(old.report_rows))
         self.assertEqual(dict(attached.histories), old.histories)
         self.assertEqual(dict(attached.financials), old.financials)

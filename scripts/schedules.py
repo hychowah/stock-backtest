@@ -247,6 +247,19 @@ def backtest(db, *, start, end, months=12, **options):
     return backtest_periods(db,periods,months=months,**options)
 
 
+def backtest_calendar(db, **request):
+    """Evaluate a version-1 calendar with the ordinary complete-book policy.
+
+    Requested calendar metadata remains separate from resolved trading sessions.
+    Explicit dates preserve the common cash window used by random trials.
+    """
+    import calendar_requests
+    sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+    periods,first,options,metadata=calendar_requests.periods(
+        sessions,request,checkpoint=backtest_control.checkpoint)
+    return _backtest_periods(db,periods,common_start=first,frequency=metadata,**options)
+
+
 def dated_periods(dates,start,end,months,sessions):
     """Keep legacy month validation; explicit trades need no nominal schedule."""
     schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
@@ -265,7 +278,7 @@ def backtest_periods(db, periods, *, months, **options):
     return _backtest_periods(db,periods,months=months,**options)
 
 
-def _backtest_periods(db, periods, *, months, common_start=None, **options):
+def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=None, **options):
     """Prepare missing books atomically and apply the shared SQL screener."""
     backtest_control.checkpoint()
     started=time.perf_counter()
@@ -285,7 +298,7 @@ def _backtest_periods(db, periods, *, months, common_start=None, **options):
     with db:
         result=portfolio_results.evaluate(periods,select_period,common_start=common_start,
                                           checkpoint=backtest_control.checkpoint)
-    result.update(months=months,options=options,seconds=time.perf_counter()-started)
+    result.update(frequency if frequency is not None else dict(months=months),options=options,seconds=time.perf_counter()-started)
     return result
 
 

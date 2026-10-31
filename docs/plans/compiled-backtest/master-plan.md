@@ -14,6 +14,24 @@ Persistent isolated preview integration: 29 October 2026.
 
 Selectable-engine release direction: 31 October 2026.
 
+## Operating-spread follow-up — 31 October 2026
+
+The user requests experimental support for the operating-yield-spread filter
+before comparing the exact seeded 100-trial strategy. The engine branch owns
+this extension. Its [implementation record](phases/CB-16.operating-spread.md)
+supersedes the CB-14/CB-15 exclusion for current source. Earlier evidence keeps
+its original scope. Original's formula and financial rules remain unchanged.
+Both current engines support the field after current experimental preparation.
+Real benchmark admission remains closed. The
+[exact seeded comparison](phases/CB-17.speed-comparison.md) now has complete
+100-trial financial agreement with zero numerical differences. Both initial
+attempts time out under their declared watchdog. Normal recovery completes all
+results. Total active application time, including every failed attempt and
+retry, is 34m52s Experimental versus 72m47s Original (2.09× observed workflow
+ratio). This is separate from uninterrupted request latency, whose planned
+ratio remains unavailable. This source work changes no default, installed asset,
+capacity guard, main revision or custom-variable hold.
+
 ## Current delivery direction — 31 October 2026
 
 The user approves making the engines selectable in the normal app so the new
@@ -30,8 +48,9 @@ remain failed; no larger workload is qualified by this change.
 
 The [CB-14 readiness implementation](phases/CB-14.readiness.md) reconciles main's
 schema-8 preparation, operating-yield-spread filter and selection order. Original
-retains its full catalog. Experimental requests explicitly reject operating
-spread and use the shared SQL selector for supported settings. Each application
+retains its full catalog. At that checkpoint, experimental requests rejected
+operating spread. The operating-spread follow-up above adds current support.
+Both engines use the shared SQL selector. Each application
 candidate call closes its child before publishing an outcome. CB-14 readiness
 verification passes, including 263 native tests and the affected WSL/browser
 checks. The current supported readiness scope is complete. CB-15 owns the normal-app
@@ -2046,6 +2065,8 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
 | CB-14 | Complete: supported opt-in readiness | [Current release scope](phases/CB-14.opt-in-release.md) replaces the universal stress dependency. The [consumer workflow](phases/CB-14.capacity6.consumer.md), [current three-trial pair](phases/CB-14.capacity6.history.md), [fresh24 backend](phases/CB-14.capacity6.fresh24.retry4.md) and [isolated compatibility](phases/CB-14.compatibility.md) supply reusable scoped evidence. The [readiness slice](phases/CB-14.readiness.md) implements main schema/filter/order reconciliation, explicit experimental support and operation-scoped child closure. Affected WSL checks, 263 passing native tests and browser/guide checks close revised readiness. The failed recursive-helper attempt remains failed; its guarded rerun passes. Read the filed results and independent audit for exact scope. G03/G06 stay failed historical capacity observations; full24 agreement/performance and broader stress are follow-up. No selector exists in the normal app yet. |
 | CB-15 | Complete: normal-app source integration | Original remains default. Per-submission engine routing, optional preparation, immutable producer identity and compatible retries/recovery are implemented. Focused WSL checks, 249 passing native test executions and the complete native selector workflow pass. Six earlier private browser attempts remain failed and separately recorded. Independent audit F1 is resolved in the guide. The user subsequently authorized main integration. Its [separate merge record](phases/CB-15.integration.md) preserves main's supervisor and unrelated edits. Publication and installed restart remain unauthorized. See [CB-15](phases/CB-15.md) and its [release handoff](phases/CB-15.release-handoff.md). |
+| CB-17 | Complete: full financial comparison and interrupted workflow observation; uninterrupted speed pair incomplete | [Exact seeded comparison](phases/CB-17.speed-comparison.md): all 100 trials agree after normal recovery, with zero numerical differences across 1,400 periods and 42,000 holdings. Both initial attempts time out. The uninterrupted ratio remains unavailable. The supplemental interrupted-workflow observation is 2.09×, including all failed work and retries. Guide checks, direct-file desktop/mobile review and independent commit audit pass after the ledger fix. |
+| CB-18 | Complete: website engine alignment in source | [Website alignment](phases/CB-18.website-alignment.md) and [independent design](phases/CB-18.website-alignment.design.md): separate adapters, shared calendar requests, both-engine week/month execution, shared prepared views and immutable readers. 166 WSL tests, 20 post-fix tests, native functional checks, both complete native browser tests and nine Node/guide checks pass. Earlier native failures remain recorded. Independent audit has no remaining findings. Main and installed source stay unchanged. The [prepared main integration](phases/CB-18.integration.md) is separate from publication. |
 
 ## Completion definition
 

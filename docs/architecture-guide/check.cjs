@@ -34,6 +34,7 @@ assert(html.includes('up to 32 parallel requests') && html.includes('45 request 
 assert(html.includes('6.56 seconds') && html.includes('policy selected on 22 October') && html.includes('fmp-throughput-2026-10-23.json') && html.includes('not new application tests'), 'Historical benchmark settings and limits must remain explicit');
 
 assert(html.includes('Selectable-engine readiness checked 31 October 2026.') && html.includes('operating_yield_spread_3y') && html.includes('Confirmed child closure precedes every published outcome.') && html.includes('Cross-call compiler and result-memory reuse have ended.'), 'Explain supported experimental scope and operation ownership');
+assert(html.includes('Both engines support <code>operating_yield_spread_3y</code>') && html.includes('<code>treasury10</code>') && html.includes('Missing annual inputs or a missing preceding yield omit only this threshold.'), 'Explain source-derived experimental spread and missing inputs');
 
 assert(html.includes('website/evidence_views.py') && html.includes('website/result_exports.py') && html.includes('16 displays and 32 active requests') && html.includes('Changing the table page cannot change attribution.') && html.includes('Automatic calculation submission and queue execution remain eager.'), 'Explain acquired evidence readers, complete attribution, attachments and unchanged producers');
 

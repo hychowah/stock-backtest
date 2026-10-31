@@ -20,18 +20,7 @@ from process_owner import process_metrics
 from collections import OrderedDict
 
 
-def _validate_submitted(options, plan):
-    """Keep recorded settings exact, accepting the legacy omitted order only.
-
-    The recorded plan remains unchanged. Comparing defaults must not resample
-    dates or allow a different explicit financial setting to use the plan.
-    """
-    submitted = {'selection_order':'filter_first', **plan['options']}
-    submitted.update(numerical_calendar.request_fields(plan),
-                     trials=plan['requested'], seed=plan['seed'])
-    for key, value in {'selection_order':'filter_first', **options}.items():
-        if key not in submitted or value != submitted[key]:
-            raise ValueError('Submitted settings differ from the recorded random plan.')
+from calendar_requests import validate_submitted as _validate_submitted
 
 
 class Session:

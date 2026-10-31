@@ -280,3 +280,29 @@ Recheck main's commit and preserve its unrelated snapshot and market-scope files
 byte for byte. No installed library or queue inspection is authorized. Custom
 variables remain on hold; the integration owner acknowledged their handoff.
 See the [integration record](plans/compiled-backtest/phases/CB-15.integration.md).
+
+## Operating-spread support follow-up — 31 October 2026
+
+The user assigns the engine branch the missing experimental
+`operating_yield_spread_3y` implementation. Scope includes source-derived annual
+specialization, immutable dated Treasury inputs, numerical factors/books,
+capability and recovery checks, current documentation and the architecture guide.
+Original's formulas, user settings, result formats and ownership stay unchanged.
+The earlier CB-14/CB-15 rejection remains historical evidence. Current support
+requires a new prepared numerical generation. See the
+[implementation record](plans/compiled-backtest/phases/CB-16.operating-spread.md).
+This work does not authorize moving main, deployment, restart, downloads or
+bypassing closed real-benchmark admission. The exact seeded 100-trial comparison
+is recorded separately from synthetic correctness. Custom variables stay held.
+
+
+## Website alignment follow-up — 31 October 2026
+
+The user assigns the engine branch clear separation and parity across website
+workflows. CB-18 owns separate Original/experimental execution adapters, shared
+calendar requests, both-engine week/month support, browser engine controls and
+workflow parity checks. Latest/January stay shared prepared-data views. Saved
+result readers remain engine-neutral and preserve original evidence. Main's
+snapshot and market-qualification edits remain outside this work. No main
+advance, publication, restart or provider download is part of this task.
+See the [alignment record](plans/compiled-backtest/phases/CB-18.website-alignment.md).

@@ -75,16 +75,16 @@ It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
 Current source offers **Original** and **New engine — experimental** for dated
-runs. Original remains the default. Each submitted run keeps its selected engine.
-Experimental preparation is optional; see the [startup guide](docs/candidate-startup.md)
-and [release handoff](docs/plans/compiled-backtest/phases/CB-15.release-handoff.md).
-The installed runtime has not changed in this integration task.
+runs. Original remains the default. Both engines support operating yield spread.
+Each submitted run keeps its selected engine. Experimental preparation is optional
+in Manage backtest data. Prepare again after upgrading to the spread implementation.
+Saved results stay readable. See the [startup guide](docs/candidate-startup.md) and
+[release handoff](docs/plans/compiled-backtest/phases/CB-15.release-handoff.md).
+
 The [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
-keeps an approximate 4× performance direction. No exact speed ratio gates
-supported opt-in use. Historical timings retain their original settings and
-limits; larger workloads and default replacement remain follow-up work.
-Its [research findings](docs/plans/compiled-backtest/research.md) compare the
-design options. The program divides implementation and qualification into phases.
+records supported opt-in selection and the remaining qualification work. Its
+[research findings](docs/plans/compiled-backtest/research.md) retain earlier design
+comparisons. Historical timings do not supply a current-source speed guarantee.
 Each code phase automatically runs `$strategic-design-plan`, implementation and
 verification, then `$smart-commit`. Agents ask only about critical blockers or
 decisions that need the user's judgment.
@@ -183,3 +183,12 @@ Normal builds, startup and data-panel rebuilds write ignored `website/local/`. T
 Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 
 Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
+
+
+Website engine alignment keeps Original and Experimental behind one application
+calculation interface. Both support fixed and random schedules with custom
+week/month intervals and all current stock filters. Original remains default.
+Latest and January use shared prepared screening. Stored charts, holdings,
+attribution and exports use the completed artifact's original evidence.
+See [the alignment record](docs/plans/compiled-backtest/phases/CB-18.website-alignment.md)
+for boundaries and verification. Source qualification is separate from deployment.

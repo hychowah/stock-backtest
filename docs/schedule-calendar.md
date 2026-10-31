@@ -4,9 +4,9 @@ The source can plan fixed and random dates for 1–104 calendar weeks or 1–24
 calendar months. `scripts/schedule_calendar.py` owns these rules. It uses only
 the Python standard library. It reads no files and calculates no portfolios.
 
-Original and ordinary planners accept 1, 3, 6, 12 and 24 months. The normal
-app now offers New engine — experimental for versioned week/month requests.
-Original stays the default. The isolated numerical preview also retains its
+Legacy standalone planners accept 1, 3, 6, 12 and 24 months. Both normal
+website engines accept versioned week/month requests through the shared
+calendar-request owner. Original stays the default. The isolated numerical preview also retains its
 versioned request support. Custom controls follow the selected engine capability.
 This source change does not update the installed server. SQL selection and
 financial rules remain in their existing owners.
@@ -150,12 +150,13 @@ in its private SQL workspace. It adds no calendar planner or website control.
 The recorded-plan, default-seed, explicit-date and result-envelope contracts stay
 the same. Runtime use retains financial ownership across all reused jobs.
 
-## Isolated preview requests and snapshots
+## Website requests and stored snapshots
 
-`scripts/numerical_calendar.py` separates calendar settings from selection.
+`scripts/calendar_requests.py` separates calendar settings from selection.
+`numerical_calendar.py` remains a compatibility import.
 Send either legacy `start`, `end`, optional `months`, or one nested `calendar`
-with the version-1 configuration above. Mixed representations fail. Only experimental numerical
-execution accepts canonical execution. Fixed results use `calendar`
+with the version-1 configuration above. Mixed representations fail. Both
+website execution adapters accept canonical requests. Fixed results use `calendar`
 instead of `months`; result `start` and `end` remain resolved session dates.
 Random plans use `calendar`, `window_start`, `window_end`, `seed`, `requested`,
 `options`, `blocks` and `samples`. No synthetic month count is added.
@@ -166,16 +167,19 @@ include `planned` beside `mode` and `options`. Retries bind all three values.
 Submitted options must match the plan. Queue recovery retains its existing
 plan column. Canonical calendar metadata participates in checkpoint evidence.
 
-`website/calendar-settings.js` owns browser decoding, labels and settings
-comparison. Equivalent legacy/canonical monthly settings compare in memory.
+`website/calendar-settings.js` owns browser date decoding and labels.
+`engine-controls.js` owns engine choice and advisory capabilities. Existing
+artifact comparison handles submitted settings. Equivalent legacy/canonical monthly settings compare in memory.
 Original stored settings, labels and version-1/version-2 snapshots stay intact.
 The capability endpoint is `/api/backtest-capabilities`. The isolated entry
 retains `calendar:1`. The normal app returns legacy `calendar:null` plus an
-`engines` list. Original has `calendar:null`; experimental has `calendar:1`.
+`engines` list. Both Original and Experimental have `calendar:1` and
+`operations:["custom","random"]`. Their status reports preparation readiness
+separately. `shared_views:["latest","january"]` identifies prepared screening.
 The submitted `options.engine` chooses the policy. Omission means Original.
 Both submission and execution check that policy. Browser replay keeps its engine
 separate from the financial plan and checks the recorded choice. A live selector
-change cannot grant Original canonical execution. Direct-file pages cannot run
+change cannot alter the recorded producer of an existing result. Direct-file pages cannot run
 dated calculations.
 Stored canonical results remain readable and exportable without this capability.
 Legacy random CSV headers keep `months`. Canonical random CSVs use
@@ -186,3 +190,15 @@ New normal-app results retain producer identity in their immutable result and
 add an engine column to their CSVs. Older evidence without producer metadata
 keeps its original headers and remains unidentified. See the
 [normal-app preparation contract](candidate-startup.md#normal-app-selectable-engines-cb-15-source).
+
+
+## Both website engines
+
+Both Original and Experimental accept version-1 fixed and random requests.
+`scripts/calendar_requests.py` owns decoding, exact recorded-plan matching and
+saved-session validation. `numerical_calendar.py` is its compatibility name.
+Original's explicit `schedules.backtest_calendar` operation uses the existing
+book evaluator and reducer. The legacy `backtest`, `backtest_dates` and
+`robustness.plan` interfaces retain their accepted arguments and serialized
+results. Batch planning consumes the same date-pair policy for either calendar
+representation. Engine identity stays outside sampled financial plans.

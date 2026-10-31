@@ -6,6 +6,7 @@ during calculation and close evaluators before closing their input attachment.
 No application routing, downloads or reference-report writes occur here.
 """
 from collections.abc import Mapping, Sequence
+from bisect import bisect_right
 from contextlib import closing
 from datetime import date
 from functools import wraps
@@ -154,6 +155,21 @@ class _Records(Mapping):
         return rows
 
 
+class DatedYields:
+    """Saved yields with no future observation or invented missing-value default.
+
+    Rows are ordered (ISO date, percent) pairs from the prepared Treasury table.
+    Zero and negative observations remain usable. No earlier row returns None.
+    """
+    def __init__(self, rows):
+        self.rows = tuple(tuple(row) for row in rows)
+        self.days = tuple(row[0] for row in self.rows)
+
+    def __call__(self, day):
+        index = bisect_right(self.days, str(day)) - 1
+        return self.rows[index][1] if index >= 0 else None
+
+
 def _export(source, schedules, policy, folder, checkpoint):
     """Bound prices by CHUNK and annual work by one symbol's prepared history."""
     db = sqlite3.connect(folder / 'records.sqlite')
@@ -167,6 +183,7 @@ def _export(source, schedules, policy, folder, checkpoint):
       CREATE TABLE financial_inputs(symbol TEXT,fiscal TEXT,values_json TEXT,PRIMARY KEY(symbol,fiscal));
       CREATE TABLE sessions(day TEXT PRIMARY KEY,price REAL);
       CREATE TABLE treasuries(day TEXT PRIMARY KEY,yield_value REAL);
+      CREATE TABLE treasury10(day TEXT PRIMARY KEY,yield_percent REAL);
     ''')
     arrays = {}
     def allocate(name, shape):
@@ -185,7 +202,7 @@ def _export(source, schedules, policy, folder, checkpoint):
         cached = schedules.cached_symbols(source)
         db.executemany('INSERT INTO symbols VALUES(?,?,?)',
                        ((i, symbol, int(symbol in cached)) for i, symbol in enumerate(symbols)))
-        for table in ('companies', 'financial_inputs', 'sessions', 'treasuries'):
+        for table in ('companies', 'financial_inputs', 'sessions', 'treasuries', 'treasury10'):
             cursor = source.execute('SELECT * FROM ' + table)
             batch, batch_bytes = [], 0
             for row in cursor:
@@ -316,6 +333,8 @@ class AttachedInputs:
             self.sessions = dict(self._db.execute('SELECT day,price FROM sessions ORDER BY day'))
             treasury = list(self._db.execute('SELECT day,yield_value FROM treasuries ORDER BY day'))
             self.treasury_days, self.treasury_values = [r[0] for r in treasury], [r[1] for r in treasury]
+            self.ten_year_yield = DatedYields(self._db.execute(
+                'SELECT day,yield_percent FROM treasury10 ORDER BY day'))
             for field in ('offsets', 'report_ids', 'known', 'fiscal'):
                 setattr(self, 'pool_' + field, {pool: self._arrays[pool + '_' + field] for pool in ('cached', 'legacy')})
             self.report_rows, self.histories, self.financials = _Reports(self), _Records(self, 'histories'), _Records(self, 'financials')

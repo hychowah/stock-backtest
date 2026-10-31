@@ -4,13 +4,13 @@ from threading import Lock
 import time
 
 import backtest_control
-import backtest_jobs
+import calculation_contract
 import cache_access
 from numerical_runtime import ClosureError
 from numerical_policy import require_supported
 
 
-class Candidate(backtest_jobs.Calculations):
+class Candidate(calculation_contract.Control):
     """Own one runtime per call; retain uncertain child owners until closure.
 
     Callers never prehold financial ownership. Status is advisory; the child
@@ -97,7 +97,7 @@ class Candidate(backtest_jobs.Calculations):
                     if self.runtime is None:
                         status = self.preparation.status()
                         if status.get('state') != 'current' and not status.get('busy'):
-                            raise backtest_jobs.Unavailable('Candidate preparation is unavailable. Rebuild from the data panel.')
+                            raise calculation_contract.Unavailable('Candidate preparation is unavailable. Rebuild from the data panel.')
                         self.runtime = self.preparation._runtime()
                         self.runtime.configuration['preparation_status'] = True
                         try: self.runtime.start(cancelled=self.closed.is_set)

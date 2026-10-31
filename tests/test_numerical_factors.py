@@ -47,7 +47,8 @@ class FactorTests(unittest.TestCase):
                     observation = dict(fiscal=fiscal,market_cap=cap,enterprise_value=ev,
                                        ev_ebitda=multiple,ebitda_yield=yield_value)
                     pairs = self.s.metrics.evaluate(observation, inputs.histories[symbol])
-                    thresholds = self.s.metrics.filter_values(observation,pairs,day,lookup,inputs.financials.get(symbol,{}))
+                    thresholds = self.s.metrics.filter_values(observation,pairs,day,lookup,
+                        inputs.financials.get(symbol,{}),self.s.r.ten_year_yield(self.db,day))
                     np.testing.assert_allclose(batch.valuation[row], [cap,ev,ebitda],rtol=1e-12,atol=1e-12)
                     for name, values in batch.pairs.items():
                         self.assertEqual(bool(batch.pair_valid[name][row]), name in pairs)
