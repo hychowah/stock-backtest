@@ -1837,6 +1837,26 @@ still unrun. Full24 ordinary financial agreement, matching performance and
 browser workflow remain unverified. G03/G06 and broader qualification remain
 open. CB-14 is incomplete; CB-15 stays blocked.
 
+The subsequent [isolated compatibility slice](phases/CB-14.compatibility.md)
+records explicit removal of the remaining commit-headroom entry floor. Both
+memory measurements are informational; hard job caps and other bounds remain.
+It captures the installed source/environment into D:, executes its copied
+Python3.12.1, passes125 selected fixture tests, verifies guarded actual-cache
+compatibility and cross-source synthetic snapshot recovery, and starts the
+compiled runtime after an offline pinned-dependency copy. Its one29-period,
+1,450-holding ABI trial has zero financial/type/order differences from the
+corresponding retained annual24 trial. This is not another speed comparison.
+Actual installed research schema8 requires rebuilding for branch schema7; the
+independently rebuilt baseline matches the installed baseline exactly. Old code
+cannot open version3; the current ordinary HTTP reader is the tested stored-
+evidence recovery route. Installed-only strategy settings/labels survive frozen
+opening; their live editing/recalculation is not qualified by this slice.
+Original installed assets, user records, defaults and routes remain untouched.
+All failed/scope-mismatched attempts are retained separately. Broader capacity,
+full24 ordinary agreement/performance and remaining workflow gates stay open.
+The user requests a commit and stop at this slice; pause after its checkpoint.
+CB-14 remains incomplete and CB-15 stays blocked.
+
 ## Automatic agent implementation protocol
 
 This protocol applies to every phase, including benchmark and preparation tooling. Once the user requests a phase, that request authorizes its complete **design → implement → verify → smart-commit** sequence. Do not stop after presenting a design, proposing edits, passing tests or offering to commit. Do not ask for approval between these steps when the work remains within the phase and the program's constraints.
