@@ -22,8 +22,14 @@ this extension. Its [implementation record](phases/CB-16.operating-spread.md)
 supersedes the CB-14/CB-15 exclusion for current source. Earlier evidence keeps
 its original scope. Original's formula and financial rules remain unchanged.
 Both current engines support the field after current experimental preparation.
-Real benchmark admission remains closed. The requested real-data speed
-comparison is unmeasured. This source work changes no default, installed asset,
+Real benchmark admission remains closed. The
+[exact seeded comparison](phases/CB-17.speed-comparison.md) now has complete
+100-trial financial agreement with zero numerical differences. Both initial
+attempts time out under their declared watchdog. Normal recovery completes all
+results. Total active application time, including every failed attempt and
+retry, is 34m52s Experimental versus 72m47s Original (2.09× observed workflow
+ratio). This is separate from uninterrupted request latency, whose planned
+ratio remains unavailable. This source work changes no default, installed asset,
 capacity guard, main revision or custom-variable hold.
 
 ## Current delivery direction — 31 October 2026
@@ -2059,6 +2065,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
 | CB-14 | Complete: supported opt-in readiness | [Current release scope](phases/CB-14.opt-in-release.md) replaces the universal stress dependency. The [consumer workflow](phases/CB-14.capacity6.consumer.md), [current three-trial pair](phases/CB-14.capacity6.history.md), [fresh24 backend](phases/CB-14.capacity6.fresh24.retry4.md) and [isolated compatibility](phases/CB-14.compatibility.md) supply reusable scoped evidence. The [readiness slice](phases/CB-14.readiness.md) implements main schema/filter/order reconciliation, explicit experimental support and operation-scoped child closure. Affected WSL checks, 263 passing native tests and browser/guide checks close revised readiness. The failed recursive-helper attempt remains failed; its guarded rerun passes. Read the filed results and independent audit for exact scope. G03/G06 stay failed historical capacity observations; full24 agreement/performance and broader stress are follow-up. No selector exists in the normal app yet. |
 | CB-15 | Complete: normal-app source integration | Original remains default. Per-submission engine routing, optional preparation, immutable producer identity and compatible retries/recovery are implemented. Focused WSL checks, 249 passing native test executions and the complete native selector workflow pass. Six earlier private browser attempts remain failed and separately recorded. Independent audit F1 is resolved in the guide. Main integration, publication and installed restart remain unauthorized. See [CB-15](phases/CB-15.md) and its [release handoff](phases/CB-15.release-handoff.md). |
+| CB-17 | Complete: full financial comparison and interrupted workflow observation; uninterrupted speed pair incomplete | [Exact seeded comparison](phases/CB-17.speed-comparison.md): all 100 trials agree after normal recovery, with zero numerical differences across 1,400 periods and 42,000 holdings. Both initial attempts time out. The uninterrupted ratio remains unavailable. The supplemental interrupted-workflow observation is 2.09×, including all failed work and retries. Guide checks, direct-file desktop/mobile review and independent commit audit pass after the ledger fix. |
 
 ## Completion definition
 
