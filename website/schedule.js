@@ -181,13 +181,13 @@ const ScheduleView=(()=>{
     const {first,last,...filters}=options;
     const random=!!replay || (!override && node('date-testing').value==='random');
     const {engine:replayEngine,...plan}=replay||{};
-    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,...('engine' in CalendarSettings.engineFields()?{engine:replayEngine??'original'}:{})}:
-      override?{...filters,...override,...CalendarSettings.engineFields()}:{...filters,...CalendarSettings.read(),...CalendarSettings.engineFields()};
+    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,...('engine' in EngineControls.fields()?{engine:replayEngine??'original'}:{})}:
+      override?{...filters,...override,...EngineControls.fields()}:{...filters,...CalendarSettings.read(),...EngineControls.fields()};
     if(!replay&&random){
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
-    if(body.calendar&&('engine' in body?body.engine!=='experimental':!CalendarSettings.supported())){node('screen-error').textContent='Custom week/month calendars require New engine — experimental. Original uses the monthly frequency presets.';return;}
+    EngineControls.requireCalendar(body);
     await follow(BacktestRuns.create(random?'random':'custom',body,replay?plan:null));
     }catch(error){node('screen-error').textContent=error.message;}
   }
@@ -245,7 +245,7 @@ const ScheduleView=(()=>{
     }}finally{if(number===requestNumber)stopBusy();}
   }
   function init(){
-    void CalendarSettings.init();
+    CalendarSettings.init();void EngineControls.init();
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);

@@ -31,6 +31,51 @@ def main():
                     if fullname.split('.')[0] in ('numpy','numba','llvmlite'):
                         raise ImportError('Ordinary fixture has no numerical stack')
             sys.meta_path.insert(0,WithoutNative())
+        if scenario=='selectable-workflow':
+            # Observe native bootstrap diagnostics without changing a byte of
+            # the strict runtime protocol or retaining exception messages.
+            import json,re
+            from contextlib import suppress
+            import numerical_runtime
+            original_process=numerical_runtime.RuntimeProcess
+            class ObservedProcess(original_process):
+                def _read(self):
+                    observed=[];stream=self.process.stdout
+                    class Tap:
+                        def __getattr__(tap,name):return getattr(stream,name)
+                        def readline(tap,*args,**kwargs):
+                            line=stream.readline(*args,**kwargs)
+                            try:json.loads(line)
+                            except ValueError:
+                                if line and len(observed)<32:
+                                    row=dict(bytes=len(line.encode('utf8')),kind='unstructured')
+                                    if line.startswith(('Fatal error in launcher','Unable to create process using')):row['kind']='venv-launcher'
+                                    match=re.match(r'\s*File "([^"]+)", line (\d+), in (.*)',line)
+                                    if match:row.update(kind='frame',file=Path(match[1]).name,line=int(match[2]),function=match[3])
+                                    match=re.match(r'([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)):',line)
+                                    if match:row.update(kind='exception-type',error_type=match[1])
+                                    match=re.search(r'\[WinError (\d+)\]',line)
+                                    if match:row['winerror']=int(match[1])
+                                    observed.append(row)
+                            return line
+                    self.process.stdout=Tap()
+                    try:return super()._read()
+                    finally:
+                        with suppress(Exception):
+                            from cache_assets import write_json
+                            write_json(source/'data'/('_fixture-transport-'+str(self.process.pid)+'.json'),
+                                dict(pid=self.process.pid,failure=self.failure,returncode=self.process.poll(),
+                                     eof=self.eof,output_bytes=self.output_bytes,observations=observed))
+                def close(self):
+                    try:return super().close()
+                    finally:
+                        with suppress(Exception):
+                            from cache_assets import write_json
+                            path=source/'data'/('_fixture-transport-'+str(self.process.pid)+'.json')
+                            record=json.loads(path.read_bytes())
+                            record.update(final_returncode=self.process.returncode,closed=self.closed)
+                            write_json(path,record)
+            context.enter_context(patch.object(numerical_runtime,'RuntimeProcess',ObservedProcess))
         import serve_app
         if scenario=='selectable-workflow':
             emit=serve_app.DATA_JOBS.emit

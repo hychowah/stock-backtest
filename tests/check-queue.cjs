@@ -60,6 +60,7 @@ const context=vm.createContext({CalendarSettings,console,crypto:require('node:cr
   return {ok:status<400,status,json:async()=>copy(value)};
 }});
 context.ResultArtifacts={opening:()=>()=>true,release:()=>{}};
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/engine-controls.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
 context.config={beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};

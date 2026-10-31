@@ -198,3 +198,15 @@ requires a new prepared numerical generation. See the
 This work does not authorize moving main, deployment, restart, downloads or
 bypassing closed real-benchmark admission. The exact seeded 100-trial comparison
 is recorded separately from synthetic correctness. Custom variables stay held.
+
+
+## Website alignment follow-up — 31 October 2026
+
+The user assigns the engine branch clear separation and parity across website
+workflows. CB-18 owns separate Original/experimental execution adapters, shared
+calendar requests, both-engine week/month support, browser engine controls and
+workflow parity checks. Latest/January stay shared prepared-data views. Saved
+result readers remain engine-neutral and preserve original evidence. Main's
+snapshot and market-qualification edits remain outside this work. No main
+advance, publication, restart or provider download is part of this task.
+See the [alignment record](plans/compiled-backtest/phases/CB-18.website-alignment.md).

@@ -533,3 +533,19 @@ slot, separate 16 MiB staged-plan ceiling, complete-plan validation, Jobs storag
 reservation and reader lifetimes. These encoded-byte limits do not establish
 process-memory or disk quotas. Full-path capacity and operational qualification
 remain CB-14 work. CB-15 and default selection remain blocked.
+
+
+## Current website alignment
+
+The numerical generation, financial policy and result formats do not change in
+CB-18. `calendar_requests.py` now owns request representation and recorded-plan
+validation shared with Original. `numerical_calendar.py` remains a compatible
+import. Calculation source fingerprints include the shared owner. Prepare a new
+numerical generation after upgrading changed calculation source; old immutable
+results remain readable without preparation.
+
+The Original adapter owns ordinary database/worker access. The experimental
+adapter owns its numerical child. `engine_selection.Selectable` coordinates
+admission, routing and confirmed cleanup before publication. Neither adapter
+owns jobs, queue or library records. Shared prepared Latest/January views keep
+their exact eligibility rules and offline browser calculation.

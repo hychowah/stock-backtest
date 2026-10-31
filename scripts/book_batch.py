@@ -18,6 +18,7 @@ from threading import Thread
 import time
 
 import schedules as s
+import calendar_requests
 import backtest_control
 
 DEFAULT_WORKERS=4
@@ -45,7 +46,7 @@ def plan(db,configuration):
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     seen=set();jobs=[];trials=[]
     for dates in configuration['samples']:
-        first,final,periods=s.dated_periods(dates,configuration['start'],configuration['end'],configuration['months'],sessions)
+        periods,first,_,_=calendar_requests.periods(sessions,dict(calendar_requests.request_fields(configuration),dates=dates),checkpoint=backtest_control.checkpoint)
         new=[]
         for entry,exit_day in periods:
             key=(str(entry),str(exit_day),pool)
@@ -205,8 +206,11 @@ def evaluate_trials(db,configuration,progress=None,workers=None):
                         backtest_control.checkpoint()
                     stats['write_seconds']+=time.perf_counter()-writing
                     stats['saved_books']+=len(missing)
-            result=s.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],
-                                    months=configuration['months'],**configuration['options'])
+            if 'calendar' in configuration:
+                result=s.backtest_calendar(db,calendar=configuration['calendar'],dates=dates,**configuration['options'])
+            else:
+                result=s.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],
+                                       months=configuration['months'],**configuration['options'])
             result['seconds']=time.perf_counter()-started
             completed+=1;event('progress')
             yield number,result,stats

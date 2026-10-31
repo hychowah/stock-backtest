@@ -45,7 +45,7 @@ class SelectableBrowserTests(unittest.TestCase):
                     self.assertEqual(last['candidate']['state'],'current',last);break
                 if time.monotonic()>deadline:self.fail('Optional preparation did not finish: '+json.dumps(last))
                 time.sleep(.25)
-            storage=workspace.own(BrowserStorage());browser=workspace.own(WorkflowBrowser(storage,service))
+            storage=workspace.own(BrowserStorage());browser=workspace.own(WorkflowBrowser(storage,service,renderer_processes=1))
             exports={};snapshots=[];receipts=[]
             try:
                 browser.start();browser.viewport(1440,1000)
@@ -53,8 +53,24 @@ class SelectableBrowserTests(unittest.TestCase):
                 browser.wait("!!ResultArtifacts.forView('latest')")
                 self.assertEqual(browser.evaluate("document.querySelector('#backtest-engine').value"),'original')
                 browser.click('#auto-run');browser.click('#mode-backtest');browser.fill('#schedule-kind','custom')
-                for selector,value in [('#trade-start','2015-01-02'),('#trade-end','2016-12-30'),('#rank-to','3'),('#rebalance-months','12')]:browser.fill(selector,value)
+                for selector,value in [('#trade-start','2015-01-02'),('#trade-end','2015-03-31'),('#rank-to','3'),('#rebalance-months','12')]:browser.fill(selector,value)
+                job_samples=[]
+                def sample_job():
+                    import ctypes
+                    from ctypes import wintypes as w
+                    class Accounting(ctypes.Structure):
+                        _fields_=[(k,ctypes.c_int64) for k in ('user','kernel','period_user','period_kernel')]+[(k,w.DWORD) for k in ('faults','total','active','terminated')]
+                    account=Accounting();limits=service.owner._extended_limits_type()
+                    kernel=service.owner.kernel
+                    available=bool(kernel.QueryInformationJobObject(None,1,ctypes.byref(account),ctypes.sizeof(account),None)
+                        and kernel.QueryInformationJobObject(None,9,ctypes.byref(limits),ctypes.sizeof(limits),None))
+                    row=(dict(scope='immediate caller Job, possibly a venv redirector Job',active=account.active,total=account.total,terminated=account.terminated,
+                              process_limit=limits.basic.active_limit,flags=limits.basic.flags)
+                         if available else dict(available=False,winerror=ctypes.get_last_error()))
+                    job_samples.append(row)
+                    (storage.root/'evidence/native-job-samples.json').write_text(json.dumps(job_samples),encoding='utf8')
                 def run():
+                    sample_job()
                     previous=browser.evaluate("ResultArtifacts.forView('custom')?.captured_at??null")
                     browser.click('#run-screen')
                     browser.wait("!document.querySelector('#run-screen').disabled&&(document.querySelector('#screen-error').textContent||ResultArtifacts.forView('custom')?.captured_at!=="+json.dumps(previous)+")")
@@ -75,7 +91,9 @@ class SelectableBrowserTests(unittest.TestCase):
                         take('#schedule-download-returns',len(trial['periods']))
                         take('#schedule-download-holdings',sum(len(p['holdings']) for p in trial['periods']))
                     return contents
+                browser.click('#calendar-custom');browser.fill('#calendar-unit','week');browser.fill('#calendar-count','2')
                 original=run();snapshots.append(original);exports[0]=download(original)
+                self.assertEqual(original['settings']['calendar']['interval'],dict(unit='week',count=2))
                 browser.fill('#backtest-engine','experimental');experimental=run();snapshots.append(experimental);exports[1]=download(experimental)
                 a=dict(original['result']);b=dict(experimental['result']);a.pop('producer');b.pop('producer')
                 self.assertTrue(compare_results(a,b)['exact'])
@@ -115,8 +133,15 @@ class SelectableBrowserTests(unittest.TestCase):
                 self.assertFalse(browser.evaluate('document.documentElement.scrollWidth>innerWidth'))
                 self.assertEqual(browser.errors,[])
                 (storage.root/'evidence/selector-snapshots.json').write_text(json.dumps(snapshots,allow_nan=False),encoding='utf-8')
-                print(json.dumps(dict(check='CB-15 normal selector',snapshots=4,seed=42,trials=2,financial_differences=0,downloads=receipts,records=ids,reconnected=True,stop=True,returned='original')),flush=True)
+                print(json.dumps(dict(check='CB-18 both-engine weekly selector',snapshots=4,seed=42,trials=2,financial_differences=0,downloads=receipts,records=ids,reconnected=True,stop=True,returned='original')),flush=True)
             except BaseException:
+                # Preserve the existing redacted development log before the
+                # fictional workspace closes, so native failures stay diagnosable.
+                logs=storage.root/'evidence'
+                for log in (workspace.source/'data/logs').glob('*.log'):
+                    (logs/('server-'+log.name)).write_bytes(log.read_bytes())
+                for record in (workspace.source/'data').glob('_fixture-transport-*.json'):
+                    (logs/record.name).write_bytes(record.read_bytes())
                 try:
                     state=browser.evaluate("({error:document.querySelector('#screen-error')?.textContent,message:document.querySelector('#schedule-message')?.textContent,progress:document.querySelector('#schedule-progress-detail')?.textContent,engine:document.querySelector('#backtest-engine')?.value,producer:ResultArtifacts.forView('custom')?.result.producer})")
                     print(json.dumps(dict(check='selector failure state',state=state)),flush=True)
@@ -125,7 +150,7 @@ class SelectableBrowserTests(unittest.TestCase):
                 raise
             finally:
                 browser.close();service.close()
-                print(json.dumps(dict(check='CB-15 selector closure',browser_artifacts=storage.preserve(),service=service.owner.closure(),browser=browser.owned.closure() if browser.owned else None)),flush=True)
+                print(json.dumps(dict(check='CB-18 selector closure',browser_artifacts=storage.preserve(),service=service.owner.closure(),browser=browser.owned.closure() if browser.owned else None)),flush=True)
 
 
 if __name__=='__main__':unittest.main()

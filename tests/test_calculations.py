@@ -104,6 +104,24 @@ class CalculationTests(unittest.TestCase):
         self.assertTrue(all(not period['holdings'] for period in empty['periods']))
         self.assertIsNone(empty['cagr'])
 
+    def test_stop_during_canonical_planning_precedes_configuration_and_execution(self):
+        import calendar_requests
+        import backtest_control
+        configuration=[]
+        original=calendar_requests.c.SessionCalendar.sample
+        service=self.service
+        def stop_before_draws(calendar,*args,**kwargs):
+            service.close()
+            return original(calendar,*args,**kwargs)
+        options=dict(calendar=dict(version=1,start='2015-01-01',end='2016-12-30',
+            interval=dict(unit='week',count=1)),trials=100,seed=42,rank_to=1)
+        with patch.object(calendar_requests.c.SessionCalendar,'sample',stop_before_draws), \
+                patch.object(robustness,'run',side_effect=AssertionError('Stopped plan must not execute')) as run:
+            with self.assertRaises(backtest_control.Cancelled):
+                service.calculate('random',options,None,configuration.append)
+        self.assertEqual(configuration,[]);run.assert_not_called()
+        self.assertEqual(self.closures,[True])
+
     def test_readiness_changes_while_queue_admission_waits(self):
         waiting=Event();outcome=[];ready=True
         def current():

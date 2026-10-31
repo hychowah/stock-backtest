@@ -37,31 +37,14 @@ const CalendarSettings=(()=>{
       node('calendar-custom').checked=Object.hasOwn(value,'calendar');
       node('calendar-unit').value=c.interval.unit;node('calendar-count').max=c.interval.unit==='week'?'104':'24';
       node('calendar-count').value=c.interval.count;
-      node('calendar-controls').hidden=!Object.hasOwn(value,'calendar')&&!supported();
+      node('calendar-controls').hidden=!Object.hasOwn(value,'calendar')&&!(typeof EngineControls!=='undefined'&&EngineControls.calendarSupported());
     }
     if(!Object.hasOwn(value,'calendar'))node('rebalance-months').value=String(c.interval.count);
   }
-  let available=false,selectable=true,engines=[];
-  const engineFields=()=>selectable?{engine:document.getElementById('backtest-engine')?.value||'original'}:{};
-  const supported=()=>selectable?engines.some(e=>e.id===engineFields().engine&&e.calendar===1):available;
-  function syncEngine(){
-    const controls=document.getElementById('calendar-controls');
-    if(controls)controls.hidden=!supported()&&!document.getElementById('calendar-custom')?.checked;
-    const status=document.getElementById('engine-status'),engine=engineFields().engine;
-    if(status)status.textContent=engine==='experimental'?'New engine — experimental · '+(engines.find(e=>e.id===engine)?.status?.state||'status unavailable')+'. Prepare it in Manage backtest data. Resource limits apply.':'Original · monthly frequency presets. Experimental setup is optional.';
-  }
-  async function init(){
+  function init(){
     const unit=document.getElementById('calendar-unit'),count=document.getElementById('calendar-count');
     unit?.addEventListener('change',()=>{count.max=unit.value==='week'?'104':'24';});
-    document.getElementById('backtest-engine')?.addEventListener('change',syncEngine);
-    if(typeof location==='undefined'||location.protocol==='file:')return;
-    try{
-      const response=await fetch('/api/backtest-capabilities',{cache:'no-store'});const value=await response.json();
-      available=value.calendar===1;selectable=Array.isArray(value.engines);engines=value.engines||[];
-      const choice=document.getElementById('engine-choice');if(choice)choice.hidden=!selectable;
-      syncEngine();
-    }catch(_){}
   }
-  return {decode,fields,label,normalize,read,restore,init,supported,engineFields,syncEngine};
+  return {decode,fields,label,normalize,read,restore,init};
 })();
 if(typeof module!=='undefined')module.exports=CalendarSettings;

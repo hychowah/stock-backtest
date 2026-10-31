@@ -147,11 +147,14 @@ class CandidateTests(unittest.TestCase):
             self.assertEqual(ordinary.calculate('custom',self.options(),None,None)['periods'],result['periods'])
 
     def test_unsupported_filter_rejected_before_readiness_runtime_or_replay(self):
+        # Simulate a future unsupported catalog; all current fields are supported.
+        context=patch('numerical_policy.UNSUPPORTED_THRESHOLDS',frozenset({'future_threshold'}))
+        context.start();self.addCleanup(context.stop)
         owner=self.candidate();owner.preparation.status.side_effect=AssertionError('No preparation')
-        options=self.options(filters=[dict(field='operating_yield_spread_3y',op='gt',value=5.)])
+        options=self.options(filters=[dict(field='future_threshold',op='gt',value=5.)])
         for mode in ('custom','random'):
             for bounded in (False,True):
-                with self.assertRaisesRegex(ValueError,'experimental does not support filter operating_yield_spread_3y'):
+                with self.assertRaisesRegex(ValueError,'experimental does not support filter future_threshold'):
                     if bounded:owner.calculate_into(mode,options,None,None,None)
                     else:owner.calculate(mode,options,None,None)
         with self.assertRaisesRegex(ValueError,'experimental does not support'):

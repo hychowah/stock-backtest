@@ -240,9 +240,8 @@ plan therefore keeps its existing financial representation. Browser replay
 remembers its engine separately from that plan. Changing a waiting test's
 engine discards its old plan through the existing edit protocol.
 
-Readiness and calendar preflight use the submitted engine. Original supports
-legacy 1/3/6/12/24-month presets. Version-1 week/month calendars require
-experimental selection. Both engines support operating yield spread. Prepare
+Readiness and calendar preflight use the submitted engine. Both engines support
+legacy 1/3/6/12/24-month presets and version-1 week/month calendars. Both engines support operating yield spread. Prepare
 a current experimental generation after upgrading. No request drops a condition
 or retries through Original.
 Existing eager, process, memory, IPC, workspace and storage limits stay fixed.
@@ -256,3 +255,21 @@ results without producer metadata say that the producer was not recorded.
 Compatible version-1/2/3 readers stay independent of preparation. Returning to
 Original uses the current compatible code. Do not downgrade to an old reader
 that cannot open version-3 evidence.
+
+
+## Aligned website execution boundary
+
+Original execution now lives in `website/original_calculations.py`. Experimental
+execution stays in `candidate_calculations.py`. Their shared lifecycle and errors
+live in `calculation_contract.py`; neither adapter owns jobs or queue records.
+The `backtest_jobs.Calculations` name remains compatible for standalone callers.
+`calendar_requests.py` validates both engines' recorded plans without resampling.
+Legacy monthly entry points and their serialized plans are unchanged.
+
+The browser's `engine-controls.js` owns engine choice and capability status.
+`calendar-settings.js` owns dates, interval labels and saved-calendar restoration.
+Both adapters support fixed/random week/month schedules, both stock pools,
+selection orders and the complete current metric/threshold catalog. Queue rows
+show requested engine identity. Completed views and CSVs use stored producer
+identity. Latest and January remain shared offline prepared-data operations.
+No selector value creates provenance for those views or old saved results.

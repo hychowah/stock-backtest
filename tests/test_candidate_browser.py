@@ -249,11 +249,11 @@ class CandidateBrowserTests(unittest.TestCase):
                 browser.wait("document.querySelectorAll('#saved-list [data-open]').length===3")
                 browser.click('#saved-list li:nth-child(3) [data-open]')
                 browser.wait("ResultArtifacts.forView('custom')?.result.completed===24")
-                self.assertFalse(browser.evaluate('CalendarSettings.supported()'))
+                self.assertTrue(browser.evaluate('EngineControls.calendarSupported()'))
                 self.assertIn('week(s)',browser.evaluate("CalendarSettings.label(ResultArtifacts.forView('custom').settings)"))
                 receipt,content=browser.download('#robustness-download');downloads.append(receipt)
                 self.assertIn(b'interval_unit',content)
-                checks.append('canonical saved reopening and CSV without capability or calculation')
+                checks.append('canonical saved reopening and CSV without numerical preparation or calculation')
                 self.assertEqual(browser.errors,[])
                 print(json.dumps(dict(check='candidate-native-browser',checks=checks,downloads=downloads,sources=workspace.sources)),flush=True)
             except BaseException:

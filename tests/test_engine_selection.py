@@ -44,7 +44,7 @@ class SelectionTests(unittest.TestCase):
         for engine in (None,1,False,'unknown'):
             with self.assertRaises(ValueError):owner.preflight(dict(self.options,engine=engine))
         calendar=dict(version=1,start=self.options['start'],end=self.options['end'],interval=dict(unit='month',count=3))
-        with self.assertRaisesRegex(ValueError,'Original supports'):owner.preflight(dict(calendar=calendar))
+        self.assertEqual(owner.preflight(dict(calendar=calendar)),'original')
         self.assertEqual(owner.preflight(dict(calendar=calendar,engine='experimental')),'experimental')
         spread=dict(self.options,filters=[dict(field='operating_yield_spread_3y',op='gt',value=5)])
         self.assertEqual(owner.preflight(spread),'original')

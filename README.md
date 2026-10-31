@@ -175,3 +175,12 @@ Normal builds, startup and data-panel rebuilds write ignored `website/local/`. T
 Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 
 Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
+
+
+Website engine alignment keeps Original and Experimental behind one application
+calculation interface. Both support fixed and random schedules with custom
+week/month intervals and all current stock filters. Original remains default.
+Latest and January use shared prepared screening. Stored charts, holdings,
+attribution and exports use the completed artifact's original evidence.
+See [the alignment record](docs/plans/compiled-backtest/phases/CB-18.website-alignment.md)
+for boundaries and verification. Source qualification is separate from deployment.

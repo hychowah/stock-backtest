@@ -436,4 +436,21 @@ el('filter-conditions').handlers.click({target:{dataset:{remove:'0'}}});
 assert.equal(run('readOptions().filters.length'),0);
 console.log('Passed: add/edit/remove filter controls and numeric thresholds.');
 
+// Shared prepared views are independent of the selected dated executor.
+let sharedLatest,sharedJanuary;
+for(const engine of ['original','experimental']){
+ el('backtest-engine').value=engine;el('auto-run').checked=false;
+ run("switchMode('latest');applyRange()");
+ const latest=run("ResultArtifacts.forView('latest')");
+ assert(!('engine' in latest.settings));assert(!('producer' in latest.result));
+ const latestValues=JSON.stringify(latest.result);
+ if(sharedLatest)assert.equal(latestValues,sharedLatest);else sharedLatest=latestValues;
+ el('schedule-kind').value='january';run("switchMode('backtest');applyRange()");
+ const january=run("ResultArtifacts.forView('january')");
+ assert(!('engine' in january.settings));assert(!('producer' in january.result));
+ const januaryValues=JSON.stringify(january.result);
+ if(sharedJanuary)assert.equal(januaryValues,sharedJanuary);else sharedJanuary=januaryValues;
+}
+console.log('Passed: Latest/January remain identical shared prepared views in both engine contexts, without invented producer metadata.');
+
 })().catch(error=>{console.error(error);process.exitCode=1});

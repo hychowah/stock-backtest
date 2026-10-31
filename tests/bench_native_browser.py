@@ -268,7 +268,10 @@ class _WebSocket:
 
 class NativeBrowser:
     """One owned session. Storage and service are registered before effects."""
-    def __init__(self, storage, service=None):
+    def __init__(self, storage, service=None, *, renderer_processes=None):
+        if renderer_processes is not None and (type(renderer_processes) is not int or not 1<=renderer_processes<=8):
+            raise ValueError('Choose between 1 and 8 private renderer processes.')
+        self.renderer_processes=renderer_processes
         self.storage, self.service = storage, service
         self.owned = self.ws = None
         self.closed = False
@@ -317,8 +320,9 @@ class NativeBrowser:
         try:
             if self.storage.root is None: self.storage.start()
             command = [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
-                'import sys;sys.path.insert(0,sys.argv[1]);from bench_native_browser import bootstrap;bootstrap(sys.argv[2])',
+                'import sys;sys.path.insert(0,sys.argv[1]);from bench_native_browser import bootstrap;bootstrap(sys.argv[2],renderer_processes=int(sys.argv[3]) if len(sys.argv)>3 else None)',
                 str(ROOT/'tests'), str(self.storage.root)]
+            if self.renderer_processes is not None:command.append(str(self.renderer_processes))
             env = dict(os.environ, TEMP=str(self.storage.root/'temp'), TMP=str(self.storage.root/'temp'))
             self.owned = OwnedProcess(command, env=env, limits=ProcessLimits(
                 LIMITS['committed_bytes'], LIMITS['processes'], LIMITS['cpu_percent'],
@@ -533,7 +537,7 @@ class NativeBrowser:
             raise BrowserLimit('Browser resource exhaustion retained at closure.')
 
 
-def bootstrap(root):
+def bootstrap(root, *, renderer_processes=None):
     """Native GO-gated bootstrap; stdout stays the existing small JSON protocol."""
     if input() != 'GO': raise BrowserFailure('Browser bootstrap handshake rejected.')
     if os.name != 'nt': raise BrowserFailure('Native browser requires Windows.')
@@ -545,6 +549,10 @@ def bootstrap(root):
         '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
         '--user-data-dir='+str(root/'profile'), '--disk-cache-dir='+str(root/'cache'),
         '--disk-cache-size=33554432', 'about:blank']
+    if renderer_processes is not None:
+        if type(renderer_processes) is not int or not 1<=renderer_processes<=8:
+            raise BrowserFailure('Invalid private renderer process count.')
+        command.insert(-1,'--renderer-process-limit='+str(renderer_processes))
     browser = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     exhausted = threading.Event()
     output_lock = threading.Lock()
