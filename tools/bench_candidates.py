@@ -19,7 +19,7 @@ import numpy as np
 
 from bench_methods_arrays import ArrayPrices
 from bench_policy_program import PolicyProgram, FINANCIAL_FIELDS
-from numerical_generation import TEMPORAL_VERSION
+from numerical_generation import TEMPORAL_VERSION, DatedYields
 LOOKUP_FIELDS = ('fiscal_raw', 'raw_entry', 'adjusted_entry', 'adjusted_exit',
                  'screen_adjusted', 'trailing_1y', 'trailing_3y')
 
@@ -43,6 +43,8 @@ class NumericInputs:
         treasuries = list(source.execute('SELECT day,yield_value FROM treasuries ORDER BY day'))
         self.treasury_days = [row[0] for row in treasuries]
         self.treasury_values = [row[1] for row in treasuries]
+        self.ten_year_yield = DatedYields(source.execute(
+            'SELECT day,yield_percent FROM treasury10 ORDER BY day'))
         self.bankrupt = frozenset(schedules.r.revalue.BANKRUPT)
         self.policy = PolicyProgram(schedules,bankrupt=self.bankrupt)
         prices = ArrayPrices(source)
@@ -111,6 +113,7 @@ class NumericInputs:
         signature = hashlib.sha256(json.dumps(dict(generation=self.generation,
             policy=self.policy.signature, symbols=symbols, companies=self.companies,
             sessions=self.sessions,treasury=list(zip(self.treasury_days,self.treasury_values)),
+            treasury10=self.ten_year_yield.rows,
             bankruptcy=sorted(self.bankrupt)),
             sort_keys=True,separators=(',',':'),allow_nan=False).encode())
         numeric_bytes = 0

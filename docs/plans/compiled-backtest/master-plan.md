@@ -14,6 +14,18 @@ Persistent isolated preview integration: 29 October 2026.
 
 Selectable-engine release direction: 31 October 2026.
 
+## Operating-spread follow-up — 31 October 2026
+
+The user requests experimental support for the operating-yield-spread filter
+before comparing the exact seeded 100-trial strategy. The engine branch owns
+this extension. Its [implementation record](phases/CB-16.operating-spread.md)
+supersedes the CB-14/CB-15 exclusion for current source. Earlier evidence keeps
+its original scope. Original's formula and financial rules remain unchanged.
+Both current engines support the field after current experimental preparation.
+Real benchmark admission remains closed. The requested real-data speed
+comparison is unmeasured. This source work changes no default, installed asset,
+capacity guard, main revision or custom-variable hold.
+
 ## Current delivery direction — 31 October 2026
 
 The user approves making the engines selectable in the normal app so the new
@@ -30,8 +42,9 @@ remain failed; no larger workload is qualified by this change.
 
 The [CB-14 readiness implementation](phases/CB-14.readiness.md) reconciles main's
 schema-8 preparation, operating-yield-spread filter and selection order. Original
-retains its full catalog. Experimental requests explicitly reject operating
-spread and use the shared SQL selector for supported settings. Each application
+retains its full catalog. At that checkpoint, experimental requests rejected
+operating spread. The operating-spread follow-up above adds current support.
+Both engines use the shared SQL selector. Each application
 candidate call closes its child before publishing an outcome. CB-14 readiness
 verification passes, including 263 native tests and the affected WSL/browser
 checks. The current supported readiness scope is complete. CB-15 owns the normal-app

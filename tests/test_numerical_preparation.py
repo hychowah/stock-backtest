@@ -68,11 +68,21 @@ with runtime_access.ownership(source):
     finally:
         price.write_bytes(saved)
         os.utime(price,ns=(previous.st_atime_ns,previous.st_mtime_ns))
+    treasury=source/'raw/treasury.json';saved=treasury.read_bytes();previous=treasury.stat()
+    try:
+        rows=json.loads(saved);rows[0]['year10']=4.25
+        treasury.write_text(json.dumps(rows),encoding='utf8')
+        try:store.open_current()
+        except ValueError:pass
+        else:raise AssertionError('Treasury-only edit did not reject stale inputs')
+    finally:
+        treasury.write_bytes(saved)
+        os.utime(treasury,ns=(previous.st_atime_ns,previous.st_mtime_ns))
     assert not ng._attachments
     result.write_text(json.dumps(dict(published=published,attachment=stats,
         traced_export_python_peak=python_peak,financial_agreement='exact',
         maximum_absolute=0.,maximum_relative=0.,report_unchanged=True,
-        direct_edit_rejected=True,closed=True),sort_keys=True))
+        direct_edit_rejected=True,treasury_edit_rejected=True,closed=True),sort_keys=True))
 '''
 
 MOVED_CHILD = r'''

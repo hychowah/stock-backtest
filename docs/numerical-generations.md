@@ -110,6 +110,29 @@ artifact if the prepared relative input inventory and source contents still
 match. The command takes shared source ownership before application imports.
 It then takes the ordinary project cache coordinator.
 
+## Operating yield spread support — 31 October 2026
+
+The experimental engine now supports `operating_yield_spread_3y`. `metrics.py`
+remains the formula owner. `PolicyProgram` executes that calculator during annual
+specialization with symbolic current EV and dated 10-year Treasury yield. It
+retains source arithmetic order and the source-selected annual constants.
+Factors and complete books consume the same numerical output. They do not
+implement a second financial formula.
+
+The generation includes `treasury10(day, yield_percent)` in `records.sqlite`.
+`DatedYields` returns the latest saved observation on or before entry. An empty
+series or no preceding observation returns no value. Zero and negative yields
+stay valid. The three-month series retains its separate existing policy.
+Missing annual inputs or a missing 10-year yield leave only this threshold
+unavailable. A stock fails that condition only when it is requested.
+
+The expanded parameter width, field schema, policy and source hashes invalidate
+older generations and trial checkpoints for new calculations. Prepare a current
+experimental generation. Durable saved results remain readable. Format 1 and
+temporal/factor interface versions remain unchanged. Unknown future catalogs
+still fail preparation. This source extension makes no performance or real-data
+capacity claim. See the [implementation record](plans/compiled-backtest/phases/CB-16.operating-spread.md).
+
 ## Format 1
 
 The ignored store is `data/numerical/`. Each published directory name is a
@@ -151,7 +174,8 @@ Reports within a symbol use fiscal date and original row order. This retains
 the original buffer tie order independently of `symbol_sort`.
 
 `records.sqlite` contains `symbols`, `reports`, `companies`, `financial_inputs`,
-`sessions` and `treasuries`. It contains no backtest or saved-trial tables.
+`sessions`, `treasuries` and `treasury10`. The three-month and 10-year series
+remain separate. It contains no backtest or saved-trial tables.
 Financial JSON is copied verbatim from prepared inputs. It is not a second raw
 cache. `owner.json` identifies store-owned exports and abandoned staging trees.
 

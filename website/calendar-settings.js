@@ -48,7 +48,7 @@ const CalendarSettings=(()=>{
     const controls=document.getElementById('calendar-controls');
     if(controls)controls.hidden=!supported()&&!document.getElementById('calendar-custom')?.checked;
     const status=document.getElementById('engine-status'),engine=engineFields().engine;
-    if(status)status.textContent=engine==='experimental'?'New engine — experimental · '+(engines.find(e=>e.id===engine)?.status?.state||'status unavailable')+'. Prepare it in Manage backtest data. Operating yield spread is unsupported. Resource limits apply.':'Original · monthly frequency presets. Experimental setup is optional.';
+    if(status)status.textContent=engine==='experimental'?'New engine — experimental · '+(engines.find(e=>e.id===engine)?.status?.state||'status unavailable')+'. Prepare it in Manage backtest data. Resource limits apply.':'Original · monthly frequency presets. Experimental setup is optional.';
   }
   async function init(){
     const unit=document.getElementById('calendar-unit'),count=document.getElementById('calendar-count');

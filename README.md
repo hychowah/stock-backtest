@@ -74,10 +74,15 @@ For an explanation of the program, open the [plain-language architecture guide](
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
-The proposed [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
-sets a 5× minimum speed target and divides research, implementation and qualification
-into single-session phases. Its [research findings](docs/plans/compiled-backtest/research.md)
-compare the design options. This replacement is planned; the current engine is unchanged.
+Current source offers **Original** and **New engine — experimental** for dated
+runs. Original remains the default. Both engines support operating yield spread.
+Experimental preparation is optional in Manage backtest data. Prepare again after
+upgrading to the spread implementation. Saved results stay readable.
+
+The [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
+records supported opt-in selection and the remaining qualification work. Its
+[research findings](docs/plans/compiled-backtest/research.md) retain earlier design
+comparisons. Historical timings do not supply a current-source speed guarantee.
 Each code phase automatically runs `$strategic-design-plan`, implementation and
 verification, then `$smart-commit`. Agents ask only about critical blockers or
 decisions that need the user's judgment.

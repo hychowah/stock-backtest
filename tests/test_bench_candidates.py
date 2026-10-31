@@ -60,13 +60,15 @@ class CandidateTests(unittest.TestCase):
         rows = list(self.db.execute('SELECT symbol,fiscal,values_json FROM financial_inputs'))
         for symbol,fiscal,raw in rows:
             values = json.loads(raw)
-            values.update(revenue=100e6,totalCurrentAssets=200e6,
+            values.update(revenue=100e6,operatingIncome=40e6,totalCurrentAssets=200e6,
                           totalCurrentLiabilities=50e6,ebit=40e6,
                           interestExpense=5e6,totalDebt=30e6)
             if symbol=='A' and fiscal=='2014-06-30':values['freeCashFlow']=-20e6
             if symbol=='STOP' and fiscal=='2014-06-30':values['netIncome']=-5e6
             self.db.execute('UPDATE financial_inputs SET values_json=? WHERE symbol=? AND fiscal=?',
                             (json.dumps(values),symbol,fiscal))
+        self.db.executemany('INSERT OR IGNORE INTO treasury10 VALUES(?,?)',
+                            [('2014-12-31',2.),('2015-07-01',3.),('2016-07-01',0.)])
         self.db.commit()
 
     def test_complete_source_candidates_all_fields_both_pools_and_dates(self):

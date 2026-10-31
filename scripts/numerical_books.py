@@ -227,16 +227,19 @@ class PythonExecutor:
         started = time.perf_counter()
         matrix = np.full((len(rows),len(policy.input_names)),np.nan,dtype=np.float64)
         ii = policy.input_index
-        treasuries = []
+        treasuries, treasury10 = [], []
         for entry,exit_day,pool in books:
             index = bisect_right(inputs.treasury_days,str(entry))-1
             treasuries.append(float(inputs.treasury_values[index]) if index>=0 else 0.)
+            value = inputs.ten_year_yield(entry)
+            treasury10.append(np.nan if value is None else value)
         if plan is not None:
             for key, values in (('report_cap', inputs.report_cap),
                     ('report_enterprise', inputs.report_enterprise),
                     ('report_yield', inputs.report_yield), ('average_3y', inputs.average_3y)):
                 matrix[:, ii[key]] = values[row_reports]
             matrix[:, ii['treasury']] = np.asarray(treasuries)[row_books]
+            matrix[:, ii['treasury10']] = np.asarray(treasury10)[row_books]
             matrix[:, ii['bankruptcy']] = [float((books[book][0].year, inputs.symbols[symbol])
                                                    in inputs.bankrupt) for book, symbol, _ in rows]
             for slot, key in enumerate(LOOKUP_FIELDS):
@@ -253,7 +256,8 @@ class PythonExecutor:
                 for key,value in (('report_cap',inputs.report_cap[report]),
                         ('report_enterprise',inputs.report_enterprise[report]),('report_yield',inputs.report_yield[report]),
                         ('bankruptcy',float((entry.year,inputs.symbols[symbol]) in inputs.bankrupt)),
-                        ('average_3y',inputs.average_3y[report]),('treasury',treasuries[book])):
+                        ('average_3y',inputs.average_3y[report]),('treasury',treasuries[book]),
+                        ('treasury10',treasury10[book])):
                     matrix[row,ii[key]] = value
                 for slot,key in enumerate(LOOKUP_FIELDS):matrix[row,ii[key]]=lookup_values[row,slot]
                 for slot,target in ((4,entry.toordinal()),(5,targets[book][1].toordinal()),(6,targets[book][2].toordinal())):

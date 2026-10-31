@@ -184,3 +184,17 @@ Numerical preparation is an explicit optional data-panel action. Main remains
 unchanged. This source commit does not authorize integration, publication,
 push or restart. Read the [release handoff](plans/compiled-backtest/phases/CB-15.release-handoff.md)
 before moving main; its automatic supervisor can deploy a new main commit.
+
+## Operating-spread support follow-up — 31 October 2026
+
+The user assigns the engine branch the missing experimental
+`operating_yield_spread_3y` implementation. Scope includes source-derived annual
+specialization, immutable dated Treasury inputs, numerical factors/books,
+capability and recovery checks, current documentation and the architecture guide.
+Original's formulas, user settings, result formats and ownership stay unchanged.
+The earlier CB-14/CB-15 rejection remains historical evidence. Current support
+requires a new prepared numerical generation. See the
+[implementation record](plans/compiled-backtest/phases/CB-16.operating-spread.md).
+This work does not authorize moving main, deployment, restart, downloads or
+bypassing closed real-benchmark admission. The exact seeded 100-trial comparison
+is recorded separately from synthetic correctness. Custom variables stay held.

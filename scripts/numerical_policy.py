@@ -17,12 +17,12 @@ import types
 
 FINANCIAL_FIELDS = ('pe', 'pb', 'fcf', 'fcf_yield', 'price_fcf',
                     'profit_margin', 'roe', 'current_ratio', 'interest_coverage',
-                    'debt_equity', 'peg')
+                    'debt_equity', 'peg', 'operating_yield_spread_3y')
 FACTOR_VERSION = 1
 
-# Recognized source features that have no qualified numerical implementation.
-# Keep Original's catalog intact. An experimental request must never omit them.
-UNSUPPORTED_THRESHOLDS = frozenset({'operating_yield_spread_3y'})
+# Keep capability admission separate from request validation. All current
+# threshold fields have source-derived implementations; unknown catalogs fail.
+UNSUPPORTED_THRESHOLDS = frozenset()
 
 
 def require_supported(options):
@@ -112,7 +112,7 @@ def _schema_tree(node):
 
 
 class _Symbol:
-    """Trace market-cap arithmetic while source code chooses annual inputs."""
+    """Trace dated valuation inputs while source code chooses annual inputs."""
     def __init__(self, node):
         self.node = node
 
@@ -138,6 +138,13 @@ class _Symbol:
             return True
         raise ValueError('Unsupported symbolic financial-policy comparison.')
 
+    def __le__(self, other):
+        # Snapshot eligibility requires positive EV before a row is exposed.
+        # No other symbolic comparison is an assumed financial guard.
+        if self.node == ('input', 'ev') and other == 0:
+            return False
+        raise ValueError('Unsupported symbolic financial-policy comparison.')
+
 
 class _Math:
     def __getattr__(self, name):
@@ -157,7 +164,7 @@ def _template(value, field):
             parameters.append(float(node[1]))
             return ('input', name)
         if node[0] == 'input':
-            return ('var', 'cap') if node[1] == 'cap' else node
+            return ('var', node[1]) if node[1] in ('cap', 'ev') else node
         return (node[0], *(walk(child) for child in node[1:]))
     node = value.node if isinstance(value, _Symbol) else ('const', float(value))
     return walk(node), parameters
@@ -167,8 +174,8 @@ class PolicyProgram:
     """One source-derived float64 expression program and source control adapter.
 
     Expressions use the small tuple IR documented by ``expanded``. Annual
-    specialization executes the authoritative calculator; only market-cap
-    dependent operations become traced expressions. Unsupported numeric syntax,
+    specialization executes the authoritative calculators; dated valuation
+    and Treasury operations become traced expressions. Unsupported numeric syntax,
     catalog changes or a changed expression shape fail rather than fall back.
     Compiled guards are an optional capability, requested through ``decisions``.
     Their translator and identity are not prerequisites for source execution.
@@ -185,12 +192,15 @@ class PolicyProgram:
         self._financial = types.FunctionType(m.financial_values.__code__,
             dict(m.financial_values.__globals__, math=_Math()),
             m.financial_values.__name__, m.financial_values.__defaults__)
+        self._operating_spread = types.FunctionType(m.operating_yield_spread.__code__,
+            dict(m.operating_yield_spread.__globals__, math=_Math()),
+            m.operating_yield_spread.__name__, m.operating_yield_spread.__defaults__)
         annual = {f'{year}-06-30': dict(netIncome=120., totalStockholdersEquity=400.,
-                  freeCashFlow=30., revenue=900., totalCurrentAssets=150.,
+                  freeCashFlow=30., revenue=900., operatingIncome=160., totalCurrentAssets=150.,
                   totalCurrentLiabilities=60., ebit=160., interestExpense=10.,
                   totalDebt=90., epsDiluted=float(2 ** (year-2011)))
                   for year in range(2011, 2015)}
-        probe = self._financial(dict(fiscal='2014-06-30', market_cap=_Symbol(('input', 'cap'))), annual)
+        probe = self._annual_values('2014-06-30', annual)
         if set(probe) != set(FINANCIAL_FIELDS):
             raise ValueError('Financial-policy specialization did not cover its catalog.')
         self.financial_templates = {}
@@ -204,7 +214,7 @@ class PolicyProgram:
         self.input_names = ('report_cap', 'report_enterprise', 'report_yield',
             'fiscal_raw', 'raw_entry', 'adjusted_entry', 'adjusted_exit',
             'bankruptcy', 'average_3y', 'screen_adjusted', 'trailing_1y',
-            'trailing_3y', 'treasury') + self.parameter_names
+            'trailing_3y', 'treasury', 'treasury10') + self.parameter_names
         self.input_index = {name:i for i,name in enumerate(self.input_names)}
         snapshot = _tree(schedules.financial_books.snapshot)
         assignments = {node.targets[0].id:node.value for node in snapshot.body
@@ -284,7 +294,7 @@ class PolicyProgram:
         self.output_index = {name:i for i,name in enumerate(self.output_names)}
         source_files = {Path(function.__code__.co_filename).resolve()
                         for function in (schedules.financial_books.snapshot,schedules.financial_books.eligible,
-                                         m.current_multiple,m.financial_values,
+                                         m.current_multiple,m.financial_values,m.operating_yield_spread,
                                          schedules.compute_period,m.three_year_multiple)}
         source_files.update(Path(module.__file__).resolve() for module in
             (schedules.financial_books.run,schedules.r,schedules.r.revalue))
@@ -312,7 +322,7 @@ class PolicyProgram:
         history = [dict(fiscal=f'{year}-06-30',ebitda=20.) for year in range(2011,2015)]
         evaluated = m.evaluate(numeric_observation,history)
         self.filter_order = tuple(m.filter_values(numeric_observation,evaluated,date(2015,1,2),
-                                    lambda day,*args:(day,1.),annual))
+                                    lambda day,*args:(day,1.),annual,0.))
         self.ranking_outputs = {'ev_ebitda': ('multiple', 'yield_value'),
                                 'ev_ebitda_3y': ('metric3_multiple', 'metric3_yield')}
         # This is a binding to the source catalog, not a formula registry.
@@ -481,11 +491,25 @@ class PolicyProgram:
     def spy_return(self,entry_price,exit_price):
         return eval(self._spy_code,{},dict(entry_price=entry_price,exit_price=exit_price))
 
+    def _annual_values(self, fiscal, reports):
+        """Execute annual policy with only validated dated inputs symbolic."""
+        observation = dict(fiscal=fiscal, market_cap=_Symbol(('input', 'cap')),
+                           enterprise_value=_Symbol(('input', 'ev')))
+        values = self._financial(observation, reports)
+        spread = self._operating_spread(observation, reports, _Symbol(('input', 'treasury10')))
+        if spread is not None:
+            values['operating_yield_spread_3y'] = spread
+        return values
+
     def specialize_financial(self,fiscal,reports):
+        """Bind source-selected annual constants without dated market inputs.
+
+        Missing annual inputs leave only the affected threshold unavailable.
+        Unsupported operations or a changed expression shape fail export.
+        """
         import numpy as np
         result = np.full(len(self.parameter_names),np.nan,dtype=np.float64)
-        observation = dict(fiscal=fiscal,market_cap=_Symbol(('input','cap')))
-        for field,value in self._financial(observation,reports).items():
+        for field,value in self._annual_values(fiscal,reports).items():
             if field not in self.financial_templates:
                 raise ValueError('Unsupported specialized financial field: '+field)
             template,parameters = _template(value,field)

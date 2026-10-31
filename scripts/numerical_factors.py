@@ -192,6 +192,8 @@ class FactorEvaluator:
                              ('report_yield', inputs.report_yield), ('average_3y', inputs.average_3y)):
             matrix[:, ii[name]] = values[reports]
         matrix[:, len(ii)-len(policy.parameter_names):] = inputs.financial_parameters[reports]
+        treasury10 = inputs.ten_year_yield(day)
+        matrix[:, ii['treasury10']] = np.nan if treasury10 is None else treasury10
         dependencies = policy.dependencies(tuple('filter_' + f for f in required))
         trailing_needed = dependencies & {'screen_adjusted', 'trailing_1y', 'trailing_3y'}
         queries, locations, row_specs = [], [], []

@@ -195,10 +195,12 @@ a separate authorized operation.
 Current source reconciles main's research schema 8, operating-yield-spread filter
 and selection order. Both experimental selection orders use the shared SQL
 selector. Rank-first retains original ranks and adds no replacements. The
-experimental catalog supports all existing thresholds except
-`operating_yield_spread_3y`. A request using that field fails explicitly before
-calculation or checkpoint recovery. Original keeps the full catalog. Unknown
-future catalogs still fail numerical preparation.
+experimental catalog supports all current thresholds, including
+`operating_yield_spread_3y`. Annual specialization executes Original's spread
+calculator. The prepared generation includes the saved 10-year Treasury series.
+Each entry uses the latest yield on or before that date. Missing annual inputs
+or a missing preceding yield omit this threshold. Other fields stay available.
+Unknown future catalogs still fail numerical preparation.
 
 Schema-7 prepared inputs and numerical generations must be rebuilt with current
 source. Preparation retains full-precision independent baseline agreement.
@@ -240,8 +242,9 @@ engine discards its old plan through the existing edit protocol.
 
 Readiness and calendar preflight use the submitted engine. Original supports
 legacy 1/3/6/12/24-month presets. Version-1 week/month calendars require
-experimental selection. Operating yield spread is explicitly unsupported in
-experimental runs. No request drops this condition or retries through Original.
+experimental selection. Both engines support operating yield spread. Prepare
+a current experimental generation after upgrading. No request drops a condition
+or retries through Original.
 Existing eager, process, memory, IPC, workspace and storage limits stay fixed.
 An unavailable experimental queued test stays waiting. The consumer can run
 ready Original tests after it, preserving order among ready tests.

@@ -48,8 +48,7 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(owner.preflight(dict(calendar=calendar,engine='experimental')),'experimental')
         spread=dict(self.options,filters=[dict(field='operating_yield_spread_3y',op='gt',value=5)])
         self.assertEqual(owner.preflight(spread),'original')
-        with self.assertRaisesRegex(ValueError,'operating_yield_spread_3y'):
-            owner.calculate('custom',dict(spread,engine='experimental'),None,None)
+        self.assertEqual(owner.preflight(dict(spread,engine='experimental')),'experimental')
         with self.assertRaisesRegex(ValueError,'Invalid recorded random plan'):
             owner.preflight(self.options,planned={})
         random=dict(self.options,trials=2,seed=42)
@@ -181,6 +180,11 @@ class RuntimeSelectionTests(unittest.TestCase):
     def test_matched_fixed_seeded_random_replay_and_return_to_original(self):
         from test_candidate_calculations import CandidateTests
         from numerical_portfolio import compare_results
+        from test_operating_spread_engine import financial_inputs, FILTERS
+        financial_inputs(self.fixture.fixture.db)
+        self.fixture.binding['daily'] = dict(operating_spread=True)
+        self.fixture.prepare()
+        (self.root/'binding.json').write_text(json.dumps(self.fixture.binding))
         candidate=CandidateTests.candidate(self)
         owner=engine_selection.Selectable(candidate.preparation);owner.experimental=candidate
         owner.status=lambda:dict(state='current')
@@ -188,11 +192,13 @@ class RuntimeSelectionTests(unittest.TestCase):
         def connect():
             db=sqlite3.connect(self.fixture.fixture.path);db.row_factory=sqlite3.Row;return db
         with patch('schedules.connect',side_effect=connect),patch('cache_access.workspace',self.fixture.owner):
-            for mode,extra in (('custom',{}),('random',dict(trials=2,seed=42))):
-                options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',min_cap=0.,min_ev=0.,rank_to=5,selection_order='rank_first',**extra)
+            for mode,extra in (('custom',{}),('random',dict(trials=2,seed=2607948532))):
+                options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',min_cap=0.,min_ev=0.,rank_to=5,selection_order='rank_first',filters=FILTERS,**extra)
                 plans=[]
                 experimental=owner.calculate(mode,dict(options,engine='experimental'),None,plans.append)
                 original=owner.calculate(mode,dict(options,engine='original'),None,None,planned=plans[0] if plans else None)
+                self.assertTrue(all(period['names'] for period in
+                    (original['periods'] if mode=='custom' else original['trial_results'][0]['periods'])))
                 self.assertIsNone(candidate.runtime);self.assertEqual(experimental.pop('producer')['engine'],'experimental')
                 self.assertEqual(original.pop('producer')['engine'],'original')
                 if mode=='custom':self.assertTrue(compare_results(original,experimental)['exact'])

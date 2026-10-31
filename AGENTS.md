@@ -454,9 +454,12 @@ to individual callers. Check these interactions in `tests/check-range.cjs`.
 ## Experimental engine readiness
 
 CB-14 reconciles schema-8 preparation and both selection orders. The numerical
-policy recognizes Original's full threshold catalog but explicitly rejects
-`operating_yield_spread_3y` in experimental requests. Keep that rejection before
-result or checkpoint reuse. Unknown future catalogs must fail preparation.
+policy supports Original's full threshold catalog, including
+`operating_yield_spread_3y`. Annual specialization executes the authoritative
+spread calculator. Dated inputs use the latest saved 10-year Treasury yield on
+or before entry. Missing inputs omit only this threshold. Prepare a current
+numerical generation after upgrading; old generations and checkpoints must not
+be reused as current. Unknown future catalogs must fail preparation.
 Candidate application calls confirm runtime closure before publishing every
 outcome. No idle application child may retain financial ownership between calls.
 Disk checkpoints remain reusable; cross-call compiler memory is not retained.
