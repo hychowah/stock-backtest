@@ -59,6 +59,17 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(held['state'],'held');self.assertEqual(held['options'],submission['options'])
         self.assertEqual(queue.Store(self.store.path).get(held['id'])['edit'],held['edit'])
 
+    def test_selection_order_is_preserved_through_waiting_edit_and_reopen(self):
+        submission=request()
+        submission['options']['selection_order']='rank_first'
+        item=self.store.enqueue(submission)
+        self.assertEqual(item['options']['selection_order'],'rank_first')
+        held=self.change(item,'hold')
+        edited=request('Filter first',options=dict(submission['options'],selection_order='filter_first'))
+        self.change(held,'update',**{key:value for key,value in edited.items() if key!='id'})
+        reopened=queue.Store(self.store.path).get(item['id'])
+        self.assertEqual(reopened['options']['selection_order'],'filter_first')
+
     def test_idempotent_submission_survives_edits_and_deletion(self):
         submission=request();item=self.store.enqueue(submission)
         self.assertEqual(self.store.enqueue(submission)['id'],item['id'])
@@ -168,11 +179,20 @@ class StoreTests(unittest.TestCase):
         plan={'seed':seed,'samples':[['2015-01-05']],'requested':2}
         self.store.progress(item['id'],'configuration',plan);self.store.recover()
         held=self.change(self.store.get(item['id']),'hold')
-        renamed=self.change(held,'update',**{key:value for key,value in dict(submission,name='Renamed').items() if key!='id'})
+        renamed=self.change(held,'update',**{key:value for key,value in dict(submission,name='Renamed',options=dict(submission['options'],selection_order='filter_first')).items() if key!='id'})
         self.assertEqual(renamed['configuration']['seed'],seed)
         retry=self.store.claim();self.assertEqual(json.loads(retry['plan']),plan);self.assertEqual(retry['seed'],seed)
         self.store.recover();held=self.change(self.store.get(item['id']),'hold')
         edited=self.change(held,'update',**{key:value for key,value in dict(submission,options=dict(submission['options'],months=6)).items() if key!='id'})
+        self.assertIsNone(edited['configuration']);self.assertIsNone(self.store.claim()['plan'])
+
+    def test_changed_selection_order_discards_random_plan(self):
+        submission=request(mode='random',options=dict(request()['options'],trials=2,seed=42))
+        item=self.store.enqueue(submission);self.store.claim()
+        self.store.progress(item['id'],'configuration',dict(seed=42,samples=[['2015-01-05']],requested=2))
+        self.store.recover();held=self.change(self.store.get(item['id']),'hold')
+        updated=dict(submission,options=dict(submission['options'],selection_order='rank_first'))
+        edited=self.change(held,'update',**{key:value for key,value in updated.items() if key!='id'})
         self.assertIsNone(edited['configuration']);self.assertIsNone(self.store.claim()['plan'])
 
 

@@ -64,8 +64,7 @@ def validate_configuration(portfolio,configuration):
     trial_checkpoints.binding_json(dict(generation='validation',policy='validation',schema='validation',
         result_contract=portfolio_results.CONTRACT_VERSION,implementation={'validation':True},
         execution={'validation':True},configuration=config))
-    try:portfolio.s.r._select(portfolio.db,period=(-1,-1),**config['options'])
-    except TypeError as error:raise ValueError('Unknown screening option.') from error
+    portfolio.validate_selection(config['options'])
     return config
 
 

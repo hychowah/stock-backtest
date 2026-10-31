@@ -12,7 +12,7 @@ from unittest.mock import patch
 import test_numerical_generation as fixtures
 import test_bench_candidates as candidate_tests
 from numerical_factors import FactorEvaluator
-from numerical_policy import PolicyProgram, FACTOR_VERSION, _schema_tree
+from numerical_policy import PolicyProgram, FACTOR_VERSION, _schema_tree, UNSUPPORTED_THRESHOLDS
 import numpy as np
 
 
@@ -30,7 +30,7 @@ class FactorTests(unittest.TestCase):
         return inputs, evaluator
 
     def compare_source(self, inputs, evaluator, days=(date(2015,1,2), date(2016,2,29))):
-        counts = {field: 0 for field in self.s.metrics.FILTERS}
+        counts = {field: 0 for field in inputs.policy.fields['thresholds']}
         maximum_absolute = maximum_relative = 0.
         history = self.s.histories(self.db)
         for pool, book in zip(('cached','legacy'), history, strict=True):
@@ -67,7 +67,7 @@ class FactorTests(unittest.TestCase):
         counts,absolute,relative=self.compare_source(inputs,evaluator)
         self.assertTrue(all(counts.values()),counts)
         self.assertEqual(set(json.loads(evaluator.catalog)['metrics']),set(self.s.metrics.METRICS))
-        self.assertEqual(set(json.loads(evaluator.catalog)['thresholds']),set(self.s.metrics.FILTERS))
+        self.assertEqual(set(json.loads(evaluator.catalog)['thresholds']),set(self.s.metrics.FILTERS)-UNSUPPORTED_THRESHOLDS)
         result=evaluator.evaluate([date(2015,1,2).toordinal()])[0]
         self.assertTrue(any(result.thresholds['fcf'][result.threshold_valid['fcf']]<0))
         self.assertTrue(any(result.thresholds['profit_margin'][result.threshold_valid['profit_margin']]<0))

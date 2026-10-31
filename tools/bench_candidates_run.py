@@ -304,9 +304,9 @@ def intermediate_proof(inputs, executor, source):
     dates = [(next(day for day in sessions if day>=a),
               next(day for day in reversed(sessions) if day<=b)) for a,b in anchors]
     jobs = [(a,b,pool) for pool in ('legacy','cached') for a,b in dates]
-    fields = set(s.metrics.FILTERS)
+    fields = set(inputs.policy.fields['thresholds'])
     options = dict(baseline.options('legacy','F0'),
-        filters=[dict(field=field,op='gt',value=0.) for field in s.metrics.FILTERS])
+        filters=[dict(field=field,op='gt',value=0.) for field in inputs.policy.fields['thresholds']])
     executor.begin(dict(options=options))
     capture = executor.limits.get('capture',False)
     executor.limits['capture'] = True

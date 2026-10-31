@@ -145,15 +145,18 @@ Accepted calls drain through their existing job/request cleanup. Late request
 bodies cannot begin calculation. Stored result reads and queue edits do not
 enter calculation admission.
 
-CB-13B selects persistent numerical execution only in the isolated candidate
-entry. `candidate_calculations.Candidate` implements the shared calculation
+CB-13B added persistent numerical execution in the isolated candidate entry.
+CB-14 now gives each accepted application call its own runtime. `candidate_calculations.Candidate` implements the shared calculation
 boundary. It serializes numerical calls with parent data operations. The child
-holds source then financial ownership while idle and during calculation.
-Status inspection runs in that child. Each calculation checks the same
+holds source then financial ownership during the call, including all random
+trials. Confirmed closure precedes publication of every outcome. Between calls,
+status reads the preparation report. No idle application child retains financial
+ownership. A later call starts a new compiler process; disk checkpoints remain
+reusable. Earlier timings retain their original runtime-lifetime boundary. Each calculation checks the same
 preparation inventory again before numerical result or checkpoint reuse.
 Busy status is advisory and does not claim fresh inputs.
 
-Data Check, Rebuild and Download first retire the resident child. They wait for
+Data Check, Rebuild and Download first confirm that any retained child is retired. They wait for
 confirmed closure before parent financial access. Read-only Check keeps current
 preparation valid. Mutation invalidates it, including partial writes. Rebuild
 retains publication recovery and closed verification. The next run starts a new
@@ -184,10 +187,25 @@ binding preserves the existing filename/size/mtime rule. It is not a new content
 hash of raw prices. Legacy caches without sufficient price evidence rebuild.
 Durable library and queue snapshots remain separate from these derived caches.
 
-[CB-14](plans/compiled-backtest/phases/CB-14.md) records correctness and operational
-qualification. It remains incomplete. The default complete-result workspace
-rejects the declared full-window weekly cases and 100-trial annual top-50 case
-before calculation. Do not raise that limit alone or omit holdings to claim
-capacity. Prospective user workflow budgets, a broader authorized offline dataset
-and installed-runtime qualification access remain unresolved. The preview stays
-opt-in. Normal launcher selection and installed assets are unchanged.
+[The current readiness record](plans/compiled-backtest/phases/CB-14.readiness.md)
+supersedes the earlier universal release gate. Original remains the default.
+The normal app has no engine selector yet. CB-15 owns that selector and release.
+
+Current source reconciles main's research schema 8, operating-yield-spread filter
+and selection order. Both experimental selection orders use the shared SQL
+selector. Rank-first retains original ranks and adds no replacements. The
+experimental catalog supports all existing thresholds except
+`operating_yield_spread_3y`. A request using that field fails explicitly before
+calculation or checkpoint recovery. Original keeps the full catalog. Unknown
+future catalogs still fail numerical preparation.
+
+Schema-7 prepared inputs and numerical generations must be rebuilt with current
+source. Preparation retains full-precision independent baseline agreement.
+Stored results remain readable without preparation or calculation. Numerical
+dependencies remain optional for Original. Do not downgrade the compatible
+saved-result reader when returning to Original.
+
+Existing eager workspace, transport and storage limits remain. Large weekly and
+100-trial cases keep their historical admission failures and stay unavailable
+when these guards reject them. They are deferred capacity work, not newly
+qualified workflows. This change adds no size allowance, benchmark or speed claim.

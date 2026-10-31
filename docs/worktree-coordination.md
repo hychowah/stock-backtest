@@ -104,6 +104,22 @@ replaces the requirement to finish all large stress cases before normal-app
 opt-in integration. Those cases keep their historical verdicts and restrictions.
 This plan-only update performs no merge, publication, restart or installed write.
 
+## CB-14 readiness reconciliation (31 October 2026)
+
+The engine branch ports the financial/request contract from main `18f40ad`
+without moving main or importing its deployment supervisor. Original retains
+schema 8, operating yield spread and both selection orders. The experimental
+policy rejects operating yield spread explicitly. Both orders use shared SQL.
+Candidate application calls now close their runtime before publishing outcomes.
+This releases financial ownership between calls. Disk checkpoints remain reusable.
+See the [readiness record](plans/compiled-backtest/phases/CB-14.readiness.md).
+
+CB-15 owns the normal-app selector, per-submission identity, producer labels and
+release. Main's `29a7e3e` supervisor can publish a newly committed main revision
+automatically. Inspect that behavior before future integration. This readiness
+work changes no default or installed revision. Main's unrelated working edits
+remain untouched.
+
 ## Agreed exception: website run controls (26 October 2026)
 
 The user assigned main the narrow cancellation change for manual website runs.

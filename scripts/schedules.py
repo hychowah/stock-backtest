@@ -107,7 +107,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
     db=sqlite3.connect(temporary)
     try:
         db.executescript(SCHEMA)
-        for table in ('companies','statements','financial_inputs'):
+        for table in ('companies','statements','financial_inputs','treasury10'):
             rows=reference.execute('SELECT * FROM '+table).fetchall()
             if rows:
                 db.executemany('INSERT INTO '+table+' VALUES('+','.join('?'*len(rows[0]))+')',rows)
@@ -190,6 +190,7 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         treasury=db.execute('SELECT yield_value FROM treasuries WHERE day<=? ORDER BY day DESC LIMIT 1',(str(entry),)).fetchone()
         treasury=treasury[0] if treasury else 0.
         spy_return=spy[str(exit_day)]/spy[str(entry)]-1
+    treasury10=r.ten_year_yield(db,entry)
     snapshots=[];pairs=[];filter_rows=[]
     for symbol,s in statements[pool].items():
         backtest_control.checkpoint()
@@ -203,7 +204,7 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         snapshots.append((symbol,ranks.get(symbol),fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,yield_value-treasury,ret,status))
         history=[dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in broad[symbol]]
         evaluated=metrics.evaluate(observation,history)
-        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup,{record[0]:json.loads(record[1]) for record in db.execute('SELECT fiscal,values_json FROM financial_inputs WHERE symbol=?',(symbol,))}).items())
+        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup,{record[0]:json.loads(record[1]) for record in db.execute('SELECT fiscal,values_json FROM financial_inputs WHERE symbol=?',(symbol,))},treasury10).items())
         for metric,(multiple,yield_value) in evaluated.items():
             pairs.append((symbol,metric,multiple,yield_value))
     return dict(entry=str(entry),exit=str(exit_day),pool=pool,
@@ -269,7 +270,7 @@ def _backtest_periods(db, periods, *, months, common_start=None, **options):
     backtest_control.checkpoint()
     started=time.perf_counter()
     periods=portfolio_results.validate_periods(periods,common_start)
-    allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters'}
+    allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters','selection_order'}
     if set(options)-allowed:raise ValueError('Unknown screening option.')
     r._select(db,period=(-1,-1),**options)
     pool=options.get('pool','legacy')

@@ -99,7 +99,11 @@ const ResultArtifacts=(()=>{
     // Opening a fresh-date run exposes its actual seed for an exact replay.
     if(artifact.kind==='random'&&settings.seed!==undefined)submitted={...submitted,seed:artifact.result.configuration.seed};
     const calendar=typeof CalendarSettings!=='undefined'?CalendarSettings:typeof require==='function'?require('./calendar-settings.js'):null;
-    return signature(calendar?calendar.normalize(submitted):submitted)===signature(calendar?calendar.normalize(settings):settings);
+    // Older saved records used filter-first selection. Compare that default
+    // without adding fields to, or rewriting, the stored artifact.
+    submitted=calendar?calendar.normalize(submitted):submitted;
+    settings=calendar?calendar.normalize(settings):settings;
+    return signature({selection_order:'filter_first',...submitted})===signature({selection_order:'filter_first',...settings});
   }
   return {create,decode,publish,matches,reader,acquire,release,opening,current,forView:key=>views.get(key)};
 })();

@@ -1,11 +1,12 @@
 /* Pure selection engine shared by the browser and SQL parity tests. */
 (function(root) {
   'use strict';
-  const defaults = Object.freeze({first:1996,last:2025,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:null});
+  const defaults = Object.freeze({first:1996,last:2025,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:null,selection_order:'filter_first'});
   function validate(options) {
     const o={...defaults,...options};
     for(const key of ['rank_from','rank_to']) if(!Number.isInteger(o[key])) throw Error('Years and ranks must be whole numbers.');
     if(o.rank_from<1 || o.rank_to<o.rank_from || o.rank_to>5000) throw Error('Choose increasing ranks between 1 and 5000.');
+    if(!['filter_first','rank_first'].includes(o.selection_order))throw Error('Choose filter first or rank first.');
     if(!['legacy','cached'].includes(o.pool)) throw Error('Choose a valid stock universe.');
     for(const key of ['min_cap','max_cap','min_ev','min_yield','max_multiple']) {
       if(o[key]!==null && (!Number.isFinite(o[key]) || o[key]<0)) throw Error('Financial filters must be non-negative numbers.');
@@ -25,17 +26,22 @@
   function select(observations,o,dataset,mode) {
     if(!Object.hasOwn(dataset.metrics,o.metric))throw Error('Choose a valid ranking metric.');
     for(const c of o.filters??[])if(!dataset.filter_catalog?.[c.field]?.available)throw Error('Choose an available filter metric.');
-    observations=observations.filter(h=>{
+    const passes=h=>{
       const values=dataset.filter_values?.[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]??{};
-      return (o.filters??[]).every(c=>Number.isFinite(values[c.field]) && (c.op==='lt'?values[c.field]<c.value:values[c.field]>c.value));
-    });
+      return h.market_cap>=o.min_cap && h.enterprise_value>=o.min_ev && h.metric_yield>=o.min_yield && (o.max_cap===null || h.market_cap<=o.max_cap) && (o.max_multiple===null || h.metric_multiple<=o.max_multiple) && (o.sector===null || h.sector===o.sector) && (o.exchange===null || h.exchange===o.exchange) &&
+        (o.filters??[]).every(c=>Number.isFinite(values[c.field]) && (c.op==='lt'?values[c.field]<c.value:values[c.field]>c.value));
+    };
     observations=observations.map(h=>{
       const value=dataset.metric_values[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]?.[o.metric];
       return value?{...h,metric_multiple:value[0],metric_yield:value[1]}:null;
     }).filter(h=>h!==null);
-    const matches=observations.filter(h=>h.market_cap>=o.min_cap && h.enterprise_value>=o.min_ev && h.metric_yield>=o.min_yield && (o.max_cap===null || h.market_cap<=o.max_cap) && (o.max_multiple===null || h.metric_multiple<=o.max_multiple) && (o.sector===null || h.sector===o.sector) && (o.exchange===null || h.exchange===o.exchange));
+    const matches=o.selection_order==='filter_first'?observations.filter(passes):observations;
     matches.sort((a,b)=>b.metric_yield-a.metric_yield || (a.candidate_rank??-Infinity)-(b.candidate_rank??-Infinity) || (a.symbol<b.symbol?-1:a.symbol>b.symbol?1:0));
-    return {stocks:matches.slice(o.rank_from-1,o.rank_to).map((h,i)=>({...h,rank:o.rank_from+i})),matches:matches.length};
+    // Rank the chosen scope once. Later filters retain those ranks and cannot
+    // pull replacements from outside the requested range.
+    let stocks=matches.slice(o.rank_from-1,o.rank_to).map((h,i)=>({...h,rank:o.rank_from+i}));
+    if(o.selection_order==='rank_first')stocks=stocks.filter(passes);
+    return {stocks,matches:o.selection_order==='rank_first'?stocks.length:matches.length};
   }
   function screen(dataset, options) {
     const o=validate(options), groups={};
@@ -70,7 +76,11 @@
     const {stocks,matches:count}=select(matches,o,dataset,'latest');
     return {options:o,asof:dataset.latest.metadata.asof,stocks,matches:count,requested:o.rank_to-o.rank_from+1,median_market_cap:median(stocks.map(h=>h.market_cap)),median_yield:median(stocks.map(h=>h.metric_yield))};
   }
-  const api={defaults,validate,median,screen,latestScreen};
+  function selectionDescription(options={}) {
+    const ranks=`Ranks ${options.rank_from??defaults.rank_from}–${options.rank_to??defaults.rank_to}`;
+    return options.selection_order==='rank_first'?ranks+' selected before filters. No replacements; original ranks retained. Equal weight across passing stocks.':ranks+' after filtering, equal weight.';
+  }
+  const api={defaults,validate,median,screen,latestScreen,selectionDescription};
   if(typeof module==='object' && module.exports)module.exports=api;
   root.StockScreener=api;
 })(globalThis);

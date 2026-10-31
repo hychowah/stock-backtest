@@ -7,13 +7,15 @@ import backtest_control
 import backtest_jobs
 import cache_access
 from numerical_runtime import ClosureError
+from numerical_policy import require_supported
 
 
 class Candidate(backtest_jobs.Calculations):
-    """Serialize execution and parent operations; retain uncertain child owners.
+    """Own one runtime per call; retain uncertain child owners until closure.
 
     Callers never prehold financial ownership. Status is advisory; the child
     checks preparation freshness before result or checkpoint reuse.
+    A completed call leaves no idle child holding financial ownership.
     """
     def __init__(self, preparation):
         super().__init__()
@@ -85,6 +87,8 @@ class Candidate(backtest_jobs.Calculations):
         if admission not in ('interactive','queue'): raise ValueError('Invalid calculation admission policy.')
         with self._operation(admission):
             try:
+                require_supported(options)
+                if planned is not None: require_supported(planned.get('options', {}))
                 waiting = False
                 deadline = time.monotonic() + 30
                 while True:
@@ -114,6 +118,8 @@ class Candidate(backtest_jobs.Calculations):
                     result = self.runtime.calculate(mode, options, progress, configuration,
                         planned=planned, cancelled=self.closed.is_set)
                     if not details: result.pop('trial_results', None)
+                self._checkpoint()
+                self._retire()
                 self._checkpoint()
                 return result
             except ClosureError as error:

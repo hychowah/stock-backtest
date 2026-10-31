@@ -20,6 +20,20 @@ from process_owner import process_metrics
 from collections import OrderedDict
 
 
+def _validate_submitted(options, plan):
+    """Keep recorded settings exact, accepting the legacy omitted order only.
+
+    The recorded plan remains unchanged. Comparing defaults must not resample
+    dates or allow a different explicit financial setting to use the plan.
+    """
+    submitted = {'selection_order':'filter_first', **plan['options']}
+    submitted.update(numerical_calendar.request_fields(plan),
+                     trials=plan['requested'], seed=plan['seed'])
+    for key, value in {'selection_order':'filter_first', **options}.items():
+        if key not in submitted or value != submitted[key]:
+            raise ValueError('Submitted settings differ from the recorded random plan.')
+
+
 class Session:
     def __init__(self, configuration):
         self.configuration = configuration
@@ -80,10 +94,10 @@ class Session:
     def plan(self, options):
         # The private SQL workspace contains immutable sessions. Use the ordinary
         # planner, including its fresh default seed and exact envelope.
+        configuration,selection,_=numerical_calendar.decode_request(options)
+        selection.pop('trials',None);selection.pop('seed',None)
+        self.portfolio.validate_selection(selection)
         if 'calendar' in options:
-            configuration,selection,_=numerical_calendar.decode_request(options)
-            selection.pop('trials',None);selection.pop('seed',None)
-            self.portfolio.s.r._select(self.portfolio.db,period=(-1,-1),**selection)
             return numerical_calendar.plan(self.portfolio._calendar().sessions,options,
                 checkpoint=backtest_control.checkpoint)
         return robustness.plan(self.portfolio.db,**deepcopy(options))
@@ -93,10 +107,7 @@ class Session:
         if mode == 'random':
             plan = self.plan(options) if planned is None else numerical_random.validate_configuration(self.portfolio,planned)
             if planned is not None:
-                submitted=dict(plan['options'],**numerical_calendar.request_fields(plan),
-                    trials=plan['requested'],seed=plan['seed'])
-                if any(key not in submitted or value!=submitted[key] for key,value in options.items()):
-                    raise ValueError('Submitted settings differ from the recorded random plan.')
+                _validate_submitted(options, plan)
             count = min(len(self.inputs.symbols),plan['options'].get('rank_to',50)-plan['options'].get('rank_from',1)+1)
             estimate = sum(len(dates) for dates in plan['samples'])*(16384+4096*count)
             if estimate > self.result_workspace_bytes:
@@ -116,6 +127,9 @@ class Session:
             result = numerical_random.run(self.portfolio,plan,experiment,progress,capture=observed)['result']
             result['trial_results'] = details
         elif mode == 'custom':
+            _, selection, _ = numerical_calendar.decode_request(options)
+            selection.pop('dates', None)
+            self.portfolio.validate_selection(selection)
             key = (self.inputs.signature, trial_checkpoints.canonical(options))
             if key in self.results:
                 result = self.results.pop(key); self.results[key] = result
@@ -152,10 +166,7 @@ class Session:
         if mode=='random':
             plan=self.plan(options) if planned is None else numerical_random.validate_configuration(self.portfolio,planned)
             if planned is not None:
-                submitted=dict(plan['options'],**numerical_calendar.request_fields(plan),
-                               trials=plan['requested'],seed=plan['seed'])
-                if any(key not in submitted or value!=submitted[key] for key,value in options.items()):
-                    raise ValueError('Submitted settings differ from the recorded random plan.')
+                _validate_submitted(options, plan)
             configuration(deepcopy(plan))
         writer=result_evidence.Writer(stream,trials=plan['requested'] if plan else 1,
             metadata=dict(mode=mode,options=deepcopy(options),configuration=plan,

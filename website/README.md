@@ -6,9 +6,11 @@ Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from t
 
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
 2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
-3. Use **Additional filters → + Add filter** to combine metric, **Less than** or **More than**, and value conditions. All conditions must pass before ranking. Two conditions on one metric create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Download Full annual financial data and rebuild to supply their inputs.
-4. Choose inclusive ranks in either mode, and book years in historical mode. Rank 1 has the lowest selected valuation multiple after filtering. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
+3. Use **Additional filters → + Add filter** to combine metric, **Less than** or **More than**, and value conditions. All conditions must pass at your chosen selection stage. Two conditions on one metric create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Download Full annual financial data and rebuild to supply their inputs.
+4. Choose inclusive ranks in either mode, and book years in historical mode. Choose **Selection order**: **Filter first, then rank** (default), or **Rank first, then filter**. The second option filters only the requested shortlist, keeps original ranks and adds no replacements. Rank 1 has the lowest selected valuation multiple in the ranking scope. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
 5. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
+
+The order choice applies to all user filters, including size, sector and additional conditions. Both options start from the same prepared stock pool. If 20 stocks pass after selecting the top 50, each receives 5% weight. Saved results and queued tests retain the submitted order. Older saved results restore filter-first. Changing the order reuses prepared books.
 
 The saved January view reselects and equally weights stocks every January. Custom calendars rebalance on the selected fixed or random schedule. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
 
@@ -38,6 +40,18 @@ If essential source files are missing or invalid, startup opens this panel for
 recovery. The page is served from current source at `/data.html`; opening the
 built HTML directly provides local-service instructions. See the detailed
 [data workflow](../docs/research-workflow.md#data-control-panel).
+
+The **Sales × 3-year avg operating margin / EV − US 10Y (pp)** filter uses
+the selected annual revenue multiplied by the simple average of three annual
+operating margins, divided by screen-date EV. An annual operating margin is
+operating income divided by revenue. The three fiscal years must be consecutive
+and end at the selected report. Subtract the latest saved US 10-year Treasury
+yield on or before the screen date. Enter 5 for a spread of 5 percentage points.
+Missing history or Treasury values fail this condition. Negative margins and
+spreads remain valid. This filter follows the chosen selection order in both pools and all
+four views. Installing this change requires an offline rebuild of research,
+daily data and the website. It reuses full annual statement assets and saved
+Treasury curves. See the [formula and data rules](../docs/research-workflow.md#sales-based-operating-yield-spread).
 
 ## Rebuild from saved data
 

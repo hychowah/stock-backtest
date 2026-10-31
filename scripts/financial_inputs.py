@@ -6,7 +6,7 @@ import cache_assets
 import run
 
 ENDPOINTS = {
-    'income-statement': ('revenue','netIncome','epsDiluted','ebit','interestExpense'),
+    'income-statement': ('revenue','operatingIncome','netIncome','epsDiluted','ebit','interestExpense'),
     'balance-sheet-statement': ('totalStockholdersEquity','totalCurrentAssets','totalCurrentLiabilities','totalDebt'),
     'cash-flow-statement': ('freeCashFlow',),
     'key-metrics': (),

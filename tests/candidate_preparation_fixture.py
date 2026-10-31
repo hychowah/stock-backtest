@@ -34,10 +34,11 @@ def main():
         owner=Candidate(candidate)
         options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',rank_to=5)
         result=owner.calculate('custom',options,None,None)
-        resident=owner.runtime
+        assert owner.runtime is None
         assert owner.status()['state']=='current'
-        assert owner.calculate('custom',options,None,None)==result
-        assert resident.last_stats['result_hits']>0
+        from numerical_portfolio import compare_results
+        assert compare_results(owner.calculate('custom',options,None,None),result)['exact']
+        assert owner.runtime is None
         checks=[source/'requirements-numerical.txt',source/'website/serve_app.py',
                 source/'results/summary-exits.txt',source/'raw/px/ZZ000.json',
                 source/'data/numerical/current.json']

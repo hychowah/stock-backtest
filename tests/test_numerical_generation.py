@@ -94,7 +94,7 @@ class GenerationTests(unittest.TestCase):
             inputs = self.attach()
             inputs.validate()
             fields = dict(filters=[dict(field=field,op='gt',value=-999999.)
-                                   for field in self.s.metrics.FILTERS])
+                                   for field in ng.PolicyProgram(self.s).fields['thresholds']])
             with closing(NumbaExecutor(inputs, limits=dict(threads=2))) as executor:
                 for pool in ('legacy', 'cached'):
                     book = ('2015-01-02', '2016-01-04', pool)
@@ -115,7 +115,7 @@ class GenerationTests(unittest.TestCase):
         self.assertTrue(inputs.histories['A'])
         self.enterContext(patch.object(ng._Records, '__getitem__',
             side_effect=AssertionError('Source assembly loaded an unused history')))
-        fields = [dict(field=field,op='gt',value=-999999) for field in self.s.metrics.FILTERS]
+        fields = [dict(field=field,op='gt',value=-999999) for field in ng.PolicyProgram(self.s).fields['thresholds']]
         maximum_absolute=maximum_relative=0.
         for factory in (PythonExecutor, NumbaExecutor):
             executor = factory(inputs, limits=dict(threads=2, request_plan=True))

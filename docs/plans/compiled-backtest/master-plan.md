@@ -28,16 +28,20 @@ weekly/100-trial capacity and changing the default are separate follow-up work.
 They do not block the initial supported opt-in workflow. Failed historical gates
 remain failed; no larger workload is qualified by this change.
 
-First reconcile main's schema-8 preparation, operating-yield-spread filter and
-selection-order behavior. Original must retain them. The experimental engine
-must support a combination correctly or reject it explicitly. Then implement
-the choice through existing application owners and verify representative complete
-workflows on Windows. Reuse completed evidence and test changed boundaries.
+The [CB-14 readiness implementation](phases/CB-14.readiness.md) reconciles main's
+schema-8 preparation, operating-yield-spread filter and selection order. Original
+retains its full catalog. Experimental requests explicitly reject operating
+spread and use the shared SQL selector for supported settings. Each application
+candidate call closes its child before publishing an outcome. CB-14 readiness
+verification passes, including 263 native tests and the affected WSL/browser
+checks. The current supported readiness scope is complete. CB-15 owns the normal-app
+choice, persistent per-submission identity and representative selector workflows.
 
 This section supersedes older full-replacement prerequisites and historical
 “CB-15 blocked” next-step instructions below. The 30 October approximate 4×
-performance direction remains; no exact ratio gates opt-in testing. This plan
-update changes no code, runtime limits, installed assets or default routing.
+performance direction remains; no exact ratio gates opt-in testing. The delivery-plan change grants no limit expansion or installed access.
+The readiness implementation leaves normal default routing and installed assets
+unchanged.
 
 ## Implemented baseline before the delivery change
 
@@ -62,8 +66,9 @@ CB-13B connects persistent numerical calculation only in the isolated preview.
 CB-13C completes browser/calendar compatibility and qualified preview week/month
 controls. CB-14 has a complete twelve-trial bounded consumer pass, independent
 input preparation, a completed fresh24 annual backend run and scoped copied-runtime
-compatibility. Full24 ordinary agreement, main-feature reconciliation and broader
-capacity remain open. Normal launcher and running-server routing are unchanged.
+compatibility. Current main-feature reconciliation is implemented in the
+readiness slice. Full24 ordinary agreement and broader capacity remain follow-up
+work. Normal launcher and running-server routing are unchanged.
 
 The cumulative design follow-up after CB-12 separates optional compiled guard
 translation from base policy construction. Generation preparation, entry factors
@@ -2038,7 +2043,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
-| CB-14 | In progress: opt-in readiness | [Current release scope](phases/CB-14.opt-in-release.md) replaces the universal stress dependency. The [consumer workflow](phases/CB-14.capacity6.consumer.md), [current three-trial pair](phases/CB-14.capacity6.history.md), [fresh24 backend](phases/CB-14.capacity6.fresh24.retry4.md) and [isolated compatibility](phases/CB-14.compatibility.md) supply reusable scoped evidence. Main schema/filter/order reconciliation and affected integration checks remain. G03/G06 stay failed historical capacity observations; full24 agreement/performance and broader stress are follow-up. No selector exists in the normal app yet. |
+| CB-14 | Complete: supported opt-in readiness | [Current release scope](phases/CB-14.opt-in-release.md) replaces the universal stress dependency. The [consumer workflow](phases/CB-14.capacity6.consumer.md), [current three-trial pair](phases/CB-14.capacity6.history.md), [fresh24 backend](phases/CB-14.capacity6.fresh24.retry4.md) and [isolated compatibility](phases/CB-14.compatibility.md) supply reusable scoped evidence. The [readiness slice](phases/CB-14.readiness.md) implements main schema/filter/order reconciliation, explicit experimental support and operation-scoped child closure. Affected WSL checks, 263 passing native tests and browser/guide checks close revised readiness. The failed recursive-helper attempt remains failed; its guarded rerun passes. Read the filed results and independent audit for exact scope. G03/G06 stay failed historical capacity observations; full24 agreement/performance and broader stress are follow-up. No selector exists in the normal app yet. |
 | CB-15 | Planned: normal-app opt-in release | Original remains default. Per-run engine choice, current-main compatibility and representative complete workflows follow revised CB-14 readiness. Deferred stress cases do not block this delivery. |
 
 ## Completion definition

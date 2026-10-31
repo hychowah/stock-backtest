@@ -17,6 +17,7 @@ for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[
 const run=code=>vm.runInContext(code,ctx);
 run('const LATEST_VIEW="latest",JANUARY_VIEW="january"');
 assert.equal(run('screeningMode'),'latest');
+assert.equal(el('selection-order').value,'filter_first');
 assert.equal(el('latest-view').hidden,false);assert.equal(el('backtest-view').hidden,true);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.asof'),latestDate);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),latestCount(50));
@@ -180,6 +181,7 @@ assert.equal(run('ResultArtifacts.forView(JANUARY_VIEW).result.options.rank_to')
 console.log('Passed: manual multi-setting edits, dirty notice, restoring settings, explicit submit and re-enabling auto-run.');
 // A saved January result reopens from its own stock rows without selection.
 const savedJanuary=JSON.parse(run('JSON.stringify(currentArtifact())'));
+delete savedJanuary.settings.selection_order;delete savedJanuary.result.options.selection_order;
 savedJanuary.result.years[0].holdings[0].symbol='SAVED_ONLY';
 savedJanuary.catalog.metrics.ev_ebitda.label='Saved valuation label';
 savedJanuary.catalog.filters.market_cap.label='Saved cap threshold';
@@ -190,6 +192,7 @@ delete savedJanuary.presentation;ctx.savedJanuary=savedJanuary;
 el('auto-run').checked=false;el('rank-to').value='7';
 run("const selectBeforeRestore=StockScreener.screen;StockScreener.screen=()=>{throw Error('Saved results must not rerun')};restoreSavedBacktest(savedJanuary);StockScreener.screen=selectBeforeRestore");
 assert.equal(el('rank-to').value,String(savedJanuary.settings.rank_to));
+assert.equal(el('selection-order').value,'filter_first');
 assert(el('ranking-metric').innerHTML.includes('Saved valuation label'));
 assert(el('filter-conditions').innerHTML.includes('Saved cap threshold'));
 assert.equal(el('screen-status').textContent,'Saved warning');assert(el('screen-status').className.includes('warning'));
@@ -202,6 +205,13 @@ assert(el('results-state').textContent.includes('Results match'));
 run('renderStockTable(ResultArtifacts.forView(JANUARY_VIEW).result.years[0].year)');
 assert(el('holding-body-'+savedJanuary.result.years[0].year).innerHTML.includes('SAVED_ONLY'));
 el('download-holdings').handlers.click({preventDefault(){}});assert(savedCsv.includes('SAVED_ONLY'));
+const savedRankFirst=JSON.parse(JSON.stringify(savedJanuary));
+savedRankFirst.settings.selection_order='rank_first';savedRankFirst.result.options.selection_order='rank_first';
+ctx.savedRankFirst=savedRankFirst;
+run("const selectBeforeOrderRestore=StockScreener.screen;StockScreener.screen=()=>{throw Error('Do not recalculate stored rank-first results')};restoreSavedBacktest(savedRankFirst);StockScreener.screen=selectBeforeOrderRestore");
+assert.equal(el('selection-order').value,'rank_first');assert(el('results-state').textContent.includes('Results match'));
+el('selection-order').value='filter_first';run('settingsChanged(undefined,false)');
+assert(el('results-state').textContent.includes('do not match'));assert.equal(run('currentArtifact().settings.selection_order'),'rank_first');
 el('auto-run').checked=true;run('filterConditions=[];applyRange()');
 console.log('Passed: saved January settings, exact stored stocks/returns and CSV restore without rerunning.');
 
@@ -403,16 +413,17 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
    assert.equal(storage.get('backtest-auto-run'),'false');assert.equal(submissions,0);
    assert(el('queue-status').textContent.includes('No test has started'));
  }
- el('rank-to').value='12';run('settingsChanged()');assert.equal(submissions,0);
+ el('rank-to').value='12';el('selection-order').value='rank_first';run('settingsChanged()');assert.equal(submissions,0);
  await el('queue-add-next').handlers.click();assert.equal(submissions,1);
  assert.equal(queueRows[0].options.rank_to,12);assert.equal(queueRows[0].mode,'custom');
+ assert.equal(queueRows[0].options.selection_order,'rank_first');
  assert.equal(el('queue-add').textContent,'Add to queue');
  queueRows=[];await run('BacktestQueue.refresh()');
  console.log('Passed: Add to queue opens manual setup from latest/January without calculation, then submits the chosen settings to the queue.');
 
-run("filterConditions=[];switchMode('latest')");
+run("resetFilters();switchMode('latest')");
 el('add-filter').handlers.click();
-for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','peg','roe','current_ratio','interest_coverage','debt_equity']) {
+for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','operating_yield_spread_3y','peg','roe','current_ratio','interest_coverage','debt_equity']) {
  const option=el('filter-conditions').innerHTML.match(new RegExp('<option[^>]*value="'+field+'"[^>]*>'));
  assert(option,'Missing financial filter '+field);assert.equal(option[0].includes('disabled'),!prepared.filter_catalog[field].available);
 }

@@ -200,7 +200,9 @@ class Store:
                     if state!='held':raise Conflict('Select Edit before changing this test.')
                     name,spec,seed=self.specification(request)
                     old,new=json.loads(row['spec']),json.loads(spec)
-                    same=old['mode']==new['mode'] and old['options']==new['options']
+                    # A legacy omission means filter-first. Exposing that
+                    # default during a name-only edit must retain recorded dates.
+                    same=old['mode']==new['mode'] and {'selection_order':'filter_first',**old['options']}=={'selection_order':'filter_first',**new['options']}
                     if same:seed=row['seed']
                     db.execute("UPDATE jobs SET name=?,spec=?,seed=?,state='queued',progress=NULL,configuration=CASE WHEN ? THEN configuration ELSE NULL END,plan=CASE WHEN ? THEN plan ELSE NULL END,error=NULL,started=NULL,finished=NULL,revision=revision+1 WHERE id=?",
                                (name,spec,seed,same,same,identifier))

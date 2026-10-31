@@ -163,7 +163,7 @@ class BoundedRuntimeTests(unittest.TestCase):
         self.assertEqual(jobs.start_evidence('a'*32,'random',options,planned=plan,max_bytes=LIMIT)['state'],'complete')
         with self.assertRaisesRegex(ValueError,'different settings'):jobs.start('a'*32,'random',options,planned=plan)
         with jobs.open_evidence('a'*32) as reader:
-            runtime=owner.runtime
+            runtime=owner.created[-1]
             with owner.parent_operation():
                 self.assert_closed(runtime)
                 with self.fixture.owner.hold(timeout=0):pass
@@ -186,8 +186,9 @@ class BoundedRuntimeTests(unittest.TestCase):
     def test_jobs_stop_during_transfer_preserves_committed_recovery_and_reader_status_lock(self):
         owner=self.candidate();jobs=backtest_jobs.Jobs(owner,evidence_root=self.root/'transfer-stop',evidence_bytes=96*1024**2)
         self.addCleanup(jobs.close)
-        owner.calculate('custom',self.options(),None,None)
-        runtime=owner.runtime;send=runtime._send
+        # Attach a controlled child so the first transfer can be interrupted.
+        runtime=owner.preparation._runtime();owner.runtime=runtime;runtime.start()
+        send=runtime._send
         def stopped(message):
             if message.get('command')=='transfer_ack' and message['sequence']==0:
                 jobs.cancel('e'*32)

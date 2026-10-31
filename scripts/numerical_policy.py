@@ -20,6 +20,18 @@ FINANCIAL_FIELDS = ('pe', 'pb', 'fcf', 'fcf_yield', 'price_fcf',
                     'debt_equity', 'peg')
 FACTOR_VERSION = 1
 
+# Recognized source features that have no qualified numerical implementation.
+# Keep Original's catalog intact. An experimental request must never omit them.
+UNSUPPORTED_THRESHOLDS = frozenset({'operating_yield_spread_3y'})
+
+
+def require_supported(options):
+    """Reject unsupported experimental conditions without changing settings."""
+    for condition in options.get('filters', []) or []:
+        if isinstance(condition, dict) and condition.get('field') in UNSUPPORTED_THRESHOLDS:
+            raise ValueError('New engine — experimental does not support filter '
+                             + condition['field'] + '. Submit a new run with Original.')
+
 
 def _tree(function):
     return ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
@@ -166,7 +178,7 @@ class PolicyProgram:
         m = schedules.metrics
         if tuple(m.METRICS) != ('ev_ebitda', 'ev_ebitda_3y'):
             raise ValueError('Unsupported ranking catalog for candidate experiment.')
-        if set(m.FILTERS) != set(FINANCIAL_FIELDS) | {
+        if set(m.FILTERS) != set(FINANCIAL_FIELDS) | UNSUPPORTED_THRESHOLDS | {
                 'return_1y', 'return_3y', 'market_cap', 'enterprise_value',
                 'ev_ebitda', 'ev_ebitda_3y', 'ebitda_yield'}:
             raise ValueError('Unsupported threshold catalog for candidate experiment.')
@@ -263,7 +275,9 @@ class PolicyProgram:
         for years in (1,3):
             field_expressions[f'return_{years}y'] = self._lower(trailing,
                 lookups={'end':'screen_adjusted','start':f'trailing_{years}y'})
-        expressions.extend(('filter_'+field,field_expressions[field]) for field in m.FILTERS)
+        supported = {field: descriptor for field, descriptor in m.FILTERS.items()
+                     if field not in UNSUPPORTED_THRESHOLDS}
+        expressions.extend(('filter_'+field,field_expressions[field]) for field in supported)
         self.expressions = tuple(expressions)
         self.expression_map = dict(expressions)
         self.output_names = tuple(name for name,unused in expressions)
@@ -309,7 +323,7 @@ class PolicyProgram:
             'thresholds': {key: dict(descriptor=dict(value), outputs=('filter_' + key,),
                 validity='finite' if key in FINANCIAL_FIELDS else 'pair' if key in m.METRICS
                 else 'trailing' if key in ('return_1y', 'return_3y') else 'entry')
-                           for key, value in m.FILTERS.items()}}
+                           for key, value in supported.items()}}
         self._entry, entry_source = self._entry_adapter(snapshot)
         self.trailing, trailing_source = self._trailing_adapter(filters)
         self.field_schema = hashlib.sha256(json.dumps(dict(version=FACTOR_VERSION,

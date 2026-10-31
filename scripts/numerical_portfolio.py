@@ -13,6 +13,7 @@ import numerical_calendar
 import portfolio_results
 from numerical_workspace import stage_book
 from numerical_matrix import retained_size
+from numerical_policy import require_supported
 
 
 class NumericalPortfolio:
@@ -53,6 +54,18 @@ class NumericalPortfolio:
     def _calendar(self):
         return self.s.schedule_calendar.SessionCalendar(
             [date.fromisoformat(day) for day in sorted(self.inputs.sessions)])
+
+    def validate_selection(self, options):
+        """Validate financial settings and experimental support before reuse.
+
+        Invalid or unsupported requests fail without changing any setting.
+        No provider work, SQL staging or checkpoint read is admitted here.
+        """
+        try:
+            self.s.r._select(self.db, period=(-1, -1), **options)
+        except TypeError as error:
+            raise ValueError('Unknown screening option.') from error
+        require_supported(options)
 
     def backtest(self, *, start, end, months=12, **options):
         self._validate_inputs()
@@ -105,10 +118,7 @@ class NumericalPortfolio:
         self._validate_inputs()
         # This unchanged selector validates options before any provider work or
         # SQL writes, including unknown keyword arguments and strict filters.
-        try:
-            self.s.r._select(self.db, period=(-1, -1), **options)
-        except TypeError as error:
-            raise ValueError('Unknown screening option.') from error
+        self.validate_selection(options)
         if emit_period is None and self.result_workspace_bytes is not None:
             count = min(len(self.inputs.symbols),options.get('rank_to',50)-options.get('rank_from',1)+1)
             if len(periods)*(16384+4096*count) > self.result_workspace_bytes:

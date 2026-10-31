@@ -18,7 +18,7 @@ import time
 import numpy as np
 import backtest_control
 
-from numerical_policy import PolicyProgram, FINANCIAL_FIELDS
+from numerical_policy import PolicyProgram, FINANCIAL_FIELDS, require_supported
 from numerical_generation import TEMPORAL_VERSION
 LOOKUP_FIELDS = ('fiscal_raw', 'raw_entry', 'adjusted_entry', 'adjusted_exit',
                  'screen_adjusted', 'trailing_1y', 'trailing_3y')
@@ -33,6 +33,7 @@ class RequestPlan:
     """
     def __init__(self, request, inputs):
         self.options = dict(request.get('options', request))
+        require_supported(self.options)
         self.needed = frozenset(condition['field'] for condition in
                                 self.options.get('filters', []) or [])
         # Both ranking pairs remain exposed to the unchanged SQL selector. The
@@ -88,6 +89,7 @@ class PythonExecutor:
 
     def begin(self,request):
         self.options = dict(request.get('options',request))
+        require_supported(self.options)
         self.request_plan = RequestPlan(request, self.inputs) if self.limits.get('request_plan') else None
         self.trace = {}
         for key in ('report_seconds','lookup_seconds','planning_seconds',
@@ -135,6 +137,7 @@ class PythonExecutor:
 
     def evaluate(self,book_batch,options=None):
         options = self.options if options is None else options
+        require_supported(options)
         books = [(date.fromisoformat(str(a)),date.fromisoformat(str(b)),pool) for a,b,pool in book_batch]
         if any(pool not in ('cached','legacy') for a,b,pool in books):raise ValueError('Unknown candidate pool.')
         entries = np.asarray([a.toordinal() for a,b,pool in books],dtype=np.int32)

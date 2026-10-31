@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import sys
+import sqlite3
 import time
 from threading import Event, Thread
 from unittest.mock import Mock, patch
@@ -34,11 +35,13 @@ class CandidateTests(unittest.TestCase):
         preparation.status.return_value=dict(state='current')
         preparation._runtime.side_effect=lambda:self.make(**runtime_options)
         owner=Candidate(preparation)
+        owner.created=[]
         # These inputs use the runtime's fictional binding rather than a full
         # source-root preparation report. Real report checks run in the fixture.
         original=preparation._runtime.side_effect
         def make():
             value=original()
+            owner.created.append(value)
             start=value.start
             def launch(**kw):
                 value.configuration['preparation_status']=False
@@ -55,15 +58,16 @@ class CandidateTests(unittest.TestCase):
         self.addCleanup(owner.retire)
         return owner
 
-    def test_application_reuse_full_trials_summary_replay_and_parent_handoff(self):
+    def test_operation_closure_full_trials_summary_replay_and_parent_handoff(self):
         owner=self.candidate();options=self.options()
         result=owner.calculate('custom',options,None,None)
         self.assertTrue(compare_results(self.fixture.s.backtest(self.fixture.db,**options),result)['exact'])
-        runtime=owner.runtime;pid=runtime.owner.process.pid
+        runtime=owner.created[-1];self.assert_closed(runtime)
+        self.assertIsNone(owner.runtime)
         self.assertEqual(owner.status()['state'],'current')
-        self.assertEqual(owner.calculate('custom',options,None,None),result)
-        self.assertEqual(runtime.owner.process.pid,pid)
-        self.assertGreater(runtime.last_stats['result_hits'],0)
+        self.assertTrue(compare_results(owner.calculate('custom',options,None,None),result)['exact'])
+        self.assertIsNot(owner.created[-1],runtime)
+        self.assert_closed(owner.created[-1])
         options=self.options(trials=24,seed=42);plans=[]
         full=owner.calculate('random',options,None,plans.append)
         self.assertEqual(len(full['trial_results']),24)
@@ -84,11 +88,13 @@ class CandidateTests(unittest.TestCase):
             with self.fixture.owner.hold(timeout=0):pass
         self.assertIsNone(owner.runtime)
         owner.calculate('custom',self.options(),None,None)
-        self.assertNotEqual(owner.runtime.owner.process.pid,pid)
+        self.assertIsNone(owner.runtime)
+        self.assert_closed(owner.created[-1])
 
     def test_uncertain_retirement_blocks_parent_until_proof_and_status_is_bounded(self):
         owner=self.candidate();owner.calculate('custom',self.options(),None,None)
-        runtime=owner.runtime;original=runtime.close;release=Event();entered=Event();done=Event()
+        runtime=owner.preparation._runtime();owner.runtime=runtime;runtime.start()
+        original=runtime.close;release=Event();entered=Event();done=Event()
         def close():
             entered.set()
             if not release.is_set():raise ClosureError(runtime)
@@ -99,6 +105,59 @@ class CandidateTests(unittest.TestCase):
         thread=Thread(target=work);thread.start();self.assertTrue(entered.wait(3))
         self.assertFalse(done.is_set());self.assertTrue(owner.status()['busy'])
         release.set();thread.join(5);self.assertFalse(thread.is_alive());self.assertTrue(done.is_set())
+
+    def test_success_waits_for_closure_and_original_needs_no_retirement_step(self):
+        owner=self.candidate();original=owner.preparation._runtime.side_effect
+        entered=Event();release=Event();published=Event();errors=[]
+        def make():
+            value=original();close=value.close
+            def delayed():
+                entered.set()
+                if not release.is_set():raise ClosureError(value)
+                close()
+            value.close=delayed
+            return value
+        owner.preparation._runtime.side_effect=make
+        def work():
+            try:
+                owner.calculate('custom',self.options(),None,None)
+                published.set()
+            except BaseException as error:errors.append(error)
+        thread=Thread(target=work);thread.start()
+        try:
+            self.assertTrue(entered.wait(30));self.assertFalse(published.is_set())
+            self.assertTrue(owner.status()['busy'])
+        finally:release.set();thread.join(10)
+        self.assertFalse(thread.is_alive());self.assertEqual(errors,[])
+        self.assertTrue(published.is_set());self.assertIsNone(owner.runtime)
+        self.assert_closed(owner.created[-1])
+        ordinary=backtest_jobs.Calculations()
+        def writable():
+            db=sqlite3.connect(self.fixture.fixture.path)
+            db.row_factory=sqlite3.Row
+            return db
+        with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(self.fixture.s,'connect',side_effect=writable):
+            result=ordinary.calculate('custom',self.options(),None,None)
+        self.assertTrue(compare_results(self.fixture.s.backtest(self.fixture.db,**self.options()),result)['exact'])
+        # An unusable experimental preparation must not gate Original.
+        owner.preparation.status.return_value=dict(state='unavailable')
+        with self.assertRaises(backtest_jobs.Unavailable):
+            owner.calculate('custom',self.options(),None,None)
+        with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(self.fixture.s,'connect',side_effect=writable):
+            self.assertEqual(ordinary.calculate('custom',self.options(),None,None)['periods'],result['periods'])
+
+    def test_unsupported_filter_rejected_before_readiness_runtime_or_replay(self):
+        owner=self.candidate();owner.preparation.status.side_effect=AssertionError('No preparation')
+        options=self.options(filters=[dict(field='operating_yield_spread_3y',op='gt',value=5.)])
+        for mode in ('custom','random'):
+            for bounded in (False,True):
+                with self.assertRaisesRegex(ValueError,'experimental does not support filter operating_yield_spread_3y'):
+                    if bounded:owner.calculate_into(mode,options,None,None,None)
+                    else:owner.calculate(mode,options,None,None)
+        with self.assertRaisesRegex(ValueError,'experimental does not support'):
+            owner.calculate('random',self.options(),None,None,planned=dict(options=options))
+        owner.preparation._runtime.assert_not_called()
+        self.assertIsNone(owner.runtime)
 
     def test_callback_failure_and_stop_close_before_application_outcome(self):
         owner=self.candidate()
@@ -111,7 +170,7 @@ class CandidateTests(unittest.TestCase):
 
     def test_data_check_and_partial_mutation_retire_before_financial_access(self):
         owner=self.candidate();owner.calculate('custom',self.options(),None,None)
-        runtime=owner.runtime;jobs=data_manager.Jobs(preparation=owner.preparation);jobs.calculations=owner
+        runtime=owner.created[-1];jobs=data_manager.Jobs(preparation=owner.preparation);jobs.calculations=owner
         o=data_manager.options({})
         def inspect(*a):
             self.assert_closed(runtime)
@@ -148,7 +207,7 @@ class CandidateTests(unittest.TestCase):
 
     def test_rebuild_and_cancelled_data_admission_do_not_overlap_child(self):
         owner=self.candidate();owner.calculate('custom',self.options(),None,None)
-        old=owner.runtime;jobs=data_manager.Jobs(preparation=owner.preparation);jobs.calculations=owner
+        old=owner.created[-1];jobs=data_manager.Jobs(preparation=owner.preparation);jobs.calculations=owner
         def prepare(**kw):
             self.assert_closed(old)
             self.assertIsNone(owner.runtime)
@@ -183,7 +242,8 @@ class CandidateTests(unittest.TestCase):
     def test_calculation_uncertain_cleanup_restores_cancel_and_callback_outcomes(self):
         for primary in (backtest_control.Cancelled(),RuntimeError('callback failed')):
             owner=self.candidate();owner.calculate('custom',self.options(),None,None)
-            runtime=owner.runtime;close=runtime.close;attempts=[]
+            runtime=owner.preparation._runtime();owner.runtime=runtime;runtime.start()
+            close=runtime.close;attempts=[]
             def retry_close():
                 attempts.append(True)
                 if len(attempts)==1:raise ClosureError(runtime)
@@ -195,7 +255,7 @@ class CandidateTests(unittest.TestCase):
             self.assertIs(caught.exception,primary);self.assert_closed(runtime)
             self.assertIsNone(owner.runtime);self.assertEqual(len(attempts),2)
         owner=self.candidate();owner.calculate('custom',self.options(),None,None)
-        runtime=owner.runtime
+        runtime=owner.preparation._runtime();owner.runtime=runtime;runtime.start()
         store=backtest_queue.Store(self.root/'shutdown-queue.sqlite')
         item=store.enqueue(request(options=self.options()))
         queue=backtest_queue.Queue(store,calculations=owner)
@@ -207,7 +267,8 @@ class CandidateTests(unittest.TestCase):
         self.assert_closed(runtime)
 
     def test_cross_process_contention_cancel_and_recovery(self):
-        first=self.candidate();first.calculate('custom',self.options(),None,None)
+        first=self.candidate()
+        first.runtime=first.preparation._runtime();first.runtime.start()
         second=self.candidate();stop=Event();errors=[]
         def work():
             try:
