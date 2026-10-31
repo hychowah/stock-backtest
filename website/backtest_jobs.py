@@ -33,6 +33,17 @@ class Unavailable(ValueError):
     """No calculation began because admitted inputs are not ready."""
 
 
+ENGINES={'original':'Original','experimental':'New engine — experimental'}
+
+
+def engine_id(options):
+    """Omitted request choice always means Original, never historical provenance."""
+    if not isinstance(options,dict):raise ValueError('Expected backtest options.')
+    value=options.get('engine','original')
+    if not isinstance(value,str) or value not in ENGINES:raise ValueError('Choose Original or New engine — experimental.')
+    return value
+
+
 class Calculations:
     """Own input admission and engine cleanup for every application caller.
 
@@ -136,6 +147,12 @@ class Jobs:
     def start(self,identifier,mode,options,*,planned=None):
         return self._start(identifier,mode,options,planned=planned)
 
+    def accepted(self,identifier):
+        """A retry reconciles accepted intent without fresh calculation admission."""
+        try:self.snapshot(identifier,include_result=False)
+        except Missing:return False
+        return True
+
     def start_evidence(self,identifier,mode,options,*,planned=None,max_bytes=256*1024**2,
                        piece_bytes=1024*1024,record_bytes=8*1024*1024):
         """Explicit temporary evidence job. No HTTP or browser route selects it."""
@@ -153,6 +170,7 @@ class Jobs:
             raise ValueError('Invalid backtest run ID.')
         if mode not in ('custom','random') or not isinstance(options,dict):
             raise ValueError('Expected backtest mode and options.')
+        if hasattr(self.calculations,'preflight'):self.calculations.preflight(options,planned=planned)
         json.dumps(options,allow_nan=False)
         if limits is None:json.dumps(planned,allow_nan=False)
         if planned is not None and (mode!='random' or not isinstance(planned,dict)):
@@ -179,6 +197,7 @@ class Jobs:
             while len(self.runs)>=4:self._drop(next(iter(self.runs)))
             run=dict(id=identifier,mode=mode,options=deepcopy(options),state='running',started=now,
                      progress=None,configuration=None,result=None,error=None,stop=Event(),planned=deepcopy(planned) if entry is None else None)
+            if hasattr(self.calculations,'preflight'):run['engine']=engine_id(options)
             if entry is not None:
                 run.update(_evidence=entry,_plan_identity=entry['reference']['sha256'] if entry['reference'] else None,evidence=None)
             self.runs[identifier]=run

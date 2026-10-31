@@ -33,7 +33,7 @@ const DataPanel=(()=>{
   }
   function render(state){
     const job=state.job;busy=job.running;
-    for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=!connected||busy;
+    for(const id of ['data-check','data-download','data-rebuild','data-prepare'])node(id).disabled=!connected||busy;
     node('data-cancel').hidden=!busy;
     node('data-progress').hidden=!job.action;
     node('data-message').textContent=job.message;
@@ -41,7 +41,8 @@ const DataPanel=(()=>{
     node('data-warnings').textContent=job.warning??'';
     node('data-log').textContent=state.log_file?'Development log: '+state.log_file:'Development logging is unavailable. Check the server terminal.';
     const candidate=node('data-candidate');candidate.hidden=!state.candidate;
-    if(state.candidate)candidate.textContent=state.candidate.busy?'Candidate status is waiting for cache ownership. Stored results remain available.':`Isolated candidate preparation: ${state.candidate.state}. ${state.candidate.state==='current'?'Runtime verification is closed. Calculations use the ordinary engine.':'Rebuild prepared data to retry. Stored results remain available.'}`;
+    node('data-prepare').hidden=!state.candidate;
+    if(state.candidate)candidate.textContent=state.candidate.busy?'Experimental status is waiting for cache ownership. Stored results remain available.':`Experimental preparation: ${state.candidate.state}${state.candidate.category?' · '+state.candidate.category:''}. ${state.candidate.state==='current'?'Ready when selected. Verification runtime is closed.':'Select Prepare experimental engine to retry after setup or repair.'} Original and stored results remain available.`;
     const progress=node('data-progress-bar');progress.hidden=!busy;
     if(job.total>0){progress.max=job.total;progress.value=job.completed;}else progress.removeAttribute('value');
     if(state.report && state.report.checked_at!==lastReport?.checked_at)renderReport(state.report);
@@ -56,16 +57,16 @@ const DataPanel=(()=>{
   }
   async function refresh(){
     try{const state=await api('status');connected=true;node('data-connection').textContent='Connected to the local data service.';render(state);}
-    catch(error){connected=false;node('data-connection').textContent=error.message+' Open this panel through start.cmd to connect.';for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=true;}
+    catch(error){connected=false;node('data-connection').textContent=error.message+' Open this panel through start.cmd to connect.';for(const id of ['data-check','data-download','data-rebuild','data-prepare'])node(id).disabled=true;}
   }
   async function start(action){
-    try{node('data-error').textContent='';const request=action==='cancel'?{}:read();for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=true;render(await api(action,request));}
-    catch(error){node('data-error').textContent=error.message;for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=!connected||busy;}
+    try{node('data-error').textContent='';const request=action==='cancel'?{}:read();for(const id of ['data-check','data-download','data-rebuild','data-prepare'])node(id).disabled=true;render(await api(action,request));}
+    catch(error){node('data-error').textContent=error.message;for(const id of ['data-check','data-download','data-rebuild','data-prepare'])node(id).disabled=!connected||busy;}
   }
   function init(){
     node('data-connect').addEventListener('click',refresh);
     node('data-end').max=new Date().toISOString().slice(0,10);
-    for(const action of ['check','download','rebuild','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
+    for(const action of ['check','download','rebuild','prepare','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
     node('data-scope').addEventListener('change',()=>node('data-symbols').disabled=node('data-scope').value!=='symbols');
     node('data-search').addEventListener('input',stocks);
     node('data-export').addEventListener('click',()=>{
@@ -78,7 +79,7 @@ const DataPanel=(()=>{
     });
     if(location.protocol==='file:'){
       node('data-connection').textContent='Open start.cmd, then choose Manage backtest data. This saved page needs the local service to inspect or change files.';
-      for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=true;
+      for(const id of ['data-check','data-download','data-rebuild','data-prepare'])node(id).disabled=true;
     }else refresh();
   }
   return {init,read,render,refresh,start};

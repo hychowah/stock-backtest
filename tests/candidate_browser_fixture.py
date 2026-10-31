@@ -20,7 +20,7 @@ class CandidateService:
         self.owner=OwnedProcess([sys.executable,'-I','-B',str(ROOT/'tests/candidate_service_fixture.py'),
             str(self.fixture.source),str(ROOT/'tests'),self.scenario],
             env=dict(os.environ,OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',OMP_NUM_THREADS='2',NUMBA_NUM_THREADS='2'),
-            limits=ProcessLimits(2*1024**3,16,25,close_seconds=15.,user_cpu_seconds=360.))
+            limits=ProcessLimits(2*1024**3,16,25,close_seconds=15.,user_cpu_seconds=None if self.scenario=='selectable-workflow' else 360.))
         logs=[];deadline=time.monotonic()+180
         try:
             while time.monotonic()<deadline:
@@ -40,7 +40,9 @@ class CandidateService:
                 self.owner.process.stdin.write('close\n');self.owner.process.stdin.flush()
             deadline=time.monotonic()+30
             while self.owner.process.poll() is None and time.monotonic()<deadline:
-                self.owner.event(.05)
+                event=self.owner.event(.05)
+                if self.scenario=='selectable-workflow' and event and event.get('text','').startswith('SELECTABLE PREPARATION:'):
+                    print(event['text'],flush=True)
             self.owner.close()
             assert self.owner.closed and self.owner.descendants_empty and self.owner.eof
             assert self.owner.process.returncode==0,self.owner.closure()

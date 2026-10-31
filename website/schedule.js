@@ -49,7 +49,9 @@ const ScheduleView=(()=>{
     if(!result)return;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
     const observations=kind==='holdings'?result.periods.flatMap(p=>p.holdings.map(h=>({...h,period_start:p.entry,period_end:p.exit,metric:result.options.metric??'ev_ebitda'}))):result.periods;
-    const rows=[keys,...observations.map(h=>keys.map(k=>h[k]))];
+    const producer=artifact.result.producer;
+    if(producer)keys.push('engine');
+    const rows=[keys,...observations.map(h=>keys.map(k=>k==='engine'?producer.engine:h[k]))];
     const body=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([body],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='scheduled-'+kind+'-'+result.start+'-'+result.end+'.csv';link.click();URL.revokeObjectURL(url);
@@ -178,14 +180,15 @@ const ScheduleView=(()=>{
     try{
     const {first,last,...filters}=options;
     const random=!!replay || (!override && node('date-testing').value==='random');
-    const body=replay?{...replay.options,...CalendarSettings.fields(replay),trials:replay.requested,seed:replay.seed}:
-      override?{...filters,...override}:{...filters,...CalendarSettings.read()};
+    const {engine:replayEngine,...plan}=replay||{};
+    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,...('engine' in CalendarSettings.engineFields()?{engine:replayEngine??'original'}:{})}:
+      override?{...filters,...override,...CalendarSettings.engineFields()}:{...filters,...CalendarSettings.read(),...CalendarSettings.engineFields()};
     if(!replay&&random){
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
-    if(body.calendar&&!CalendarSettings.supported()){node('screen-error').textContent='Custom week/month calculations require the isolated numerical preview.';return;}
-    await follow(BacktestRuns.create(random?'random':'custom',body,replay));
+    if(body.calendar&&('engine' in body?body.engine!=='experimental':!CalendarSettings.supported())){node('screen-error').textContent='Custom week/month calendars require New engine — experimental. Original uses the monthly frequency presets.';return;}
+    await follow(BacktestRuns.create(random?'random':'custom',body,replay?plan:null));
     }catch(error){node('screen-error').textContent=error.message;}
   }
   async function follow(run){
@@ -204,7 +207,7 @@ const ScheduleView=(()=>{
           node('schedule-progress-detail').textContent='Connection lost. Reconnecting to the server run. You can reopen this address later.';return;
         }
         if(state.configuration && state.configuration.seed!==rememberedSeed){
-          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration);
+          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration,run.options.engine);
         }
         if(state.state==='stopping'){
           node('schedule-progress-detail').textContent='Stopping on the server. Waiting for workers and cache cleanup.';return;
@@ -271,9 +274,11 @@ const ScheduleView=(()=>{
   }
   function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if(artifact?.version===3)void storedRender(artifact,index+1);else render();}
   function show(artifact){
+    const producer=node('result-producer');
+    if(producer)producer.textContent=artifact.result.producer?'Calculated by '+artifact.result.producer.label+'.':'Producer not recorded in this result.';
     inspectedTrial=null;bounded=null;node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){
-      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
+      RobustnessView.render(artifact.result,artifact.settings.engine);node('schedule-results').hidden=true;
     }else{
       if(artifact.version===3)void storedRender(artifact,1);else render();node('robustness-results').hidden=true;
     }

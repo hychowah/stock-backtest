@@ -25,3 +25,18 @@ const run=code=>vm.runInContext(code,context);
  assert.equal(node('calendar-unit').value,'week');assert.equal(node('calendar-count').max,'104');assert.equal(node('calendar-count').value,104);
  console.log('Passed: recorded replay ignores live filters and both calendar representation changes; invalid async inputs show validation without submission.');
 })().catch(error=>{console.error(error);process.exitCode=1});
+(async()=>{
+ await new Promise(resolve=>setImmediate(resolve));
+ context.fetch=async()=>({json:async()=>({calendar:null,engines:[{id:'original',calendar:null,status:{state:'current'}},{id:'experimental',calendar:1,status:{state:'current'}}]})});
+ await run('CalendarSettings.init()');node('backtest-engine').value='original';
+ assert.equal(run('CalendarSettings.supported()'),false);
+ context.recorded={engine:'experimental',start:'2015-01-02',end:'2015-02-27',months:12,requested:2,seed:42,options:{rank_to:3},samples:[['2015-01-05']]};
+ await run('ScheduleView.run({rank_to:99},null,recorded)');
+ assert.equal(sent.options.engine,'experimental');assert(!('engine' in sent.planned));
+ node('backtest-engine').value='experimental';assert.equal(run('CalendarSettings.supported()'),true);
+ context.recorded={...context.recorded,engine:'original',calendar:{version:1,start:'2015-01-02',end:'2015-02-27',interval:{unit:'week',count:1}}};
+ delete context.recorded.start;delete context.recorded.end;delete context.recorded.months;sent=null;
+ await run('ScheduleView.run({},null,recorded)');
+ assert.equal(sent,null);assert.match(node('screen-error').textContent,/Original uses/);
+ console.log('Passed: normal-app calendar preflight and replay use pinned engine, not live selector.');
+})().catch(error=>{console.error(error);process.exitCode=1});

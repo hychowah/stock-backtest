@@ -5,9 +5,9 @@ const RobustnessView=(()=>{
   const pct=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let configuration=null,getResult=()=>null;
-  function remember(next){
-    configuration=next;
-    try{localStorage.setItem('backtest-experiment',JSON.stringify(next));}catch(_){}
+  function remember(next,engine){
+    configuration=engine?{...next,engine}:next;
+    try{localStorage.setItem('backtest-experiment',JSON.stringify(configuration));}catch(_){}
     if(!node('repeat-random').checked)node('random-seed').value=String(next.seed);
     node('robustness-replay').hidden=false;
     node('robustness-replay-note').textContent='Date set saved. Replay uses the same dates, filters and window, including after an interrupted run.';
@@ -88,9 +88,9 @@ const RobustnessView=(()=>{
     svg.innerHTML=out;
     if(series.every(s=>!s.sd))node('robustness-chart-note').textContent+=' Each series has identical returns; no bell curves are fitted.';
   }
-  function render(next){
+  function render(next,engine){
     const result=next;node('robustness-results').hidden=false;
-    remember(result.configuration);
+    remember(result.configuration,engine);
     chart(result);
     const d=result.distributions;
     node('robustness-mean').textContent=pct(d.cagr.mean);
@@ -109,7 +109,8 @@ const RobustnessView=(()=>{
     const result=getResult();
     if(!result)return;
     const keys=['trial','start','first_trade','end','cash_days','periods','cagr','spy_cagr','excess_cagr','total_return','growth','spy_growth','empty_periods','short_periods','seed',...(result.configuration.calendar?['interval_unit','interval_count']:['months']),'dates'];
-    const rows=[keys,...result.trials.map(t=>keys.map(k=>k==='dates'?t.dates.join(';'):k==='seed'?result.configuration.seed:k==='months'?result.configuration.months:k==='interval_unit'?result.configuration.calendar.interval.unit:k==='interval_count'?result.configuration.calendar.interval.count:t[k]))];
+    if(result.producer)keys.push('engine');
+    const rows=[keys,...result.trials.map(t=>keys.map(k=>k==='engine'?result.producer.engine:k==='dates'?t.dates.join(';'):k==='seed'?result.configuration.seed:k==='months'?result.configuration.months:k==='interval_unit'?result.configuration.calendar.interval.unit:k==='interval_count'?result.configuration.calendar.interval.count:t[k]))];
     const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='random-dates-seed-'+result.configuration.seed+'.csv';link.click();URL.revokeObjectURL(url);

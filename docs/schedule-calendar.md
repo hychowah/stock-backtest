@@ -4,11 +4,12 @@ The source can plan fixed and random dates for 1–104 calendar weeks or 1–24
 calendar months. `scripts/schedule_calendar.py` owns these rules. It uses only
 the Python standard library. It reads no files and calculates no portfolios.
 
-The normal website and ordinary planners accept 1, 3, 6, 12 and 24 months.
-The isolated numerical preview also accepts versioned week/month requests.
-It exposes custom controls only after its capability response. This source
-change does not update the installed server. SQL selection and financial rules
-remain in their existing owners.
+Original and ordinary planners accept 1, 3, 6, 12 and 24 months. The normal
+app now offers New engine — experimental for versioned week/month requests.
+Original stays the default. The isolated numerical preview also retains its
+versioned request support. Custom controls follow the selected engine capability.
+This source change does not update the installed server. SQL selection and
+financial rules remain in their existing owners.
 
 ## Configuration version 1
 
@@ -153,8 +154,8 @@ the same. Runtime use retains financial ownership across all reused jobs.
 
 `scripts/numerical_calendar.py` separates calendar settings from selection.
 Send either legacy `start`, `end`, optional `months`, or one nested `calendar`
-with the version-1 configuration above. Mixed representations fail. Only the
-numerical preview accepts canonical execution. Fixed results use `calendar`
+with the version-1 configuration above. Mixed representations fail. Only experimental numerical
+execution accepts canonical execution. Fixed results use `calendar`
 instead of `months`; result `start` and `end` remain resolved session dates.
 Random plans use `calendar`, `window_start`, `window_end`, `seed`, `requested`,
 `options`, `blocks` and `samples`. No synthetic month count is added.
@@ -168,8 +169,20 @@ plan column. Canonical calendar metadata participates in checkpoint evidence.
 `website/calendar-settings.js` owns browser decoding, labels and settings
 comparison. Equivalent legacy/canonical monthly settings compare in memory.
 Original stored settings, labels and version-1/version-2 snapshots stay intact.
-The candidate capability endpoint is `/api/backtest-capabilities`; `calendar:1`
-enables 1–104 weeks and 1–24 months. Ordinary/direct-file pages retain presets.
+The capability endpoint is `/api/backtest-capabilities`. The isolated entry
+retains `calendar:1`. The normal app returns legacy `calendar:null` plus an
+`engines` list. Original has `calendar:null`; experimental has `calendar:1`.
+The submitted `options.engine` chooses the policy. Omission means Original.
+Both submission and execution check that policy. Browser replay keeps its engine
+separate from the financial plan and checks the recorded choice. A live selector
+change cannot grant Original canonical execution. Direct-file pages cannot run
+dated calculations.
 Stored canonical results remain readable and exportable without this capability.
 Legacy random CSV headers keep `months`. Canonical random CSVs use
 `interval_unit` and `interval_count`. Financial formulas and tolerance are unchanged.
+
+
+New normal-app results retain producer identity in their immutable result and
+add an engine column to their CSVs. Older evidence without producer metadata
+keeps its original headers and remains unidentified. See the
+[normal-app preparation contract](candidate-startup.md#normal-app-selectable-engines-cb-15-source).

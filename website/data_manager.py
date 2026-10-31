@@ -327,8 +327,9 @@ def _download(o,emit,stop,client):
 
 
 class Jobs:
-    def __init__(self,preparation=None):
+    def __init__(self,preparation=None,*,optional_preparation=False):
         self.preparation=preparation
+        self.optional_preparation=optional_preparation
         self.calculations=None
         self.lock=Lock();self.cancel=Event()
         self.closing=False
@@ -348,7 +349,8 @@ class Jobs:
         if self.cancel.is_set():raise Cancelled()
 
     def start(self,action,request):
-        if action not in ('check','download','rebuild'):raise ValueError('Choose check, download or rebuild.')
+        if action not in ('check','download','rebuild','prepare'):raise ValueError('Choose check, download, rebuild or experimental preparation.')
+        if action=='prepare' and self.preparation is None:raise ValueError('Experimental preparation is unavailable.')
         o=options(request)
         with self.lock:
             if self.closing:raise ValueError('The server is stopping. Reopen the data panel after restart.')
@@ -372,7 +374,7 @@ class Jobs:
     def _work(self,action,o):
         diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
         try:
-            if action=='rebuild' and self.preparation is not None:
+            if action=='prepare' or action=='rebuild' and self.preparation is not None and not self.optional_preparation:
                 # Runtime dispatch occurs outside calling-thread financial
                 # ownership. Preparation proves child closure before returning.
                 self.preparation.prepare(progress=self.emit,cancelled=self.cancel.is_set)
@@ -386,6 +388,7 @@ class Jobs:
             with cache_access.access():
                 self.stop()
                 if action=='rebuild':
+                    if self.preparation is not None:self.preparation.invalidate()
                     self.emit(message='Preparing January and custom-date databases…')
                     schedules.prepare();self.stop()
                     self.emit(message='Rebuilding the website…')

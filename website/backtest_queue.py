@@ -99,6 +99,7 @@ class Store:
         if any(not isinstance(request['catalog'].get(key),dict) for key in ('metrics','filters')):
             raise ValueError('The test metric and filter labels are required.')
         options=request['options']
+        backtest_jobs.engine_id(options)
         dates=options.get('calendar',options)
         if not isinstance(dates,dict) or not isinstance(dates.get('start'),str) or not isinstance(dates.get('end'),str):
             raise ValueError('Choose start and end dates.')
@@ -128,6 +129,12 @@ class Store:
             db.execute('INSERT INTO jobs(id,name,spec,original_hash,position,state,created_at,seed) VALUES(?,?,?,?,?,?,?,?)',
                        (identifier,name,spec,identity,position,'queued',now(),seed))
             return self.metadata(db,self.row(db,identifier))
+
+    def accepted(self,identifier):
+        """Read only submission presence; enqueue still checks the exact receipt."""
+        if not isinstance(identifier,str):return False
+        with self.database() as db:
+            return db.execute("SELECT 1 FROM jobs WHERE id=? AND state!='deleted'",(identifier,)).fetchone() is not None
 
     def listing(self):
         with self.database() as db:
@@ -202,7 +209,7 @@ class Store:
                     old,new=json.loads(row['spec']),json.loads(spec)
                     # A legacy omission means filter-first. Exposing that
                     # default during a name-only edit must retain recorded dates.
-                    same=old['mode']==new['mode'] and {'selection_order':'filter_first',**old['options']}=={'selection_order':'filter_first',**new['options']}
+                    same=old['mode']==new['mode'] and {'engine':'original','selection_order':'filter_first',**old['options']}=={'engine':'original','selection_order':'filter_first',**new['options']}
                     if same:seed=row['seed']
                     db.execute("UPDATE jobs SET name=?,spec=?,seed=?,state='queued',progress=NULL,configuration=CASE WHEN ? THEN configuration ELSE NULL END,plan=CASE WHEN ? THEN plan ELSE NULL END,error=NULL,started=NULL,finished=NULL,revision=revision+1 WHERE id=?",
                                (name,spec,seed,same,same,identifier))
@@ -226,10 +233,11 @@ class Store:
             db.execute("UPDATE jobs SET state='queued',started=NULL,progress=NULL,error=NULL,revision=revision+1 WHERE state='running'")
             db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE state='stopping'",(now(),))
 
-    def claim(self):
+    def claim(self,engines=None):
         with self.database() as db:
             if db.execute('SELECT paused FROM control').fetchone()[0]:return None
-            row=db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state='queued' ORDER BY position,id LIMIT 1").fetchone()
+            rows=db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state='queued' ORDER BY position,id")
+            row=next((row for row in rows if engines is None or backtest_jobs.engine_id(json.loads(row['spec'])['options']) in engines),None)
             if row is None:return None
             db.execute("UPDATE jobs SET state='running',started=?,finished=NULL,error=NULL,progress=NULL,revision=revision+1 WHERE id=?",(now(),row['id']))
             return dict(self.row(db,row['id'],include_plan=True))
@@ -329,7 +337,8 @@ class Queue:
                     self.store.recover()
                     while not self.stopping.is_set():
                         if not self.ready():self.wake.wait(.5);self.wake.clear();continue
-                        job=self.store.claim()
+                        engines=self.calculations.queue_engines() if hasattr(self.calculations,'queue_engines') else None
+                        job=self.store.claim(engines)
                         if job is None:self.wake.wait(.5);self.wake.clear();continue
                         self._run(job)
             except ValueError:

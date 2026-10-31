@@ -37,7 +37,9 @@ SAVED_BACKTESTS=saved_backtests.Store()
 
 class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
-        self.calculations=backtest_jobs.Calculations()
+        from numerical_preparation import Preparation
+        from engine_selection import Selectable
+        self.calculations=Selectable(Preparation(ROOT.parent))
         self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
         self.backtest_queue=backtest_queue.Queue(calculations=self.calculations)
         super().__init__(*args,**kwargs)
@@ -94,16 +96,23 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:return False
         return local and host in ('127.0.0.1','localhost','::1') and self.headers.get('Origin','http://'+self.headers.get('Host',''))=='http://'+self.headers.get('Host','')
 
-    def calculation_ready(self):
+    def calculation_ready(self,options=None):
+        if hasattr(self.server.calculations,'ready_for'):
+            return self.server.calculations.ready_for(options or {})
         candidate=getattr(self.server,'candidate_preparation',None)
         if candidate is None:return True
         if getattr(self.server.calculations,'preparation',None) is candidate:
             return self.server.calculations.ready()
         return candidate.status().get('state')=='current'
 
-    def require_calculation(self):
+    def require_calculation(self,options=None,*,planned=None):
         # A busy inspection is advisory, not a failed execution admission.
         # The calculation owner and child still validate admitted inputs.
+        if hasattr(self.server.calculations,'preflight'):
+            self.server.calculations.preflight(options,planned=planned)
+            if self.server.calculations.ready_for(options,advisory=True):return True
+            self.reply(503,dict(error='Experimental preparation is unavailable. Use Prepare experimental engine in Manage backtest data. Original and stored results remain available.'))
+            return False
         candidate=getattr(self.server,'candidate_preparation',None)
         if candidate is not None and getattr(self.server.calculations,'preparation',None) is candidate:
             status=self.server.calculations.status()
@@ -116,7 +125,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.launcher_request():return
         if self.path=='/api/backtest-capabilities':
-            self.reply(200,dict(calendar=self.server.calculations.calendar_version));return
+            owner=self.server.calculations
+            self.reply(200,owner.capabilities() if hasattr(owner,'capabilities') else dict(calendar=owner.calendar_version));return
         if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
             self.queue_request();return
         if self.path.startswith('/api/backtest-runs/'):
@@ -166,7 +176,6 @@ class Handler(SimpleHTTPRequestHandler):
             self.data_request();return
         if self.path not in ('/api/schedule','/api/robustness'):
             self.reply(404,dict(error='Unknown endpoint.'));return
-        if not self.require_calculation():return
         origin=self.headers.get('Origin')
         expected='http://'+self.headers.get('Host','')
         if origin and origin!=expected:
@@ -176,6 +185,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
+            if not self.require_calculation(request):return
             with backtest_control.cancel_when(self.disconnect_check()):
                 backtest_control.checkpoint()
                 if self.path=='/api/robustness':
@@ -222,11 +232,13 @@ class Handler(SimpleHTTPRequestHandler):
             request=json.loads(self.rfile.read(length),parse_constant=invalid)
             if not isinstance(request,dict):raise ValueError('Expected queue options.')
             if self.command=='POST' and collection:
-                if not self.require_calculation():return
+                if not store.accepted(request.get('id')) and not self.require_calculation(request.get('options')):return
                 result=store.enqueue(request)
             elif self.command=='POST' and path==['pause']:
                 result=store.pause(request.get('paused'))
             elif self.command=='POST' and len(path)==2:
+                if path[1]=='update' and hasattr(self.server.calculations,'preflight'):
+                    self.server.calculations.preflight(request.get('options'))
                 result=store.change(path[0],path[1],request)
             elif self.command=='DELETE' and len(path)==1:
                 result=store.change(path[0],'delete',request)
@@ -258,12 +270,12 @@ class Handler(SimpleHTTPRequestHandler):
             elif self.command=='POST' and path[1:]==['stop']:
                 self.reply(202,jobs.cancel(identifier))
             elif self.command=='POST' and len(path)==1:
-                if not self.require_calculation():return
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
                 def invalid(value):raise ValueError('Backtest values must be finite.')
                 request=json.loads(self.rfile.read(length),parse_constant=invalid)
                 if not isinstance(request,dict):raise ValueError('Expected backtest options.')
+                if not jobs.accepted(identifier) and not self.require_calculation(request.get('options'),planned=request.get('planned')):return
                 self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options'),planned=request.get('planned')))
             else:self.reply(404,dict(error='Unknown run action.'))
         except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
@@ -368,7 +380,7 @@ class Handler(SimpleHTTPRequestHandler):
     def data_request(self):
         if not self.data_allowed():self.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return
         action=self.path.removeprefix('/api/data/')
-        if action not in ('check','download','rebuild','cancel'):
+        if action not in ('check','download','rebuild','prepare','cancel'):
             self.reply(404,dict(error='Unknown data action.'));return
         try:
             length=int(self.headers.get('Content-Length','0'))
@@ -510,6 +522,10 @@ def run_server(args,lifecycle,parser,*,candidate=None):
         server.backtest_jobs.calculations=server.calculations
         server.backtest_queue.calculations=server.calculations
         DATA_JOBS.calculations=server.calculations
+    else:
+        DATA_JOBS.preparation=server.calculations.preparation
+        DATA_JOBS.optional_preparation=True
+        DATA_JOBS.calculations=server.calculations
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)
@@ -526,7 +542,4 @@ def run_server(args,lifecycle,parser,*,candidate=None):
     except KeyboardInterrupt:pass
     finally:
         server.close_calculation_admission()
-        if candidate is not None:close_candidate_owners(server,candidate)
-        else:
-            DATA_JOBS.close()
-            if not lifecycle:server.server_close()
+        close_candidate_owners(server,candidate or server.calculations.preparation)

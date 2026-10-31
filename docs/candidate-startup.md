@@ -1,7 +1,7 @@
 # Isolated candidate preparation
 
-CB-12 adds a separate preparation entry. The normal launcher and installed
-website keep the ordinary engine. CB-13A gives all calculation routes one
+CB-12 adds a separate preparation entry. The installed website is unchanged by this source task. CB-15 now adds an
+optional normal-app selector; see the final section. CB-13A gives all calculation routes one
 application owner. CB-13B connects persistent numerical dispatch only in this
 isolated entry.
 
@@ -166,8 +166,8 @@ retire the child before a terminal outcome. Uncertain closure retains the owner
 and blocks data operations until retry proves closure. Shutdown closes
 admission, drains callers and retires the child before releasing source.
 
-Normal server construction and standalone calculations still use the ordinary
-engine. CB-13C adds candidate-only week/month controls and versioned calendar
+Standalone calculations still use the ordinary engine. Normal server
+construction now uses the selectable owner described in the CB-15 section. CB-13C adds candidate-only week/month controls and versioned calendar
 requests. Legacy month requests keep their original envelopes. Browser replay
 submits the full recorded plan. Saved snapshots retain their settings and labels;
 opening or exporting them does not calculate. See [calendar compatibility](schedule-calendar.md).
@@ -189,7 +189,8 @@ Durable library and queue snapshots remain separate from these derived caches.
 
 [The current readiness record](plans/compiled-backtest/phases/CB-14.readiness.md)
 supersedes the earlier universal release gate. Original remains the default.
-The normal app has no engine selector yet. CB-15 owns that selector and release.
+CB-15 now implements the normal-app selector in source. Publication remains
+a separate authorized operation.
 
 Current source reconciles main's research schema 8, operating-yield-spread filter
 and selection order. Both experimental selection orders use the shared SQL
@@ -209,3 +210,46 @@ Existing eager workspace, transport and storage limits remain. Large weekly and
 100-trial cases keep their historical admission failures and stay unavailable
 when these guards reject them. They are deferred capacity work, not newly
 qualified workflows. This change adds no size allowance, benchmark or speed claim.
+
+## Normal-app selectable engines (CB-15 source)
+
+The normal app now offers Original and New engine — experimental for custom
+dated fixed and random runs. Original stays selected initially. January and
+latest screens keep their existing calculation paths. This source change has
+not been deployed by the CB-15 task.
+
+Normal startup and Rebuild prepared data + website prepare Original only.
+They do not need the numerical packages. The data panel exposes a separate
+**Prepare experimental engine** button. Install the pinned packages separately
+in the exact interpreter used to start the app. Preparation never installs
+packages or downloads data. It uses the same closed verification operation
+and source, financial, freshness and publication rules described above.
+Missing packages or stale preparation block experimental execution only.
+Stored evidence and Original remain available. Data mutations invalidate
+experimental readiness. Prepare again after a rebuild or repaired inputs.
+
+`engine_selection.Selectable` composes the existing Original and candidate
+calculation owners. Submitted `options.engine` uses `original` or
+`experimental`. Omission always means Original. This implicit default is fixed;
+old queue specifications are not rewritten. New browser submissions include
+an explicit engine. Jobs, queue receipts, held edits and browser reconnection
+retain that setting. Execution removes it before financial planning. A random
+plan therefore keeps its existing financial representation. Browser replay
+remembers its engine separately from that plan. Changing a waiting test's
+engine discards its old plan through the existing edit protocol.
+
+Readiness and calendar preflight use the submitted engine. Original supports
+legacy 1/3/6/12/24-month presets. Version-1 week/month calendars require
+experimental selection. Operating yield spread is explicitly unsupported in
+experimental runs. No request drops this condition or retries through Original.
+Existing eager, process, memory, IPC, workspace and storage limits stay fixed.
+An unavailable experimental queued test stays waiting. The consumer can run
+ready Original tests after it, preserving order among ready tests.
+
+New completed normal-app results contain `result.producer` with the engine ID
+and label. Immutable views, saved results and complete CSV exports retain that
+identity. A live selector change cannot relabel a completed result. Older
+results without producer metadata say that the producer was not recorded.
+Compatible version-1/2/3 readers stay independent of preparation. Returning to
+Original uses the current compatible code. Do not downgrade to an old reader
+that cannot open version-3 evidence.

@@ -52,9 +52,9 @@ class Candidate(backtest_jobs.Calculations):
             self.runtime = None
 
     @contextmanager
-    def parent_operation(self, cancelled=lambda: False):
+    def parent_operation(self, cancelled=lambda: False, *, admission='interactive'):
         """Start after child closure; remain exclusive through parent DB closure."""
-        with self._operation(cancelled=cancelled):
+        with self._operation(admission, cancelled=cancelled):
             self._retire()
             yield
 

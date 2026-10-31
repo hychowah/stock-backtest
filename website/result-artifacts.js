@@ -103,7 +103,8 @@ const ResultArtifacts=(()=>{
     // without adding fields to, or rewriting, the stored artifact.
     submitted=calendar?calendar.normalize(submitted):submitted;
     settings=calendar?calendar.normalize(settings):settings;
-    return signature({selection_order:'filter_first',...submitted})===signature({selection_order:'filter_first',...settings});
+    const defaults=['custom','random'].includes(artifact.kind)?{engine:'original',selection_order:'filter_first'}:{selection_order:'filter_first'};
+    return signature({...defaults,...submitted})===signature({...defaults,...settings});
   }
   return {create,decode,publish,matches,reader,acquire,release,opening,current,forView:key=>views.get(key)};
 })();

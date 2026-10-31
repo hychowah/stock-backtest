@@ -462,6 +462,25 @@ outcome. No idle application child may retain financial ownership between calls.
 Disk checkpoints remain reusable; cross-call compiler memory is not retained.
 Legacy omitted selection order means filter-first when comparing a submitted
 request with a recorded plan. Do not rewrite the plan or accept a real change.
-See `docs/plans/compiled-backtest/phases/CB-14.readiness.md`. CB-15 owns the
-normal-app selector, engine-pinned submissions, producer labels and release.
+See `docs/plans/compiled-backtest/phases/CB-14.readiness.md`. CB-15 implements the
+normal-app selector, engine-pinned submissions and producer labels in source.
+Its release handoff keeps publication separate.
 Original remains default. This readiness work authorizes no deployment.
+
+
+## Selectable dated engines
+
+CB-15 adds `website/engine_selection.py` behind existing calculation owners.
+Original remains the default. `options.engine` is `original` or `experimental`;
+omission always means Original. Preserve it in accepted jobs, queue receipts,
+held edits, recovery and browser replay. Keep engine metadata outside financial
+plans. Route readiness and calendar checks by the pinned choice. Original
+accepts legacy monthly presets; version-1 calendars require experimental.
+Unsupported experimental settings fail explicitly with no fallback.
+Normal startup and ordinary rebuild do not require numerical packages. The
+separate data-panel Prepare experimental engine action owns optional setup.
+Data mutations invalidate readiness. New eager results record `result.producer`.
+Views and CSVs use that evidence. Do not infer a producer for older results.
+Keep version-1/2/3 readers independent of preparation. Unavailable experimental
+queue items stay waiting while ready items retain their relative order.
+CB-15 source does not authorize main integration, publication or restart.

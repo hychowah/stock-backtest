@@ -40,8 +40,9 @@ choice, persistent per-submission identity and representative selector workflows
 This section supersedes older full-replacement prerequisites and historical
 “CB-15 blocked” next-step instructions below. The 30 October approximate 4×
 performance direction remains; no exact ratio gates opt-in testing. The delivery-plan change grants no limit expansion or installed access.
-The readiness implementation leaves normal default routing and installed assets
-unchanged.
+The readiness implementation left normal routing unchanged. CB-15 now adds
+normal-app selection in source, with Original still the default. Installed
+assets remain unchanged. See the [source release handoff](phases/CB-15.release-handoff.md).
 
 ## Implemented baseline before the delivery change
 
@@ -2044,7 +2045,7 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 | CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
 | CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
 | CB-14 | Complete: supported opt-in readiness | [Current release scope](phases/CB-14.opt-in-release.md) replaces the universal stress dependency. The [consumer workflow](phases/CB-14.capacity6.consumer.md), [current three-trial pair](phases/CB-14.capacity6.history.md), [fresh24 backend](phases/CB-14.capacity6.fresh24.retry4.md) and [isolated compatibility](phases/CB-14.compatibility.md) supply reusable scoped evidence. The [readiness slice](phases/CB-14.readiness.md) implements main schema/filter/order reconciliation, explicit experimental support and operation-scoped child closure. Affected WSL checks, 263 passing native tests and browser/guide checks close revised readiness. The failed recursive-helper attempt remains failed; its guarded rerun passes. Read the filed results and independent audit for exact scope. G03/G06 stay failed historical capacity observations; full24 agreement/performance and broader stress are follow-up. No selector exists in the normal app yet. |
-| CB-15 | Planned: normal-app opt-in release | Original remains default. Per-run engine choice, current-main compatibility and representative complete workflows follow revised CB-14 readiness. Deferred stress cases do not block this delivery. |
+| CB-15 | Complete: normal-app source integration | Original remains default. Per-submission engine routing, optional preparation, immutable producer identity and compatible retries/recovery are implemented. Focused WSL checks, 249 passing native test executions and the complete native selector workflow pass. Six earlier private browser attempts remain failed and separately recorded. Independent audit F1 is resolved in the guide. Main integration, publication and installed restart remain unauthorized. See [CB-15](phases/CB-15.md) and its [release handoff](phases/CB-15.release-handoff.md). |
 
 ## Completion definition
 

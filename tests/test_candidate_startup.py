@@ -313,6 +313,10 @@ class MutationAndHttpTests(unittest.TestCase):
             capability=Mock();capability.status.return_value=dict(state='failed')
             context.enter_context(patch.object(serve,'DATA_JOBS',data_manager.Jobs(preparation=capability)))
             server=serve.Server(('127.0.0.1',0),serve.Handler)
+            # This case models the isolated candidate entry. Normal servers
+            # now keep Original available when optional preparation fails.
+            from candidate_calculations import Candidate
+            server.calculations=Candidate(capability)
             server.candidate_preparation=capability;server.data_recovery=True
             server.backtest_queue.ready=lambda:False
             thread=Thread(target=server.serve_forever);thread.start()

@@ -32,6 +32,12 @@ def main():
                         raise ImportError('Ordinary fixture has no numerical stack')
             sys.meta_path.insert(0,WithoutNative())
         import serve_app
+        if scenario=='selectable-workflow':
+            emit=serve_app.DATA_JOBS.emit
+            def report(**values):
+                emit(**values)
+                if 'message' in values:print('SELECTABLE PREPARATION: '+values['message'],flush=True)
+            serve_app.DATA_JOBS.emit=report
         original=serve_app.Server
         def server(*args,**kwargs):
             value=original(*args,**kwargs)
@@ -47,7 +53,10 @@ def main():
                     serve()
                 value.serve_forever=serve_evidence
             def stop():
-                if sys.stdin.readline()=='close\n':value.shutdown()
+                # A blocked Windows CRT reader can stall a later NumPy import.
+                # Optional normal-app preparation imports after serving starts.
+                from numerical_runtime_child import _stdin_lines
+                if next(_stdin_lines(),None)=='close\n':value.shutdown()
             Thread(target=stop,name='fixture-stop',daemon=True).start()
             return value
         context.enter_context(patch.object(serve_app,'Server',side_effect=server))
@@ -56,9 +65,9 @@ def main():
             forbid_read_dependencies(context,serve_app)
         if scenario=='evidence':
             context.enter_context(patch.object(serve_app.backtest_queue.Queue,'start',return_value=None))
-        if scenario not in ('workflow','ordinary-workflow'):
+        if scenario not in ('workflow','ordinary-workflow','selectable-workflow'):
             context.enter_context(patch.object(serve_app.backtest_jobs,'calculate',side_effect=AssertionError('Stored result requested calculation')))
-        if scenario.startswith('ordinary'):
+        if scenario.startswith('ordinary') or scenario=='selectable-workflow':
             serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
         else:
             import serve_candidate

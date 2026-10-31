@@ -175,3 +175,12 @@ integrate this observer deliberately; no engine implementation is copied here.
 The independent library uses `data/saved-backtests.sqlite`. It stores complete
 user snapshots, capped atomically at 20 records. This durable file stays outside
 financial-cache freshness and rebuilds. Source deployment preserves it.
+
+## CB-15 normal-app source integration (31 October 2026)
+
+The engine branch implements per-submission selection through the existing
+calculation, job, queue and immutable-result boundaries. Original stays default.
+Numerical preparation is an explicit optional data-panel action. Main remains
+unchanged. This source commit does not authorize integration, publication,
+push or restart. Read the [release handoff](plans/compiled-backtest/phases/CB-15.release-handoff.md)
+before moving main; its automatic supervisor can deploy a new main commit.

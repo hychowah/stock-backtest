@@ -14,7 +14,7 @@ function currentSettings(){
   const {first,last,...options}=readOptions(),view=viewKey();
   if(view==='latest')return {mode:'latest',...options};
   if(view==='january')return {mode:'january',first,last,...options};
-  const settings={mode:'custom',...options,...CalendarSettings.read()};
+  const settings={mode:'custom',...options,...CalendarSettings.read(),...CalendarSettings.engineFields()};
   if(document.getElementById('date-testing').value==='random'){
     settings.mode='random';settings.trials=+document.getElementById('random-trials').value;
     if(document.getElementById('repeat-random').checked)settings.seed=+document.getElementById('random-seed').value;
@@ -350,7 +350,8 @@ const StrategyDraft=(()=>{
     if(settings.mode==='january'){
       set('from-year',settings.first);set('to-year',settings.last);
     }else{
-      CalendarSettings.restore(settings);
+      if(document.getElementById('backtest-engine'))document.getElementById('backtest-engine').value=settings.engine??'original';
+      CalendarSettings.syncEngine();CalendarSettings.restore(settings);
       set('date-testing',settings.mode==='random'?'random':'single');
       if(settings.mode==='random'){
         set('random-trials',settings.trials);set('random-seed',seed??42);
