@@ -85,6 +85,25 @@ Benchmark admission remains closed. This coordination note grants no execution,
 deployment, server stop/restart, market-data download or production cutover.
 Existing unrelated working-tree edits remain outside each task's commit.
 
+## Agreed direction: selectable engines (31 October 2026)
+
+The user approves an opt-in engine choice in the normal app. Original remains
+the default. The engine branch owns this integration through the existing
+calculation, job, queue and immutable-result boundaries. Submitted runs must
+retain their engine through retries and recovery. Unsupported experimental
+settings must fail explicitly without changing settings or silently falling back.
+
+Before implementation, reconcile current main's schema-8 preparation,
+operating-yield-spread filter and selection order. Preserve Original's existing
+behavior. Main's held custom-variable work adds no prerequisite. Inspect both
+worktrees and main's automatic deployment/restart behavior before deliberate
+integration; do not publish an unfinished selector as a side effect.
+
+The [current release plan](plans/compiled-backtest/phases/CB-14.opt-in-release.md)
+replaces the requirement to finish all large stress cases before normal-app
+opt-in integration. Those cases keep their historical verdicts and restrictions.
+This plan-only update performs no merge, publication, restart or installed write.
+
 ## Agreed exception: website run controls (26 October 2026)
 
 The user assigned main the narrow cancellation change for manual website runs.
