@@ -7,9 +7,9 @@ const SavedBacktests=(()=>{
   function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
   function defaultName(snapshot){
     if(snapshot.kind==='january')return 'January '+snapshot.settings.first+'–'+snapshot.settings.last;
-    return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+snapshot.settings.start+' → '+snapshot.settings.end;
+    return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+(snapshot.settings.calendar?.start??snapshot.settings.start)+' → '+(snapshot.settings.calendar?.end??snapshot.settings.end);
   }
-  function complete(snapshot){return snapshot && snapshot.kind!=='latest' && (snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
+  function complete(snapshot){return snapshot && snapshot.kind!=='latest' && (snapshot.version===3 || snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
   function update(){
     const snapshot=current();
     node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=20;
@@ -31,7 +31,7 @@ const SavedBacktests=(()=>{
   async function request(path='',options={}){
     const response=await fetch('/api/backtests'+path,options);
     let value;try{value=await response.json();}catch(_){throw Error('The saved-backtest service is unavailable. Start the updated website and reload this page.');}
-    if(!response.ok)throw Error(value.error||'Could not access saved backtests.');
+    if(!response.ok){const error=Error(value.error||'Could not access saved backtests.');error.requires_reader=value.requires_reader;throw error;}
     return value;
   }
   async function refresh(){
@@ -57,7 +57,7 @@ const SavedBacktests=(()=>{
     if(!complete(snapshot)||isRunning())return;
     const name=node('saved-name').value.trim()||defaultName(snapshot);
     // Serialize before awaiting: a new run or changed settings cannot change this save.
-    const body=JSON.stringify({name,snapshot});
+    const body=JSON.stringify(snapshot.version===3?{name,reader:snapshot.evidence.id}:{name,snapshot});
     await perform(async ticket=>{
       message('Saving complete backtest results…');
       const record=await request('',{method:'POST',headers:{'Content-Type':'application/json'},body});
@@ -67,12 +67,14 @@ const SavedBacktests=(()=>{
     });
   }
   async function open(id){
-    const number=++operation;
+    const number=++operation,isCurrent=ResultArtifacts.opening();
     await perform(async()=>{
       message('Opening saved backtest…');
-      const record=await request('/'+encodeURIComponent(id));
-      if(number!==operation)return;
-      openRecord(record.snapshot);
+      let record;
+      try{record=await request('/'+encodeURIComponent(id));}
+      catch(error){if(!error.requires_reader)throw error;record={name:records.find(r=>r.id===id)?.name||'Backtest',snapshot:await ResultArtifacts.acquire({kind:'saved',id})};}
+      if(number!==operation||!isCurrent()){ResultArtifacts.release(record.snapshot);return;}
+      try{openRecord(record.snapshot);}catch(error){ResultArtifacts.release(record.snapshot);throw error;}
       message('Opened “'+record.name+'”. Original settings, traded stocks and returns were restored without rerunning.');
     });
   }

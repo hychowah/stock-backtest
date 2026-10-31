@@ -18,8 +18,11 @@ assert(html.includes('WSL source') && html.includes('Windows runtime') && html.i
 assert(html.includes('serve_app.py') && html.includes('runtime_access.py') && html.includes('--collect-report'), 'Explain native ownership and verified report collection');
 assert(html.includes('checks main every two seconds') && html.includes('website-update-stop-') && html.includes('without automatic updates'), 'Explain automatic main updates, owned cleanup and fixed launches');
 assert(html.includes('backtest_jobs.py') && html.includes('backtest-runs.js') && html.includes('/api/backtest-runs/*') && html.includes('24 hours, up to four recent runs') && html.includes('same browser storage'), 'Explain server-owned runs, reconnection and temporary result limits');
+assert(html.includes('CB-13A') && html.includes('Calculations') && html.includes('Callers no longer prehold financial ownership.') && html.includes('Late request bodies cannot begin calculation.'), 'Explain shared application admission and ordinary routing');
 assert(html.includes('backtest-queue.sqlite') && html.includes('backtest_queue.py') && html.includes('100 records') && html.includes('Held edits stay held') && html.includes('consumer lock'), 'Explain durable queue records, editing and single-consumer recovery');
 assert(html.includes('tools/bench_baseline.py') && html.includes('CB-01') && html.includes('24 annual trials over 1997–2025') && html.includes('does not measure the browser or an HTTP server'), 'Explain the frozen production baseline and its measurement boundary');
+assert(html.includes('scripts/numerical_generation.py') && html.includes('data/numerical/') && html.includes('OS-locked lease') && html.includes('stale prior generation'), 'Explain offline numerical publication, read-only attachment and recovery');
+assert(html.includes('tools/bench_execution.py') && html.includes('tools/bench_comparison.py') && html.includes('Real benchmark admission stays closed.') && html.includes('These fixture checks give no new speed result.'), 'Distinguish disposable financial execution from real admission and speed qualification');
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 
@@ -29,6 +32,10 @@ assert(html.includes('content hash') && html.includes('worker completion and dat
 
 assert(html.includes('up to 32 parallel requests') && html.includes('45 request starts per second') && html.includes('gzip compression') && html.includes('original saved span'), 'Current download policy and cache bounds must be clear');
 assert(html.includes('6.56 seconds') && html.includes('policy selected on 22 October') && html.includes('fmp-throughput-2026-10-23.json') && html.includes('not new application tests'), 'Historical benchmark settings and limits must remain explicit');
+
+assert(html.includes('Selectable-engine readiness checked 31 October 2026.') && html.includes('operating_yield_spread_3y') && html.includes('Confirmed child closure precedes every published outcome.') && html.includes('Cross-call compiler and result-memory reuse have ended.'), 'Explain supported experimental scope and operation ownership');
+
+assert(html.includes('website/evidence_views.py') && html.includes('website/result_exports.py') && html.includes('16 displays and 32 active requests') && html.includes('Changing the table page cannot change attribution.') && html.includes('Automatic calculation submission and queue execution remain eager.'), 'Explain acquired evidence readers, complete attribution, attachments and unchanged producers');
 
 class Element {
   constructor(dataset = {}) { this.dataset = dataset; this.attributes = {}; this.events = {}; this.textContent = ''; this.children = []; this.hidden = false; this.open = false; }

@@ -105,6 +105,41 @@ worktree's local files or notify its session. Have its owner read the handoff
 at the next coordination point. Existing main feature integration obligations
 remain separate from this held proposal.
 
+## Agreed direction: selectable engines (31 October 2026)
+
+The user approves an opt-in engine choice in the normal app. Original remains
+the default. The engine branch owns this integration through the existing
+calculation, job, queue and immutable-result boundaries. Submitted runs must
+retain their engine through retries and recovery. Unsupported experimental
+settings must fail explicitly without changing settings or silently falling back.
+
+Before implementation, reconcile current main's schema-8 preparation,
+operating-yield-spread filter and selection order. Preserve Original's existing
+behavior. Main's held custom-variable work adds no prerequisite. Inspect both
+worktrees and main's automatic deployment/restart behavior before deliberate
+integration; do not publish an unfinished selector as a side effect.
+
+The [current release plan](plans/compiled-backtest/phases/CB-14.opt-in-release.md)
+replaces the requirement to finish all large stress cases before normal-app
+opt-in integration. Those cases keep their historical verdicts and restrictions.
+This plan-only update performs no merge, publication, restart or installed write.
+
+## CB-14 readiness reconciliation (31 October 2026)
+
+The engine branch ports the financial/request contract from main `18f40ad`
+without moving main or importing its deployment supervisor. Original retains
+schema 8, operating yield spread and both selection orders. The experimental
+policy rejects operating yield spread explicitly. Both orders use shared SQL.
+Candidate application calls now close their runtime before publishing outcomes.
+This releases financial ownership between calls. Disk checkpoints remain reusable.
+See the [readiness record](plans/compiled-backtest/phases/CB-14.readiness.md).
+
+CB-15 owns the normal-app selector, per-submission identity, producer labels and
+release. Main's `29a7e3e` supervisor can publish a newly committed main revision
+automatically. Inspect that behavior before future integration. This readiness
+work changes no default or installed revision. Main's unrelated working edits
+remain untouched.
+
 ## Agreed exception: website run controls (26 October 2026)
 
 The user assigned main the narrow cancellation change for manual website runs.
@@ -149,10 +184,12 @@ The user assigned main the narrow adapter for saving random-trial stock details.
 `scripts/robustness.py` adds an optional `capture(number, result)` observer after
 an ordinary completed trial. Calculations, dates, progress and saved-book
 transactions stay unchanged. Existing callers keep the summary-only result.
-The website requests `X-Backtest-Details: holdings`; only that opt-in adds ordered
-`trial_results` to the completed HTTP result. Each entry is the full original
-trial result, including all holding periods and selected stock rows. The browser
-can inspect these stocks without another calculation. The engine branch can
+The original streaming adapter uses `X-Backtest-Details: holdings` to add ordered
+`trial_results` to `/api/robustness`. That opt-in remains available to existing
+streaming clients. Current background jobs and queued random tests capture full
+trial holdings directly through `backtest_jobs.calculate`. Each entry is the full
+original trial result, including all holding periods and selected stock rows.
+The browser can inspect these stocks without another calculation. The engine branch can
 integrate this observer deliberately; no engine implementation is copied here.
 
 The independent library uses `data/saved-backtests.sqlite`. It stores complete
@@ -219,3 +256,27 @@ still precedes application imports and lasts through shutdown. Worker/cache
 contracts and the engine branch remain unchanged. Tests use disposable Git
 repositories and native runtime fixtures. Raw data, databases, reports and the
 two unrelated snapshot edits retain their current owners.
+
+## CB-15 normal-app source integration (31 October 2026)
+
+The engine branch implements per-submission selection through the existing
+calculation, job, queue and immutable-result boundaries. Original stays default.
+Numerical preparation is an explicit optional data-panel action. Main remains
+unchanged. This source commit does not authorize integration, publication,
+push or restart. Read the [release handoff](plans/compiled-backtest/phases/CB-15.release-handoff.md)
+before moving main; its automatic supervisor can deploy a new main commit.
+
+## Authorized CB-15 main integration — 31 October 2026
+
+The user authorized integration after the CB-15 source handoff. Resolution and
+verification use the isolated `cb15/main-integration` branch, based on main
+`d877cb4`, with engine parent `0cb9a0b`. The four shared code conflicts retain
+the qualified engine contracts. Main's automatic supervisor and native source
+bootstrap remain. The architecture guide combines both behaviors.
+
+Publication, deployment, push and installed restart remain outside this task.
+Before advancing main, check that no automatic publication supervisor is active.
+Recheck main's commit and preserve its unrelated snapshot and market-scope files
+byte for byte. No installed library or queue inspection is authorized. Custom
+variables remain on hold; the integration owner acknowledged their handoff.
+See the [integration record](plans/compiled-backtest/phases/CB-15.integration.md).

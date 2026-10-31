@@ -1,4 +1,5 @@
 """Durable result snapshots, independent of rebuildable financial caches."""
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -6,6 +7,9 @@ import re
 import sqlite3
 import uuid
 import zlib
+
+import backtest_control
+import durable_evidence
 
 DATABASE = Path(__file__).resolve().parents[1]/'data'/'saved-backtests.sqlite'
 LIMIT = 20
@@ -65,15 +69,16 @@ def validate(snapshot):
 def information(snapshot):
     result=snapshot['result'];kind=snapshot['kind']
     configuration=result.get('configuration',{}) if kind=='random' else result
-    return dict(kind=kind,start=configuration.get('start',result.get('first')),
-                end=configuration.get('end',result.get('end')),
+    dates=configuration.get('calendar',configuration)
+    return dict(kind=kind,start=dates.get('start',result.get('first')),
+                end=dates.get('end',result.get('end')),
                 cagr=result.get('cagr') if kind!='random' else result.get('distributions',{}).get('cagr',{}).get('mean'),
                 trials=result.get('completed') if kind=='random' else None)
 
 
 class Store:
-    def __init__(self,path=DATABASE):
-        self.path=Path(path)
+    def __init__(self,path=DATABASE,*,evidence_budget=durable_evidence.DEFAULT_BUDGET):
+        self.path=Path(path);self.evidence_budget=evidence_budget
 
     def connect(self):
         self.path.parent.mkdir(parents=True,exist_ok=True)
@@ -81,6 +86,7 @@ class Store:
         db.row_factory=sqlite3.Row
         try:
             db.execute(SCHEMA)
+            durable_evidence.install(db)
             return db
         except BaseException:
             db.close();raise
@@ -115,6 +121,47 @@ class Store:
             return record
         finally:db.close()
 
+    def save_evidence(self,name,metadata,reader):
+        """Atomically save a complete pinned source; never evict another record."""
+        if not isinstance(name,str) or not 1<=len(name.strip())<=120:
+            raise ValueError('Use a backtest name with 1–120 characters.')
+        info=information(metadata)
+        record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
+        db=self.connect()
+        try:
+            with db:
+                db.execute('BEGIN IMMEDIATE')
+                if db.execute('SELECT COUNT(*) FROM records').fetchone()[0]>=LIMIT:
+                    raise Full('All 20 saved slots are used. Delete a saved backtest before saving another.')
+                with durable_evidence.publication(db,record['id'],metadata,reader,budget=self.evidence_budget) as packed:
+                    db.execute('INSERT INTO records VALUES(?,?,?,?,?)',
+                        (record['id'],record['name'],record['created_at'],json.dumps(info,allow_nan=False),packed))
+                    backtest_control.checkpoint();db.commit()
+            return record
+        finally:db.close()
+
+    @contextmanager
+    def open_evidence(self,identifier):
+        """Yield independent complete evidence without financial access.
+
+        The consistent database copy closes before yield. Deletion cannot
+        invalidate an active reader. The caller closes this context explicitly.
+        """
+        self.check_id(identifier)
+        if not self.path.exists():raise Missing('Saved backtest not found.')
+        db=sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True,timeout=10)
+        opened=None
+        try:
+            db.execute('BEGIN')
+            row=db.execute('SELECT substr(snapshot,1,?) FROM records WHERE id=?',
+                (durable_evidence.MAX_ENVELOPE_BYTES+1,identifier)).fetchone()
+            if row is None:raise Missing('Saved backtest not found.')
+            opened=durable_evidence.detach(db,identifier,row[0],budget=self.evidence_budget)
+        finally:
+            db.close()
+        try:yield opened
+        finally:opened.close()
+
     def get(self,identifier):
         self.check_id(identifier)
         if not self.path.exists():raise Missing('Saved backtest not found.')
@@ -122,6 +169,7 @@ class Store:
         try:
             row=db.execute('SELECT * FROM records WHERE id=?',(identifier,)).fetchone()
             if row is None:raise Missing('Saved backtest not found.')
+            durable_evidence.eager_guard(row['snapshot'])
             try:snapshot=validate(json.loads(zlib.decompress(row['snapshot'])))
             except (ValueError,TypeError,zlib.error) as error:
                 raise ValueError('This saved backtest cannot be read. Its stored record was kept.') from error
@@ -134,6 +182,7 @@ class Store:
         db=self.connect()
         try:
             with db:
+                durable_evidence.delete(db,identifier)
                 if db.execute('DELETE FROM records WHERE id=?',(identifier,)).rowcount!=1:
                     raise Missing('Saved backtest not found.')
         finally:db.close()

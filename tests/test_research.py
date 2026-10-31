@@ -15,6 +15,38 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import research as r
 
 
+class PreparedPriceBindingTests(unittest.TestCase):
+    def test_committed_inventory_is_deterministic_closed_and_does_not_scan_raw(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'research.sqlite'
+            with closing(sqlite3.connect(path)) as db:
+                db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
+                db.execute('INSERT INTO metadata VALUES(?,?)',('prices',json.dumps({'B.json':[2,3],'A.json':[1,4]})));db.commit()
+            connections=[]
+            def connect(source):
+                self.assertEqual(source,path)
+                value=sqlite3.connect(source);connections.append(value);return value
+            with patch.object(r,'connect',side_effect=connect),patch.object(r,'price_sources',side_effect=AssertionError('No raw scan')):
+                first=r.prepared_price_binding(path)
+                with closing(sqlite3.connect(path)) as db:
+                    db.execute('UPDATE metadata SET value=?',(json.dumps({'A.json':[1,4],'B.json':[2,3]}),));db.commit()
+                self.assertEqual(r.prepared_price_binding(path),first)
+                with closing(sqlite3.connect(path)) as db:
+                    db.execute('UPDATE metadata SET value=?',(json.dumps({'A.json':[1,5],'B.json':[2,3]}),));db.commit()
+                self.assertNotEqual(r.prepared_price_binding(path),first)
+            for db in connections:
+                with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
+
+    def test_missing_or_malformed_inventory_fails_closed(self):
+        for inventory in (None,[],{'A.json':[1]}, {'A.json':[True,1]}, {'A.json':[1,-1]}, {'../A.json':[1,2]}):
+            with self.subTest(inventory=inventory):
+                db=sqlite3.connect(':memory:');db.execute('CREATE TABLE metadata(key TEXT,value TEXT)')
+                if inventory is not None:db.execute('INSERT INTO metadata VALUES(?,?)',('prices',json.dumps(inventory)))
+                with patch.object(r,'connect',return_value=db),self.assertRaisesRegex(ValueError,'price inventory'):
+                    r.prepared_price_binding()
+                with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
+
+
 class ResearchTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:')

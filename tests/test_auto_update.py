@@ -1,5 +1,6 @@
 """Committed-main updates and cooperative native shutdown. Synthetic inputs only."""
 from contextlib import ExitStack
+import json
 from pathlib import Path
 import os
 import shutil
@@ -159,6 +160,56 @@ class NativeStopTests(unittest.TestCase):
             with runtime_access.ownership(self.root,exclusive=True,timeout=.05):pass
         (self.root/'release').write_text('yes');output,error=child.communicate(timeout=5)
         self.assertEqual(child.returncode,0,error)
+        with runtime_access.ownership(self.root,exclusive=True,timeout=.1):pass
+
+    def test_supervisor_joins_selectable_queue_before_releasing_source(self):
+        # Use current application owners with a slow synthetic calculation.
+        # The bootstrap and all durable output stay in this disposable root.
+        app=f'''import importlib.util,sys,time,json
+from pathlib import Path
+from unittest.mock import patch
+source=Path({str(ROOT)!r});root=Path(__file__).parents[1]
+sys.path[:0]=[str(source/'website'),str(source/'scripts')]
+spec=importlib.util.spec_from_file_location('integrated_app',source/'website/serve_app.py')
+app=importlib.util.module_from_spec(spec);spec.loader.exec_module(app)
+import backtest_control,backtest_queue
+store=backtest_queue.Store(root/'queue.sqlite')
+options=dict(engine='original',start='2015-01-01',end='2016-12-30',months=3,trials=2,seed=42)
+plan=dict(options={{}},start=options['start'],end=options['end'],months=3,requested=2,seed=42,samples=[['2015-01-02']])
+item=store.enqueue(dict(id='a'*32,name='Interrupted',mode='random',options=options,catalog=dict(metrics={{}},filters={{}}),presentation={{}}))
+def slow(mode,options,progress,configuration,**kwargs):
+ configuration(plan);root.joinpath('ready').write_text('yes')
+ try:
+  while True:backtest_control.checkpoint();time.sleep(.02)
+ finally:
+  root.joinpath('closing').write_text('yes')
+  while not root.joinpath('release').exists():time.sleep(.02)
+Base=app.Server
+class Server(Base):
+ def __init__(self,*args,**kwargs):
+  with patch.object(app.backtest_queue,'Store',return_value=store):super().__init__(*args,**kwargs)
+  self.calculations.status=lambda:dict(state='unavailable')
+  self.calculations.original.calculate=slow
+app.Server=Server
+def main():
+ with patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.data_manager,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
+  app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
+ value=store.get(item['id']);replayed=store.claim()
+ assert value['state']=='queued' and value['options']==options
+ assert json.loads(replayed['plan'])==plan
+ root.joinpath('recovered.json').write_text(json.dumps(dict(state=value['state'],engine=value['options']['engine'],plan=json.loads(replayed['plan']))))
+'''
+        child=self.spawn(app)
+        self.until(self.root/'ready')
+        d.request_child_stop(self.config,self.token)
+        self.until(self.root/'closing')
+        with self.assertRaises(RuntimeError):
+            with runtime_access.ownership(self.root,exclusive=True,timeout=.05):pass
+        (self.root/'release').write_text('yes')
+        output,error=child.communicate(timeout=10)
+        self.assertEqual(child.returncode,0,error.decode(errors='replace'))
+        recovered=json.loads((self.root/'recovered.json').read_text())
+        self.assertEqual((recovered['state'],recovered['engine'],recovered['plan']['seed']),('queued','original',42))
         with runtime_access.ownership(self.root,exclusive=True,timeout=.1):pass
 
 

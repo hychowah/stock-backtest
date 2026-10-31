@@ -60,13 +60,14 @@ class AccessTests(unittest.TestCase):
                 handler=object.__new__(serve.Handler)
                 handler.disconnect_check=lambda:lambda:False
                 handler.path=path;handler.client_address=('127.0.0.1',1)
-                handler.server=SimpleNamespace();handler.headers={'Host':'127.0.0.1:3000','Content-Length':'2'}
+                handler.server=SimpleNamespace(calculations=serve.backtest_jobs.Calculations());handler.headers={'Host':'127.0.0.1:3000','Content-Length':'2'}
                 handler.rfile=io.BytesIO(b'{}');handler.reply=lambda status,payload:responses.append(status)
-                handler.stream_batch=calculate
+                handler.wfile=io.BytesIO();handler.send_response=responses.append
+                handler.send_header=lambda *args:None;handler.end_headers=lambda:None
                 def request():
                     try:handler.do_POST()
                     except BaseException as error:errors.append(error)
-                with patch.object(schedules,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(serve.robustness,'plan',return_value={}):
+                with patch.object(schedules,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(serve.backtest_jobs.robustness,'plan',return_value={}),patch.object(serve.backtest_jobs.robustness,'run',side_effect=calculate):
                     thread=Thread(target=request);thread.start()
                     try:
                         self.assertTrue(entered.wait(5))

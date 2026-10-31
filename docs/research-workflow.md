@@ -157,8 +157,21 @@ CAGR and growth unavailable. Choose any period to see its stocks, valuations,
 return contributions and top-10 gain/loss pies. CSV exports include period dates,
 actual stock entry/exit dates, selected metrics, weights and contributions.
 
-`scripts/schedules.py` owns the anchored calendar, daily SQLite index and dated
-books. `data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
+`scripts/schedule_calendar.py` owns calendar configuration, anchored boundaries,
+session rolling and seeded sampling. Read the
+[calendar contract](schedule-calendar.md) for its version and old-request mapping.
+Original remains the website default and accepts the five existing month counts.
+New engine — experimental accepts version-1 calendars with 1–104 weeks or
+1–24 months. The submitted engine controls calendar validation and readiness.
+`scripts/schedules.py` owns the daily SQLite index and dated books.
+`scripts/portfolio_results.py` reduces ordered selected books into complete
+dated results. It owns equal weights, signed contributions, compounding and
+common-window cash. It reads no files. The
+[financial result contract](portfolio-results.md) preserves complete holding
+rows and existing application envelopes. An offline numerical diagnostic uses
+the same reducer after complete-book calculation and unchanged SQL selection.
+This diagnostic does not route website requests to a new engine.
+`data/schedules.sqlite` is ignored and atomically rebuilt when inputs or
 calculation code change. Repeated preparation validates source freshness without
 parsing prices. Newly requested entry/exit pairs are computed once and persisted;
 filter, metric or rank changes reuse those books and shared SQL selection.
@@ -166,7 +179,14 @@ Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
 Daily cache version 3 tracks this in `period_pools`. Compatible version-1/2 caches
-upgrade automatically at startup without reparsing prices or discarding books.
+upgrade automatically at startup without reparsing prices or discarding books
+when their complete prerequisite binding agrees. Daily inputs now include a digest
+of the price inventory accepted by committed research metadata. The digest covers
+filenames, sizes and modification times. Normal daily connections do not scan raw
+prices. After research preparation accepts an in-place price edit, daily prices
+and dated books must rebuild. Older caches without this binding cannot establish
+compatibility and take the ordinary rebuild path. This affects derived data only;
+durable library and queue snapshots remain independent.
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
 The default listener is `0.0.0.0:3000`; the browser opens
@@ -299,9 +319,20 @@ cache contention and exact random-date recovery.
 
 ### Random independent rebalances
 
-`scripts/robustness.py` owns seeded date sampling and distribution summaries.
-It divides the requested calendar window into nominal frequency blocks anchored
-to the lower bound and independently samples one cached SPY session in each
+The offline numerical diagnostic now has separate completed-trial checkpoints.
+It uses the same ordered summary and capture consumer as the ordinary driver.
+The normal website selects Original by default or the submitted experimental
+engine through the existing calculation owner. Original keeps ordinary saved-book
+recovery. Experimental reuses its generation-bound checkpoints and closes its
+child before each published outcome.
+Checkpoint retention applies only to derived calculations. Saved-library and
+completed queue snapshots remain readable after current input changes. See the
+[checkpoint contract](trial-checkpoints.md) for identity and retention rules.
+
+`scripts/robustness.py` owns the random-date application adapter, fresh-seed
+policy and distribution summaries. It uses `scripts/schedule_calendar.py` to
+divide the requested calendar window into nominal frequency blocks anchored
+to the lower bound and independently sample one cached SPY session in each
 nonempty block for each trial. The final partial block participates, and the end
 mark is fixed. Samples across trials may coincide; the UI reports the number of
 distinct schedules. Trial count is configurable from 1 to 100 (default 24).

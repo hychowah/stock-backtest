@@ -55,10 +55,10 @@ const BacktestQueue=(()=>{
     }
     if(editing===session)endEdit(true);
   }
-  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+settings.start+' → '+settings.end+' · ranks '+settings.rank_from+'–'+settings.rank_to;}
+  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+settings.rank_from+'–'+settings.rank_to;}
   function parameters(record){
     const o=record.options;
-    return `${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${o.start} → ${o.end} · every ${o.months??12} month(s) · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All cached stocks':'Original candidate set'}`;
+    return `${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · ${CalendarSettings.label(o)} · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All cached stocks':'Original candidate set'}`;
   }
   function renderRows(rows){
     const list=node('queue-list');
@@ -119,7 +119,7 @@ const BacktestQueue=(()=>{
     const response=await fetch('/api/backtest-queue'+path,{cache:'no-store',...options});
     let value;
     try{value=await response.json();}catch(_){const error=Error('The queue service is unavailable. Start the updated website and reload this page.');error.status=response.status;throw error;}
-    if(!response.ok){const error=Error(value.error||'Could not access the queue.');error.status=response.status;throw error;}
+    if(!response.ok){const error=Error(value.error||'Could not access the queue.');error.status=response.status;error.requires_reader=value.requires_reader;throw error;}
     return value;
   }
   async function refresh(){
@@ -188,8 +188,13 @@ const BacktestQueue=(()=>{
     if(action==='keep'){pendingDelete=null;render();return;}
     await perform(async()=>{
       if(action==='open'){
-        const value=await request('/'+id);if(!value.snapshot)throw Error('This result is not ready yet.');
-        callbacks.open(value.snapshot);message('Opened “'+record.name+'” from its stored results.');return;
+        const isCurrent=ResultArtifacts.opening();let value;
+        try{value=await request('/'+id);}
+        catch(error){if(!error.requires_reader)throw error;value={snapshot:await ResultArtifacts.acquire({kind:'queue',id})};}
+        if(!value.snapshot)throw Error('This result is not ready yet.');
+        if(!isCurrent()){ResultArtifacts.release(value.snapshot);return;}
+        try{callbacks.open(value.snapshot);}catch(error){ResultArtifacts.release(value.snapshot);throw error;}
+        message('Opened “'+record.name+'” from its stored results.');return;
       }
       if(action==='copy'){
         callbacks.prepare?.();callbacks.restore({mode:record.mode,...record.options});node('queue-name').value=(record.name+' copy').slice(0,120);

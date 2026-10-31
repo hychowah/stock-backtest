@@ -22,6 +22,7 @@ import backtest_control
 import backtest_jobs
 import cache_access
 import diagnostics
+import durable_evidence
 import saved_backtests
 
 DATABASE=Path(__file__).resolve().parents[1]/'data'/'backtest-queue.sqlite'
@@ -54,7 +55,8 @@ def encode(value):return json.dumps(value,allow_nan=False,separators=(',',':'),s
 
 
 class Store:
-    def __init__(self,path=DATABASE):self.path=Path(path)
+    def __init__(self,path=DATABASE,*,evidence_budget=durable_evidence.DEFAULT_BUDGET):
+        self.path=Path(path);self.evidence_budget=evidence_budget
 
     @contextmanager
     def database(self):
@@ -62,6 +64,7 @@ class Store:
         db=sqlite3.connect(self.path,timeout=10);db.row_factory=sqlite3.Row
         try:
             db.executescript(SCHEMA)
+            durable_evidence.install(db)
             with db:
                 db.execute('BEGIN IMMEDIATE')
                 yield db
@@ -96,7 +99,9 @@ class Store:
         if any(not isinstance(request['catalog'].get(key),dict) for key in ('metrics','filters')):
             raise ValueError('The test metric and filter labels are required.')
         options=request['options']
-        if not isinstance(options.get('start'),str) or not isinstance(options.get('end'),str):
+        backtest_jobs.engine_id(options)
+        dates=options.get('calendar',options)
+        if not isinstance(dates,dict) or not isinstance(dates.get('start'),str) or not isinstance(dates.get('end'),str):
             raise ValueError('Choose start and end dates.')
         spec={key:request[key] for key in ('mode','options','catalog','presentation')}
         packed=encode(spec)
@@ -125,6 +130,12 @@ class Store:
                        (identifier,name,spec,identity,position,'queued',now(),seed))
             return self.metadata(db,self.row(db,identifier))
 
+    def accepted(self,identifier):
+        """Read only submission presence; enqueue still checks the exact receipt."""
+        if not isinstance(identifier,str):return False
+        with self.database() as db:
+            return db.execute("SELECT 1 FROM jobs WHERE id=? AND state!='deleted'",(identifier,)).fetchone() is not None
+
     def listing(self):
         with self.database() as db:
             return dict(limit=LIMIT,paused=bool(db.execute('SELECT paused FROM control').fetchone()[0]),
@@ -134,7 +145,9 @@ class Store:
         with self.database() as db:
             row=self.row(db,identifier,include_snapshot=True);result=self.metadata(db,row)
             packed=row['snapshot']
-        if packed is not None:result['snapshot']=json.loads(zlib.decompress(packed))
+        if packed is not None:
+            durable_evidence.eager_guard(packed)
+            result['snapshot']=json.loads(zlib.decompress(packed))
         return result
 
     def pause(self,paused):
@@ -175,6 +188,7 @@ class Store:
                 # Keep only the submission receipt, so a lost-ack retry cannot
                 # resurrect an explicitly deleted test or its holdings.
                 db.execute("UPDATE jobs SET state='deleted',name='',spec='{}',snapshot=NULL,progress=NULL,configuration=NULL,plan=NULL,seed=NULL,error=NULL,cagr=NULL,revision=revision+1 WHERE id=?",(identifier,))
+                durable_evidence.delete(db,identifier)
                 db.execute('DELETE FROM edits WHERE job_id=?',(identifier,))
                 return dict(id=identifier,deleted=True)
             if action=='stop':
@@ -195,7 +209,7 @@ class Store:
                     old,new=json.loads(row['spec']),json.loads(spec)
                     # A legacy omission means filter-first. Exposing that
                     # default during a name-only edit must retain recorded dates.
-                    same=old['mode']==new['mode'] and {'selection_order':'filter_first',**old['options']}=={'selection_order':'filter_first',**new['options']}
+                    same=old['mode']==new['mode'] and {'engine':'original','selection_order':'filter_first',**old['options']}=={'engine':'original','selection_order':'filter_first',**new['options']}
                     if same:seed=row['seed']
                     db.execute("UPDATE jobs SET name=?,spec=?,seed=?,state='queued',progress=NULL,configuration=CASE WHEN ? THEN configuration ELSE NULL END,plan=CASE WHEN ? THEN plan ELSE NULL END,error=NULL,started=NULL,finished=NULL,revision=revision+1 WHERE id=?",
                                (name,spec,seed,same,same,identifier))
@@ -219,10 +233,11 @@ class Store:
             db.execute("UPDATE jobs SET state='queued',started=NULL,progress=NULL,error=NULL,revision=revision+1 WHERE state='running'")
             db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE state='stopping'",(now(),))
 
-    def claim(self):
+    def claim(self,engines=None):
         with self.database() as db:
             if db.execute('SELECT paused FROM control').fetchone()[0]:return None
-            row=db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state='queued' ORDER BY position,id LIMIT 1").fetchone()
+            rows=db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state='queued' ORDER BY position,id")
+            row=next((row for row in rows if engines is None or backtest_jobs.engine_id(json.loads(row['spec'])['options']) in engines),None)
             if row is None:return None
             db.execute("UPDATE jobs SET state='running',started=?,finished=NULL,error=NULL,progress=NULL,revision=revision+1 WHERE id=?",(now(),row['id']))
             return dict(self.row(db,row['id'],include_plan=True))
@@ -234,9 +249,57 @@ class Store:
         if field not in ('progress','configuration'):raise ValueError('Invalid queue progress field.')
         with self.database() as db:
             if field=='configuration':
-                summary={key:value[key] for key in ('seed','requested','start','end','months') if key in value}
+                summary={key:value[key] for key in ('seed','requested','start','end','months','calendar') if key in value}
                 db.execute('UPDATE jobs SET configuration=?,plan=? WHERE id=?',(encode(summary),encode(value),identifier))
             else:db.execute('UPDATE jobs SET progress=? WHERE id=?',(encode(value),identifier))
+
+    def finish_evidence(self,identifier,metadata,reader):
+        """Explicit dormant completion. Queue intent owns publication precedence.
+
+        No engine or financial resource is acquired under this transaction.
+        Exact completion retries preserve the first bytes and revision.
+        """
+        with self.database() as db:
+            row=self.row(db,identifier,include_snapshot=True,include_plan=True)
+            if row['state']=='stopping':
+                db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE id=?",(now(),identifier))
+                return dict(id=identifier,state='cancelled')
+            if row['state']=='complete' and durable_evidence.is_evidence(row['snapshot']):
+                if not durable_evidence.matches(db,identifier,row['snapshot'],metadata,reader):
+                    raise Conflict('Completed evidence differs from the original snapshot.')
+                return dict(id=identifier,state='complete')
+            if row['state']!='running':raise Conflict('Only a running test can complete its evidence.')
+            spec=json.loads(row['spec'])
+            if (not durable_evidence.same(metadata.get('settings'),dict(mode=spec['mode'],**spec['options']))
+                    or not durable_evidence.same(metadata.get('catalog'),spec['catalog'])
+                    or not durable_evidence.same(metadata.get('presentation'),spec['presentation'])
+                    or metadata.get('kind')!=spec['mode']):
+                raise Conflict('Snapshot differs from the submitted queued test.')
+            plan=json.loads(row['plan']) if row['plan'] else None
+            if (not durable_evidence.same(reader.metadata.get('configuration'),plan)
+                    or spec['mode']=='random' and reader.metadata.get('options',{}).get('seed')!=row['seed']):
+                raise Conflict('Snapshot differs from the recorded queue plan.')
+            with durable_evidence.publication(db,identifier,metadata,reader,budget=self.evidence_budget) as packed:
+                db.execute("UPDATE jobs SET state='complete',snapshot=?,cagr=?,error=NULL,finished=?,revision=revision+1 WHERE id=?",
+                    (packed,saved_backtests.information(metadata)['cagr'],now(),identifier))
+                backtest_control.checkpoint();db.commit()
+            return dict(id=identifier,state='complete')
+
+    @contextmanager
+    def open_evidence(self,identifier):
+        """Detach a complete stored result before exposing an independent reader."""
+        if not self.path.exists():raise Missing('Queued test not found. Refresh the queue.')
+        db=sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True,timeout=10)
+        opened=None
+        try:
+            db.execute('BEGIN')
+            row=db.execute("SELECT substr(snapshot,1,?) FROM jobs WHERE id=? AND state='complete'",
+                (durable_evidence.MAX_ENVELOPE_BYTES+1,identifier)).fetchone()
+            if row is None:raise Missing('Completed queued evidence not found.')
+            opened=durable_evidence.detach(db,identifier,row[0],budget=self.evidence_budget)
+        finally:db.close()
+        try:yield opened
+        finally:opened.close()
 
     def finish(self,identifier,state,*,snapshot=None,error=None):
         packed=zlib.compress(encode(snapshot).encode(),3) if snapshot is not None else None
@@ -250,9 +313,16 @@ class Store:
 
 class Queue:
     """One durable consumer; UI mutations remain available during calculation."""
-    def __init__(self,store=None):
+    def __init__(self,store=None,*,calculations=None):
         self.store=store or Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
         self.owner=cache_access.WorkspaceAccess(self.store.path.with_suffix('.lock'))
+        self.calculations=calculations if calculations is not None else backtest_jobs.Calculations()
+
+    @property
+    def ready(self):return self.calculations.ready
+
+    @ready.setter
+    def ready(self,value):self.calculations.ready=value
 
     def start(self):
         with self.lock:
@@ -266,7 +336,9 @@ class Queue:
                 with self.owner.hold(timeout=.1):
                     self.store.recover()
                     while not self.stopping.is_set():
-                        job=self.store.claim()
+                        if not self.ready():self.wake.wait(.5);self.wake.clear();continue
+                        engines=self.calculations.queue_engines() if hasattr(self.calculations,'queue_engines') else None
+                        job=self.store.claim(engines)
                         if job is None:self.wake.wait(.5);self.wake.clear();continue
                         self._run(job)
             except ValueError:
@@ -289,31 +361,13 @@ class Queue:
         def progress(event):
             nonlocal last_progress
             stamp=time.monotonic()
-            if stamp-last_progress>.3:
+            if event is None or event.get('type')=='waiting' or stamp-last_progress>.3:
                 self.store.progress(identifier,'progress',event);last_progress=stamp
-        @contextmanager
-        def financial():
-            # A long manual run or data rebuild must defer queued work, rather
-            # than consume the queue as failures after the usual lock timeout.
-            waiting=False
-            while True:
-                backtest_control.checkpoint()
-                ownership=cache_access.access(timeout=.25)
-                try:ownership.__enter__()
-                except ValueError:
-                    if not waiting:
-                        self.store.progress(identifier,'progress',dict(type='waiting',message='Waiting for another backtest or data operation.'));waiting=True
-                    self.stopping.wait(.1);continue
-                break
-            try:
-                if waiting:self.store.progress(identifier,'progress',None)
-                yield
-            finally:ownership.__exit__(None,None,None)
         try:
             with backtest_control.cancel_when(stopped):
-                with financial():
-                    result=backtest_jobs.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
-                                                   planned=json.loads(job['plan']) if job['plan'] else None)
+                result=backtest_jobs.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
+                                               planned=json.loads(job['plan']) if job['plan'] else None,
+                                               owner=self.calculations,admission='queue')
                 backtest_control.checkpoint()
             snapshot=dict(version=2,kind=spec['mode'],settings=dict(mode=spec['mode'],**spec['options']),
                           result=result,catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
@@ -321,11 +375,17 @@ class Queue:
             self.store.finish(identifier,'complete',snapshot=snapshot)
         except backtest_control.Cancelled:
             self.store.finish(identifier,'queued' if self.stopping.is_set() else 'cancelled')
+        except (backtest_jobs.Unavailable,backtest_jobs.Busy):
+            self.store.finish(identifier,'queued')
         except Exception as error:
             diagnostics.failure('queue.test_failed',error)
             message=str(error) if isinstance(error,(ValueError,TypeError)) else 'Test failed. Check the server development log.'
             self.store.finish(identifier,'failed',error=message)
 
-    def close(self):
+    def request_stop(self):
+        """Publish shutdown intent before shared admission can wake a waiter."""
         self.stopping.set();self.wake.set()
+
+    def close(self):
+        self.request_stop()
         if self.thread:self.thread.join()

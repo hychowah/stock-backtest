@@ -30,7 +30,8 @@ assert.equal((el('chart').innerHTML.match(/class="bar"/g)||[]).length,12);
 assert.equal((el('market-cap-chart').innerHTML.match(/<rect /g)||[]).length,6);
 assert.equal((el('rows').innerHTML.match(/<tr>/g)||[]).length,6);
 assert.equal(details.filter(d=>!d.hidden).length,6);
-assert(el('range-note').textContent.includes('2021-01-04'));
+// Check the selected period's actual exit for both real and fictional calendars.
+assert(el('range-note').textContent.includes(prepared.periods['2020'].exit));
 const independent=run('data.reduce((v,d)=>v*(1+d.portfolio),1)');
 assert.equal(stats[2].textContent,'$'+independent.toFixed(2));
 el('from-year').value='2026';el('to-year').value='2020';run("applyRange('from')");assert.equal(run('data.length'),1);assert(el('range-note').textContent.includes('partial'));
@@ -66,7 +67,8 @@ assert.equal(run('medianMarketCap(2015)'),(caps[24]+caps[25])/2);
 console.log('Passed: ranks 10–20 independent annual means, medians, compounded wealth, visible stocks, unchanged SPY, single ranks, reversed bounds, and all-50 reset.');
 
 // Exercise real input controls and error/empty-result presentation.
-el('top100').handlers.click();assert.equal(run('selectedHoldings(2015).length'),100);
+const topCount=year=>screener.screen(prepared,{first:year,last:year,rank_to:100}).years[0].names;
+el('top100').handlers.click();assert.equal(run('selectedHoldings(2015).length'),topCount(2015));
 el('stock-pool').value='cached';el('min-cap').value='500';el('max-cap').value='5000';el('min-yield').value='15';
 el('strategy-form').handlers.submit({preventDefault(){}});
 assert.equal(el('screen-error').textContent,'');
@@ -79,7 +81,9 @@ assert(el('screen-status').textContent.includes('No matches'));
 assert(!el('chart').innerHTML.includes('NaN'));assert(!el('market-cap-chart').innerHTML.includes('NaN'));
 run('renderStockTable(2015)');assert(el('holding-body-2015').innerHTML.includes('No stocks match'));
 el('reset-strategy').handlers.click();el('from-year').value='1996';el('to-year').value='1996';el('top100').handlers.click();
-assert.equal(run('selectedHoldings(1996).length'),61);assert(el('screen-status').textContent.includes('Fewer than 100'));
+const firstYearCount=topCount(1996);
+assert(firstYearCount>0&&firstYearCount<100,'Fixture needs a nonempty underfilled first year');
+assert.equal(run('selectedHoldings(1996).length'),firstYearCount);assert(el('screen-status').textContent.includes('Fewer than 100'));
 console.log('Passed: strategy controls, top 100, cap/yield filters, invalid-input recovery, reset, empty-state rendering, and insufficient coverage.');
 // CSV download links must export the active strategy rather than baseline files.
 let savedCsv='',downloadName='';
@@ -88,12 +92,12 @@ ctx.URL={createObjectURL(blob){savedCsv=blob.parts.join('');return 'blob:test';}
 document.createElement=()=>({click(){downloadName=this.download;}});
 el('download-holdings').handlers.click({preventDefault(){}});
 assert.equal(downloadName,'holdings-1996-1996.csv');
-assert.equal(savedCsv.split('\r\n').length,62);
+assert.equal(savedCsv.split('\r\n').length,firstYearCount+1);
 assert(savedCsv.includes('"year","rank","symbol"'));
 el('download-returns').handlers.click({preventDefault(){}});
 assert.equal(downloadName,'returns-1996-1996.csv');
 assert.equal(savedCsv.split('\r\n').length,2);
-assert(savedCsv.includes('"1996","61"'));
+assert(savedCsv.includes(`"1996","${firstYearCount}"`));
 console.log('Passed: downloaded CSV files use selected years, ranks, and stock counts.');
 // The most recent selected year opens with return attribution, and filters refresh it.
 assert.equal(el('holding-year').value,'1996');

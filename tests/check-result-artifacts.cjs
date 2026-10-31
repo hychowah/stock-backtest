@@ -28,3 +28,11 @@ Artifacts.publish(random);assert.equal(Artifacts.forView('custom').kind,'random'
 assert(Artifacts.matches(random,{...random.settings}));assert(Artifacts.matches(random,{...random.settings,seed:42}));assert(!Artifacts.matches(random,{...random.settings,seed:43}));
 assert.throws(()=>Artifacts.decode({...legacy,version:3}),/Unsupported/);
 console.log('Passed: one immutable result per view, original labels and precision, version-1 decoding, semantic display context, pending edits and exact random-seed reopening.');
+const produced=Artifacts.create({mode:'custom',engine:'experimental',start:'2015-01-01'},{producer:{engine:'experimental',label:'New engine — experimental'}},catalog,presentation);
+assert(Artifacts.matches(produced,{...produced.settings}));
+assert(!Artifacts.matches(produced,{...produced.settings,engine:'original'}));
+assert.equal(Artifacts.decode(produced).result.producer.engine,'experimental');
+const unidentified=Artifacts.decode({...produced,result:{},settings:{mode:'custom',start:'2015-01-01'}});
+assert(!('producer' in unidentified.result));
+assert(Artifacts.matches(unidentified,{...unidentified.settings,engine:'original'}));
+console.log('Passed: pinned engine comparison and recorded producer identity without legacy inference.');

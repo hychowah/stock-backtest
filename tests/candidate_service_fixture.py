@@ -1,0 +1,78 @@
+"""Contain a real isolated candidate entry with explicit fictional failures."""
+from contextlib import ExitStack
+from pathlib import Path
+import sys
+from threading import Thread
+from unittest.mock import patch
+
+
+def main():
+    source,tests=map(Path,sys.argv[1:3]);scenario=sys.argv[3]
+    sys.path[:0]=[str(tests),str(tests.parent/'tools')]
+    from bench_source_service_fixture import dependency_guard
+    import mimetypes
+    mimetypes.init()
+    dependency_guard(source)
+    sys.path[:0]=[str(source/'scripts'),str(source/'website')]
+    import runtime_access
+    with runtime_access.ownership(source),ExitStack() as context:
+        import run
+        run.KEY_PATH=source.parent/'nonexistent-offline-key'
+        import numerical_preparation
+        if scenario=='dependencies':
+            context.enter_context(patch.object(numerical_preparation,'dependencies',
+                side_effect=numerical_preparation.PreparationError('dependencies unavailable')))
+        elif scenario=='build':
+            context.enter_context(patch.object(numerical_preparation.subprocess,'run',
+                side_effect=OSError('fictional build failure')))
+        if scenario.startswith('ordinary'):
+            class WithoutNative:
+                def find_spec(self,fullname,path=None,target=None):
+                    if fullname.split('.')[0] in ('numpy','numba','llvmlite'):
+                        raise ImportError('Ordinary fixture has no numerical stack')
+            sys.meta_path.insert(0,WithoutNative())
+        import serve_app
+        if scenario=='selectable-workflow':
+            emit=serve_app.DATA_JOBS.emit
+            def report(**values):
+                emit(**values)
+                if 'message' in values:print('SELECTABLE PREPARATION: '+values['message'],flush=True)
+            serve_app.DATA_JOBS.emit=report
+        original=serve_app.Server
+        def server(*args,**kwargs):
+            value=original(*args,**kwargs)
+            if scenario=='evidence':
+                serve=value.serve_forever
+                def serve_evidence():
+                    from evidence_browser_fixture import seed
+                    try:seed(value,source)
+                    except BaseException:
+                        import traceback
+                        (source/'data/evidence-fixture-failure.txt').write_text(traceback.format_exc(),encoding='utf-8')
+                        raise
+                    serve()
+                value.serve_forever=serve_evidence
+            def stop():
+                # A blocked Windows CRT reader can stall a later NumPy import.
+                # Optional normal-app preparation imports after serving starts.
+                from numerical_runtime_child import _stdin_lines
+                if next(_stdin_lines(),None)=='close\n':value.shutdown()
+            Thread(target=stop,name='fixture-stop',daemon=True).start()
+            return value
+        context.enter_context(patch.object(serve_app,'Server',side_effect=server))
+        if scenario=='ordinary-evidence':
+            from evidence_browser_fixture import forbid_read_dependencies
+            forbid_read_dependencies(context,serve_app)
+        if scenario=='evidence':
+            context.enter_context(patch.object(serve_app.backtest_queue.Queue,'start',return_value=None))
+        if scenario not in ('workflow','ordinary-workflow','selectable-workflow'):
+            context.enter_context(patch.object(serve_app.backtest_jobs,'calculate',side_effect=AssertionError('Stored result requested calculation')))
+        if scenario.startswith('ordinary') or scenario=='selectable-workflow':
+            serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
+        else:
+            import serve_candidate
+            sys.argv=['serve_candidate.py','--private-root',str(source),'--no-browser']
+            serve_candidate.main()
+
+
+if __name__=='__main__':main()

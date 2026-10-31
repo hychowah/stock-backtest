@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import bench_baseline as baseline
 import bench_methods as previous
 import bench_admission as admission
+from portfolio_workspace import stage_book
 
 METHODS = ('numba', 'python', 'duckdb', 'persistent', 'polars', 'rust')
 STAGING = ('all', 'requested')
@@ -113,29 +114,6 @@ def memory_workspace(source, schedules):
         raise
 
 
-def stage_book(db, book, pool, *, ranking_metric=None, staged_rows=None):
-    """Stage one complete snapshot book and only the ranking pair consumed by
-    this request; preserve missing pairs and requested threshold values.
-
-    A None ranking_metric retains complete staging for the comparison control.
-    Count actual inserted rows, including zero rows for a missing ranking pair.
-    """
-    for table in baseline.DERIVED:
-        db.execute('DELETE FROM ' + table)
-    db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)', (1, *book['period']))
-    snapshots = db.executemany('INSERT INTO snapshots VALUES(' + ','.join('?' * 15) + ')',
-                               ((pool, 1, *row) for row in book['snapshots']))
-    metrics = db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
-        (('historical', pool, 1, symbol, metric, multiple, score)
-         for symbol, metric, multiple, score in book['metrics']
-         if ranking_metric is None or metric == ranking_metric))
-    filters = db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                             (('historical', pool, 1, *row) for row in book['filters']))
-    if staged_rows is not None:
-        for name, cursor in (('snapshots', snapshots), ('screening_metrics', metrics),
-                             ('filter_values', filters)):
-            staged_rows[name] += cursor.rowcount
-    return 1
 
 
 class BatchModel(previous.Model):
@@ -299,7 +277,14 @@ def reference_smokes(source, requests, directory):
 
 def source_files():
     files = [Path(__file__), Path(previous.__file__), Path(baseline.__file__)]
-    files += [ROOT / 'tools' / name for name in ('bench_methods_arrays.py', 'bench_generation.py')]
+    files += [ROOT / 'tools' / name for name in
+              ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py',
+               'portfolio_workspace.py')]
+    files += [ROOT / 'scripts' / name for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py',
+        'numerical_books.py', 'numerical_numba.py', 'numerical_matrix.py',
+        'numerical_workspace.py', 'process_owner.py', 'numerical_identity.py',
+        'numerical_random.py', 'numerical_portfolio.py', 'numerical_runtime.py',
+        'numerical_runtime_child.py', 'numerical_session.py')]
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
     return list(dict.fromkeys(files))
@@ -319,9 +304,9 @@ def intermediate_proof(inputs, executor, source):
     dates = [(next(day for day in sessions if day>=a),
               next(day for day in reversed(sessions) if day<=b)) for a,b in anchors]
     jobs = [(a,b,pool) for pool in ('legacy','cached') for a,b in dates]
-    fields = set(s.metrics.FILTERS)
+    fields = set(inputs.policy.fields['thresholds'])
     options = dict(baseline.options('legacy','F0'),
-        filters=[dict(field=field,op='gt',value=0.) for field in s.metrics.FILTERS])
+        filters=[dict(field=field,op='gt',value=0.) for field in inputs.policy.fields['thresholds']])
     executor.begin(dict(options=options))
     capture = executor.limits.get('capture',False)
     executor.limits['capture'] = True

@@ -14,6 +14,7 @@ sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
 import robustness as r
 import schedules as s
 import serve
+import backtest_jobs
 
 
 class RobustnessTests(unittest.TestCase):
@@ -34,6 +35,14 @@ class RobustnessTests(unittest.TestCase):
 
     def config(self,**options):
         return r.plan(self.db,start='2015-01-01',end='2016-12-30',rank_to=1,**options)
+
+    def stream(self,handler,configuration):
+        handler.server=SimpleNamespace(calculations=backtest_jobs.Calculations())
+        def connection():
+            db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
+            self.db.backup(db);return db
+        with patch.object(s,'connect',side_effect=connection):
+            handler.stream_batch({},planned=configuration)
 
     def test_seed_count_and_independent_draws_in_each_block(self):
         plan=self.config(trials=24,seed=11)
@@ -152,7 +161,7 @@ class RobustnessTests(unittest.TestCase):
         statuses=[];handler.send_response=statuses.append
         handler.send_header=lambda *args:None;handler.end_headers=lambda:None
         configuration=self.config(trials=2)
-        handler.stream_batch(self.db,configuration)
+        self.stream(handler,configuration)
         events=[json.loads(line) for line in handler.wfile.getvalue().splitlines()]
         self.assertEqual(statuses,[200]);self.assertEqual(events[0]['type'],'configuration')
         self.assertEqual(events[0]['configuration'],configuration)
@@ -179,7 +188,7 @@ class RobustnessTests(unittest.TestCase):
             handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO();handler.headers=headers
             handler.send_response=lambda *args:None
             handler.send_header=lambda *args:None;handler.end_headers=lambda:None
-            handler.stream_batch(self.db,configuration)
+            self.stream(handler,configuration)
             return [json.loads(line) for line in handler.wfile.getvalue().splitlines()]
         events=stream({'X-Backtest-Details':'holdings'})
         result=events[-1]['result']
@@ -198,8 +207,8 @@ class RobustnessTests(unittest.TestCase):
         handler.send_response=lambda *args:None
         handler.send_header=lambda *args:None;handler.end_headers=lambda:None
         configuration=self.config(trials=2)
-        with patch.object(serve.robustness,'run',side_effect=ValueError('interrupted')):
-            handler.stream_batch(self.db,configuration)
+        with patch.object(r,'run',side_effect=ValueError('interrupted')):
+            self.stream(handler,configuration)
         events=[json.loads(line) for line in handler.wfile.getvalue().splitlines()]
         self.assertEqual(events[0],dict(type='configuration',configuration=configuration))
         self.assertEqual(events[1]['type'],'error')
@@ -212,7 +221,7 @@ class RobustnessTests(unittest.TestCase):
             self.db.backup(db);return db
         def handler(path,payload):
             obj=object.__new__(serve.Handler);body=json.dumps(payload).encode()
-            obj.server=SimpleNamespace(lifecycle=None)
+            obj.server=SimpleNamespace(lifecycle=None,calculations=backtest_jobs.Calculations())
             obj.disconnect_check=lambda:lambda:False
             obj.path=path;obj.rfile=io.BytesIO(body);obj.wfile=io.BytesIO()
             obj.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}

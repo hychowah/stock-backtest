@@ -268,9 +268,10 @@ Run the persistence checks with native Windows Python too.
 
 Random-date saves include every trial's exact trade dates, stock rows and period
 returns, plus the seed and distribution summary. Trial inspection uses these
-stored rows. It does not recalculate the book. The website opts into full trial
-results with `X-Backtest-Details: holdings`. Existing summary-only API clients
-keep their existing response. Save a completed new run; older summary-only
+stored rows. It does not recalculate the book. Current background jobs and queued
+random tests capture full trial holdings through `backtest_jobs.calculate`.
+Existing `/api/robustness` streaming clients can opt into full trial results with
+`X-Backtest-Details: holdings`. Summary-only clients keep their existing response. Save a completed new run; older summary-only
 results do not contain enough evidence for a complete random backtest record.
 
 ### Completed-result ownership and saved-record compatibility
@@ -295,3 +296,19 @@ responses cannot replace a newer acknowledged change.
 
 Check `node tests/check-result-artifacts.cjs` alongside the saved-library and range
 checks. The library checks include failed refreshes and out-of-order responses.
+
+
+### Selectable dated engines
+
+Current source offers Original (default) and New engine — experimental for
+custom dated fixed/random runs. January and latest screens keep their paths.
+Normal startup and ordinary rebuild require no numerical packages. Use the
+separate Prepare experimental engine action in Manage backtest data after
+installing the pinned optional stack. See [preparation and recovery](../docs/candidate-startup.md#normal-app-selectable-engines-cb-15-source).
+
+The submitted engine stays with manual jobs, queued tests, retries and replay.
+Original accepts monthly presets. Custom week/month calendars require the
+experimental engine. Experimental operating yield spread fails explicitly.
+New results and CSVs identify their recorded producer; older evidence remains
+unidentified. Opening stored evidence does not calculate. No automatic fallback
+or default replacement is provided. CB-15 source is not a deployed release.

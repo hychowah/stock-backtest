@@ -1,0 +1,4 @@
+# Candidate only. Tested with CPython 3.12.1 and 3.14.4. No automatic install.
+numpy==2.5.4
+numba==0.68.0
+llvmlite==0.50.0

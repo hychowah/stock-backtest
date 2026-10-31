@@ -7,8 +7,6 @@ intervals vary. Portfolio and paired SPY hold zero-return cash before the first
 sampled trade; CAGR uses a common start/end window. Percentiles describe
 correlated historical scenarios, not confidence intervals or one portfolio.
 """
-from bisect import bisect_right
-from calendar import monthrange
 from datetime import date
 import math
 import random
@@ -17,6 +15,7 @@ import time
 
 import schedules
 import book_batch
+import schedule_calendar
 
 
 def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
@@ -27,26 +26,12 @@ def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
         raise ValueError('Choose a whole-number seed between 0 and 4294967295.')
     schedules.r._select(db,period=(-1,-1),**options)
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
-    window=schedules.schedule(start,end,months,sessions)
-    lower=date.fromisoformat(start);final=window[-1][1]
-    blocks=[];offset=0
-    while True:
-        absolute=lower.year*12+lower.month-1+offset
-        year,month=divmod(absolute,12);month+=1
-        left=date(year,month,min(lower.day,monthrange(year,month)[1]))
-        if left>=final:break
-        absolute+=months;year,month=divmod(absolute,12);month+=1
-        right=min(date(year,month,min(lower.day,monthrange(year,month)[1])),final)
-        choices=[day for day in sessions if left<=day<right]
-        if choices:blocks.append(dict(start=str(left),end=str(right),sessions=[str(day) for day in choices]))
-        offset+=months
-    generator=random.Random(seed)
-    samples=[[generator.choice(block['sessions']) for block in blocks] for _ in range(trials)]
-    if not blocks:raise ValueError('No trading sessions available for random-date trials.')
-    return dict(start=start,end=end,window_start=str(window[0][0]),window_end=str(final),
+    calendar=schedule_calendar.SessionCalendar(sessions)
+    configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+    sampled=calendar.sample(configuration,trials,seed,checkpoint=schedules.backtest_control.checkpoint)
+    return dict(start=start,end=end,window_start=sampled['window_start'],window_end=sampled['window_end'],
                 months=months,seed=seed,requested=trials,options=options,
-                blocks=[dict(start=b['start'],end=b['end'],available=len(b['sessions'])) for b in blocks],
-                samples=samples)
+                blocks=sampled['blocks'],samples=sampled['samples'])
 
 
 def percentile(values, probability):
@@ -65,15 +50,19 @@ def distribution(values):
                 p90=percentile(values,.9),min=min(values),max=max(values),stddev=statistics.pstdev(values))
 
 
-def summarize(result, number, dates):
-    periods=result['periods']
+def summarize(result, number, dates, *, period_counts=None):
+    """Use the same arithmetic for collected trials and streamed period counts."""
     requested=result['options'].get('rank_to',50)-result['options'].get('rank_from',1)+1
+    if period_counts is None:
+        periods=result['periods']
+        period_counts=(len(periods),sum(p['names']==0 for p in periods),sum(p['names']<requested for p in periods))
+    total,empty,short=period_counts
     return dict(trial=number,start=result['start'],first_trade=result['first_trade'],end=result['end'],dates=dates,
-                cash_days=result['cash_days'],periods=len(periods),cagr=result['cagr'],spy_cagr=result['spy_cagr'],
+                cash_days=result['cash_days'],periods=total,cagr=result['cagr'],spy_cagr=result['spy_cagr'],
                 excess_cagr=result['cagr']-result['spy_cagr'] if result['cagr'] is not None else None,
                 total_return=result['growth']-1 if result['growth'] is not None else None,
                 growth=result['growth'],spy_growth=result['spy_growth'],
-                empty_periods=sum(p['names']==0 for p in periods),short_periods=sum(p['names']<requested for p in periods),seconds=result['seconds'])
+                empty_periods=empty,short_periods=short,seconds=result['seconds'])
 
 
 def summarize_trials(configuration, rows, started):
@@ -88,6 +77,27 @@ def summarize_trials(configuration, rows, started):
                 note='Each trial independently samples one trading date in every rebalance block, including a final partial block. Actual holding intervals vary. All trials use the same window, with zero-return cash until their first trade for both strategy and paired SPY. Mean CAGR averages trial CAGRs; it is not the return of one portfolio. Incomplete trials remain listed and are excluded from paired statistics. Scenarios overlap; percentiles are not confidence intervals.')
 
 
+def consume_trials(configuration, completed, *, capture=None, started=None):
+    """Consume ordered complete results; storage and progress belong upstream.
+
+    Streams must publish/commit before yielding. Capture receives the original
+    detached result, including on recovery, and must not mutate it.
+    """
+    if started is None: started=time.perf_counter()
+    rows=[];execution={}
+    for number,result,stats in completed:
+        if type(number) is not int or number != len(rows)+1 or number > configuration['requested']:
+            raise ValueError('Completed trials must be contiguous and ordered.')
+        rows.append(summarize(result,number,configuration['samples'][number-1]))
+        if capture is not None:capture(number,result)
+        execution=dict(stats)
+    if len(rows) != configuration['requested']:
+        raise ValueError('Completed trial count differs from the recorded plan.')
+    result=summarize_trials(configuration,rows,started)
+    result['execution']=execution
+    return result
+
+
 def run(db, configuration, progress=None, *, workers=None, capture=None):
     """Plan shared books upfront; calculate ahead and commit each complete trial.
 
@@ -96,11 +106,6 @@ def run(db, configuration, progress=None, *, workers=None, capture=None):
     An optional observer receives each completed trial's full result. It must
     not mutate that result. Ordinary callers still receive only the summary.
     """
-    started=time.perf_counter();rows=[];execution={}
-    for number,result,stats in book_batch.evaluate_trials(db,configuration,progress,workers):
-        rows.append(summarize(result,number,configuration['samples'][number-1]))
-        if capture is not None:capture(number,result)
-        execution=dict(stats)
-    result=summarize_trials(configuration,rows,started)
-    result['execution']=execution
-    return result
+    started=time.perf_counter()
+    return consume_trials(configuration,book_batch.evaluate_trials(db,configuration,progress,workers),
+                          capture=capture,started=started)

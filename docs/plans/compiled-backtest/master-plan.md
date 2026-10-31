@@ -6,13 +6,155 @@ Implementation workflow and comparative research updated: 24 October 2026.
 
 Wave5 measurement expansion: 25 October 2026.
 
-Program direction revised after the full matrix: 25 October 2026.
+Program direction revised after the full matrix and program review: 25 October 2026.
 
-Status: workspace preparation CB-00 and baseline measurement CB-01 are complete.
-CB-01 recorded all 18 native Windows cases with exact replay agreement.
-No production calculation engine has been replaced. CB-02 has completed the
-broad method comparison. Numba is the working direction for the next bounded
-experiment. Production integration remains gated. CB-03 remains conditional.
+Application integration boundaries updated after reviewed-main integration: 27 October 2026.
+
+Persistent isolated preview integration: 29 October 2026.
+
+Selectable-engine release direction: 31 October 2026.
+
+## Current delivery direction — 31 October 2026
+
+The user approves making the engines selectable in the normal app so the new
+engine can be tested before default replacement. **Original stays the default.**
+The next delivery is Original plus New engine — experimental, with the engine
+captured per submitted run and no silent fallback.
+
+The [opt-in release plan](phases/CB-14.opt-in-release.md) is authoritative for
+the remaining work. CB-14 now establishes readiness for the enabled opt-in
+scope. CB-15 integrates and releases the selector in the normal app. Full-window
+weekly/100-trial capacity and changing the default are separate follow-up work.
+They do not block the initial supported opt-in workflow. Failed historical gates
+remain failed; no larger workload is qualified by this change.
+
+The [CB-14 readiness implementation](phases/CB-14.readiness.md) reconciles main's
+schema-8 preparation, operating-yield-spread filter and selection order. Original
+retains its full catalog. Experimental requests explicitly reject operating
+spread and use the shared SQL selector for supported settings. Each application
+candidate call closes its child before publishing an outcome. CB-14 readiness
+verification passes, including 263 native tests and the affected WSL/browser
+checks. The current supported readiness scope is complete. CB-15 owns the normal-app
+choice, persistent per-submission identity and representative selector workflows.
+
+This section supersedes older full-replacement prerequisites and historical
+“CB-15 blocked” next-step instructions below. The 30 October approximate 4×
+performance direction remains; no exact ratio gates opt-in testing. The delivery-plan change grants no limit expansion or installed access.
+The readiness implementation left normal routing unchanged. CB-15 now adds
+normal-app selection in source, with Original still the default. Installed
+assets remain unchanged. The later authorized [main integration](phases/CB-15.integration.md) adds no deployment authorization. See the [source release handoff](phases/CB-15.release-handoff.md).
+
+## Implemented baseline before the delivery change
+
+Status: CB-00 and CB-01 are complete. **CB-02 is complete by the user's
+method-selection decision on 26 October 2026. Numba is accepted.** Further
+the mandatory comparative matrix remains retired. The latest performance direction
+aims for about 4× over the original method, or close, with no absolute waiting-time
+limit. CB-03 is skipped. CB-04 delivers offline numerical artifacts; see its
+[phase record](phases/CB-04.md). CB-05 is complete. Synthetic checks and new private FMP real-symbol
+checks pass on WSL and native Windows; see the [CB-05 record](phases/CB-05.md).
+CB-06 delivers the entry-date factor interface; see its [record](phases/CB-06.md).
+CB-07 is complete with SQL deliberately retained. CB-08 delivers the shared
+week/month calendar and monthly compatibility adapters. CB-09 adds one shared
+complete financial-result reducer and an offline numerical diagnostic; see its
+[record](phases/CB-09.md) for verification and audit status. CB-10 completes
+generation-bound offline random recovery and verifies durable snapshot
+independence; see its [record](phases/CB-10.md). CB-11 delivers the explicit
+persistent bounded runtime; its [record](phases/CB-11.md) tracks verified
+behavior and the completed independent audits. SQL and complete-book evaluation
+remain in use. CB-12 adds isolated closed preparation and startup verification.
+CB-13B connects persistent numerical calculation only in the isolated preview.
+CB-13C completes browser/calendar compatibility and qualified preview week/month
+controls. CB-14 has a complete twelve-trial bounded consumer pass, independent
+input preparation, a completed fresh24 annual backend run and scoped copied-runtime
+compatibility. Current main-feature reconciliation is implemented in the
+readiness slice. Full24 ordinary agreement and broader capacity remain follow-up
+work. Normal launcher and running-server routing are unchanged.
+
+The cumulative design follow-up after CB-12 separates optional compiled guard
+translation from base policy construction. Generation preparation, entry factors
+and accepted source-guard execution do not require that translator. Explicit
+compiled-guard execution binds its own generated-program identity. Conservative
+source freshness and numerical-expression validation remain required. The changed
+policy identity requires a fresh offline numerical export. See the
+[policy contract](../../numerical-generations.md). CB-13A now consolidates
+ordinary calculation admission behind one server-owned boundary.
+[CB-13B](phases/CB-13B.md) selects persistent isolated preview dispatch and
+coordinates child freshness with parent data-operation retirement. Browser/calendar compatibility is completed by [CB-13C](phases/CB-13C.md).
+
+The [30 October performance direction](phases/CB-14.performance-direction.md)
+governs performance assessment within the revised opt-in scope. The [method-selection decision](phases/CB-02/method-selection.md)
+continues to select Numba. It supersedes earlier instructions to finish the measurement owner,
+qualify benchmark-only resources, run another pilot or enforce a 4×/10× release
+gate. Earlier measurements, failures and unsupported capabilities remain
+historical evidence. They are not recast as passing qualification.
+
+## Current performance direction — 30 October 2026
+
+The user sets no absolute waiting-time limit. Aim for about 4× faster than the
+original ordinary method, or close. Assess useful comparable evidence and report
+actual workflow times. Do not invent a strict per-case minimum or a numerical
+meaning for "close". Further optimization must justify its effort with a material
+measured gain. Prefer finishing readiness work over marginal speed improvements.
+
+This [decision](phases/CB-14.performance-direction.md) supersedes earlier missing
+absolute-budget blockers and the blanket waiver of further original-method
+comparison. It does not restore the full historical matrix, 10× target, method
+search or closed benchmark admission. Reuse existing evidence first. Where a
+material current question remains, plan the smallest representative comparison
+under separately qualified inputs and safety bounds. The recorded annual Numba
+medians of 4.66×–7.74× remain historical, not current-source qualification.
+
+Use the current experiment policy: the user removed the application CPU-time
+cutoff and physical-memory/commit-headroom entry gates. Other limits and ownership
+rules remain. Correctness and operational checks apply to enabled workflows;
+broader capacity is separate follow-up under the 31 October delivery decision.
+Preserve historical records and verdicts. No workload, protected-asset access or
+deployment is started by this plan update.
+
+## Current application integration boundary — 27 October 2026
+
+The user accepts the two recommendations from the independent plan review.
+The [integration checkpoint](integration-checkpoint.md), commit `71e2548`, merges
+reviewed main `b64130a` into the engine branch. Its synthetic WSL/native and
+private WSL browser checks establish compatibility on the existing engine path.
+They do not qualify candidate routing, real-data capacity or the installed runtime.
+At that plan update, CB-05 remained incomplete. The later real-symbol
+continuation completes CB-05 only. No later phase is completed by that update.
+
+Current source already owns manual background jobs, the overnight queue and
+complete saved-result snapshots. Candidate execution must fit those boundaries:
+
+| Boundary | Responsibility and retained contract |
+|---|---|
+| Application calculation | `website/backtest_jobs.py:calculate` is the shared entry for background jobs and queued fixed/random tests. The candidate runtime supplies calculation behind it. Existing schedule/NDJSON routes remain compatibility adapters to the same engine capability. |
+| Job lifetime | Browser navigation does not cancel server-owned jobs. Explicit Stop and server shutdown request cooperative cleanup. Temporary manual-job results retain their existing expiry and restart behavior. |
+| Durable queue | `website/backtest_queue.py` owns admission, ordering, seed/date plans, held edits and retry receipts. Shutdown requeues interrupted work; explicit Stop stays cancelled. Native worker scheduling stays inside the numerical runtime. |
+| Durable user evidence | `data/saved-backtests.sqlite` and `data/backtest-queue.sqlite` preserve completed snapshots independently of current input freshness. `website/result-artifacts.js` supplies fresh and reopened views, original labels and downloads without recalculation. |
+| Reusable calculation state | Generation-bound checkpoints, prepared books and factor caches can be reused only with matching identities. Their invalidation and bounded retention must not remove durable user evidence. |
+
+Use `backtest_control` and the existing financial coordinator. Legacy request
+cancellation observes disconnects. Background jobs survive disconnection.
+Queue retries retain their recorded plan and edit identity. Every caller keeps
+worker, database and mapping cleanup inside financial and source ownership.
+The runtime closes borrowed evaluators before their input attachments.
+
+CB-09/CB-10 define complete evaluator results and generation-bound recovery.
+CB-11/CB-12 own the candidate runtime and its startup/closure inside current
+application lifetimes. CB-13 connects that capability through the existing
+adapter and immutable browser artifacts. CB-14/CB-15 qualify compatibility and
+rollback across manual jobs, queued tests and durable saved results.
+Do not add another job service or user-result store to implement these phases.
+
+The 27 October checkpoint was a plan-only adjustment to existing boundaries.
+It needed no code-structure design or guide change. Later implementation phases
+file their own designs, guide updates and verification records.
+The independent commit audit is recorded in
+[the plan-update audit](main-integration-plan.audit.md). No new financial or
+performance run is claimed. The historical phase and measurement records retain
+their original scope and results.
+
+The wave summaries below preserve the earlier sequence and its original gates.
 
 The second CB-02 pilot tested indexed report selection and unused threshold
 omission. It matched all 24 trials exactly but took 58.13 seconds, versus
@@ -67,11 +209,324 @@ The decisions below supersede earlier instructions to expand both candidates
 or continue the broad method search. Historical phase records retain their
 original conclusions and measurements.
 
+## User decision: accept Numba and stop comparative benchmarking — 26 October 2026
+
+The user says: “let's skip the comparsion, and accept using this method.” The
+accepted method is Numba. The user accepts the observed performance. Close
+CB-02's method selection by this decision. Skip CB-03 and further method search.
+The numerical implementation and shared financial policy remain the starting
+point. Do not require the unmeasured compiled-guard extension; use the tested
+Numba calculation path with the source-owned guards and shared SQL selection.
+
+Remove the prospective source/compiled guard pilot, new current-source primary
+speed matrix, integrated speed-matrix repeat, 4× minimum, 10× target as an
+acceptance condition, and optimization loops whose sole purpose is passing
+those thresholds. Keep reported timings tied to their original source/settings.
+There is no new timing result or current-source speed guarantee.
+
+Stop the benchmark-only complete-environment/resource/admission project. Its
+separate-host, hard resident/thread/I/O/total-CPU and strict experiment-cleanup
+proofs no longer block method selection or production design. The historical
+benchmark tools remain closed to real execution. No admission flag or code
+bypass is introduced. Existing synthetic evidence and bounds remain unchanged.
+
+Keep financial agreement, `1e-12` tolerances, freshness, canonical report rules,
+input provenance, production resource ownership, bounded normal operation,
+cancellation, saved-result recovery, Windows startup/offline/browser checks,
+weekly scope, stable website protection and rollback. Keep the complete trailing
+filter, mixed-filter and empty-coverage correctness cases. Standalone usability
+and capacity observations remain useful without paired controls or a relative
+speed gate. This decision grants no deployment or protected-asset access.
+
+There are six retired comparison workstreams in the decision record. Two are
+18-case matrices: 36 case-level comparisons in total, plus the pending pilot.
+This is a procedure count, not an elapsed-time estimate. CB-04 through CB-15
+still describe 12 numbered implementation/qualification phases; CB-07 remains
+conditional. Reuse demonstrated work rather than treating each ID as a new build.
+
+The private native test workspace is `D:\cb02-private-hh4g0kt5`. It contains a
+hash-verified export of committed source. Its 16 native browser/lifecycle checks
+pass. That is path/lifecycle evidence only. Source edits and commits stay in
+this WSL worktree. Real data has not been copied there. Original/runtime assets
+and the preserved real capture remain protected under the existing nonaccess
+rules. Later production-input work must resolve its authorized data source.
+
+At method selection, the next ready task was CB-04 design for the production numerical generation
+lifecycle, using private synthetic inputs first. Retain the reference for
+correctness checks. Do not start another comparative benchmark or fabricate a
+passed speed/resource gate. This prose-only selection decision does not need a
+code-structure design report. It follows the independent smart-commit workflow.
+
+## User clarification: accepted performance and later usability review — 29 October 2026
+
+The user confirms that the observed speed is acceptable and the original target
+can be ignored. The [clarification record](phases/CB-14.performance-clarification.md)
+checks the saved Wave5 arithmetic: the slowest Numba three-seed median is 4.66×.
+This is historical evidence, not a new current-source measurement. The existing
+method-selection decision continues to waive comparative speed gates.
+
+Keep workflow-usability review in later CB-14 operational qualification, before
+default cutover. The reply supplies no absolute workflow budgets or additional
+input/access permission. Those decisions remain unresolved. Full-window capacity
+failures, correctness, freshness, compatibility and rollback requirements remain.
+Do not restart comparative benchmarking or treat the accepted speed as a waiver
+of those requirements.
+
+## User-authorized performance acceptance update — 26 October 2026
+
+Historical decision, superseded by the later method-selection decision above.
+
+The user now accepts **at least 4× median end-to-end speedup** instead of 5×.
+This changes the minimum in each of the six primary pool/profile cases across
+three seeds. The **10× target** remains. Apply the 4× minimum to future pilot
+production-speed criteria, CB-02 integration eligibility, CB-14 qualification
+and program completion. A pilot's separate 10% paired-improvement criterion
+remains unchanged. No correctness, coverage, freshness, resource, isolation,
+workflow-budget or operational requirement changes.
+
+This decision supersedes older 5× requirements in phase briefs and execution
+resume records. Historical wave results and independent reports keep their
+original criteria and verdicts. Wave5's recorded cached-F2 medians, 4.66× for
+Numba and 4.53× for Rust, exceed the new minimum on that historical identity.
+This is a comparison with retained measurements, not a new run or current-source
+qualification. It does not complete CB-02, open real admission or authorize
+production integration. Requalify a changed implementation on one bound identity.
+
+The user requests a new Codex session in this worktree to continue CB-02 until
+it is finished. Coherent checkpoint commits inside that session are permitted.
+This supersedes the earlier stop-at-next-commit instruction for that session.
+Read the [session handover](phases/CB-02/execution/session-handover.md) for the
+current boundary and separate-environment authorization. No code changes belong
+to this acceptance update, so the code-structure design skill does not apply.
+
+## User-authorized offline capture adjustment (wave11)
+
+After wave10, the user stopped the server and stated: “i already stop the server
+running if that simplify the process”. This allows a bounded offline database
+copy while the site stays stopped. Continuous live availability is no longer a
+capture requirement for this offline window. No server is stopped or restarted
+by the capture tool. The general live-service contract still governs later
+experiments. No benchmark execution or performance run is authorized.
+
+Wave11 adds a separate offline capture owner. It takes exclusive source ownership
+before financial ownership, both without waiting. These locks exclude project
+servers and coordinated data jobs throughout SQLite backup and final verification.
+Attempts to start the server during capture can wait behind this ownership.
+The tool rejects pending journals, sidecars and WAL source headers. It never
+prepares, repairs or changes originals. The wave10 synthetic store limits and
+closed benchmark admission remain unchanged. See
+[wave11 design](phases/CB-02/wave11/design.md).
+
+Prospective limits: one process/thread, 8 MiB SQLite caches, 4 GiB total source
+DBs, 8 GiB output, sampled 512 MiB current process memory and 900 seconds for the
+whole operation. Cooperative progress/cancellation checks and an external native
+watchdog bound the copy attempt. Fixture proofs and independent Code review must
+pass before the real copy. This is offline-copy qualification only, not a live
+handoff producer, engine attachment or benchmark-resource qualification.
+
+Wave11 completed the stopped-runtime copy after 12 capture fixtures passed on
+each platform and independent Code review cleared it. All four closed-admission
+tests also pass on each platform. The separate native copy preserves the research,
+daily and report set, including saved books. Original content hashes/timestamps
+remain unchanged. Independent comparison finds only SQLite header counter/cookie
+bytes differ in the database copies; all other bytes match. The one-time monitor
+missed EOF after worker exit and required verified controller-only cleanup under
+the bound. Its worker exit code is unobserved; valid artifact/invariance evidence
+is independently verified. See [wave11](phases/CB-02/wave11/README.md).
+
+This supplies offline test assets, not an execution owner or benchmark admission.
+Next bind the copied generation and source/raw freshness to both engines, then
+qualify execution resources and concurrent availability. A live capture producer
+is required only if future refresh must occur while the website is running.
+
+## Captured input attachment split (wave12)
+
+The wave12 CODE probe finds that connection defaults, report globals and spawned
+worker imports still resolve original runtime dependencies. PreparedGeneration
+requires a current raw inventory under caller ownership. The offline capture has
+no raw tree. Its receipts cannot replace immediate request-time freshness.
+
+Complete one deep captured-input abstraction first: CapturedWorkspace validates
+wave11 artifacts and financial coherence, snapshots actual matching source bytes,
+and owns read-only inputs and private writable derivatives. Extract shared pure
+artifact inspection without changing wave10 behavior or limits. No financial
+engine import, runner cutover, current-freshness claim or real derivative creation
+belongs to this step. Use only bounded disposable WSL/native fixtures. See
+[wave12](phases/CB-02/wave12/README.md) and its raw CODE design.
+
+Next build an isolated engine facade consuming that owner. It must bind both
+engines and actual PolicyProgram to the same generation. A qualified request
+freshness provider must preserve immediate edit detection and live priority
+without holding the live coordinator through calculation. Descendant/resource,
+cancellation and concurrent-availability qualification follow. Benchmark admission
+stays closed throughout this input prerequisite. No additional real copy is needed.
+
+## Isolated policy attachment split (wave13)
+
+The independent CODE design finds that complete application imports change the
+process-global logger. Private module dictionaries do not contain that effect.
+Wave13 therefore completes source-only policy attachment in an owned child.
+CapturedPolicy consumes the active CapturedWorkspace and constructs an actual
+PolicyProgram from its verified private source. It exposes immutable binding
+evidence only. It accepts no calculation command. See
+[wave13 design](phases/CB-02/wave13/design.md).
+
+Extract the existing policy program into a benchmark-only module with lazy
+NumPy imports. Preserve its public alias, financial expressions and signatures.
+Keep all existing workspace limits. Source-only child fixtures have a separate
+128 MiB sampled memory cap and ten-second attachment deadline. Own child tools
+and protocol evidence beneath the workspace. Close the child before workspace
+ownership ends, including escaped policy scopes and the recorded EOF/poll race.
+
+The full isolated engine facade remains unfinished. Next bind actual reference
+controls and NumericInputs to the same captured financial generation. Then add
+current request-time inventory under source-before-cache ownership with live
+priority, followed by compiler/mapping/descendant/resource/cancellation and
+concurrent-availability qualification. No original metadata is rewritten.
+No real capture, derivative, request, pilot or runner cutover is admitted.
+
+## Historical execution decision after the program review (comparison route retired)
+
+The user authorized the three program-review recommendations and confirmed
+that Numba remains the working direction. Keep the tested Numba numerical
+engine. The wave7 compiled guard/assembly extension is a separate, unmeasured
+real-data hypothesis. Neither is a qualified production replacement.
+
+This section and the revised phase map supersede earlier next-step instructions
+to deliver separate attachment prerequisites or rebuild each numerical layer.
+Historical CB-00, CB-01 and CB-02 wave1–13 records remain unchanged.
+
+### One measured-execution capability
+
+The common operation owns a comparison against one captured generation and
+verified source set. It contains reference controls, Numba inputs, private
+derivatives, compiler files, observations, results, descendants and shutdown.
+Callers do not coordinate these resources or supply original-runtime overrides.
+
+`tools/bench_execution.py:MeasurementExecution` and its private financial worker
+implement this operation for disposable fixtures. They reuse actual financial
+source, NumericInputs, Numba, SQL selection, portfolio aggregation and replay.
+`tools/bench_comparison.py` freezes costs/order and records a terminal comparison
+ledger. There is no real-data command or admission switch. The historical
+live-cache-locking runners stay closed. Fixture execution is not a speed gate.
+
+The operation has these internal qualification checkpoints. They are not
+separate future waves with repeated system handoffs:
+
+1. Verify captured artifacts and actual source together. Reuse the offline copy;
+   another real capture is unnecessary. A live-copy producer remains optional.
+2. Bind reference controls and both Numba guard variants to those same inputs.
+   Default database arguments and spawned imports must resolve private assets.
+   Compare complete books, holdings, summaries and committed replay.
+3. Obtain a new current-inventory observation inside each timed request.
+   The current provider implements source-before-cache observation with a
+   source-bound cooperative live-intent contract. Disposable cross-process
+   fixtures qualify yielding, not zero-delay access or installed-runtime
+   compatibility. Nonparticipating source is rejected. Historical receipts
+   cannot supply freshness. Real provider admission remains unavailable.
+4. Own resources through confirmed descendant, reader, database and mapping
+   closure. Retain ownership on closure failure. Cover cancellation during
+   setup, requests and publication. EOF and leader exit are separate evidence.
+5. Qualify the real resource envelope and stable-service availability before
+   admission. Check the page, panel, fresh/random and cached backtests, saved
+   inspection, exports and restart during preparation, execution and failure.
+
+The next [synthetic availability checkpoint](phases/CB-02/execution/availability.md)
+uses actual copied HTTP handlers on a private loopback service. It checks five
+random trials, cached reuse, explicit-date inspection, complete delivery,
+cooperative observation handoff, partial-stream recovery and orderly restart in
+a fresh interpreter. Its 16-company fixture has 20,880 price rows. Source
+ownership lasts through request-thread closure. Private prepared-storage bindings
+do not qualify production preparation or service freshness. Browser rendering,
+browser CSV, real-data capacity, installed compatibility and full resources remain
+open. This adds availability evidence within the same operation; it grants no
+real access or admission.
+
+The old CapturedWorkspace still has its 32 MiB, 128 MiB sampled-memory and
+ten-second fixture limits. The measurement owner declares a separate envelope;
+its existence does not qualify larger inputs. The roughly three-gigabyte real
+capture stays unavailable for execution. Before that use, freeze capture/output
+bytes, whole lifetime, process/thread counts, CPU allocation, total experimental
+private memory/mapped residency and cancellation/cleanup bounds. The existing
+4 GiB default-job working-set target remains a target. Sampled child memory,
+environment thread settings and process containment are not complete resource
+enforcement or a concurrent-availability proof. The same owner now applies
+native Job Object committed-memory, process-count and CPU-rate limits before GO.
+Transport frames, bytes and queued events are bounded. Native resident memory,
+threads and disk quotas remain unsupported. The newer supervised route contains
+the application controller too. A private WSL user-service cgroup bounds charged
+memory, combined tasks and CPU allocation. It contains known-source detached
+children. Total mapped residency, disk/I/O, cumulative CPU time and the small
+outside supervisor remain incompletely bounded. The direct fixture context
+still has only Linux session containment. These gaps keep the complete resource
+gate open. See the [resource checkpoint](phases/CB-02/execution/resources.md)
+and the historical [hardening record](phases/CB-02/execution/hardening.md).
+
+The [native user CPU checkpoint](phases/CB-02/execution/user-cpu.md) adds a
+cumulative user-mode termination threshold to the existing outer application
+job. Final accounting includes nested and exited descendants. Exhaustion found
+at closure rejects a queued successful result. Windows checks periodically;
+small fixtures show substantial overshoot. This does not establish an exact
+CPU ceiling, total user-plus-kernel enforcement, WSL cumulative enforcement or
+outside-supervisor limits. Complete resources and real admission remain open.
+
+### One feasible comparison protocol
+
+Freeze one uninterrupted bracket before execution:
+
+`production control → Numba/source guards → Numba/compiled guards → production control`
+
+Alternate the two candidate positions across seeds. Both candidates may share
+the contemporary controls and complete reference evidence only when the
+generation, workload, policy/source identity, environment and declared drift
+and bracket-age limits match. Each timed request starts without saved-book or
+factor-result reuse. Setup remains separate. Freshness, calculation, selection,
+saving, encoding and transport remain inside request time.
+
+Declare allocations for attachment, all cloning, all setup, intermediate proofs,
+all four requests, evidence collection, shutdown and finalization. Their sum must
+fit the whole budget before effects. Each violation stops subsequent steps.
+An interrupted attempt retains correctness and committed-trial evidence; a new
+attempt cannot append timings to turn that evidence into an accepted pair.
+
+Wave7's four-control protocol was not cost-feasible at its observed durations:
+four controls at 598.52 seconds consume 2,394.08 of 2,700 seconds. Only 305.92
+seconds remain for all other work. Its source setup alone took 148.33 seconds,
+and its source request took 120.20 seconds. Two shared controls reduce repeated
+work, but do not establish a sufficient budget for the unmeasured treatment.
+These are calculations from historical costs, not new timings or an explanation
+of drift. The source-only [prospective declaration](phases/CB-02/execution/prospective-comparison.json)
+now allocates 6,960 seconds within a 7,200-second whole bound. It declares each
+step, a 1.20 maximum control ratio and a 6,600-second bracket. These are stop
+allocations, not cost predictions or user budgets. Real binding, resource and
+availability prerequisites are pending. Validation cannot grant admission.
+
+After a promising qualified pair, run the unchanged six-case, three-seed primary
+gate on one implementation identity. Repeat it on the integrated engine. Keep the
+historical cached-F2 failure against 5× visible. Keep all incomplete trials
+visible and the complete trailing-filter supplement separately frozen. Only the user-authorized minimum changes to 4×; all other requirements remain.
+
+### Capability-based sequence
+
+Two program decompositions were considered. The earlier horizontal sequence
+implemented primitives, metrics, selection, portfolios and runtime in order.
+That split now repeats demonstrated work and puts measurement lifetime too late.
+Use three deeper contracts instead: the measured evaluator, immutable generation
+lifecycle and service lifecycle. The phase IDs below name evidence and hardening
+responsibilities; they do not require separate implementations of known layers.
+
+The 30 October decision removes absolute user waiting-time budgets. Measure
+installation, restart, fresh dates, changed filters, reopening and weekly research.
+Retain their operational checks and every experiment safety bound. Assess
+performance against the original method with effort proportionate to the gain. Freeze the weekly calendar contract early
+enough to inform batching and capacity. Weekly support remains required for
+program completion. Do not add weekly controls before its correctness gate.
+
 ## Objective
 
-Make random-date stock-screen research at least **5× faster**, with **10× or more as the target**, compared with the current production engine on the same machine, inputs, sampled dates and strategy settings.
+Implement the user-accepted Numba path for random-date stock-screen research. Preserve financial results and normal operation. The user seeks about 4× faster performance than the original method, or close, with no absolute waiting-time limit. Use comparable evidence and stop speed work when further gains do not justify the effort. No strict per-case ratio is invented.
 
-The main workload is at least 24 random-date trials over **1997–2025**, usually with **12-month** rebalancing. The user changes filter settings between experiments. The intended interval range is **one week through two years**. Fresh random dates must benefit. Reusing a fixed seed must not be necessary for a speed claim.
+The main workload is at least 24 random-date trials over **1997–2025**, usually with **12-month** rebalancing. The user changes filter settings between experiments. The intended interval range is **one week through two years**. Support fresh random dates and explicit-seed replay. Keep observations descriptive; do not invent a current-source speed claim.
 
 Preserve holdings, ranks, valuations, returns, coverage, exit treatment and random-date experiment meaning. Keep the website, data panel, local launcher and offline research workflow usable. A complete engine replacement is permitted when evidence supports it.
 
@@ -79,7 +534,9 @@ This is a program-level plan. Each phase is scoped for one Codex 6.1-sol session
 
 The [research findings and primary sources](research.md) explain the options and their limits. They are part of this plan.
 
-### Keep the current website usable until full replacement readiness
+<a id="keep-the-current-website-usable-until-full-replacement-readiness"></a>
+
+### Keep Original usable during opt-in rollout
 
 User requirement added on 25 October 2026: the user must keep using the current
 website and its slower backtest engine throughout development. This applies to
@@ -99,7 +556,13 @@ cached 50-stock backtest were checked. This identifies the current fallback;
 it is not qualification evidence for the new engine. Record and verify the
 actual stable revision before later work rather than assuming it stays fixed.
 
-**Required safeguards before further experiments or integration:**
+The following safeguards retain their original meaning for separate experiments.
+The planned normal-app selector also follows the current release contract below.
+Its Original and experimental calls may share coordinated validated inputs; it
+does not require a second full raw cache. Experimental writable state and
+dependencies must coexist safely with Original and user records.
+
+**Required safeguards for separate experiments:**
 
 - Keep candidate code, dependencies, generated data, compiler caches and result
   stores separate from the installed service. A different port or temporary
@@ -134,18 +597,21 @@ source and incompatible cache writes. A failed isolation or availability check
 blocks the experiment or deployment; continue only work that leaves the live
 service usable.
 
-**Full readiness gate:** Keep the stable engine as default until CB-14 passes
-all financial and coverage checks, all six three-seed 5× speed gates, the complete
-trailing-filter supplement, all promised month/week intervals and capacity
-checks, agreed workflow budgets, Native Windows startup/offline/lifecycle checks,
-and saved-data compatibility and rollback checks. Unresolved budgets or checks
-block cutover. CB-15 can then switch the default and verify the live workflow.
-Keep the known-good engine and compatible old caches through the documented
-rollback period. Candidate failure must leave the stable service usable.
+**Opt-in readiness gate:** Preserve main's existing behavior and establish
+correctness, complete results, freshness, Stop/closure and durable compatibility
+for the experimental combinations being enabled. Unsupported settings and sizes
+must fail clearly before execution. Test switching back to Original, missing
+dependencies and failed experimental preparation. Reuse unchanged proofs. A
+representative complete normal-app workflow through both engines is required;
+every large stress case and a proven 4× ratio are not.
 
-Before CB-15, integration work in this plan means work in the isolated candidate
-preview. Passing the primary speed gate permits that hardening and integration;
-it does not permit publication over the stable installed website.
+CB-15 releases that opt-in choice with Original still the default. It does not
+replace Original or retire compatible readers, caches or user evidence. Default
+replacement needs a later explicit decision informed by actual use and supported
+workloads. Implementation stays on the engine branch until deliberate integration.
+Before moving main, inspect its automatic update/restart behavior so an integration
+commit cannot cause unintended publication. Release actions follow a concrete
+reviewed implementation and applicable publication authorization.
 
 These are required safeguards, not implemented isolation claims. Wave8 implements
 the request-start publication revision safeguard and verifies it on isolated
@@ -153,8 +619,9 @@ fixtures. Wave9 adds a closed execution-admission policy in benchmark tools. It
 admits no runtime. Source-only imports remain available for synthetic fixtures.
 No live restart or deployment qualifies the later gates. Wave7 used
 isolated result files but held the production cache coordinator. That approach
-must not be repeated while protecting live use. The next CB-02 code design must
-solve website-safe measurement before starting another real-cache pilot. This
+must not be repeated while protecting live use. That earlier CB-02 design had to solve website-safe measurement before another
+real-cache pilot. The historical comparative program is retired. The current relative assessment
+uses the 30 October direction and grants no execution admission. This
 availability-contract update did not implement or start that work. The wave8
 revision prerequisite remains separate from bound-input ownership and resource isolation.
 
@@ -180,30 +647,30 @@ A failed gate is evidence for changing the work, not evidence that the gate pass
 
 | Subject | Program direction | Evidence still required |
 |---|---|---|
-| Calculation model | Retain the Numba source-derived guard/assembly prototype. Obtain a complete bounded paired measurement; the broad comparison is complete. | A changed implementation passing the full primary gate, followed by operational qualification. |
+| Calculation model | Numba accepted; use tested calculations, source-owned guards and shared SQL/aggregation. Compiled guards are optional deferred work. | Production correctness, freshness, bounded normal operation and application readiness; useful original/candidate performance evidence under the 30 October direction. |
 | Data model | Immutable numeric inputs, sparse price histories, bounded entry-date factor batches. | Sparse versus dense access, measured memory and Windows mapping lifecycle. |
-| Method choice | Numba is the experimental working direction. Retain Rust and the other methods as comparison evidence. | Reopen an alternative only for a concrete measured limitation or operational blocker. |
+| Method choice | Numba selected by user. Retain other methods as historical evidence. | No further alternative comparison scheduled; revisit only if the user changes direction after a concrete blocker. |
 | Policy ownership | All six candidate executors use source-derived financial expressions. Guard policy remains source-owned, including the optional compiled Numba decisions. SQL selection and portfolio assembly remain common. | Exact intermediate, holding and replay agreement. |
-| Database role | Keep verified research data and compact job/result storage. Remove per-candidate SQL traffic from calculation. | Publication and recovery measurements. |
-| Analytical alternatives | DuckDB and Polars have been attempted. No further library search is scheduled by default. | A specific unresolved question and a bounded comparison at the same request boundary. |
-| Deployment | Preserve the stable installed website and restart revision until full replacement readiness; qualify candidates separately. | Website-safe isolation, protected publication, shutdown, generation replacement and memory tests on native Windows. |
-| Weekly intervals | Add an explicit calendar extension. Proposed week means seven calendar days, with session rolling. | Freeze exact rules in CB-08 before exposing controls. |
+| Database role | Keep verified research data, SQL selection and compact trial storage. Replace candidate staging or selection only for a measured limitation. | Generic native selection and selected-only return evaluation are not demonstrated; any replacement needs exact parity and measured benefit. |
+| Analytical alternatives | DuckDB and Polars remain historical evidence. | No alternative comparison is required for this program. |
+| Deployment | Deliver an opt-in selector in the normal app; Original stays the default. | Preserve current main features and user records, verify switching/closure and review automatic publication before moving main. |
+| Weekly intervals | CB-08 defines calendar configuration version 1: 1–104 weeks or 1–24 months. A week is seven calendar days. Existing month requests map in memory. | Calendar implementation and compatibility evidence are in CB-08. Weekly evaluator, capacity and website checks remain before controls. |
 | Freshness | Retain immediate request-time detection under the existing path/size/mtime rule. | Equivalent scan evidence and stale-generation checks; no startup-only substitution. |
-| User experience | Set absolute time budgets for startup, fresh research, changed filters and saved-result reopening. | Prospective budgets and native measurements; annual relative speed alone is insufficient. |
+| User experience | No absolute waiting-time limit by user decision. Aim for about 4× over the original method, or close; stop marginal optimization. | Comparable evidence, actual workflow times and native operational readiness; no invented per-case minimum. |
 
 The [24 October comparative research](method-research-2026-10-24.md) led to
 attempts of all six named methods in the [third wave](phases/CB-02/wave3/README.md).
-The full Numba/Rust matrix now supports focusing the next experiment on Numba.
+The historical Numba/Rust matrix supported the earlier focus on Numba.
 Numba has the lower median request duration in all six cases. The differences
-are small; neither method passes the entire speed gate. This is a choice of
-development focus, not production approval or a claim of general superiority.
+are small; neither method passed the then-required 5× speed gate. Their historical
+medians exceed the earlier 4× minimum on their old identity. The user has now
+accepted Numba without another comparative qualification. Production correctness
+and operational readiness remain required. This is no new timing result or
+claim of general superiority.
 
-Do not develop both methods on every iteration by default. Reopen Rust for a
-demonstrated Numba installation, startup, invalidation or execution limitation.
-Give any alternative comparison one question, a budget and a stop condition.
-Timed Windows jobs remain serial. Keep one shared financial policy and one
-measurement contract. Experimental dependencies remain isolated. Retain one
-production engine after qualification.
+Use one accepted Numba method. Do not develop Rust alongside it or start
+another comparison by default. Keep one shared financial policy. Retain the
+reference for correctness. Experimental dependencies remain isolated.
 
 ## Scope and boundaries
 
@@ -287,17 +754,45 @@ Keep financial calculations under one owned policy/catalog path. Consumers must 
 
 ## Interval contract
 
-Current fixed and random schedule controls support 1, 3, 6, 12 and 24 months. Weekly and other intermediate intervals are new behavior in this program.
+Website controls and financial-facing requests still support 1, 3, 6, 12 and
+24 months. CB-08 adds the separate standard-library calendar owner in
+`scripts/schedule_calendar.py`. Its [contract](../../schedule-calendar.md)
+defines planning for 1–104 calendar weeks and 1–24 calendar months. It does not
+add weekly website controls, result labels or an engine route.
 
-The proposed extension uses explicit **week** or **month** units. One week is seven calendar days. Targets stay anchored to the original starting date. Monthly targets clamp month ends. Targets roll forward to saved SPY sessions; the final mark rolls backward. A month is not a fixed number of days. A week is not silently interpreted as five sessions.
+Calendar configuration version 1 has exactly `version`, `start`, `end` and
+`interval`. The interval has exactly `unit` and `count`. Units are `week` or
+`month`; counts are integers in the stated ranges. This version is independent
+of database schemas, numerical artifacts and ResultArtifacts. Legacy
+`start`/`end`/`months` requests map in memory to version-1 monthly configurations.
+Only the five existing month counts are accepted in that form. Omitted months
+means 12; explicit null fails. Mixed, unknown and ambiguous forms fail even when
+their values appear equivalent. Existing saved records are not rewritten.
 
-CB-08 must freeze the accepted count ranges and compatibility mapping. The intended range includes one to 104 weeks and one to 24 months. Keep existing `months` requests and explicit-date inspection working. Introduce a versioned interval representation for new requests and saved configurations.
+Every target stays anchored to the original requested start. A week is seven
+calendar days. Monthly targets clamp the original day at month end without
+drifting later targets. The common start rolls forward to a saved SPY session.
+The inclusive end mark rolls backward. An end after the last saved session is
+rejected. At least two sessions must remain in the window. Fixed targets roll
+forward; duplicate rolled entries merge and entries at the final mark are
+excluded. 104 weeks and 24 months remain different intervals.
 
-Random trials continue to sample one available SPY session independently from each nominal interval block. Preserve one final partial block and common-window cash. Deduplicate rolled fixed targets. Test holiday-heavy weeks, leap dates, month ends, very short adjacent random holding periods and empty session blocks. Do not present new weekly sampling as behavior already supported by the old planner.
+Random blocks use nominal anchored boundaries, with half-open `[left, right)`
+bounds. The last block ends at the final mark. Retain a nonempty partial final
+block. Skip empty blocks without a draw. Sample one ascending saved-session
+population per block using `random.Random(seed).choice`, in trial-major then
+block-major order. Existing monthly samples remain exact. Explicit-date
+validation resolves the common window directly and has no interval dependency.
+The existing evaluator and its monthly result metadata remain unchanged.
 
-## Performance acceptance
+Calendar correctness is separate from weekly financial-result compatibility,
+capacity and website qualification. Those remain in CB-09 through CB-14.
+The old random planner did not support weekly trials. Historical benchmark
+admission remains closed.
 
-### Primary comparison
+## Historical comparison specification; operational checks retained
+
+### Primary comparison (retired by the method-selection decision)
 
 Use native Windows on the user's machine. Use 24 trials, 1997-01-01 through 2025-12-31, and a 12-month interval. If the saved SPY cache does not cover these endpoints, stop and report that condition rather than silently changing the window.
 
@@ -319,9 +814,9 @@ its settings and dates. Never replace the failed primary F2 case with this
 supplement. Include mixed filters and repeated filter changes in workflow
 qualification. Report complete and incomplete trials separately.
 
-Require **at least 5× median end-to-end speedup in each of the six primary pool/profile cases**, with no numerical or membership disagreement. Target 10× or more. Report per-seed ratios and absolute times; do not hide a slow case in an overall average. If a case fails, keep the new engine opt-in and revise the design.
+The earlier requirement was at least 4× median speedup in each primary case, with a 10× target. The user has now waived these comparative gates. Keep the workload settings available for financial correctness and coverage checks. No new relative speed claim follows.
 
-### Measurement rules
+### Measurement rules for retained historical tools (no new comparison required)
 
 1. Freeze source identities, input generation, report hash, versions, CPU/thread counts and settings.
 2. Run against isolated inputs and derived data under ignored Native `tmp/`. Prove live-website and data-ownership isolation first; a separate result directory alone is insufficient. Never clear the user's real books or hold its cache coordinator through a benchmark. Keep both engines bound to identical verified inputs.
@@ -334,31 +829,46 @@ Require **at least 5× median end-to-end speedup in each of the six primary pool
 
 The six primary cases require 18 paired runs across the three seeds. Capture one baseline run per case first to check cost. Run the full matrix in resumable batches if needed. Do not silently reduce the protocol when a session ends.
 
-### User workflow budgets
+### User workflow measurements and acceptance
 
-The relative annual speed gate is necessary. It does not establish acceptable
-startup time or an interactive research workflow. Before qualification timing,
-record an absolute time budget and a measurement boundary for each workflow:
+The user sets no absolute waiting-time limit, as recorded in the
+[30 October direction](phases/CB-14.performance-direction.md). Missing maximum
+waits no longer block qualification. Measure complete workflows and judge
+performance against the original ordinary method, aiming for about 4× or close.
+Do not treat candidate eager versus candidate bounded delivery as that comparison.
 
-| Workflow | Required measurement | Budget status |
+| Workflow | Required measurement | Acceptance direction |
 |---|---|---|
-| First installation and first ready result | Dependency installation, preparation, attachment and compilation, with each cost separate | To be resolved before operational qualification |
-| Normal restart | Launcher start to ready service, then the first completed result | To be resolved before operational qualification |
-| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | To be resolved before workflow qualification; retain the six-case 5× gate |
-| Changed filters | Same dates with new settings; report permitted factor reuse and completion time | To be resolved before workflow qualification |
-| Saved-result reopening | Request to visible inspection and export-ready evidence | To be resolved before workflow qualification |
-| Weekly research | Short-window pilot, then the declared full-window workload, with resource caps | To be resolved before weekly capacity qualification |
+| First installation and first ready result | Dependency installation, preparation, attachment and compilation, with each cost separate | No absolute user deadline; retain startup/dependency/first-result checks |
+| Normal restart | Launcher start to ready service, then the first completed result | No absolute user deadline; retain restart/offline/lifecycle checks |
+| Fresh-date research | Request to completed 24-trial result with no saved-book or factor-result reuse | Comparable original/candidate evidence; approximate 4× goal |
+| Changed filters | Same dates with new settings; report permitted factor reuse and completion time | Disclose reuse on both sides; inspect material regressions and memory/file growth |
+| Saved-result reopening | Request to visible inspection and export-ready evidence | Report time and complete exports; no recalculation or loss of original evidence |
+| Weekly research | Supported declared workload with complete holdings and existing resource bounds | Full-window weekly stress is follow-up; unsupported sizes remain blocked experimentally |
 
-Choose budgets from the intended user workflow. Do not select thresholds merely
-to match an observed timing. Proposed acceptance budgets require a user decision;
-missing budgets remain unresolved and block the relevant release qualification.
+Reuse valid existing performance evidence first. Where a material question remains,
+use the smallest representative comparison with matched inputs, dates, settings,
+reuse and measurement boundaries. Keep preparation and compilation separate.
+Do not reopen the mandatory six-case matrix, 10× target or method search. Seek
+material gains, not an optimization loop for small ratio changes. Safety deadlines
+and all resource limits remain independent of user acceptance.
+
 Wave5 attachment/setup took 52.73–152.03 seconds for its new cases. Those are
-historical setup observations, not acceptable-latency targets or full launcher
-measurements. No first-use or compiled-cache restart speed claim exists yet.
+historical observations, not full launcher measurements. Its annual speed ratios
+do not establish current-source browser, weekly or first-use performance.
 
 ### Capacity and operational checks
 
-Qualify 100 annual trials, the existing month intervals, intermediate intervals, top-100/rank slices and the weekly extension. Use bounded old-engine explicit-date comparisons for new weekly numeric returns. Use independent calendar fixtures for weekly sampling. The old random planner cannot serve as the weekly sampling reference.
+For the initial opt-in release, qualify the settings and workloads actually
+enabled. Preserve all existing Original functionality. Reuse catalog, rank,
+interval and consumer proofs where their sources still apply. Changed policy
+or interfaces require affected agreement checks. Use ordinary explicit-date
+evaluation for weekly financial results and independent calendar fixtures for
+weekly sampling. Unsupported experimental combinations must be rejected clearly.
+
+The 100-annual and full-window 24/100-weekly stress cases are follow-up capacity
+work. They do not block initial opt-in release. Preserve G03/G06 admission failures
+and current limits. No new full-window execution is implied.
 
 A 24-trial full-window weekly workload has roughly 36,000 holding periods. It must use bounded buffers and cancellation checkpoints. A 100-trial weekly workload is a capacity test; it is not necessary to generate an enormous old candidate database to claim annual speedup. Start with a short-window pilot and record an explicit runtime/disk cap before running it.
 
@@ -418,9 +928,9 @@ handoff are filed in `phases/CB-00.design.md` and `phases/CB-00.md`. It does not
 implement the compiled calculation engine. Read that handoff before CB-01.
 
 CB-01 measurement is complete. Its [phase record](phases/CB-01/README.md) contains
-the frozen workload, all 18 accepted cases and operational limits. CB-02 is in
-progress: the comparison is complete, but its full speed gate failed. CB-03 is
-conditional. CB-04 through CB-15 describe remaining capabilities. Reconcile
+the frozen workload, all 18 accepted cases and operational limits. CB-02 is
+complete by user selection of Numba. Further comparative gates are waived.
+CB-03 is skipped. Production correctness and operational qualification remain. CB-04 through CB-15 describe remaining capabilities. Reconcile
 these briefs with demonstrated work and the ongoing website availability
 contract before implementing them. Phase identifiers
 are stable references, not a fixed session count or a demand to rebuild prototypes.
@@ -431,25 +941,24 @@ Split or merge remaining work when the evidence warrants it and record the chang
 | Milestone | Result and exit evidence | Related phases |
 |---|---|---|
 | Protect ongoing website use | Verify stable publication/restart and candidate resource/data isolation before work can affect the live website | Cross-cutting prerequisite; next CB-02 design and CB-12–CB-15 |
-| Close the request-performance gap | Revise measurement orchestration after the wave7 budget stop; obtain a promising guard/assembly pair, then the unchanged full primary gate on one source identity | CB-02; CB-03 only for a concrete blocker |
-| Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; agreed workflow budgets | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
+| Accept the calculation method | Complete by user selection of Numba; further comparison work retired | CB-02 complete; CB-03 skipped |
+| Prove operational feasibility | Isolated installation, startup/restart, invalidation, cancellation and recovery proofs; actual workflow times under the current performance direction | Early bounded proofs, then CB-04/CB-11/CB-12 hardening |
 | Deliver faster existing workflows | Isolated opt-in preview for existing month intervals, filters, trial inspection and exports; preserve the stable website | CB-04–CB-07 and CB-09–CB-13 |
 | Add weekly research | Frozen calendar, correct explicit-date returns, useful latency and bounded resources | CB-08 and weekly extensions in CB-09–CB-14 |
-| Qualify and enable the default | Full primary, supplementary, workflow, weekly and operational gates pass | CB-14 and CB-15 |
+| Deliver selectable engines in the normal app | Main compatibility and representative complete workflows pass; submitted runs retain engine selection; Original remains default | Revised CB-14 and CB-15 |
+| Consider broader capacity or default replacement | Follow-up evidence for the actual requested workloads and a separate default decision | After the opt-in release; not a prerequisite for it |
 
 The website-protection milestone applies throughout the program. The early
 performance and operational milestones can expose risks before weekly capacity work. Existing
-month workflows can be delivered in an isolated opt-in preview before weekly
-controls. The stable installed website remains available. Weekly support
-remains required for program completion. Annual speedup does not qualify weekly
-latency. Default cutover waits for all promised capabilities and gates.
+month workflows already have isolated preview evidence. The next milestone is
+normal-app opt-in use. Each experimental capability needs its own correctness
+and operating scope; annual speedup does not qualify weekly latency. The wider
+week/month scope remains a follow-up objective where it exceeds initial support.
 
-Development-focus selection permits bounded isolated feasibility proofs before
-the primary speed gate passes. It does not authorize production integration.
-Candidate integration requires the full primary speed gate and no known
-operational blocker. Publication over the stable website and default cutover
-wait for all CB-14 readiness gates and CB-15 verification, including agreed
-workflow budgets, full correctness coverage and operational checks.
+User selection of Numba permits production design and isolated integration.
+Keep financial correctness and operational blockers explicit for enabled
+workflows. Normal-app publication follows the revised CB-14/CB-15 opt-in checks.
+Neither the retired speed matrix nor deferred stress cases block integration.
 
 Before each implementation phase, classify relevant evidence as **demonstrated
 and reusable**, **demonstrated but needs production hardening**, or **unknown and
@@ -463,20 +972,20 @@ Reuse sound work; implement only the missing capability or hardening.
 |---|---|---|
 | CB-00 | WSL source and native Windows deployment workflow | User's split-workspace request |
 | CB-01 | Reproducible current-engine baseline and frozen workloads | CB-00 and this plan |
-| CB-02 | Website-safe Numba measurement, shared-request experiment and full primary speed-gate decision | CB-01; completed comparison evidence |
-| CB-03 | Conditional Rust or bulk alternative comparison | A documented CB-02 limitation |
-| CB-04 | Production hardening of immutable numerical preparation/publication | Full primary speed gate passed; early isolated feasibility proofs allowed |
-| CB-05 | Correct compiled date, report and price primitives | CB-04 |
-| CB-06 | Complete metric and threshold calculations | CB-05 |
-| CB-07 | Deterministic generic filtering and ranking | CB-06 |
-| CB-08 | Weekly and intermediate interval contract and planner | CB-01; can precede CB-04; optional for existing-month opt-in delivery |
-| CB-09 | Fixed/explicit-date portfolio evaluation with full parity | CB-07; CB-08 for new interval planning |
-| CB-10 | Random trials and atomic recovery evidence | CB-09 |
-| CB-11 | Persistent runtime, bounded parallelism and lifecycle | CB-10 |
+| CB-02 | Complete by user acceptance of Numba; mandatory matrix retired | Retained CB-01/CB-02 evidence; current relative assessment belongs to CB-14 |
+| CB-03 | Skipped; no further alternative comparison scheduled | Numba selected by user |
+| CB-04 | Publish/attach/retire immutable numerical artifacts; reuse tested sparse inputs | Tested evaluator interface and user selection; retain financial and operational checks |
+| CB-05 | Harden demonstrated temporal primitives within the evaluator | Existing Numba report/price proofs; CB-04 artifact interface |
+| CB-06 | Harden demonstrated source-owned catalog and dependency planning | Existing policy/factor proofs; CB-04 artifact interface; no fresh formula implementation |
+| CB-07 | SQL-equivalent generic native selection only where evidence calls for replacement | CB-05/06 contracts; retain shared SQL until parity and benefit pass |
+| CB-08 | Freeze week/month contract early; implement and qualify the calendar independently | CB-01; freeze before runtime/cache design; weekly planner does not block month-only fixture measurement |
+| CB-09 | Harden common portfolio evaluation; qualify any selected-only return replacement | Existing aggregation proofs; CB-07 only if selection is replaced; CB-08 for new interval planning |
+| CB-10 | Harden demonstrated completed-trial storage, replay and compatibility | Measured evaluator/result contract; reuse current exact saving and replay |
+| CB-11 | Persistent production runtime and stress; reuse demonstrated lifetime ownership | Production lifecycle after CB-04/10 interfaces; comparative measurement work retired |
 | CB-12 | Isolated candidate startup/data panel and stable revision protection | CB-11 |
 | CB-13 | Isolated opt-in preview UI/API, inspection and exports; stable default preserved; weekly controls when qualified | CB-12; CB-08 and weekly evaluator checks for new controls |
-| CB-14 | Full numerical, operational and speed qualification | CB-13 |
-| CB-15 | Default cutover, documentation and retained fallback | CB-14 passed |
+| CB-14 | Main-contract compatibility and readiness for supported opt-in workflows | CB-13 and current main contracts |
+| CB-15 | Selectable engines in the normal app, Original default, documented limits and recovery | Revised CB-14 readiness for enabled scope |
 
 ### CB-01 Capture the baseline
 
@@ -496,7 +1005,14 @@ comparison protocol in this plan; archived timing ratios alone do not qualify an
 
 **Handoff:** Exact commands, fixture identities, baseline timing matrix and the identified serial costs. Do not implement the replacement engine in this phase.
 
-### CB-02 Compare optimization methods
+### CB-02 Select the method (complete by user decision)
+
+**Current outcome:** Numba accepted by the
+[method-selection decision](phases/CB-02/method-selection.md). The mandatory
+historical matrix stays retired. CB-14 follows the
+[30 October relative assessment](phases/CB-14.performance-direction.md). The
+experiment sequence below keeps its original evidence and failed/unrun verdicts.
+
 
 **Outcome:** Evidence for choosing, revising or rejecting an optimization method
 before production integration. No backend is selected from library reputation.
@@ -639,7 +1155,25 @@ can admit a run. Synthetic calculation tests may patch the policy only inside
 their disposable fixture scopes. This increment implements no capture producer
 and admits no real execution.
 
-The following prerequisite is a consistent, generation-bound input owner shared
+**Wave10 bounded split:** The authorized feature branch and linked WSL worktree
+separate development source from the registered deployment checkout. Wave10 completes a synthetic-only owned input store. Its producer constructs private
+research/daily/report inputs, closes writers, validates coherence and publishes
+an immutable generation. Consumers own read-only attachments and separate writable
+clones. Benchmark admission remains closed. See
+[wave10 record](phases/CB-02/wave10/README.md).
+
+Direct live capture is deferred. The current exclusive coordinator would delay
+user work during backup. Releasing it with rollback-journal read transactions
+can delay commits. Synthetic concurrency fixtures on WSL and native Windows show this limitation
+and prove the immutable-handoff consumer boundary. WSL passes 37 focused tests;
+native passes 36 with one optional symlink skip. Resource checks are cooperative
+and do not qualify real capture. This increment has no production
+capture adapter, runtime attachment or execution owner. Real capture still needs
+a qualified immutable producer and capture-specific resource/availability gates.
+The WSL worktree holds source and synthetic fixtures only. Eventual qualified
+real copies belong in a dedicated ignored native Windows experiment directory.
+
+The following prerequisite is a consistent, generation-bound execution owner shared
 by controls and candidates. It must separate candidate source, dependencies, cache and result
 ownership from the stable service. Prove nonblocking capture without bypassing
 coordination or publication recovery. Do not run the inherited live-cache-locking
@@ -656,36 +1190,38 @@ Preserve all financial,
 freshness, saving and speed gates. These later prerequisites remain unimplemented
 until their own evidence passes. This split does not advance CB-12 integration.
 
-**Next bounded experiment:** Retain Numba and the unresolved source-derived
-guard/assembly question. First design measurement orchestration or resource
-planning that accounts for the observed control and preparation costs and the
-[ongoing website availability contract](#keep-the-current-website-usable-until-full-replacement-readiness).
-Prove data/resource isolation from the live service before another pilot. Do not
-rerun this unchanged orchestration for a favorable result. Declare the revised
-scope, timing/resource budget and stop condition before timing. Preserve
-contemporary controls, complete candidate evidence, one financial policy, SQL
-parity, immediate freshness, saving and delivery. Do not infer compiled saving
-from source-only counters. Do not lower the financial or speed gates to fit a
-measurement budget. A promising paired pilot must precede the full unchanged
-primary gate on one implementation identity. Production integration stays blocked.
+**Retired next bounded experiment:** The user waived the comparison route.
+The following earlier brief is preserved as historical context. Use the single measured-execution capability above.
+Reuse the tested Numba engine and keep the wave7 source/compiled guard pair as
+its bounded hypothesis. First finish production current-freshness/live-priority
+and resource/availability qualification inside that owner. Its disposable
+financial proofs do not admit a real capture. Freeze one shared contemporary
+control bracket with complete phase costs, order, drift and stop limits.
+Do not run the inherited live-cache-locking orchestration. Do not widen an old
+fixture envelope or supply historical receipts as current freshness.
 
 Add the complete trailing-filter supplement and workflow measurements under
-separately frozen settings. Isolated lifecycle proofs may proceed to expose an
-operational blocker early. They do not authorize production integration.
+separate frozen settings. Resolve user workflow budgets before final runtime
+and cache decisions. Reuse existing temporal/catalog/SQL/aggregation/trial-store
+work. Weekly calendar rules are an early independent contract; weekly execution
+and capacity remain separate from existing-month measurement. No production
+integration follows until the unchanged full primary gate passes.
 
-**Gate:** Development focus is Numba. Production integration requires at least
-5× median end-to-end improvement in every one of the six primary cases across
-three seeds on one changed source identity. Require exact categorical agreement,
-the existing numeric tolerance and a stated budget for integration overhead.
-Repeat the gate on the integrated engine at CB-14. Keep the old failed result
-visible until the changed implementation passes. Trigger CB-03 only for a
-concrete unresolved limitation.
+**Current gate:** The user accepts Numba and waives comparative speed and
+benchmark-only resource gates. Retain exact categorical agreement, the existing
+numeric tolerance and normal application readiness. The retired experiment
+brief above supplies historical context, not a new prerequisite.
 
 **Handoff:** Record the focus decision, passed and failed gates, reusable proofs,
 hardening needs and unknowns. Freeze the measured typed-input/result boundary
 before integration. Keep prototype shortcuts out of production rules.
 
-### CB-03 Investigate the alternative only if needed
+### CB-03 Alternative comparison (skipped)
+
+The user-selected Numba method makes this phase unnecessary. The following
+original brief remains available as historical context. Do not execute it
+without a new user direction after a concrete implementation blocker.
+
 
 **Outcome:** A backend decision supported by the same workload and numerical contract.
 
@@ -713,11 +1249,11 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 **Handoff:** Format version, generation identity rules, ownership/closure contract and measured artifact size/load cost. Leave automatic startup integration to CB-12.
 
-### CB-05 Implement date report and price primitives
+### CB-05 Harden date report and price primitives
 
 **Outcome:** Native lookups reproduce the financial engine's temporal behavior.
 
-**Work:** Implement sparse price searches, missingness masks, report availability and pool-specific eligible-report selection. Prepare report-level reusable values where safe. Preserve calendar-day tolerances and both forward and backward searches. Keep native inputs numeric and read-only.
+**Work:** Reuse the demonstrated sparse price searches, missingness masks, report availability and pool-specific report selection. Harden their artifact and versioned evaluator interfaces. Preserve calendar-day tolerances, forward/backward searches and read-only numeric inputs. Record missing adversarial coverage; do not commission a second lookup implementation merely to complete this phase ID.
 
 **Deliverables:** Tested primitives and an adapter usable by later factor calculations. Explain any scalar policy extraction needed to share behavior.
 
@@ -725,11 +1261,11 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 **Handoff:** Lookup semantics and measured cost. No website change and no new investment rule.
 
-### CB-06 Implement the complete metric catalog
+### CB-06 Harden the complete metric catalog
 
 **Outcome:** Entry-date factor batches reproduce every current ranking pair and threshold value.
 
-**Work:** Keep a single owned registry for current and three-year EV/EBITDA and all 18 threshold fields. Separate report-only work from entry-price-dependent work. Prepare report histories once. Use generic field IDs and explicit validity. Calculate requested factor dependencies in bounded batches; measure whether eager calculation of the small catalog is faster before optimizing further.
+**Work:** Reuse PolicyProgram, report specialization and policy-derived request planning. Keep one registry for both ranking metrics and all 18 threshold fields. Harden versioned fields, validity, missing histories and bounded factor-cache identity. Add only missing production behavior and coverage. Do not rewrite formulas already derived from source. Requested-metric SQL projection alone remains a rejected wave6 intervention.
 
 **Deliverables:** Full-catalog factor calculation, display metadata compatibility, dependency/version evidence and bounded factor-cache identity.
 
@@ -741,7 +1277,7 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 **Outcome:** The compiled screener selects the same ordered stocks as SQL.
 
-**Work:** Apply pool and period eligibility, limits, metadata filters, all threshold conditions and ranking through generic prepared fields. Reproduce the original pre-price buffer and its ties. Implement the exact final total ordering and requested rank slice. Begin with a correct deterministic sort; add partial selection only with measured need and tie proofs.
+**Work:** Retain the demonstrated shared SQL selector as the initial evaluator boundary. Generic native filtering/ranking remains unimplemented. Replace SQL only when staging/selection evidence supports that change. A replacement must cover pool/period eligibility, limits, metadata, thresholds, original-buffer ties, final ordering and arbitrary rank slices. Begin with a deterministic total sort; partial selection needs separate benefit and tie proofs.
 
 **Deliverables:** A selector with the existing request-validation semantics and SQL/browser comparison support.
 
@@ -753,7 +1289,7 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 **Outcome:** Fixed and random planners share an explicit calendar contract over the requested interval range.
 
-**Work:** Freeze the week/month representation and accepted counts. Extend anchored boundaries and random blocks without changing existing month samples for existing requests. Keep explicit-date evaluation independent of how dates were generated. Version saved configuration conversion and reject ambiguous requests.
+**Work:** Freeze the week/month representation and accepted counts before final runtime/cache decisions. Extend anchored boundaries and random blocks without changing existing month samples for existing requests. Keep explicit-date evaluation independent of how dates were generated. Version saved configuration conversion and reject ambiguous requests. Implement the calendar through its own contract; do not wait for a new numerical engine merely to define weekly capacity.
 
 **Deliverables:** Calendar implementation, fixtures for all supported interval units and documented old-request mapping. Do not expose incomplete website controls yet.
 
@@ -765,103 +1301,640 @@ budget and stop condition. Do not repeat the broad comparison by default.
 
 **Outcome:** One numerical path turns selected stocks into complete dated portfolio results.
 
-**Work:** Calculate selected returns, stopped exits, weights, contributions, period coverage, compounded growth and SPY comparison. Preserve current output evidence needed for inspection. Keep period eligibility separate from deferred return arithmetic. Support old month schedules and new explicit weekly date lists.
+**Work:** Reuse shared portfolio aggregation, stopped exits, weights,
+contributions, coverage and SPY comparison. Harden the versioned result and
+inspection contract. Selected-only returns remain a separate unimplemented
+optimization; require membership and full-value proof before replacing
+complete-book evaluation. Keep period eligibility before selection. Support
+existing months and explicit weekly dates without duplicating aggregation.
 
-**Deliverables:** Fixed and explicit-date evaluator plus a diagnostic adapter. Retain the existing reference route for comparison.
+**Deliverables:** Fixed and explicit-date evaluator plus a diagnostic adapter.
+Preserve complete holding rows, dates, values, statuses and ordering for current
+job results, snapshots and exports. Retain the reference route for comparison.
 
-**Verification:** Full holding/date/value/status parity against current schedules on isolated inputs. Check January books against the verified baseline, all existing frequencies, week-length explicit periods, bankruptcy fixtures, empty/short books, common-window cash, final marks and contribution order. Preserve `1e-12` tolerances.
+**Verification:** Compare full holding/date/value/status results with current
+schedules on isolated inputs. Check January books against the verified baseline,
+all existing frequencies, explicit weekly periods, bankruptcy fixtures,
+empty/short books, common-window cash, final marks and contribution order.
+Preserve `1e-12` tolerances. Existing result consumers must need no formula changes.
 
-**Handoff:** Complete financial result schema and evidence that selected-only returns preserve membership. Do not add random-job persistence in this phase.
+**Handoff:** Complete financial result schema for `backtest_jobs.calculate` and
+existing compatibility routes, plus selected-only membership evidence if that
+optimization is implemented. Durable snapshots retain submitted settings,
+catalog labels and presentation fields around this result. Do not add random-job
+persistence or another user-result store in this phase.
 
 ### CB-10 Run random trials with durable recovery
 
 **Outcome:** Random experiments use the new evaluator and preserve completed work after interruption.
 
-**Work:** Retain deterministic sample generation and server-generated default seeds. Plan unique requested entry dates and factor dependencies. Store summaries, exact sampled dates and selected holding evidence atomically per completed trial. Keep configuration and input-generation identities explicit. Reuse shared calculations without collapsing duplicate trial identities.
+**Work:** Promote the demonstrated atomic trial store and exact replay into
+production calculation recovery. Retain deterministic samples, fresh default
+seeds, distinct trial identities and recorded queue date plans. Harden
+unique-entry/factor reuse, interrupted commits, generation rejection and bounded
+growth for derived checkpoints. Reuse the existing random driver and user stores.
+Generation rejection applies to calculation reuse. It must not invalidate an
+old completed snapshot merely because current inputs changed.
 
-**Deliverables:** Random experiment driver, compact result/checkpoint storage, saved-trial inspection and replay support. Add retention controls or a documented bounded policy for result growth.
+Preserve the summary-only `robustness.run` default and optional `capture`
+observer. The shared application adapter captures ordered full `trial_results`
+for background and queued random tests. Preserve every completed trial's dates,
+periods and holdings, plus submitted settings, original labels and presentation.
+Keep queue settings versions and edit/retry receipts independent of checkpoints.
 
-**Verification:** Same seeds and existing settings match current experiments. Incomplete trials remain visible and paired distributions agree. Simulate interruption before/during/after commit, duplicate sampled schedules, filter changes and input-generation changes. Retry reuses only matching completed work. A new seed remains the default.
+**Deliverables:** Generation-bound calculation checkpoints, saved-trial
+inspection and replay support. Bound derived storage with retention controls or
+a documented policy. Preserve existing queue/library limits and user-controlled
+deletion. Reopening durable snapshots uses `ResultArtifacts` without calculation.
+No cache retention policy may delete those user records.
 
-**Handoff:** Recovery contract, storage-size measurements and real progress units. Remove candidate-row writes from this path; do not remove old user books.
+**Verification:** Same seeds and existing settings match current experiments.
+Incomplete trials stay visible and paired distributions agree. Simulate
+interruption before/during/after commit, duplicate schedules, filter changes and
+input-generation changes. Retry reuses only matching work and recorded queue
+plans. Old completed snapshots must still reopen and export after generation
+changes. Check full trial/holding order and both default and capture contracts.
+A new seed remains the default for a new unseeded experiment.
+
+**Handoff:** Separate contracts for reusable checkpoints and durable user
+snapshots, storage-size measurements and real progress units. Remove
+candidate-row writes from this path; preserve old books, saved results and queue
+records. This phase does not replace queue admission or library persistence.
 
 ### CB-11 Add the persistent bounded runtime
 
 **Outcome:** One server reuses open numeric inputs and native code without unbounded memory or orphan work.
 
-**Work:** Attach a generation once, prewarm required signatures and select one measured native parallelism strategy. Bound factor caches, task queues and batch sizes. Add cancellation between chunks, deterministic per-portfolio reductions, safe generation handoff and explicit closure. Preserve project-level cache ownership and terminal lifecycle.
+**Work:** Harden persistent generation attachment, prewarming, factor caches,
+invalidation and terminal lifecycle behind `backtest_jobs.calculate`. Keep
+bounded native task scheduling inside the runtime. The durable overnight queue
+remains owned by `backtest_queue`; do not add a candidate job service. Reuse
+source/cache ownership and `backtest_control` cancellation. Select one bounded
+parallelism layer. Comparative MeasurementExecution qualification stays retired.
 
-**Deliverables:** Runtime resource owner, worker/thread cap, cache limits, stage diagnostics and shutdown protocol.
+Caller lifetimes remain distinct. Legacy requests cancel on disconnect.
+Background jobs survive navigation and cancel on explicit Stop or server
+shutdown. Queue shutdown requeues interrupted work; explicit Stop stays
+cancelled. Close workers, databases, borrowed evaluators and mappings before
+financial and source ownership ends. Preserve existing result/progress shapes.
 
-**Verification:** Serial and parallel results agree. Stress repeated filter changes, invalidation, aborted requests, Ctrl+C, launcher replacement and two local servers. Test Windows mapping release before deletion. Confirm no nested thread multiplication, stale compiled globals or cross-generation cache reuse. Measure peak working set and memory after repeated jobs.
+**Deliverables:** Runtime resource owner, worker/thread cap, cache limits,
+stage diagnostics and shutdown protocol usable by the existing adapter and
+legacy compatibility routes.
 
-**Handoff:** Chosen parallel policy, cancellation bound, memory budget and compiler-cache signature. Do not rely on garbage collection alone to release mapped files.
+**Verification:** Serial and parallel results agree. Stress repeated filters,
+invalidation, legacy disconnects, background navigation/recovery, explicit Stop,
+queue shutdown/restart, Ctrl+C, launcher replacement and two local servers.
+Test Windows mapping release before deletion. Check nested thread multiplication,
+stale compiled globals and cross-generation reuse. Measure peak working set and
+memory after repeated jobs. Completion is published only after engine cleanup.
+
+**Handoff:** Chosen parallel policy, caller-specific cancellation/closure
+contract, cancellation bound, memory budget and compiler-cache signature.
+Do not rely on garbage collection alone to release mapped files.
 
 ### CB-12 Integrate preparation startup and data control
 
 **Outcome:** Candidate preparation and startup work in isolation. The normal
 launcher retains the stable engine until full readiness and CB-15 cutover.
 
-**Work:** Extend dependency preparation in order: recover/verify research publication, prepare compatible base data, publish the numerical generation, prepare native runtime and rebuild stale website output. Add a pinned tested dependency environment. Preserve panel recovery when raw inputs are missing. Integrate stale-generation evidence with every relevant successful or partial coordinated download/repair. Preserve immediate direct-edit detection with equivalent current inventory checks.
+**Work:** Prepare dependencies in order: recover/verify research publication,
+prepare compatible base data, publish the numerical generation, prepare native
+runtime and rebuild stale website output. Add a pinned tested environment.
+Preserve data-panel recovery with missing raw inputs. Bind stale-generation
+evidence to successful and partial coordinated downloads/repairs. Preserve
+immediate direct-edit detection with equivalent current inventory checks.
+
+Attach the runtime inside existing server source ownership before accepting
+candidate work. Keep job/queue startup and shutdown in their existing owners.
+Join those owners and close runtime resources before source ownership ends.
+Preserve durable queue/library files during startup, rebuilds and publication.
+Candidate freshness failure must not make completed stored results unreadable.
+
+CB-12's independent design resolves the current ordinary-route constraint.
+The CB-11 child retains exclusive financial ownership while idle. Candidate
+preparation therefore starts, attaches and prewarms a genuine child, then proves
+its closure before ordinary queue/data owners start. Its detached report records
+verification, not a resident runtime or retained compiled memory. CB-13 must
+resolve admission at the shared calculation adapter before persistent dispatch.
 
 **Deliverables:** Isolated candidate launcher/data-panel integration, a verified
-stable revision/restart safeguard, runtime/dependency instructions, compact
-generation checks and preparation status. Existing standard-library reference
-commands remain available without installing the new numerical stack.
+stable revision/restart safeguard, dependency instructions, compact generation
+checks and preparation status. Reference commands remain available without the
+new numerical stack.
 
 **Verification:** Stable restart remains on the known-good engine. Candidate
 setup, dependency failure and publication failure leave the live website usable.
-Do not publish development HEAD over it. Unchanged candidate restart avoids re-export. Changed inputs trigger correct preparation. Baseline publication recovery still precedes readers. Test missing dependencies, supported/unsupported Python versions, unavailable package network, offline installed operation, moved paths, invalid raw data, partial downloads, rebuild failure and simultaneous local launches. Keep all existing lock and secret-safe logging behavior.
+Do not publish development HEAD over it. Unchanged candidate restart avoids
+re-export. Changed inputs trigger correct preparation. Baseline publication
+recovery precedes readers. Test missing dependencies, Python compatibility,
+unavailable package network, offline operation, moved paths, invalid raw data,
+partial downloads, rebuild failure and simultaneous launches. Preserve secret-safe
+logging and lock ordering. Check durable queue recovery, held edits and saved
+result access after candidate startup failure and ordinary restart.
 
-**Handoff:** Tested Windows launch command and offline behavior. Initial package installation is separate from market-data downloading; running a strategy must not fetch market data.
+**Handoff:** Tested Windows launch command, ownership/closure order and offline
+behavior. Package installation is separate from market-data downloading.
+Running a strategy must not fetch market data.
 
 ### CB-13 Integrate the website and API
 
-**Outcome:** Users can run the replacement through the existing website. Existing
-month workflows can ship in a separate opt-in preview before the weekly
-extension is ready. The stable website remains the normal entry point.
+The detailed [CB-13 design](phases/CB-13A.design.md) splits integration into
+three coherent increments. Before CB-13A, callers preheld financial ownership
+in different places. The CB-11 child holds that ownership while idle.
+Dispatching the child from those callers would deadlock. CB-13A now supplies
+the common application boundary before persistent preview execution:
 
-**Work:** Route candidate dated schedule and robustness requests through an
-explicit opt-in engine selection in the isolated preview. Keep the stable
-instance, source, data ownership and default launcher intact. Adapt NDJSON events and progress text to actual work units. Add versioned saved settings, trial inspection, exports and errors. Expose week/month controls only after their calendar and evaluator checks pass. Ensure old saved requests have a defined route. Keep January/latest/static fallback behavior intact.
+- **CB-13A:** One ordinary `Calculations` owner for jobs, queue and legacy
+  routes. It owns admission, readiness and cleanup. No numerical routing.
+- **CB-13B:** Persistent isolated preview dispatch behind that boundary.
+  Child-owned freshness and parent data-operation retirement share one owner. See the [CB-13B design](phases/CB-13B.design.md).
+- **CB-13C:** Complete browser/calendar compatibility, weekly controls and
+  the remaining full CB-13 verification.
 
-**Deliverables:** Working local UI/API flow, browser checks and a documented rollback setting. Update the guide to distinguish opt-in source from the default running engine.
+Each increment receives its own design, verification and smart-commit record.
+The whole phase remains incomplete until all retained checks pass. This split
+changes neither the stable default nor CB-14/CB-15 acceptance gates.
 
-**Verification:** Exercise a complete 24-trial run, changing filters, seed replay, weekly settings, cancellation/disconnection, saved trial inspection, CSVs and empty selections. Prove that preview preparation, execution and failure do not block the stable website or its backtests. Check desktop/mobile presentation when browser tools are available. Run existing range, screener, robustness, contributions and data-panel checks as affected. Build local output only.
+**Outcome:** Users can run the replacement through the existing website.
+Existing month workflows can ship in an isolated opt-in preview before the
+weekly extension is ready. The stable website remains the normal entry point.
 
-For an existing-month milestone, mark weekly checks pending and keep weekly
-controls unavailable. Run those checks before delivering the extension. Do not
-mark the whole phase or program complete from the earlier milestone.
+**Work:** Select the candidate engine behind `backtest_jobs.calculate` in the
+isolated preview. Both `/api/backtest-runs` and the durable queue use this
+application boundary. Keep legacy `/api/schedule` and `/api/robustness` as
+compatibility adapters to the same engine capability. Preserve their existing
+payloads, streaming detail opt-in and caller-specific cancellation semantics.
+Keep stable source, data ownership and default launcher intact.
 
-**Handoff:** API compatibility notes and browser evidence. Do not refresh or stage `website/dist/` as an incidental build action.
+Reuse current browser run recovery, `StrategyDraft` form ownership and
+`ResultArtifacts` publication. Preserve full saved settings, trial inspection,
+original catalog labels, semantic presentation, CSVs and errors. Held queue
+edits must survive retry/reconciliation and block unrelated settings restoration.
+Opening or exporting stored results must not submit another calculation.
+Expose week/month controls only after calendar and evaluator checks pass.
+Define versioned mappings for old month requests and snapshots. Keep
+January/latest/static fallback behavior intact.
 
-### CB-14 Qualify correctness speed and operations
+**Deliverables:** Compatible job/queue and legacy UI/API flows, browser checks
+and a rollback setting. Update the guide to distinguish preview source from the
+default running engine. Reuse existing job and user-result stores.
 
-**Outcome:** A reproducible decision to cut over or continue optimization.
+**Verification:** Run 24 complete trials, changed filters, seed/date-plan replay,
+weekly settings, full trial inspection, CSVs and empty selections. Exercise
+legacy disconnect cancellation, background disconnection/recovery, explicit Stop,
+server shutdown, queue restart/retry/held-edit reconciliation and reopening both
+old and candidate saved results. Verify original labels and all trial holdings.
+Prove preview preparation, execution and failure leave stable service usable.
+Check desktop/mobile controls and range, screener, robustness, contributions,
+data-panel, job, queue, saved-library and immutable-artifact suites. Build local
+output only.
 
-**Work:** Run the complete primary paired benchmark matrix and report the per-case speed gates. Run catalog/rank/interval differential coverage, 100-trial annual stress and bounded weekly reference cases. Run candidate weekly capacity tests only after a safe pilot. Check cold/restart performance, repeated filters, recovery, memory and file growth. Repeat a measurement only when a failure or changed implementation justifies it.
+For an existing-month milestone, leave weekly checks pending and controls
+unavailable. Do not mark the whole phase or program complete from that milestone.
 
-**Deliverables:** Tracked qualification report with settings, hashes, versions, maximum numeric differences, raw-output locations, per-case timings and explicit gate verdicts. Update experiment documentation with the new evidence while retaining historical results.
+**Handoff:** Compatibility notes for requests, complete results, saved schemas,
+caller lifetimes and actual browser exports. Do not refresh or stage
+`website/dist/` as an incidental build action.
 
-**Verification:** All required correctness and operational checks pass on Windows.
-The ongoing website availability contract passes during candidate preparation,
-execution, failure and restart. Stable code, dependencies and caches remain usable. Primary cases each reach 5×. The complete trailing-filter supplement passes parity and coverage checks. Startup, fresh research, changed filters, saved-result reopening and weekly research meet the agreed absolute budgets. No speedup relies on warm selected-result caches, relaxed precision, missing filters or omitted persistence. Unverified cases remain explicit and cannot support a broad claim.
+### CB-14 Establish opt-in release readiness
 
-**Handoff:** Pass/fail table. If a gate fails, leave the engine opt-in and write the smallest evidence-led follow-up phase. Do not label the program complete.
+The [31 October opt-in direction](phases/CB-14.opt-in-release.md) replaces the
+earlier universal qualification dependency. Reconcile current main contracts,
+define experimental capabilities from evidence and verify affected correctness
+and lifecycle boundaries. Original retains the complete current feature set.
+Existing capacity work below is retained evidence, not a requirement to finish
+every large case before delivering the selector.
 
-### CB-15 Cut over and close the program
+The [capacity design](phases/CB-14.capacity-design.md), filed before implementation
+on 29 October, traces eager accumulation through calculation, IPC, application
+retention, both durable stores and browser exports. It selects bounded immutable
+evidence within existing owners. The recorded 256 MiB admission failures remain.
+Removing that preflight alone would expose later whole-result limits.
 
-**Outcome:** The qualified engine is the default for dated backtests, with clear recovery and fallback instructions.
+The capacity follow-up was split into six ordered increments within CB-14.
+Their implementation and evidence remain reusable under the narrower release:
 
-**Work:** Change the default only after all CB-14 checks and agreed budgets pass,
-including the availability, interval, saved-data compatibility and rollback gates.
-Until then, keep the stable engine and its normal restart path available. Remove temporary prototype integration and obsolete default routing. Retain the reference/rollback path and old caches through a documented migration period. Update README, workflow, data documentation, root instructions and the architecture guide to the implemented state. Document adding metrics, extending data, rebuilding generations, inspecting saved trials and rolling back.
+1. Incremental financial reduction and a versioned bounded evidence codec.
+   This first abstraction is initially disconnected from preview routing.
+2. Bounded numerical production and compatible checkpoint recovery.
+3. Bounded child/recorded-plan transport and temporary ownership in existing Jobs.
+4. Chunked durable snapshots in the existing queue and library stores.
+5. Versioned ResultArtifacts readers, bounded inspection and streamed exports.
+6. Prospectively bounded pilot and hardware-based route/limit evidence. Close
+   the operating scope needed for opt-in integration; defer larger capacity work.
 
-**Deliverables:** Default route, final user guide and program completion record. Record actual 5×/10× results by workload. Keep unachieved targets explicit.
+The first three increments do not resolve G03/G06, change snapshots or admit a larger
+preview request. Increment 2 adds bounded offline numerical production and compatible
+version-2 checkpoint recovery. Its [independent supplement](phases/CB-14.capacity2-design.md)
+and [verification record](phases/CB-14.capacity2.md) preserve the original design.
+[Increment 3](phases/CB-14.capacity3.md) adds a dormant Session/runtime/Candidate
+operation, an acknowledged 64 KiB transfer slot, content-bound staged plans and
+temporary evidence inside existing Jobs. Its [independent supplement](phases/CB-14.capacity3-design.md)
+keeps calculation/transport ownership separate from Jobs retention and read pins.
+[Increment 4](phases/CB-14.capacity4.md) adds dormant version-3 chunked snapshots
+in the existing queue and library databases. Its [independent supplement](phases/CB-14.capacity4-design.md)
+keeps atomic durable copies separate from detached active-reader lifetimes.
+[Increment 5](phases/CB-14.capacity5.md) connects one ResultArtifacts boundary
+to fresh and reopened version-3 evidence. Its filed
+[independent supplement](phases/CB-14.capacity5-design.md) remains unchanged.
+Existing Jobs owns acquired display and request lifetimes. Bounded inspection
+reaches every trial, period and holding. Attribution uses every selected stock.
+Complete attachments match eager CSV bytes and survive source deletion and view
+replacement. Synthetic WSL/native checks and the actual native fictional browser
+verify these additive consumers. The phase record preserves all failed attempts
+and their repairs. The user revoked the failure-stop rule; failures are retained,
+repaired and rerun before dependent verification continues.
+Automatic submission and queue execution remain eager. No limit or route changes.
+No broader-universe or operational capacity gate passes from this increment.
+Later increments use these interfaces. Ordinary default selection, the
+normal launcher, eager protocol limits and closed benchmark admission stay intact.
+The current user direction requires no absolute waiting-time budgets. Independent
+bounded correctness and retained operational checks remain required.
 
-**Verification:** Native Windows launcher smoke test, representative browser flow, offline operation and the required regression checks. Confirm the canonical report is unchanged unless a separately verified data revision explains it. Confirm old books and raw data remain available. Compare the complete commit diff with the architecture guide.
+The user's 30 October [hardware-based capacity decision](phases/CB-14.capacity-hardware-decision.md)
+adds a decision point within increment 6. G03/G06 record software admission
+failures under the current complete-result policy. They do not prove that the
+user's hardware ran out of memory. The 256 MiB eager result allowance and the
+private test host's containment limits are separate from available machine RAM.
+Keep the additive increment-5 work and its verification. Before changing routing
+or limits, measure actual result bytes, memory use and complete workflow costs
+on authorized hardware. Compare the existing route with a safely scoped higher
+allowance, the bounded route, or a combination where applicable. Retain all
+evidence and correctness requirements. Add further capacity machinery only for
+a measured need. This decision grants no new access, larger experiment, limit
+change or increment-6 execution in the current increment-5 task.
 
-**Handoff:** Final commands, qualified dependency versions, measured operating limits, rollback procedure and remaining limitations. No automatic hosted publication or portable snapshot refresh is part of this phase.
+Initial [increment-6 observations](phases/CB-14.capacity6.md) separate the native
+host's physical RAM from available memory and private Job limits. A small
+3,200-holding representation probe measures encoded JSON, recursive graph
+accounting, codec bytes, eager storage and complete CSVs. Plan-only probes retain
+the eager request and result-admission failures. The native browser driver needs
+two routine diagnostic repairs, and one attempt defers at the filed memory floor.
+All attempts remain recorded. The four-trial workflow then passes. A separately
+filed 24-trial pilot over the same four-month weekly window also passes. It keeps
+all 408 periods and 20,400 holdings. All ordinary-reference comparisons have zero
+numeric differences, and all 98 fresh/reopened CSVs agree. Startup, first-job
+cold child creation, engine work, complete transfer, saving, reopening, inspection
+and downloads retain separate measurement boundaries. Existing eager routing and
+limits remain adequate for this measured scope. No broader-universe, full-window,
+acceptance or policy-expansion gate passes. Keep failures and exact resume inputs.
+A new independent design is unnecessary for this measurement-only checkpoint.
+
+The [fresh FMP continuation](phases/CB-14.capacity6.real-inputs.md) resolves access
+for a new private 192-symbol cohort on D:. Four weekly trials over the same
+2015 prefix preserve 68 periods and 3,400 holdings. The original API results
+pass strict ordinary-reference checks with zero maximum numerical differences.
+Complete browser values, saving, ordinary reopening and all 18 CSV downloads
+pass. The successful rerun reuses preparation and starts with empty checkpoints.
+Acquisition failures, four unavailable historical Treasury observations and
+private driver repairs remain explicit. No product/test source, routing or limit
+changes. This cohort does not qualify the full universe, full window, cold
+workflow or acceptance budgets. Next file a 12-trial prefix and resource envelope
+on the retained inputs before execution. The subsequent
+[retained-input twelve-trial pilot](phases/CB-14.capacity6.real12.md) passes with
+204 periods, 10,200 holdings, zero strict original-API numerical differences and
+all 50 complete CSVs. An entry deferral, private result-wait failure and owned
+profile-cleanup repair remain retained. Eager routing and every limit stay fixed.
+The browser's sampled private bytes reach 862,760,960; this is not a hard peak.
+The subsequent [same-plan bounded observation](phases/CB-14.capacity6.bounded12.md)
+retains all twelve trials and passes separate strict original-codec financial
+checks after a private comparison repair. Its actual browser workflow fails the
+unchanged session deadline after 47 fresh periods and five complete CSVs.
+Saving and ordinary reopening are not reached. Read-only probes measure full-codec
+validation and prefix scanning but do not isolate the entire browser delay.
+Next file an independent design for reader request/validation lifetimes and
+page/attribution costs before any product optimization. Complete validation,
+independent stream ownership, checks and all limits remain required. No index
+or cache is assumed. This adds no automatic route or allowance. CB-14 remains incomplete.
+
+**Outcome:** Readiness to integrate supported experimental workflows alongside
+Original in the normal app.
+
+**Work:** Reconcile main's schema, catalog and selection-order contracts. Preserve
+Original features. Support experimental combinations correctly or block them
+explicitly. Reuse completed catalog, consumer and lifecycle evidence. Run affected
+differential and operational checks for the integration. Record release-relevant
+gaps and implementation checks for CB-15. Full24 comparison, broad stress and
+further optimization are follow-up work unless a concrete enabled-workflow defect
+makes them necessary.
+
+**Deliverables:** Qualification report with settings, hashes, versions, maximum
+numeric differences, output locations, timings and gate verdicts. Retain
+historical results. Separate generation-bound reuse evidence from durable
+snapshot compatibility and caller-lifetime evidence.
+
+**Verification:** Affected financial and operating checks pass on Windows for
+enabled settings. Original and stored evidence stay usable through experimental
+failure, dependency absence and engine switching. No financial precision,
+freshness, filter meaning or complete-result requirement is relaxed. Reuse
+matching-source Stop, queue, held-edit, retry and generation-change evidence;
+verify changed boundaries. Record unsupported settings and sizes explicitly.
+The strict historical matrix stays retired. Comparable performance assessment
+continues during opt-in testing; no exact speed ratio blocks integration.
+
+**Handoff:** Supported experimental combinations, current-main compatibility,
+reusable proofs, remaining affected checks and explicit restrictions. A failed
+deferred stress case does not fail a smaller supported workflow. CB-14 is not
+complete merely because its release scope changed.
+
+### CB-15 Release selectable engines in the normal app
+
+**Outcome:** Users can explicitly choose Original or New engine — experimental
+for dated backtests in the normal app. Original remains the default.
+
+**Work:** Extend the existing calculation boundary with per-submission engine
+selection. Preserve that choice through jobs, queue recovery, retries and result
+metadata. Old clients keep Original. Unsupported experimental requests fail
+clearly without silent fallback. Integrate main deliberately, including its
+automatic publication behavior. Keep dependencies and preparation optional for
+Original. Update implemented-state documentation and the guide with the selector,
+supported scope, preparation and recovery. Do not add another job service or
+user-result store.
+
+**Deliverables:** Engine selector, engine identification for new runs/results,
+compatible submission/recovery and the release record. Preserve historical
+timings; make no unsupported 4× claim. Before publication, record the actual
+stable revision, environment, database/report generation, immutable artifacts
+and compatible queue/library schemas. Keep these until user-approved retirement.
+Returning to Original uses current compatible code, without a source downgrade.
+Any publication rollback must keep a decoder for newly saved version-3 evidence;
+the old installed revision cannot read that format. Test compatible recovery in
+isolation; never silently recompute evidence or delete books, saved snapshots,
+queue plans or edit receipts.
+
+**Verification:** Native Windows launcher, offline operation and regression
+checks pass for affected integration. Exercise a representative fixed and seeded
+random workflow through both engines with matched saved inputs/dates and full
+financial agreement. Check selection, Run/Stop/recovery, queue engine identity,
+restart/retry, held edits, saved-result opening, complete CSVs and switching to
+Original. Reuse unchanged proofs and check the new choice in an actual browser.
+Confirm old and new snapshots remain readable. Preserve
+canonical report binding unless a separately verified data revision explains
+a change. Preserve raw data and old books. Compare the full commit diff with
+the architecture guide.
+
+**Handoff:** Final commands, dependency versions, operating limits, rollback
+procedure and remaining limits. No automatic hosted publication or portable
+snapshot refresh is part of this phase.
+
+### Retained checkpoints before the 31 October delivery decision
+
+The records below keep their original measurements and then-current next steps.
+Use the current opt-in release plan for sequencing, rather than their historical
+blanket CB-15 blockers.
+
+The [bounded consumer continuation](phases/CB-14.capacity6.consumer.md) closes
+only the same twelve-trial real-input consumer gate. Independent designs follow
+actual HTTP/browser profiling. Complete physical validation proofs remove repeated
+semantic checks. Current-page sharing and request-local attachment preparation
+remove duplicate traversals. Live instrumentation then identifies expensive browser
+storage inventories in the private helper. Same-profile native checks support an
+equivalent directory-entry walk with every bound and checkpoint rule preserved.
+The fourth complete attempt passes all 204 periods, 10,200 holdings, original typed
+comparisons, normal saving, ordinary stored reopening and 50 complete CSV files.
+All 390,072 CSV cells and paired bytes agree. The three earlier attempts remain
+failed. This prepared prefix is not cold, full-window, full-universe or installed
+qualification. The later 30 October direction removes the absolute-budget
+blocker; other operational prerequisites remain. Increment 6 and
+CB-14 stay incomplete; CB-15 stays blocked. Eager defaults and all limits remain.
+
+The subsequent [policy decision review](phases/CB-14.capacity6.policy-review.md)
+retains that scope and lists the then-unresolved operational budgets, qualification
+inputs, storage accounting and isolated compatibility decisions. The later
+[performance direction](phases/CB-14.performance-direction.md) resolves the
+waiting-time questions without changing the remaining prerequisites. It selects no
+larger route or allowance. The recorded private-root census leaves about
+172 MiB under its existing logical ceiling; this is historical arithmetic, not
+new execution admission. Resolve dependent decisions before declaring another
+workload. No repeat or broader execution follows from this review.
+
+The [input/storage readiness observation](phases/CB-14.capacity6.readiness.md)
+then uses the existing private inputs without financial execution. A retained
+60-second observation failure is followed by a passing declared composition of
+existing private coordinators. The 192-symbol sample has only 46/48 prepared
+cached January candidates in 1997/1998, before extra filters. Actual saved-SPY
+date plans confirm the eager admission failures, including the full-window
+top-100 annual case and separate 100-weekly request limit. A native census leaves
+about 171.81 MiB inside the unchanged original accounting ceiling. No financial
+capacity gate passes. The user selects an independent offline dataset and
+authorizes an empty new D: destination. Its population and complete storage
+declaration remain pending; no installed cache or credential is inspected.
+
+The subsequent [authorized copy checkpoint](phases/CB-14.capacity6.copy.md)
+records the user's permission to populate that destination from existing Windows
+cached inputs, leaving originals and the service unchanged with no downloads or
+server stop. That permission persists. Two inventory entries and a memory-only
+refresh remain below the unchanged physical/commit floors. No installed path,
+lock or financial cache is opened; no input is copied. Source availability,
+installed revision and input size remain unobserved. Resume with fresh attempt
+identities after headroom permits the same no-wait ownership checks. Do not lower
+floors, repeat permission questions or infer a completed copy from a zero-exit
+structured deferral. Broader capacity and installed compatibility remain open.
+
+The [independent saved-input capture](phases/CB-14.capacity6.copy-inputs.md)
+then completes this acquisition prerequisite. Fresh resource entry and offline
+ownership succeed. A 30-second inventory failure remains retained; its repaired
+metadata walk succeeds. The 75.7 GB inventory shows a rebuildable 71.2 GB daily
+database. Only 43,392 active raw/report files totaling 4,338,864,922 bytes are
+captured into independent `D:/cb14-offline-1db085cbdb36/inputs2`.
+The first full copy fails its unchanged 700-second deadline. Independent design
+and native checks support four bounded I/O tasks with coordinator-owned locks,
+callbacks and complete source/destination verification. The fresh second attempt
+passes in 322.156 helper seconds with complete native closure. No failed partial
+files are reused. A separate native allocation receipt corrects the original
+manifest's logical-length accounting label while preserving its bytes and copy
+proof. Corrected storage remains within 6 GiB per attempt and the declared 16 GiB
+D: aggregate allowance, including the retained failure. The copied canonical
+report remains Through 2026-10-20. The original private ceiling stays 4 GiB.
+This is offline source-exclusive capture: active owners defer admission; a new
+startup during capture can wait or time out. No live-priority claim is inferred.
+Originals remain unchanged. No download, credential access, preparation, financial
+calculation or deployment occurs. Next select a mutable preparation location and
+complete preparation/storage bounds, assess actual coverage, then declare one
+focused ordinary-method/Numba qualification. Broader capacity, current relative
+performance and installed compatibility remain unresolved. CB-14 is incomplete;
+CB-15 remains blocked. Eager defaults, routing and all existing limits remain.
+
+The [independent ordinary preparation checkpoint](phases/CB-14.capacity6.prepare.md)
+then closes preparation and coverage for that capture. A verified materializer
+makes a separate mutable working root. Ordinary research and daily preparation
+run unchanged under the existing native 2 GiB application limit. The independent
+baseline agrees on all 31 books and 1,550 holdings. Research and daily databases
+are 223,711,232 and 1,095,495,680 bytes. The report remains byte-identical, Through
+2026-10-20. Both pools select 50 holdings in each prepared year. Coverage retains
+missing observations, 22 price files without adjusted rows and historical gaps.
+This is cached-input coverage, not full-universe or full-window trial capacity.
+The new D: declaration includes retained failures within a 32 GiB aggregate
+allowance and a 12 GiB working workspace; the original 4 GiB root is unchanged.
+The [results](phases/CB-14.capacity6.prepare.results.json) bind native closure,
+46 declared tool cases, source archives and complete logs. Next bind a numerical
+generation and prospectively admit a focused full-window original-method/Numba
+comparison. Do not repeat completed preparation or prefix consumer workflows.
+The concrete [G15 isolated-copy proposal](phases/CB-14.installed-compatibility-scope.md)
+awaits separate installed-source/environment permission. Broader capacity,
+remaining operations and installed compatibility stay open. CB-14 is incomplete;
+CB-15 remains blocked. No normal routing, default, deployment or limit changes.
+
+The [broader numerical generation check](phases/CB-14.capacity6.generation.md)
+then exports all 7,231 cached symbols and verifies a closed current attachment
+under the same limits. The complete generation is 676,320,445 bytes. The owned
+check closes in 473.062 seconds, with unchanged ordinary databases and cutoff.
+This is preparation readiness, not a financial or relative-speed result.
+Pure codec arithmetic also makes the full-weekly limit decision concrete:
+fully populated 24/100 weekly plans need at least 655,431,600 / 2,730,965,000
+bytes for holding records alone. These conditional bounds exceed the current
+256 MiB durable ceiling before real value lengths and other records. No new
+trial is run, no failed gate is relabeled and no limit is raised. A complete
+workflow policy is required before weekly stress. The G15 proposal remains
+pending; CB-14 is incomplete and CB-15 stays blocked.
+
+The [broader annual readiness repair](phases/CB-14.capacity6.annual-ready.md)
+then records an accepted 24-annual plan but a failed default 120-second runtime
+startup before any financial trial. Component profiling identifies complete
+metadata inventories as the dominant cost. A narrow independently designed
+`research.py` helper uses fresh directory-entry metadata while preserving path
+discovery, output values, failures and every validation call. Native complete
+inventory bytes agree exactly with the original implementation. The affected
+seven suites pass 112 native cases, with one actual symlink-creation skip;
+actual native junctions and WSL links pass. Ordinary research/daily rebuild and
+verified numerical reuse preserve all financial inputs. A retained stale marker
+causes one failed export-collector assertion; scoped OS-lock verification and
+own-attachment closure pass without deleting it. Readiness attempt 3 starts in
+45.328 seconds within the unchanged 120-second deadline. Its complete outer
+closure is 55.750 seconds. This closes prepared runtime readiness at the measured
+scope, not cold/installed operation, financial speed or broader trial capacity.
+No deadline, source freshness, financial rule, limit, default or route changes.
+The focused original-method comparison remains next; G15 permission is pending.
+
+
+The [full-window annual pair](phases/CB-14.capacity6.annual-pair.md) then
+compares one fresh 29-period, 1,450-holding trial against the original ordinary
+SQL dated method on the same accepted inputs. Original typed trials, summaries
+and full batch have zero financial or ordering differences. Matching calculation
+to complete JSON takes 94.610 seconds for the candidate and 57.125 for ordinary,
+a 0.60379× ratio. Candidate startup is separately 44.406 seconds. This material
+regression is retained; no approximate 4× or broader capacity claim follows.
+A direct immutable-record transaction probe shows no useful improvement and
+causes no production change. Source metadata profiling instead identifies
+repeated relative-path conversion as a substantial validation cost. Next assess
+a narrow independently designed key-projection repair, retaining all freshness
+calls and signature semantics. This one ordered pair is not a median, the full
+24-trial G08 workload or browser workflow qualification. G15 permission and
+full-weekly durable output policy remain unresolved. CB-14 remains incomplete.
+
+
+The [signature projection checkpoint](phases/CB-14.capacity6.projection.md)
+then retains every fresh metadata check while sharing checked lexical parent
+prefixes within each signature invocation. Complete native inventory bytes and
+financial inputs remain identical. Seven suites pass 117 cases on both
+platforms, with recorded platform skips; final error-order strengthening also
+passes the focused 15-case suite. Ordinary research/daily preparation and a
+fresh numerical export pass. All arrays and record rows match retained inputs.
+Default runtime readiness passes in 24.328 seconds. A new fresh one-trial
+annual pair gives 59.062 candidate versus 54.672 ordinary request seconds,
+ratio 0.92567×, with zero typed financial or ordering differences. This remains
+below the approximate 4× direction. A separate profile identifies 140,772
+history loads and 3,691,579 report decodes as the dominant assembly cost.
+Next independently design that material repair, preserving source policy and
+freshness; do not expand the workload or reopen method search automatically.
+All slower observations, earlier failures and source maps remain retained.
+Broader capacity, full-weekly output policy and installed compatibility remain
+unresolved. CB-14 remains incomplete; CB-15 remains blocked.
+
+
+The [source-derived ranking-input repair](phases/CB-14.capacity6.history.md)
+then removes the demonstrated unused history dependency without a cache, index
+or formula rewrite. Conservative adapters retain authoritative source bodies
+and guards, validate prepared substitutions and reject unsupported history or
+namespace use before execution. Scoped native and WSL checks pass; two native
+combined verification failures remain failed after hitting the unchanged
+aggregate CPU threshold. Independent complete groups verify the required scope.
+Ordinary databases stay current. Fresh numerical export preserves every array
+and record row, with a new implementation-bound generation. A fresh three-trial
+annual request (seed 43, 87 periods, 4,350 holdings) takes 70.422 candidate versus
+167.813 ordinary seconds. The original uses its normal four workers and reuses
+zero books. All original typed results and order agree exactly. Ratio 2.38296×
+is a material request gain, but does not establish the approximate 4× goal or
+broader capacity. Startup is separately 23.438 seconds. Historical one-trial
+observations are not matching before/after controls. Exact historical mutable
+pointer images are reproduced against their original hashes, explicitly marked
+as reconstructions; no earlier evidence is rewritten. Next complete remaining
+operational/capacity gates under declared admission. Full-weekly output policy,
+G15 permission and broader qualification stay open; CB-14 is incomplete.
+
+
+The [fresh24 eager observation](phases/CB-14.capacity6.fresh24.md) then admits
+the 696-period annual plan but fails the unchanged 360-user-second application
+threshold after progress acknowledges 22 calculated/retained trials and 0 recovery.
+No complete caller batch is delivered. All native processes, descendants,
+streams and handles close. Peak job commit 393,183,232 bytes does not establish
+RAM exhaustion. Earlier successful slices cannot complete this failed workflow.
+The subsequent bounded 24 attempt also fails that historical CPU threshold,
+after progress acknowledges 20 calculated/retained trials and no recovery.
+It supplies no complete evidence; all native ownership closes. Its existing
+per-trial validations are retained.
+A [prepared proposal](phases/CB-14.capacity6.fresh24.proposed-envelope.json)
+requests one 600-user-second isolated retry, preserving all other deadlines,
+RAM/process/CPU-rate/storage bounds and fresh empty checkpoints. No proposed
+helper was exported or executed at that checkpoint. This historical proposal
+is superseded by the user's explicit removal of the cumulative CPU cutoff,
+recorded in the [current CPU policy](phases/CB-14.capacity6.cpu-policy.md).
+Future private application qualification uses `user_cpu_seconds=None`, with
+no replacement 600-second allowance. Other declared limits stay unchanged.
+The new host and entry template are prepared and hash-bound. Their native smoke
+was deferred at the unchanged memory entry floor; no child application started.
+The comparison with the original method remains the performance criterion.
+This is an experiment-envelope decision; it changes no user waiting
+budget, financial rule, normal default, route or installed source. Full-weekly
+storage and G15 permission remain separate. CB-14 remains incomplete.
+
+The user then explicitly approves the
+[isolated installed-compatibility scope](phases/CB-14.installed-compatibility-scope.md).
+G15 access permission is resolved. Its qualification is still unrun.
+The [resumed attempts](phases/CB-14.resume-resources.md), eager `fresh24-3` and
+`compatibility-inventory1`, both defer before application creation at the
+unchanged physical-memory/commit entry floors. No installed path opens and no
+financial calculation starts. The CPU cutoff is absent from their declared
+application envelopes. Retain their exact helpers, declarations and closed
+receipts. Available memory, not an unanswered CPU/access decision, now prevents
+these native checks. This does not establish workload RAM exhaustion.
+
+The user subsequently removes the available-physical-memory entry floor for
+private CB-14 qualification. The [current admission policy](phases/CB-14.physical-admission-policy.json)
+keeps observed memory in reports, hard job caps, commit-headroom and disk checks.
+It supersedes both the old8GiB floor and the unexecuted2GiB inventory proposal.
+The [new complete annual attempt and installed inventory](phases/CB-14.capacity6.fresh24.retry4.md)
+pass independently: fresh24-4 calculates and retains all24 trials, with no
+recovery,696 periods and34,800 holdings. Request through complete JSON is
+456.891seconds; startup24.437seconds is separate. Peak application job commit
+417,361,920bytes is below2GiB; no working-set or speedup claim follows.
+The read-only installed inventory verifies312 manifest-owned files, Python3.12.1
+and a pip-only environment. It closes under a stricter512MiB job cap. No installed
+source or user data changes; content copying and compatibility execution are
+still unrun. Full24 ordinary financial agreement, matching performance and
+browser workflow remain unverified. G03/G06 and broader qualification remain
+open. CB-14 is incomplete; CB-15 stays blocked.
+
+The subsequent [isolated compatibility slice](phases/CB-14.compatibility.md)
+records explicit removal of the remaining commit-headroom entry floor. Both
+memory measurements are informational; hard job caps and other bounds remain.
+It captures the installed source/environment into D:, executes its copied
+Python3.12.1, passes125 selected fixture tests, verifies guarded actual-cache
+compatibility and cross-source synthetic snapshot recovery, and starts the
+compiled runtime after an offline pinned-dependency copy. Its one29-period,
+1,450-holding ABI trial has zero financial/type/order differences from the
+corresponding retained annual24 trial. This is not another speed comparison.
+Actual installed research schema8 requires rebuilding for branch schema7; the
+independently rebuilt baseline matches the installed baseline exactly. Old code
+cannot open version3; the current ordinary HTTP reader is the tested stored-
+evidence recovery route. Installed-only strategy settings/labels survive frozen
+opening; their live editing/recalculation is not qualified by this slice.
+Original installed assets, user records, defaults and routes remain untouched.
+All failed/scope-mismatched attempts are retained separately. Broader capacity,
+full24 ordinary agreement/performance and remaining workflow gates stay open.
+The user requests a commit and stop at this slice; pause after its checkpoint.
+CB-14 remains incomplete and CB-15 stays blocked.
 
 ## Automatic agent implementation protocol
 
@@ -896,15 +1969,20 @@ For a phase or subtask that changes only prose, captures measurements with exist
 
 ### Step 2 Implement the phase
 
-Implement the agreed structure and the scoped outcome. Make ordinary implementation choices autonomously. Use measured evidence to select a backend, trigger or skip CB-03, choose bounded buffers, and adjust task order within the dependency graph. Record these decisions and their reasons; they do not require a user approval round.
+Implement the agreed structure and the scoped outcome. Make ordinary implementation choices autonomously. Implement the user-accepted Numba direction. Choose bounded buffers and adjust task order within the dependency graph. Do not reopen CB-03 or comparative timing without a new user direction. Record these decisions and their reasons; they do not require a user approval round.
 
-Preserve the financial correctness contract, benchmark gates, source data, canonical report integrity and unrelated changes. Keep all introduced helpers and API consumers consistent. Update affected documentation and the architecture guide with the implementation, not in a later cleanup phase.
+Preserve the financial correctness contract, retained financial and operational checks, source data, canonical report integrity and unrelated changes. Keep all introduced helpers and API consumers consistent. Update affected documentation and the architecture guide with the implementation, not in a later cleanup phase.
 
 ### Step 3 Verify and repair
 
 Run the phase's required checks, including native Windows checks where specified. Read failures, apply clear repairs and rerun affected checks until they pass. Dependency repair and bounded isolated experiments are part of the phase. Do not ask the user to run a routine preparation command or approve each test repair.
 
-A failed speed gate is engineering evidence. Investigate its cause, improve the authorized design or run the planned alternative comparison automatically. Keep the gate failed until the evidence passes. Ask the user only when progress requires a critical scope, correctness, resource or acceptance decision. Do not lower the speed target, weaken tolerance, omit a filter or claim an unrun check passed.
+Keep failed historical checks failed and unrun checks unrun. The user has
+accepted Numba. Follow the 30 October approximate 4× direction and proportional
+effort rule. Do not automatically reopen the historical comparison matrix or
+launch a new timing check without its input and safety prerequisites. Repair financial or operational failures within scope.
+Ask only for a critical scope, correctness, resource or acceptance decision.
+Do not weaken tolerance, omit a filter or claim an unrun check passed.
 
 Complete the phase record and status evidence before the commit audit. If required verification cannot finish, record the unfinished checks and their cause. Do not commit a phase as complete or start a dependent phase while a required gate remains unresolved.
 
@@ -951,52 +2029,74 @@ For a program run, replace the first sentence with: "Execute the remaining ready
 |---|---|---|
 | CB-00 | Complete | `phases/CB-00.md`; WSL source and native Windows deployment |
 | CB-01 | Complete | [Phase record](phases/CB-01/README.md); 18 native cases, exact replay and fresh-repeat agreement |
-| CB-02 | In progress; Numba focus; 5× gate failed | [Wave5](phases/CB-02/wave5/README.md): all 18 cases exact; cached-F2 medians 4.66× / 4.53×. [Wave6](phases/CB-02/wave6/README.md): exact staging pilot rejected at 3.92% / 4.87×. [Wave7](phases/CB-02/wave7/README.md): budget stop before compiled candidate. [Wave8](phases/CB-02/wave8/README.md): source revision safeguard complete. [Wave9](phases/CB-02/wave9/README.md): benchmark execution admission closed; bound inputs, resource isolation and paired performance unresolved; no production backend selected |
-| CB-03 | Dormant, conditional | All named alternatives attempted; reopen for a concrete measured blocker |
-| CB-04 | Planned | — |
-| CB-05 | Planned | — |
-| CB-06 | Planned | — |
-| CB-07 | Planned | — |
-| CB-08 | Planned | Weekly rules proposed, not implemented |
-| CB-09 | Planned | — |
-| CB-10 | Planned | — |
-| CB-11 | Planned | — |
-| CB-12 | Planned | Wave8 request-start revision selection reusable; isolated startup, actual restart, immediate detection and operational budgets remain required |
-| CB-13 | Planned | Isolated preview; stable website remains default |
-| CB-14 | Planned | Final 5× gate pending |
-| CB-15 | Planned | Stable default stays until all CB-14 readiness gates pass |
+| CB-02 | Complete by user decision; mandatory matrix retired | [Method selection](phases/CB-02/method-selection.md); retained evidence keeps its limits; current relative performance assessment is in CB-14 |
+| CB-03 | Skipped | User accepts Numba; no alternative comparison scheduled |
+| CB-04 | Complete | [Phase record](phases/CB-04.md); bounded offline export, immutable publication/recovery, read-only attachment and reader-safe retirement; synthetic WSL/native verification |
+| CB-05 | Complete | [Phase record](phases/CB-05.md); private synthetic checks and new FMP real-symbol checks pass on WSL/native; exact temporal agreement |
+| CB-06 | Complete | [Phase record](phases/CB-06.md); full entry-date catalog, separate validity, portable schema, bounded local reuse and WSL/native verification |
+| CB-07 | Complete; SQL retained | [Boundary decision and verification](phases/CB-07.md); generic native selection remains unimplemented |
+| CB-08 | Complete | [Calendar contract and phase record](phases/CB-08.md); version-1 week/month planning, exact monthly compatibility, WSL/native verification and independent audit; weekly controls remain unavailable |
+| CB-09 | Complete | [Complete financial-result contract and phase record](phases/CB-09.md); shared reducer, offline numerical diagnostic, WSL/native verification and independent audit; unchanged job/snapshot envelopes; SQL and complete-book returns retained |
+| CB-10 | Complete | Generation-bound offline recovery, complete trial capture, bounded retention and durable snapshot compatibility pass WSL/native verification and independent audit. See [CB-10](phases/CB-10.md). |
+| CB-11 | Complete | [Explicit persistent runtime](phases/CB-11.md); WSL/native numerical and lifecycle checks pass. Independent final design review and smart-commit audit are clear. Current routing stays unchanged. |
+| CB-12 | Complete | [Isolated preparation/startup](phases/CB-12.md); WSL/native checks pass. Final design review and smart-commit audit are clear after the shutdown admission repair. Ordinary routing retained. |
+| CB-13 | Complete | [CB-13A](phases/CB-13A.md) consolidates admission; [CB-13B](phases/CB-13B.md) adds persistent preview dispatch; [CB-13C](phases/CB-13C.md) qualifies browser/calendar compatibility, weekly controls and retained gates. Stable default retained. |
+| CB-13A | Complete | Shared ordinary calculation owner; 172 tests on WSL/native Windows, eight browser consumer checks, guide checks and final independent audit pass. Queue shutdown requeues interrupted work and preserves explicit Stop. |
+| CB-13B | Complete | [Persistent isolated preview](phases/CB-13B.md) implements child-owned freshness, serialized data handoff and confirmed retirement behind the shared calculation boundary. 167 WSL and 166 native Windows tests plus 35 post-audit affected checks per platform pass; evidence and final audit are filed. Stable defaults retained. |
+| CB-13C | Complete | [Browser/calendar qualification](phases/CB-13C.md):165 WSL/167 native synthetic tests, complete actual native browser workflow, focused desktop/mobile control checks, legacy compatibility and failure isolation pass. Default cutover remains CB-14/CB-15. |
+| CB-14 | Complete: supported opt-in readiness | [Current release scope](phases/CB-14.opt-in-release.md) replaces the universal stress dependency. The [consumer workflow](phases/CB-14.capacity6.consumer.md), [current three-trial pair](phases/CB-14.capacity6.history.md), [fresh24 backend](phases/CB-14.capacity6.fresh24.retry4.md) and [isolated compatibility](phases/CB-14.compatibility.md) supply reusable scoped evidence. The [readiness slice](phases/CB-14.readiness.md) implements main schema/filter/order reconciliation, explicit experimental support and operation-scoped child closure. Affected WSL checks, 263 passing native tests and browser/guide checks close revised readiness. The failed recursive-helper attempt remains failed; its guarded rerun passes. Read the filed results and independent audit for exact scope. G03/G06 stay failed historical capacity observations; full24 agreement/performance and broader stress are follow-up. No selector exists in the normal app yet. |
+| CB-15 | Complete: normal-app source integration | Original remains default. Per-submission engine routing, optional preparation, immutable producer identity and compatible retries/recovery are implemented. Focused WSL checks, 249 passing native test executions and the complete native selector workflow pass. Six earlier private browser attempts remain failed and separately recorded. Independent audit F1 is resolved in the guide. The user subsequently authorized main integration. Its [separate merge record](phases/CB-15.integration.md) preserves main's supervisor and unrelated edits. Publication and installed restart remain unauthorized. See [CB-15](phases/CB-15.md) and its [release handoff](phases/CB-15.release-handoff.md). |
 
 ## Completion definition
 
-The current website must remain usable until all replacement readiness gates
-pass and CB-15 verifies cutover. The program is complete when the qualified dated engine is the default, all required financial and operational checks pass, every primary workload meets the 5× threshold, the agreed workflow budgets pass, weekly-to-two-year controls and saved-trial workflows work, and current user documentation describes the actual implementation. A kernel benchmark, a replay speedup or a partial catalog does not satisfy completion.
+The current delivery is complete when the normal app offers Original and an
+explicit experimental engine choice, Original remains default, current main
+features are preserved, and representative complete workflows through both
+engines pass the revised CB-14/CB-15 checks. Submitted runs and queue retries keep
+their selected engine. Old and new stored results remain readable without
+calculation. The guide describes the implemented choice and its supported scope.
 
-The immediate next step remains **CB-02**, now a focused Numba experiment.
-All six named approaches have been tested. Wave4 preserves immediate manual-edit
-detection. Wave5 completed the full primary comparison for Numba and Rust, with
-exact financial agreement. Both fail the broader-pool F2 median gate. No primary
-cases remain for wave5. Wave6 rejected requested-metric SQL staging alone:
-3.92% observed request reduction and 4.87× production ratio. Do not expand
-that unchanged intervention. Wave7 implemented the guard/assembly prototype but
-its pair hit the 2,700-second whole budget before compiled candidate execution.
-Wave8 completes default publication revision selection as the first safety
-prerequisite, without changing the live engine. Wave9 closes executable benchmark
-orchestration and timed adapters while retaining source-only fixture imports.
-It implements no input capture and admits no execution. The next bounded design
-must establish a consistent input owner for both engines without blocking the
-live cache. Then qualify resources
-and concurrent availability before another paired pilot. Account for observed
-control and preparation costs. Stable
-publication and restart must also be protected before integration can affect them. Do not expand this incomplete attempt.
-Preserve the
-financial, freshness and acceptance contracts. A promising pair must precede the
-full gate after implementation changes. Do not start production integration
-before the required gate passes.
+The broader goal remains useful acceleration with about 4× improvement or close.
+Larger capacity, remaining experimental feature coverage and changing the default
+are separate follow-up decisions informed by opt-in use. They are not conditions
+for declaring the initial selectable-engine release complete. No historical
+failure or untested capability becomes a pass through this scope change.
+
+CB-04 completes the offline artifact lifecycle in WSL source. Its
+[handoff](phases/CB-04.md) defines format 1 and attachment ownership.
+CB-05 hardens the temporal interface over this artifact and the accepted
+Numba searches. Its required real-symbol gate now passes on new private FMP
+inputs, alongside the earlier adversarial fixtures. CB-06 delivers the complete
+entry-date factor interface under its independent design. The three-symbol evidence does not qualify full-universe
+coverage, real stopped names or production capacity. CB-12 provides isolated
+closed startup verification. Numerical calculation routing remains in CB-13.
+The CB-02 comparison route is retired. The following
+paragraphs retain the earlier execution evidence and its qualification limits. Numba remains
+the working direction. Its wave5 full matrix is exact. Its cached-F2 median of 4.66× failed the
+historical 5× gate and exceeds the subsequently retired 4× minimum on that historical identity; wave6 is rejected; wave7's additional guard treatment never ran on real
+inputs. Wave8's revision safeguard and waves9–13's bounded ownership/source
+proofs remain reusable within their recorded limits. Wave13's combined latest
+180/178 suites span distinct rounds, not one final-identity aggregate.
+
+MeasurementExecution now brings actual private reference and Numba requests,
+current disposable observations, shared-control orchestration, private results
+and closure into one fixture-tested operation. Its new envelope does not change
+CapturedWorkspace's original limits. Its source-bound cooperative observation
+provider is implemented on disposable participating fixtures. Installed source
+compatibility, a qualified real-resource envelope and real admission remain
+unavailable. The detailed
+[execution record](phases/CB-02/execution/README.md) names its exact proof scope
+and remaining checkpoints. Finish those checkpoints together. Then obtain a
+promising paired pilot and repeat all six three-seed primary gates on one
+implementation identity. Keep stable publication/restart and financial,
+freshness, weekly, workflow and rollback requirements intact.
 
 ## Program decision record
 
 | Date | Evidence and insight | Plan adjustment | Remaining decision |
 |---|---|---|---|
+| 31 October 2026 | The user requests swappable engines for testing in the normal app, approves that direction, then requests a plan adjustment. | Re-scope CB-14 to readiness for supported opt-in use and CB-15 to the normal-app selector. Keep Original default, pin engine per submission, preserve main features and block unsupported experimental combinations. Defer universal stress/default replacement. | Reconcile main schema/filter/order changes, then implement and verify representative switching and complete workflows. No selector or deployment is claimed by this plan commit. |
+| 30 October 2026 | The user sets no absolute waiting-time limit and seeks about 4× improvement over the original method, or close, with attention to diminishing returns. | Remove missing absolute-budget blockers. Reuse comparable evidence and plan only focused checks for material current questions. Keep Numba selected and avoid marginal optimization; the mandatory matrix and 10× target stay retired. | Broader input/storage feasibility, current evidence applicability and installed compatibility remain unresolved. Safety bounds and failed gate verdicts stay unchanged. |
 | 25 October 2026 | Six methods attempted; full Numba/Rust matrix exact, but cached-F2 fails at 4.66×/4.53×. Numba median duration is lower in all six cases by a small margin. | Focus CB-02 on Numba and shared request costs. Keep alternatives dormant and all primary gates intact. | Does a bounded intervention close the gap without weakening contracts? |
 | 25 October 2026 | All frozen F2 trials are incomplete. Setup is separate and startup/restart, filter changes and weekly capacity remain unqualified. | Retain F2; add complete trailing-filter coverage. Define workflow budgets before qualification. Separate existing-month delivery from weekly delivery. Allow early isolated operational proofs. | User acceptance budgets and full operational evidence remain unresolved. |
 | 25 October 2026 | Equivalent fresh scanning preserved immediate manual-edit detection across the full matrix. | Remove startup-only detection from the planned direction. Reuse demonstrated work and harden only missing capabilities. | Production publisher and lifecycle proofs remain required. |
@@ -1006,3 +2106,143 @@ before the required gate passes.
 | 25 October 2026 | The user needs to keep using the slower website throughout development. The installed engine was restarted and its page, panel and one cached 50-stock backtest passed; current deployment revision is recorded above. Wave7's shared live-cache ownership would block such use. | Make stable website availability a cross-cutting gate. Isolate experiments and previews, protect the stable deployment/restart revision, and keep the old engine default until every CB-14 readiness gate passes. | Website-safe snapshot/measurement ownership and protected normal publication still need implementation and qualification before affecting live use. |
 | 25 October 2026 | Wave8 isolates the publication-revision prerequisite. Both platforms pass 32 disposable deployment tests; read-only actual selection retains the installed commit. | Normal WSL publication selects the installed or pending commit rather than experimental HEAD. Split benchmark admission/input handoff and resource/availability proofs before any new pilot. | No live restart, benchmark isolation or new compiled performance is qualified. |
 | 25 October 2026 | Wave9 independent CODE design separates source attachment from executable benchmark work. Paths, copied databases and source hashes cannot establish input ownership. | Complete admission first: one policy rejects benchmark execution before effects. Keep fixture algorithms usable. Defer bound capture and resource admission. | One generation-bound owner for controls and candidates, safe capture, independent resources and availability proofs remain required before a pilot. |
+| 25 October 2026 | The user authorized a feature worktree and independently owned test databases. Direct backup under the exclusive coordinator delays users; a rollback-journal reader can block writer commit. Wave10 passes 21 new store tests on each platform and retains closed admission/freshness checks. | Complete a synthetic-only immutable input store in `cb02/input-ownership`. Publish no production adapter or real copy. Keep the registered checkout and running engine unchanged. | Design a production immutable producer and retirement boundary on synthetic fixtures, then bind execution inputs/raw freshness and qualify capture/execution resources and availability. Cooperative fixture limits are insufficient for real capture. |
+| 25 October 2026 | The user stopped the server to simplify copying. Wave11 capture and admission fixtures pass16 per platform. The native stopped-runtime copy passes coherence/integrity/receipts and original invariance, including all saved books. Its one-time controller missed worker EOF; verified controller-only cleanup and independent copy checks resolved the operation, with worker exit code unobserved. | Add a separate offline copy owner; leave wave10 limits/admission unchanged. No live-copy protocol is inferred. Preserve originals and bind independently copied inputs next. | A shared execution owner must bind generation/source/raw freshness before resource and concurrent-availability qualification or any pilot. Live capture is separate optional future capability. |
+| 25 October 2026 | Wave12 inspection finds database defaults, report globals and spawned imports still depend on runtime paths. Copies contain no raw tree, so capture-time inventory cannot establish current freshness. The bounded owner verifies artifacts/coherence and actual source bytes with private derivatives; prior semantic identities remain unchanged. | Split captured input ownership from execution. Complete CapturedWorkspace under synthetic limits; keep both runners and admission closed. No more real capture is required. | Build the isolated engine facade and qualified live-priority request-freshness provider; then prove descendant/resource/cancellation and concurrent availability before a pilot. |
+| 25 October 2026 | Wave13 CODE inspection finds process-global logging effects in the actual application import closure. Policy construction itself needs no NumPy. | Split an owned source-only policy child from numerical/reference requests. Extract the shared program without financial changes; preserve unchanged owner limits and closed admission. | Bind both engines to the captured generation, add qualified current request freshness with live priority, then qualify general resources and availability before real execution. |
+| 25 October 2026 | Program review finds sound financial boundaries but repeated attachment prerequisites, late measurement lifetime and a horizontal rebuild of demonstrated work. User authorizes the recommendations and confirms Numba remains in scope. | Converge ownership into one measured-execution capability, rewrite phase responsibilities by retained capability, and freeze one costed contemporary control bracket. Actual disposable reference/Numba execution is distinct from production qualification. | Live-priority current observation, complete resource/availability qualification, a promising real pair, full primary gate, workflow budgets and weekly capacity remain open. |
+| 25 October 2026 | Disposable hardening adds source-bound live-intent observation, bounded transport and native job controls. Strict zero-delay access, full resource enforcement and installed-runtime compatibility remain unsupported or pending. | Keep the same measured-execution owner. Validate a fully costed prospective bracket without real assets or an admission route. | Qualify remaining enforcement and production-scale availability before real binding or execution. |
+
+The resource checkpoint adds a supervised application-controller domain.
+Disposable WSL/native probes and inventory-scale handoff checks retain closed
+real admission. The [resource record](phases/CB-02/execution/resources.md)
+distinguishes implemented limits, unintegrated namespace probes and remaining
+complete-envelope/service qualification. It does not replace historical timings.
+
+The [synthetic HTTP checkpoint](phases/CB-02/execution/availability.md) adds
+actual-handler and orderly-restart evidence on private prepared fixtures. It
+retains the same resource gaps and closed real admission. Production preparation,
+browser/CSV use, real financial scale and installed compatibility remain open.
+
+The [native user CPU checkpoint](phases/CB-02/execution/user-cpu.md) implements
+one resource threshold inside the existing domain. Its periodic termination,
+observed overshoot and retained accounting do not close the complete resource
+or availability gates. No real asset or installed-runtime action follows.
+
+The [storage checkpoint](phases/CB-02/execution/storage.md) adds optional WSL
+allocated-block enforcement and retained evidence collection inside the existing
+supervisor. A transferred directory handle pins one private tmpfs through domain
+closure. One bounded persistent container preserves committed records and
+publication retry. Read-only observation uses the same coordination locks.
+Native aggregate storage stays unsupported after a private creation probe.
+Logical lengths, inodes, filesystem metadata, total residency, I/O, outside
+supervision and retained archives remain distinct. Full resources, installed
+compatibility and real admission stay open. No new real speed is measured.
+
+
+The [supervisor lifetime checkpoint](phases/CB-02/execution/lifetime.md) adds an
+optional private WSL ancestor for the existing supervisor and application. It
+bounds charged memory, combined tasks and CPU allocation through pinned-storage
+collection and publication. Manager deadlines and helper-bound application
+lifetime cover disposable owner death. Unknown creation stays owned. Alive-helper
+cleanup retry and dead-helper evidence recovery remain distinct. The caller's
+relay, initial submission and final ownership operations remain outside. Native
+nested-job probes demonstrate a possible future route; this strict implementation
+is WSL only and rejects native requests before effects. Omission preserves the
+earlier weaker scope. Full resources, installed compatibility and real admission
+remain open. No financial or speed gate changes.
+
+
+The [native lifetime checkpoint](phases/CB-02/execution/native-lifetime.md)
+extends the same helper/application boundary with the existing Windows Job
+Object owner. An explicit native declaration preserves the distinction between
+committed memory/processes and WSL charged memory/tasks. Effective controls and
+noninheritable handle ownership precede resume. Accounting and closure include
+helper finalization, nested and exited work. Caller death, helper death, partial
+close retry and provisional-success rejection use disposable native fixtures.
+Native threads, aggregate storage, total residency, hard I/O and complete
+resources remain open. The user now requests continued work through CB-02; the
+one-checkpoint stopping instruction is superseded. Real admission and nonaccess
+boundaries remain in force. No performance gate or production integration follows.
+
+
+## Source-prepared synthetic service checkpoint
+
+The [source-service checkpoint](phases/CB-02/execution/source-service.md) uses
+64 fictional companies and a fictional weekday calendar from 1992 through
+21 October 2026. Copied source runs ordinary research, independent baseline
+verification, daily preparation and website building. It changes no financial
+function or source-path rule. Actual browser controls and Blob CSV exports are
+checked against SQL and ordinary HTTP calculations. Source ownership lasts
+through data-job, listener and request-thread closure. Input edits must fail
+freshness checks before panel rebuild. Latest-only updates preserve history.
+
+This extends the earlier prepared-binding HTTP fixture. It does not qualify
+real-data capacity, installed compatibility, browser resources or a complete
+resource envelope. The combined cold databases exceed the original 32 MiB
+capture fixture allowance. That allowance stays unchanged. The earlier source-
+service check did not qualify full-fixture measured attachment. The later
+[combined-service check](phases/CB-02/execution/combined-service.md) qualifies its separately
+declared fictional workload.
+The existing smaller reference/Numba and concurrent-priority proofs retain
+their own scope. At that checkpoint, the Linux browser checked the WSL service. Native HTTP
+workflows passed. Native browser interaction remained unverified because the
+tool could not reach the private Windows loopback listener. The later
+[native-browser implementation](phases/CB-02/execution/native-browser-implementation.md) supplies separate fictional native UI evidence. Native and WSL matching-source results follow in this
+checkpoint's verification record. Real admission stays closed. No new speed
+gate passes, and no production engine or installed server changes.
+
+
+## Combined fictional generation checkpoint
+
+The [combined-service checkpoint](phases/CB-02/execution/combined-service.md)
+uses the existing offline capture owner to seal the ordinarily prepared
+64-company fictional generation. The service closes for capture, then restarts
+unchanged. The existing measurement owner binds both controls and both Numba
+variants to this generation while observing the actual source service root.
+Its new explicit synthetic envelope is separate from the unchanged public
+32 MiB capture fixture. No financial binder or capture identity is duplicated.
+
+Root cleanup retains registered service, comparison and output owners until
+closure is confirmed. Actual current observation, live priority, complete books,
+holdings, summaries and committed replay remain in the combined operation.
+Separate WSL strict storage keeps its own declaration. Native storage and browser
+limitations stay explicit. Current verification is recorded in that checkpoint;
+older source-service counts and browser evidence remain historical and scoped.
+No real admission, full-resource, installed-compatibility, capacity or speed gate
+follows from this synthetic work. The failed primary case and all acceptance
+requirements remain unchanged.
+
+
+The combined checkpoint's [remaining-resource feasibility record](phases/CB-02/execution/remaining-resource-feasibility.md)
+identifies the complete-environment prerequisite and unspecified total-CPU,
+hard-I/O and strict-cleanup semantics. Existing native controls and the documented
+unsupported modern Job Object I/O API establish no complete route under current
+permissions. Obtain the required capability/access decision before another
+resource backend. This does not relax the declaration or authorize real access.
+
+
+The [native-browser planning checkpoint](phases/CB-02/execution/native-browser.md)
+records a conditional private browser owner and fixed-path executable presence.
+It implements no browser driver and qualifies no native UI behavior. The user
+approves a separately provided Windows test environment and offline real-input
+copies for later qualification, with the original installation untouched. Its
+connection and copy path remain unsupplied. That historical stop boundary was fulfilled. The current session continues
+under the [handover](phases/CB-02/execution/session-handover.md), with checkpoint
+commits allowed. No real admission or resource gate is waived.
+
+
+## Native fictional browser checkpoint
+
+The [native-browser implementation](phases/CB-02/execution/native-browser-implementation.md)
+reuses the filed independent design and frozen bounds. One test-only owner uses
+the existing pre-bootstrap Windows Job and a new private Chrome profile. Native
+controls, six scenario groups and seven actual CSV files pass against the
+ordinary fictional SourceService. Exact categories and the `1e-12` tolerance
+remain unchanged. The saved files and screenshots have hash receipts.
+
+This closes the native fictional-browser gap only. It does not combine browser
+resources with the measured-execution envelope, qualify real inputs or prove
+installed compatibility. Complete-resource semantics, the separately provided
+Windows host/connection and offline-copy path remain unresolved. Real admission
+stays closed. No timing or current-source primary performance gate follows.

@@ -9,6 +9,12 @@ fixture helpers remain available. Consistent bound-input ownership, safe capture
 and resource/availability qualification remain deferred. See the
 [wave9 record](../../docs/plans/compiled-backtest/phases/CB-02/wave9/README.md).
 This source safeguard does not change installed tools or the running website.
+Wave10 adds a synthetic-only immutable input store and separately writable daily
+clones in a linked feature worktree. It has no live capture adapter, raw-data
+attachment or execution admission. See the
+[wave10 record](../../docs/plans/compiled-backtest/phases/CB-02/wave10/README.md).
+Copies made while the website runs remain deferred pending a qualified producer
+and capture gates. The later offline operation is described below.
 
 CB-02's [third experiment](../../docs/plans/compiled-backtest/phases/CB-02/wave3/README.md)
 compares Numba, bulk Python, whole-batch DuckDB, persistent workers, Polars and
@@ -65,3 +71,29 @@ python3 scripts/research.py screen --top 100 --first 2015 --last 2020 --output r
 ```
 
 The first January book has fewer than 100 usable names in the original 250-candidate pool. Full-universe top-100 claims require broader price coverage and exit review. Use `status` and inspect short-year output before interpreting an experiment.
+
+
+Wave11 adds a stopped-runtime offline copy owner after the user stopped the
+server. It uses exclusive source/cache ownership and SQLite backup, preserves
+originals and saved books, and admits no benchmark. The
+[wave11 record](../../docs/plans/compiled-backtest/phases/CB-02/wave11/README.md)
+records focused proofs, bounded native capture and any remaining attachment limits.
+
+
+Wave12 adds a bounded captured-input workspace. It validates database/report
+artifacts, captured financial coherence and actual source snapshots. It owns
+read-only attachments and independent writable derivatives. Captured freshness
+is historical evidence; current raw freshness and both engine adapters remain
+unavailable. Synthetic WSL/native checks supply ownership evidence, not numerical
+parity, resource qualification or performance measurements. No real derivative
+creation or benchmark is admitted. See the
+[wave12 record](../../docs/plans/compiled-backtest/phases/CB-02/wave12/README.md).
+
+Wave13 adds isolated source-only policy attachment. An owned child constructs
+actual PolicyProgram from private captured source. The parent receives immutable
+policy/source/generation evidence only. Outer workspace closure closes escaped
+policy scopes. Numerical and reference request adapters, current raw freshness,
+general resources and concurrent availability remain unqualified. Existing
+candidate tests check extraction regressions separately; they do not prove a
+captured engine request. No new performance evidence follows. See the
+[wave13 record](../../docs/plans/compiled-backtest/phases/CB-02/wave13/README.md).

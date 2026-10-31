@@ -1,0 +1,88 @@
+{
+  "audit": {
+    "confirmation_items": [],
+    "report": "native-browser-audit.md",
+    "status": "clear"
+  },
+  "base_commit": "a4820af4964a4ab43c05519606a2cf62168074a9",
+  "declaration": {
+    "base_commit": "a4820af4964a4ab43c05519606a2cf62168074a9",
+    "browser_resources": "unqualified",
+    "limits": {
+      "bootstrap_output_bytes": 1048576,
+      "cdp_message_bytes": 16777216,
+      "close_seconds": 15,
+      "committed_bytes": 1073741824,
+      "cpu_percent": 25,
+      "downloads_bytes": 16777216,
+      "evidence_bytes": 16777216,
+      "operation_seconds": 60,
+      "pending_event_bytes": 4194304,
+      "pending_events": 128,
+      "processes": 16,
+      "profile_cache_bytes": 134217728,
+      "received_bytes": 67108864,
+      "root_bytes": 201326592,
+      "session_seconds": 450,
+      "startup_seconds": 45,
+      "user_cpu_seconds": 120
+    },
+    "presence_probe": "fixed OS executable paths only; no execution or profile access",
+    "real_admission": "closed",
+    "scope": "private fictional native-browser qualification only",
+    "source_service": "unchanged"
+  },
+  "declaration_frozen_before_presence": true,
+  "design": "native-browser-design.md",
+  "evidence_hashes": {
+    "declaration.json": "b80195764d82dadbc26bf66c47e2fd37059f583428541ecdad0b6c2ea36c4c5a",
+    "presence.json": "a1d8ae4c5936afbb89dbdcc63c198129136a49ccc96bab7b33b6783bdcf1e509"
+  },
+  "guide_update": "not needed; current guide correctly states native browser interaction and full resources are unqualified; checked date unchanged",
+  "implementation_started": false,
+  "presence": {
+    "browser_executed": false,
+    "profiles_read": false,
+    "project_runtime_accessed": false,
+    "results": [
+      {
+        "is_file": true,
+        "path": "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
+      },
+      {
+        "is_file": false,
+        "path": "C:/Program Files/Microsoft/Edge/Application/msedge.exe"
+      },
+      {
+        "is_file": true,
+        "path": "C:/Program Files/Google/Chrome/Application/chrome.exe"
+      },
+      {
+        "is_file": false,
+        "path": "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"
+      }
+    ],
+    "scope": "fixed OS executable presence only",
+    "seconds": 0.007152795005822554
+  },
+  "qualification": {
+    "DOM_controls": false,
+    "browser_execution": false,
+    "full_resources": false,
+    "job_inheritance": false,
+    "native_browser_matrix": false,
+    "real_Blob_downloads": false,
+    "real_admission": false
+  },
+  "scope": "Design and fixed-path file presence only; browser execution unverified.",
+  "selected_executable": null,
+  "stop_instruction": "once you reached the next commit point, stop even CB-02 havent finished",
+  "user_authorization": {
+    "answer": "Yes\u2014separate environment (Recommended)",
+    "connection_and_copy_path": "requested; not supplied",
+    "question": "May I use a separately provided Windows test environment and offline copies of the real inputs for CB-02 qualification? The current rules prohibit real-input access and system changes; the installed site would stay untouched.",
+    "scope": "Separately provided environment and offline copies only; qualification before real benchmark; original installation and inputs remain untouched.",
+    "used": false
+  },
+  "version": 1
+}

@@ -7,7 +7,7 @@ import io
 import tempfile
 import subprocess
 import time
-from contextlib import ExitStack
+from contextlib import ExitStack,closing
 import sys
 import unittest
 from types import SimpleNamespace
@@ -18,6 +18,37 @@ import schedules as s
 
 
 class CalendarTests(unittest.TestCase):
+    def test_daily_binding_and_connect_use_explicit_research_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source=Path(folder)/'custom-research.sqlite';path=Path(folder)/'daily.sqlite'
+            with patch.object(s.r,'signature',return_value={'fixture':1}),patch.object(s.r,'prepared_price_binding',
+                    side_effect=lambda selected:'custom' if selected==source else 'default'):
+                inputs=s.fingerprint(source)
+                with closing(sqlite3.connect(path)) as db:
+                    db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
+                    db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(inputs)));db.commit()
+                with closing(s.connect(path,source)) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM metadata').fetchone()[0],1)
+                with self.assertRaisesRegex(ValueError,'Daily cache changed'):s.connect(path)
+
+    def test_daily_fingerprint_tracks_portfolio_reducer(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'portfolio_results.py';path.write_text('# first')
+            with patch.object(s.r,'signature',return_value={'private-fixture':1}),patch.object(s.r,'prepared_price_binding',return_value='fixture'),patch.object(s.portfolio_results,'__file__',str(path)):
+                before=s.fingerprint()
+                path.write_text('# changed portfolio source')
+                after=s.fingerprint()
+        self.assertNotEqual(before['engine']['portfolio_results.py'],after['engine']['portfolio_results.py'])
+
+    def test_daily_fingerprint_tracks_calendar_source(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
+            with patch.object(s.r,'signature',return_value={'private-fixture':1}),patch.object(s.r,'prepared_price_binding',return_value='fixture'),patch.object(s.schedule_calendar,'__file__',str(path)):
+                before=s.fingerprint()
+                path.write_text('# changed calendar source')
+                after=s.fingerprint()
+        self.assertEqual(set(before['engine']),{'schedules.py','book_batch.py','schedule_calendar.py','portfolio_results.py'})
+        self.assertNotEqual(before['engine']['schedule_calendar.py'],after['engine']['schedule_calendar.py'])
+
     def sessions(self,first,last):
         days=[]
         while first<=last:
@@ -56,6 +87,23 @@ class BacktestTests(unittest.TestCase):
             for day,price in zip(['2014-06-30','2015-01-02','2015-04-01','2015-07-01'],prices):
                 self.db.execute('INSERT INTO prices VALUES(?,?,?,?)',(symbol,day,price,price))
         self.db.commit()
+
+    def test_weekly_dates_use_ordinary_financial_evaluation_with_legacy_metadata(self):
+        sessions=[date.fromisoformat(row[0]) for row in self.db.execute('SELECT day FROM sessions ORDER BY day')]
+        calendar=s.schedule_calendar.SessionCalendar(sessions)
+        configuration=dict(version=1,start='2015-01-01',end='2015-07-01',interval=dict(unit='week',count=1))
+        dates=[str(a) for a,b in calendar.fixed(configuration)]
+        self.assertEqual(dates,['2015-01-02','2015-04-01'])
+        self.assertEqual(calendar.sample(configuration,1,42)['samples'][0],dates)
+        # Explicit evaluation has no reason to reconstruct a monthly schedule.
+        with patch.object(s,'schedule',side_effect=AssertionError('No nominal schedule for explicit trades')):
+            result=s.backtest_dates(self.db,dates=dates,start=configuration['start'],end=configuration['end'],rank_to=1)
+        self.assertEqual(result['months'],12)  # Existing evaluator metadata; no weekly result claim.
+        self.assertEqual([p['portfolio'] for p in result['periods']],[.5,-.5])
+        self.assertEqual(result['growth'],.75)
+        self.assertEqual(result['spy_growth'],1.1*1.1)
+        self.assertEqual(result['cash_days'],0)
+        self.assertEqual(result['periods'],s.backtest(self.db,start=configuration['start'],end=configuration['end'],months=3,rank_to=1)['periods'])
 
     def test_financial_ratios_use_selected_report_and_reuse_books(self):
         self.db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[
@@ -355,8 +403,8 @@ class PreparationTests(unittest.TestCase):
 
     def version_one_cache(self):
         s.prepare(self.path,self.source)
-        previous=dict(version=1,inputs={'raw':'unchanged'},engine=[10,20])
-        current=dict(version=s.VERSION,inputs=previous['inputs'],engine=[30,40])
+        previous=dict(version=1,inputs={'raw':'unchanged'},prices='fixture-prices',engine=[10,20])
+        current=dict(version=s.VERSION,inputs=previous['inputs'],prices=previous['prices'],engine=[30,40])
         db=sqlite3.connect(self.path)
         db.execute('DROP TABLE period_pools')
         db.execute("INSERT INTO periods VALUES(1,'2015-01-02','2015-07-01',.1,0,1,1)")
@@ -391,6 +439,20 @@ class PreparationTests(unittest.TestCase):
     def test_upgrade_rejects_changed_inputs_without_modifying_cache(self):
         previous,current=self.version_one_cache();before=self.path.read_bytes()
         current['inputs']={'raw':'changed'}
+        self.assertFalse(s.upgrade_daily_cache(self.path,current))
+        self.assertEqual(self.path.read_bytes(),before)
+
+    def test_upgrade_never_rebinds_missing_or_changed_price_evidence(self):
+        previous,current=self.version_one_cache()
+        before=self.path.read_bytes()
+        for prices in (None,'changed-prices'):
+            changed=dict(current,prices=prices)
+            self.assertFalse(s.upgrade_daily_cache(self.path,changed))
+            self.assertEqual(self.path.read_bytes(),before)
+        with closing(sqlite3.connect(self.path)) as db:
+            previous.pop('prices')
+            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),));db.commit()
+        before=self.path.read_bytes()
         self.assertFalse(s.upgrade_daily_cache(self.path,current))
         self.assertEqual(self.path.read_bytes(),before)
 
@@ -429,7 +491,7 @@ class ServiceTests(unittest.TestCase):
 
     def request(self,payload,origin=None):
         handler=object.__new__(self.serve.Handler)
-        handler.server=SimpleNamespace(lifecycle=None)
+        handler.server=SimpleNamespace(lifecycle=None,calculations=self.serve.backtest_jobs.Calculations())
         handler.disconnect_check=lambda:lambda:False
         body=json.dumps(payload).encode()
         handler.path='/api/schedule';handler.rfile=io.BytesIO(body)

@@ -31,6 +31,11 @@ class CompiledCandidateTests(NumbaCandidateTests):
 
     def test_decision_kernels_are_nopython_and_signature_is_warmed(self):
         inputs,executor = self.make()
+        signature = inputs.policy.signature
+        self.assertEqual(executor.compiler['fields']['candidate_decisions'],
+                         inputs.policy.decisions.signature)
+        self.assertEqual(inputs.policy.signature,signature)
+        self.assertIs(inputs.policy.decisions,inputs.policy.decisions)
         signatures = tuple(executor._decide.nopython_signatures)
         for name in ('snapshot','eligible','current','three','decisions'):
             self.assertTrue(executor.stats['nopython_signatures'][name])
@@ -89,8 +94,8 @@ class CompiledCandidateTests(NumbaCandidateTests):
             ("    fiscal_px=lookup(statement['fiscal'],'price',False,7)\n    entry_px=lookup(entry_day,'price',True,4)\n    if fiscal_px is None or entry_px is None:\n        return None\n", "    entry_px=lookup(entry_day,'price',True,4)\n"))
         for old,new in mutations:
             with self.subTest(change=new),self.mutation(source_tests.s.financial_books,'snapshot',old,new):
-                with self.assertRaisesRegex(ValueError,'Unsupported candidate policy'):
-                    source_tests.core.PolicyProgram(source_tests.s)
+                with self.assertRaisesRegex(ValueError,'Unsupported (candidate|entry) policy'):
+                    source_tests.core.PolicyProgram(source_tests.s).decisions
         original_inputs,original = self.make()
         batch = [('2015-01-02','2016-01-04','legacy')]
         original_book = original.evaluate(batch,self.all_fields())
@@ -102,6 +107,22 @@ class CompiledCandidateTests(NumbaCandidateTests):
             self.assertTrue(source_tests.baseline.compare(source.evaluate(batch,self.all_fields()),actual)['exact'])
             self.assertNotEqual(original_book,actual)
         self.assertNotEqual(changed_inputs.policy.signature,original_inputs.policy.signature)
+
+    def test_source_guard_syntax_does_not_require_compiled_translation(self):
+        batch = [('2015-01-02','2016-01-04',pool) for pool in ('legacy','cached')]
+        with self.mutation(source_tests.s.financial_books, 'eligible',
+                           'cap>0', 'all((cap>0,))'):
+            inputs = source_tests.core.NumericInputs(self.reader, source_tests.s)
+            self.addCleanup(inputs.close)
+            signature = inputs.policy.signature
+            source = NumbaExecutor(inputs)
+            self.addCleanup(source.close)
+            for book, actual in zip(batch,source.evaluate(batch,self.all_fields()),strict=True):
+                self.assertTrue(source_tests.baseline.compare(self.reference(inputs,book),actual)['exact'])
+            with self.assertRaisesRegex(ValueError,'Unsupported candidate policy'):
+                self.factory(inputs)
+            self.assertEqual(inputs.policy.signature,signature)
+            self.assertNotIn('decisions',vars(inputs.policy))
 
     def test_resolved_slot_boundaries_match_source_decisions_exactly(self):
         inputs,executor = self.make()
@@ -152,7 +173,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
                 if observation is None or not source_tests.s.financial_books.eligible(pool,observation[3],observation[4]):continue
                 metric_observation = dict(fiscal=str(fiscal),enterprise_value=observation[4],
                                            ev_ebitda=observation[7],ebitda_yield=observation[6])
-                pair = policy._three(metric_observation,[],numeric[row],None if np.isnan(average) else average)
+                pair = policy._three(metric_observation,numeric[row],None if np.isnan(average) else average)
                 expected[row] = (1,*(date.fromisoformat(day).toordinal() for day in observation[:3]),
                                  policy.decisions.statuses.index(observation[-1])+1,1,int(pair is not None))
             np.testing.assert_array_equal(actual,expected)

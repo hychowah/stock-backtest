@@ -38,7 +38,9 @@ for(let i=0;i<cases.length;i++){
  assert.equal(result.spy_growth,result.years.reduce((w,y)=>w*(1+dataset.periods[y.year].spy),1));
  if(!actual.length){assert.equal(result.cagr,null);assert.equal(result.growth,null);assert.equal(result.empty_years.length,cases[i].last-cases[i].first+1);}
 }
-assert.equal(engine.screen(dataset,{first:1996,last:1996,rank_to:100}).years[0].names,61);
+const firstYearCount=expected[8].length;
+assert(firstYearCount>0&&firstYearCount<100,'SQL fixture needs a nonempty underfilled first year');
+assert.equal(engine.screen(dataset,{first:1996,last:1996,rank_to:100}).years[0].names,firstYearCount);
 assert.deepStrictEqual(engine.screen(dataset,{first:1996,last:1996,rank_to:100}).short_years,[1996]);
 assert.throws(()=>engine.screen(dataset,{min_cap:1e9,max_cap:100}),/Maximum market cap/);
 assert.throws(()=>engine.screen(dataset,{rank_from:20,rank_to:10}),/increasing ranks/);

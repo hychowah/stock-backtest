@@ -28,7 +28,7 @@ class CandidateTests(unittest.TestCase):
         return inputs,executor
 
     def all_fields(self):
-        return dict(filters=[dict(field=field,op='gt',value=-999999.) for field in s.metrics.FILTERS])
+        return dict(filters=[dict(field=field,op='gt',value=-999999.) for field in core.PolicyProgram(s).fields['thresholds']])
 
     def test_planned_batches_preserve_all_fields_and_projected_request_results(self):
         self.rich_financials()
@@ -80,7 +80,7 @@ class CandidateTests(unittest.TestCase):
             expected = self.reference(inputs,book)
             self.assertTrue(baseline.compare(expected,actual)['exact'])
             fields.update(row[1] for row in actual['filters'])
-        self.assertEqual(fields,set(s.metrics.FILTERS))
+        self.assertEqual(fields,set(core.PolicyProgram(s).fields['thresholds']))
         first = results[0]
         self.assertTrue(any(field=='fcf' and value<0 for symbol,field,value in first['filters']))
         self.assertTrue(any(field=='profit_margin' and value<0 for symbol,field,value in first['filters']))

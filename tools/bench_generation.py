@@ -19,23 +19,27 @@ def digest(value):
                                      allow_nan=False).encode()).hexdigest()
 
 
-def file_hash(path):
+def file_hash(path, checkpoint=lambda: None):
     result = hashlib.sha256()
     with Path(path).open('rb') as source:
-        for part in iter(lambda: source.read(1024 * 1024), b''):
+        for part in iter(lambda: source.read(64 * 1024), b''):
+            checkpoint()
             result.update(part)
     return result.hexdigest()
 
 
-def _entries(path):
+def _entries(path, checkpoint=lambda: None):
     try:
         with os.scandir(path) as entries:
-            return list(entries)
+            result = []
+            for entry in entries:
+                checkpoint(); result.append(entry)
+            return result
     except (FileNotFoundError, NotADirectoryError):
         return []
 
 
-def signature(research):
+def signature(research, checkpoint=lambda: None):
     """Return the authoritative signature using one fresh stat per asset.
 
     Matching directories and followed symlinks use the same treatment as
@@ -51,14 +55,16 @@ def signature(research):
               Path(r.revalue.__file__), Path(r.financial_inputs.__file__)]
     result = {}
     for path in paths:
+        checkpoint()
         info = path.stat()
         result[path.relative_to(r.ROOT).as_posix()] = [
             'directory' if stat.S_ISDIR(info.st_mode) else info.st_size,
             info.st_mtime_ns]
-    for endpoint in _entries(r.RAW / 'financial-inputs'):
+    for endpoint in _entries(r.RAW / 'financial-inputs', checkpoint):
         if not endpoint.is_dir():
             continue
-        for asset in _entries(endpoint.path):
+        for asset in _entries(endpoint.path, checkpoint):
+            checkpoint()
             # Path.glob is case-sensitive on POSIX and insensitive on Windows.
             name = asset.name.lower() if os.name == 'nt' else asset.name
             if not name.endswith('.json'):
@@ -73,12 +79,26 @@ def signature(research):
     return result
 
 
-def metadata(path):
+def metadata(path, checkpoint=lambda: None):
     """Read current-path metadata, including after an atomic database replacement."""
     with closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro',
-                                uri=True)) as db:
-        return {key: json.loads(value) for key, value in
-                db.execute('SELECT key,value FROM metadata')}
+                                uri=True, timeout=0)) as db:
+        # Callback exceptions must retain their reason, not become a generic
+        # SQLite interrupted error. Reading a row is one cooperative work unit.
+        failure = []
+        def progress():
+            try: checkpoint(); return 0
+            except BaseException as error: failure.append(error); return 1
+        db.set_progress_handler(progress, 100)
+        try:
+            result = {}
+            for key, value in db.execute('SELECT key,value FROM metadata'):
+                checkpoint(); result[key] = json.loads(value)
+            checkpoint()
+            return result
+        except sqlite3.Error:
+            if failure: raise failure[0]
+            raise
 
 
 class PreparedGeneration:
@@ -127,10 +147,16 @@ class PreparedGeneration:
 
     def _prepared(self, inventory, daily, research, report_hash):
         engine = {}
-        for path in (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py')):
+        for path in (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
+                     Path(self.s.__file__).with_name('schedule_calendar.py'),
+                     Path(self.s.__file__).with_name('portfolio_results.py')):
             info = path.stat()
             engine[path.name] = [info.st_size, info.st_mtime_ns]
-        expected = dict(version=self.s.VERSION, inputs=inventory, engine=engine)
+        accepted_prices = research.get('prices')
+        if not isinstance(accepted_prices, dict):
+            raise ValueError('Research price inventory is missing; retry preparation.')
+        expected = dict(version=self.s.VERSION, inputs=inventory,
+                        prices=digest(accepted_prices), engine=engine)
         if daily.get('daily_inputs') != expected:
             raise ValueError('Daily prepared generation changed; retry preparation.')
         if research.get('version') != self.s.r.SCHEMA_VERSION or research.get('inputs') != inventory:

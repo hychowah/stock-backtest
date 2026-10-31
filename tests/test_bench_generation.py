@@ -28,7 +28,7 @@ class GenerationTests(unittest.TestCase):
             (self.root / 'raw' / name).write_text('[]')
         modules = {}
         for name in ('baseline', 'research', 'metrics', 'books', 'cache_assets',
-                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch'):
+                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch', 'schedule_calendar', 'portfolio_results'):
             path = self.root / 'scripts' / (name + '.py')
             path.write_text('# fixture ' + name)
             modules[name] = SimpleNamespace(__file__=str(path))
@@ -59,12 +59,16 @@ class GenerationTests(unittest.TestCase):
 
     def prepare(self):
         signature = self.r.signature()
+        prices={path.name:[path.stat().st_size,path.stat().st_mtime_ns]
+                for path in (self.root/'raw/px').glob('*.json')}
         engine = {path.name: [path.stat().st_size, path.stat().st_mtime_ns] for path in
-            (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'))}
+            (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
+             Path(self.s.__file__).with_name('schedule_calendar.py'),
+             Path(self.s.__file__).with_name('portfolio_results.py'))}
         self.write_metadata(self.s.DATABASE, dict(daily_inputs=dict(version=self.s.VERSION,
-                            inputs=signature, engine=engine)))
+                            inputs=signature,prices=generation.digest(prices), engine=engine)))
         self.write_metadata(self.r.DATABASE, dict(version=self.r.SCHEMA_VERSION,
-            inputs=signature, baseline_report_sha=generation.file_hash(self.report)))
+            inputs=signature,prices=prices, baseline_report_sha=generation.file_hash(self.report)))
         self.inputs = SimpleNamespace(signature=generation.digest(signature),
             generation=json.dumps(generation.metadata(self.s.DATABASE)['daily_inputs']),
             policy=SimpleNamespace(signature='policy-fixture', source_paths=tuple(self.sources),
@@ -111,6 +115,24 @@ class GenerationTests(unittest.TestCase):
                 if added.exists(): added.unlink()
                 self.asset.write_text('[]')
                 self.prepare()
+
+    def test_calendar_dependency_changes_require_daily_preparation(self):
+        old=self.attach()
+        path=self.root/'scripts/schedule_calendar.py'
+        path.write_text('# changed private calendar fixture')
+        with self.assertRaises(ValueError): old.validate()
+        with self.assertRaises(ValueError): self.attach()
+        self.prepare()
+        self.attach().validate()
+
+    def test_portfolio_dependency_changes_require_daily_preparation(self):
+        old=self.attach()
+        path=self.root/'scripts/portfolio_results.py'
+        path.write_text('# changed private portfolio fixture')
+        with self.assertRaises(ValueError): old.validate()
+        with self.assertRaises(ValueError): self.attach()
+        self.prepare()
+        self.attach().validate()
 
     def test_symlink_files_and_endpoint_directories_follow_current_policy(self):
         target = self.root / 'target.json'; target.write_text('{}')
@@ -190,6 +212,24 @@ class GenerationTests(unittest.TestCase):
         self.write_metadata(self.s.DATABASE, metadata)
         with self.assertRaisesRegex(ValueError, 'different prepared generation'): old.validate()
         self.prepare(); old.validate()
+
+    def test_current_daily_price_binding_rejects_missing_or_mismatched_evidence(self):
+        self.attach().validate()
+        for changed in (None,'changed'):
+            daily=generation.metadata(self.s.DATABASE)
+            if changed is None:daily['daily_inputs'].pop('prices')
+            else:daily['daily_inputs']['prices']=changed
+            self.write_metadata(self.s.DATABASE,daily)
+            self.inputs.generation=json.dumps(daily['daily_inputs'])
+            with self.assertRaisesRegex(ValueError,'Daily prepared generation'):self.attach()
+            self.prepare()
+        research=generation.metadata(self.r.DATABASE);research['prices']={'A.json':[1,2]}
+        self.write_metadata(self.r.DATABASE,research)
+        with self.assertRaisesRegex(ValueError,'Daily prepared generation'):self.attach()
+        self.prepare()
+        research=generation.metadata(self.r.DATABASE);research.pop('prices')
+        self.write_metadata(self.r.DATABASE,research)
+        with self.assertRaisesRegex(ValueError,'price inventory'):self.attach()
 
     def test_old_numeric_inputs_cannot_attach_after_valid_reprepare(self):
         old_inputs = self.inputs

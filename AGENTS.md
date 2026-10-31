@@ -229,7 +229,9 @@ completion independently of snapshot counts, including empty pools. A pool switc
 fills the missing pool in the same dated period; filters, ranks and metrics reuse
 its prepared rows. Keep completion markers and rows in the same transaction.
 Startup upgrades compatible version-1/2 caches in place, retaining daily prices
-and completed pools. Version-1 books mark both pools complete; version-2 books
+and completed pools. Daily inputs also bind to the price inventory accepted by research
+metadata. After accepted in-place price edits, rebuild daily prices before numeric
+export. Old caches without this binding cannot establish compatibility. Version-1 books mark both pools complete; version-2 books
 retain their individual markers. Changed research inputs still require preparation.
 
 ## Automatic local launcher
@@ -390,6 +392,12 @@ Keep the earlier eight-worker measurements historical. Do not reuse old timings 
 measurement. Test `python3 tests/test_fmp_download.py` and the data-manager and
 cache-access checks, including native Windows.
 
+
+Benchmark observations now use source-bound cooperative live-intent leases.
+They take source ownership before short cache ownership and yield at checkpoints.
+They release ownership before calculation. This does not qualify zero-delay
+access or the installed older runtime. Keep `data/website-data-*.lock.live/`
+ignored. Real benchmark admission stays closed.
 ## Saved backtest library
 
 `website/saved_backtests.py` owns durable user records in
@@ -402,7 +410,9 @@ Never evict an existing record automatically. Delete only the record selected by
 the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
 `node tests/check-saved-backtests.cjs` and the existing range/control checks.
 
-Random results opt into full trial details with `X-Backtest-Details: holdings`.
+Existing `/api/robustness` streaming clients opt into full trial details with
+`X-Backtest-Details: holdings`. Background jobs and queued random tests capture
+full trial holdings through `backtest_jobs.calculate`.
 The optional `robustness.run(..., capture=observer)` receives each completed
 trial's original result. Observers must not mutate it. Preserve the default
 summary-only result and all existing calculation/progress contracts. Saved
@@ -472,3 +482,40 @@ save-or-cancel message instead of overwriting a held draft. A definitively
 rejected hold must release its local form session. An unacknowledged hold keeps
 the session for reconciliation or retry. Do not add queue-specific restoration guards
 to individual callers. Check these interactions in `tests/check-range.cjs`.
+
+## Experimental engine readiness
+
+CB-14 reconciles schema-8 preparation and both selection orders. The numerical
+policy recognizes Original's full threshold catalog but explicitly rejects
+`operating_yield_spread_3y` in experimental requests. Keep that rejection before
+result or checkpoint reuse. Unknown future catalogs must fail preparation.
+Candidate application calls confirm runtime closure before publishing every
+outcome. No idle application child may retain financial ownership between calls.
+Disk checkpoints remain reusable; cross-call compiler memory is not retained.
+Legacy omitted selection order means filter-first when comparing a submitted
+request with a recorded plan. Do not rewrite the plan or accept a real change.
+See `docs/plans/compiled-backtest/phases/CB-14.readiness.md`. CB-15 implements the
+normal-app selector, engine-pinned submissions and producer labels in source.
+Its release handoff keeps publication separate.
+Original remains default. This readiness work authorizes no deployment.
+
+
+## Selectable dated engines
+
+CB-15 adds `website/engine_selection.py` behind existing calculation owners.
+Original remains the default. `options.engine` is `original` or `experimental`;
+omission always means Original. Preserve it in accepted jobs, queue receipts,
+held edits, recovery and browser replay. Keep engine metadata outside financial
+plans. Route readiness and calendar checks by the pinned choice. Original
+accepts legacy monthly presets; version-1 calendars require experimental.
+Unsupported experimental settings fail explicitly with no fallback.
+Normal startup and ordinary rebuild do not require numerical packages. The
+separate data-panel Prepare experimental engine action owns optional setup.
+Data mutations invalidate readiness. New eager results record `result.producer`.
+Views and CSVs use that evidence. Do not infer a producer for older results.
+Keep version-1/2/3 readers independent of preparation. Unavailable experimental
+queue items stay waiting while ready items retain their relative order.
+CB-15 source alone does not authorize main integration, publication or restart.
+The user subsequently authorized the isolated main integration described in
+`docs/plans/compiled-backtest/phases/CB-15.integration.md`. This does not authorize
+publication, deployment, push or installed restart. Custom variables stay held.

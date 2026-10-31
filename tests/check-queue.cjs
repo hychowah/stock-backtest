@@ -1,13 +1,14 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const nodes=new Map();
 function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn},scrollIntoView(){}});return nodes.get(id)}
+const CalendarSettings=require('../website/calendar-settings.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,preparations=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false;
 const editReceipts=new Map();
 let settings={selection_order:'rank_first',mode:'custom',start:'2015-01-01',end:'2016-12-30',months:3,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,filters:[{field:'market_cap',op:'gt',value:100}]};
 const snapshot={version:2,kind:'custom',settings:copy(settings),catalog:{metrics:{},filters:{}},presentation:{},result:{periods:[]}};
 const storage=new Map();
-const context=vm.createContext({console,crypto:require('node:crypto').webcrypto,Uint8Array,Date,location:{protocol:'http:'},document:{getElementById:node},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){},async fetch(url,options={}){
+const context=vm.createContext({CalendarSettings,console,crypto:require('node:crypto').webcrypto,Uint8Array,Date,location:{protocol:'http:'},document:{getElementById:node},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){},async fetch(url,options={}){
   requests.push({url,...options});const method=options.method||'GET',parts=url.split('/').slice(3),id=parts[0],action=parts[1];
   let value,status=200;const body=options.body?JSON.parse(options.body):{};
   if(method==='GET'&&!id){
@@ -58,6 +59,7 @@ const context=vm.createContext({console,crypto:require('node:crypto').webcrypto,
   }
   return {ok:status<400,status,json:async()=>copy(value)};
 }});
+context.ResultArtifacts={opening:()=>()=>true,release:()=>{}};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
 context.config={beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};

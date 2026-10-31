@@ -63,6 +63,12 @@ dates. Saved results and user data survive. A missing Git observation keeps the
 current server. A failed update retries automatically; pending journals stay in
 place for recovery. A staging failure leaves the old server serving.
 
+The separate [candidate preparation entry](candidate-startup.md) requires an
+explicit private source export. It rejects registered or installed roots and
+source checkouts. It binds only loopback and cannot replace a managed server.
+It verifies and closes a numerical child before ordinary application owners
+start. Candidate setup never changes the installed revision or normal launcher.
+
 For an already-installed revision without contacting WSL, run native Python directly:
 
 ```powershell
@@ -141,6 +147,76 @@ inside their disposable fixture scope.
 
 A later input owner must bind the same consistent generation to both engines.
 It must own experimental source, dependencies, compiler caches, mutable databases
-and result stores separately from the stable service. Capture and resource
-qualification are not implemented. Do not run the historical live-cache-locking
+and result stores separately from the stable service. Wave10 adds a synthetic-only input store in a feature worktree. It builds private
+research/daily/report inputs and validates their immutable handoff. It creates
+separate writable daily clones. It has no live capture adapter or execution
+owner. Live capture and benchmark-resource qualification remain unavailable. Offline
+copying is a separate operation described below. Do not run the historical live-cache-locking
 benchmark commands. See the [wave9 record](plans/compiled-backtest/phases/CB-02/wave9/README.md).
+
+
+## Isolated CB-02 development worktree
+
+Branch `cb02/input-ownership` starts from `27f96323e952c87923acfcfb0ca4f2cb4a81136e`.
+Its WSL source root is `<wsl-checkout>-cb02-input-ownership`.
+The linked Git metadata is
+`<wsl-checkout>/.git-local/worktrees/ebitda-ev-spread-cb02-input-ownership`.
+Use that metadata with `--work-tree` set to the linked root for feature operations.
+Do not use the main index for feature staging.
+
+The original checkout remains the registered deployment source. Do not copy
+`data/workspace.json` into the feature worktree or deploy from that worktree.
+The deployment tool does not support linked-worktree publication. Source tests
+use the feature root and independently owned temporary databases. Native tests
+use Windows temporary storage. WSL contains no second full raw cache.
+
+The [wave10 record](plans/compiled-backtest/phases/CB-02/wave10/README.md) states
+the synthetic input-store proof and its limits. No real-data copy exists from
+this phase. A later qualified copy must use a dedicated ignored Windows experiment
+directory. Copied databases alone do not remove reference-engine raw-data globals
+or establish resource isolation. Benchmark execution stays closed.
+
+
+## Offline experiment copies
+
+After the user stops the server, `tools/bench_capture_offline.py` can create a
+separate database/report set under native Windows `tmp/`. It takes exclusive
+source ownership before financial ownership, both with no wait. Active project
+servers or coordinated data jobs reject capture. Server starts attempted during
+the copy can wait; retry after capture. The tool does not stop or start a server.
+
+The tool uses SQLite backup, keeps saved daily books, checks report/database and
+freshness binding, and verifies unchanged originals before publication. It
+rejects unfinished journals, sidecars and WAL source format. It does not prepare,
+repair or download. The copy keeps original metadata; it is not automatically
+accepted by runtime-global APIs. Keep benchmark admission closed until a shared
+execution owner and its resource gates are qualified. See the
+[wave11 record](plans/compiled-backtest/phases/CB-02/wave11/README.md).
+
+
+## Captured input attachment
+
+Wave12 adds `tools/bench_execution_inputs.py` on the feature branch. Its bounded
+CapturedWorkspace accepts an explicit capture, matching source tree and fresh
+experiment directory. It verifies artifacts and source content, opens captured
+databases read-only and owns writable derivatives separately. It never reads
+workspace registration or falls back to the original databases. Handles close
+before workspace ownership ends. It takes no live financial ownership.
+
+Captured inventories remain historical evidence. The tool does not attach
+financial engines or establish current raw freshness. Synthetic fixture limits
+exclude real derivative creation. The next execution facade must bind both
+engines and policy without hidden original paths, retain immediate edit detection
+and qualify resources/cancellation and availability. No normal launcher change
+or benchmark admission follows. See the
+[wave12 record](plans/compiled-backtest/phases/CB-02/wave12/README.md).
+
+Wave13 adds CapturedPolicy for that active workspace. One owned source-only
+child constructs actual PolicyProgram from the private source. Its imports stay
+out of the parent process. It exposes immutable source/policy/generation evidence
+only. Workspace exit closes escaped policy children before ownership ends.
+Unconfirmed child cleanup retains experimental ownership for an explicit exit
+retry. Cleanup errors do not release a live child or replace a caller exception.
+This does not bind reference controls or candidate numerical inputs, validate
+current raw freshness, admit real execution or qualify general resources.
+See [wave13](plans/compiled-backtest/phases/CB-02/wave13/README.md).

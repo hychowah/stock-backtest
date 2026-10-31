@@ -27,6 +27,11 @@ website/.git/
 data/*.sqlite
 data/*.sqlite-*
 data/*.building*
+data/numerical/
+data/numerical-preparation.json
+data/numerical-preparation.json.download
+data/numerical-preparation.lock
+data/numerical-preparation.lock.live/
 
 # Rebuildable local website output; tracked dist is an explicit portable snapshot.
 website/local/
@@ -46,7 +51,9 @@ data/website-update-stop-*
 
 # Serialize data management and startup across local servers.
 data/website-data-*.lock
+data/website-data-*.lock.live/
 data/backtest-queue.lock
+data/backtest-queue.lock.live/
 
 # Per-process development logs and their rotated backups.
 data/logs/

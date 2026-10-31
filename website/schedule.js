@@ -2,6 +2,7 @@
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
   let requestNumber=0,running=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
+  let bounded=null;
   const hasResults=()=>!!ResultArtifacts.forView('custom');
   function displayedResult(){
     const artifact=ResultArtifacts.forView('custom');
@@ -42,11 +43,15 @@ const ScheduleView=(()=>{
     updateResultsState();
   }
   function csv(kind){
+    const artifact=ResultArtifacts.forView('custom');
+    if(artifact?.version===3){ResultArtifacts.reader(artifact).download(kind,artifact.kind==='random'?inspectedTrial+1:1);return;}
     const result=displayedResult();
     if(!result)return;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
     const observations=kind==='holdings'?result.periods.flatMap(p=>p.holdings.map(h=>({...h,period_start:p.entry,period_end:p.exit,metric:result.options.metric??'ev_ebitda'}))):result.periods;
-    const rows=[keys,...observations.map(h=>keys.map(k=>h[k]))];
+    const producer=artifact.result.producer;
+    if(producer)keys.push('engine');
+    const rows=[keys,...observations.map(h=>keys.map(k=>k==='engine'?producer.engine:h[k]))];
     const body=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([body],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='scheduled-'+kind+'-'+result.start+'-'+result.end+'.csv';link.click();URL.revokeObjectURL(url);
@@ -69,6 +74,7 @@ const ScheduleView=(()=>{
     node('schedule-chart').innerHTML=html;
   }
   function stocks(){
+    if(bounded&&ResultArtifacts.current(bounded.artifact)){void storedStocks(bounded);return;}
     const result=displayedResult();
     if(!result)return;
     const period=result.periods[+node('schedule-period').value];
@@ -83,7 +89,7 @@ const ScheduleView=(()=>{
     const result=displayedResult();
     if(!result)return;
     node('schedule-results').hidden=false;
-    node('schedule-dates').textContent=result.start+' → '+result.end+' · every '+result.months+' month(s)';
+    node('schedule-dates').textContent=result.start+' → '+result.end+' · '+CalendarSettings.label(result);
     node('schedule-cagr').textContent=format(result.cagr);
     node('schedule-spy-cagr').textContent=format(result.spy_cagr);
     node('schedule-growth').textContent=result.growth===null?'—':'$'+result.growth.toFixed(2);
@@ -95,27 +101,102 @@ const ScheduleView=(()=>{
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
     node('schedule-period').value=String(result.periods.length-1);stocks();
   }
+  function valid(state){return bounded===state&&ResultArtifacts.current(state.artifact);}
+  function readError(state,error){if(valid(state)&&error.name!=='AbortError')node('screen-error').textContent=error.message;}
+  function navigation(id,cursor,next,total,label){
+    node(id+'-pages').hidden=false;node(id+'-back').disabled=cursor===0;node(id+'-next').disabled=next===null;
+    node(id+'-page').textContent=label+' · '+total+' total';
+  }
+  async function storedHoldings(state,cursor=0,firstPage=null){
+    const period=state.period,sequence=++state.holdingSequence;
+    try{
+      const page=await (firstPage??state.reader.holdings(state.trial,period,cursor));
+      if(!valid(state)||state.period!==period||state.holdingSequence!==sequence)return;
+      state.holdingCursor=page.cursor;state.holdingNext=page.next;
+      const metric=metricLabel(state.info.summary.options.metric??'ev_ebitda');node('schedule-multiple-head').textContent=metric+' (×)';
+      node('schedule-stock-body').innerHTML=page.rows.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
+      navigation('schedule-holdings',page.cursor,page.next,page.total,'Stocks '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
+    }catch(error){if(state.period===period&&state.holdingSequence===sequence)readError(state,error);}
+  }
+  async function storedStocks(state){
+    const period=+node('schedule-period').value,sequence=++state.stockSequence;state.period=period;
+    const selected=state.page.rows.find(row=>row.number===period);if(!selected)return;
+    node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
+    node('schedule-stock-body').innerHTML='';state.holdingCursor=0;state.holdingNext=null;
+    node('schedule-attribution').textContent='Reading contributions from all selected stocks…';
+    // One bounded first page serves this table and attribution operation.
+    // Both attribution passes keep original order. Replacement fences every
+    // response before consumption or publication; no prior period is retained.
+    const firstPage=state.reader.holdings(state.trial,period,0);
+    void storedHoldings(state,0,firstPage);
+    try{
+      const group=await ReturnContributions.analyzeStored(selected.value.names,async visit=>{
+        let page=await firstPage;
+        do{
+          if(!valid(state)||state.period!==period||state.stockSequence!==sequence)throw Error('This period view was replaced.');
+          page.rows.forEach(visit);
+          if(page.next===null)break;
+          page=await state.reader.holdings(state.trial,period,page.next);
+        }while(true);
+      });
+      if(!valid(state)||state.period!==period||state.stockSequence!==sequence)return;
+      node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions use all '+group.count+' selected stocks; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
+    }catch(error){if(state.period===period&&state.stockSequence===sequence)readError(state,error);}
+  }
+  async function storedPeriods(state,cursor=0){
+    const sequence=++state.periodSequence;state.period=null;state.stockSequence++;
+    node('schedule-period-back').disabled=true;node('schedule-period-next').disabled=true;
+    node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
+    try{
+      const page=await state.reader.periods(state.trial,cursor);
+      if(!valid(state)||state.periodSequence!==sequence)return;
+      state.page=page;state.period=null;
+      chart(page.rows.map(row=>row.value));
+      node('schedule-rows').innerHTML=page.rows.map(({value:p})=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
+      node('schedule-period').innerHTML=page.rows.map(({number,value:p})=>`<option value="${number}">${number}. ${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
+      node('schedule-period').value=String(page.rows[0]?.number??'');
+      navigation('schedule-period',page.cursor,page.next,page.total,'Chart and table: periods '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
+      void storedStocks(state);
+    }catch(error){if(state.periodSequence===sequence)readError(state,error);}
+  }
+  async function storedRender(artifact,trial){
+    const state={artifact,trial,reader:ResultArtifacts.reader(artifact),periodSequence:0,holdingSequence:0,stockSequence:0};bounded=state;
+    node('schedule-results').hidden=false;node('schedule-rows').innerHTML='';node('schedule-stock-body').innerHTML='';node('schedule-chart').innerHTML='';node('schedule-period').innerHTML='';node('schedule-attribution').textContent='Reading stored evidence…';
+    try{
+      state.info=await state.reader.trial(trial);if(!valid(state))return;
+      const r=state.info.summary;
+      node('schedule-dates').textContent=r.start+' → '+r.end+' · '+CalendarSettings.label(r);
+      node('schedule-cagr').textContent=format(r.cagr);node('schedule-spy-cagr').textContent=format(r.spy_cagr);
+      node('schedule-growth').textContent=r.growth===null?'—':'$'+r.growth.toFixed(2);
+      node('schedule-coverage').textContent=r.coverage+' '+state.info.short+' short periods; '+state.info.empty+' empty periods. '+(state.info.empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+r.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(r.cash_days?' Both strategy and paired SPY hold cash until '+r.first_trade+' ('+r.cash_days+' days); CAGR uses the common window.':'');
+      await storedPeriods(state);
+    }catch(error){readError(state,error);}
+  }
   async function run(options,override=null,replay=null){
     if(running)return;
     if(typeof location==='undefined' || location.protocol==='file:'){
       node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
     }
+    try{
     const {first,last,...filters}=options;
     const random=!!replay || (!override && node('date-testing').value==='random');
-    const body=override?{...filters,...override}:{...filters,start:node('trade-start').value,end:node('trade-end').value,months:+node('rebalance-months').value};
-    if(replay){Object.assign(body,{...replay.options,start:replay.start,end:replay.end,months:replay.months,trials:replay.requested,seed:replay.seed});}
-    else if(random){
+    const {engine:replayEngine,...plan}=replay||{};
+    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,...('engine' in CalendarSettings.engineFields()?{engine:replayEngine??'original'}:{})}:
+      override?{...filters,...override,...CalendarSettings.engineFields()}:{...filters,...CalendarSettings.read(),...CalendarSettings.engineFields()};
+    if(!replay&&random){
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
-    await follow(BacktestRuns.create(random?'random':'custom',body));
+    if(body.calendar&&('engine' in body?body.engine!=='experimental':!CalendarSettings.supported())){node('screen-error').textContent='Custom week/month calendars require New engine — experimental. Original uses the monthly frequency presets.';return;}
+    await follow(BacktestRuns.create(random?'random':'custom',body,replay?plan:null));
+    }catch(error){node('screen-error').textContent=error.message;}
   }
   async function follow(run){
     if(running)return;
-    const number=++requestNumber,body=run.options,random=run.mode==='random';
+    const number=++requestNumber,body=run.options,random=run.mode==='random',isCurrent=ResultArtifacts.opening();
     activeRun=run;
     node('screen-error').textContent='';
-    node('schedule-progress-detail').textContent=body.start+' → '+body.end+' · every '+body.months+' month(s). '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
+    node('schedule-progress-detail').textContent=CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
     node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
     startBusy();
     startedAt=run.submitted;
@@ -126,7 +207,7 @@ const ScheduleView=(()=>{
           node('schedule-progress-detail').textContent='Connection lost. Reconnecting to the server run. You can reopen this address later.';return;
         }
         if(state.configuration && state.configuration.seed!==rememberedSeed){
-          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration);
+          rememberedSeed=state.configuration.seed;RobustnessView.remember(state.configuration,run.options.engine);
         }
         if(state.state==='stopping'){
           node('schedule-progress-detail').textContent='Stopping on the server. Waiting for workers and cache cleanup.';return;
@@ -135,7 +216,7 @@ const ScheduleView=(()=>{
         if(event && (event.type==='progress'||event.type==='preparation')){
           node('trial-progress').value=event.completed;node('trial-progress').max=event.total;
           const books=event.total_new_books>0?' · preparing books '+event.calculated_books+'/'+event.total_new_books+' with '+event.workers+' worker'+(event.workers===1?'':'s'):'';
-          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · every '+body.months+' month(s).';
+          node('schedule-progress-detail').textContent=event.completed+'/'+event.total+' trials complete'+books+' · '+(event.completed<event.total?'evaluating trial '+event.trial:'finishing summary')+' · '+CalendarSettings.label(body)+'.';
         }
       },{current:()=>number===requestNumber});
       if(number!==requestNumber || !state)return;
@@ -144,12 +225,17 @@ const ScheduleView=(()=>{
         return;
       }
       if(state.state==='failed')throw Error(state.error);
-      const next=state.result;
-      completeResult({mode:random?'random':'custom',...body},next);
+      if(!isCurrent())return;
+      let next=state.result;
+      if(state.evidence){
+        const artifact=await ResultArtifacts.acquire({kind:'run',id:run.id},{catalog:sourceCatalog(),presentation:scheduledPresentation({mode:run.mode,...body}),captured_at:new Date().toISOString()});
+        if(!isCurrent()){ResultArtifacts.release(artifact);return;}
+        next=artifact.result;publishResult(artifact);
+      }else completeResult({mode:random?'random':'custom',...body},next);
       if(random){
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
       }else{
-        node('schedule-message').textContent='Backtest complete · '+next.periods.length+' holding periods · '+elapsed()+' elapsed.';
+        node('schedule-message').textContent='Backtest complete · '+(state.evidence?.manifest.periods??next.periods.length)+' holding periods · '+elapsed()+' elapsed.';
       }
       node('schedule-message').className='backtest-complete';
     }catch(error){if(number===requestNumber){
@@ -159,13 +245,18 @@ const ScheduleView=(()=>{
     }}finally{if(number===requestNumber)stopBusy();}
   }
   function init(){
+    void CalendarSettings.init();
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration,stored,index)=>stored?inspect(index):run(configuration.options,{dates:trial.dates,start:configuration.start,end:configuration.end,months:configuration.months}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    RobustnessView.init((trial,configuration,stored,index)=>stored||ResultArtifacts.forView('custom')?.version===3?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
+    node('schedule-period-back').addEventListener('click',()=>{if(bounded?.page)void storedPeriods(bounded,Math.max(0,bounded.page.cursor-64));});
+    node('schedule-period-next').addEventListener('click',()=>{if(bounded?.page&&bounded.page.next!==null)void storedPeriods(bounded,bounded.page.next);});
+    node('schedule-holdings-back').addEventListener('click',()=>{if(bounded)void storedHoldings(bounded,Math.max(0,bounded.holdingCursor-64));});
+    node('schedule-holdings-next').addEventListener('click',()=>{if(bounded&&bounded.holdingNext!==null)void storedHoldings(bounded,bounded.holdingNext);});
   }
   async function resume(){
     if(typeof location==='undefined'||location.protocol==='file:')return;
@@ -181,13 +272,15 @@ const ScheduleView=(()=>{
     catch(error){node('screen-error').textContent=error.message;return;}
     return follow(run);
   }
-  function inspect(index){inspectedTrial=index;render();}
+  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if(artifact?.version===3)void storedRender(artifact,index+1);else render();}
   function show(artifact){
-    inspectedTrial=null;
+    const producer=node('result-producer');
+    if(producer)producer.textContent=artifact.result.producer?'Calculated by '+artifact.result.producer.label+'.':'Producer not recorded in this result.';
+    inspectedTrial=null;bounded=null;node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){
-      RobustnessView.render(artifact.result);node('schedule-results').hidden=true;
+      RobustnessView.render(artifact.result,artifact.settings.engine);node('schedule-results').hidden=true;
     }else{
-      render();node('robustness-results').hidden=true;
+      if(artifact.version===3)void storedRender(artifact,1);else render();node('robustness-results').hidden=true;
     }
     node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
   }

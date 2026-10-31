@@ -395,6 +395,26 @@ class CacheTests(unittest.TestCase):
         self.assertLessEqual(len(calls),d.fmp_download.WORKERS)
         self.assertFalse(any(t.name.startswith('fmp') and t.is_alive() for t in threading.enumerate()))
 
+    def test_close_permanently_latches_admission_before_late_start(self):
+        jobs=d.Jobs();jobs.close()
+        for action in ('check','download','rebuild'):
+            with self.assertRaisesRegex(ValueError,'stopping'):jobs.start(action,{})
+        self.assertTrue(jobs.cancel.is_set());self.assertIsNone(jobs.thread)
+
+    def test_start_paused_before_admission_cannot_clear_shutdown_cancellation(self):
+        from threading import Thread
+        jobs=d.Jobs();entered=Event();release=Event();errors=[];original=d.options
+        def options(request):
+            value=original(request);entered.set();release.wait(3);return value
+        def start():
+            try:jobs.start('rebuild',{})
+            except ValueError as error:errors.append(str(error))
+        with patch.object(d,'options',side_effect=options),patch.object(jobs,'work') as work:
+            thread=Thread(target=start);thread.start();self.assertTrue(entered.wait(3))
+            jobs.close();release.set();thread.join(3)
+        self.assertFalse(thread.is_alive());self.assertEqual(len(errors),1)
+        self.assertTrue(jobs.cancel.is_set());self.assertIsNone(jobs.thread);work.assert_not_called()
+
     def test_metrics_append_handles_missing_final_newline(self):
         self.o.update(scope='symbols',symbols=['B'],datasets=['financials'])
         with patch.object(d,'request_json',return_value=[]):d.download(self.o,self.emit,self.stop)

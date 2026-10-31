@@ -1,7 +1,5 @@
 """Cached daily prices and reusable dated backtest books. No network access."""
-from bisect import bisect_left, bisect_right
-from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 import argparse
 import json
@@ -13,6 +11,8 @@ import metrics
 import cache_access
 import books as financial_books
 import backtest_control
+import schedule_calendar
+import portfolio_results
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
 VERSION = 3
@@ -31,15 +31,16 @@ CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
 ''' + POOL_SCHEMA
 
 
-def fingerprint():
-    # Preparation already validated every raw price file. Normal requests inspect
-    # only the compact research signature, not thousands of raw files.
-    sources=[Path(__file__),Path(__file__).with_name('book_batch.py')]
-    return dict(version=VERSION, inputs=r.signature(),
+def fingerprint(source=None):
+    # Daily prices bind to the validated research price inventory. Changed
+    # prepared inputs rebuild prices/books. Normal checks do not scan raw files.
+    sources=[Path(__file__),Path(__file__).with_name('book_batch.py'),
+             Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
+    return dict(version=VERSION, inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
                 engine={p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
 
-def connect(path=DATABASE):
+def connect(path=DATABASE,source=None):
     path=Path(path)
     if not path.exists():
         raise ValueError('Daily cache missing. Run: python3 scripts/schedules.py prepare')
@@ -47,7 +48,7 @@ def connect(path=DATABASE):
     db.row_factory=sqlite3.Row
     try:
         saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-        if saved!=fingerprint():
+        if saved!=fingerprint(source):
             raise ValueError('Daily cache changed. Run: python3 scripts/schedules.py prepare')
     except Exception:
         db.close();raise
@@ -66,7 +67,10 @@ def upgrade_daily_cache(path, inputs):
         with db:
             db.execute('BEGIN IMMEDIATE')
             saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-            if saved.get('version') not in (1,2) or inputs.get('version')!=VERSION or saved.get('inputs')!=inputs.get('inputs'):
+            if (saved.get('version') not in (1,2) or inputs.get('version')!=VERSION
+                    or saved.get('inputs')!=inputs.get('inputs')
+                    or not isinstance(saved.get('prices'),str)
+                    or saved['prices']!=inputs.get('prices')):
                 return False
             db.execute(POOL_SCHEMA)
             if saved['version']==1:
@@ -86,11 +90,11 @@ def prepare(path=DATABASE, source=r.DATABASE):
     # The public daily-cache command owns its prerequisite too. Users never
     # need to discover and run the dependency chain themselves.
     r.prepare(source)
-    inputs=fingerprint()
+    inputs=fingerprint(source)
     reference=r.connect(source,full_prices=True)
     if path.exists():
         try:
-            db=connect(path)
+            db=connect(path,source)
         except ValueError:
             if upgrade_daily_cache(path,inputs):
                 reference.close()
@@ -123,7 +127,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
                 print(f'Prepared daily prices {i}/{len(symbols)}',flush=True)
         db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in r.run.load_bars(r.RAW/'spy-div.json','adjClose')])
         db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if r.run.parse_day(row.get('date')) is not None and r.run.num(row.get('month3')) is not None])
-        if inputs!=fingerprint():
+        if inputs!=fingerprint(source):
             raise ValueError('Inputs changed during daily preparation; retry.')
         db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(inputs)))
         db.execute('INSERT INTO metadata VALUES(?,?)',('cached_symbols',json.dumps(symbols)))
@@ -134,34 +138,10 @@ def prepare(path=DATABASE, source=r.DATABASE):
 
 
 def schedule(start, end, months, sessions):
-    """Anchor every target to the original day; holidays roll forward.
-
-    Clamp invalid month days (31 April, leap anniversaries) without drifting the
-    next target. End is an inclusive mark date, rolled back to an available session.
-    """
-    start,end=date.fromisoformat(start),date.fromisoformat(end)
-    if not sessions:raise ValueError('The daily cache has no trading sessions.')
-    if months not in (1,3,6,12,24) or type(months) is not int:
-        raise ValueError('Rebalance interval must be 1, 3, 6, 12 or 24 months.')
-    if start<date(1996,1,1) or start>=end or end>sessions[-1]:
-        raise ValueError(f'Choose increasing dates from 1996-01-01 through {sessions[-1]}.')
-    final=sessions[bisect_right(sessions,end)-1]
-    boundaries=[]
-    offset=0
-    while True:
-        absolute=start.year*12+start.month-1+offset
-        year,month=divmod(absolute,12);month+=1
-        target=date(year,month,min(start.day,monthrange(year,month)[1]))
-        if target>=final:
-            break
-        index=bisect_left(sessions,target)
-        actual=sessions[index]
-        if actual<final and (not boundaries or boundaries[-1]!=actual):
-            boundaries.append(actual)
-        offset+=months
-    if not boundaries:
-        raise ValueError('No complete trading interval in the selected dates.')
-    return list(zip(boundaries,boundaries[1:]+[final]))
+    """Adapt the established monthly interface to the shared pure calendar."""
+    configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+    return schedule_calendar.SessionCalendar(sessions).fixed(
+        configuration,checkpoint=backtest_control.checkpoint)
 
 
 def price(db,symbol,day,column,forward=False,slack=None):
@@ -268,35 +248,28 @@ def backtest(db, *, start, end, months=12, **options):
 
 
 def dated_periods(dates,start,end,months,sessions):
-    """Validate explicit trades and return their common window and periods."""
-    window=schedule(start,end,months,sessions)
-    first,final=window[0][0],window[-1][1]
-    trades=[date.fromisoformat(day) for day in dates]
-    available=set(sessions)
-    if not trades or trades!=sorted(set(trades)) or any(day not in available or not first<=day<final for day in trades):
-        raise ValueError('Sampled trades must be increasing cached sessions inside the backtest window.')
-    periods=list(zip(trades,trades[1:]+[final]))
-    return first,final,periods
+    """Keep legacy month validation; explicit trades need no nominal schedule."""
+    schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
+    return schedule_calendar.SessionCalendar(sessions).explicit(
+        dates,start,end,checkpoint=backtest_control.checkpoint)
 
 
 def backtest_dates(db, *, dates, start, end, months=12, **options):
     """Evaluate explicit trades, holding cash before the first trade for both sides."""
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     first,final,periods=dated_periods(dates,start,end,months,sessions)
-    result=backtest_periods(db,periods,months=months,**options)
-    result['first_trade']=result['start']
-    result['start']=str(first)
-    result['cash_days']=(periods[0][0]-first).days
-    duration=(final-first).days/365.25
-    result['cagr']=result['growth']**(1/duration)-1 if result['growth'] is not None else None
-    result['spy_cagr']=result['spy_growth']**(1/duration)-1
-    return result
+    return _backtest_periods(db,periods,months=months,common_start=first,**options)
 
 
 def backtest_periods(db, periods, *, months, **options):
+    return _backtest_periods(db,periods,months=months,**options)
+
+
+def _backtest_periods(db, periods, *, months, common_start=None, **options):
     """Prepare missing books atomically and apply the shared SQL screener."""
     backtest_control.checkpoint()
     started=time.perf_counter()
+    periods=portfolio_results.validate_periods(periods,common_start)
     allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters','selection_order'}
     if set(options)-allowed:raise ValueError('Unknown screening option.')
     r._select(db,period=(-1,-1),**options)
@@ -304,25 +277,16 @@ def backtest_periods(db, periods, *, months, **options):
     missing=any(prepared_period(db,a,b,pool) is None for a,b in periods)
     books=histories(db) if missing else None
     cached=cached_symbols(db) if missing else set()
-    results=[]
+    def select_period(entry,exit_day):
+        period_id=prepare_period(db,entry,exit_day,books,cached,pool)
+        stocks=r._select(db,period=(period_id,period_id),**options)
+        spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
+        return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:
-        for entry,exit_day in periods:
-            backtest_control.checkpoint()
-            period_id=prepare_period(db,entry,exit_day,books,cached,pool)
-            stocks=r._select(db,period=(period_id,period_id),**options)
-            for stock in stocks:
-                stock.pop('year')
-                stock['weight']=1/len(stocks)
-                stock['contribution_pp']=stock['return_value']/len(stocks)*100
-            spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
-            results.append(dict(entry=str(entry),exit=str(exit_day),holdings=stocks,names=len(stocks),portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,spy=spy,is_final_period=exit_day==periods[-1][1]))
-        backtest_control.checkpoint()
-    growth=spy_growth=1.
-    for period in results:
-        if growth is not None:growth=growth*(1+period['portfolio']) if period['portfolio'] is not None else None
-        spy_growth*=1+period['spy']
-    duration=(periods[-1][1]-periods[0][0]).days/365.25
-    return dict(periods=results,start=str(periods[0][0]),end=str(periods[-1][1]),months=months,options=options,growth=growth,spy_growth=spy_growth,cagr=growth**(1/duration)-1 if growth is not None else None,spy_cagr=spy_growth**(1/duration)-1,seconds=time.perf_counter()-started,coverage='Cached-price companies only; additional early exits have not received the original manual review. Stopped proceeds stay in cash until the next rebalance. Equal weights reset each period; no transaction costs.')
+        result=portfolio_results.evaluate(periods,select_period,common_start=common_start,
+                                          checkpoint=backtest_control.checkpoint)
+    result.update(months=months,options=options,seconds=time.perf_counter()-started)
+    return result
 
 
 if __name__=='__main__':

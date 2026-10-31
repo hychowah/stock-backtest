@@ -19,7 +19,6 @@ import launcher
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT.parent/'scripts'))
 import schedules
-import robustness
 import data_manager
 import cache_access
 import diagnostics
@@ -27,6 +26,9 @@ import backtest_control
 import saved_backtests
 import backtest_jobs
 import backtest_queue
+import durable_evidence
+import evidence_views
+import result_exports
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -35,14 +37,29 @@ SAVED_BACKTESTS=saved_backtests.Store()
 
 class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
-        self.backtest_jobs=backtest_jobs.Jobs()
-        self.backtest_queue=backtest_queue.Queue()
+        from numerical_preparation import Preparation
+        from engine_selection import Selectable
+        self.calculations=Selectable(Preparation(ROOT.parent))
+        self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
+        self.backtest_queue=backtest_queue.Queue(calculations=self.calculations)
         super().__init__(*args,**kwargs)
 
+    def shutdown(self):
+        self.close_calculation_admission()
+        super().shutdown()
+
+    def close_calculation_admission(self):
+        # Queue cancellation must already mean shutdown when admission closes.
+        # Store.finish still gives a durable explicit Stop precedence.
+        self.backtest_queue.request_stop()
+        self.calculations.close()
+
     def server_close(self):
+        self.close_calculation_admission()
         self.backtest_queue.close()
         self.backtest_jobs.close()
         super().server_close()
+        if hasattr(self.calculations,'retire'):self.calculations.retire()
 
     def handle_error(self,request,client_address):
         error=sys.exc_info()[1]
@@ -56,6 +73,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def reply(self,status,payload):
         body=json.dumps(payload,allow_nan=False).encode()
+        self.json_reply(status,body)
+
+    def json_reply(self,status,body):
         self.send_response(status)
         self.send_header('Content-Type','application/json')
         self.send_header('Cache-Control','no-store')
@@ -76,8 +96,37 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError:return False
         return local and host in ('127.0.0.1','localhost','::1') and self.headers.get('Origin','http://'+self.headers.get('Host',''))=='http://'+self.headers.get('Host','')
 
+    def calculation_ready(self,options=None):
+        if hasattr(self.server.calculations,'ready_for'):
+            return self.server.calculations.ready_for(options or {})
+        candidate=getattr(self.server,'candidate_preparation',None)
+        if candidate is None:return True
+        if getattr(self.server.calculations,'preparation',None) is candidate:
+            return self.server.calculations.ready()
+        return candidate.status().get('state')=='current'
+
+    def require_calculation(self,options=None,*,planned=None):
+        # A busy inspection is advisory, not a failed execution admission.
+        # The calculation owner and child still validate admitted inputs.
+        if hasattr(self.server.calculations,'preflight'):
+            self.server.calculations.preflight(options,planned=planned)
+            if self.server.calculations.ready_for(options,advisory=True):return True
+            self.reply(503,dict(error='Experimental preparation is unavailable. Use Prepare experimental engine in Manage backtest data. Original and stored results remain available.'))
+            return False
+        candidate=getattr(self.server,'candidate_preparation',None)
+        if candidate is not None and getattr(self.server.calculations,'preparation',None) is candidate:
+            status=self.server.calculations.status()
+            allowed=status.get('state')=='current' or status.get('busy') is True
+        else:allowed=self.calculation_ready()
+        if allowed:return True
+        self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
+        return False
+
     def do_GET(self):
         if self.launcher_request():return
+        if self.path=='/api/backtest-capabilities':
+            owner=self.server.calculations
+            self.reply(200,owner.capabilities() if hasattr(owner,'capabilities') else dict(calendar=owner.calendar_version));return
         if self.path=='/api/backtest-queue' or self.path.startswith('/api/backtest-queue/'):
             self.queue_request();return
         if self.path.startswith('/api/backtest-runs/'):
@@ -133,20 +182,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(403,dict(error='Open the local website to run a schedule.'));return
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=16384:raise ValueError('Invalid request size.')
+            if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected schedule options.')
-            with backtest_control.cancel_when(self.disconnect_check()), cache_access.daily() as db:
+            if not self.require_calculation(request):return
+            with backtest_control.cancel_when(self.disconnect_check()):
                 backtest_control.checkpoint()
-                db.execute('PRAGMA cache_size=-131072')
                 if self.path=='/api/robustness':
-                    configuration=robustness.plan(db,**request)
-                    self.stream_batch(db,configuration)
+                    self.stream_batch(request)
                     return
-                calculate=schedules.backtest_dates if 'dates' in request else schedules.backtest
-                result=calculate(db,**request)
+                result=backtest_jobs.calculate('custom',request,None,None,owner=self.server.calculations)
                 backtest_control.checkpoint()
             self.reply(200,result)
+        except backtest_jobs.Unavailable:
+            self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # Contexts close databases and wait for worker cleanup before cache
             # ownership is released. Completed trial transactions remain saved.
@@ -156,6 +205,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.reply(400,dict(error=str(error)))
 
     def do_DELETE(self):
+        if self.path.startswith('/api/backtest-runs/'):
+            self.backtest_run_request();return
         if self.path.startswith('/api/backtest-queue/'):
             self.queue_request();return
         if self.path.startswith('/api/backtests/'):
@@ -170,7 +221,7 @@ class Handler(SimpleHTTPRequestHandler):
         collection=self.path=='/api/backtest-queue'
         path=[] if collection else self.path.removeprefix('/api/backtest-queue/').split('/')
         try:
-            queue.start()
+            if (collection or self.command!='GET') and self.calculation_ready() and (not getattr(self.server,'data_recovery',False) or DATA_JOBS.rebuilt):queue.start()
             if self.command=='GET':
                 if not collection and len(path)!=1:
                     self.reply(404,dict(error='Unknown queue action.'));return
@@ -181,10 +232,13 @@ class Handler(SimpleHTTPRequestHandler):
             request=json.loads(self.rfile.read(length),parse_constant=invalid)
             if not isinstance(request,dict):raise ValueError('Expected queue options.')
             if self.command=='POST' and collection:
+                if not store.accepted(request.get('id')) and not self.require_calculation(request.get('options')):return
                 result=store.enqueue(request)
             elif self.command=='POST' and path==['pause']:
                 result=store.pause(request.get('paused'))
             elif self.command=='POST' and len(path)==2:
+                if path[1]=='update' and hasattr(self.server.calculations,'preflight'):
+                    self.server.calculations.preflight(request.get('options'))
                 result=store.change(path[0],path[1],request)
             elif self.command=='DELETE' and len(path)==1:
                 result=store.change(path[0],'delete',request)
@@ -192,6 +246,7 @@ class Handler(SimpleHTTPRequestHandler):
             queue.wake.set();self.reply(200,result)
         except backtest_queue.Missing as error:self.reply(404,dict(error=str(error)))
         except backtest_queue.Conflict as error:self.reply(409,dict(error=str(error)))
+        except durable_evidence.RequiresReader as error:self.reply(409,dict(error=str(error),requires_reader=True))
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
         except (OSError,sqlite3.Error) as error:
@@ -206,6 +261,8 @@ class Handler(SimpleHTTPRequestHandler):
         identifier=path[0]
         jobs=self.server.backtest_jobs
         try:
+            if path[1:2]==['reader']:
+                self.evidence_request(identifier,path[2:]);return
             if self.command=='GET' and len(path)==1:
                 self.reply(200,jobs.snapshot(identifier))
             elif self.command=='GET' and path[1:]==['status']:
@@ -214,16 +271,79 @@ class Handler(SimpleHTTPRequestHandler):
                 self.reply(202,jobs.cancel(identifier))
             elif self.command=='POST' and len(path)==1:
                 length=int(self.headers.get('Content-Length','0'))
-                if not 0<length<=16384:raise ValueError('Invalid request size.')
+                if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
                 def invalid(value):raise ValueError('Backtest values must be finite.')
                 request=json.loads(self.rfile.read(length),parse_constant=invalid)
                 if not isinstance(request,dict):raise ValueError('Expected backtest options.')
-                self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options')))
+                if not jobs.accepted(identifier) and not self.require_calculation(request.get('options'),planned=request.get('planned')):return
+                self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options'),planned=request.get('planned')))
             else:self.reply(404,dict(error='Unknown run action.'))
         except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
         except backtest_jobs.Busy as error:self.reply(409,dict(error=str(error)))
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+
+    def evidence_request(self,identifier,path):
+        """Explicit reader operations. Never acquire financial ownership or readiness."""
+        jobs=self.server.backtest_jobs;started=False
+        try:
+            if self.command=='DELETE' and not path:
+                jobs.release_reader(identifier);self.reply(200,dict(released=True));return
+            if self.command=='POST' and not path:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=durable_evidence.MAX_METADATA_BYTES:raise ValueError('Invalid reader request size.')
+                request=durable_evidence.decode(self.rfile.read(length));source=request.get('source',{})
+                kind=source.get('kind');record_id=source.get('id')
+                if kind=='run':opener=lambda:jobs.display_evidence(record_id,request.get('display',{}))
+                elif kind=='saved':opener=lambda:SAVED_BACKTESTS.open_evidence(record_id)
+                elif kind=='queue':opener=lambda:self.server.backtest_queue.store.open_evidence(record_id)
+                else:raise ValueError('Unknown evidence source.')
+                self.reply(200,jobs.acquire_reader(identifier,request,opener));return
+            if self.command!='GET':raise ValueError('Unsupported evidence operation.')
+            with jobs.read_artifact(identifier) as (metadata,reader):
+                if len(path)==3 and path[0]=='export':
+                    kind=path[1];trial=int(path[2]);export=result_exports.prepare(reader,kind,trial)
+                    name=export.filename
+                    # Count through a bounded pass before headers. Content-Length
+                    # makes a later interrupted transfer detectably incomplete.
+                    length=export.content_length
+                    chunks=export.chunks()
+                    first=next(chunks,b'')
+                    self.connection.settimeout(30)
+                    self.send_response(200);self.send_header('Content-Type','text/csv; charset=utf-8')
+                    self.send_header('Content-Length',str(length))
+                    self.send_header('Content-Disposition','attachment; filename="'+name+'"')
+                    self.send_header('Cache-Control','no-store');self.end_headers()
+                    started=True
+                    self.close_connection=True
+                    try:
+                        self.wfile.write(first)
+                        for chunk in chunks:
+                            if jobs.closing:raise backtest_control.Cancelled()
+                            self.wfile.write(chunk)
+                        self.wfile.flush()
+                    except (OSError,ValueError,backtest_control.Cancelled):
+                        # An interrupted attachment has no complete-length proof.
+                        # Close the transport and request pin, never report success.
+                        try:self.connection.shutdown(socket.SHUT_RDWR)
+                        except OSError:pass
+                    return
+                if len(path)==4 and path[0]=='page':
+                    selection=dict(operation=path[1],trial=int(path[2]),cursor=int(path[3]))
+                elif len(path)==5 and path[0:2]==['page','holdings']:
+                    selection=dict(operation='holdings',trial=int(path[2]),period=int(path[3]),cursor=int(path[4]))
+                else:raise ValueError('Unknown evidence action.')
+                value=dict(identity=identifier,**evidence_views.read(reader,selection))
+                self.json_reply(200,evidence_views.encode(value))
+        except (saved_backtests.Missing,backtest_queue.Missing,backtest_jobs.Missing) as error:self.reply(404,dict(error=str(error)))
+        except (ValueError,TypeError,KeyError) as error:
+            if not started:self.reply(400,dict(error=str(error)))
+            else:self.close_connection=True
+        except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+        except (OSError,sqlite3.Error) as error:
+            diagnostics.failure('evidence.request_failed',error)
+            if not started:self.reply(500,dict(error='Could not read stored evidence. Existing records were kept.'))
+            else:self.close_connection=True
 
     def saved_backtest_request(self):
         origin=self.headers.get('Origin')
@@ -243,10 +363,15 @@ class Handler(SimpleHTTPRequestHandler):
                 def invalid_constant(value):raise ValueError('Saved values must be finite.')
                 request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
                 if not isinstance(request,dict):raise ValueError('Expected a completed backtest.')
-                self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
+                if 'reader' in request:
+                    with self.server.backtest_jobs.read_artifact(request['reader']) as (metadata,reader):
+                        record=SAVED_BACKTESTS.save_evidence(request.get('name'),metadata,reader)
+                    self.reply(201,record)
+                else:self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
             else:self.reply(405,dict(error='Unsupported saved-backtest action.'))
         except saved_backtests.Full as error:self.reply(409,dict(error=str(error)))
         except saved_backtests.Missing as error:self.reply(404,dict(error=str(error)))
+        except durable_evidence.RequiresReader as error:self.reply(409,dict(error=str(error),requires_reader=True))
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (OSError,sqlite3.Error) as error:
             diagnostics.failure('saved_backtest.failed',error)
@@ -255,40 +380,46 @@ class Handler(SimpleHTTPRequestHandler):
     def data_request(self):
         if not self.data_allowed():self.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return
         action=self.path.removeprefix('/api/data/')
-        if action not in ('check','download','rebuild','cancel'):
+        if action not in ('check','download','rebuild','prepare','cancel'):
             self.reply(404,dict(error='Unknown data action.'));return
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=16384:raise ValueError('Invalid request size.')
+            if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
             request=json.loads(self.rfile.read(length))
             if not isinstance(request,dict):raise ValueError('Expected data options.')
             self.reply(202,DATA_JOBS.cancel_job() if action=='cancel' else DATA_JOBS.start(action,request))
         except (ValueError,TypeError):
             self.reply(400,dict(error='Invalid data options, or another data job is running. Check dates, stock symbols and selected data types.'))
 
-    def stream_batch(self,db,configuration):
-        self.send_response(200)
-        self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
-        self.send_header('Cache-Control','no-store')
-        self.end_headers()
+    def stream_batch(self,options,*,planned=None):
+        """Adapt calculation callbacks to the legacy stream after planning.
+
+        Pre-configuration failures remain HTTP errors. Once headers are sent,
+        calculation failures use an error frame. No database belongs here.
+        """
+        started=False
         def event(payload):
             backtest_control.checkpoint()
             self.wfile.write((json.dumps(payload,allow_nan=False)+'\n').encode())
             self.wfile.flush()
+        def configuration(value):
+            nonlocal started
+            self.send_response(200)
+            self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
+            self.send_header('Cache-Control','no-store')
+            self.end_headers()
+            started=True
+            event(dict(type='configuration',configuration=value))
         try:
-            event(dict(type='configuration',configuration=configuration))
-            if getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings':
-                details=[]
-                result=robustness.run(db,configuration,progress=event,capture=lambda number,trial:details.append(trial))
-                result['trial_results']=details
-            else:
-                result=robustness.run(db,configuration,progress=event)
+            result=backtest_jobs.calculate('random',options,event,configuration,planned=planned,
+                owner=self.server.calculations,details=getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings')
             event(dict(type='complete',result=result))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # The completed trial transactions remain cached; stop before the
             # next trial when the browser disconnects.
             return
         except Exception as error:
+            if not started:raise
             diagnostics.failure('robustness.failed',error)
             try:event(dict(type='error',message=str(error)))
             except (BrokenPipeError,ConnectionResetError):pass
@@ -309,19 +440,37 @@ def ensure_ready():
     print('Local caches and website are ready.',flush=True)
 
 
-def main():
+def close_candidate_owners(server,candidate):
+    """Finish application joins before the candidate entry releases source."""
+    import signal
+    previous=signal.signal(signal.SIGINT,signal.SIG_IGN)
+    try:
+        server.close_calculation_admission()
+        while True:
+            try:
+                DATA_JOBS.close()
+                server.server_close()
+                candidate.close()
+                return
+            except KeyboardInterrupt:continue
+    finally:signal.signal(signal.SIGINT,previous)
+
+
+def main(*,candidate=None,arguments=None):
+    global DATA_JOBS
+    if candidate is not None:DATA_JOBS=data_manager.Jobs(preparation=candidate)
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,default=3000)
     parser.add_argument('--host',default='0.0.0.0')
     parser.add_argument('--no-browser',action='store_true',help='Start without opening a browser')
     parser.add_argument('--managed',action='store_true',help='Replace this project’s previous server and keep this terminal attached')
-    args=parser.parse_args()
+    args=parser.parse_args(arguments)
     path=diagnostics.configure()
     print('Development log: '+diagnostics.relative_path(path) if path else 'Development log unavailable. Terminal logging remains active.',flush=True)
     diagnostics.event('server.starting',port=args.port,managed=args.managed)
     try:
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
-        with context as lifecycle:run_server(args,lifecycle,parser)
+        with context as lifecycle:run_server(args,lifecycle,parser,candidate=candidate)
     except KeyboardInterrupt:
         print('Website stopped.',flush=True)
     except (OSError,ValueError,RuntimeError) as error:
@@ -332,12 +481,21 @@ def main():
         diagnostics.close()
 
 
-def run_server(args,lifecycle,parser):
+def run_server(args,lifecycle,parser,*,candidate=None):
     try:
-        with cache_access.access():
-            recovery=data_manager.source_problem()
-            if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
-            else:ensure_ready()
+        if candidate is not None:
+            from numerical_preparation import PreparationError
+            try:
+                candidate.prepare(progress=lambda **value:print(value['message'],flush=True))
+                recovery=False
+            except PreparationError as error:
+                recovery=True
+                print(str(error),flush=True)
+        else:
+            with cache_access.access():
+                recovery=data_manager.source_problem()
+                if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
+                else:ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
         diagnostics.failure('startup.failed',error)
         parser.exit(1,'Could not prepare the local website: '+str(error)+'\n')
@@ -357,6 +515,17 @@ def run_server(args,lifecycle,parser):
             parser.exit(1,f'Cannot start the local website service: {retry_error}\n')
         print(f'Port {args.port} is already in use; opening a fresh website instance.',flush=True)
     server.data_recovery=recovery
+    server.candidate_preparation=candidate
+    if candidate is not None:
+        from candidate_calculations import Candidate
+        server.calculations=Candidate(candidate)
+        server.backtest_jobs.calculations=server.calculations
+        server.backtest_queue.calculations=server.calculations
+        DATA_JOBS.calculations=server.calculations
+    else:
+        DATA_JOBS.preparation=server.calculations.preparation
+        DATA_JOBS.optional_preparation=True
+        DATA_JOBS.calculations=server.calculations
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)
@@ -372,5 +541,5 @@ def run_server(args,lifecycle,parser):
         server.serve_forever()
     except KeyboardInterrupt:pass
     finally:
-        DATA_JOBS.close()
-        if not lifecycle:server.server_close()
+        server.close_calculation_admission()
+        close_candidate_owners(server,candidate or server.calculations.preparation)

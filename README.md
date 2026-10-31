@@ -74,10 +74,17 @@ For an explanation of the program, open the [plain-language architecture guide](
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
-The proposed [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
-sets a 5× minimum speed target and divides research, implementation and qualification
-into single-session phases. Its [research findings](docs/plans/compiled-backtest/research.md)
-compare the design options. This replacement is planned; the current engine is unchanged.
+Current source offers **Original** and **New engine — experimental** for dated
+runs. Original remains the default. Each submitted run keeps its selected engine.
+Experimental preparation is optional; see the [startup guide](docs/candidate-startup.md)
+and [release handoff](docs/plans/compiled-backtest/phases/CB-15.release-handoff.md).
+The installed runtime has not changed in this integration task.
+The [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
+keeps an approximate 4× performance direction. No exact speed ratio gates
+supported opt-in use. Historical timings retain their original settings and
+limits; larger workloads and default replacement remain follow-up work.
+Its [research findings](docs/plans/compiled-backtest/research.md) compare the
+design options. The program divides implementation and qualification into phases.
 Each code phase automatically runs `$strategic-design-plan`, implementation and
 verification, then `$smart-commit`. Agents ask only about critical blockers or
 decisions that need the user's judgment.
