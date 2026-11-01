@@ -23,8 +23,8 @@ def main():
                 raise RuntimeError('Delegated child did not attach.')
             time.sleep(.02)
         os._exit(0)
-    sys.path[:0] = [str(ROOT / 'website')]
-    import runtime_access
+    sys.path[:0] = [str(ROOT)]
+    from website import runtime_access
     with runtime_access.ownership(ROOT):
         sys.path.insert(0,str(ROOT))
         from backtest.inputs import daily, research

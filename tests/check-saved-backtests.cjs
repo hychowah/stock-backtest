@@ -19,7 +19,7 @@ const ctx=vm.createContext({document:{getElementById:node},Date,console,location
  return {ok:status<400,status,json:async()=>JSON.parse(packed)};
 }});
 ctx.ResultArtifacts={opening:()=>()=>true,release:()=>{},async use(source,consume){const response=await ctx.fetch((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+source.id);const record=await response.json();if(record.state==='archived')return {consumed:false,record};if(!record.snapshot)throw Error('This result is not ready yet.');return {consumed:true,value:consume(record.snapshot),record};}};
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/saved-backtests.js'),'utf8'),ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/saved-backtests.js'),'utf8'),ctx);
 const call=code=>vm.runInContext(code,ctx);ctx.snapshot=snapshot;ctx.result=result;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{

@@ -1,4 +1,7 @@
 """Externally supervised comparisons on generated captures only."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import json
 import os
 from pathlib import Path
@@ -8,10 +11,10 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'website')]
-import bench_execution_supervisor as supervisor
-from bench_candidates_process import OwnedProcess
-from bench_comparison import ComparisonError
+sys.path.insert(0, str(ROOT))
+import tools.experiments.bench_execution_supervisor as supervisor
+from backtest.runtime.process_owner import OwnedProcess
+from tools.experiments.bench_comparison import ComparisonError
 import test_bench_execution as fixture_module
 
 
@@ -29,11 +32,12 @@ class SupervisorTests(unittest.TestCase):
     def fixture_command(self, control, block_phase=None, marker=None):
         # Patches are confined to disposable children. Nothing shipped accepts
         # a permission marker, flag or environment override.
-        code = '''import sys
-sys.path[:0]=[sys.argv[1],sys.argv[3]]
+        code = '''import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1])/'tests'))
+import sys;sys.path.insert(0,sys.argv[1])
+import sys
 from unittest.mock import patch
-import bench_execution_controller as c
-import bench_execution as e
+import tools.experiments.bench_execution_controller as c
+import tools.experiments.bench_execution as e
 from test_bench_execution import ExecutionTests
 def command(owner,request):
  return ExecutionTests.fixture_command(None,owner,request)
@@ -64,14 +68,14 @@ if phase:
 with patch.object(c.admission,'require_execution'), patch.object(e.MeasurementExecution,'_command',command):
  raise SystemExit(c.main())
 '''
-        return [sys.executable, '-I', '-B', '-c', code, str(ROOT / 'tools'), str(control),
+        return [sys.executable, '-I', '-B', '-c', code, str(ROOT), str(control),
                 str(ROOT / 'tests'), block_phase or '', str(marker or '')]
 
     def test_default_supervisor_and_controller_admission_reject_before_effects(self):
         owner = self.supervisor()
         with patch.object(supervisor.tempfile, 'mkdtemp', side_effect=AssertionError('Effect')):
             with self.assertRaises(supervisor.admission.BenchmarkAdmissionError): owner.run()
-        import bench_execution_controller as controller
+        import tools.experiments.bench_execution_controller as controller
         with patch.object(Path, 'read_bytes', side_effect=AssertionError('Read')):
             with self.assertRaises(controller.admission.BenchmarkAdmissionError): controller.main()
         self.assertIsNone(owner.control)
@@ -81,7 +85,7 @@ with patch.object(c.admission,'require_execution'), patch.object(e.MeasurementEx
         # Participating source ownership creates its normal coordination files.
         # Establish those disposable files before the immutable-byte snapshot.
         from backtest.runtime import cache_access as cache_access
-        import runtime_access
+        from website import runtime_access
         source = self.fixture.fixture.source
         with runtime_access.ownership(source, timeout=0):
             with cache_access.WorkspaceAccess(source / 'data/website-data-0.lock').observe(): pass
@@ -191,8 +195,8 @@ with patch.object(c.admission,'require_execution'), patch.object(e.MeasurementEx
     @unittest.skipUnless(os.name == 'nt', 'Native final accounting acceptance race')
     def test_zero_exit_and_queued_complete_cannot_bypass_final_cpu_exhaustion(self):
         from dataclasses import replace
-        from bench_comparison import ComparisonProtocol
-        import bench_execution as execution
+        from tools.experiments.bench_comparison import ComparisonProtocol
+        import tools.experiments.bench_execution as execution
         from test_bench_execution_user_cpu import burn
         bound = self.fixture.owner(fixture_observation_root=None,
                                    coordinated_observation_root=self.fixture.fixture.source)

@@ -203,7 +203,7 @@ class StreamCheckpointTests(unittest.TestCase):
         code='''import sys,os,json,io
 from pathlib import Path
 root=Path(sys.argv[1]);sys.path[:0]=[str(root/'website'),str(root/'tests')]
-import runtime_access
+from website import runtime_access
 with runtime_access.ownership(root):
  sys.path.insert(0,str(root))
  from backtest.engines.numerical import checkpoints as t

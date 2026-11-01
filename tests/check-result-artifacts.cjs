@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('assert'),Artifacts=require('../website/result-artifacts.js');
+const assert=require('assert'),Artifacts=require('../website/browser/result-artifacts.js');
 const result={years:[{names:1,holdings:[{symbol:'SAVED',return_value:.1234567890123456}]}],cagr:.1234567890123456};
 const catalog={metrics:{ev_ebitda:{label:'Original metric'}},filters:{pe:{label:'Original P/E',available:true}}};
 const settings={mode:'january',first:2015,last:2015,metric:'ev_ebitda',filters:[{field:'pe',op:'lt',value:10}]};

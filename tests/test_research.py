@@ -291,7 +291,7 @@ class PreparationTests(unittest.TestCase):
         r.prepare(self.path)
         root=Path(__file__).resolve().parents[1]
         sys.path.insert(0,str(root/'website'))
-        import dataset
+        from website.rendering import data as dataset
         with patch.object(dataset,'connect',side_effect=lambda:r.connect(self.path)):
             prepared=dataset.load_screening_data()
         historical=[];latest=[];cases=[]
@@ -315,7 +315,7 @@ for(let i=0;i<cases.length;i++){
  assert.deepStrictEqual(engine.latestScreen(dataset,cases[i]).stocks.map(h=>[h.symbol,h.rank]),latest[i]);
 }
 """
-        subprocess.run(['node','-e',code,str(root/'website'/'screener.js')],
+        subprocess.run(['node','-e',code,str(root/'website'/'browser'/'screener.js')],
                        input=json.dumps(dict(dataset=prepared,cases=cases,historical=historical,latest=latest)),text=True,check=True)
         # Missing Treasury inputs omit this filter, while ordinary picks remain.
         (r.RAW/'treasury.json').write_text('[{"date":"2015-01-02","month3":2}]')

@@ -18,7 +18,7 @@ from unittest.mock import patch
 import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -26,7 +26,7 @@ from backtest.runtime import backtest_control as backtest_control
 from backtest.application import original_calculations, queue as queue
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import schedules as schedules
-import serve
+from website.server import app as serve
 import test_robustness as fixtures
 
 

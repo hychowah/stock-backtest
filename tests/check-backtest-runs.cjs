@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const source=fs.readFileSync(require('node:path').join(__dirname,'../website/backtest-runs.js'),'utf8');
+const source=fs.readFileSync(require('node:path').join(__dirname,'../website/browser/backtest-runs.js'),'utf8');
 const storage=new Map();let clock=Date.now();
 const recordKey=id=>'backtest-server-run:'+id;
 function page(fetch){

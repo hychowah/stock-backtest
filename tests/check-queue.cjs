@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const nodes=new Map();
 function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn},scrollIntoView(){}});return nodes.get(id)}
-const CalendarSettings=require('../website/calendar-settings.js');
+const CalendarSettings=require('../website/browser/calendar-settings.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
 let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,preparations=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false,libraryChanges=0;
 const editReceipts=new Map();
@@ -60,8 +60,8 @@ const context=vm.createContext({CalendarSettings,console,crypto:require('node:cr
   return {ok:status<400,status,json:async()=>copy(value)};
 }});
 context.ResultArtifacts={opening:()=>()=>true,release:()=>{},async use(source,consume){const response=await context.fetch((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+source.id);const record=await response.json();if(record.state==='archived')return {consumed:false,record};if(!record.snapshot)throw Error('This result is not ready yet.');return {consumed:true,value:consume(record.snapshot),record};}};
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/engine-controls.js'),'utf8'),context);
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/queue.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/engine-controls.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
 context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
 (async()=>{

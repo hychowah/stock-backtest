@@ -112,7 +112,7 @@ metric tables within the preparation transaction. `screening_metrics` stores rea
 mode, pool, year, symbol and metric ID (year 0 represents latest mode). Thus
 screening-date values remain separate even when observations use the same fiscal
 report. Preparation preserves both default EV/EBITDA values exactly.
-`website/dataset.py` exports the display catalog and prepared pairs; SQL and
+`website/rendering/data.py` exports the display catalog and prepared pairs; SQL and
 JavaScript consume the same values without interpreting calculation types.
 
 To add a metric, register its display metadata in `METRICS` and its calculation
@@ -194,7 +194,7 @@ durable library and queue snapshots remain independent.
 The default listener is `0.0.0.0:3000`; the browser opens
 `http://127.0.0.1:3000` on this computer. Use `--host` and `--port` to change the
 listener. Backtest calculations use saved data only. The separate data panel can download missing data when requested.
-`website/schedule.js` renders dated periods without assuming one book per year.
+`website/browser/schedule.js` renders dated periods without assuming one book per year.
 Run `python3 tests/test_schedules.py` in addition to the existing checks.
 
 Before requested-pool preparation, observed in this workspace: the one-time daily index took 174 seconds and
@@ -597,7 +597,7 @@ subscription. Opening the panel never starts a download.
 and the website build without network requests. Two independent engines must agree before a changed January reference is published. Export the revision from the data panel to inspect its evidence. Historical dates do not advance with latest prices. Open the
 strategy page after rebuilding to load the new embedded data.
 
-`website/data_manager.py` owns the inventory and background job. The local
+`website/server/data_manager.py` owns the inventory and background job. The local
 service exposes `/api/data/status`, `/api/data/report`, and POST actions
 `check`, `download`, `rebuild`, and `cancel`. Data endpoints accept only local,
 same-origin requests. `backtest/runtime/cache_access.py` owns one project-wide resource

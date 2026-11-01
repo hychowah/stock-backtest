@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import Mock,patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT)]
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 from backtest.application import calculations as engine_selection
@@ -106,7 +106,7 @@ class SelectionTests(unittest.TestCase):
     def test_http_retries_reconcile_accepted_engine_when_preparation_is_stale(self):
         from http.client import HTTPConnection
         from threading import Thread
-        import serve_app
+        from website.server import app as serve_app
         owner=self.selectable();owner.status=lambda:dict(state='current')
         owner.experimental.calculate=Mock(return_value=dict(periods=[],options={}))
         store=backtest_queue.Store(self.root/'retry-queue.sqlite');store.pause(True)
@@ -139,7 +139,7 @@ class SelectionTests(unittest.TestCase):
             server.shutdown();listener.join(5);server.server_close()
 
     def test_optional_rebuild_does_not_prepare_numerical_stack(self):
-        import data_manager
+        from website.server import data_manager
         owner=self.selectable()
         jobs=data_manager.Jobs(owner.preparation,optional_preparation=True)
         options=data_manager.options(dict(scope='symbols',symbols='A',start='2015-01-01',end='2016-12-30',datasets=['prices']))
@@ -161,7 +161,7 @@ class NoNative:
   if fullname.split('.')[0] in ('numpy','numba','llvmlite'):raise AssertionError('Original imported numerical dependencies')
 sys.meta_path.insert(0,NoNative())
 from backtest.inputs import daily
-import serve_app
+from website.server import app as serve_app
 from backtest.application import calculations as engine_selection, library as saved_backtests
 owner=engine_selection.Selectable(Mock())
 def connect():

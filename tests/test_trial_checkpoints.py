@@ -150,7 +150,7 @@ class CheckpointTests(unittest.TestCase):
         code='''import sys,os,json
 from pathlib import Path
 root=Path(sys.argv[1]);sys.path[:0]=[str(root),str(root/'scripts'),str(root/'website')]
-import runtime_access
+from website import runtime_access
 with runtime_access.ownership(root):
  from backtest.engines.numerical import checkpoints as t
  path=Path(sys.argv[2]);stage=sys.argv[3]

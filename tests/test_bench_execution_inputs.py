@@ -1,4 +1,7 @@
 """Disposable captured-workspace proofs. No raw/cache/runtime or engine reads."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from contextlib import closing
 from copy import deepcopy
 import builtins
@@ -15,12 +18,12 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime'); del sys.argv[index:index + 2]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_execution_inputs as execution
-import bench_input_artifacts as artifacts
-import bench_input_store as store
+import tools.experiments.bench_execution_inputs as execution
+import tools.experiments.bench_input_artifacts as artifacts
+import tools.experiments.bench_input_store as store
 from test_bench_input_store import fill, metadata, REPORT, EVIDENCE
 from types import SimpleNamespace
 
@@ -54,8 +57,12 @@ class WorkspaceTests(unittest.TestCase):
         shutil.copytree(ROOT / 'backtest', self.source / 'backtest', ignore=shutil.ignore_patterns('__pycache__'))
         for path in (ROOT / 'scripts').glob('*.py'):
             shutil.copy2(path, self.source / 'scripts' / path.name)
-        (self.source / 'website').mkdir()
-        shutil.copy2(ROOT / 'website/runtime_access.py', self.source / 'website/runtime_access.py')
+        for path in (ROOT/'website').rglob('*'):
+            relative=path.relative_to(ROOT/'website')
+            if any(part in ('local','dist','.openai','__pycache__','node_modules') for part in relative.parts):continue
+            if not path.is_file() or path.suffix not in ('.py','.js','.css','.html'):continue
+            target=self.source/'website'/relative;target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(path,target)
         self.sources = {p.relative_to(self.source).as_posix(): sha(p)
                         for p in self.source.rglob('*') if p.is_file() and
                         (p.suffix=='.py' or p.relative_to(self.source).as_posix() in artifacts.SOURCE_ASSETS)}
@@ -377,7 +384,7 @@ class WorkspaceTests(unittest.TestCase):
         saved=path.read_bytes()
         with self.owner() as attached:
             self.assertEqual((attached.source_snapshot/name).read_bytes(),saved)
-            import bench_execution_policy as policy
+            import tools.experiments.bench_execution_policy as policy
             modules=policy._verify_sources(attached.source_snapshot,self.sources)
             self.assertNotIn(attached.source_snapshot/name,modules.values())
         path.write_bytes(saved+b'\n// synthetic changed template\n')
@@ -455,7 +462,7 @@ class WorkspaceTests(unittest.TestCase):
             if name in ('research', 'schedules', 'baseline', 'cache_access', 'run', 'runtime_access', 'bench_metrics'):
                 raise AssertionError('Unexpected financial import: ' + name)
             return original_import(name, *args, **kwargs)
-        spec = importlib.util.spec_from_file_location('independent_workspace_module', ROOT / 'tools/bench_execution_inputs.py')
+        spec = importlib.util.spec_from_file_location('independent_workspace_module', ROOT / 'tools/experiments/bench_execution_inputs.py')
         module = importlib.util.module_from_spec(spec)
         with patch('builtins.__import__', side_effect=guarded): spec.loader.exec_module(module)
         connections = []
@@ -474,7 +481,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse((self.source / 'data').exists())
 
     def test_import_and_attachment_do_not_change_closed_admission(self):
-        import bench_admission
+        import tools.experiments.bench_admission as bench_admission
         with self.owner():
             with self.assertRaises(bench_admission.BenchmarkAdmissionError): bench_admission.require_execution()
         with self.assertRaises(bench_admission.BenchmarkAdmissionError): bench_admission.require_execution()

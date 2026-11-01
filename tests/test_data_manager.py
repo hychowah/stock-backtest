@@ -18,11 +18,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'website'),str(ROOT/'scripts')]
-import data_manager as d
-import serve
-
-
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts')]
+from website.server import data_manager as d
+from website.server import app as serve
 class CacheTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
@@ -508,8 +506,8 @@ class HttpTests(unittest.TestCase):
         handler.headers={'Host':host,'Content-Length':str(len(encoded))}
         if origin:handler.headers['Origin']=origin
         results=[];handler.reply=lambda status,payload:results.append((status,payload))
-        if method=='POST':handler.data_request()
-        else:results.append(handler.data_allowed())
+        if method=='POST':serve.data.data_request(handler,serve.DATA_JOBS)
+        else:results.append(serve.data.data_allowed(handler))
         return results
 
     def test_only_local_same_origin_may_manage_data(self):
@@ -525,7 +523,7 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(self.handler('POST','/api/data/arbitrary')[0][0],404)
 
     def test_recovery_page_does_not_need_build_or_database(self):
-        page=serve.data_page()
+        page=serve.data.data_page()
         self.assertIn('Download missing data',page)
         self.assertNotIn('__DATA_SCRIPT__',page)
         self.assertIn('/api/data/',page)

@@ -3,7 +3,7 @@ const nodes=new Map();
 function node(id){if(!nodes.has(id))nodes.set(id,{innerHTML:'',textContent:'',value:'',hidden:true,handlers:{},addEventListener(k,fn){this.handlers[k]=fn}});return nodes.get(id)}
 let csv='',download='';const saved=new Map();
 const ctx=vm.createContext({localStorage:{setItem:(k,v)=>saved.set(k,v),getItem:k=>saved.get(k)},document:{getElementById:node,createElement:()=>({click(){download=this.download}})},TextDecoder,console,Blob:class{constructor(parts){this.parts=parts}},URL:{createObjectURL(blob){csv=blob.parts.join('');return 'blob:test'},revokeObjectURL(){}}});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/robustness.js'),'utf8'),ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/robustness.js'),'utf8'),ctx);
 const call=code=>vm.runInContext(code,ctx);
 const stats={n:2,mean:.15,median:.15,p10:.11,p25:.125,p75:.175,p90:.19,min:.1,max:.2,stddev:.05};
 const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedules:2,beat_spy:1,configuration:{seed:42,months:24,options:{metric:'ev_ebitda'}},note:'试验 dates vary.',distributions:Object.fromEntries(['cagr','spy_cagr','excess_cagr','total_return','growth'].map(k=>[k,stats])),trials:[{trial:1,start:'2015-01-02',first_trade:'2015-03-02',end:'2020-01-02',dates:['2015-03-02','2017-07-03'],periods:2,cagr:.1,spy_cagr:.09,excess_cagr:.01,empty_periods:0,short_periods:1}]};

@@ -19,16 +19,16 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).absolute().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.application import preparation as preparation
 from backtest.runtime import cache_access as cache_access
-import data_manager
-import build_state
-import serve
-import serve_candidate
+from website.server import data_manager
+from website.rendering import state as build_state
+from website.server import app as serve
+from website import serve_candidate
 from backtest.application import queue as backtest_queue
 from backtest.application import library as saved_backtests
 from test_saved_backtests import snapshot
@@ -47,7 +47,7 @@ class PreparationContractTests(unittest.TestCase):
         self.context.enter_context(patch.object(cache_assets,'source_problem',return_value=False))
         self.context.enter_context(patch.object(preparation.baseline,'Baseline',return_value=Mock()))
         self.context.enter_context(patch.object(daily,'prepare'))
-        self.context.enter_context(patch('build_state.current_build',return_value=True))
+        self.context.enter_context(patch('website.rendering.state.current_build',return_value=True))
         self.context.enter_context(patch.object(self.value,'inventory',return_value='inventory'))
         self.store=Mock();self.store.prepare.return_value=dict(identity='generation',reused=True)
         self.context.enter_context(patch.object(self.value,'_store',return_value=self.store))
@@ -109,7 +109,7 @@ class PreparationContractTests(unittest.TestCase):
         self.runtime.close.side_effect=None;self.value.close();self.assertIsNone(self.value.runtime)
 
     def test_build_failure_occurs_after_runtime_closure(self):
-        with patch('build_state.current_build',return_value=False),patch('subprocess.run',side_effect=OSError('unsafe')):
+        with patch('website.rendering.state.current_build',return_value=False),patch('subprocess.run',side_effect=OSError('unsafe')):
             with self.assertRaises(preparation.PreparationError):self.value.prepare()
         self.runtime.close.assert_called_once();self.assertIsNone(self.value.runtime)
 
@@ -121,7 +121,7 @@ class PreparationContractTests(unittest.TestCase):
 
     def test_numerical_only_preparation_omits_presentation(self):
         self.value.ensure_presentation=None
-        with patch('build_state.current_build',side_effect=AssertionError('No presentation dependency')):
+        with patch('website.rendering.state.current_build',side_effect=AssertionError('No presentation dependency')):
             self.assertEqual(self.value.prepare()['state'],'current')
 
     def test_changed_inputs_between_child_and_build_reject(self):
@@ -203,7 +203,7 @@ class DependencyAndIsolationTests(unittest.TestCase):
 
 class MutationAndHttpTests(unittest.TestCase):
     def test_late_http_rebuild_body_cannot_start_after_shutdown_joins_data_owner(self):
-        import runtime_access
+        from website import runtime_access
         with tempfile.TemporaryDirectory() as temporary,ExitStack() as context:
             root=Path(temporary);capability=Mock();jobs=data_manager.Jobs(preparation=capability)
             context.enter_context(patch.object(serve,'DATA_JOBS',jobs))
@@ -211,10 +211,10 @@ class MutationAndHttpTests(unittest.TestCase):
             consumer=backtest_queue.Queue(backtest_queue.Store(root/'queue.sqlite'),library=backtest_queue.saved_backtests.Store((backtest_queue.Store(root/'queue.sqlite')).path.with_name('saved-library.sqlite')))
             context.enter_context(patch.object(serve.backtest_queue,'Queue',return_value=consumer))
             entered=Event();joining=Event();source_released=Event();handled=Event();errors=[];responses=[]
-            original_request=serve.Handler.data_request
-            def late_request(handler):
-                entered.set();return original_request(handler)
-            context.enter_context(patch.object(serve.Handler,'data_request',late_request))
+            original_request=serve.data.data_request
+            def late_request(handler,*args):
+                entered.set();return original_request(handler,*args)
+            context.enter_context(patch.object(serve.data,'data_request',late_request))
             server=serve.Server(('127.0.0.1',0),serve.Handler)
             original_close=server.server_close
             def join_handlers():

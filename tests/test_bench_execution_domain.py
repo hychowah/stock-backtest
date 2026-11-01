@@ -1,4 +1,7 @@
 """Small disposable domain exhaustion/lifecycle probes; never use real assets."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import json
 import os
 from pathlib import Path
@@ -10,12 +13,10 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-from bench_candidates_process import OwnedProcess, _pending_processes
-from bench_execution_domain import DomainLimits, start_controller
-import bench_execution_domain as domain
-
-
+sys.path.insert(0, str(ROOT))
+from backtest.runtime.process_owner import OwnedProcess, _pending_processes
+from tools.experiments.bench_execution_domain import DomainLimits, start_controller
+import tools.experiments.bench_execution_domain as domain
 class DomainTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='cb02-domain-fixture-')
@@ -147,7 +148,7 @@ class DomainTests(unittest.TestCase):
         def fail(thread):
             owners.append(thread._target.__self__)
             raise failure
-        with patch('bench_candidates_process.Thread.start', fail):
+        with patch('backtest.runtime.process_owner.Thread.start', fail):
             with self.assertRaises(RuntimeError) as caught:
                 self.controller('time.sleep(20)\n')
         self.assertIs(caught.exception, failure)

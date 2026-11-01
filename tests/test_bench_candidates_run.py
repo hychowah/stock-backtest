@@ -1,16 +1,12 @@
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 
-# Resolve the importable package for direct-file commands and spawned fixtures.
-import sys as _package_sys
-from pathlib import Path as _PackagePath
-_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 """Complete portfolio parity and containment for the common candidate adapter."""
 from contextlib import closing, ExitStack, nullcontext
@@ -29,11 +25,12 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_methods as shared
-from bench_candidates import NumericInputs, PythonExecutor
-import bench_candidates_run as runner
-from bench_candidates_process import OwnedProcess
+from tools.experiments.bench_candidates import NumericInputs, PythonExecutor
+import tools.experiments.bench_candidates_run as runner
+runner.bind_financial()
+from backtest.runtime.process_owner import OwnedProcess
 
 
 def valid_resources():
@@ -54,16 +51,18 @@ def agreed_method(requests):
 
 class SourceInventoryTests(unittest.TestCase):
     def test_extracted_policy_mutation_rejects_before_database_or_executor_access(self):
-        for relative in ('tools/bench_policy_program.py', 'backtest/engines/numerical/policy.py', 'backtest/engines/numerical/decisions.py', 'backtest/engines/numerical/temporal.py', 'backtest/engines/numerical/generation.py', 'backtest/engines/numerical/factors.py', 'backtest/engines/numerical/workspace.py', 'backtest/__init__.py', 'backtest/financial/__init__.py'):
+        for relative in ('backtest/engines/numerical/policy.py', 'backtest/engines/numerical/decisions.py', 'backtest/engines/numerical/temporal.py', 'backtest/engines/numerical/generation.py', 'backtest/engines/numerical/factors.py', 'backtest/engines/numerical/workspace.py', 'backtest/__init__.py', 'backtest/financial/__init__.py','tools/__init__.py','tools/experiments/__init__.py'):
             with self.subTest(implementation=relative): self.check_mutation(relative)
 
     def check_mutation(self, relative):
         with tempfile.TemporaryDirectory(prefix='cb02-policy-source-') as temporary:
             root = Path(temporary)
             shutil.copytree(ROOT/'backtest',root/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
-            tools = root / 'tools'; tools.mkdir()
-            for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py', 'bench_candidates_process.py'):
-                shutil.copy2(ROOT / 'tools' / name, tools / name)
+            tools = root / 'tools/experiments'; tools.mkdir(parents=True)
+            for name in ('tools/__init__.py','tools/experiments/__init__.py'):
+                shutil.copy2(ROOT/name,root/name)
+            for name in ('bench_methods_arrays.py', 'bench_generation.py'):
+                shutil.copy2(ROOT / 'tools/experiments' / name, tools / name)
             scripts = root / 'scripts'; scripts.mkdir()
             implementation = root / relative
             with patch.object(runner, 'ROOT', root):
@@ -72,6 +71,8 @@ class SourceInventoryTests(unittest.TestCase):
                 frozen = runner.hashes(files)
                 self.assertIn('backtest/__init__.py',frozen)
                 self.assertIn('backtest/financial/__init__.py',frozen)
+                self.assertIn('tools/__init__.py',frozen)
+                self.assertIn('tools/experiments/__init__.py',frozen)
                 self.assertTrue(all('\\' not in key and not key.startswith('/') for key in frozen))
                 specification = root / 'specification.json'
                 shared.baseline.publish(specification, dict(staging='all', candidate_assembly='source',
@@ -89,8 +90,8 @@ class SourceInventoryTests(unittest.TestCase):
                      patch.dict(os.environ), patch.object(runner.baseline, 'bootstrap'), \
                      patch.object(runner, 'emit'), \
                      patch.object(runner.sqlite3, 'connect', side_effect=AssertionError('Database accessed')) as connect, \
-                     patch('bench_candidates.NumericInputs', side_effect=AssertionError('Inputs constructed')) as inputs, \
-                     patch('bench_candidates.PythonExecutor', side_effect=AssertionError('Executor constructed')) as executor:
+                     patch('tools.experiments.bench_candidates.NumericInputs', side_effect=AssertionError('Inputs constructed')) as inputs, \
+                     patch('tools.experiments.bench_candidates.PythonExecutor', side_effect=AssertionError('Executor constructed')) as executor:
                     with self.assertRaisesRegex(ValueError, 'Candidate source changed before attachment'):
                         runner.worker(args)
                 connect.assert_not_called()
@@ -121,13 +122,13 @@ class CandidateRequestTests(unittest.TestCase):
                             path=self.fixture.root/f'{pool}-{profile}-{metric}-{staging}.sqlite'
                             freshness=Mock()
                             actual=dict.fromkeys(('snapshots','screening_metrics','filter_values'),0)
-                            original=runner.stage_book
+                            from backtest.engines.numerical.workspace import stage_book as original
                             def observed(db,book,pool,**kwargs):
                                 result=original(db,book,pool,**kwargs)
                                 for table in actual:
                                     actual[table]+=db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
                                 return result
-                            with patch.object(runner,'stage_book',side_effect=observed), \
+                            with patch('backtest.engines.numerical.workspace.stage_book',side_effect=observed), \
                                     patch.object(self.executor,'evaluate',wraps=self.executor.evaluate) as evaluate:
                                 measured,picks=runner.run_candidate(self.inputs,self.executor,config,
                                     self.fixture.reader,path,freshness=freshness,budget_seconds=10.,staging=staging)
@@ -653,7 +654,7 @@ class PlannedCandidateRequestTests(CandidateRequestTests):
 
 class CompiledCandidateRequestTests(unittest.TestCase):
     def setUp(self):
-        from bench_candidates_numba import NumbaExecutor
+        from backtest.engines.numerical.numba import NumbaExecutor
         self.fixture = shared.SharedMethodsTests('test_empty_trials_remain_visible_and_excluded_from_distributions')
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
@@ -843,7 +844,7 @@ else:
         args=SimpleNamespace(runtime=self.root,workdir=self.root,setup_budget=1.,
                              request_budget=1.,smoke_budget=1.,staging='requested',candidate_assembly='source')
         with patch.object(runner.admission,'require_execution'), \
-                patch('bench_candidates_process.OwnedProcess',return_value=owned) as spawn, \
+                patch('backtest.runtime.process_owner.OwnedProcess',return_value=owned) as spawn, \
                 patch.object(runner.time,'monotonic',side_effect=[0.,0.,0.,0.,100.]):
             report=runner.run_isolated(args,'python',specification,result)
         command=spawn.call_args.args[0]

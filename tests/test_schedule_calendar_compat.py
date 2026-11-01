@@ -13,8 +13,8 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'website')]
-import runtime_access
+sys.path[:0] = [str(ROOT/'scripts'), str(ROOT)]
+from website import runtime_access
 _owner = runtime_access.ownership(ROOT)
 _owner.__enter__()
 atexit.register(_owner.__exit__, None, None, None)

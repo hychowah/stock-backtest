@@ -126,7 +126,7 @@ Raw data remains outside Git. Back it up separately. Baseline revision history r
 
 The automatic launcher retries unfinished updates. You can also run `python3 tools/deploy.py` again. A pending publication retains its verified staging payload and completion journal. Default retry selects that transaction's commit, even if the final manifest still records the older commit. An explicit different revision is rejected before staging. Finish recovery first, then deliberately select another revision if needed. Native publication still verifies the retained payload under its existing locks. The server refuses to import application modules while a pending publication exists. Do not delete the journal, edit the manifest, or copy individual source files to bypass recovery.
 
-The lock is acquired before the application module is imported. `website/serve.py` is the small entry point; `website/serve_app.py` holds the HTTP application. The ownership implementation is `website/runtime_access.py`.
+The lock is acquired before the application module is imported. `website/serve.py` is the small entry point; `website/server/app.py` holds the HTTP application. The ownership implementation is `website/runtime_access.py`.
 
 ## Local registration and fallback
 

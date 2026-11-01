@@ -21,7 +21,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'tests'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'tests'),str(ROOT)]
 import numpy as np
 from backtest.runtime import backtest_control as backtest_control
 from backtest.engines.numerical import candidates as candidates

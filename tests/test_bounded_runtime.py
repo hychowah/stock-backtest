@@ -10,7 +10,7 @@ import time
 import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))

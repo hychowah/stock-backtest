@@ -6,7 +6,7 @@ import sys
 import unittest
 
 ROOT=Path(__file__).absolute().parents[1]
-sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT)]
 import test_numerical_runtime as fixtures
 import sys as _root_sys
 from pathlib import Path as _RootPath

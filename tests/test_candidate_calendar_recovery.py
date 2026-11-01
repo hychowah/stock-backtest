@@ -32,14 +32,14 @@ class CalendarRecoveryTests(unittest.TestCase):
         try:
             self.assertFalse(owner.ready())
             with patch.object(owner,'calculate',side_effect=AssertionError('No calculation during submission')):
-                handler.queue_request()
+                calculation_tests.serve.backtests.queue_request(handler,calculation_tests.serve.DATA_JOBS)
             self.assertEqual(handler.replies[0][0],200)
             self.assertEqual(store.listing()['records'][0]['state'],'queued')
         finally:owner.operation.release()
         owner.preparation.status.return_value=dict(state='unavailable')
         unavailable=calculation_tests.CalculationTests.handler(self,'/api/backtest-queue',request(options=self.options()))
         unavailable.server.candidate_preparation=owner.preparation
-        self.assertFalse(unavailable.require_calculation());self.assertEqual(unavailable.replies[0][0],503)
+        self.assertFalse(calculation_tests.serve.backtests.require_calculation(unavailable));self.assertEqual(unavailable.replies[0][0],503)
         self.assertFalse(owner.ready());queue.close()
 
     def test_canonical_plan_shutdown_requeue_replay_and_complete_snapshot(self):

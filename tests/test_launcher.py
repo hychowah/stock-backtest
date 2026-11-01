@@ -7,10 +7,8 @@ from threading import Event, Thread
 import unittest
 from unittest.mock import Mock, patch
 from urllib.request import build_opener, ProxyHandler
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'website'))
-import launcher
-
-
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from website.server import launcher
 class LauncherTests(unittest.TestCase):
     def test_transfer_stops_current_server_and_cleans_identity(self):
         old=dict(port=3000,token='old',lifetime_lock=True)

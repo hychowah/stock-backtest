@@ -1,4 +1,7 @@
 """Committed source publication, recovery and actual cross-process ownership."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import hashlib
 from contextlib import closing, ExitStack
 import io
@@ -15,11 +18,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'website'), str(ROOT / 'scripts')]
-import deploy
-import runtime_access
-
-
+sys.path.insert(0, str(ROOT))
+import tools.ops.deploy as deploy
+from website import runtime_access
 @unittest.skipUnless(sys.platform=='win32','Windows batch entry checks require native Windows.')
 class BatchEntryTests(unittest.TestCase):
     def command(self,launcher,*arguments,cwd):
@@ -398,7 +399,7 @@ class DeploymentTests(unittest.TestCase):
             state = dict(port=port, pid=port + 100, token='test-token', project=str(self.root))
             states.append(state)
             deploy.write_json(self.root / 'data' / f'website-server-{port}.json', state)
-        import launcher
+        from website.server import launcher
         def request(state, path, method='GET'):
             return state if method == 'GET' else dict(stopping=True)
         with patch.object(launcher, 'request', side_effect=request) as calls, patch.object(launcher, 'wait_legacy_process') as wait:
@@ -436,8 +437,9 @@ class DeploymentTests(unittest.TestCase):
             deploy.unpack(self.stage)
 
     def test_publication_cli_installs_verified_archive(self):
-        names = ('tools/deploy.py', 'website/runtime_access.py', 'website/launcher.py',
-                 'backtest/runtime/cache_access.py', 'backtest/__init__.py', 'backtest/paths.py')
+        names = ('tools/deploy.py', 'tools/ops/deploy.py', 'tools/__init__.py', 'tools/ops/__init__.py',
+                 'website/__init__.py', 'website/server/__init__.py', 'website/runtime_access.py', 'website/server/launcher.py',
+                 'backtest/runtime/cache_access.py', 'backtest/runtime/__init__.py', 'backtest/__init__.py', 'backtest/paths.py')
         with tarfile.open(self.stage / 'source.tar', 'w') as output:
             for name in names:
                 output.add(ROOT / name, arcname=name, recursive=False)
@@ -452,6 +454,64 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((self.root / 'website/runtime_access.py').read_bytes(),
                          (ROOT / 'website/runtime_access.py').read_bytes())
 
+    def test_genuine_old_controller_publishes_selected_new_layout(self):
+        """bdd75d9 really extracts the selected stable entry as one file."""
+        import importlib.util
+        historical = ROOT/'tests/fixtures/deployment-old-controller/deploy.py'
+        self.assertEqual(hashlib.sha256(historical.read_bytes()).hexdigest(),'5a9fd344a2c64287ca24ba430ddd480201b7cf48b11516511cea627d5250db50')
+        spec = importlib.util.spec_from_file_location('frozen_old_controller',historical)
+        old = importlib.util.module_from_spec(spec);spec.loader.exec_module(old)
+        with tempfile.TemporaryDirectory() as temporary:
+            source=Path(temporary)/'source';source.mkdir()
+            names=('tools/deploy.py','tools/ops/deploy.py','tools/__init__.py','tools/ops/__init__.py',
+                'website/__init__.py','website/server/__init__.py','website/runtime_access.py',
+                'website/server/launcher.py','backtest/__init__.py','backtest/paths.py',
+                'backtest/runtime/__init__.py','backtest/runtime/cache_access.py')
+            for name in names:
+                destination=source/name;destination.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(ROOT/name,destination)
+            git=shutil.which('git')
+            if git is None:self.skipTest('Git is required for the genuine old-controller archive fixture.')
+            subprocess.run([git,'init','-q','--separate-git-dir',str(source/'.git-local'),str(source)],check=True)
+            def command(*args):return [git,'--git-dir='+str(source/'.git-local'),'--work-tree='+str(source),*args]
+            for key,value in (('user.name','Fixture'),('user.email','fixture@example.invalid'),('core.autocrlf','false')):
+                subprocess.run(command('config',key,value),check=True)
+            subprocess.run(command('add','tools','website','backtest'),check=True)
+            subprocess.run(command('commit','-qm','Private new-layout fixture'),check=True)
+            commit=subprocess.check_output(command('rev-parse','HEAD')).decode().strip()
+            config=dict(source=str(source),runtime=str(self.root),distro='Fixture',python=sys.executable)
+            def native(config,*arguments):
+                subprocess.run([sys.executable,'-B',*map(str,arguments)],check=True,capture_output=True)
+            with patch.object(old,'ROOT',source),patch.object(old,'linux_path',side_effect=Path), \
+                    patch.object(old,'windows_path',side_effect=str),patch.object(old,'git_command',side_effect=command), \
+                    patch.object(old,'native',side_effect=native):
+                old.deploy(config,commit)
+            self.assertEqual(deploy.read_json(self.root/deploy.MANIFEST)['commit'],commit)
+            self.assertEqual((self.root/'tools/ops/deploy.py').read_bytes(),(ROOT/'tools/ops/deploy.py').read_bytes())
+            self.assertFalse((self.root/deploy.PENDING).exists())
+
+    def test_stable_bootstrap_rejects_unbound_or_nonregular_helper(self):
+        import importlib.util
+        spec=importlib.util.spec_from_file_location('stable_deployment_entry',ROOT/'tools/deploy.py')
+        entry=importlib.util.module_from_spec(spec);spec.loader.exec_module(entry)
+        content=b'raise AssertionError("unverified helper executed")\n'
+        for kind in ('hash','missing','link','duplicate','oversize'):
+            with self.subTest(kind=kind),tempfile.TemporaryDirectory() as temporary:
+                stage=Path(temporary)
+                with tarfile.open(stage/'source.tar','w') as archive:
+                    if kind!='missing':
+                        member=tarfile.TarInfo(entry.HELPER_MEMBER)
+                        member.size=len(content)
+                        if kind=='link':member.type=tarfile.SYMTYPE;member.linkname='/outside'
+                        if kind=='oversize':member.size=entry.MAX_HELPER_BYTES+1
+                        payload=content if kind!='oversize' else b'x'*member.size
+                        archive.addfile(member,io.BytesIO(payload) if member.isfile() else None)
+                        if kind=='duplicate':archive.addfile(member,io.BytesIO(content))
+                sha=deploy.digest(stage/'source.tar') if kind!='hash' else '0'*64
+                deploy.write_json(stage/'request.json',dict(archive_sha256=sha))
+                with self.assertRaises(ValueError):entry.native_bootstrap(['--native-publish',str(stage),str(self.root)])
+                self.assertFalse((stage/'operations-helper.py').exists())
+
     def test_report_export_requires_database_binding(self):
         content = b'Through 2026-10-21\n'
         (self.root / 'results').mkdir()
@@ -464,10 +524,11 @@ class DeploymentTests(unittest.TestCase):
                     ('baseline_report_sha', json.dumps(hashlib.sha256(content).hexdigest())),
                     ('baseline_result', json.dumps(dict(through='2026-10-21', years=[])))])
         bundle = self.stage / 'report'
-        deploy.export_runtime_report(self.root, bundle)
+        with patch.object(deploy, 'support'):
+            deploy.export_runtime_report(self.root, bundle)
         self.assertEqual((bundle / 'summary-exits.txt').read_bytes(), content)
         (self.root / deploy.REPORT).write_bytes(b'changed')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError), patch.object(deploy, 'support'):
             deploy.export_runtime_report(self.root, bundle)
 
     def test_report_export_owns_source_before_financial_imports(self):
@@ -475,16 +536,19 @@ class DeploymentTests(unittest.TestCase):
         scripts.mkdir(parents=True)
         (self.root/'backtest/__init__.py').write_text('')
         (scripts/'__init__.py').write_text('')
+        website = self.root/'website'; website.mkdir()
+        (website/'__init__.py').write_text('')
+        shutil.copy2(ROOT/'website/runtime_access.py', website/'runtime_access.py')
         marker = self.root / 'financial-import'
         (scripts / 'baseline.py').write_text('from pathlib import Path\n'
                 'Path(__file__).resolve().parents[2].joinpath("financial-import").write_text("yes")\n'
                 'raise RuntimeError("import probe finished")\n')
-        code = ('import sys;sys.path[:0]=[sys.argv[1],sys.argv[2]];import deploy;'
+        code = ('import sys;sys.path.insert(0,sys.argv[1]);from tools.ops import deploy;'
                 'deploy.export_runtime_report(sys.argv[3],sys.argv[4])')
         child = None
         try:
             with runtime_access.ownership(self.root, exclusive=True):
-                child = subprocess.Popen([sys.executable, '-B', '-c', code, str(ROOT / 'tools'),
+                child = subprocess.Popen([sys.executable, '-B', '-c', code, str(ROOT),
                                           str(ROOT / 'website'), str(self.root), str(self.stage / 'report')],
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 import time
@@ -529,12 +593,12 @@ class DeploymentTests(unittest.TestCase):
 
     def test_entry_point_owns_source_before_application_import(self):
         website = self.root / 'website'
-        website.mkdir()
+        website.mkdir(); (website/'server').mkdir(); (website/'__init__.py').write_text(''); (website/'server/__init__.py').write_text('')
         for name in ('serve.py', 'runtime_access.py'):
             shutil.copy2(ROOT / 'website' / name, website / name)
         marker = self.root / 'imported'
-        (website / 'serve_app.py').write_text('from pathlib import Path\n'
-                'Path(__file__).resolve().parents[1].joinpath("imported").write_text("yes")\n'
+        (website / 'server/app.py').write_text('from pathlib import Path\n'
+                'Path(__file__).resolve().parents[2].joinpath("imported").write_text("yes")\n'
                 'def main(): pass\n')
         child = None
         try:
@@ -568,10 +632,10 @@ class DeploymentTests(unittest.TestCase):
 
     def test_spawned_entry_keeps_source_ownership_after_bootstrap(self):
         website = self.root / 'website'
-        website.mkdir()
+        website.mkdir(); (website/'server').mkdir(); (website/'__init__.py').write_text(''); (website/'server/__init__.py').write_text('')
         for name in ('serve.py', 'runtime_access.py'):
             shutil.copy2(ROOT / 'website' / name, website / name)
-        (website / 'serve_app.py').write_text('def main(): raise RuntimeError("worker must not run main")\n')
+        (website / 'server/app.py').write_text('def main(): raise RuntimeError("worker must not run main")\n')
         code = ('import runpy,sys;runpy.run_path(sys.argv[1],run_name="__mp_main__");'
                 'print("ready",flush=True);sys.stdin.readline()')
         child = subprocess.Popen([sys.executable, '-B', '-c', code, str(website / 'serve.py')],

@@ -9,15 +9,13 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'website')]
+sys.path[:0] = [str(ROOT/'scripts'), str(ROOT)]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import diagnostics as diagnostics
 from backtest.application import preparation as preparation
-import serve
-
-
+from website.server import app as serve
 class DependencyDiagnosticsTests(unittest.TestCase):
     def setUp(self):
         self.context = ExitStack()

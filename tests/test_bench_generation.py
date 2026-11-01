@@ -1,7 +1,7 @@
 """Disposable freshness, publication and reattachment checks for the pilot."""
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 from backtest import calendar as schedule_calendar, portfolio_results
 from contextlib import closing
@@ -16,11 +16,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_methods as shared
-import bench_generation as generation
-
-
+import tools.experiments.bench_generation as generation
 class GenerationTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()

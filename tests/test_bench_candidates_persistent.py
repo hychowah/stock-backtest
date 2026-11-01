@@ -1,4 +1,7 @@
 """Read-only mapped inputs and loaded-worker request/lifetime checks."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
@@ -15,13 +18,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_methods as shared
 import numpy as np
-from bench_candidates import NumericInputs, PythonExecutor
-import bench_candidates_persistent as backend
-
-
+from tools.experiments.bench_candidates import NumericInputs, PythonExecutor
+import tools.experiments.bench_candidates_persistent as backend
 class PersistentTests(unittest.TestCase):
     def setUp(self):
         # Reuse the existing source-policy fixture without inheriting its
@@ -140,11 +141,11 @@ class PersistentTests(unittest.TestCase):
         code = textwrap.dedent('''
             import json, sqlite3, sys, time
             from pathlib import Path
-            sys.path.insert(0,str(Path(sys.argv[1])/'tools'))
-            import bench_baseline as baseline
+            sys.path.insert(0,str(Path(sys.argv[1])))
+            import tools.experiments.bench_baseline as baseline
             baseline.bootstrap(sys.argv[2])
-            from bench_candidates import NumericInputs
-            from bench_candidates_persistent import attach
+            from tools.experiments.bench_candidates import NumericInputs
+            from tools.experiments.bench_candidates_persistent import attach
             db=sqlite3.connect(Path(sys.argv[3]).resolve().as_uri()+'?mode=ro',uri=True)
             db.row_factory=sqlite3.Row
             inputs=NumericInputs(db,baseline.s)

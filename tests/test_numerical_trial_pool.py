@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'tests'), str(ROOT/'tools'), str(ROOT/'website')]
+sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'tests'), str(ROOT/'tools'), str(ROOT)]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -26,7 +26,7 @@ from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_res
 import test_numerical_generation as generations
 from backtest.engines.original import robustness as robustness
 from backtest.engines.numerical import runtime as numerical_runtime
-import runtime_access
+from website import runtime_access
 from backtest.runtime.process_owner import windows_processes
 
 

@@ -1,4 +1,7 @@
 """Exact-byte offline capture and Git-bound old/current ownership interoperability."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from contextlib import contextmanager
 import gzip
 import hashlib
@@ -15,9 +18,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT/'tools'))
-import offline_input_copy as copier
-
+sys.path.insert(0, str(ROOT))
+import tools.ops.offline_input_copy as copier
 FIXTURE = ROOT/'tests/fixtures/offline-copy-ownership'
 PEER = r'''
 import importlib.util,sys,time

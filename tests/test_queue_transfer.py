@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 from backtest.application import queue as queue
 from backtest.application import library as saved
 from test_saved_backtests import snapshot

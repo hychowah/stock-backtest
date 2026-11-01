@@ -13,10 +13,10 @@ import tempfile
 import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
-import serve
-import build_state
-import build
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
+from website.server import app as serve
+from website.rendering import state as build_state
+from website import build
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -97,7 +97,8 @@ class BuildStateTests(unittest.TestCase):
         root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
         self.website=root/'website';(self.website/'local').mkdir(parents=True)
         (root/'data').mkdir();(root/'data'/'research.sqlite').write_bytes(b'database')
-        self.source=self.website/'range.js';self.source.write_bytes(b'const n=1;\r\n')
+        (self.website/'browser').mkdir()
+        self.source=self.website/'browser/range.js';self.source.write_bytes(b'const n=1;\r\n')
         for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html'):
             (self.website/'local'/name).write_text('output')
         self.context.enter_context(patch.object(build_state,'ROOT',self.website))
@@ -114,6 +115,22 @@ class BuildStateTests(unittest.TestCase):
         owner.write_bytes(b'value=2;\n');self.assertFalse(build_state.current_build())
         generated=application/'__pycache__';generated.mkdir();(generated/'jobs.py').write_text('ignored')
         self.assertNotIn('backtest/application/__pycache__/jobs.py',build_state.inputs()['sources'])
+
+    def test_nested_owners_invalidate_and_generated_directories_do_not(self):
+        for directory in ('browser','rendering','server'):
+            folder=self.website/directory
+            folder.mkdir(exist_ok=True)
+            nested=folder/'nested';nested.mkdir()
+            source=nested/'owner.py';source.write_text('value=1\n')
+            build_state.record_build()
+            self.assertIn('website/'+directory+'/nested/owner.py',build_state.inputs()['sources'])
+            source.write_text('value=2\n')
+            self.assertFalse(build_state.current_build())
+        build_state.record_build()
+        for directory in ('local','dist','.openai','node_modules','server/__pycache__'):
+            folder=self.website/directory;folder.mkdir(parents=True,exist_ok=True)
+            (folder/'generated.py').write_text('ignored')
+        self.assertTrue(build_state.current_build())
 
     def test_portable_snapshot_does_not_satisfy_local_build(self):
         snapshot=self.website/'dist';snapshot.mkdir()
@@ -139,7 +156,7 @@ class BuildStateTests(unittest.TestCase):
 class BuildDestinationTests(unittest.TestCase):
     def test_cli_defaults_to_local_and_snapshot_requires_flag(self):
         for options,destination in [([],build.LOCAL_OUTPUT),(['--snapshot'],build.SNAPSHOT_OUTPUT)]:
-            with patch.object(sys,'argv',['build.py',*options]),patch.object(build.cache_access,'access',return_value=nullcontext()),patch.object(build,'main') as main:
+            with patch.object(sys,'argv',['build.py',*options]),patch.object(build.cache_access,'access',return_value=nullcontext()),patch.object(build,'build') as main:
                 build.cli()
             main.assert_called_once_with(destination)
 

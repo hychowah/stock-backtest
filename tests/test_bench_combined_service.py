@@ -3,6 +3,9 @@
 Storage discovery is explicitly bound. These checks do not qualify ordinary
 preparation, current schema-8 capture, real benchmark admission or capacity.
 """
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from concurrent.futures import Future,ThreadPoolExecutor
 from contextlib import closing
 import json
@@ -18,14 +21,14 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'tools'),str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path.insert(0, str(ROOT))
 from bench_source_service_fixture import FictionalWorkspace,sha,MIB,_retained_workspaces
 from bench_service_fixture import SyntheticService,expanded_fixture
 import test_bench_execution as execution_fixture
 from bench_combined_service_fixture import MeasurementOutput,measurement,command,STEP_COSTS,COSTS
-import bench_execution_inputs as inputs
-import bench_execution_supervisor as supervisor
-from bench_comparison import ComparisonError,digest,STEPS,STEP_COSTS as PHASES
+import tools.experiments.bench_execution_inputs as inputs
+import tools.experiments.bench_execution_supervisor as supervisor
+from tools.experiments.bench_comparison import ComparisonError,digest,STEPS,STEP_COSTS as PHASES
 
 
 class ProtocolWorkspace(FictionalWorkspace):
@@ -46,7 +49,7 @@ class ProtocolWorkspace(FictionalWorkspace):
         self._owners=[]
         self.closed=False
         # Read-only strict observation needs the normal coordination files.
-        import runtime_access
+        from website import runtime_access
         from backtest.runtime.cache_access import WorkspaceAccess
         with runtime_access.ownership(self.source,timeout=0), \
                 WorkspaceAccess(self.source/'data/website-data-0.lock').hold(timeout=0):pass
@@ -168,7 +171,7 @@ class CombinedServiceTests(unittest.TestCase):
         return closure
 
     def saved_pools(self):
-        import runtime_access; from backtest.runtime import cache_access as cache_access
+        from website import runtime_access; from backtest.runtime import cache_access as cache_access
         source=self.workspace.source
         with runtime_access.ownership(source,timeout=0), \
                 cache_access.WorkspaceAccess(source/'data/website-data-0.lock').hold(timeout=0), \
@@ -217,7 +220,7 @@ class CombinedServiceTests(unittest.TestCase):
             self.assertEqual({row['binding']['financial_generation'] for row in records},{self.manifest['financial_generation']})
             self.assertTrue(all(row['details']['response_bytes']==row['details']['received_bytes'] for row in records))
         else:
-            from bench_execution_storage import inspect_evidence
+            from tools.experiments.bench_execution_storage import inspect_evidence
             archive=next(self.output.path.glob('*.evidence'))
             inspected=inspect_evidence(archive)
             self.assertFalse(inspected['header']['accepted_result'])

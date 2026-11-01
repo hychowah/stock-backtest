@@ -167,7 +167,7 @@ include `planned` beside `mode` and `options`. Retries bind all three values.
 Submitted options must match the plan. Queue recovery retains its existing
 plan column. Canonical calendar metadata participates in checkpoint evidence.
 
-`website/calendar-settings.js` owns browser date decoding and labels.
+`website/browser/calendar-settings.js` owns browser date decoding and labels.
 `engine-controls.js` owns engine choice and advisory capabilities. Existing
 artifact comparison handles submitted settings. Equivalent legacy/canonical monthly settings compare in memory.
 Original stored settings, labels and version-1/version-2 snapshots stay intact.

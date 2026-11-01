@@ -1,4 +1,7 @@
 """Actual HTTP, priority and orderly restart on private synthetic roots only."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from http.client import RemoteDisconnected
@@ -15,17 +18,14 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'scripts'), str(ROOT / 'website')]
+sys.path.insert(0, str(ROOT))
 from bench_service_fixture import SyntheticService, expanded_fixture, _pending_services
-from bench_comparison import ComparisonError
-from bench_methods import clean
-import bench_execution_observation as observations
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from tools.experiments.bench_comparison import ComparisonError
+from tools.experiments.bench_methods import clean
+import tools.experiments.bench_execution_observation as observations
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import schedules
-import runtime_access
+from website import runtime_access
 import test_bench_execution as fixtures
 
 
@@ -164,7 +164,7 @@ class AvailabilityTests(unittest.TestCase):
         code = 'import sys,time;from pathlib import Path;assert input()=="GO";Path(sys.argv[1]).touch();time.sleep(30)'
         check = owner._check
         live = []
-        from bench_execution import admission
+        from tools.experiments.bench_execution import admission
         with ThreadPoolExecutor(max_workers=1) as clients:
             def arrival():
                 if marker.exists() and not live:
@@ -274,7 +274,7 @@ class AvailabilityTests(unittest.TestCase):
         with runtime_access.ownership(self.f.source, exclusive=True, timeout=0): pass
 
     def test_source_mismatch_and_pending_source_publication_reject_startup(self):
-        path = self.f.source / 'website/data-panel.js'
+        path = self.f.source / 'website/browser/data-panel.js'
         original = path.read_bytes()
         path.write_bytes(original + b'\n')
         failed = SyntheticService(self.f, self.request)

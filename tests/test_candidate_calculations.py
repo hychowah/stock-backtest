@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch
 import unittest
 
 ROOT=Path(__file__).absolute().parents[1]
-sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT)]
 import test_numerical_runtime as runtime_tests
 import test_calculations as calculation_tests
 import sys as _root_sys
@@ -27,7 +27,7 @@ from backtest.engines.original import robustness as robustness
 from backtest.application import jobs as backtest_jobs
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import cache_access as cache_access
-import data_manager
+from website.server import data_manager
 from backtest.application import queue as backtest_queue
 from test_queue import request
 from backtest.engines.numerical.runtime import ClosureError

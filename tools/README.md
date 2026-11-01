@@ -1,29 +1,40 @@
-# Data acquisition and diagnostics
+# Operational commands and retained experiments
 
-These are diagnostics, retained API experiments and maintenance tools, not the normal workflow. Offline benchmark fixtures need no key or network. Acquisition scripts generally require `~/.grok/secrets/fmp_api_key`.
+Maintained workspace operations live in `tools/ops`. Retained benchmark and API
+experiments live in `tools/experiments`. Their package initializers do no work.
+Library callers import these canonical owners. Historical evidence keeps its
+original command paths and measurements.
 
-| Script | Purpose |
+| Owner | Purpose |
 | --- | --- |
-| `bench_execution_policy.py` | Owned source-only child constructs actual policy from a captured workspace; immutable binding only, no financial request command |
-| `bench_policy_program.py` | Shared source-derived PolicyProgram; construction needs no NumPy, numerical methods import it lazily |
-| `bench_execution_inputs.py` | Bounded captured-input workspace with verified source snapshot and owned writable derivatives; no engine attachment or current raw freshness |
-| `bench_input_artifacts.py` | Internal shared prepared-artifact inspection; no ownership or admission |
-| `bench_capture_offline.py` | Stopped-runtime SQLite-safe research/daily/report copy under exclusive source/cache ownership; no benchmark admission |
-| `bench_input_store.py` | Synthetic-only immutable research/daily/report store and owned writable clones; no live capture or execution admission |
-| `bench_admission.py` | Closed execution policy; no runtime is admitted until bound inputs and resources are qualified |
-| `bench_candidates_run.py` | Retained historical six-method comparison protocol; execution is closed |
-| `bench_methods.py` | Retained historical price-engine comparison protocol; execution is closed |
-| `bench_baseline.py` | Retained historical CB-01 freeze/run/verify protocol; execution is closed |
-| `bench_backtest.py` | Retained historical end-to-end random-date protocol; execution is closed |
-| `bench_metrics.py` | Time per-symbol metrics requests |
-| `download_one.py` | Download one exploratory bulk file into `raw/archive/` |
-| `fetch_bulk.py` | Legacy bulk downloader; outputs to `raw/archive/` |
-| `probe.py` | Inspect bulk response shapes |
-| `probe_list.py` | Inspect stock-list pagination |
-| `probe_span.py` | Check history request date windows |
-| `repair_market.py` | Replace active SPY and Treasury caches using short request windows |
+| `tools.ops.deploy` | Verified committed-source publication and native update supervision |
+| `tools.ops.offline_input_copy` | Exact-byte private input materialization; no command entry |
+| `tools.ops.prepared_input_coverage` | Read-only prepared-input coverage; no command entry |
+| `tools.ops.setup_numerical_native` | Explicit offline native toolchain setup |
+| `tools.ops.repair_market` | Explicit SPY and Treasury repair |
+| `tools.ops.list_stops`, `tools.ops.classify_stops` | Retained stop inspection commands |
+| `tools.experiments.bench_*` | Retained source-bound benchmark and fixture machinery |
+| `tools.experiments.parallel_comparison` | Scoped private comparison and its fixed child |
+| `tools.experiments.probe*`, `download_one`, `fetch_bulk` | Retained API acquisition experiments |
 
-Do not run these just to recompute results or rebuild the website. Use `scripts/revalue.py` and `website/build.py` instead. Bulk downloads can be refused by the provider, and long histories can be truncated. The main missing-data workflow lives in `scripts/run.py` and retains its older exit rule.
+The existing documented deployment, setup, repair, benchmark, probe and download
+command paths remain thin entries. `scripts/list_stops.py` and
+`scripts/classify_stops.py` also remain commands. Private workers and library
+modules have no forwarding entries. Numerical policy, decisions, process
+ownership and Numba implementation belong to `backtest`, not to tools.
+
+The deployment entry also supports an old running controller. That controller
+extracts only `tools/deploy.py` from its selected commit. The entry verifies the
+request-bound archive hash. It extracts only the bounded regular
+`tools/ops/deploy.py` helper. The helper loads support from the verified selected
+payload before it publishes source. Source ownership still precedes cache
+ownership. Interrupted publication still uses the existing journal.
+
+Importing tool packages does not read credentials or make requests. Explicit
+acquisition generally requires `~/.grok/secrets/fmp_api_key`. Offline fixtures
+need neither credentials nor network access. Do not run acquisition to recompute
+saved results or rebuild the website. Use `scripts/revalue.py` and
+`website/build.py`. Real benchmark admission remains closed.
 
 ## Current benchmark admission
 
@@ -248,8 +259,8 @@ and call `inputs.__exit__(None, None, None)` to finish that suspended outer exit
 Closing only the policy does not finish the outer exit. A caller exception keeps
 its original identity; it does not grant early ownership release.
 
-The existing `bench_candidates.PolicyProgram` name remains an alias to the
-extracted program. Financial formulas and signatures stay unchanged. Construction
+The source-derived program belongs to
+`backtest.engines.numerical.policy.PolicyProgram`. Financial formulas and signatures stay unchanged. Construction
 needs no NumPy. Existing numerical methods import NumPy when called. The retained
 candidate runner's source inventory also hashes the extracted implementation.
 A changed implementation rejects attachment before database or executor access.
@@ -273,7 +284,7 @@ participating cache-access source. It takes source ownership before short cache
 ownership and yields to live-intent leases. It releases both before calculation.
 This is cooperative priority, not zero-delay access or installed compatibility.
 
-`bench_candidates_process.OwnedProcess` bounds transport and records separate
+`backtest.runtime.process_owner.OwnedProcess` bounds transport and records separate
 closure facts. Native Job Objects limit committed memory, processes and CPU
 share. Resident-memory, thread and disk enforcement remain incomplete. Linux
 sessions do not prevent escape. Full resource qualification stays open.

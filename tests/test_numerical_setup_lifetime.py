@@ -9,12 +9,12 @@ import tempfile
 import time
 import unittest
 ROOT=Path(__file__).absolute().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path.insert(0,str(ROOT))
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.engines.numerical import toolchain as native
-import runtime_access
+from website import runtime_access
 
 FAKE=r'''
 use std::{env,fs,process::{self,Command,Stdio},thread,time::Duration};
@@ -34,8 +34,8 @@ OWNER=r'''
 import json,sys,time
 from pathlib import Path
 root,request,state=map(Path,sys.argv[1:])
-sys.path[:0]=[str(root/'website')]
-import runtime_access
+sys.path.insert(0,str(root))
+from website import runtime_access
 with runtime_access.ownership(root):
  sys.path.insert(0,str(root))
  from backtest.runtime.cache_access import WorkspaceAccess

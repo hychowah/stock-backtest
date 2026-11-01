@@ -36,8 +36,8 @@ from pathlib import Path
 from contextlib import closing
 import json,sys
 root=Path(sys.argv[1]);out=Path(sys.argv[2])
-sys.path[:0]=[str(root/'website'),str(root/'tools')]
-import runtime_access
+sys.path[:0]=[str(root)]
+from website import runtime_access
 with runtime_access.ownership(root,timeout=0):
  sys.path.insert(0,str(root))
  from backtest.inputs import fmp_download
@@ -45,7 +45,7 @@ with runtime_access.ownership(root,timeout=0):
  from backtest.inputs import research as r, daily
  from backtest.engines.original import schedules as s
  from backtest import portfolio_results, calendar as schedule_calendar
- import prepared_input_coverage as coverage
+ import tools.ops.prepared_input_coverage as coverage
  for m in (r,s,r.market,r.legacy,r.books,r.metrics,r.baseline,r.cache_assets,r.financial_inputs,r.revalue,r.cache_access,portfolio_results,schedule_calendar,coverage):
   assert Path(m.__file__).resolve().is_relative_to(root.resolve()),m.__name__
  for name,module in list(sys.modules.items()):
@@ -73,8 +73,8 @@ assert __import__('sys').stdin.readline()=='GO'+chr(10)
 from pathlib import Path
 import sqlite3,sys,time
 root=Path(sys.argv[1]);ready=Path(sys.argv[2])
-sys.path[:0]=[str(root/'website')]
-import runtime_access
+sys.path[:0]=[str(root)]
+from website import runtime_access
 with runtime_access.ownership(root,timeout=0):
  sys.path.insert(0,str(root))
  from backtest.inputs import fmp_download
@@ -102,8 +102,11 @@ class ExportedPreparationTests(unittest.TestCase):
         (self.root/'scripts').mkdir();(self.root/'website').mkdir();(self.root/'tools').mkdir()
         shutil.copytree(ROOT/'backtest',self.root/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
         for path in (ROOT/'scripts').glob('*.py'):shutil.copyfile(path,self.root/'scripts'/path.name)
-        shutil.copyfile(ROOT/'website/runtime_access.py',self.root/'website/runtime_access.py')
-        shutil.copyfile(ROOT/'tools/prepared_input_coverage.py',self.root/'tools/prepared_input_coverage.py')
+        for name in ('website/__init__.py','website/runtime_access.py'):
+            shutil.copyfile(ROOT/name,self.root/name)
+        (self.root/'tools/ops').mkdir()
+        for name in ('tools/__init__.py','tools/ops/__init__.py','tools/ops/prepared_input_coverage.py'):
+            shutil.copyfile(ROOT/name,self.root/name)
         write_fixture(self.root)
 
     def prepare(self):
@@ -155,8 +158,8 @@ class ExportedPreparationTests(unittest.TestCase):
         # A fresh process must acquire both owners and accept the old published pair.
         verify=r'''from pathlib import Path
 import sys
-root=Path(sys.argv[1]);sys.path[:0]=[str(root/'website')]
-import runtime_access
+root=Path(sys.argv[1]);sys.path[:0]=[str(root)]
+from website import runtime_access
 with runtime_access.ownership(root,timeout=0):
  sys.path.insert(0,str(root))
  from backtest.runtime import cache_access

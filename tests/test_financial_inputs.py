@@ -12,15 +12,13 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import financial_inputs as f
 from backtest.financial import metrics as metrics
-import data_manager as d
-
-
+from website.server import data_manager as d
 class FinancialTests(unittest.TestCase):
     def reports(self):
         reports={f'{year}-12-31':dict(epsDiluted=eps,totalStockholdersEquity=80e6) for year,eps in [(2016,1),(2017,1.1),(2018,1.2),(2019,1.728)]}

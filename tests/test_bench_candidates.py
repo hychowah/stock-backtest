@@ -1,11 +1,11 @@
 """Source differential proof for immutable inputs and candidate factor batches."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
 from backtest.engines.reference import legacy
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 from backtest.financial import rules, books as financial_books, metrics
 from datetime import date,timedelta
@@ -17,9 +17,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_methods as shared
-import bench_candidates as core
+import tools.experiments.bench_candidates as core
 import numpy as np
 
 s,baseline = shared.s,shared.baseline

@@ -31,14 +31,14 @@ The following map identifies the main areas to check.
 
 | Area | Main-side boundary |
 |---|---|
-| Presentation: `website/template.html`, CSS, `responsive.js`, labels, layout and result display | Continue UI work using existing request and result contracts. Preserve financial meaning, coverage warnings, missing values and exports. |
+| Presentation: `website/browser/template.html`, CSS, `responsive.js`, labels, layout and result display | Continue UI work using existing request and result contracts. Preserve financial meaning, coverage warnings, missing values and exports. |
 | Financial policy: `backtest/financial/rules.py`, `books.py`, `metrics.py`; `scripts/run.py`, `revalue.py`, `financial_inputs.py`; browser screening/return formulas | Coordinate before changing formulas, eligibility, ranking, dates, returns, exits, metrics, filters or numerical tolerances. Presentation edits in the same browser files can continue. |
 | Execution: `backtest/engines/original/schedules.py`, `backtest/engines/original/book_batch.py`, `backtest/engines/original/robustness.py` | Engine-owned. Coordinate changes to planning, calculation, result saving, worker startup, cancellation or progress semantics. |
 | Prepared inputs and evidence: `backtest/inputs/research.py`, `backtest/inputs/baseline.py`, `backtest/inputs/cache_assets.py`, `backtest/runtime/cache_access.py`; `backtest/paths.py` | Engine-related contracts are protected. Coordinate changes to schemas, report binding, freshness, paths, cache publication, locking or prepared-input semantics. |
-| Shared service/build edges: `website/serve_app.py`, `data_manager.py`, `dataset.py`, `build.py`, `build_state.py`; `backtest/inputs/fmp_download.py` | Unrelated backend work can continue with narrow edits. Coordinate changes to engine calls, preparation, data publication, embedded datasets, configuration, response fields or error/progress contracts. |
-| Startup and deployment: `website/serve.py`, `launcher.py`, `runtime_access.py`, `tools/deploy.py`, Windows launch scripts | Coordinate changes to source/cache ownership, dependency setup, process lifetime, publication recovery, revision selection or default engine selection. |
-| Browser/API edges: `website/schedule.js`, `robustness.js`, `range.js`, `screener.js`, holdings and export adapters | UI work can continue. Keep request fields, defaults, units, sampled dates, result shapes, selected-stock evidence and saved-result compatibility stable. |
-| Benchmark engine: `tools/bench_*.py`, `tests/test_bench_*.py`, `docs/plans/compiled-backtest/` | Develop on the engine branch. Preserve its admission gates, evidence and historical measurements. Future engine modules fall under the same boundary. |
+| Shared service/build edges: `website/server/app.py`, `website/server/data_manager.py`, `website/rendering/data.py`, `website/build.py`, `website/rendering/state.py`; `backtest/inputs/fmp_download.py` | Unrelated backend work can continue with narrow edits. Coordinate changes to engine calls, preparation, data publication, embedded datasets, configuration, response fields or error/progress contracts. |
+| Startup and deployment: `website/serve.py`, `website/server/launcher.py`, `website/runtime_access.py`, `tools/deploy.py`, Windows launch scripts | Coordinate changes to source/cache ownership, dependency setup, process lifetime, publication recovery, revision selection or default engine selection. |
+| Browser/API edges: `website/browser/schedule.js`, `robustness.js`, `range.js`, `screener.js`, holdings and export adapters | UI work can continue. Keep request fields, defaults, units, sampled dates, result shapes, selected-stock evidence and saved-result compatibility stable. |
+| Benchmark engine: `tools/experiments/bench_*.py`, `tests/test_bench_*.py`, `docs/plans/compiled-backtest/` | Develop on the engine branch. Preserve its admission gates, evidence and historical measurements. Future engine modules fall under the same boundary. |
 | Tests and documentation for the areas above | Follow the contract being tested or described. Do not weaken tests or alter engine documentation on main to bypass an overlap. |
 
 Do not freeze every backend file. A new endpoint or helper that is independent
@@ -385,3 +385,10 @@ Each phase receives independent design, implementation, independent audit and
 one coherent commit. Check both process namespaces for automatic publication
 supervisors immediately before committing. Deployment, server restart,
 downloads and real-cache preparation remain outside this program.
+
+Phase 4 places browser sources in `website/browser/`, rendering in
+`website/rendering/` and HTTP composition in `website/server/`. Maintained
+operations live in `tools/ops/`; retained experiments live in
+`tools/experiments/`. Documented executable paths remain. Read the
+[current source map](plans/project-structure/source-map.md) when interpreting
+historical paths above. No engine-worktree synchronization is authorized.

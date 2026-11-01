@@ -17,7 +17,7 @@ from unittest.mock import patch
 import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'website'),str(ROOT/'scripts'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'tests')]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -369,8 +369,8 @@ class DurableTests(unittest.TestCase):
 
     def test_real_fictional_input_generation_replacement_and_checkpoint_eviction(self):
         import test_numerical_trials as trials
-        from bench_candidates import NumericInputs
-        from bench_candidates_numba import NumbaExecutor
+        from tools.experiments.bench_candidates import NumericInputs
+        from backtest.engines.numerical.numba import NumbaExecutor
         from backtest.engines.numerical.portfolio import NumericalPortfolio
         from backtest.engines.numerical.portfolio import compare_results
         fixture=trials.NumericalTrialsTests('test_full_month_pool_metric_filter_rank_matrix_and_exact_recovery')

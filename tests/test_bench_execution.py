@@ -1,4 +1,7 @@
 """Actual bound reference/Numba paths on disposable captures, never real data."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from contextlib import closing
 from datetime import date, timedelta
 import hashlib
@@ -12,11 +15,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_execution_inputs as fixtures
-import bench_execution as execution
-from bench_comparison import ComparisonProtocol, ComparisonError
-from bench_generation import signature
+import tools.experiments.bench_execution as execution
+from tools.experiments.bench_comparison import ComparisonProtocol, ComparisonError
+from tools.experiments.bench_generation import signature
 from test_bench_input_store import metadata, REPORT
 
 
@@ -80,7 +83,7 @@ class ExecutionTests(unittest.TestCase):
         f.manifest['originals']['freshness'] = f.freshness
         f.write_manifest()
         # Generate ordinary samples from actual source without live bootstrap.
-        sys.path[:0] = [str(ROOT / 'scripts')]
+        sys.path.insert(0,str(ROOT))
         from backtest.engines.original import robustness as robustness
         with closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as db:
             db.row_factory = sqlite3.Row
@@ -112,7 +115,7 @@ class ExecutionTests(unittest.TestCase):
         # Patch only this disposable child's test harness, not shipped workers.
         return [sys.executable, '-I', '-B', '-c',
             'import sys;sys.path.insert(0,sys.argv[1]);'
-            'from unittest.mock import patch;import bench_execution_worker as w;'
+            'from unittest.mock import patch;import tools.experiments.bench_execution_worker as w;'
             'ctx=patch.object(w.admission,"require_execution");ctx.start();w.main()',
             str(owner._tools), str(request)]
 
@@ -128,8 +131,8 @@ class ExecutionTests(unittest.TestCase):
         with patch.object(execution.admission, 'require_execution'), \
                 patch.object(owner, '_command', side_effect=lambda request: self.fixture_command(owner, request)):
             with owner:
-                helper='bench_candidates_process.py'
-                expected=hashlib.sha256((ROOT/'tools'/helper).read_bytes()).hexdigest()
+                helper='tools/experiments/bench_execution_policy.py'
+                expected=hashlib.sha256((ROOT/helper).read_bytes()).hexdigest()
                 self.assertEqual(owner.protocol.value['environment']['tool_sources'][helper],expected)
                 self.assertEqual(hashlib.sha256((owner._tools/helper).read_bytes()).hexdigest(),expected)
                 owner.compare()
@@ -311,7 +314,7 @@ class ExecutionTests(unittest.TestCase):
 
     def test_failed_child_constructor_keeps_workspace_and_process_for_retry(self):
         from contextlib import ExitStack
-        from bench_candidates_process import OwnedProcess, _pending_processes
+        from backtest.runtime.process_owner import OwnedProcess, _pending_processes
         for failure_kind in ('descendants', 'handles'):
             with self.subTest(failure_kind=failure_kind):
                 owner = self.owner()
@@ -319,7 +322,7 @@ class ExecutionTests(unittest.TestCase):
                 with patch.object(execution.admission, 'require_execution'):
                     owner.__enter__()
                     with ExitStack() as faults:
-                        faults.enter_context(patch('bench_candidates_process.Thread.start', side_effect=failure))
+                        faults.enter_context(patch('backtest.runtime.process_owner.Thread.start', side_effect=failure))
                         if failure_kind == 'descendants':
                             faults.enter_context(patch.object(OwnedProcess, 'wait_empty', side_effect=TimeoutError('Synthetic closure')))
                         else:

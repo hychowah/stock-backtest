@@ -1,4 +1,7 @@
 """Coverage populations, omissions and read-only freshness boundaries."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
@@ -14,8 +17,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tools'),str(ROOT/'tests')]
-import prepared_input_coverage as coverage
+sys.path.insert(0, str(ROOT))
+import tools.ops.prepared_input_coverage as coverage
 import test_research
 
 

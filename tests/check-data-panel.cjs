@@ -5,7 +5,7 @@ node('data-scope').value='symbols';node('data-symbols').value='A';node('data-sta
 const requests=[],timers=[],downloads=[];
 let reply={job:{running:false,action:null,message:'Ready',completed:0,total:0,error:null},report:null};
 const ctx=vm.createContext({document:{getElementById:node,createElement:()=>({click(){downloads.push(this.download)}}),querySelectorAll:()=>[{value:'prices'}]},location:{protocol:'http:'},Date,console,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},setTimeout(fn){timers.push(fn);return timers.length},async fetch(path,options){requests.push({path,options});return {status:200,ok:true,json:async()=>reply}}});
-vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/data-panel.js'),'utf8'),ctx);
+vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/browser/data-panel.js'),'utf8'),ctx);
 const run=code=>vm.runInContext(code,ctx);
 (async()=>{
  await run('DataPanel.refresh()');

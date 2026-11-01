@@ -1,4 +1,7 @@
 """Stopped-runtime capture proofs on disposable fixtures; no real cache reads."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import ast
 from contextlib import contextmanager, closing
 from copy import deepcopy
@@ -17,10 +20,10 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime'); del sys.argv[index:index + 2]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_capture_offline as capture
+import tools.experiments.bench_capture_offline as capture
 from test_bench_input_store import RESEARCH_SCHEMA, DAILY_SCHEMA, REPORT, fill, metadata
 
 
@@ -77,6 +80,20 @@ class CaptureTests(unittest.TestCase):
         with self.assertRaises(capture.OfflineCaptureError) as caught:
             operation()
         self.assertEqual(caught.exception.reason, reason)
+
+    def test_nested_owned_sources_exclude_generated_and_dependency_trees(self):
+        self.manifest.unlink()  # No installed inventory owns these fictional files.
+        expected=('website/rendering/nested/page.py','website/server/nested/routes.py')
+        excluded=('website/local/generated.py','website/dist/generated.py',
+            'website/.openai/cache.py','website/rendering/__pycache__/cache.py',
+            'website/server/node_modules/vendor.py','website/server/.venv/dependency.py')
+        for name in (*expected,*excluded):
+            path=self.root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('VALUE=1\n')
+        unrelated=self.root/'backtest/engines/numerical/unrelated.rs';unrelated.write_text('ignored')
+        observed=capture.originals(self.root,capture.Budget(None,None))['sources']
+        self.assertTrue(set(expected)<=observed.keys())
+        self.assertFalse(set(excluded)&observed.keys())
+        self.assertNotIn(unrelated.relative_to(self.root).as_posix(),observed)
 
     def test_complete_copy_preserves_original_bytes_metadata_and_saved_books(self):
         before = self.snapshot(); events = []

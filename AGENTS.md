@@ -69,7 +69,7 @@ Run real-cache preparation and `tests/check_paths.py` with native Windows Python
 
 Source publication stops only authenticated project servers, owns the runtime
 source exclusively, then takes financial cache ownership. Native server entry
-takes shared source ownership before importing `website/serve_app.py` and holds
+takes shared source ownership before importing `website/server/app.py` and holds
 it through shutdown. Do not change source/bootstrap lock ordering or bypass a
 `data/deployment.pending.json` journal. Retry deployment to complete recovery.
 Only manifest-owned source can be removed. Preserve the original folder as a
@@ -174,9 +174,9 @@ The `legacy` research pool preserves the original 250-candidate pre-price screen
 
 ## Website strategy builder
 
-`website/dataset.py` exports both prepared January pools as compact records embedded in the HTML. `website/screener.js` implements browser filtering/ranking; `website/range.js` connects controls and renders results. Each runtime shares filtering and ranking between historical and latest modes; only historical mode validates years. Browser parameters must match the SQL selection semantics in `backtest/inputs/research.py`. Check parity with `python3 tests/check_screener.py` after building; it requires a current prepared database. Keep the original static top-50 fallback and baseline CSV/JSON exports. Browser downloads reflect the current strategy. Show short/empty-year coverage explicitly; do not calculate a full-period strategy CAGR when any selected year is empty.
+`website/rendering/data.py` exports both prepared January pools as compact records embedded in the HTML. `website/browser/screener.js` implements browser filtering/ranking; `website/browser/range.js` connects controls and renders results. Each runtime shares filtering and ranking between historical and latest modes; only historical mode validates years. Browser parameters must match the SQL selection semantics in `backtest/inputs/research.py`. Check parity with `python3 tests/check_screener.py` after building; it requires a current prepared database. Keep the original static top-50 fallback and baseline CSV/JSON exports. Browser downloads reflect the current strategy. Show short/empty-year coverage explicitly; do not calculate a full-period strategy CAGR when any selected year is empty.
 
-Yearly attribution uses `website/contributions.js` for browser calculations and `website/attribution.py` for the static fallback. Top contributors means the first `min(10, actual selected count)` stocks, ordered by signed contribution (return / actual selected count), with ties by symbol. Gain/loss pies are normalized separately; never draw negative slices or describe them as shares of net return. Check with `node tests/check-contributions.cjs`, `python3 tests/test_attribution.py`, and the existing range/control tests.
+Yearly attribution uses `website/browser/contributions.js` for browser calculations and `website/rendering/attribution.py` for the static fallback. Top contributors means the first `min(10, actual selected count)` stocks, ordered by signed contribution (return / actual selected count), with ties by symbol. Gain/loss pies are normalized separately; never draw negative slices or describe them as shares of net return. Check with `node tests/check-contributions.cjs`, `python3 tests/test_attribution.py`, and the existing range/control tests.
 
 ## Selection order
 
@@ -202,7 +202,7 @@ Historical preparation is bounded by the canonical report's Through date and his
 Schema version 4 stores uniform `screening_metrics` pairs (multiple and yield)
 for each mode, pool, year and symbol; `backtest/financial/metrics.py` owns the display
 catalog, calculator registry and all metric calculations. Both website modes and SQL selection accept a metric
-ID, with the catalog embedded by `website/dataset.py`. Keep filtering/ranking
+ID, with the catalog embedded by `website/rendering/data.py`. Keep filtering/ranking
 and rendering generic: consumers read prepared pairs without interpreting formulas
 or calculator types. Three-year metric means current EV divided by mean EBITDA from three
 consecutive annual reports, excluding incomplete histories; current
@@ -215,7 +215,7 @@ new metrics. Calculation/catalog changes require offline prepare and rebuild.
 `scripts/schedules.py prepare` builds a separate ignored daily SQLite cache from
 saved prices after research preparation. `website/serve.py` serves the built page
 and a loopback custom-schedule API. January and latest views remain standalone;
-custom dates use `website/schedule.js` and the local service. Dates are anchored
+custom dates use `website/browser/schedule.js` and the local service. Dates are anchored
 to the original starting day, clamp month ends, and roll forward to SPY sessions;
 end marks roll back. Supported intervals are 1, 3, 6, 12 and 24 months. Persist dated
 books independently of filters and reuse `screening.select` and
@@ -236,13 +236,13 @@ retain their individual markers. Changed research inputs still require preparati
 
 ## Automatic local launcher
 
-`backtest-web.cmd` and `start.cmd` (Windows) use `website/launcher.py` to manage a terminal-owned server. Terminal logs stay visible; Ctrl+C stops the server. Safe development diagnostics also persist in `data/logs/website-<namespace>-<pid>.log`, with a 5 MiB active log and two rotated backups per process. `backtest/runtime/diagnostics.py` owns this logging. Startup removes logs older than 14 days, then oldest logs toward a 100 MiB total target. Delete only stopped-process logs from the current process namespace. Preserve legacy logs and foreign or unknown namespaces. Linux ownership includes the boot and PID namespace; Windows ownership uses the machine identity. Protected files and growth between starts can exceed the target. Cleanup errors do not stop startup. Keep exception types, OS codes and stack locations; omit exception text, source lines, locals, keys, provider URLs and response bodies. Startup and the data panel show the current log path. Test with `python3 tests/test_diagnostics.py`, including native Windows. The default listener is `0.0.0.0:3000`; the local browser uses `http://127.0.0.1:3000`. A per-port startup lock serializes preparation and binding. A separate lifetime lock stays held until the listener and all request threads close. An unreachable HTTP endpoint never proves that the old server has finished. Replacement waits up to 30 seconds for ownership, then reports a retry instruction. `website/launcher.py` owns identity publication, control requests, cleanup and both locks. An authenticated loopback identity endpoint identifies this project. Each managed launch stops the identified previous server and starts current code in the invoking terminal. This transfers ownership even from an unchanged background instance. Do not stop unknown port owners. Identity and startup lock files live under ignored `data/website-*` paths. Direct `python3 website/serve.py` remains a foreground option. The daily
+`backtest-web.cmd` and `start.cmd` (Windows) use `website/server/launcher.py` to manage a terminal-owned server. Terminal logs stay visible; Ctrl+C stops the server. Safe development diagnostics also persist in `data/logs/website-<namespace>-<pid>.log`, with a 5 MiB active log and two rotated backups per process. `backtest/runtime/diagnostics.py` owns this logging. Startup removes logs older than 14 days, then oldest logs toward a 100 MiB total target. Delete only stopped-process logs from the current process namespace. Preserve legacy logs and foreign or unknown namespaces. Linux ownership includes the boot and PID namespace; Windows ownership uses the machine identity. Protected files and growth between starts can exceed the target. Cleanup errors do not stop startup. Keep exception types, OS codes and stack locations; omit exception text, source lines, locals, keys, provider URLs and response bodies. Startup and the data panel show the current log path. Test with `python3 tests/test_diagnostics.py`, including native Windows. The default listener is `0.0.0.0:3000`; the local browser uses `http://127.0.0.1:3000`. A per-port startup lock serializes preparation and binding. A separate lifetime lock stays held until the listener and all request threads close. An unreachable HTTP endpoint never proves that the old server has finished. Replacement waits up to 30 seconds for ownership, then reports a retry instruction. `website/server/launcher.py` owns identity publication, control requests, cleanup and both locks. An authenticated loopback identity endpoint identifies this project. Each managed launch stops the identified previous server and starts current code in the invoking terminal. This transfers ownership even from an unchanged background instance. Do not stop unknown port owners. Identity and startup lock files live under ignored `data/website-*` paths. Direct `python3 website/serve.py` remains a foreground option. The daily
 preparer first ensures the research cache, then the server checks the website
 build stamp and rebuilds if needed. Open the browser only after successful
 preparation and binding; `--no-browser` supports headless use. Keep dependency
 repair automatic rather than making users chain preparation commands. Source
 fingerprints use POSIX relative keys and exclude platform-specific directory
-sizes. `website/build_state.py` tracks normalized source contents and the prepared
+sizes. `website/rendering/state.py` tracks normalized source contents and the prepared
 database generation. Test with `python3 tests/test_startup.py`.
 
 ## Automatic server updates
@@ -402,7 +402,7 @@ ignored. Real benchmark admission stays closed.
 
 `backtest/application/library.py` owns durable user records in
 `data/saved-backtests.sqlite`. This is not a rebuildable cache. Preserve it during
-preparation, cleanup and source deployment. `website/saved-backtests.js` saves the
+preparation, cleanup and source deployment. `website/browser/saved-backtests.js` saves the
 last completed result and its submitted settings, even when controls have pending
 edits. Opening a record restores stored stock rows, returns, labels and downloads
 without calculation. Cap the library at 100 records atomically across instances.
@@ -421,7 +421,7 @@ ignore their late replies. Native toggle uses capture delegation; rerendering
 open details must not duplicate loads. Inline retry keeps failures local.
 Disclosures never retain evidence readers or replace the main result/form.
 
-`website/backtest-comparison.js` owns pure descriptions and differences from
+`website/browser/backtest-comparison.js` owns pure descriptions and differences from
 stored artifacts. The library compares exactly two stable IDs without changing
 the main result or form. Normalize calendars and documented omission defaults;
 AND-filter order and duplicate identical conditions do not change meaning.
@@ -440,7 +440,7 @@ trial's original result. Observers must not mutate it. Preserve the default
 summary-only result and all existing calculation/progress contracts. Saved
 random records require ordered `trial_results` for every completed trial.
 
-`website/result-artifacts.js` owns the immutable completed artifact for each
+`website/browser/result-artifacts.js` owns the immutable completed artifact for each
 browser view. Publish fresh and reopened results through this same boundary.
 Views, downloads, setting-match notices and saving must read that artifact;
 keep live form edits separate. Persist semantic presentation fields, not DOM
@@ -489,7 +489,7 @@ discards its previous plan. Renaming a test keeps its dates. Each completed
 result is an immutable version-2 artifact with all trial holdings and original
 display labels. Opening it does not calculate.
 
-`website/queue.js` manages queue controls. Auto-run is suspended while the queue
+`website/browser/queue.js` manages queue controls. Auto-run is suspended while the queue
 has waiting/running work or an active edit. Adding, copying or editing an item
 turns Auto-run off for batch setup. Explicit Run remains available.
 The Add to queue action stays beside Run backtest in the strategy toolbar.
@@ -502,7 +502,7 @@ mutations if a list refresh fails, and ignore stale list responses. Checks:
 `node tests/check-queue.cjs`, existing background-run/range/library checks and
 `python3 tests/test_deployment.py` on both platforms.
 
-`StrategyDraft` in `website/range.js` owns the strategy form. A queued edit
+`StrategyDraft` in `website/browser/range.js` owns the strategy form. A queued edit
 reserves a form session before requesting its server hold. Only that session
 can restore settings until a save, cancel, deletion or server reconciliation
 ends it. Reconcile the session by its edit ID and version. An externally ended
@@ -565,7 +565,7 @@ and admission lifecycle without job dependencies.
 Call the calculation owner directly. Jobs does not forward calculation calls. Jobs and queue consumers do not choose an adapter.
 `backtest/calendar_requests.py` owns financial-free request/plan policy;
 Both engines import this canonical owner. Preserve legacy planner hashes.
-`website/engine-controls.js` owns execution controls and advisory capabilities;
+`website/browser/engine-controls.js` owns execution controls and advisory capabilities;
 `calendar-settings.js` owns dates and labels. Latest and January remain shared
 prepared-data views. Stored-result readers never infer producer from a selector.
 Check `tests/test_website_engine_alignment.py`, engine/candidate/calendar/batch/
@@ -580,7 +580,7 @@ release fences a delayed acquisition under the same ID. Cleanup failures retain
 strong owners and charged bytes for retry. Stored operations never prepare or
 calculate results and never consult a current catalog.
 
-`website/result-artifacts.js` owns `ResultArtifacts.use`. All opening, comparison
+`website/browser/result-artifacts.js` owns `ResultArtifacts.use`. All opening, comparison
 and parameter consumers use this scope. It retains the requested reader ID before
 POST and releases unaccepted acquisitions, including lost responses. Publication
 transfers a reader to the view. Preserve StrategyDraft restoration and its held

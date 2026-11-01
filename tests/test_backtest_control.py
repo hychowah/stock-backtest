@@ -14,13 +14,13 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 from backtest.runtime import backtest_control as control
 from backtest.engines.original import book_batch as book_batch
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import robustness as robustness
 from backtest.engines.original import schedules as schedules
-import serve
+from website.server import app as serve
 import test_robustness as fixtures
 
 

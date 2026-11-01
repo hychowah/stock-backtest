@@ -3,7 +3,7 @@ const output=require('path').resolve(process.argv[2]||require('path').join(__dir
 const html=fs.readFileSync(require('path').join(output,'index.html'),'utf8');
 const els=new Map();
 const embedded=html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1];
-const prepared=JSON.parse(embedded),screener=require('../website/screener.js');
+const prepared=JSON.parse(embedded),screener=require('../website/browser/screener.js');
 const latestDate=prepared.latest.metadata.asof;
 const latestCount=limit=>screener.latestScreen(prepared,{rank_to:limit}).stocks.length;
 function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:false,open:false,disabled:false,handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){}});return els.get(id)}

@@ -21,8 +21,8 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 import test_bench_methods as shared
 import test_numerical_generation as generations
-from bench_candidates import NumericInputs,PythonExecutor
-from bench_candidates_numba import NumbaExecutor
+from tools.experiments.bench_candidates import NumericInputs,PythonExecutor
+from backtest.engines.numerical.numba import NumbaExecutor
 from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
 from backtest.engines.numerical import random as diagnostic
 from backtest.engines.original import robustness as robustness
@@ -186,7 +186,7 @@ class NumericalTrialsTests(unittest.TestCase):
         self.assertTrue({'backtest/financial/metrics.py','backtest/portfolio_results.py','backtest/engines/original/robustness.py',
             'backtest/calendar.py','backtest/inputs/research.py','backtest/engines/numerical/policy.py',
             'backtest/engines/numerical/trial.py','backtest/result_evidence.py',
-            'tools/bench_candidates_numba.py','backtest/engines/numerical/workspace.py'} <= sources.keys())
+            'backtest/engines/numerical/numba.py','backtest/engines/numerical/workspace.py'} <= sources.keys())
 
     def test_consumer_rejects_noncontiguous_and_missing_results(self):
         inputs,provider,portfolio,store=self.evaluator();config=self.config()

@@ -36,9 +36,6 @@ SOURCE_ROOTS = ('website/runtime_access.py','backtest/engines/numerical/random.p
                 'backtest/engines/numerical/trial_worker.py',
                 'backtest/engines/numerical/checkpoints.py','backtest/engines/original/robustness.py',
                 'backtest/engines/numerical/rust.py','backtest/engines/numerical/rust_kernel.rs')
-COMPATIBILITY_ROOTS = ('tools/numerical_trials.py','tools/numerical_portfolios.py',
-                'tools/bench_candidates_numba.py','tools/portfolio_workspace.py')
-
 
 def source_identity():
     """Hash the transitive local Python imports, without importing providers.
@@ -48,8 +45,7 @@ def source_identity():
     participate. This conservative closure may reject safe reuse after an
     unrelated local dependency edit; it cannot reuse changed calculation code.
     """
-    return _source_closure(ROOT, (*SOURCE_ROOTS, *(name for name in COMPATIBILITY_ROOTS
-                            if (ROOT/name).is_file())))
+    return _source_closure(ROOT, SOURCE_ROOTS)
 
 
 def _source_closure(root, roots):

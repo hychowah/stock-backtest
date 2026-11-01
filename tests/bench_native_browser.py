@@ -5,6 +5,9 @@ fictional service. Publish no session before containment and endpoint validation
 succeed. Return evidence from actual controls, ordinary requests and completed
 downloads. Keep roots until browser and service closure are confirmed.
 """
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import base64
 from collections import deque
 from functools import wraps
@@ -26,8 +29,8 @@ import uuid
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-from bench_candidates_process import OwnedProcess, ProcessLimits
+sys.path.insert(0, str(ROOT))
+from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
 
 MIB = 1024**2
 LIMITS = dict(committed_bytes=1024**3, processes=16, cpu_percent=25,

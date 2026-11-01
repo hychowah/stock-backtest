@@ -22,8 +22,8 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 import test_bench_methods as shared
 import test_numerical_generation as generations
-from bench_candidates import NumericInputs, PythonExecutor
-from bench_candidates_numba import NumbaExecutor
+from tools.experiments.bench_candidates import NumericInputs, PythonExecutor
+from backtest.engines.numerical.numba import NumbaExecutor
 from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
 
 s=shared.s

@@ -19,10 +19,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 from backtest.engines.original import robustness as r
 from backtest.engines.original import schedules as s
-import serve
+from website.server import app as serve
 from backtest.application import jobs as backtest_jobs
 class RobustnessTests(unittest.TestCase):
     def setUp(self):
@@ -49,7 +49,7 @@ class RobustnessTests(unittest.TestCase):
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
             self.db.backup(db);return db
         with patch.object(daily,'connect',side_effect=connection):
-            handler.stream_batch({},planned=configuration)
+            serve.backtests.stream_batch(handler,{},planned=configuration)
 
     def test_seed_count_and_independent_draws_in_each_block(self):
         plan=self.config(trials=24,seed=11)

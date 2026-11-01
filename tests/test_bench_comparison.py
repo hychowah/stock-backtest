@@ -1,10 +1,12 @@
 """Prospective paired-protocol checks; no engines or market-data assets."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from bench_comparison import ComparisonError, ComparisonLedger, ComparisonProtocol, COSTS, STEPS, STEP_COSTS, validate_prospective
+from tools.experiments.bench_comparison import ComparisonError, ComparisonLedger, ComparisonProtocol, COSTS, STEPS, STEP_COSTS, validate_prospective
 
 
 def protocol(**changes):

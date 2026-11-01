@@ -1,7 +1,7 @@
 """Synthetic financial parity and durable evidence for the shared prototype."""
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 from backtest.financial import metrics
 from datetime import date, timedelta
@@ -9,6 +9,7 @@ from contextlib import closing
 from contextlib import ExitStack
 import json
 import os
+import shutil
 from pathlib import Path
 import sqlite3
 import sys
@@ -19,18 +20,52 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 RUNTIME = Path(os.environ.get('BACKTEST_BASELINE_RUNTIME', ROOT))
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime')
     RUNTIME = Path(sys.argv[index + 1]).resolve()
     del sys.argv[index:index + 2]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_baseline as baseline
+import tools.experiments.bench_baseline as baseline
 baseline.bootstrap(RUNTIME)
-import bench_methods as methods
-from bench_methods_arrays import open_prices
+import tools.experiments.bench_methods as methods
+methods.bind_financial()
+from tools.experiments.bench_methods_arrays import open_prices
 
 s, robust = baseline.s, baseline.robust
+
+
+class SourceInventoryTests(unittest.TestCase):
+    def test_each_package_initializer_mutation_rejects_before_financial_access(self):
+        names=('tools/__init__.py','tools/experiments/__init__.py')
+        for changed in names:
+            with self.subTest(changed=changed),tempfile.TemporaryDirectory() as temporary:
+                root=Path(temporary)
+                for name in (*names,'tools/experiments/bench_methods_arrays.py'):
+                    target=root/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/name,target)
+                backend=SimpleNamespace(SOURCE_FILES=(),open_prices=Mock(side_effect=AssertionError('Executor accessed')))
+                def mutate(path):
+                    target=root/changed;target.write_bytes(target.read_bytes()+b'\n# private mutation\n')
+                    return {}
+                with ExitStack() as stack:
+                    stack.enter_context(patch.object(methods,'ROOT',root))
+                    frozen=methods.hashes([root/name for name in names])
+                    self.assertEqual(set(frozen),set(names))
+                    stack.enter_context(patch.object(sys,'argv',['bench_methods.py','--runtime',str(root),
+                        '--workdir',str(root/'work'),'--methods','arrays']))
+                    stack.enter_context(patch.object(methods.admission,'require_execution'))
+                    stack.enter_context(patch.object(baseline,'bootstrap'))
+                    stack.enter_context(patch.object(baseline,'assert_workdir'))
+                    stack.enter_context(patch.object(baseline,'environment',return_value={}))
+                    stack.enter_context(patch.object(baseline,'load',side_effect=mutate))
+                    stack.enter_context(patch.object(methods.importlib,'import_module',return_value=backend))
+                    connect=stack.enter_context(patch.object(research,'connect',side_effect=AssertionError('Database accessed')))
+                    daily_connect=stack.enter_context(patch.object(daily,'connect',side_effect=AssertionError('Database accessed')))
+                    with self.assertRaisesRegex(ValueError,'Experiment source changed'):
+                        methods.main()
+                    actual=methods.hashes([root/name for name in names])
+                    self.assertEqual({name for name in names if frozen[name]!=actual[name]},{changed})
+                    connect.assert_not_called();daily_connect.assert_not_called();backend.open_prices.assert_not_called()
 
 
 class SharedMethodsTests(unittest.TestCase):

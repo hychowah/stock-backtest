@@ -23,7 +23,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 import sys as _root_sys
@@ -32,7 +32,7 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import robustness as robustness
 from backtest.engines.original import schedules as schedules
-import serve
+from website.server import app as serve
 from test_queue import request
 import test_robustness as fixtures
 

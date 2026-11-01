@@ -1,5 +1,5 @@
 const assert=require('assert');
-const {analyze}=require('../website/contributions.js');
+const {analyze}=require('../website/browser/contributions.js');
 const stock=(symbol,return_value)=>({symbol,name:symbol+' Company',return_value});
 const close=(a,b)=>assert(Math.abs(a-b)<1e-12,`${a} != ${b}`);
 const inputs=[stock('A',.5),stock('B',.4),stock('C',.3),stock('D',.2),stock('E',.1),stock('F',0),stock('G',-.1),stock('H',-.2),stock('I',-.3),stock('J',-.4)];

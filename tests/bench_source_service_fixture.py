@@ -19,7 +19,6 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'tests'), str(ROOT / 'tools')]
 from bench_service_fixture import SyntheticService, _pending_services
 
 MIB = 1024**2
@@ -70,7 +69,7 @@ class FictionalWorkspace:
             for path in sorted((ROOT / folder).rglob('*')):
                 if any(part in ('local','dist','__pycache__','node_modules','.openai') for part in path.relative_to(ROOT/folder).parts):
                     continue
-                if path.suffix not in ('.py', '.js', '.css', '.html', '.rs') or not path.is_file():
+                if not path.is_file() or not (path.suffix in ('.py','.js','.css','.html') or path.relative_to(ROOT).as_posix()=='backtest/engines/numerical/rust_kernel.rs'):
                     continue
                 assert not path.is_symlink()
                 relative = path.relative_to(ROOT)
@@ -173,7 +172,7 @@ class FictionalWorkspace:
             raise AssertionError('Close the fictional service before offline capture.')
         if any(service.fixture is self and not service.closed for service in _pending_services.values()):
             raise AssertionError('Unconfirmed service closure blocks offline capture.')
-        import bench_capture_offline
+        import tools.experiments.bench_capture_offline as bench_capture_offline
         before=self.input_inventory()
         report=sha(self.source/'results/summary-exits.txt')
         capture=bench_capture_offline.capture_offline(self.source,self.source/'tmp'/'combined-capture')
@@ -243,7 +242,7 @@ class SourceService(SyntheticService):
     def command(self, path):
         return [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
             'import sys;sys.path[:0]=sys.argv[1:3];from bench_source_service_fixture import child;child(sys.argv[3])',
-            str(ROOT/'tests'), str(ROOT/'tools'), str(path)]
+            str(ROOT/'tests'), str(ROOT), str(path)]
 
     def limits(self):
         from backtest.runtime.process_owner import ProcessLimits
@@ -312,14 +311,14 @@ def dependency_guard(source):
 def guarded_environment(source):
     """Give ordinary Python children the same tested dependency boundary."""
     guard=source.parent/'guard';guard.mkdir(exist_ok=True)
-    (guard/'sitecustomize.py').write_text('import sys\nsys.path[:0]='+repr([str(ROOT/'tests'),str(ROOT/'tools')])+ '\nfrom bench_source_service_fixture import dependency_guard\nfrom pathlib import Path\ndependency_guard(Path('+repr(str(source))+'))\n',encoding='utf-8')
+    (guard/'sitecustomize.py').write_text('import sys\nsys.path[:0]='+repr([str(ROOT/'tests'),str(ROOT)])+ '\nfrom bench_source_service_fixture import dependency_guard\nfrom pathlib import Path\ndependency_guard(Path('+repr(str(source))+'))\n',encoding='utf-8')
     return dict(os.environ,PYTHONPATH=str(guard),PYTHONDONTWRITEBYTECODE='1')
 
 
 def assert_package_source(source):
     """Every loaded package module belongs to the acquired private source."""
     loaded=[module for name,module in sys.modules.items()
-            if name=='backtest' or name.startswith('backtest.')]
+            if name in ('backtest','website') or name.startswith(('backtest.','website.'))]
     assert loaded
     assert all(Path(module.__file__).resolve().is_relative_to(source) for module in loaded)
 
@@ -328,7 +327,7 @@ def child(request_path):
     assert input()=='GO'
     request=json.loads(Path(request_path).read_bytes())
     source=Path(request['source']).resolve();control=Path(request['control']).resolve()
-    from bench_execution_worker import _verify
+    from tools.experiments.bench_execution_worker import _verify
     _verify(source,request['sources'])
     import mimetypes
     mimetypes.init()
@@ -336,8 +335,8 @@ def child(request_path):
     # preparation/signature function is replaced. Children inherit the guard.
     os.environ.update(guarded_environment(source))
     dependency_guard(source)
-    sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
-    import runtime_access
+    sys.path.insert(0,str(source))
+    from website import runtime_access
     def emit(event,**values): print(json.dumps(dict(event=event,**values)),flush=True)
     def barrier(name):
         emit(name,at=time.monotonic())
@@ -351,8 +350,9 @@ def child(request_path):
         from backtest.inputs import market, fmp_download, cache_assets, daily, research
         from backtest.engines.reference import legacy
         fmp_download.KEY_PATH=source.parent/'missing-fixture-key'
-        import serve_app as app
+        from website.server import app
         from backtest.engines.original import robustness as robustness
+        from backtest.engines.original import schedules
         from backtest import screening
         assert_package_source(source)
         if request['scenario'].get('fail_start'):raise RuntimeError('Fictional startup failure.')
@@ -365,7 +365,7 @@ def child(request_path):
                 return original(*args,**kwargs)
             research.prepare=preparing
         app.ensure_ready()
-        for module in (app,app.schedules,robustness,app.data_manager,cache_access,market,runtime_access,research):
+        for module in (app,schedules,robustness,app.data_manager,cache_access,market,runtime_access,research):
             assert Path(module.__file__).resolve().is_relative_to(source)
         assert_package_source(source)
         assert app.current_build()
@@ -388,9 +388,9 @@ def child(request_path):
             with cache_access.access(),closing(daily.connect(oracle)) as db:
                 options=dict(start='2015-01-01',end='2016-12-30',months=12,pool='cached',rank_to=4)
                 config=robustness.plan(db,**options,trials=5,seed=42)
-                fixed=app.schedules.backtest(db,**options)
+                fixed=schedules.backtest(db,**options)
                 random=robustness.run(db,config)
-                inspected=app.schedules.backtest_dates(db,dates=config['samples'][2],**options)
+                inspected=schedules.backtest_dates(db,dates=config['samples'][2],**options)
             # The HTTP adapter adds current producer metadata after closing resources.
             # Keep full equality, including that explicit application contract.
             for result in (fixed,random,inspected):

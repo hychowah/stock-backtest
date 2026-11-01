@@ -1,4 +1,7 @@
 """Native ancestor-job lifetime on disposable fixtures. Real admission closed."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from dataclasses import replace, asdict
 import ctypes
 import json
@@ -11,12 +14,12 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tools'),str(ROOT/'tests')]
-import bench_execution as execution
-import bench_execution_supervisor as supervisor
-from bench_execution_domain import LifetimeDomain, parse_lifetime, DomainLimits, NativeLifetimeLimits
-from bench_candidates_process import OwnedProcess
-from bench_comparison import ComparisonError, ComparisonProtocol
+sys.path.insert(0, str(ROOT))
+import tools.experiments.bench_execution as execution
+import tools.experiments.bench_execution_supervisor as supervisor
+from tools.experiments.bench_execution_domain import LifetimeDomain, parse_lifetime, DomainLimits, NativeLifetimeLimits
+from backtest.runtime.process_owner import OwnedProcess
+from tools.experiments.bench_comparison import ComparisonError, ComparisonProtocol
 import test_bench_execution_supervisor as fixtures
 
 
@@ -75,12 +78,13 @@ class NativeLifetimeTests(unittest.TestCase):
         return supervisor.ComparisonSupervisor(supervisor.specification(bound))
 
     def command(self,request,mode='financial'):
-        code='''import os,sys,json,time
-sys.path[:0]=[sys.argv[1],sys.argv[3]]
+        code='''import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1])/'tests'))
+import sys;sys.path.insert(0,sys.argv[1])
+import os,sys,json,time
 from pathlib import Path
 from unittest.mock import patch
-import bench_execution_supervisor as s
-import bench_execution_supervisor_worker as w
+import tools.experiments.bench_execution_supervisor as s
+import tools.experiments.bench_execution_supervisor_worker as w
 from test_bench_execution_supervisor import SupervisorTests
 spec=json.loads(Path(sys.argv[2]).read_bytes());mode=sys.argv[4]
 output=Path(spec['output'])
@@ -144,7 +148,7 @@ print(json.dumps(dict(event='failed',reason='child_failed')),flush=True)
 with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSupervisor,'_command',command):
  raise SystemExit(w.main())
 '''
-        return [sys.executable,'-I','-B','-c',code,str(ROOT/'tools'),str(request),str(ROOT/'tests'),mode]
+        return [sys.executable,'-I','-B','-c',code,str(ROOT),str(request),str(ROOT/'tests'),mode]
 
     def run_owner(self,owner,mode='financial'):
         with patch.object(supervisor.admission,'require_execution'), \
@@ -152,7 +156,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
             return owner.run()
 
     def test_actual_reference_both_numba_variants_share_native_lifetime(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -258,9 +262,9 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
 
     def test_caller_death_closes_last_job_handle_and_all_observed_processes(self):
         f=self.base.fixture.fixture;record=f.root/'caller-record.json';barrier=f.root/'caller-die'
-        helper="""import sys,json,time,os
-sys.path.insert(0,sys.argv[1])
-from bench_execution_domain import start_controller,DomainLimits
+        helper="""import sys;sys.path.insert(0,sys.argv[1])
+import sys,json,time,os
+from tools.experiments.bench_execution_domain import start_controller,DomainLimits
 from pathlib import Path
 assert input()=='GO'
 body="import os,sys,json,time;from pathlib import Path;assert input()=='GO';Path(sys.argv[1]).write_text(json.dumps(dict(application=os.getpid())));time.sleep(30)"
@@ -270,10 +274,10 @@ while not Path(sys.argv[2]).exists():time.sleep(.02)
 print(json.dumps(dict(event='ready',helper=os.getpid(),**json.loads(Path(sys.argv[2]).read_text()))),flush=True)
 time.sleep(30)
 """
-        caller="""import sys,json,time,os
+        caller="""import sys;sys.path.insert(0,sys.argv[1])
+import sys,json,time,os
 from pathlib import Path
-sys.path.insert(0,sys.argv[1])
-from bench_execution_domain import LifetimeDomain,parse_lifetime,DomainLimits
+from tools.experiments.bench_execution_domain import LifetimeDomain,parse_lifetime,DomainLimits
 owner=LifetimeDomain(parse_lifetime(dict(kind='windows-job',committed_bytes=256*1024**2,processes=12,cpu_percent=25,user_cpu_seconds=20.)),DomainLimits(128*1024**2,32,25,30.,20.,close_seconds=2.))
 owner.prepare();owned=owner.start([sys.executable,'-I','-B','-c',sys.argv[4],sys.argv[1],sys.argv[2]+'.application'])
 owner.go=True;owned.start();deadline=time.monotonic()+10
@@ -285,7 +289,7 @@ while time.monotonic()<deadline:
   os._exit(29)
 raise RuntimeError('Missing readiness')
 """
-        process=subprocess.Popen([sys.executable,'-I','-B','-c',caller,str(ROOT/'tools'),str(record),str(barrier),helper],
+        process=subprocess.Popen([sys.executable,'-I','-B','-c',caller,str(ROOT),str(record),str(barrier),helper],
                                  stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         from ctypes import wintypes as w
         kernel=ctypes.WinDLL('kernel32',use_last_error=True)

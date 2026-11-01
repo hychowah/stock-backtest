@@ -6,11 +6,11 @@ import sys
 
 def main():
     source,tests,output=map(Path,sys.argv[1:4])
-    sys.path[:0]=[str(tests),str(tests.parent/'tools')]
+    sys.path[:0]=[str(tests),str(tests.parent)]
     from bench_source_service_fixture import dependency_guard
     dependency_guard(source)
-    sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
-    import runtime_access
+    sys.path[:0]=[str(source)]
+    from website import runtime_access
     with runtime_access.ownership(source):
         from backtest.financial import rules
         from backtest.inputs import market, fmp_download, cache_assets
@@ -24,7 +24,7 @@ def main():
         import os
         ambient_builds=source/'tmp/ignored-ambient-builds'
         os.environ['BACKTEST_RUST_BUILDS']=str(ambient_builds)
-        from build_state import ensure_presentation
+        from website.rendering.state import ensure_presentation
         candidate=Preparation(source,python=sys.executable,ensure_presentation=ensure_presentation)
         initial=candidate.prepare()
         assert not ambient_builds.exists(),'Ambient benchmark build path redirected ordinary preparation'
@@ -51,7 +51,7 @@ def main():
         from backtest.engines.numerical.portfolio import compare_results
         assert compare_results(owner.calculate('custom',options,None,None),result)['exact']
         assert owner.runtime is None
-        checks=[source/'requirements-numerical.txt',source/'website/serve_app.py',
+        checks=[source/'requirements-numerical.txt',source/'website/server/app.py',
                 source/'results/summary-exits.txt',source/'raw/px/ZZ000.json',
                 source/'data/numerical/current.json']
         for path in checks:

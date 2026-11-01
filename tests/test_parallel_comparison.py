@@ -1,4 +1,7 @@
 """Scoped comparison evidence/reset/ownership checks on fictional files only."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from contextlib import closing
 import json
@@ -12,10 +15,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/name) for name in ('tools','scripts','website')]
-import parallel_comparison as pc
-
-
+sys.path.insert(0, str(ROOT))
+import tools.experiments.parallel_comparison as pc
 class ComparisonTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='cb19f-synthetic-')
@@ -168,7 +169,7 @@ class ComparisonTests(unittest.TestCase):
             self.assertIn('resources',saved)
             return dict(status='failed',error_type='FictionalCopyFailure')
         with patch.object(pc,'assert_sources'),patch.object(pc,'observe',return_value=dict(disk=dict(free_bytes=8192))), \
-             patch('offline_input_copy.materialize_inputs',side_effect=failed),self.assertRaisesRegex(ValueError,'materialization failed'):
+             patch('tools.ops.offline_input_copy.materialize_inputs',side_effect=failed),self.assertRaisesRegex(ValueError,'materialization failed'):
             pc.prepare(self.declaration)
         saved=pc.read(attempt)
         self.assertEqual(saved['copier_outcome']['error_type'],'FictionalCopyFailure')

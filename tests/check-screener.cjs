@@ -2,7 +2,7 @@ const fs=require('fs'),path=require('path'),assert=require('assert');
 const root=path.resolve(__dirname,'..');
 const html=fs.readFileSync(path.join(process.argv[3]||path.join(root,'website/local'),'index.html'),'utf8');
 const dataset=JSON.parse(html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
-const engine=require('../website/screener.js');
+const engine=require('../website/browser/screener.js');
 const cases=[
  {first:2015,last:2020,filters:[{field:'pe',op:'lt',value:20}]},
  {first:2015,last:2020,pool:'cached',filters:[{field:'roe',op:'gt',value:10},{field:'debt_equity',op:'lt',value:1}]},

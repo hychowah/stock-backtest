@@ -18,13 +18,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT)]
 from backtest.runtime import cache_access as access
 from backtest.inputs import research as research
 from backtest.engines.original import schedules as schedules
-import serve
-
-
+from website.server import app as serve
 class AccessTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)

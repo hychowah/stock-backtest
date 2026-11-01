@@ -356,3 +356,24 @@ experimental engine. Experimental operating yield spread fails explicitly.
 New results and CSVs identify their recorded producer; older evidence remains
 unidentified. Opening stored evidence does not calculate. No automatic fallback
 or default replacement is provided. CB-15 source is not a deployed release.
+
+## Source owners
+
+`website/browser/` contains the plain browser scripts, styles and HTML fragments.
+Their basenames, global interfaces and execution order stay the same. The built
+HTML embeds these assets. January and latest views still work without a server.
+
+`website/rendering/data.py` loads detached page data from one verified prepared
+connection. It closes the connection before rendering. `page.py` builds static
+markup. `assets.py` owns asset order and the source-only recovery page.
+`rendering/build.py` writes the HTML and baseline exports. `rendering/state.py`
+checks explicit nested source inventories and the prepared database generation.
+The executable command remains `python3 website/build.py`.
+
+`website/server/app.py` owns HTTP transport and server lifetime. Its grouped
+adapters are `backtests.py`, `results.py` and `data.py`. They call application
+owners without implementing financial policy or durable storage. Data jobs and
+launcher identity remain in `server/data_manager.py` and `server/launcher.py`.
+`website/serve.py` acquires source ownership before importing the application.
+It holds ownership until workers, requests, databases and result readers close.
+The executable startup and private candidate commands retain their paths.

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'tools')]
 import test_bench_methods as shared
 from backtest.engines.numerical import generation as ng
-from bench_candidates import NumericInputs, PythonExecutor
+from tools.experiments.bench_candidates import NumericInputs, PythonExecutor
 import numpy as np
 
 
@@ -116,7 +116,7 @@ class GenerationTests(unittest.TestCase):
             translator.assert_not_called()
 
     def test_python_and_numba_books_all_filters_pools_sql_and_aggregation(self):
-        from bench_candidates_numba import NumbaExecutor
+        from backtest.engines.numerical.numba import NumbaExecutor
         self.prepare()
         inputs = self.attach()
         self.assertTrue(inputs.histories['A'])

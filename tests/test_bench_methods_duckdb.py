@@ -1,4 +1,7 @@
 """Synthetic SQLite-oracle conformance for batched DuckDB ASOF price lookup."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from datetime import date
 import importlib.util
 import os
@@ -11,10 +14,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_methods_duckdb as method
-
-
+sys.path.insert(0, str(ROOT))
+import tools.experiments.bench_methods_duckdb as method
 AVAILABLE = importlib.util.find_spec('duckdb') is not None and importlib.util.find_spec('numpy') is not None
 
 

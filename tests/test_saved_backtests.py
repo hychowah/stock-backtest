@@ -13,11 +13,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT),str(ROOT/'website'),str(ROOT/'scripts')]
+sys.path[:0]=[str(ROOT),str(ROOT),str(ROOT/'scripts')]
 from backtest.application import library as saved
-import serve
-
-
+from website.server import app as serve
 def snapshot(kind='january'):
     holding=dict(symbol='A',name='A & B',rank=1,entry='2015-01-02',exit='2016-01-04',return_value=-1.,price=None,weight=1.,contribution_pp=-100.)
     period=dict(year=2015,entry=holding['entry'],exit=holding['exit'],names=1,holdings=[holding],portfolio=-1.,spy=.1)

@@ -16,11 +16,11 @@ import json,sys,time,tracemalloc,os
 from pathlib import Path
 from contextlib import closing
 source=Path(sys.argv[1]); tests=Path(sys.argv[2]); result=Path(sys.argv[3])
-sys.path[:0]=[str(tests),str(tests.parent/'tools')]
+sys.path[:0]=[str(tests),str(tests.parent)]
 from bench_source_service_fixture import dependency_guard
 dependency_guard(source)
-sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
-import runtime_access
+sys.path[:0]=[str(source)]
+from website import runtime_access
 with runtime_access.ownership(source):
     from backtest.inputs import daily, fmp_download
     fmp_download.KEY_PATH=source.parent/'nonexistent-key'
@@ -39,7 +39,7 @@ with runtime_access.ownership(source):
     _,python_peak=tracemalloc.get_traced_memory();tracemalloc.stop()
     with store.open_current() as inputs:
         inputs.validate()
-        from bench_candidates import NumericInputs
+        from tools.experiments.bench_candidates import NumericInputs
         with closing(daily.connect()) as db:
             old=NumericInputs(db,s)
             try:
@@ -89,11 +89,11 @@ MOVED_CHILD = r'''
 import sys,json
 from pathlib import Path
 source=Path(sys.argv[1]);tests=Path(sys.argv[2])
-sys.path[:0]=[str(tests),str(tests.parent/'tools')]
+sys.path[:0]=[str(tests),str(tests.parent)]
 from bench_source_service_fixture import dependency_guard
 dependency_guard(source)
-sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
-import runtime_access
+sys.path[:0]=[str(source)]
+from website import runtime_access
 with runtime_access.ownership(source):
     from backtest.inputs import daily, fmp_download
     fmp_download.KEY_PATH=source.parent/'nonexistent-key'

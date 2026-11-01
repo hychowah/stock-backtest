@@ -34,7 +34,8 @@ def _supervised_stop():
 
 
 def _own_source():
-    from runtime_access import ownership
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+    from website.runtime_access import ownership
     owner = ownership(Path(__file__).resolve().parents[1])
     try:
         owner.__enter__()
@@ -53,8 +54,8 @@ if __name__ == '__main__':
             _source_owner = _own_source()
             try:
                 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-                import serve_app
-                serve_app.main()
+                from website.server import app
+                app.main()
             finally:
                 _source_owner.__exit__(None, None, None)
     except KeyboardInterrupt:
@@ -66,9 +67,4 @@ elif __name__ == '__mp_main__':
     _source_owner = _own_source()
     atexit.register(_source_owner.__exit__, None, None, None)
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-    import serve_app
-else:
-    # Keep existing imports and unittest patch targets on the actual module.
-    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-    import serve_app
-    sys.modules[__name__] = serve_app
+    from website.server import app

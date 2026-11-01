@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('assert'),Calendar=require('../website/calendar-settings.js'),Artifacts=require('../website/result-artifacts.js');
+const assert=require('assert'),Calendar=require('../website/browser/calendar-settings.js'),Artifacts=require('../website/browser/result-artifacts.js');
 const old={mode:'custom',start:'2015-01-02',end:'2016-12-30',months:12,rank_to:3};
 const canonical={mode:'custom',calendar:Calendar.decode(old),rank_to:3};
 assert.deepEqual(Calendar.normalize(old),Calendar.normalize(canonical));

@@ -1,7 +1,7 @@
 """Fresh observations and cooperative priority, using only disposable roots."""
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,24 +14,25 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'scripts'), str(ROOT / 'website')]
+sys.path.insert(0, str(ROOT))
 from backtest.runtime import cache_access as cache_access
-import runtime_access
-import bench_execution_observation as observations
-from bench_comparison import ComparisonError
+from website import runtime_access
+import tools.experiments.bench_execution_observation as observations
+from tools.experiments.bench_comparison import ComparisonError
+from tools.experiments.bench_execution_inputs import ExecutionInputError
 import test_bench_execution as fixture_module
 
 
 def stable_workflow(request_path):
     """Actual financial workflows on a separate disposable mutable daily DB."""
-    from bench_execution_worker import _bind
+    from tools.experiments.bench_execution_worker import _bind
     request = json.loads(Path(request_path).read_bytes())
     s, robust, _ = _bind(request)
     research.signature = lambda: request['captured_freshness']['inputs']
     (Path(request['database']).parent / 'binding.json').write_text(json.dumps(request))
     import sqlite3
     from contextlib import closing
-    from bench_methods import clean
+    from tools.experiments.bench_methods import clean
     with closing(daily.connect()) as db:
         config = request['configuration']
         planned = robust.plan(db, start=config['start'], end=config['end'], months=config['months'],
@@ -45,8 +46,8 @@ def stable_workflow(request_path):
         saved = db.execute('SELECT count(*) FROM period_pools').fetchone()[0]
     # Source-only page rendering and cached data inspection need no listener,
     # identity state, installed launcher, key or provider requests.
-    import serve_app
-    panel = serve_app.data_page()
+    from website.rendering.assets import data_page
+    panel = data_page()
     assert '<html' in panel.lower()
     report = dict(fresh_trials=len(fresh['trials']), cached_reuse=cached['execution']['reused_books'],
                   saved_pools=saved, export_bytes=len(exported.encode()), panel_bytes=len(panel.encode()))
@@ -70,11 +71,12 @@ class ObservationTests(unittest.TestCase):
         return observations.CurrentObservation(self.request, self.s, **changes)
 
     def live(self, mode='hold'):
-        code = '''import os,sys,time
+        code = '''import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1])/'tests'))
+import os,sys,time
 from pathlib import Path
 root=Path(sys.argv[1])
-sys.path[:0]=[str(root/'website'),sys.argv[4],sys.argv[5]]
-import runtime_access
+sys.path[:0]=[str(root),sys.argv[4]]
+from website import runtime_access
 from contextlib import ExitStack
 with ExitStack() as scope:
     scope.enter_context(runtime_access.ownership(root))
@@ -233,7 +235,7 @@ with ExitStack() as scope:
 
     def test_coordinated_actual_reference_and_numba_comparison(self):
         owner = self.fixture.owner(fixture_observation_root=None, coordinated_observation_root=self.root)
-        from bench_execution import admission
+        from tools.experiments.bench_execution import admission
         with patch.object(admission, 'require_execution'), patch.object(owner, '_command',
                 side_effect=lambda request: self.fixture.fixture_command(owner, request)):
             with owner: owner.compare()
@@ -252,7 +254,7 @@ with ExitStack() as scope:
             if marker.exists() and not live:
                 live.append(self.live('workflow')); self.wait_intent()
             return original_check()
-        from bench_execution import admission
+        from tools.experiments.bench_execution import admission
         with patch.object(admission, 'require_execution'), patch.object(owner, '_check', side_effect=check), \
                 patch.object(owner, '_command', return_value=[sys.executable, '-c', code, str(marker)]):
             with self.assertRaisesRegex(ComparisonError, 'busy'):
@@ -309,7 +311,7 @@ with ExitStack() as scope:
             platform=sys.platform, workflows=result)), flush=True)
 
     def test_cancellation_at_child_phase_boundaries_and_private_disk_limit(self):
-        from bench_execution import admission
+        from tools.experiments.bench_execution import admission
         for phase in ('setup', 'proof', 'request', 'collection', 'disk'):
             with self.subTest(phase=phase):
                 marker = self.fixture.fixture.root / ('phase-' + phase)
@@ -327,7 +329,7 @@ with ExitStack() as scope:
                 with patch.object(admission, 'require_execution'), patch.object(owner, '_command',
                         side_effect=lambda request, body=body, marker=marker: [sys.executable, '-c', body,
                             str(request.parent / marker.name) if phase == 'disk' else str(marker)]):
-                    with self.assertRaisesRegex((ComparisonError, __import__('bench_execution_inputs').ExecutionInputError),
+                    with self.assertRaisesRegex((ComparisonError, ExecutionInputError),
                                                'limit' if phase == 'disk' else 'cancelled'):
                         with owner: owner.compare()
                 self.assertIsNone(owner._owned)

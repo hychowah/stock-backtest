@@ -3,6 +3,9 @@
 These are periodic kernel termination thresholds, not exact caps. No WSL total
 CPU or outside-supervisor guarantee follows. No financial or installed assets.
 """
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from dataclasses import replace
 import json
 import os
@@ -14,11 +17,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-from bench_candidates_process import OwnedProcess, ProcessLimits, _pending_processes, user_cpu_ticks
-from bench_execution_domain import DomainLimits, start_controller
-from bench_execution import ExecutionEnvelope, environment
-from bench_comparison import ComparisonProtocol, ComparisonError
+sys.path.insert(0, str(ROOT))
+from backtest.runtime.process_owner import OwnedProcess, ProcessLimits, _pending_processes, user_cpu_ticks
+from tools.experiments.bench_execution_domain import DomainLimits, start_controller
+from tools.experiments.bench_execution import ExecutionEnvelope, environment
+from tools.experiments.bench_comparison import ComparisonProtocol, ComparisonError
 
 # process_time includes kernel time. GetProcessTimes lets finite fixtures target
 # user time specifically. A large pure-Python loop supplies most of that time.
@@ -183,8 +186,8 @@ class NativeUserCpuTests(unittest.TestCase):
         worker = ('import subprocess,sys,time\nassert input()=="GO"\n'
             'subprocess.Popen([sys.executable,"-B","-c",' + repr(library) + '],creationflags=8)\n'
             'time.sleep(30)\n')
-        nested = ('sys.path.insert(0,' + repr(str(ROOT / 'tools')) + ')\n'
-            'from bench_candidates_process import OwnedProcess,ProcessLimits\n'
+        nested = ('sys.path.insert(0,' + repr(str(ROOT)) + ')\n'
+            'from backtest.runtime.process_owner import OwnedProcess,ProcessLimits\n'
             'assert input()=="GO"\n'
             'child=OwnedProcess([sys.executable,"-B","-c",' + repr(worker) + '],'
             'limits=ProcessLimits(128*1024**2,6,25))\nchild.start()\n'

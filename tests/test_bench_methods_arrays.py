@@ -1,4 +1,7 @@
 """Synthetic conformance checks for the benchmark-only arrays resolver."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from datetime import date
 from pathlib import Path
 import sqlite3
@@ -8,8 +11,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-from bench_methods_arrays import open_prices
+sys.path.insert(0, str(ROOT))
+from tools.experiments.bench_methods_arrays import open_prices
 
 
 def ordinal(day):
@@ -167,8 +170,8 @@ class ArrayPricesTests(unittest.TestCase):
     def test_import_and_absolute_database_path_from_another_folder(self):
         script = (
             'from pathlib import Path; import sqlite3, sys; '
-            f'sys.path.insert(0, {str(ROOT / "tools")!r}); '
-            'from bench_methods_arrays import open_prices; '
+            f'sys.path.insert(0, {str(ROOT)!r}); '
+            'from tools.experiments.bench_methods_arrays import open_prices; '
             'db=sqlite3.connect(Path(sys.argv[1]).as_uri()+"?mode=ro", uri=True); '
             'r=open_prices(db); '
             f'assert r.resolve([("A", {ordinal("2020-01-04")}, "price", True)])'

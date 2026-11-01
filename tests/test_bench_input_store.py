@@ -1,4 +1,7 @@
 """Synthetic-only owned handoffs. No runtime import, raw cache or live capture."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import ast
 from contextlib import ExitStack, closing
 import hashlib
@@ -14,13 +17,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime')
     del sys.argv[index:index + 2]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_input_store as store
-
-
+import tools.experiments.bench_input_store as store
 def source_constant(path, name):
     """Read schemas as data. Do not import application globals or bootstrap."""
     tree = ast.parse(path.read_text(encoding='utf-8'))

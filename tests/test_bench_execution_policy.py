@@ -1,7 +1,7 @@
 """Owned source-only policy fixtures. No real capture, raw cache or requests."""
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 import json
 import logging
@@ -12,11 +12,11 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime'); del sys.argv[index:index + 2]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_execution_policy as policy
-import bench_input_artifacts as artifacts
+import tools.experiments.bench_execution_policy as policy
+import tools.experiments.bench_input_artifacts as artifacts
 import test_bench_execution_inputs as workspace_tests
 
 # CB-09 reducer integration changes the schedules.py whole-source identity.
@@ -239,7 +239,7 @@ class PolicyTests(unittest.TestCase):
     def test_support_changes_reject_at_close_and_record_failure(self):
         with self.owner() as inputs:
             attached = policy.CapturedPolicy(inputs).__enter__()
-            (attached._folder / 'tools/bench_policy_program.py').write_text('# changed')
+            (attached._folder / 'tools/tools/experiments/bench_execution_inputs.py').write_text('# changed')
             self.assert_reason('mismatch', attached.close)
             self.assertEqual(attached.exit_code, 0)
             self.assertFalse(attached._owned.reader.is_alive())
@@ -453,7 +453,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_missing_ambiguous_and_escaped_dependencies_reuse_owner_rejection(self):
         # The source-content owner rejects these before source-only attachment.
-        import bench_execution_inputs as execution
+        import tools.experiments.bench_execution_inputs as execution
         for change in ('missing', 'ambiguous', 'escaped'):
             with self.subTest(change=change):
                 if change == 'missing':
@@ -482,7 +482,7 @@ class PolicyTests(unittest.TestCase):
                     self.write_manifest()
 
     def test_closed_admission_unchanged(self):
-        import bench_admission
+        import tools.experiments.bench_admission as bench_admission
         with self.owner() as inputs, policy.CapturedPolicy(inputs):
             with self.assertRaises(bench_admission.BenchmarkAdmissionError):
                 bench_admission.require_execution()

@@ -1,7 +1,7 @@
 """Protocol checks for isolation, frozen samples, complete evidence and recovery."""
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 from datetime import date, timedelta
 from contextlib import nullcontext
@@ -16,13 +16,13 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 RUNTIME = Path(os.environ.get('BACKTEST_BASELINE_RUNTIME', ROOT))
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime')
     RUNTIME = Path(sys.argv[index+1]).resolve()
     del sys.argv[index:index+2]
-sys.path.insert(0, str(ROOT/'tools'))
-import bench_baseline as bench
+import tools.experiments.bench_baseline as bench
 bench.bootstrap(RUNTIME)
 s, r = bench.s, bench.robust
 

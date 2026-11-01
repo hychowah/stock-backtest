@@ -17,8 +17,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-from bench_comparison import encoded
+from tools.experiments.bench_comparison import encoded
 
 START_SECONDS = 20.
 CLIENT_SECONDS = 30.
@@ -31,12 +30,16 @@ def expanded_fixture(case):
     """Build 16 companies/20,880 daily price rows, below the old 32 MiB cap."""
     from test_bench_execution_inputs import sha, receipt, semantic
     from test_bench_input_store import metadata
-    from bench_generation import signature
-    from bench_input_artifacts import SOURCE_ASSETS
+    from tools.experiments.bench_generation import signature
+    from tools.experiments.bench_input_artifacts import SOURCE_ASSETS
     from types import SimpleNamespace
     f = case.fixture
-    for path in (ROOT / 'website').iterdir():
-        if path.is_file(): shutil.copy2(path, f.source / 'website' / path.name)
+    for path in (ROOT / 'website').rglob('*'):
+        relative = path.relative_to(ROOT/'website')
+        if any(part in ('local','dist','.openai','__pycache__','node_modules') for part in relative.parts):continue
+        if path.is_file() and path.suffix in ('.py','.js','.css','.html'):
+            target=f.source/'website'/relative;target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(path,target)
     f.sources = {p.relative_to(f.source).as_posix(): sha(p)
                  for folder in ('scripts', 'website', 'backtest') for p in (f.source / folder).rglob('*')
                  if p.is_file() and (p.suffix=='.py' or p.relative_to(f.source).as_posix() in SOURCE_ASSETS)}
@@ -77,7 +80,7 @@ def expanded_fixture(case):
         metadata(research, dict(inputs=f.freshness['inputs'], prices=f.freshness['prices']))
         metadata(daily, dict(daily_inputs=f.freshness['daily_inputs'], cached_symbols=symbols))
         research.commit(); daily.commit()
-        import bench_execution as execution
+        import tools.experiments.bench_execution as execution
         f.meta = dict(zip(('research', 'daily'), (execution.inputs.artifacts.metadata(db,
             execution.inputs.ExecutionInputError, reason='incomplete') for db in (research, daily))))
         f.identity = semantic(research, daily, f.sources)
@@ -97,7 +100,7 @@ def expanded_fixture(case):
         observation_mode='coordinated', captured_freshness=f.freshness, captured_metadata=f.meta,
         configuration=case.configuration, binding=dict(generation=f.identity))
     request['page_sources'] = {p.relative_to(f.source).as_posix(): sha(p)
-        for p in (f.source / 'website').iterdir() if p.suffix in ('.html', '.js', '.css')}
+        for p in (f.source / 'website/browser').rglob('*') if p.suffix in ('.html', '.js', '.css')}
     sizes = {name: (f.capture / name).stat().st_size for name in ('research.sqlite', 'schedules.sqlite')}
     assets = list(raw.rglob('*'))
     scale = dict(rows=counts, databases=sizes, raw_files=sum(p.is_file() for p in assets),
@@ -155,7 +158,7 @@ class SyntheticService:
     def command(self, path):
         return [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
             'import sys;sys.path[:0]=sys.argv[1:3];from bench_service_fixture import child;child(sys.argv[3])',
-            str(ROOT / 'tests'), str(ROOT / 'tools'), str(path)]
+            str(ROOT / 'tests'), str(ROOT), str(path)]
 
     def limits(self):
         from backtest.runtime.process_owner import ProcessLimits
@@ -243,7 +246,7 @@ def child(request_path):
     request = json.loads(Path(request_path).read_bytes())
     source = Path(request['source']).resolve()
     control = Path(request['control']).resolve()
-    from bench_execution_worker import _verify, _bind
+    from tools.experiments.bench_execution_worker import _verify, _bind
     _verify(source, request['sources'])
     _verify(source, request['page_sources'])
     # Standard HTTP MIME initialization reads OS MIME configuration. Complete
@@ -269,8 +272,8 @@ def child(request_path):
             if isinstance(address, tuple) and (address[0] != '127.0.0.1' or event == 'socket.bind' and address[1] != 0):
                 raise AssertionError('Nonfixture network dependency.')
     sys.addaudithook(audit)
-    sys.path[:0] = [str(source / 'scripts'), str(source / 'website')]
-    import runtime_access
+    sys.path.insert(0,str(source))
+    from website import runtime_access
     def emit(event, **data): print(json.dumps(dict(event=event, **data)), flush=True)
     def barrier(name):
         emit(name)
@@ -308,7 +311,7 @@ def child(request_path):
             (control / 'expected.json').write_bytes(encoded(dict(random=batch, inspections=inspections)))
             s, robust, _ = _bind(request)
             research.signature = lambda: request['captured_freshness']['inputs']
-        import serve_app
+        from website.server import app as serve_app
         from backtest.runtime import cache_access as cache_access
         for module in (serve_app, s, robust, cache_access, research, metrics, runtime_access):
             assert Path(module.__file__).resolve().is_relative_to(source)

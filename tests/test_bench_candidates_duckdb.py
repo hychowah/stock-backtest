@@ -1,13 +1,9 @@
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
 from backtest.financial import rules, books as financial_books, metrics
 
-# Resolve the importable package for direct-file commands and spawned fixtures.
-import sys as _package_sys
-from pathlib import Path as _PackagePath
-_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 
 from backtest import screening
 """Differential candidate, temporal and source-expression checks for DuckDB."""
@@ -25,12 +21,12 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_methods as fixtures
 
 try:
     import numpy as np
-    import bench_candidates as core
+    import tools.experiments.bench_candidates as core
 except ModuleNotFoundError as error:
     if error.name != 'numpy':
         raise
@@ -72,7 +68,7 @@ class DuckDBCandidateTests(unittest.TestCase):
         self.fixture.db.commit()
         self.inputs = core.NumericInputs(self.fixture.reader, s)
         self.addCleanup(self.inputs.close)
-        self.module = importlib.import_module('bench_candidates_' + self.backend_name)
+        self.module = importlib.import_module('tools.experiments.bench_candidates_' + self.backend_name)
         self.executor = self.module.attach(self.inputs, limits=dict(capture=True, threads=4))
         self.addCleanup(self.executor.close)
 

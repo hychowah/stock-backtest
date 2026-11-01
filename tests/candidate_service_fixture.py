@@ -18,13 +18,13 @@ def forbid_calculations(context):
 
 def main():
     source,tests=map(Path,sys.argv[1:3]);scenario=sys.argv[3]
-    sys.path[:0]=[str(tests),str(tests.parent/'tools')]
+    sys.path[:0]=[str(tests),str(tests.parent)]
     from bench_source_service_fixture import dependency_guard, assert_package_source
     import mimetypes
     mimetypes.init()
     dependency_guard(source)
-    sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
-    import runtime_access
+    sys.path[:0]=[str(source)]
+    from website import runtime_access
     with runtime_access.ownership(source),ExitStack() as context:
         from backtest.financial import rules
         from backtest.inputs import market, fmp_download, cache_assets
@@ -88,7 +88,7 @@ def main():
                             record.update(final_returncode=self.process.returncode,closed=self.closed)
                             write_json(path,record)
             context.enter_context(patch.object(numerical_runtime,'RuntimeProcess',ObservedProcess))
-        import serve_app
+        from website.server import app as serve_app
         assert_package_source(source)
         if scenario=='selectable-workflow':
             emit=serve_app.DATA_JOBS.emit
@@ -129,7 +129,7 @@ def main():
         if scenario.startswith('ordinary') or scenario=='selectable-workflow':
             serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
         else:
-            import serve_candidate
+            from website import serve_candidate
             sys.argv=['serve_candidate.py','--private-root',str(source),'--no-browser']
             serve_candidate.main()
 

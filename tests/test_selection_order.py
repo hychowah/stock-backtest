@@ -16,11 +16,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 from backtest.inputs import research as r
-import dataset
-
-
+from website.rendering import data as dataset
 class SelectionOrderTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
@@ -97,7 +95,7 @@ for(const c of cases){
 }
 assert.throws(()=>engine.latestScreen(dataset,{selection_order:'unknown'}),/filter first or rank first/);
 """
-        subprocess.run(['node','-e',code,str(ROOT/'website'/'screener.js')],
+        subprocess.run(['node','-e',code,str(ROOT/'website'/'browser'/'screener.js')],
                        input=json.dumps(dict(dataset=prepared,cases=cases)),text=True,check=True)
 
 

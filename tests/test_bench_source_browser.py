@@ -1,4 +1,7 @@
 """Native equivalent of check-source-service-browser.js on fictional inputs."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import base64
 import csv
 import io
@@ -9,7 +12,6 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0,str(Path(__file__).resolve().parent))
 from bench_native_browser import BrowserStorage, NativeBrowser
 from bench_source_service_fixture import FictionalWorkspace, SourceService
 

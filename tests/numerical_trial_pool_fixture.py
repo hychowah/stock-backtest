@@ -54,8 +54,8 @@ def __getattr__(name):
 def main():
     configuration, ready = map(Path, sys.argv[1:3])
     launch = json.loads(configuration.read_bytes())
-    sys.path[:0] = [str(ROOT/'website')]
-    import runtime_access
+    sys.path[:0] = [str(ROOT)]
+    from website import runtime_access
     with runtime_access.ownership(ROOT):
         sys.path[:0] = [str(ROOT/'scripts')]
         from backtest.engines.numerical.runtime import NumericalRuntime

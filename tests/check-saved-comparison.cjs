@@ -1,5 +1,5 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
-const CalendarSettings=require('../website/calendar-settings.js'),nodes=new Map(),copy=value=>JSON.parse(JSON.stringify(value));
+const CalendarSettings=require('../website/browser/calendar-settings.js'),nodes=new Map(),copy=value=>JSON.parse(JSON.stringify(value));
 function node(id){if(!nodes.has(id))nodes.set(id,{id,value:'',innerHTML:'',textContent:'',hidden:false,disabled:false,handlers:{},captures:{},querySelectorAll(){return []},addEventListener(event,fn,capture){this.handlers[event]=fn;this.captures[event]=capture}});return nodes.get(id)}
 const make=(id,kind='custom',version=2)=>({id,name:'Saved '+id[0],created_at:'2026-11-01T00:00:00Z',kind,cagr:.12,start:'2015-01-02',end:'2020-12-31',snapshot:{version,kind,settings:{mode:kind,start:'2015-01-01',end:'2020-12-31',months:12,rank_to:id[0]==='a'?25:50},result:{start:'2015-01-02',end:'2020-12-31',cagr:.12,spy_cagr:.08,growth:2,producer:{engine:'original',label:'Original'},...(kind==='random'?{completed:2,valid:2,incomplete:0,configuration:{seed:42,window_start:'2015-01-02',window_end:'2020-12-31'},distributions:{cagr:{mean:.12,median:.11,p10:.05,p90:.2}}}:{}),periods:[]},catalog:{metrics:{},filters:{}},presentation:{},...(version===3?{evidence:{id:'e'.repeat(32)}}:{})}});
 const ids=['a','b','c'].map(c=>c.repeat(32));let records=[make(ids[0]),make(ids[1],'random',3),make(ids[2])],requests=[],released=[],acquired=[],rejectAcquire=false,invalidAcquire=false,holdAcquire=false,releaseAcquire=null,comparisonPublished=0;
@@ -24,7 +24,7 @@ const context=vm.createContext({document:{getElementById:node},location:{protoco
  else value=record;
  return {ok:status<400,status,json:async()=>copy(value)};
 }});
-for(const name of ['result-artifacts.js','backtest-comparison.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website',name),'utf8'),context);
+for(const name of ['result-artifacts.js','backtest-comparison.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
 const run=code=>vm.runInContext(code,context);run('ResultArtifacts.opening=()=>{throw Error("Compact inspection cannot get a main-view ticket")};ResultArtifacts.publish=()=>{throw Error("Compact inspection cannot publish")};');
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 function choose(left,right){for(const [id,value] of [['saved-compare-left',left],['saved-compare-right',right]]){node(id).value=value;node(id).handlers.change();}}

@@ -1,4 +1,7 @@
 """Disposable exhaustion and lifetime probes; unsupported caps remain explicit."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from pathlib import Path
 import json
 import os
@@ -10,8 +13,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
-from bench_candidates_process import OwnedProcess, ProcessLimits, _pending_processes
+sys.path.insert(0, str(ROOT))
+from backtest.runtime.process_owner import OwnedProcess, ProcessLimits, _pending_processes
 
 
 class ResourceTests(unittest.TestCase):
@@ -106,7 +109,7 @@ class ResourceTests(unittest.TestCase):
             raise failure
         from contextlib import ExitStack
         with ExitStack() as scope:
-            scope.enter_context(patch('bench_candidates_process.Thread.start', fail_reader))
+            scope.enter_context(patch('backtest.runtime.process_owner.Thread.start', fail_reader))
             if fail_close is True:
                 scope.enter_context(patch.object(OwnedProcess, 'wait_empty', side_effect=TimeoutError('Synthetic closure')))
             elif fail_close == 'handles':

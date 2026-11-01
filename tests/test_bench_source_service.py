@@ -1,4 +1,7 @@
 """Actual preparation/build/freshness and HTTP on fictional private roots only."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from http.client import RemoteDisconnected
@@ -16,17 +19,14 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'tools'),str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path.insert(0, str(ROOT))
 from bench_source_service_fixture import FictionalWorkspace,SourceService,sha,write,MIB
-from bench_comparison import ComparisonError
-from bench_methods import clean
-from bench_execution_observation import CurrentObservation
-import bench_execution_observation as observation
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from tools.experiments.bench_comparison import ComparisonError
+from tools.experiments.bench_methods import clean
+from tools.experiments.bench_execution_observation import CurrentObservation
+import tools.experiments.bench_execution_observation as observation
 from backtest.runtime import cache_access as cache_access
-import runtime_access
+from website import runtime_access
 from backtest.engines.original import schedules as schedules
 
 
@@ -48,7 +48,7 @@ class SourceServiceTests(unittest.TestCase):
             paths+=[self.workspace.source/name for name in self.workspace.sources]
             return {p.relative_to(self.workspace.source).as_posix():sha(p) for p in paths}
         before=unchanged_inputs()
-        from bench_capture_offline import OfflineCaptureError
+        from tools.experiments.bench_capture_offline import OfflineCaptureError
         with self.assertRaises(OfflineCaptureError) as error:
             self.workspace.capture_prepared()
         self.assertEqual(error.exception.reason,'unsupported')
@@ -247,7 +247,7 @@ class SourceServiceTests(unittest.TestCase):
             shutil.copy2(w.source/'data'/name,capture/name)
         shutil.copy2(w.source/'results/summary-exits.txt',capture/'report.txt')
         (capture/'capture.json').write_text('{}')
-        import bench_execution_inputs as inputs
+        import tools.experiments.bench_execution_inputs as inputs
         owner=inputs.CapturedWorkspace(capture,w.source,w.root/'capture-rejection')
         total=sum((capture/name).stat().st_size for name in ('research.sqlite','schedules.sqlite'))
         self.assertGreater(total,inputs.MAX_DATABASE_BYTES)
@@ -290,7 +290,7 @@ for value,uri in [(str(external),False),(external.as_uri()+'?mode=ro',True),('fi
 print(json.dumps(dict(owned=True,memory=True,rejected=len(rejected),mode=sys.argv[3])))
 '''
             env=guarded_environment(source) if inherited else dict(os.environ,
-                PYTHONPATH=os.pathsep.join([str(ROOT/'tests'),str(ROOT/'tools')]))
+                PYTHONPATH=os.pathsep.join([str(ROOT/'tests'),str(ROOT)]))
             result=subprocess.run([sys.executable,'-X','utf8','-B','-c',code,
                 str(source),str(database),'inherited' if inherited else 'direct'],env=env,
                 capture_output=True,text=True,timeout=15)

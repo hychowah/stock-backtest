@@ -22,7 +22,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).absolute().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT)]
 import test_numerical_generation as generations
 import sys as _root_sys
 from pathlib import Path as _RootPath

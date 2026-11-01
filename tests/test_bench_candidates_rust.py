@@ -1,4 +1,7 @@
 """Source-derived Rust expression lowering and native candidate parity."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from datetime import date
 import os
 from pathlib import Path
@@ -8,13 +11,11 @@ from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT))
 import test_bench_methods as shared
 import numpy as np
-from bench_candidates import NumericInputs, PythonExecutor
-import bench_candidates_rust as backend
-
-
+from tools.experiments.bench_candidates import NumericInputs, PythonExecutor
+import tools.experiments.bench_candidates_rust as backend
 class RustSourceTests(unittest.TestCase):
     def test_expression_tree_preserves_source_order_and_conditional_branches(self):
         policy = SimpleNamespace(input_names=('a','b','bankruptcy'),

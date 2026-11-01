@@ -14,9 +14,7 @@ import tempfile
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(ROOT/'tests'))
-sys.path.append(str(ROOT/'tools'))
-from bench_comparison import ComparisonProtocol,digest
+from tools.experiments.bench_comparison import ComparisonProtocol,digest
 
 MIB=1024**2
 COSTS=dict(attachment=45.,clone=32.,setup=180.,proof=60.,request=80.,
@@ -62,8 +60,8 @@ def measurement(workspace,capture,output,*,storage=False,cancel=None):
     The capture producer's limits remain in its manifest. This operation's
     separate bounds and frozen ordinary samples belong to its own protocol.
     """
-    import bench_execution as execution
-    import bench_execution_supervisor as supervisor
+    import tools.experiments.bench_execution as execution
+    import tools.experiments.bench_execution_supervisor as supervisor
     manifest=json.loads((capture/'capture.json').read_bytes())
     from backtest.engines.original import robustness as robustness
     with closing(sqlite3.connect(capture/'schedules.sqlite')) as db:
@@ -91,7 +89,7 @@ def measurement(workspace,capture,output,*,storage=False,cancel=None):
 def command(role,request,scenario,*,tools=None):
     return [sys.executable,'-X','utf8','-I','-B','-c',
         'import sys;sys.path[:0]=sys.argv[1:3];from bench_combined_service_fixture import dispatch;dispatch(sys.argv[3],sys.argv[4],sys.argv[5])',
-        str(ROOT/'tests'),str(tools or ROOT/'tools'),role,str(request),json.dumps(scenario)]
+        str(ROOT/'tests'),str(tools or ROOT),role,str(request),json.dumps(scenario)]
 
 
 def dispatch(role,request_path,scenario_text):
@@ -104,15 +102,15 @@ def dispatch(role,request_path,scenario_text):
     scenario=json.loads(scenario_text)
     path=Path(request_path)
     if role=='helper':
-        import bench_execution_supervisor_worker as helper
+        import tools.experiments.bench_execution_supervisor_worker as helper
         def controller(owner,request):return command('controller',request,scenario)
-        sys.argv=['fixture',str(ROOT/'tools'),str(path)]
+        sys.argv=['fixture',str(ROOT),str(path)]
         with patch.object(helper.admission,'require_execution'), \
                 patch.object(helper._ApplicationSupervisor,'_command',controller):
             raise SystemExit(helper.main())
     if role=='controller':
-        import bench_execution as execution
-        import bench_execution_controller as controller
+        import tools.experiments.bench_execution as execution
+        import tools.experiments.bench_execution_controller as controller
         def worker(owner,request):return command('worker',request,scenario,tools=owner._tools)
         if scenario.get('phase')=='attachment':
             original=execution.inputs._manifest
@@ -129,12 +127,12 @@ def dispatch(role,request_path,scenario_text):
                 if status=='complete':barrier(owner._workspace._folder/'joint-publication')
                 return result
             execution.MeasurementExecution._persist=persist
-        sys.argv=['fixture',str(ROOT/'tools'),str(path)]
+        sys.argv=['fixture',str(ROOT),str(path)]
         with patch.object(controller.admission,'require_execution'), \
                 patch.object(execution.MeasurementExecution,'_command',worker):
             raise SystemExit(controller.main())
     if role!='worker':raise AssertionError('Unknown combined fixture role.')
-    import bench_execution_worker as worker
+    import tools.experiments.bench_execution_worker as worker
     phase=scenario.get('phase')
     original_bind=worker._bind
     def binding(request):
@@ -142,14 +140,14 @@ def dispatch(role,request_path,scenario_text):
         # numerical interception. Controller/support imports stay in their role.
         s,robust,baseline=original_bind(request)
         if phase=='observation':
-            import bench_execution_observation as observations
+            import tools.experiments.bench_execution_observation as observations
             original=observations.signature
             def scanning(research,checkpoint):
                 barrier(path.parent/'joint-observation',checkpoint=checkpoint)
                 return original(research,checkpoint)
             observations.signature=scanning
         elif phase=='setup':
-            from bench_candidates import NumericInputs
+            from tools.experiments.bench_candidates import NumericInputs
             original=NumericInputs.__init__
             def initializing(owner,*args,**kwargs):
                 result=original(owner,*args,**kwargs)

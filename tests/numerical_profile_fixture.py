@@ -34,7 +34,7 @@ def __getattr__(name):
 
 def main():
     source,output=map(Path,sys.argv[1:3]);sys.path[:0]=[str(source),str(source/'website'),str(source/'scripts')]
-    import runtime_access
+    from website import runtime_access
     with runtime_access.ownership(source):
         from backtest.financial import rules
         from backtest.inputs import market, fmp_download, cache_assets

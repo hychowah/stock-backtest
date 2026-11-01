@@ -25,7 +25,7 @@ const ctx=vm.createContext({document,console,AbortController,Uint8Array,crypto:r
   if(deferred)return new Promise(resolve=>pending.push({url,resolve:()=>resolve(response(value))}));
   return response(value);
 }});
-for(const file of ['engine-controls.js','result-artifacts.js','contributions.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website',file),'utf8'),ctx);
+for(const file of ['engine-controls.js','result-artifacts.js','contributions.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),ctx);
 const run=code=>vm.runInContext(code,ctx),tick=()=>new Promise(resolve=>setImmediate(resolve));
 function artifact(id){return {version:3,kind:'custom',settings:{mode:'custom'},result:summary,catalog:{metrics:{},filters:{}},presentation:{periodLabel:'Original'},extension:{keep:null},evidence:{id:id.repeat(32),format_version:1,trials:1,periods:70,holdings:12600}};}
 (async()=>{

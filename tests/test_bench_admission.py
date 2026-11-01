@@ -1,4 +1,7 @@
 """Synthetic admission checks; never attach the installed runtime or live cache."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from contextlib import ExitStack
 import json
 import os
@@ -12,20 +15,18 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 # Common synthetic-suite launchers supply a source fixture. These checks create
 # their own source-only roots and must not attach the supplied runtime on import.
 if '--runtime' in sys.argv:
     index = sys.argv.index('--runtime')
     del sys.argv[index:index + 2]
-sys.path.insert(0, str(ROOT / 'tools'))
-import bench_admission as admission
-import bench_baseline as baseline
-import bench_methods as methods
-import bench_candidates_run as candidates
-import bench_candidates_process as process
-import bench_backtest as historical
-
-
+import tools.experiments.bench_admission as admission
+import tools.experiments.bench_baseline as baseline
+import tools.experiments.bench_methods as methods
+import tools.experiments.bench_candidates_run as candidates
+import backtest.runtime.process_owner as process
+import tools.experiments.bench_backtest as historical
 class AdmissionTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -111,6 +112,23 @@ class AdmissionTests(unittest.TestCase):
                 self.assertFalse(workdir.exists())
                 self.assertFalse(runtime.exists())
 
+    def test_runner_import_rejects_financial_dependencies_before_ownership(self):
+        code = r"""import sys,importlib.abc
+sys.path.insert(0,sys.argv[1])
+class Guard(importlib.abc.MetaPathFinder):
+ def find_spec(self,name,*args):
+  if name=='backtest' or name.startswith('backtest.'):
+   raise AssertionError('Financial import before source ownership: '+name)
+sys.meta_path.insert(0,Guard())
+import tools.experiments.bench_candidates_run
+import tools.experiments.bench_methods
+print('source-only')
+"""
+        result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],cwd=self.root,
+            capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(result.stdout.strip(),'source-only')
+
     def test_source_only_attachment_and_spawn_import_do_not_admit_execution(self):
         fixture = self.root / 'source-only'
         (fixture / 'scripts').mkdir(parents=True)
@@ -119,14 +137,15 @@ class AdmissionTests(unittest.TestCase):
         for source in (ROOT / 'scripts').glob('*.py'):
             shutil.copy2(source, fixture / 'scripts' / source.name)
         shutil.copy2(ROOT / 'website/runtime_access.py', fixture / 'website/runtime_access.py')
+        shutil.copy2(ROOT / 'website/__init__.py', fixture / 'website/__init__.py')
         environment = dict(os.environ)
         for key in ('BACKTEST_BASELINE_RUNTIME', 'BACKTEST_BASELINE_TOOL_SHA256'):
             environment.pop(key, None)
         code = '''import json, pathlib, sys
-sys.path.insert(0, sys.argv[1])
-import bench_baseline as baseline
+sys.path.insert(0,sys.argv[1])
+import tools.experiments.bench_baseline as baseline
 baseline.bootstrap(pathlib.Path(sys.argv[2]))
-import bench_methods
+import tools.experiments.bench_methods as bench_methods
 assert baseline.s is not None
 assert not (pathlib.Path(sys.argv[2]) / 'data/website-data-0.lock').exists()
 try:
@@ -142,7 +161,7 @@ print(json.dumps(dict(attached=True, execution_admitted=False)))
                 if spawned_import:
                     environment['BACKTEST_BASELINE_RUNTIME'] = str(fixture)
                     environment['BACKTEST_BASELINE_TOOL_SHA256'] = baseline._loaded_tool_sha256
-                result = subprocess.run([sys.executable, '-B', '-c', code, str(ROOT / 'tools'), str(fixture)],
+                result = subprocess.run([sys.executable, '-B', '-c', code, str(ROOT), str(fixture)],
                                         text=True, capture_output=True, env=environment,
                                         timeout=20, cwd=self.root)
                 self.assertEqual(result.returncode, 0, result.stderr)

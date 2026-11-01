@@ -1,4 +1,7 @@
 """Bounded protocol and owner failures plus an explicitly private native smoke."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 import base64
 import hashlib
 import json
@@ -15,9 +18,9 @@ from contextlib import contextmanager
 from unittest.mock import patch
 from urllib.parse import quote
 
-sys.path.insert(0,str(Path(__file__).resolve().parent))
 from bench_native_browser import (BrowserFailure, BrowserLimit, BrowserStorage,
     LIMITS, NativeBrowser, ROOT, _WebSocket, _retained)
+sys.path.insert(0, str(ROOT))
 
 
 class ProtocolTests(unittest.TestCase):

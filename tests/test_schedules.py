@@ -496,8 +496,8 @@ class PreparationTests(unittest.TestCase):
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         BacktestTests.setUp(self)
-        sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'website'))
-        import serve
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+        from website.server import app as serve
         self.serve=serve
 
     def request(self,payload,origin=None):

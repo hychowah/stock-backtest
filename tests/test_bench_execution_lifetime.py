@@ -1,4 +1,7 @@
 """Private lifetime hierarchy, collection and death fixtures. No real assets."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from dataclasses import replace, asdict
 import json
 import os
@@ -11,12 +14,12 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tools'),str(ROOT/'tests')]
-import bench_execution as execution
-import bench_execution_supervisor as supervisor
-import bench_execution_supervisor_worker as worker
-from bench_execution_domain import LifetimeLimits, LifetimeDomain, DomainLimits
-from bench_comparison import ComparisonError, ComparisonProtocol
+sys.path.insert(0, str(ROOT))
+import tools.experiments.bench_execution as execution
+import tools.experiments.bench_execution_supervisor as supervisor
+import tools.experiments.bench_execution_supervisor_worker as worker
+from tools.experiments.bench_execution_domain import LifetimeLimits, LifetimeDomain, DomainLimits
+from tools.experiments.bench_comparison import ComparisonError, ComparisonProtocol
 import test_bench_execution_supervisor as fixtures
 
 
@@ -66,13 +69,14 @@ class LifetimeTests(unittest.TestCase):
         return supervisor.ComparisonSupervisor(supervisor.specification(bound))
 
     def command(self,request,mode='financial'):
-        code='''import sys,time,os,json
-sys.path[:0]=[sys.argv[1],sys.argv[3]]
+        code='''import sys;from pathlib import Path;sys.path.insert(0,str(Path(sys.argv[1])/'tests'))
+import sys;sys.path.insert(0,sys.argv[1])
+import sys,time,os,json
 from pathlib import Path
 from unittest.mock import patch
-import bench_execution_supervisor_worker as w
-import bench_execution_supervisor as s
-import bench_execution_storage as st
+import tools.experiments.bench_execution_supervisor_worker as w
+import tools.experiments.bench_execution_supervisor as s
+import tools.experiments.bench_execution_storage as st
 from test_bench_execution_supervisor import SupervisorTests
 mode=sys.argv[4]
 original=st.ExperimentalStorage._copy_record
@@ -132,7 +136,7 @@ if mode=='slow_helper':
 with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSupervisor,'_command',command):
  raise SystemExit(w.main())
 '''
-        return [sys.executable,'-I','-B','-c',code,str(ROOT/'tools'),str(request),str(ROOT/'tests'),mode]
+        return [sys.executable,'-I','-B','-c',code,str(ROOT),str(request),str(ROOT/'tests'),mode]
 
     def run_owner(self,owner,mode='financial'):
         with patch.object(supervisor.admission,'require_execution'), \
@@ -140,7 +144,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
             return owner.run()
 
     def test_actual_reference_numba_and_pinned_storage_share_lifetime(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -151,13 +155,13 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
         self.assertEqual(f.immutable_bytes(),before)
         self.assertTrue(owner.evidence['lifetime_closure']['closed'])
         self.assertEqual(owner.evidence['lifetime']['configuration']['memory.max'],str(2304*1024**2))
-        from bench_execution_storage import inspect_evidence
+        from tools.experiments.bench_execution_storage import inspect_evidence
         evidence=inspect_evidence(next(f.output.glob('*.evidence')))
         self.assertTrue(any(r['path'].endswith('/domain.json') for r in evidence['records']))
         print(json.dumps(dict(check='lifetime_financial',evidence=owner.evidence)),flush=True)
 
     def test_successful_helper_tail_cannot_restart_finalization(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         source=self.base.fixture.fixture.source
         with runtime_access.ownership(source,timeout=0):
             with cache_access.WorkspaceAccess(source/'data/website-data-0.lock').observe():pass
@@ -200,7 +204,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
                 requests.append(args)
                 return subprocess.CompletedProcess(args,1,'','')
             return original(args,**kwargs)
-        with patch('bench_execution_domain.subprocess.run',side_effect=fail):
+        with patch('tools.experiments.bench_execution_domain.subprocess.run',side_effect=fail):
             with self.assertRaises(OSError):owned.prepare()
         with self.assertRaises(TimeoutError):owned.close()
         self.assertFalse(owned.closed)
@@ -221,7 +225,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
                 print(json.dumps(dict(check='collection_'+mode,capability=owner.lifetime.capability())),flush=True)
 
     def test_killed_collector_retains_committed_prefix_and_ready_recovery(self):
-        from bench_execution_storage import inspect_evidence,recover_publication
+        from tools.experiments.bench_execution_storage import inspect_evidence,recover_publication
         f=self.base.fixture.fixture
         for mode in ('death','ready'):
             with self.subTest(mode=mode):
@@ -242,9 +246,9 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
     def test_manager_deadline_closes_application_after_caller_death(self):
         f=self.base.fixture.fixture
         record=f.root/'death-record.json'
-        helper="""import sys,json,time
-sys.path.insert(0,sys.argv[1])
-from bench_execution_domain import start_controller,DomainLimits
+        helper="""import sys;sys.path.insert(0,sys.argv[1])
+import sys,json,time
+from tools.experiments.bench_execution_domain import start_controller,DomainLimits
 names=json.loads(sys.argv[2])
 assert input()=='GO'
 owned=start_controller([sys.executable,'-c',"import time;assert input()=='GO';time.sleep(30)"],DomainLimits(64*1024**2,8,25,30.,8.,close_seconds=.3),hierarchy=names,role='application')
@@ -252,10 +256,10 @@ owned.start()
 print(json.dumps(dict(event='ready',application_group=str(owned.cgroup))),flush=True)
 time.sleep(30)
 """
-        caller="""import sys,json,os,time
+        caller="""import sys;sys.path.insert(0,sys.argv[1])
+import sys,json,os,time
 from pathlib import Path
-sys.path.insert(0,sys.argv[1])
-from bench_execution_domain import LifetimeDomain,LifetimeLimits,DomainLimits
+from tools.experiments.bench_execution_domain import LifetimeDomain,LifetimeLimits,DomainLimits
 owner=LifetimeDomain(LifetimeLimits(128*1024**2,16,25),DomainLimits(64*1024**2,8,25,1.5,8.,close_seconds=.5))
 # Identities survive the caller before its first manager request.
 Path(sys.argv[2]).write_text(json.dumps(dict(names=owner.names)))
@@ -271,7 +275,7 @@ while time.monotonic()<deadline:
   os._exit(29)
 raise RuntimeError('Readiness missing')
 """
-        result=subprocess.run([sys.executable,'-I','-B','-c',caller,str(ROOT/'tools'),str(record),helper],
+        result=subprocess.run([sys.executable,'-I','-B','-c',caller,str(ROOT),str(record),helper],
                               capture_output=True,text=True,timeout=8.)
         self.assertEqual(result.returncode,29,result.stderr)
         facts=json.loads(record.read_text());names=facts['names']

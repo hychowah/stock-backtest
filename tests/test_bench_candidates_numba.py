@@ -1,4 +1,7 @@
 """Differential source-policy proof with compiled reports, prices and factors."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from contextlib import contextmanager
 from datetime import date
 import inspect
@@ -8,7 +11,7 @@ from unittest.mock import patch
 import numpy as np
 
 import test_bench_candidates as source_tests
-from bench_candidates_numba import NumbaExecutor
+from backtest.engines.numerical.numba import NumbaExecutor
 
 
 class NumbaCandidateTests(source_tests.CandidateTests):

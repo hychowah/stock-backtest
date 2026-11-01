@@ -1,4 +1,7 @@
 """Synthetic SQL-oracle checks for the benchmark-only compiled price resolver."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from datetime import date, timedelta
 from pathlib import Path
 import random
@@ -7,10 +10,10 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT))
 
 try:
-    import bench_methods_numba as method
+    import tools.experiments.bench_methods_numba as method
 except ModuleNotFoundError as error:
     if error.name not in ('numpy', 'numba', 'llvmlite'):
         raise

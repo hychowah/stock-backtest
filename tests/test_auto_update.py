@@ -1,4 +1,7 @@
 """Committed-main updates and cooperative native shutdown. Synthetic inputs only."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from contextlib import ExitStack
 import json
 from pathlib import Path
@@ -13,11 +16,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT),str(ROOT/'tools'),str(ROOT/'website'),str(ROOT/'scripts')]
-import deploy as d
-import runtime_access
-
-
+sys.path.insert(0, str(ROOT))
+import tools.ops.deploy as d
+from website import runtime_access
 class Child:
     def __init__(self,code=None):self.returncode=code;self.waits=[]
     def poll(self):return self.returncode
@@ -122,29 +123,32 @@ class NativeStopTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
         self.root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
-        website=self.root/'website';website.mkdir()
+        website=self.root/'website';website.mkdir(); (website/'server').mkdir(); (website/'__init__.py').write_text(''); (website/'server/__init__.py').write_text('')
         for name in ('serve.py','runtime_access.py'):shutil.copy2(ROOT/'website'/name,website/name)
         self.website=website;self.token='c'*32
         self.config=dict(runtime=str(self.root))
         self.context.enter_context(patch.object(d,'linux_path',side_effect=Path))
 
     def spawn(self,app):
-        (self.website/'serve_app.py').write_text(app)
+        (self.website/'server/app.py').write_text(app)
         child=subprocess.Popen([sys.executable,'-B',str(self.website/'serve.py')],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                                env=dict(os.environ,**{d.SUPERVISOR_ENV:self.token}))
         def close():
             if child.poll() is None:child.kill()
             child.communicate()
-        self.addCleanup(close);return child
+        self.addCleanup(close);self.child=child;return child
 
     def until(self,path):
         deadline=time.monotonic()+5
         while not path.exists() and time.monotonic()<deadline:time.sleep(.02)
+        if not path.exists() and self.child.poll() is not None:
+            output,error=self.child.communicate()
+            self.fail(error.decode())
         self.assertTrue(path.exists())
 
     def test_stop_during_source_wait_never_imports_application(self):
         with runtime_access.ownership(self.root,exclusive=True):
-            child=self.spawn('from pathlib import Path\nPath(__file__).parents[1].joinpath("imported").write_text("yes")\ndef main(): pass\n')
+            child=self.spawn('from pathlib import Path\nPath(__file__).parents[2].joinpath("imported").write_text("yes")\ndef main(): pass\n')
             time.sleep(.2)
             d.request_child_stop(self.config,self.token)
             output,error=child.communicate(timeout=5)
@@ -152,7 +156,7 @@ class NativeStopTests(unittest.TestCase):
         self.assertFalse((self.root/'imported').exists())
 
     def test_cleanup_retains_source_ownership_until_application_finishes(self):
-        child=self.spawn('from pathlib import Path\nimport time\nroot=Path(__file__).parents[1]\n'
+        child=self.spawn('from pathlib import Path\nimport time\nroot=Path(__file__).parents[2]\n'
                         'def main():\n root.joinpath("ready").write_text("yes")\n try:\n  while True:time.sleep(.02)\n'
                         ' finally:\n  root.joinpath("closing").write_text("yes")\n  while not root.joinpath("release").exists():time.sleep(.02)\n')
         self.until(self.root/'ready');d.request_child_stop(self.config,self.token);self.until(self.root/'closing')
@@ -168,9 +172,12 @@ class NativeStopTests(unittest.TestCase):
         app=f'''import importlib.util,sys,time,json
 from pathlib import Path
 from unittest.mock import patch
-source=Path({str(ROOT)!r});root=Path(__file__).parents[1]
-sys.path[:0]=[str(source),str(source/'website'),str(source/'scripts')]
-spec=importlib.util.spec_from_file_location('integrated_app',source/'website/serve_app.py')
+source=Path({str(ROOT)!r});root=Path(__file__).parents[2]
+sys.path.insert(0,str(source))
+import website,website.server
+website.__path__.insert(0,str(source/'website'))
+website.server.__path__.insert(0,str(source/'website/server'))
+spec=importlib.util.spec_from_file_location('website.server._integrated_app',source/'website/server/app.py')
 app=importlib.util.module_from_spec(spec);spec.loader.exec_module(app)
 from backtest.runtime import backtest_control
 from backtest.application import queue as backtest_queue
@@ -193,7 +200,7 @@ class Server(Base):
   self.calculations.original.calculate=slow
 app.Server=Server
 def main():
- with patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.cache_assets,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
+ with patch('backtest.application.preparation.dependencies'),patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.cache_assets,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
   app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
  value=store.get(item['id']);replayed=store.claim()
  assert value['state']=='queued' and value['options']==options
@@ -217,7 +224,7 @@ def main():
 @unittest.skipUnless(shutil.which('git'),'Private committed-source integration check requires Git.')
 class CommittedUpdateTests(unittest.TestCase):
     def test_running_native_child_automatically_moves_to_the_next_main_commit(self):
-        import launcher
+        from website.server import launcher
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);source=root/'source';runtime=root/'runtime';source.mkdir();runtime.mkdir()
             git=shutil.which('git')
@@ -226,12 +233,12 @@ class CommittedUpdateTests(unittest.TestCase):
             subprocess.run([git,'init','-q','--initial-branch=main','--separate-git-dir',str(source/'.git-local'),str(source)],check=True)
             for key,value in [('user.name','Fixture'),('user.email','fixture@example.invalid')]:
                 subprocess.run(command('config',key,value),check=True)
-            website=source/'website';website.mkdir()
-            (source/'tools').mkdir();shutil.copy2(ROOT/'tools'/'deploy.py',source/'tools'/'deploy.py')
+            website=source/'website';website.mkdir(); (website/'server').mkdir(); (website/'__init__.py').write_text(''); (website/'server/__init__.py').write_text('')
+            shutil.copytree(ROOT/'tools',source/'tools',ignore=shutil.ignore_patterns('__pycache__'))
             shutil.copytree(ROOT/'backtest',source/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
-            for name in ('serve.py','runtime_access.py','launcher.py'):shutil.copy2(ROOT/'website'/name,website/name)
+            for name in ('serve.py','runtime_access.py','server/launcher.py'):shutil.copy2(ROOT/'website'/name,website/name)
             def app(version):
-                return ('from pathlib import Path\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\nimport launcher\n'
+                return ('from pathlib import Path\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\nfrom website.server import launcher\n'
                         'def main():\n'
                         ' class Handler(BaseHTTPRequestHandler):\n'
                         '  def do_GET(self): launcher_owner.control(self)\n'
@@ -243,9 +250,9 @@ class CommittedUpdateTests(unittest.TestCase):
                         ' with launcher.Lifecycle(0,"127.0.0.1") as launcher_owner:\n'
                         '  server=ThreadingHTTPServer(("127.0.0.1",0),Handler)\n'
                         '  launcher_owner.attach(server)\n'
-                        f'  Path(__file__).parents[1].joinpath("served-version").write_text({version!r})\n'
+                        f'  Path(__file__).parents[2].joinpath("served-version").write_text({version!r})\n'
                         '  server.serve_forever()\n')
-            path=website/'serve_app.py';path.write_text(app('first'))
+            path=website/'server/app.py';path.write_text(app('first'))
             subprocess.run(command('add','website','tools'),check=True)
             subprocess.run(command('commit','-qm','First fixture'),check=True)
             first=subprocess.check_output(command('rev-parse','HEAD')).decode().strip()
@@ -278,7 +285,7 @@ class CommittedUpdateTests(unittest.TestCase):
                     path.write_text(app('second'))
                     time.sleep(.15)
                     self.assertTrue(version('first'),'Uncommitted source must not be published')
-                    subprocess.run(command('add','website/serve_app.py'),check=True)
+                    subprocess.run(command('add','website/server/app.py'),check=True)
                     subprocess.run(command('commit','-qm','Second fixture'),check=True)
                     second=subprocess.check_output(command('rev-parse','HEAD')).decode().strip()
                     until(lambda:version('second'))
@@ -303,9 +310,9 @@ class WslInteropTests(unittest.TestCase):
         if not executable.is_file():self.skipTest('Registered native Python is unavailable.')
         temporary=subprocess.check_output([str(executable),'-c','import tempfile; print(tempfile.gettempdir())'],text=True).strip()
         with tempfile.TemporaryDirectory(prefix='ebitda-wsl-stop-',dir=d.linux_path(temporary)) as folder:
-            root=Path(folder);website=root/'website';website.mkdir()
+            root=Path(folder);website=root/'website';website.mkdir(); (website/'server').mkdir(); (website/'__init__.py').write_text(''); (website/'server/__init__.py').write_text('')
             for name in ('serve.py','runtime_access.py'):shutil.copy2(ROOT/'website'/name,website/name)
-            (website/'serve_app.py').write_text('from pathlib import Path\nimport time\nroot=Path(__file__).parents[1]\n'
+            (website/'server/app.py').write_text('from pathlib import Path\nimport time\nroot=Path(__file__).parents[2]\n'
                 'def main():\n root.joinpath("ready").write_text("yes")\n try:\n  while True:time.sleep(.02)\n'
                 ' finally:root.joinpath("closed").write_text("yes")\n')
             config=dict(registered,runtime=d.windows_path(root));token='d'*32

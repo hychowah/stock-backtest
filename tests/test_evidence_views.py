@@ -16,7 +16,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT),str(ROOT/'website'),str(ROOT/'scripts'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT),str(ROOT),str(ROOT/'scripts'),str(ROOT/'tests')]
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 from backtest.application import durable_evidence as durable_evidence
@@ -28,7 +28,7 @@ from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import result_evidence as result_evidence
 from backtest.application import library as saved_backtests
-import serve_app
+from website.server import app as serve_app
 from backtest.application.result_access import ResultAccess
 from test_durable_evidence import source,submission
 from test_saved_backtests import snapshot as legacy
@@ -253,7 +253,7 @@ const context=vm.createContext({ResultArtifacts:{forView:()=>({version:2,kind:'c
 vm.runInContext(fs.readFileSync(process.argv[1],'utf8')+';ScheduleView.init()',context);
 for(const kind of ['holdings','returns'])node('schedule-download-'+kind).handlers.click();
 process.stdout.write(JSON.stringify(out));});"""
-        expected=json.loads(subprocess.run([node,'-e',code,str(ROOT/'website/schedule.js')],input=json.dumps(original),encoding='utf-8',capture_output=True,check=True).stdout)
+        expected=json.loads(subprocess.run([node,'-e',code,str(ROOT/'website/browser/schedule.js')],input=json.dumps(original),encoding='utf-8',capture_output=True,check=True).stdout)
         for kind,golden in zip(('holdings','returns'),expected,strict=True):
             chunks=list(result_exports.csv(reader,kind))
             self.assertTrue(all(0<len(chunk)<=65536 for chunk in chunks))

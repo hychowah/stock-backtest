@@ -1,4 +1,7 @@
 """Disposable allocated-block enforcement and retained evidence. No real inputs."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 from dataclasses import asdict, replace
 import errno
 import json
@@ -11,11 +14,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'scripts'), str(ROOT / 'website')]
-import bench_execution as execution
-import bench_execution_storage as storage
-import bench_execution_supervisor as supervisor
-from bench_comparison import ComparisonError, ComparisonProtocol
+sys.path.insert(0, str(ROOT))
+import tools.experiments.bench_execution as execution
+import tools.experiments.bench_execution_storage as storage
+import tools.experiments.bench_execution_supervisor as supervisor
+from tools.experiments.bench_comparison import ComparisonError, ComparisonProtocol
 import test_bench_execution_supervisor as fixtures
 
 
@@ -38,10 +41,24 @@ class StorageDeclarationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ComparisonError,'unsupported'):owner.run()
             self.assertIsNone(owner.control)
 
+    def test_fixed_bootstrap_uses_package_root_in_source_and_staged_layouts(self):
+        owner=object.__new__(storage.ExperimentalStorage)
+        owner.capacity=8192;owner.address='fixture-address';owner.nonce=b'fixture-nonce'
+        child=['fixture-python','fixture-child.py','unchanged-argument']
+        for filename,expected in ((storage.__file__,ROOT),
+                ('/workspace/tools/tools/experiments/bench_execution_storage.py',Path('/workspace/tools').resolve())):
+            with self.subTest(filename=filename),patch.object(storage,'__file__',filename):
+                command=owner.command(child,[])
+                index=command.index('-c')
+                self.assertIn('from tools.experiments.bench_execution_storage import bootstrap',command[index+1])
+                self.assertEqual(command[index+2:], [str(expected),'fixture-address','fixture-nonce',*child])
+                self.assertIn('--unshare-pid',command)
+                self.assertIn('--die-with-parent',command)
+
     def test_actual_worker_handler_classifies_sqlite_full_and_extended_codes(self):
         import sqlite3,io
         from contextlib import redirect_stdout
-        import bench_execution_worker as worker
+        import tools.experiments.bench_execution_worker as worker
         def full(unused):
             db=sqlite3.connect(':memory:')
             try:
@@ -64,7 +81,7 @@ class StorageDeclarationTests(unittest.TestCase):
     def test_readonly_coordination_never_creates_files_and_uses_same_locks(self):
         import tempfile
         from backtest.runtime import cache_access as cache_access
-        import runtime_access
+        from website import runtime_access
         with tempfile.TemporaryDirectory(prefix='cb02-readonly-lock-') as folder:
             root = Path(folder); path = root / 'data/website-data-0.lock'
             observer = cache_access.WorkspaceAccess(path, read_only=True)
@@ -129,7 +146,7 @@ class StorageLifetimeTests(unittest.TestCase):
         return storage.inspect_evidence(owner.storage.target)
 
     def test_actual_reference_both_numba_guards_inside_one_storage_boundary(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         f = self.base.fixture.fixture
         with runtime_access.ownership(f.source, timeout=0):
             with cache_access.WorkspaceAccess(f.source / 'data/website-data-0.lock').observe(): pass
@@ -177,9 +194,9 @@ assert len(list(Path('/proc').glob('[0-9]*')))<12
         # Run the actual worker error handler. The final write itself exhausts
         # the filesystem; the test does not manufacture its terminal reason.
         wrapper=('import sys;sys.path.insert(0,sys.argv[1]);'
-                 'import bench_execution_worker as w;assert input()=="GO";'
+                 'import tools.experiments.bench_execution_worker as w;assert input()=="GO";'
                  'w.run=lambda unused:exec('+repr('import os,json,errno,time\nfrom pathlib import Path\n'+code)+');w.main()')
-        self.run_failed(owner, [sys.executable,'-I','-B','-c',wrapper,str(ROOT/'tools')], 'limit')
+        self.run_failed(owner, [sys.executable,'-I','-B','-c',wrapper,str(ROOT)], 'limit')
         self.assertTrue(owner.owned.descendants_empty)
         self.assertTrue(owner.storage.closed)
         self.assertTrue(any(r['path']=='quota.json' for r in self.records(owner)['records']))
@@ -289,7 +306,7 @@ assert len(list(Path('/proc').glob('[0-9]*')))<12
         self.assertFalse(self.records(owner)['header']['storage_received'])
 
     def test_collection_and_publication_time_still_consume_finalization(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -311,7 +328,7 @@ assert len(list(Path('/proc').glob('[0-9]*')))<12
         with self.assertRaisesRegex(ComparisonError,'incomplete'):_=owner.result
 
     def test_readonly_namespace_preserves_direct_edit_detection_and_live_priority(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -407,9 +424,9 @@ try:
 finally:db.close()
 """
         wrapper=('import sys;sys.path.insert(0,sys.argv[1]);'
-                 'import bench_execution_worker as w;assert input()=="GO";'
+                 'import tools.experiments.bench_execution_worker as w;assert input()=="GO";'
                  'w.run=lambda unused:exec('+repr(body)+');w.main()')
-        self.run_failed(owner,[sys.executable,'-I','-B','-c',wrapper,str(ROOT/'tools')],'limit')
+        self.run_failed(owner,[sys.executable,'-I','-B','-c',wrapper,str(ROOT)],'limit')
         self.assertTrue(owner.closed);self.assertTrue(owner.owned.descendants_empty)
         verified=self.records(owner)
         self.assertEqual(verified['header']['terminal_reason'],'limit')
@@ -426,7 +443,7 @@ finally:db.close()
         with self.assertRaisesRegex(ComparisonError,'incomplete'):_=owner.result
 
     def test_final_receipt_exhaustion_reports_limit_after_confirmed_domain_close(self):
-        from backtest.runtime import cache_access as cache_access; import runtime_access
+        from backtest.runtime import cache_access as cache_access; from website import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -507,10 +524,10 @@ class ContainerRecoveryTests(unittest.TestCase):
         # actual tmpfs enforcement and domain ownership evidence separately.
         import tempfile, subprocess
         with tempfile.TemporaryDirectory(prefix='cb02-container-recovery-') as folder:
-            code='''import os,sys
+            code='''import sys;sys.path.insert(0,sys.argv[1])
+import os,sys
 from pathlib import Path
-sys.path.insert(0,sys.argv[1])
-import bench_execution_storage as s
+import tools.experiments.bench_execution_storage as s
 root=Path(sys.argv[2]);(root/'record').write_bytes(b'durable')
 owner=s.ExperimentalStorage(1048576,1048576,root/sys.argv[3],5.)
 owner.prepare();fd=os.open(root/'record',os.O_RDONLY)
@@ -525,7 +542,7 @@ else:
 os._exit(29)
 '''
             for kind in ('interrupted','ready'):
-                result=subprocess.run([sys.executable,'-B','-c',code,str(ROOT/'tools'),folder,kind],timeout=10)
+                result=subprocess.run([sys.executable,'-B','-c',code,str(ROOT),folder,kind],timeout=10)
                 self.assertEqual(result.returncode,29)
                 pending=next((Path(folder)/kind).glob('*.pending'))
                 verified=storage.inspect_evidence(pending)
@@ -543,7 +560,7 @@ os._exit(29)
 class CollectedDomainRaceTests(unittest.TestCase):
     def test_failed_stop_accepts_absence_only_after_verified_creation(self):
         from types import SimpleNamespace
-        from bench_execution_domain import _UserService
+        from tools.experiments.bench_execution_domain import _UserService
         for settled in (False,True):
             owner=object.__new__(_UserService)
             owner._creation_settled=settled;owner._stop_confirmed=False

@@ -19,7 +19,7 @@ from threading import local
 def seed(server,source):
     from backtest.application import temporary_evidence as job_evidence
     from backtest.application import durable_evidence as durable_evidence
-    import serve_app
+    from website.server import app as serve_app
     from backtest.financial import metrics as metrics
     from backtest.application import library as saved_backtests
     from backtest.engines.numerical.portfolio import compare_results
@@ -101,7 +101,7 @@ def seed(server,source):
 def forbid_read_dependencies(context,serve_app):
     """Assert real ordinary HTTP reads do not use readiness or financial access."""
     from unittest.mock import patch
-    state=local();access=serve_app.cache_access.access;ready=serve_app.Handler.calculation_ready
+    state=local();access=serve_app.cache_access.access;ready=serve_app.backtests.calculation_ready
     def guarded_access(*args,**kwargs):
         if getattr(state,'reading',False):raise AssertionError('Stored read requested financial access')
         return access(*args,**kwargs)
@@ -109,11 +109,11 @@ def forbid_read_dependencies(context,serve_app):
         if getattr(state,'reading',False):raise AssertionError('Stored read requested readiness')
         return ready(handler)
     context.enter_context(patch.object(serve_app.cache_access,'access',guarded_access))
-    context.enter_context(patch.object(serve_app.Handler,'calculation_ready',guarded_ready))
+    context.enter_context(patch.object(serve_app.backtests,'calculation_ready',guarded_ready))
     for name in ('evidence_request','saved_backtest_request'):
-        call=getattr(serve_app.Handler,name)
+        call=getattr(serve_app.results,name)
         def guarded(handler,*args,_call=call,**kwargs):
             state.reading=True
             try:return _call(handler,*args,**kwargs)
             finally:state.reading=False
-        context.enter_context(patch.object(serve_app.Handler,name,guarded))
+        context.enter_context(patch.object(serve_app.results,name,guarded))

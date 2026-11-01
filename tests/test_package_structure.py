@@ -95,7 +95,7 @@ class PackageTests(unittest.TestCase):
 import sys
 from pathlib import Path
 root=Path(sys.argv[1])
-sys.path[:0]=[str(root/'tests'),str(root/'tools')]
+sys.path[:0]=[str(root/'tests'),str(root)]
 from bench_source_service_fixture import dependency_guard
 import candidate_preparation_fixture, candidate_service_fixture, numerical_profile_fixture
 assert not any(name=='backtest' or name.startswith('backtest.') for name in sys.modules)

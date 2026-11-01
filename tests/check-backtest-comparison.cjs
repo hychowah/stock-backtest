@@ -1,4 +1,4 @@
-const assert=require('node:assert/strict'),Comparison=require('../website/backtest-comparison.js');
+const assert=require('node:assert/strict'),Comparison=require('../website/browser/backtest-comparison.js');
 const artifact=(settings={},result={},kind='custom')=>({version:2,kind,settings:{mode:kind,start:'2015-01-01',end:'2020-12-31',months:12,...settings},result:{start:'2015-01-02',end:'2020-12-31',cagr:.12,spy_cagr:.08,growth:2,...result},catalog:{metrics:{ev_ebitda:{label:'Original EBITDA multiple'}},filters:{fcf:{label:'Original free cash flow'}}}});
 const describe=Comparison.describe,compare=(a,b)=>Comparison.compare(describe(a),describe(b));
 const a=artifact(),legacy=JSON.stringify(a);Object.freeze(a.settings);Object.freeze(a);
