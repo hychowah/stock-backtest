@@ -96,7 +96,7 @@ The existing path, size and modification-time freshness guarantee stays in use.
 A same-size edit with a restored timestamp remains outside that guarantee.
 
 `retire` keeps the current and previous generations. It removes older verified
-generations only when they have no live or uncertain reader lease. It never
+generations only when they have no live or uncertain reader lease or gate. It never
 waits for a reader. Damaged or unknown directories require explicit review.
 
 `python scripts/numerical_generation.py recover` restores the verified previous
@@ -203,7 +203,7 @@ source policy. An old attachment can stay open but cannot validate after its
 inputs change. Close evaluators and all borrowed array views
 before closing the attachment. Borrowed views expire when attachment closes.
 
-Each attachment holds an OS-locked lease outside its immutable directory.
+Each ordinary attachment holds an OS-locked lease outside its immutable directory.
 An attachment stays inside its caller's financial ownership scope, including
 idle reuse. Coordinated publication waits for that scope to end. An old
 attachment can remain leased during a private low-level publication test, but
@@ -211,6 +211,60 @@ that test does not permit an application to release financial ownership early.
 Close releases SQLite and mappings before the lease. Failed close retains a
 strong owner and the lease for explicit retry. Process death releases its OS
 lock. Retirement can then reclaim its abandoned lease.
+
+## Exact-generation worker attachment (CB-19A)
+
+Current source can delegate an immutable generation to a trusted worker. This
+capability does not start processes or change application routing. Original
+remains the default. CB-19C must supply worker containment, parent monitoring
+and shutdown. CB-19A does not guarantee that an arbitrary worker stops when
+its parent dies.
+
+The coordinator keeps source and financial ownership and calls
+`inputs.worker_reference()`. This rechecks current input freshness before it
+returns a small JSON-compatible record. Its fields are integer `version=1`,
+canonical absolute `store` and exact generation `identity`. The reference
+contains no arrays or executable objects. It authorizes no preparation,
+publication or recovery. A worker cannot issue another reference.
+
+The worker owns source before importing calculation modules. It calls
+`open_delegated(reference, schedules, checkpoint=ownership_checkpoint)`. The
+checkpoint is required. It raises when ownership ends or work must stop. The
+worker opens the exact generation, regardless of `current.json`. It verifies
+all artifact content and reconstructs the source policy. Policy signature,
+field schema, parameter width and generation-source hashes must match. It
+does not inspect current raw inventory or prepared databases. It does not
+recover publication or acquire financial ownership.
+
+The returned `DelegatedInputs` has the existing numerical-input interface.
+Its `validate()` checks that it remains open and calls the checkpoint.
+Current-input freshness remains the coordinator's responsibility. Ordinary
+`AttachedInputs.validate()` keeps its complete current-input check.
+
+The coordinator creates one stable `gates/<identity>.lock` outside the
+generation directory. It never replaces or unlinks this gate. Workers take
+its shared OS lock before verification or mappings. Retirement and damaged
+generation replacement require its exclusive lock without waiting. A held
+or uncertain gate retains the generation. Existing UUID leases still protect
+ordinary readers. The exclusive gate stays held through deletion or replacement.
+Windows uses the existing source owner's shared/exclusive byte-lock helper;
+POSIX uses `flock`. This gate is neither source nor financial ownership.
+
+Ownership order stays source, financial ownership, generation gate, then
+input handles for the coordinator. Workers use source, generation gate, then
+input handles. Close private evaluators first. Attachment close releases the
+records connection and mappings before its pin. Failed closure retains a
+strong owner for explicit retry. Temporary verifier handles receive the same
+protection. Reader process death releases its OS pin. A worker that pins first
+blocks retirement. If retirement wins first, attachment fails without opening
+generation files. Stable gate files prevent a second lock inode after deletion.
+
+Private synthetic checks run on WSL and native Windows. They cover exact
+read-only data, stale coordinator rejection, delegated source mismatch,
+cancellation, closure retry, both race orderings, independent reader pins,
+parent-process loss and abrupt reader death. Complete file release is checked
+by native rename and removal after closure. These checks qualify attachment
+ownership. They do not qualify a trial pool, real-cache capacity or speed.
 
 ## Publication and recovery
 

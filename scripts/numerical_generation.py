@@ -1,8 +1,10 @@
 """Immutable numerical inputs, exported offline from validated prepared tables.
 
 The store owns publication, recovery, mappings and reader leases. An attachment
-borrows no source database handles. Callers retain ordinary cache ownership
-during calculation and close evaluators before closing their input attachment.
+borrows no source database handles. Ordinary attachment callers retain cache
+ownership during calculation. Delegated workers retain source ownership and
+their generation pin; their coordinator retains financial ownership. Close
+evaluators before closing the input attachment.
 No application routing, downloads or reference-report writes occur here.
 """
 from collections.abc import Mapping, Sequence
@@ -14,6 +16,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -44,6 +47,7 @@ STORE = ROOT / 'data' / 'numerical'
 CHUNK = 4096
 MAX_MANIFEST = 4 * 1024 * 1024
 MAX_HISTORY = 16384
+WORKER_REFERENCE_VERSION = 1
 # Retain ownership after a caller loses a reference or a close fails. Explicit
 # successful close removes this registration. GC is not a closure protocol.
 _attachments = {}
@@ -303,14 +307,85 @@ def _valid_id(value):
     return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
 
 
+def _source_binding(policy, checkpoint=lambda: None):
+    """One source definition for coordinator freshness and exact worker attach."""
+    source = {p.name: _sha(p, checkpoint) for p in policy.source_paths}
+    for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_factors.py'):
+        source[name] = _sha(Path(__file__).with_name(name), checkpoint)
+    return source
+
+
+class _ReaderGate:
+    """Stable OS pin, separate from source and financial ownership."""
+    def __init__(self, path, *, exclusive=False):
+        self.handle, self.release = None, None
+        if any(not _plain(part) for part in (path, *path.parents)):
+            raise ValueError('Invalid numerical reader gate.')
+        self.handle = path.open('r+b' if exclusive else 'rb', buffering=0)
+        try:
+            if self.handle.seek(0, 2) != 1: raise ValueError('Invalid numerical reader gate.')
+            if os.name == 'nt':
+                # The source-owning bootstrap already loads this stdlib-only
+                # module. Reuse its byte-lock implementation without changing
+                # source ownership or importing application bootstrap code.
+                from runtime_access import _windows_lock
+                self.release = _windows_lock(self.handle, exclusive)
+            else:
+                import fcntl
+                fcntl.flock(self.handle, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
+                self.release = lambda: fcntl.flock(self.handle, fcntl.LOCK_UN)
+        except BaseException:
+            self.handle.close(); self.handle = None
+            raise
+
+    def close(self):
+        try:
+            if self.release is not None: self.release(); self.release = None
+            if self.handle is not None: self.handle.close(); self.handle = None
+        except BaseException as error:
+            _attachments[id(self)] = self
+            error.numerical_inputs = self
+            raise
+        _attachments.pop(id(self), None)
+
+    def __enter__(self): return self
+    def __exit__(self, *args): self.close()
+
+
+class _VerificationResources:
+    """Keep temporary verifier handles and a failed worker pin retryable."""
+    def __init__(self, pin):
+        self.arrays, self.db, self.pin, self.failed = {}, None, pin, False
+
+    def close(self):
+        try:
+            if self.db is not None: self.db.close(); self.db = None
+            for name, array in list(self.arrays.items()):
+                array._mmap.close()
+                del self.arrays[name]
+            if self.failed and self.pin is not None: self.pin.close(); self.pin = None
+        except BaseException as error:
+            self.failed = True
+            _attachments[id(self)] = self
+            error.numerical_inputs = self
+            raise
+        _attachments.pop(id(self), None)
+
+
+def _attachment_rows(db, query, checkpoint):
+    for index, row in enumerate(db.execute(query)):
+        if index % CHUNK == 0: checkpoint()
+        yield row
+
+
 class AttachedInputs:
     """Owned read-only mappings and lazy records. Views expire at close.
 
     Close all evaluators and borrowed NumPy views first. Failed close preserves
     the lease and remaining handles so the caller can retry explicitly.
     """
-    def __init__(self, folder, manifest, schedules, policy, lease=None):
-        self._arrays, self._db, self._lease = {}, None, lease
+    def __init__(self, folder, manifest, schedules, policy, lease=None, *, pin=None, checkpoint=lambda: None):
+        self._arrays, self._db, self._lease, self._pin = {}, None, lease, pin
         self.closed = False
         self.s, self.policy = schedules, policy
         self.signature = manifest['identity']
@@ -324,22 +399,24 @@ class AttachedInputs:
         _attachments[id(self)] = self
         try:
             for name in ARRAYS:
+                checkpoint()
                 self._arrays[name] = np.load(folder / (name + '.npy'), mmap_mode='r', allow_pickle=False)
                 setattr(self, name, self._arrays[name])
             self._db = _readonly(folder / 'records.sqlite')
-            self.symbols = tuple(row[0] for row in self._db.execute('SELECT symbol FROM symbols ORDER BY id'))
+            def rows(query): return _attachment_rows(self._db, query, checkpoint)
+            self.symbols = tuple(row[0] for row in rows('SELECT symbol FROM symbols ORDER BY id'))
             self.symbol_ids = {symbol: i for i, symbol in enumerate(self.symbols)}
-            self.cached = frozenset(row[0] for row in self._db.execute('SELECT symbol FROM symbols WHERE cached=1'))
-            self.sessions = dict(self._db.execute('SELECT day,price FROM sessions ORDER BY day'))
-            treasury = list(self._db.execute('SELECT day,yield_value FROM treasuries ORDER BY day'))
+            self.cached = frozenset(row[0] for row in rows('SELECT symbol FROM symbols WHERE cached=1'))
+            self.sessions = dict(rows('SELECT day,price FROM sessions ORDER BY day'))
+            treasury = list(rows('SELECT day,yield_value FROM treasuries ORDER BY day'))
             self.treasury_days, self.treasury_values = [r[0] for r in treasury], [r[1] for r in treasury]
-            self.ten_year_yield = DatedYields(self._db.execute(
-                'SELECT day,yield_percent FROM treasury10 ORDER BY day'))
+            self.ten_year_yield = DatedYields(rows('SELECT day,yield_percent FROM treasury10 ORDER BY day'))
             for field in ('offsets', 'report_ids', 'known', 'fiscal'):
                 setattr(self, 'pool_' + field, {pool: self._arrays[pool + '_' + field] for pool in ('cached', 'legacy')})
             self.report_rows, self.histories, self.financials = _Reports(self), _Records(self, 'histories'), _Records(self, 'financials')
             self.stats = dict(numeric_payload_bytes=sum(a.nbytes for a in self._arrays.values()),
                               symbols=len(self.symbols), reports=len(self.report_fiscal))
+            checkpoint()
         except BaseException as error:
             try: self.close()
             except BaseException:
@@ -362,6 +439,19 @@ class AttachedInputs:
             if binding != self._binding or policy.signature != self.policy.signature:
                 raise ValueError('Numerical attachment is stale. Retry offline export.')
 
+    def worker_reference(self):
+        """Describe this exact generation for trusted workers.
+
+        The caller already holds source and financial ownership. Validate
+        current inputs before issuing a reference. This grants no preparation,
+        recovery or publication operation. Workers own their mappings and pin.
+        """
+        with self._store.coordinator.hold():
+            self.validate()
+            self._store._ensure_gate(self.signature)
+            return dict(version=WORKER_REFERENCE_VERSION, store=str(self._store.path.resolve()),
+                        identity=self.signature)
+
     def close(self):
         if self.closed: return
         if self._db is not None: self._db.close(); self._db = None
@@ -374,11 +464,68 @@ class AttachedInputs:
             handle.close()
             self._lease = None
             path.unlink(missing_ok=True)
+        if self._pin is not None: self._pin.close(); self._pin = None
         self.closed = True
         _attachments.pop(id(self), None)
 
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
+
+
+class DelegatedInputs(AttachedInputs):
+    """Exact immutable worker view; freshness remains the coordinator's duty.
+
+    The caller owns source before imports. Its checkpoint supplies continuing
+    ownership/cancellation checks. No financial ownership is acquired here.
+    Close evaluators first, then records and mappings, then the reader pin.
+    """
+    def validate(self):
+        if self.closed: raise ValueError('Numerical attachment is closed.')
+        self._checkpoint()
+
+    def worker_reference(self):
+        raise ValueError('Only a coordinator attachment can delegate numerical inputs.')
+
+
+def open_delegated(reference, schedules, *, checkpoint):
+    """Attach one coordinator-authorized generation without financial access.
+
+    Caller owns source before importing this module and supplies a checkpoint
+    that raises when ownership ends or work must stop. This operation never
+    chooses current inputs, recovers publication or prepares data. The result
+    owns its read-only records connection, mappings and stable retirement pin.
+    """
+    if not callable(checkpoint): raise ValueError('A worker ownership checkpoint is required.')
+    checkpoint()
+    if (not isinstance(reference, dict) or set(reference) != {'version', 'store', 'identity'}
+            or type(reference['version']) is not int or reference['version'] != WORKER_REFERENCE_VERSION
+            or not isinstance(reference['store'], str) or not reference['store']
+            or not _valid_id(reference['identity'])):
+        raise ValueError('Invalid numerical worker reference.')
+    path = Path(reference['store'])
+    if not path.is_absolute() or str(path.resolve()) != reference['store']:
+        raise ValueError('Numerical worker store must be canonical and absolute.')
+    store = GenerationStore(schedules, path)
+    identity = reference['identity']
+    began = time.perf_counter()
+    pin = store._gate(identity)
+    try:
+        checkpoint()
+        manifest = store._verify(identity, checkpoint, pin=pin)
+        policy = PolicyProgram(schedules, bankrupt=schedules.r.revalue.BANKRUPT)
+        binding = manifest['binding']
+        if (binding.get('policy') != policy.signature or binding['field_schema'] != policy.field_schema
+                or binding.get('sources') != _source_binding(policy, checkpoint)
+                or manifest['arrays']['financial_parameters']['shape'][1] != len(policy.parameter_names)):
+            raise ValueError('Numerical worker source policy differs from the delegated generation.')
+        inputs = DelegatedInputs(path / identity, manifest, schedules, policy,
+                                 pin=pin, checkpoint=checkpoint)
+    except BaseException as error:
+        if not getattr(error, 'numerical_inputs', None): pin.close()
+        raise
+    inputs._checkpoint = checkpoint
+    inputs.stats['attachment_seconds'] = time.perf_counter() - began
+    return inputs
 
 
 class GenerationStore:
@@ -404,12 +551,27 @@ class GenerationStore:
         with closing(s.connect()) as db:
             daily = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
         policy = PolicyProgram(s, bankrupt=s.r.revalue.BANKRUPT)
-        source = {p.name: _sha(p) for p in policy.source_paths}
-        for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_factors.py'):
-            source[name] = _sha(Path(__file__).with_name(name))
+        source = _source_binding(policy)
         return dict(temporal_version=TEMPORAL_VERSION, factor_version=FACTOR_VERSION, field_schema=policy.field_schema,
                     daily=daily, prices=s.r.price_sources(), report=_sha(s.r.RESULTS / 'summary-exits.txt'),
                     policy=policy.signature, sources=source), policy
+
+    def _ensure_gate(self, identity):
+        """Create once under financial ownership; never replace its inode."""
+        if not _valid_id(identity): raise ValueError('Invalid numerical generation identity.')
+        path = self.path / 'gates' / (identity + '.lock')
+        if any(not _plain(part) for part in (path, *path.parents)):
+            raise ValueError('Invalid numerical reader gate.')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with path.open('xb') as handle: handle.write(b'0')
+        except FileExistsError:
+            pass
+        return path
+
+    def _gate(self, identity, *, exclusive=False):
+        if not _valid_id(identity): raise ValueError('Invalid numerical generation identity.')
+        return _ReaderGate(self.path / 'gates' / (identity + '.lock'), exclusive=exclusive)
 
     def _pointer(self):
         path = self.path / 'current.json'
@@ -420,7 +582,7 @@ class GenerationStore:
             raise ValueError('Corrupt numerical generation pointer.')
         return value
 
-    def _verify(self, identity, checkpoint=lambda: None, *, folder=None):
+    def _verify(self, identity, checkpoint=lambda: None, *, folder=None, pin=None):
         if not _valid_id(identity): raise ValueError('Invalid numerical generation identity.')
         folder = folder or self.path / identity
         if not _plain(folder): raise ValueError('Invalid generation directory.')
@@ -451,7 +613,8 @@ class GenerationStore:
             raise ValueError('Unmanifested numerical generation contents.')
         if _read(folder / 'owner.json') != {'format': FORMAT, 'owner': 'numerical-generation'}:
             raise ValueError('Unknown numerical generation owner.')
-        arrays = {}
+        resources = _VerificationResources(pin)
+        arrays = resources.arrays
         try:
             for name, evidence in manifest['files'].items():
                 checkpoint(); path = folder / name
@@ -462,7 +625,8 @@ class GenerationStore:
                 arrays[name] = array
                 if array.dtype.str != dtype or list(array.shape) != manifest['arrays'][name]['shape'] or manifest['arrays'][name]['dtype'] != dtype:
                     raise ValueError('Invalid numerical shape or dtype.')
-            with closing(_readonly(folder / 'records.sqlite')) as db:
+            resources.db = _readonly(folder / 'records.sqlite')
+            with closing(resources.db) as db:
                 if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok': raise ValueError('Corrupt numerical records.')
                 n = db.execute('SELECT count(*) FROM symbols').fetchone()[0]
                 r = db.execute('SELECT count(*) FROM reports').fetchone()[0]
@@ -516,8 +680,9 @@ class GenerationStore:
                         for sid,(start,end) in enumerate(zip(offsets[:-1],offsets[1:])):
                             if np.any(arrays['report_symbol'][ids[start:end]] != sid) or np.any(np.diff(arrays[prefix + '_known'][start:end]) < 0) or np.any(np.diff(arrays[prefix + '_fiscal'][start:end]) < 0):
                                 raise ValueError('Invalid report pool order.')
+            resources.db = None
         finally:
-            for array in arrays.values(): array._mmap.close()
+            resources.close()
         return manifest
 
     def _busy(self, identity):
@@ -579,6 +744,7 @@ class GenerationStore:
                 try: manifest = self._verify(prior['current'], checkpoint)
                 except (ValueError, OSError, sqlite3.Error): manifest = None
                 if manifest and manifest['binding'] == binding:
+                    self._ensure_gate(manifest['identity'])
                     return dict(identity=manifest['identity'], reused=True, seconds=time.perf_counter()-began)
             staging = self.path / ('building-' + uuid.uuid4().hex)
             staging.mkdir()
@@ -596,6 +762,7 @@ class GenerationStore:
                 manifest = dict(core, identity=identity)
                 cache_assets.write_json(staging / 'manifest.json', manifest)
                 self._verify(identity, checkpoint, folder=staging)
+                self._ensure_gate(identity)
                 target = self.path / identity
                 if target.exists():
                     try: self._verify(identity, checkpoint)
@@ -604,10 +771,16 @@ class GenerationStore:
                         known = _plain(target) and all(_plain(path) and path.name in expected for path in target.iterdir())
                         marker = target / 'owner.json'
                         known = known and marker.exists() and _read(marker) == {'format': FORMAT, 'owner': 'numerical-generation'}
-                        if not known or self._busy(identity):
+                        if not known:
                             raise ValueError('Damaged numerical generation is busy or unowned. Close readers before retry.')
-                        _replace(target, self.path / ('damaged-' + identity + '-' + uuid.uuid4().hex), checkpoint)
-                        _replace(staging, target, checkpoint)
+                        try: gate = self._gate(identity, exclusive=True)
+                        except (OSError, ValueError):
+                            raise ValueError('Damaged numerical generation is busy or unowned. Close readers before retry.') from None
+                        with gate:
+                            if self._busy(identity):
+                                raise ValueError('Damaged numerical generation is busy or unowned. Close readers before retry.')
+                            _replace(target, self.path / ('damaged-' + identity + '-' + uuid.uuid4().hex), checkpoint)
+                            _replace(staging, target, checkpoint)
                     else: shutil.rmtree(staging)
                 else:
                     _replace(staging, target, checkpoint)
@@ -631,6 +804,7 @@ class GenerationStore:
             if manifest['binding'] != binding: raise ValueError('Numerical inputs stale. Run numerical_generation.py prepare.')
             if manifest['arrays']['financial_parameters']['shape'][1] != len(policy.parameter_names):
                 raise ValueError('Numerical financial parameter width differs from source policy.')
+            self._ensure_gate(pointer['current'])
             folder = self.path / 'leases' / pointer['current']
             if not _plain(folder) or not _plain(folder.parent): raise ValueError('Invalid reader lease directory.')
             folder.mkdir(parents=True, exist_ok=True)
@@ -656,11 +830,15 @@ class GenerationStore:
             for folder in self.path.iterdir():
                 if not _valid_id(folder.name) or not _plain(folder) or not folder.is_dir(): continue
                 if folder.name in keep: continue
-                self._verify(folder.name)
-                if self._busy(folder.name): retained.append(folder.name); continue
-                try: shutil.rmtree(folder)
-                except OSError: retained.append(folder.name)
-                else: removed.append(folder.name)
+                self._ensure_gate(folder.name)
+                try: gate = self._gate(folder.name, exclusive=True)
+                except (OSError, ValueError): retained.append(folder.name); continue
+                with gate:
+                    self._verify(folder.name)
+                    if self._busy(folder.name): retained.append(folder.name); continue
+                    try: shutil.rmtree(folder)
+                    except OSError: retained.append(folder.name)
+                    else: removed.append(folder.name)
         return dict(removed=removed, retained=retained)
 
     def recover_previous(self):

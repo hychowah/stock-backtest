@@ -1,7 +1,7 @@
 # Parallel experimental backtest program
 
 Recorded: 1 November 2026. Source owner: `main` in the WSL checkout.
-Status: plan recorded; CB-19A–CB-19G are pending.
+Status: CB-19A complete in its audited commit; CB-19B–CB-19G are pending.
 
 The independent planner's report follows verbatim. Administrative tracking starts
 after its Unknowns section.
@@ -149,6 +149,18 @@ namespace. That is a point-in-time observation, not a lifetime guarantee.
 
 ### Per-slice execution protocol
 
+User clarification — 1 November 2026: the user says that some original hardware
+limits have no established basis and must not be followed blindly. The user
+reaffirms full permission for this program. Audit the provenance of each limit
+before treating it as a requirement. Historical four-worker/thread caps,
+25-percent CPU quotas, memory ceilings and watchdog settings are evidence of
+their original experiments, not mandatory CB-19 settings. Derive execution
+budgets from the available machine and current measurements. The 1×4, 2×2 and
+4×1 layouts are initial comparison points, not maximum capacity. Preserve
+financial correctness, data ownership, bounded work and verified lifecycle
+cleanup. Do not rewrite historical measurements or silently remove necessary
+operational safeguards. CB-19A's reader gate has no capacity cap to change.
+
 Apply the [existing automatic protocol](../compiled-backtest/master-plan.md#automatic-agent-implementation-protocol)
 with the CB-19 ownership and native-comparison authority above. Each slice uses
 this sequence:
@@ -186,7 +198,7 @@ reports when a material design change needs a new independent planner.
 
 | Slice | Status | Required outcome before completion |
 |---|---|---|
-| CB-19A | Pending | Delegated immutable generation attachment; WSL/native identity, lifetime and release checks; private environment scope recorded |
+| CB-19A | Complete in this audited commit | Delegated immutable generation attachment and WSL/native identity, lifetime and release checks pass; [phase](phases/CB-19A.md), [verification](phases/CB-19A.verify.md), [handoff](phases/CB-19A.implement.md), [design review](phases/CB-19A.review.md) and [audit](phases/CB-19A.audit.md) filed. |
 | CB-19B | Pending | One complete evaluator and bounded reusable artifact; complete financial fixture agreement across settings/calendars and eager/streaming operations |
 | CB-19C | Pending | Persistent contained spawn pool; explicit total resource bounds and execution binding; WSL/native failure, cancellation, shutdown and retirement checks |
 | CB-19D | Pending | Parent-owned ordered checkpoint coordination and application integration; parallel/sequential parity, recovery and manual/queue/evidence checks |

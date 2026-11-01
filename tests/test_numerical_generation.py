@@ -28,7 +28,8 @@ class GenerationTests(unittest.TestCase):
         self.report.write_text('Through 2016-12-30\nSynthetic unchanged report\n')
         self.binding = dict(temporal_version=ng.TEMPORAL_VERSION, factor_version=ng.FACTOR_VERSION,
                             field_schema=ng.PolicyProgram(self.s).field_schema, daily={}, prices={}, report=ng._sha(self.report),
-                            policy=ng.PolicyProgram(self.s).signature, sources={})
+                            policy=ng.PolicyProgram(self.s).signature,
+                            sources=ng._source_binding(ng.PolicyProgram(self.s)))
         self.owner = ng.cache_access.WorkspaceAccess(self.root / 'cache.lock')
         self.store = ng.GenerationStore(self.s, self.root / 'numerical', self.owner)
         self.binding_patch = self.enterContext(patch.object(self.store, '_binding', side_effect=lambda: (self.binding.copy(), ng.PolicyProgram(self.s))))
