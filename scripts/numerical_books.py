@@ -82,8 +82,8 @@ class PythonExecutor:
         assembly = self.limits.get('candidate_assembly', 'source')
         if assembly not in ('source', 'compiled'):
             raise ValueError('Unknown candidate assembly variant.')
-        if assembly == 'compiled' and type(self).__name__ != 'NumbaExecutor':
-            raise ValueError('Compiled candidate assembly requires Numba.')
+        if assembly=='compiled' and type(self).__name__ not in ('NumbaExecutor','RustExecutor'):
+            raise ValueError('Compiled candidate assembly requires a compiled provider.')
         self.candidate_assembly = assembly
         self.stats = dict(backend='python',candidate_assembly=assembly,batches=0,books=0,candidate_rows=0)
 

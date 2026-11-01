@@ -113,3 +113,7 @@ assert(closed.every(x => !x.open));
 console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 12 setting combinations and print state.');
 
 assert(html.includes('Ordered random coordination checked 1 November 2026.') && html.includes('Full recovery constructs no provider and starts no workers.') && html.includes('Unretained artifacts keep bounded reservations') && html.includes('Completion progress follows a successful save.'), 'Explain recovery before compilation, parent commitment and bounded ordered presentation');
+
+assert(html.includes('Complete period candidates checked 1 November 2026.') && html.includes('the same source-derived arithmetic and financial decision trees') && html.includes('Full recovery builds no provider.') && html.includes('not three permanent production engine choices') && html.includes('scripts/numerical_rust_kernel.rs'), 'Explain the shared compiled candidate boundary, lazy recovery and comparison-only native status');
+
+assert(html.includes('explicitly joins every numerical thread and its thread-local cleanup'), 'Explain complete native thread cleanup before library closure');

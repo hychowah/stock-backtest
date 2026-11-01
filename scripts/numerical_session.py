@@ -11,7 +11,7 @@ from numerical_generation import GenerationStore
 from numerical_numba import NumbaExecutor
 from numerical_portfolio import NumericalPortfolio
 from numerical_workspace import RequestWorkspace
-from numerical_identity import compiler_identity
+from numerical_provider import expected_identity, attach as attach_provider
 import numerical_calendar
 import numerical_random
 from numerical_matrix import retained_size
@@ -90,7 +90,7 @@ class Session:
         if self.inputs is None:
             self.inputs = self.store.open_current()
             self.workspace = RequestWorkspace(self.inputs,result_workspace_bytes=self.result_workspace_bytes)
-            self.expected_compiler = compiler_identity(self.inputs,self.execution_policy.provider_limits['threads'])
+            self.expected_compiler = expected_identity(self.inputs,self.execution_policy.provider_limits)
             self.stats['attached_generations'] = 1
         self.inputs.validate()
         backtest_control.checkpoint()
@@ -98,7 +98,8 @@ class Session:
     def _portfolio(self):
         """Construct the coordinator provider only for a custom calculation."""
         if self.portfolio is None:
-            self.provider = NumbaExecutor(self.inputs,limits=self.execution_policy.provider_limits)
+            self.provider = (NumbaExecutor(self.inputs,limits=self.execution_policy.provider_limits)
+                if self.execution_policy.backend=='numba' else attach_provider(self.inputs,self.execution_policy.provider_limits))
             if self.provider.compiler != self.expected_compiler:
                 raise ValueError('Coordinator provider differs from its expected compiler identity.')
             self.portfolio = NumericalPortfolio(self.inputs,self.provider,result_workspace_bytes=self.result_workspace_bytes)

@@ -139,11 +139,14 @@ def numba_threads(requested, maximum):
 class ExecutionPolicy:
     def __init__(self, settings=None, *, observations=None, coordinator=True):
         settings = deepcopy(settings or {})
-        allowed = {'workers', 'threads_per_worker', 'lane_budget', 'workspace_bytes',
+        allowed = {'backend', 'workers', 'threads_per_worker', 'lane_budget', 'workspace_bytes',
             'matrix_cache_bytes', 'pending_slots', 'artifact_bytes', 'artifact_total_bytes',
             'piece_bytes', 'record_bytes', 'private_memory_budget_bytes', 'chunk_rows',
             'start_seconds', 'close_seconds'}
         if set(settings)-allowed: raise ValueError('Unknown internal numerical execution setting.')
+        self.backend=settings.get('backend','numba')
+        if self.backend not in ('numba','numba_compiled','rust'):
+            raise ValueError('Unknown trusted numerical comparison configuration.')
         self.observations = deepcopy(observations if observations is not None else observe_resources())
         self.workers = _positive(settings.get('workers', 1), 'workers')
         lanes = _positive(settings.get('lane_budget', effective_lanes(self.observations)), 'lane budget')
@@ -178,11 +181,12 @@ class ExecutionPolicy:
         self._identity = dict(version=1, workers=self.workers, threads_per_worker=threads,
             numerical_lane_budget=lanes, live_providers=providers,
             workspace_total_bytes=workspace, matrix_cache_total_bytes=cache,
-            provider_limits=dict(threads=threads, request_plan=True, candidate_assembly='source',
+            provider_limits=dict(threads=threads, request_plan=True, candidate_assembly=('source' if self.backend=='numba' else 'compiled'),
                 workspace_bytes=workspace//providers, matrix_cache_bytes=cache//providers,
                 chunk_rows=_positive(settings.get('chunk_rows', 1024), 'chunk rows')),
             pending_slots=slots, artifact_total_bytes=total,
             artifact_limits=dict(max_bytes=artifact, piece_bytes=piece, record_bytes=record))
+        if self.backend=='rust':self._identity['provider_limits']['backend']='rust'
         self.provenance = dict(
             layout='Explicit internal experiment' if 'workers' in settings else
                    'One worker until CB-19F qualifies duplication and scaling',
@@ -207,7 +211,7 @@ class ExecutionPolicy:
 
     def execution_identity(self, compiler):
         """Expected stable worker contract; no process or JIT is needed."""
-        return dict(**self.identity, backend='numba', compiler=compiler['signature'])
+        return dict(**self.identity, backend='rust' if self.backend=='rust' else 'numba', compiler=compiler['signature'])
 
     def admit_cold_worker(self, measurements):
         """Check incremental duplication before starting remaining workers.

@@ -51,7 +51,7 @@ class CompiledMatrix:
     Oversized entries complete without cache retention. Return values are copies.
     """
     def __init__(self, policy, identity, outputs=None, *, cache_bytes=16*1024**2,
-                 workspace_bytes=64*1024**2, chunk_rows=1024):
+                 workspace_bytes=64*1024**2, chunk_rows=1024, kernel=None):
         if (any(type(v) is not int for v in (cache_bytes,workspace_bytes,chunk_rows))
                 or cache_bytes < 0 or workspace_bytes <= 0 or not 1 <= chunk_rows <= 4096):
             raise ValueError('Invalid compiled matrix budgets.')
@@ -63,8 +63,8 @@ class CompiledMatrix:
         self.stats = dict(hits=0,misses=0,evictions=0,retained_bytes=0,retained_entries=0,
                           peak_workspace_bound=0,native_chunks=0)
         backtest_control.checkpoint()
-        self.kernel = compile_matrix(policy, outputs)
-        self.signatures = tuple(self.kernel.nopython_signatures)
+        self.kernel = compile_matrix(policy, outputs) if kernel is None else kernel
+        self.signatures = self._signatures()
         backtest_control.checkpoint()
 
     def __call__(self, matrix):
@@ -88,7 +88,7 @@ class CompiledMatrix:
                 value[first:first+len(part)] = self.kernel(part)
                 self.stats['native_chunks'] += 1
             backtest_control.checkpoint()
-            if tuple(self.kernel.nopython_signatures) != self.signatures:
+            if self._signatures() != self.signatures:
                 raise ValueError('Compiled matrix signature changed after prewarm.')
             if retained_size(OrderedDict([(key,value)])) <= self.cache_bytes:
                 self._cache[key] = value
@@ -97,6 +97,12 @@ class CompiledMatrix:
         self.stats.update(retained_bytes=retained_size(self._cache) if self._cache else 0,
                           retained_entries=len(self._cache))
         return value.copy()
+
+    def _signatures(self):
+        # Trusted native factor kernels expose their exact ABI/build signature.
+        # Numba retains its warmed nopython specialization proof.
+        return tuple(self.kernel.nopython_signatures if hasattr(self.kernel,'nopython_signatures')
+                     else self.kernel.signatures)
 
     def close(self):
         self._cache.clear()

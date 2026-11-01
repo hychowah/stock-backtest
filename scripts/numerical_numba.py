@@ -14,6 +14,8 @@ from numba import njit, prange
 from numerical_books import PythonExecutor
 from numerical_matrix import CompiledMatrix
 from numerical_identity import compiler_identity
+import numerical_candidates as candidates
+import backtest_control
 
 
 # Compatibility names retain the single source-owned kernel implementation.
@@ -71,9 +73,36 @@ class NumbaExecutor(PythonExecutor):
             decide(np.ones((1,7),dtype=np.int32),np.ones((1,7),dtype=np.float64),
                    np.ones((1,width),dtype=np.float64),np.ones((1,6),dtype=np.int32),
                    np.ones((1,len(self.policy.input_names)),dtype=np.float64))
+            value_columns = np.asarray([self.policy.output_index[name] for name in
+                candidates.SNAPSHOT+candidates.PAIRS+tuple('filter_'+field for field in self.policy.filter_order)],dtype=np.int32)
+            fields = len(self.policy.filter_order)
+            @njit(parallel=True,fastmath=False,cache=False,error_model='numpy')
+            def materialize(decisions,numeric,requested,first,identities,dates,values,validity):
+                count=0
+                for row in prange(len(numeric)):
+                    identities[row]=first+row
+                    if decisions[row,0]:
+                        count+=1
+                        validity[row,0]=1
+                        for column in range(4):dates[row,column]=decisions[row,column+1]
+                        for column in range(11):values[row,column]=numeric[row,value_columns[column]]
+                        validity[row,1]=decisions[row,5]
+                        validity[row,2]=decisions[row,6]
+                        for column in range(fields):
+                            value=numeric[row,value_columns[11+column]]
+                            if requested[column] and np.isfinite(value):
+                                values[row,11+column]=value
+                                validity[row,3+column]=1
+                return count
+            self._materialize=materialize
+            warmed=candidates.CandidateBatch.empty(1,self.policy)
+            materialize(np.zeros((1,7),dtype=np.int64),np.ones((1,width)),
+                np.ones(fields,dtype=np.uint8),0,warmed.identities,warmed.dates,warmed.values,warmed.validity)
+            self._materialize_signatures=tuple(materialize.nopython_signatures)
             self._decision_signatures = tuple(decide.nopython_signatures)
             decision_signatures = {name:[str(value) for value in kernel.nopython_signatures]
                                    for name,kernel in kernels.items()}
+            decision_signatures['materialize']=[str(value) for value in materialize.nopython_signatures]
             decision_signatures['decisions'] = [str(value) for value in decide.nopython_signatures]
         self.stats.update(backend='numba',compile_seconds=time.perf_counter()-began,
             threads=int(numba.get_num_threads()),compiler_cache=False,fastmath=False,
@@ -88,37 +117,23 @@ class NumbaExecutor(PythonExecutor):
         if self.candidate_assembly == 'source':
             return super().assemble_candidates(books,rows,targets,lookup_days,lookup_values,
                                                matrix,numeric,ranks,needed,results)
-        inputs,policy = self.inputs,self.policy
-        metadata = np.empty((len(rows),6),dtype=np.int32)
-        row_books = np.fromiter((row[0] for row in rows),dtype=np.int32,count=len(rows))
-        row_reports = np.fromiter((row[2] for row in rows),dtype=np.int32,count=len(rows))
-        book_dates = np.asarray([(entry.toordinal(),exit_day.toordinal(),entry.year,exit_day.year,
-                                  int(pool=='legacy')) for entry,exit_day,pool in books],dtype=np.int32).reshape((-1,5))
-        metadata[:,0] = inputs.report_fiscal[row_reports]
-        metadata[:,1:] = book_dates[row_books]
-        began = time.perf_counter()
-        decisions = self._decide(lookup_days,lookup_values,numeric,metadata,matrix)
+        policy=self.policy
+        meta=candidates.metadata(self.inputs,books,rows)
+        requested=np.asarray([field in needed for field in policy.filter_order],dtype=np.uint8)
+        batch=candidates.CandidateBatch.empty(len(rows),policy)
+        began=time.perf_counter()
+        for first in range(0,len(rows),self._calculate.chunk_rows):
+            backtest_control.checkpoint()
+            part=slice(first,first+self._calculate.chunk_rows)
+            decisions=self._decide(lookup_days[part],lookup_values[part],numeric[part],meta[part],matrix[part])
+            batch.count+=int(self._materialize(decisions,numeric[part],requested,first,
+                batch.identities[part],batch.dates[part],batch.values[part],batch.validity[part]))
         self._time('decision_seconds',began)
-        if tuple(self._decide.nopython_signatures) != self._decision_signatures:
-            raise ValueError('Candidate decision signature changed after attachment.')
-        began = time.perf_counter()
-        if decisions.shape != (len(rows),7):raise ValueError('Backend candidate-decision shape differs.')
-        accepted = decisions[:,0].astype(np.bool_)
-        oi = policy.output_index
-        for row in np.flatnonzero(accepted):
-            book,symbol_id,report = rows[row]
-            _,fiscal,buy,sell,status,current,three = decisions[row].tolist()
-            if not 1<=status<=len(policy.decisions.statuses):
-                raise ValueError('Backend candidate status differs.')
-            values = numeric[row].tolist()
-            observation = [str(date.fromordinal(int(day))) for day in (fiscal,buy,sell)]
-            observation.extend(float(values[oi[name]]) for name in
-                ('cap','ev','ebitda','yield_value','multiple','return_value'))
-            observation.append(policy.decisions.statuses[status-1])
-            current_pair = tuple(float(values[oi[name]]) for name in ('multiple','yield_value')) if current else None
-            three_pair = tuple(float(values[oi[name]]) for name in ('metric3_multiple','metric3_yield')) if three else None
-            self._encode_candidate(results[book],inputs.symbols[symbol_id],int(ranks[book,symbol_id]) or None,
-                                   observation,current_pair,three_pair,values,needed)
+        if (tuple(self._decide.nopython_signatures)!=self._decision_signatures
+                or tuple(self._materialize.nopython_signatures)!=self._materialize_signatures):
+            raise ValueError('Candidate decision/materialization signature changed after attachment.')
+        began=time.perf_counter()
+        accepted=candidates.encode(batch,self.inputs,policy,rows,ranks,results)
         self._time('encoding_seconds',began)
         return accepted
 
@@ -138,7 +153,7 @@ class NumbaExecutor(PythonExecutor):
     def close(self):
         if getattr(self, '_calculate', None) is not None: self._calculate.close()
         if getattr(self, 'temporal', None) is not None: self.temporal.close()
-        self.inputs = self.policy = self._calculate = self._decide = None
+        self.inputs = self.policy = self._calculate = self._decide = self._materialize = None
         super().close()
 
     def calculate(self,matrix):

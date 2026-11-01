@@ -285,7 +285,7 @@ class TrialPool:
             source=trial_checkpoints.digest(trial_checkpoints.canonical(self.source_identity)),
             provider_limits=self.policy.provider_limits, artifact_limits=self.policy.artifact_limits,
             slots=self.policy.identity['pending_slots'], close_seconds=self.policy.close_seconds)
-        expected = dict(generation=self.reference['identity'], source=configuration['source'], backend='numba',
+        expected = dict(generation=self.reference['identity'], source=configuration['source'], backend='rust' if self.policy.backend=='rust' else 'numba',
                         compiler=self.compiler_identity['signature'], threads=self.policy.provider_limits['threads'])
         try:
             write_payload(launch, configuration, REQUEST_BYTES)

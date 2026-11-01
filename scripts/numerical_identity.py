@@ -24,5 +24,7 @@ def compiler_identity(inputs, threads, *, decisions=None):
         fastmath=False,compiler_cache=False,error_model='numpy',dtype='float64')
     if decisions is not None:
         fields['candidate_decisions'] = decisions.signature
+        from numerical_candidates import signature
+        fields['candidate_batch'] = signature(inputs.policy)
     signature=hashlib.sha256(json.dumps(fields,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
     return dict(signature=signature,fields=fields)

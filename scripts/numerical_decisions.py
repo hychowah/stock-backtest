@@ -40,6 +40,9 @@ class CandidateDecisionProgram:
                     if kind == 'snapshot' else 'numeric, pool' if kind == 'eligible'
                     else 'numeric, average, average_valid')
             self.functions[kind] = f'def _decision_{kind}({args}):\n' + '\n'.join(body) + '\n'
+        # These trees contain only the validated lowered representation above.
+        # Both native generators consume this representation, never re-extract policy.
+        self.trees = {name:ast.parse(source).body[0] for name,source in self.functions.items()}
         self.source = '\n'.join(self.functions.values())
         self.signature = hashlib.sha256(json.dumps(dict(policy=policy.signature,
             source=self.source, statuses=self.statuses), sort_keys=True,

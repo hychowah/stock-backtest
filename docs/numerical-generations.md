@@ -695,7 +695,7 @@ The fixed stdlib-only worker bootstrap starts an actual parent-lifetime observer
 before application imports. POSIX uses an inherited pipe. Windows uses a duplicated
 synchronization handle for the actual parent process. It then owns source, disables
 credential access, verifies source identity, opens A's delegated generation and
-constructs its private Numba provider and portfolio. Readiness must match the
+constructs its selected private provider and portfolio. Readiness must match the
 expected generation, source, backend, compiler and numerical threads. Native stdout
 and stderr go to the null device; a separate descriptor carries bounded JSON.
 The worker acquires no financial lock and opens no checkpoint, queue or library.
@@ -777,3 +777,75 @@ calculation. No application request fields or tuning controls are added.
 Focused synthetic checks are `tests/test_numerical_random.py`, the runtime,
 bounded-trial and application adapter checks. They qualify correctness and
 lifetime behavior, not real-input performance or large-result capacity.
+
+## Complete period comparison (CB-19E)
+
+CB-19E adds two internal comparison configurations beside the current source-guard
+Numba baseline. `ExecutionPolicy` accepts `backend='numba_compiled'` or `'rust'`
+only through trusted internal configuration. These are comparison configurations,
+not application engine choices. Original remains the application default. The
+experimental application's current source-guard Numba default is unchanged.
+CB-19F must separate the gain from compiling guards from the language comparison.
+CB-19G will retain the selected path after that decision.
+
+Both compiled configurations consume the same `PolicyProgram` arithmetic and the
+same validated `CandidateDecisionProgram` trees. Unsupported source syntax fails
+attachment. Neither compiled identity can fall back to Python source guards.
+`numerical_candidates.py` owns the typed candidate layout and its mechanical
+encoder. Each input row retains its original identity. Native output supplies
+acceptance, fiscal/buy/sell ordinals, status tag, snapshot values, ranking-pair
+values and validity, and requested threshold values and validity. Signed finite
+thresholds stay signed. The encoder maps symbols, ordinals and tags to the
+existing complete-book tuples. It makes no financial missing-value decision.
+
+Rust and compiled Numba decide eligibility, source snapshot guards, exit status,
+ranking-pair availability and finite requested threshold emission. Python still
+plans reports and adjusted-price requests, derives calendar targets, builds the
+numerical input matrix and mechanically encodes objects. Existing shared SQL
+selects stocks. The existing reducer computes complete portfolios. Measure this
+whole operation through the ordinary portfolio/trial boundary; kernel timing is
+not a complete-period result. The same bounded factor cache serves both compiled
+paths. Shared request planning and SQL are deliberate parts of this boundary.
+
+`numerical_rust_kernel.rs` defines a versioned synchronous C ABI. Buffers carry
+addresses and element capacities. The Python bridge checks native dtype,
+alignment, contiguity, dimensions, lengths, scalar/index ranges and writable
+non-overlap. Native entry points check dimensions, size arithmetic and structural
+ranges before using slices. Empty buffers need no valid null pointer. Calls
+return finite error codes and publish no partial book after failure. The ABI
+trusts caller-owned allocations and their lifetimes. It cannot validate arbitrary
+hostile addresses. No pointer survives a call. Rust explicitly joins every numerical thread, including its thread-local
+destructors, before the ABI returns. Automatic scope joining is insufficient for
+that lifetime guarantee. A provider lock excludes close until all synchronous
+calls return. Close drops callables, unloads the library,
+then permits mapping closure. Bounded row/query calls retain cancellation checks.
+Numerical threads come from C's attributed execution policy; Rust has no four-thread
+clamp. Compiler children inherit the existing runtime containment.
+
+`numerical_provider.py` predicts identities without building a provider. Rust's
+identity binds policy and decision signatures, typed layout, generated source,
+fixed native resource, compiler version/target and executable hash, strict flags,
+linker identity, platform and ABI layout. Binary hashes are separate verified
+build evidence. Temporary names, timings and resource telemetry do not change
+execution identity. A full checkpoint hit performs no JIT or native build. It still requires the
+selected compiler and performs a cancellable version/hash probe for exact identity.
+Readiness still verifies the selected actual backend and compiler identity.
+
+Rust compilation requires an explicit native compiler on PATH or
+`BACKTEST_RUSTC`. An optional `BACKTEST_RUST_LINKER` selects a task-local linker.
+`BACKTEST_RUST_BUILDS` selects task-owned build storage; the default is ignored
+`tmp/numerical-rust`. Completed builds have unique immutable library paths and a
+content-bound manifest. Workers share and verify a completed build. Changed
+source or library bytes fail attachment; they are not silently rebuilt under an
+existing receipt. Saved and actual source hashes must also equal the expected
+generated-source hash. Fresh publication checks that equality too. Generated
+source uses exact UTF-8 bytes on both platforms. Build time, reuse, library attachment and artifact bytes are
+reported separately from deterministic identity. No global compiler installation,
+provider download, live-cache benchmark admission or deployment is performed.
+
+`tests/test_numerical_rust.py` uses private fictional assets. It checks complete
+books and trials, supported fields and calendars, both orders/pools, source
+mutations, malformed buffers, build binding, cancellation, library closure,
+persistent native workers and complete recovery without compilation. Required native
+Windows runs must supply a Windows compiler. A skipped native test is not
+portability evidence. Correctness checks do not establish a speed improvement.

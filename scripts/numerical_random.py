@@ -58,6 +58,8 @@ def source_identity():
                 for folder in ('scripts','tools','website'):
                     candidate=ROOT/folder/(name.split('.')[0]+'.py')
                     if candidate.is_file():pending.append(candidate);break
+    resource=ROOT/'scripts/numerical_rust_kernel.rs'
+    seen[resource.relative_to(ROOT).as_posix()]=hashlib.sha256(resource.read_bytes()).hexdigest()
     return dict(sorted(seen.items()))
 
 
@@ -94,7 +96,7 @@ def provider_execution(inputs,limits,compiler):
     return dict(python=platform.python_version(),implementation=sys.implementation.name,
         architecture=platform.machine(),byteorder=sys.byteorder,sqlite=sqlite3.sqlite_version,
         versions={name:version(name) for name in ('numpy','numba','llvmlite')},
-        provider='numerical_numba.NumbaExecutor',
+        provider=('numerical_rust.RustExecutor' if limits.get('backend')=='rust' else 'numerical_numba.NumbaExecutor'),
         catalog=json.loads(json.dumps(inputs.policy.fields)),bankruptcy=[list(v) for v in sorted(inputs.bankrupt)],
         limits=deepcopy(limits),fastmath=False,compiler_cache=False,
         threads=limits.get('threads',1),compiler=deepcopy(compiler))

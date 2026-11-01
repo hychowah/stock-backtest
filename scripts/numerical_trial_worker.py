@@ -101,7 +101,7 @@ def main():
             import numerical_trial
             import schedules
             import trial_checkpoints
-            from numerical_numba import NumbaExecutor
+            from numerical_provider import attach as attach_provider
             from numerical_portfolio import NumericalPortfolio
             from numerical_runtime_child import _stdin_lines
             cancelled = lambda: stopped.is_set() or (scratch/'cancel').exists()
@@ -114,14 +114,14 @@ def main():
                 inputs = numerical_generation.open_delegated(configuration['reference'], schedules, checkpoint=checkpoint)
                 attachment_seconds = time.perf_counter()-attached
                 emit(dict(event='stage', stage='initializing'))
-                provider = NumbaExecutor(inputs, limits=configuration['provider_limits'])
+                provider = attach_provider(inputs, configuration['provider_limits'])
                 portfolio = NumericalPortfolio(inputs, provider)
                 checkpoint()
                 def measurements():
                     return dict(**_private_sample(), provider=provider.stats, matrix=provider._calculate.stats,
                         mappings=id(inputs), provider_instance=id(provider), sql_workspace=id(portfolio.db))
                 emit(dict(event='ready', pid=os.getpid(), generation=inputs.signature, source=source,
-                    backend='numba', compiler=provider.compiler['signature'], threads=provider.stats['threads'],
+                    backend=provider.stats['backend'], compiler=provider.compiler['signature'], threads=provider.stats['threads'],
                     initialization_seconds=time.perf_counter()-began, attachment_seconds=attachment_seconds,
                     measurements=measurements()))
                 for line in _stdin_lines():

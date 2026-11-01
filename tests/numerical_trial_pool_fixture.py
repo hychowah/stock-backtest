@@ -13,7 +13,6 @@ def __getattr__(name):
     # The real numerical runtime loads this factory only after source/cache
     # ownership. The fixed production trial worker never imports this fixture.
     from numerical_runtime_fixture import Session as Base
-    import numerical_random
     import numerical_trial
     import numerical_calendar
     class Session(Base):
@@ -24,10 +23,10 @@ def __getattr__(name):
 
         def calculate(self, mode, options, progress, configuration, **kwargs):
             if mode != '__pool__': return super().calculate(mode, options, progress, configuration, **kwargs)
-            config = numerical_calendar.plan(self.portfolio._calendar().sessions, dict(calendar=dict(
+            config = numerical_calendar.plan(self.workspace._calendar().sessions, dict(calendar=dict(
                 version=1, start='2015-01-05', end='2016-12-30', interval=dict(unit='week', count=1)),
                 trials=3, seed=42, rank_to=5, min_cap=0., min_ev=0.))
-            binding = numerical_random.checkpoint_binding(self.portfolio, config)
+            binding = self._binding(config)
             specifications = [numerical_trial.specification(binding, n) for n in range(1, 4)]
             pool = self.pool()
             original = pool._send
