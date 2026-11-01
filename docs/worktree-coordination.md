@@ -354,5 +354,8 @@ bounds queue/library scrolling. The second slice adds recoverable completion
 transfer between the existing durable stores. Queue reservations fence deletion.
 The saved store commits its import receipt and complete copy before archival
 releases duplicate queue evidence. Engine and financial ownership stay unchanged.
+The third slice projects stored settings/summaries in a pure browser comparison
+module. Existing eager/evidence readers load the two selected saved IDs. No
+engine call, result publication, form restoration or financial schema changes.
 Existing unrelated snapshot and market-scope
 files stay outside these commits. See the [master plan](plans/backtest-library/master-plan.md).

@@ -278,12 +278,29 @@ when transfer recovery retries. Original queued submission receipts remain valid
 but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
+Choose **First saved test** and **Second saved test**, then **Compare**. The two
+IDs must differ. Recorded performance and parameter rows appear in the library.
+Amber rows also say **Different**. Sort or rename records without losing the
+selection. Deleting a selected record clears its comparison. **Clear comparison**
+clears both selected IDs. The main results and strategy settings stay unchanged.
+
+Comparison reads saved results without recalculation. Legacy/current calendars
+and documented defaults compare consistently. Reordered AND conditions and
+repeated identical conditions mean the same thing. Strict operators, exact
+values, unknown setting fields and original labels stay visible. Requested engine
+and recorded producer are separate. Older results without producer evidence are
+unidentified. Random comparisons show requested date policy, recorded seed and
+stored trial distributions. Mean trial CAGR is not one portfolio return.
+Different test types or requested/recorded windows receive a notice. Temporary
+version-3 readers are released after their compact descriptions are read.
+
 The maximum is 100 records. When full, delete a chosen record before saving
 another. Deletion asks for confirmation and removes only that record. It does
 not remove the result currently displayed in the page.
 
 Check with `python3 tests/test_saved_backtests.py`,
 `node tests/check-saved-backtests.cjs`, `python3 tests/test_queue_transfer.py`,
+`node tests/check-backtest-comparison.cjs`, `node tests/check-saved-comparison.cjs`,
 and the ordinary queue and range controls checks.
 Run the persistence checks with native Windows Python too.
 

@@ -46,6 +46,11 @@ or delete waiting tests. Pause the queue to let the active test finish without
 starting another. Stop cancels only the selected active test. Auto-run is
 suspended while the queue has waiting or running work. Adding, copying or
 editing a queue item also turns Auto-run off for continued batch setup.
+Saved backtests offer 100 slots, stable IDs, rename and performance sorting.
+Choose two saved tests and select **Compare** for recorded performance and
+highlighted parameter differences. Comparison leaves the main result unchanged.
+The queue, saved list and comparison tables scroll inside their sections.
+
 Completed queue results move to Saved backtests automatically. Open them there
 without calculating again. A full library or failed save keeps the complete
 result in the queue while the server retries. No result is evicted.

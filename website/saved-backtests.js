@@ -4,6 +4,7 @@ const SavedBacktests=(()=>{
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current=()=>null,isRunning=()=>false,openRecord=()=>{};
   let queueRefresh=false;
+  let comparisonIds=['',''],comparison=null,comparisonLoading=false,comparisonGeneration=0;
   let records=[],limit=100,sorting='newest',renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
   function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
   function defaultName(snapshot){
@@ -16,6 +17,8 @@ const SavedBacktests=(()=>{
     node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=limit;
     node('saved-count').textContent=records.length+' / '+limit;
     node('refresh-backtests').disabled=busy||!available;
+    node('saved-compare').disabled=busy||!available||comparisonLoading||comparisonIds.some(id=>!id)||comparisonIds[0]===comparisonIds[1];
+    node('saved-compare-clear').disabled=!comparisonLoading&&!comparison&&comparisonIds.every(id=>!id);
     node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest to make room.':'Saves the displayed result and the settings used to run it. Pending setting changes are not included.';
   }
   // List order uses stored summary values only. Missing performance stays last.
@@ -38,8 +41,68 @@ const SavedBacktests=(()=>{
       return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small><small class="saved-id">ID: '+escape(record.id)+'</small></div><div class="saved-actions">'+actions+'</div></li>';
     }).join('')||'<li>No saved backtests yet.</li>';
     node('saved-list').querySelectorAll('button,input').forEach(control=>control.disabled=busy);
+    renderComparison();
     if(focusId&&!busy){const restored=node(focusId);restored?.focus?.({preventScroll:true});if(start!==null&&start!==undefined)restored?.setSelectionRange?.(start,end);}
     update();
+  }
+  function comparisonMessage(text,error=false){
+    node('saved-compare-message').textContent=text;node('saved-compare-message').className=error?'backtest-failed':'hint';
+  }
+  function renderComparison(){
+    if(comparisonIds.some(id=>id&&!records.some(record=>record.id===id))){
+      comparisonGeneration++;comparisonLoading=false;comparison=null;
+      comparisonIds=comparisonIds.map(id=>records.some(record=>record.id===id)?id:'');
+      comparisonMessage('A selected saved test was deleted. Choose two saved tests again.');
+    }
+    for(const [index,id] of ['saved-compare-left','saved-compare-right'].entries()){
+      const select=node(id);
+      select.innerHTML='<option value="">Choose a saved test</option>'+ordered().map(record=>'<option value="'+escape(record.id)+'">'+escape(record.name)+' · '+escape(record.id)+'</option>').join('');
+      select.value=comparisonIds[index];select.disabled=busy||!available;
+    }
+    const panel=node('saved-comparison');panel.hidden=!comparison;
+    if(!comparison){panel.innerHTML='';return;}
+    const selected=comparisonIds.map(id=>records.find(record=>record.id===id));
+    const table=(title,rows)=>'<h3>'+title+'</h3><table><caption>'+title+' for the two selected saved tests</caption><thead><tr><th scope="col">Measure / parameter</th>'+selected.map((record,index)=>'<th scope="col">Test '+(index+1)+': '+escape(record.name)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr'+(row.different?' class="comparison-different"':'')+'><th scope="row">'+escape(row.label)+(row.different?'<span class="comparison-difference">Different</span>':'')+'</th><td>'+escape(row.left)+'</td><td>'+escape(row.right)+'</td></tr>').join('')+'</tbody></table>';
+    panel.innerHTML='<div class="comparison-identities">'+selected.map((record,index)=>'<div><strong>Test '+(index+1)+': '+escape(record.name)+'</strong><small>ID: '+escape(record.id)+'</small></div>').join('')+'</div>'+comparison.notices.map(text=>'<p class="comparison-notice">'+escape(text)+'</p>').join('')+'<div class="saved-comparison-scroll" tabindex="0" role="region" aria-label="Saved test comparison">'+table('Recorded performance',comparison.performance)+table('Parameters',comparison.parameters)+'</div>';
+  }
+  function chooseComparison(index,value){
+    comparisonIds[index]=value;comparisonGeneration++;comparison=null;comparisonLoading=false;
+    comparisonMessage(comparisonIds[0]&&comparisonIds[0]===comparisonIds[1]?'Choose two different saved tests.':'Choose two saved tests, then select Compare.');
+    render();
+  }
+  async function describeSaved(id){
+    let artifact=null,acquisitionId=null;
+    try{
+      try{artifact=(await request('/'+encodeURIComponent(id))).snapshot;}
+      catch(error){
+        if(!error.requires_reader)throw error;
+        // Keep the requested reader identity even if its response is lost, so
+        // a failed acquisition can release its independently owned display.
+        acquisitionId=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+        artifact=await ResultArtifacts.acquire({kind:'saved',id},{},acquisitionId);
+      }
+      return BacktestComparison.describe(artifact);
+    }finally{
+      if(acquisitionId)ResultArtifacts.release(artifact||{version:3,evidence:{id:acquisitionId}});
+    }
+  }
+  async function compareSelected(){
+    if(busy||comparisonIds.some(id=>!id)||comparisonIds[0]===comparisonIds[1])return;
+    const generation=++comparisonGeneration,ids=[...comparisonIds],descriptions=[];
+    comparisonLoading=true;comparison=null;comparisonMessage('Loading the two saved tests…');render();
+    try{
+      for(const id of ids){
+        descriptions.push(await describeSaved(id));
+        if(generation!==comparisonGeneration)return;
+      }
+      comparison=BacktestComparison.compare(...descriptions);
+      comparisonMessage('Comparison ready. Highlighted rows marked Different show recorded differences. The main results are unchanged.');
+    }catch(error){if(generation===comparisonGeneration)comparisonMessage(error.message||'Could not compare these saved tests. Their records were kept.',true);}
+    finally{if(generation===comparisonGeneration){comparisonLoading=false;render();}}
+  }
+  function clearComparison(){
+    comparisonGeneration++;comparisonIds=['',''];comparison=null;comparisonLoading=false;
+    comparisonMessage('Comparison cleared. The main results are unchanged.');render();
   }
   async function request(path='',options={}){
     const response=await fetch('/api/backtests'+path,options);
@@ -120,6 +183,10 @@ const SavedBacktests=(()=>{
   }
   function init(access){
     current=access.current;isRunning=access.isRunning;openRecord=access.open;
+    node('saved-compare-left').addEventListener('change',()=>chooseComparison(0,node('saved-compare-left').value));
+    node('saved-compare-right').addEventListener('change',()=>chooseComparison(1,node('saved-compare-right').value));
+    node('saved-compare').addEventListener('click',compareSelected);
+    node('saved-compare-clear').addEventListener('click',clearComparison);
     node('save-backtest').addEventListener('click',save);
     node('refresh-backtests').addEventListener('click',()=>perform(async()=>{await refresh();message('Saved list refreshed.');}));
     node('saved-sort').addEventListener('change',()=>{sorting=node('saved-sort').value;render();});

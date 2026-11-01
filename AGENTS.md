@@ -414,6 +414,17 @@ automatically. Delete only the record selected by
 the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
 `node tests/check-saved-backtests.cjs` and the existing range/control checks.
 
+`website/backtest-comparison.js` owns pure descriptions and differences from
+stored artifacts. The library compares exactly two stable IDs without changing
+the main result or form. Normalize calendars and documented omission defaults;
+AND-filter order and duplicate identical conditions do not change meaning.
+Preserve strict operators, exact values, unfamiliar settings and stored labels.
+Keep requested engine separate from recorded producer, and seed policy separate
+from recorded seed. Read random distributions without recomputation. Release
+each acquired reader in `finally`, including failed/stale loads. Comparison uses
+its own generation and never main-view opening/publication. Check
+`node tests/check-backtest-comparison.cjs` and `node tests/check-saved-comparison.cjs`.
+
 Existing `/api/robustness` streaming clients opt into full trial details with
 `X-Backtest-Details: holdings`. Background jobs and queued random tests capture
 full trial holdings through `backtest_jobs.calculate`.
