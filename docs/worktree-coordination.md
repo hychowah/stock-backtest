@@ -357,5 +357,7 @@ releases duplicate queue evidence. Engine and financial ownership stay unchanged
 The third slice projects stored settings/summaries in a pure browser comparison
 module. Existing eager/evidence readers load the two selected saved IDs. No
 engine call, result publication, form restoration or financial schema changes.
+Saved-row All parameters disclosures reuse this projection and its existing
+reader cleanup. They add no server or engine contract.
 Existing unrelated snapshot and market-scope
 files stay outside these commits. See the [master plan](plans/backtest-library/master-plan.md).

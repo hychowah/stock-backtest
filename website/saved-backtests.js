@@ -4,6 +4,7 @@ const SavedBacktests=(()=>{
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current=()=>null,isRunning=()=>false,openRecord=()=>{};
   let queueRefresh=false;
+  const disclosures=new Map();
   let comparisonIds=['',''],comparison=null,comparisonLoading=false,comparisonGeneration=0;
   let records=[],limit=100,sorting='newest',renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
   function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
@@ -32,18 +33,41 @@ const SavedBacktests=(()=>{
     });
   }
   function render(){
+    for(const id of disclosures.keys())if(!records.some(record=>record.id===id))disclosures.delete(id);
     const focused=document.activeElement,focusId=focused?.id,start=focused?.selectionStart,end=focused?.selectionEnd;
     node('saved-list').innerHTML=ordered().map(record=>{
       const kind={january:'January',custom:'Fixed dates',random:'Random dates'}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const description=kind+' · '+record.start+' → '+record.end+' · '+(record.kind==='random'?'Mean trial CAGR ':'CAGR ')+cagr;
       const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+escape(record.id)+'" data-rename-input="'+escape(record.id)+'" value="'+escape(renaming.name)+'" maxlength="120"></label><button type="button" data-save-name="'+escape(record.id)+'">Save name</button><button type="button" data-cancel-name="'+escape(record.id)+'">Cancel</button>':pendingDelete===record.id?'<span>Delete this saved backtest?</span> <button type="button" data-confirm="'+escape(record.id)+'">Delete record</button> <button type="button" data-keep="'+escape(record.id)+'">Keep</button>':'<button type="button" data-open="'+escape(record.id)+'">Open</button> <button type="button" data-rename="'+escape(record.id)+'">Rename</button> <button type="button" data-delete="'+escape(record.id)+'">Delete</button>';
-      return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small><small class="saved-id">ID: '+escape(record.id)+'</small></div><div class="saved-actions">'+actions+'</div></li>';
+      return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small><small class="saved-id">ID: '+escape(record.id)+'</small>'+parameterDisclosure(record.id)+'</div><div class="saved-actions">'+actions+'</div></li>';
     }).join('')||'<li>No saved backtests yet.</li>';
     node('saved-list').querySelectorAll('button,input').forEach(control=>control.disabled=busy);
     renderComparison();
     if(focusId&&!busy){const restored=node(focusId);restored?.focus?.({preventScroll:true});if(start!==null&&start!==undefined)restored?.setSelectionRange?.(start,end);}
     update();
+  }
+  // Disclosures reuse stored-artifact descriptions and retain parameter rows
+  // only. They own no artifact, evidence reader, form or main-result lifetime.
+  function parameterDisclosure(id){
+    const state=disclosures.get(id);
+    const content=state?.rows?'<dl>'+state.rows.map(row=>'<dt>'+escape(row.label)+'</dt><dd>'+escape(row.display)+'</dd>').join('')+'</dl>':
+      state?.loading?'<p role="status">Loading recorded parameters…</p>':state?.error?'<p role="status">'+escape(state.error)+'</p><button type="button" data-parameters-retry="'+escape(id)+'">Retry parameters</button>':'<p>Expand to read the settings and filters used for this saved test.</p>';
+    return '<details class="saved-parameters" data-parameters-id="'+escape(id)+'"'+(state?.open?' open':'')+'><summary id="saved-parameters-toggle-'+escape(id)+'">All parameters</summary>'+content+'</details>';
+  }
+  async function loadParameters(id){
+    const state=disclosures.get(id);
+    if(!state||state.loading)return;
+    const generation=state.generation=(state.generation||0)+1;
+    state.loading=true;state.error=null;render();
+    try{
+      const description=await describeSaved(id);
+      if(disclosures.get(id)===state&&state.generation===generation)state.rows=description.parameters;
+    }catch(error){
+      if(disclosures.get(id)===state&&state.generation===generation)state.error=error.message||'Could not load recorded parameters. Retry when the service is available.';
+    }finally{
+      if(disclosures.get(id)===state&&state.generation===generation){state.loading=false;render();}
+    }
   }
   function comparisonMessage(text,error=false){
     node('saved-compare-message').textContent=text;node('saved-compare-message').className=error?'backtest-failed':'hint';
@@ -190,6 +214,16 @@ const SavedBacktests=(()=>{
     node('save-backtest').addEventListener('click',save);
     node('refresh-backtests').addEventListener('click',()=>perform(async()=>{await refresh();message('Saved list refreshed.');}));
     node('saved-sort').addEventListener('change',()=>{sorting=node('saved-sort').value;render();});
+    // Native toggle does not bubble. Capture it on the persistent list. An open
+    // disclosure recreated by rendering cannot restart a pending/cached load.
+    node('saved-list').addEventListener('toggle',event=>{
+      const id=event.target.dataset?.parametersId;
+      if(!id||!records.some(record=>record.id===id))return;
+      let state=disclosures.get(id);
+      if(!state){state={open:false,loading:false,rows:null,error:null};disclosures.set(id,state);}
+      state.open=event.target.open;
+      if(state.open&&!state.loading&&!state.rows&&!state.error)return loadParameters(id);
+    },true);
     node('saved-list').addEventListener('input',event=>{
       if(renaming?.id===event.target.dataset.renameInput)renaming.name=event.target.value;
     });
@@ -201,6 +235,7 @@ const SavedBacktests=(()=>{
     node('saved-list').addEventListener('click',event=>{
       if(busy)return;
       const data=event.target.dataset;
+      if(data.parametersRetry)return loadParameters(data.parametersRetry);
       if(data.saveName)return rename(data.saveName);
       if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
       if(data.cancelName){renaming=null;render();if(queueRefresh)changed();return;}

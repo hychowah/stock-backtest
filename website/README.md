@@ -278,6 +278,12 @@ when transfer recovery retries. Original queued submission receipts remain valid
 but never restart or redisplay archived tests. Active result readers keep their
 original bytes when duplicate queue evidence is released.
 
+Each saved row has **All parameters**. Expand it to read that test's recorded
+settings and selected filters without opening its results or changing the form.
+The first expansion loads only that record. Sorting, renaming and refreshing keep
+its expansion. A failed load shows **Retry parameters** inside the row. Temporary
+evidence readers close after the parameter description is read.
+
 Choose **First saved test** and **Second saved test**, then **Compare**. The two
 IDs must differ. Recorded performance and parameter rows appear in the library.
 Amber rows also say **Different**. Sort or rename records without losing the

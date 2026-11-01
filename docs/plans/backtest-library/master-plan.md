@@ -42,6 +42,7 @@ Each slice updates the architecture guide, runs focused synthetic Python/browser
 - Phase 1: committed as `e049f43` after independent smart-commit audit and focused verification.
 - Phase 2: committed as `d09d376` after independent smart-commit audit and focused verification. See [phase-02.md](phase-02.md).
 - Phase 3: complete after independent smart-commit audit and focused verification. See [phase-03.md](phase-03.md).
+- Follow-up phase 4: saved-row All parameters inspection complete after independent smart-commit audit and focused verification. See [phase-04.md](phase-04.md).
 
 The work is committed on `ui/backtest-library`. An existing automatic publication
 supervisor watches `main`. That branch stays at `f7e320d81761f4a9ee4f1c119e03285b0609efb9`

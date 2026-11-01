@@ -414,6 +414,13 @@ automatically. Delete only the record selected by
 the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
 `node tests/check-saved-backtests.cjs` and the existing range/control checks.
 
+Each saved row has a lazy All parameters disclosure. Reuse the stored-result
+description loader and retain only compact parameter rows by stable ID. Preserve
+expansion through sorting, renaming and list refreshes. Prune deleted IDs and
+ignore their late replies. Native toggle uses capture delegation; rerendering
+open details must not duplicate loads. Inline retry keeps failures local.
+Disclosures never retain evidence readers or replace the main result/form.
+
 `website/backtest-comparison.js` owns pure descriptions and differences from
 stored artifacts. The library compares exactly two stable IDs without changing
 the main result or form. Normalize calendars and documented omission defaults;

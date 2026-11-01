@@ -47,6 +47,7 @@ starting another. Stop cancels only the selected active test. Auto-run is
 suspended while the queue has waiting or running work. Adding, copying or
 editing a queue item also turns Auto-run off for continued batch setup.
 Saved backtests offer 100 slots, stable IDs, rename and performance sorting.
+Expand **All parameters** on a saved row to inspect its settings and filters.
 Choose two saved tests and select **Compare** for recorded performance and
 highlighted parameter differences. Comparison leaves the main result unchanged.
 The queue, saved list and comparison tables scroll inside their sections.
