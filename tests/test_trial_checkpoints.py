@@ -108,6 +108,16 @@ class CheckpointTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT * FROM user_records').fetchall(),[('preserve',)])
             self.assertEqual(db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall(),[('user_records',)])
 
+    def test_active_coordinator_blocks_other_experiment_writes_without_a_pin(self):
+        store=self.store();one=store.open(binding());two=store.open(binding(generation='other'))
+        with store.coordinating(one):
+            one.save(1,completed())
+            with self.assertRaisesRegex(ValueError,'Another experiment'):two.save(1,completed())
+            with self.assertRaisesRegex(ValueError,'active coordinator'):
+                with store.coordinating(one):pass
+            self.assertIsNotNone(one.load(1));self.assertIsNone(two.load(1))
+        self.assertTrue(two.save(1,completed())['retained'])
+
     def test_precommit_cancel_and_independent_connection_atomic_visibility(self):
         store=self.store();experiment=store.open(binding());calls=0
         reader=sqlite3.connect(self.path);self.addCleanup(reader.close)

@@ -5,6 +5,8 @@ Caller holds source-before-import and cache ownership through store, portfolio,
 provider and attachment closure. Validate current inputs even on full recovery.
 """
 import ast
+from contextlib import contextmanager
+import tempfile
 from copy import deepcopy
 import hashlib
 import json
@@ -71,17 +73,15 @@ def validate_configuration(portfolio,configuration):
     return config
 
 
-def checkpoint_binding(portfolio,configuration):
+def checkpoint_binding(portfolio,configuration,*,execution=None):
     """One source-owned complete calculation signature; diagnostics excluded."""
     config=validate_configuration(portfolio,configuration)
-    inputs,provider=portfolio.inputs,portfolio.provider
-    execution=dict(python=platform.python_version(),implementation=sys.implementation.name,
-        architecture=platform.machine(),byteorder=sys.byteorder,sqlite=sqlite3.sqlite_version,
-        versions={name:version(name) for name in ('numpy','numba','llvmlite')},
-        provider=type(provider).__module__+'.'+type(provider).__qualname__,
-        catalog=json.loads(json.dumps(inputs.policy.fields)),bankruptcy=[list(v) for v in sorted(inputs.bankrupt)],
-        limits=deepcopy(provider.limits),fastmath=False,compiler_cache=False,
-        threads=provider.stats.get('threads',1),compiler=deepcopy(getattr(provider,'compiler',None)))
+    inputs=portfolio.inputs
+    if execution is None:
+        provider=portfolio.provider
+        execution=provider_execution(inputs,provider.limits,getattr(provider,'compiler',None))
+        execution['provider']=type(provider).__module__+'.'+type(provider).__qualname__
+        execution['threads']=provider.stats.get('threads',1)
     binding=dict(generation=inputs.signature,policy=inputs.policy.signature,
         schema=inputs.policy.field_schema,result_contract=portfolio_results.CONTRACT_VERSION,
         implementation=source_identity(),execution=execution,configuration=config)
@@ -89,91 +89,171 @@ def checkpoint_binding(portfolio,configuration):
     return binding
 
 
-def run(portfolio,configuration,experiment,progress=None,*,capture=None):
-    """Commit each fresh trial before completion events and ordered capture.
+def provider_execution(inputs,limits,compiler):
+    """Describe the numerical contract without constructing its provider."""
+    return dict(python=platform.python_version(),implementation=sys.implementation.name,
+        architecture=platform.machine(),byteorder=sys.byteorder,sqlite=sqlite3.sqlite_version,
+        versions={name:version(name) for name in ('numpy','numba','llvmlite')},
+        provider='numerical_numba.NumbaExecutor',
+        catalog=json.loads(json.dumps(inputs.policy.fields)),bankruptcy=[list(v) for v in sorted(inputs.bankrupt)],
+        limits=deepcopy(limits),fastmath=False,compiler_cache=False,
+        threads=limits.get('threads',1),compiler=deepcopy(compiler))
 
-    Full recovery calls no provider.begin/evaluate or SQL staging. The borrowed
-    provider may already be compiled by its owner; this adapter initializes no
-    provider or persistent factor cache. CB-06 retains its separate bounded cache.
+
+class _Source:
+    """A checkpoint reference or leased artifact; replay never retains a batch."""
+    def __init__(self,number,experiment,completion=None):
+        self.number,self.experiment,self.completion=number,experiment,completion
+
+    def replay_into(self,emit):
+        if self.completion is not None:return self.completion.artifact.copy_into(emit)
+        summary=self.experiment.replay_into(self.number,emit)
+        if summary is None:
+            raise ValueError('Expected retained checkpoint disappeared during the active experiment.')
+        return summary
+
+    def release(self):
+        if self.completion is not None:self.completion.release()
+
+
+class _LocalCompletion:
+    def __init__(self,number,stream,artifact):
+        self.number,self.stream,self.artifact=number,stream,artifact
+
+    def release(self):self.stream.close()
+
+
+class _LocalExecution:
+    """Borrow B's evaluator for existing offline calls; one artifact at a time."""
+    def __init__(self,portfolio,binding):
+        self.portfolio,self.binding=portfolio,binding
+
+    @contextmanager
+    def batch(self,specifications):
+        evaluator=numerical_trial.TrialEvaluator(self.portfolio,
+            calculation_identity=numerical_trial.calculation_identity(self.binding))
+        limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
+        active=[]
+        class Batch:
+            def completed(inner):
+                for spec in specifications:
+                    stream=tempfile.TemporaryFile('w+b')
+                    completion=_LocalCompletion(spec['number'],stream,None);active.append(completion)
+                    descriptor=evaluator.produce(spec,stream,limits=limits)
+                    completion.artifact=numerical_trial.open_artifact(stream,descriptor,
+                        expected_spec=spec,limits=limits,checkpoint=self.portfolio.s.backtest_control.checkpoint)
+                    yield completion
+                    completion.release();active.remove(completion)
+        try:yield Batch()
+        finally:
+            for completion in active:completion.release()
+
+
+@contextmanager
+def ordered_sources(portfolio,binding,experiment,progress=None,*,execution=None):
+    with experiment.store.coordinating(experiment):
+        with _ordered_sources(portfolio,binding,experiment,progress,execution=execution) as sources:
+            yield sources
+
+
+@contextmanager
+def _ordered_sources(portfolio,binding,experiment,progress=None,*,execution=None):
+    """Recover before startup; parent commits completion order, emits plan order.
+
+    One parent writer owns the active experiment. Its saves never evict its own
+    previous rows. No checkpoint read transaction survives a replay call. Retained
+    artifacts release immediately; unretained leases provide bounded backpressure.
+    The earliest missing trial is submitted first and always owns a reservation.
     """
-    started=time.perf_counter()
-    binding=checkpoint_binding(portfolio,configuration)
-    if trial_checkpoints.canonical(binding) != trial_checkpoints.canonical(experiment.binding):
+    if trial_checkpoints.canonical(binding)!=trial_checkpoints.canonical(experiment.binding):
         raise ValueError('Checkpoint experiment belongs to a different calculation binding.')
-    config=binding['configuration']
-    evaluator=numerical_trial.TrialEvaluator(portfolio,
-        calculation_identity=numerical_trial.calculation_identity(binding))
+    config=binding['configuration'];checkpoint=portfolio.s.backtest_control.checkpoint
     stats=dict(recovered_trials=0,calculated_trials=0,retained_trials=0,unretained_trials=0,
                evicted_experiments=0,workers=0)
+    ready={};missing=[];frontier=1
+    def event(number):
+        if progress:progress(dict(type='progress',completed=stats['recovered_trials']+stats['calculated_trials'],
+            total=config['requested'],trial=number,**stats))
+    for number in range(1,config['requested']+1):
+        checkpoint()
+        summary=experiment.replay_into(number,lambda period:None)
+        if summary is None:missing.append(numerical_trial.specification(binding,number))
+        else:
+            ready[number]=_Source(number,experiment);stats['recovered_trials']+=1;event(number)
+    event(missing[0]['number'] if missing else config['requested'])
+    def drain():
+        nonlocal frontier
+        while frontier in ready:
+            checkpoint();source=ready.pop(frontier)
+            try:yield source,stats
+            finally:source.release()
+            frontier+=1
+    def sources():
+        yield from drain()
+        if missing:
+            capability=execution() if execution is not None else _LocalExecution(portfolio,binding)
+            with capability.batch(missing) as batch:
+                stats['workers']=len(getattr(capability,'workers',()))
+                for completion in batch.completed():
+                    checkpoint()
+                    outcome=experiment.save_from(completion.number,completion.artifact.view)
+                    stats['calculated_trials']+=1
+                    stats['retained_trials' if outcome['retained'] else 'unretained_trials']+=1
+                    stats['evicted_experiments']+=outcome['evicted_experiments']
+                    if outcome['retained']:
+                        completion.release();source=_Source(completion.number,experiment)
+                    else:source=_Source(completion.number,experiment,completion)
+                    ready[completion.number]=source
+                    event(completion.number)
+                    yield from drain()
+        if frontier!=config['requested']+1:raise ValueError('Incomplete ordered trial frontier.')
+    iterator=sources()
+    try:yield iterator
+    finally:
+        iterator.close()
+        for source in ready.values():source.release()
 
-    def event(completed,number):
-        if progress:
-            progress(dict(type='progress',completed=completed,total=config['requested'],trial=number,**stats))
 
-    def completed():
-        for number,dates in enumerate(config['samples'],1):
-            portfolio.s.backtest_control.checkpoint()
-            event(number-1,number)
-            result=experiment.load(number)
-            if result is None:
-                collector=portfolio.result_collector(len(dates),config['options'])
-                summary=evaluator.evaluate_into(numerical_trial.specification(binding,number),collector.period)
-                result=collector.finish(summary)
-                outcome=experiment.save(number,result)
-                stats['calculated_trials']+=1
-                stats['retained_trials' if outcome['retained'] else 'unretained_trials']+=1
-                stats['evicted_experiments']+=outcome['evicted_experiments']
-            else:stats['recovered_trials']+=1
-            event(number,number)
-            yield number,result,stats
-    result=robustness.consume_trials(config,completed(),capture=capture,started=started)
+def run(portfolio,configuration,experiment,progress=None,*,capture=None,execution=None,binding=None):
+    """Collect ordered complete evidence under existing eager admission limits."""
+    started=time.perf_counter()
+    binding=checkpoint_binding(portfolio,configuration) if binding is None else binding
+    config=validate_configuration(portfolio,configuration)
+    if trial_checkpoints.canonical(config)!=trial_checkpoints.canonical(binding['configuration']):
+        raise ValueError('Calculation binding differs from the recorded plan.')
+    for dates in config['samples']:portfolio.admit_eager_result(len(dates),config['options'])
+    with ordered_sources(portfolio,binding,experiment,progress,execution=execution) as sources:
+        def completed():
+            for source,stats in sources:
+                collector=portfolio.result_collector(len(config['samples'][source.number-1]),config['options'])
+                summary=source.replay_into(collector.period)
+                yield source.number,collector.finish(summary),stats
+        result=robustness.consume_trials(config,completed(),capture=capture,started=started)
     return dict(diagnostic_version=DIAGNOSTIC_VERSION,contract_version=portfolio_results.CONTRACT_VERSION,
                 checkpoint_identity=experiment.identity,result=result)
 
 
-def run_into(portfolio,configuration,experiment,writer,progress=None):
-    """Produce complete evidence with one period retained; no full-result capture.
-
-    Validate current inputs before reuse. Seal and retain each trial before its
-    completed progress event. The caller owns the stream and final publication.
-    A callback failure leaves prior committed checkpoints and incomplete output.
-    """
+def run_into(portfolio,configuration,experiment,writer,progress=None,*,execution=None,binding=None):
+    """Replay the same ordered sources into the existing bounded evidence sink."""
     started=time.perf_counter()
     try:
-        binding=checkpoint_binding(portfolio,configuration)
-        if trial_checkpoints.canonical(binding)!=trial_checkpoints.canonical(experiment.binding):
-            raise ValueError('Checkpoint experiment belongs to a different calculation binding.')
-        config=binding['configuration']
-        evaluator=numerical_trial.TrialEvaluator(portfolio,
-            calculation_identity=numerical_trial.calculation_identity(binding))
+        binding=checkpoint_binding(portfolio,configuration) if binding is None else binding
+        config=validate_configuration(portfolio,configuration)
+        if trial_checkpoints.canonical(config)!=trial_checkpoints.canonical(binding['configuration']):
+            raise ValueError('Calculation binding differs from the recorded plan.')
         if writer.expected_trials!=config['requested']:
             raise ValueError('Evidence trial count differs from the recorded plan.')
-        stats=dict(recovered_trials=0,calculated_trials=0,retained_trials=0,unretained_trials=0,
-                   evicted_experiments=0,workers=0)
-        rows=[]
-        def event(completed,number):
-            if progress:progress(dict(type='progress',completed=completed,total=config['requested'],trial=number,**stats))
-        for number,dates in enumerate(config['samples'],1):
-            portfolio.s.backtest_control.checkpoint();event(number-1,number)
-            writer.start_trial(number)
-            counts=[0,0,0]
-            requested=config['options'].get('rank_to',50)-config['options'].get('rank_from',1)+1
-            def emit(period):
-                writer.period(period)
-                counts[0]+=1;counts[1]+=period['names']==0;counts[2]+=period['names']<requested
-            summary=experiment.replay_into(number,emit)
-            if summary is None:
-                summary=evaluator.evaluate_into(numerical_trial.specification(binding,number),emit)
-                view=writer.end_trial(summary)
-                outcome=experiment.save_from(number,view)
-                stats['calculated_trials']+=1
-                stats['retained_trials' if outcome['retained'] else 'unretained_trials']+=1
-                stats['evicted_experiments']+=outcome['evicted_experiments']
-            else:
-                writer.end_trial(summary);stats['recovered_trials']+=1
-            rows.append(robustness.summarize(summary,number,dates,period_counts=counts))
-            event(number,number)
-        result=robustness.summarize_trials(config,rows,started);result['execution']=stats
+        rows=[];stats={}
+        with ordered_sources(portfolio,binding,experiment,progress,execution=execution) as sources:
+            for source,stats in sources:
+                writer.start_trial(source.number);counts=[0,0,0]
+                requested=config['options'].get('rank_to',50)-config['options'].get('rank_from',1)+1
+                def emit(period):
+                    writer.period(period)
+                    counts[0]+=1;counts[1]+=period['names']==0;counts[2]+=period['names']<requested
+                summary=source.replay_into(emit);writer.end_trial(summary)
+                rows.append(robustness.summarize(summary,source.number,config['samples'][source.number-1],period_counts=counts))
+        result=robustness.summarize_trials(config,rows,started);result['execution']=dict(stats)
         portfolio.s.backtest_control.checkpoint()
         manifest=writer.finish(result)
         return dict(diagnostic_version=DIAGNOSTIC_VERSION,contract_version=portfolio_results.CONTRACT_VERSION,

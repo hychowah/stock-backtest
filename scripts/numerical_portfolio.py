@@ -11,12 +11,11 @@ import time
 
 import numerical_calendar
 import portfolio_results
-from numerical_workspace import stage_book
+from numerical_workspace import RequestWorkspace, stage_book
 from numerical_matrix import retained_size
-from numerical_policy import require_supported
 
 
-class NumericalPortfolio:
+class NumericalPortfolio(RequestWorkspace):
     """Compose an explicitly supplied complete-book provider with existing SQL.
 
     inputs can be an already validated AttachedInputs or fictional NumericInputs.
@@ -28,44 +27,12 @@ class NumericalPortfolio:
         self.inputs, self.provider, self.s = inputs, provider, inputs.s
         self.result_workspace_bytes = result_workspace_bytes
         self.peak_result_graph_bytes = 0
-        self.closed = False
-        self.db = sqlite3.connect(':memory:')
-        self.db.row_factory = sqlite3.Row
-        try:
-            self._validate_inputs()
-            self.db.executescript(self.s.SCHEMA)
-            self.db.executemany('INSERT INTO companies VALUES(?,?,?,?)', inputs.companies)
-            self.db.executemany('INSERT INTO sessions VALUES(?,?)', inputs.sessions.items())
-            self.db.commit()
-        except BaseException:
-            self.close()
-            raise
+        super().__init__(inputs, result_workspace_bytes=result_workspace_bytes)
 
     def _validate_inputs(self):
-        if self.closed or self.inputs.closed:
-            raise ValueError('Numerical portfolio or input attachment is closed.')
+        super()._validate_inputs()
         if self.provider.inputs is not self.inputs:
             raise ValueError('Complete-book provider belongs to different inputs.')
-        # Production attachments retain their existing current-input validator.
-        # NumericInputs is confined to explicitly owned fictional fixtures.
-        validate = getattr(self.inputs, 'validate', None)
-        if validate is not None: validate()
-
-    def _calendar(self):
-        return self.s.schedule_calendar.SessionCalendar(
-            [date.fromisoformat(day) for day in sorted(self.inputs.sessions)])
-
-    def validate_selection(self, options):
-        """Validate financial settings and experimental support before reuse.
-
-        Invalid or unsupported requests fail without changing any setting.
-        No provider work, SQL staging or checkpoint read is admitted here.
-        """
-        try:
-            self.s.r._select(self.db, period=(-1, -1), **options)
-        except TypeError as error:
-            raise ValueError('Unknown screening option.') from error
-        require_supported(options)
 
     def backtest(self, *, start, end, months=12, **options):
         self._validate_inputs()
@@ -111,23 +78,6 @@ class NumericalPortfolio:
 
     def _evaluate_periods(self, periods, metadata, *, common_start=None, **options):
         return self._reduce_periods(periods,metadata,None,common_start=common_start,**options)
-
-    def admit_eager_result(self,period_count,options):
-        """Keep the existing conservative eager estimate before provider work."""
-        if self.result_workspace_bytes is not None:
-            count=min(len(self.inputs.symbols),options.get('rank_to',50)-options.get('rank_from',1)+1)
-            if period_count*(16384+4096*count)>self.result_workspace_bytes:
-                raise ValueError('Complete result exceeds the runtime result workspace bound.')
-
-    def result_collector(self,period_count,options):
-        """Collect incremental trial evidence within the existing eager budget.
-
-        The caller chooses eager retention. Streaming evaluation does not use
-        this collector. Its accounting includes cumulative detached periods and
-        the final graph; this does not raise or replace the owner's byte budget.
-        """
-        self.admit_eager_result(period_count,options)
-        return _ResultCollector(self)
 
     def _reduce_periods(self, periods, metadata, emit_period, /, *, common_start=None, **options):
         started = time.perf_counter()
@@ -232,28 +182,6 @@ class NumericalPortfolio:
     def __exit__(self, *exc):
         self.close()
 
-
-class _ResultCollector:
-    def __init__(self,portfolio):
-        self.portfolio=portfolio
-        self.periods=[]
-        self.retained=0
-
-    def _check(self,size):
-        portfolio=self.portfolio
-        portfolio.peak_result_graph_bytes=max(portfolio.peak_result_graph_bytes,size)
-        if portfolio.result_workspace_bytes is not None and size>portfolio.result_workspace_bytes:
-            raise ValueError('Complete result exceeds the runtime result workspace bound.')
-
-    def period(self,period):
-        self.retained+=retained_size(period)+4096
-        self._check(self.retained)
-        self.periods.append(period)
-
-    def finish(self,summary):
-        result=dict(periods=self.periods,**summary)
-        self._check(retained_size(result))
-        return result
 
 
 def compare_results(reference, observed):

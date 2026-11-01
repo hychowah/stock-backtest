@@ -119,6 +119,12 @@ class RuntimeTests(unittest.TestCase):
             for key in ('closed','eof','reader_stopped','streams_closed','descendants_empty','native_handles_released'):
                 self.assertTrue(state[key],state)
             self.assertIsNotNone(state['leader_exit'])
+        marker=value.scratch/'fixture-state.json'
+        if marker.exists():
+            observed=json.loads(marker.read_bytes())
+            if observed.get('closed'):
+                self.assertTrue(observed['sql_closed'],observed)
+                self.assertTrue(observed['workspace_sql_closed'],observed)
 
     def test_serial_parallel_complete_results_random_capture_recovery_and_fresh_seeds(self):
         observed=[]
@@ -177,6 +183,29 @@ class RuntimeTests(unittest.TestCase):
             tree_samples=tree_samples,logical_file_bytes=file_samples,
             mapped_residency='not measured separately')),flush=True)
 
+    def test_random_application_uses_two_workers_and_fresh_full_hit_starts_none(self):
+        options=self.options(trials=3,seed=191)
+        plan=robustness.plan(self.fixture.db,**options)
+        settings=dict(execution=dict(workers=2,threads_per_worker=1))
+        with self.make(session_options=settings) as value:
+            result=value.calculate('random',options,planned=plan)
+            self.assertEqual(result['execution']['workers'],2)
+            self.assertEqual(value.last_stats['trial_pool']['started_workers'],2)
+            self.assertEqual(value.last_stats['provider_builds'],0)
+            for actual,dates in zip(result['trial_results'],plan['samples']):
+                expected=self.fixture.s.backtest_dates(self.fixture.db,dates=dates,
+                    **{key:options[key] for key in ('start','end','months')},**plan['options'])
+                self.assertTrue(compare_results(expected,actual)['exact'])
+        self.assert_closed(value)
+        with self.make(session_options=settings) as recovered:
+            replay=recovered.calculate('random',options,planned=plan)
+            self.assertEqual(replay['trial_results'],result['trial_results'])
+            self.assertEqual(replay['execution']['recovered_trials'],3)
+            self.assertEqual(replay['execution']['workers'],0)
+            self.assertIsNone(recovered.last_stats['trial_pool'])
+            self.assertEqual(recovered.last_stats['provider_builds'],0)
+        self.assert_closed(recovered)
+
     def test_result_graph_and_ipc_budgets_reject_before_unbounded_accumulation(self):
         for mode,options in (('custom',self.options()),('random',self.options(trials=3,seed=1))):
             value=self.make(session_options=dict(result_workspace_bytes=1024))
@@ -191,7 +220,15 @@ class RuntimeTests(unittest.TestCase):
         # fixture limits, not user acceptance budgets or full-window capacity.
         import numerical_calendar
         value=self.make(threads=2,session_options=dict(result_cache_bytes=0))
-        logical=lambda:sum(p.stat().st_size for p in self.root.rglob('*') if p.is_file())
+        def logical():
+            # Pool files publish and retire while this observer samples. A
+            # vanished entry contributes no bytes to the completed observation.
+            size=0
+            for path in self.root.rglob('*'):
+                try:
+                    if path.is_file():size+=path.stat().st_size
+                except FileNotFoundError:pass
+            return size
         before=logical();sizes=[];tree_samples=[]
         with value:
             options=dict(calendar=dict(version=1,start='2015-01-02',end='2016-12-30',
@@ -239,7 +276,7 @@ class RuntimeTests(unittest.TestCase):
         value=self.make();old_result=value.calculate('random',options,planned=plan)
         old=value.last_stats['generation'];old_pid=value.last_stats['pid']
         self.assertEqual(value.last_stats['attached_generations'],1)
-        self.assertEqual(value.last_stats['provider_builds'],1)
+        self.assertEqual(value.last_stats['provider_builds'],0)
         # Only this disposable fixture changes a pointer outside the held
         # coordinator. Ordinary coordinated publication waits for runtime exit.
         with patch.object(self.fixture.store,'coordinator',cache_access.WorkspaceAccess(self.root/'fixture-publication.lock')):
@@ -249,7 +286,7 @@ class RuntimeTests(unittest.TestCase):
             value.calculate('random',options,planned=plan)
         self.assert_closed(value)
         closed=json.loads((value.scratch/'fixture-state.json').read_text())
-        self.assertEqual(closed['provider_builds'],1,'A changed pointer must not construct another JIT provider')
+        self.assertEqual(closed['provider_builds'],0,'A changed pointer must not construct another JIT provider')
         for field in ('closed','portfolio_closed','provider_closed','mappings_closed','record_db_closed','sql_closed','checkpoint_db_closed'):
             self.assertTrue(closed[field],closed)
         self.assertFalse(self.fixture.store._busy(old))
@@ -261,7 +298,7 @@ class RuntimeTests(unittest.TestCase):
             self.assertNotEqual(fresh.last_stats['generation'],old)
             self.assertNotEqual(fresh.last_stats['pid'],old_pid)
             self.assertEqual(fresh.last_stats['attached_generations'],1)
-            self.assertEqual(fresh.last_stats['provider_builds'],1)
+            self.assertEqual(fresh.last_stats['provider_builds'],0)
             self.assertEqual(new_result['execution']['recovered_trials'],0)
             self.assertEqual(new_result['execution']['calculated_trials'],2)
             new_generation=fresh.last_stats['generation']

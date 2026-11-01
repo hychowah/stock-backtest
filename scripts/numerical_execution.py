@@ -205,6 +205,10 @@ class ExecutionPolicy:
     @property
     def artifact_limits(self): return deepcopy(self._identity['artifact_limits'])
 
+    def execution_identity(self, compiler):
+        """Expected stable worker contract; no process or JIT is needed."""
+        return dict(**self.identity, backend='numba', compiler=compiler['signature'])
+
     def admit_cold_worker(self, measurements):
         """Check incremental duplication before starting remaining workers.
 

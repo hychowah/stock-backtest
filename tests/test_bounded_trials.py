@@ -338,7 +338,7 @@ class BoundedNumericalTests(unittest.TestCase):
         stream=io.BytesIO();output=writer(stream,3)
         with patch.object(output,'period',side_effect=OSError('fictional sink full')):
             with self.assertRaises(OSError):numerical_random.run_into(portfolio,config,experiment,output)
-        self.assertFalse(portfolio.db.in_transaction);self.assertTrue(output.failed);self.assertIsNone(experiment.load(1))
+        self.assertFalse(portfolio.db.in_transaction);self.assertTrue(output.failed);self.assertIsNotNone(experiment.load(1))
         portfolio.result_workspace_bytes=50000
         with self.assertRaisesRegex(ValueError,'workspace'):portfolio.backtest_calendar(
             dates=config['samples'][0],**numerical_calendar.request_fields(config),**config['options'])

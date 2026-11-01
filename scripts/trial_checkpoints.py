@@ -99,6 +99,7 @@ class Store:
         self.path=Path(path)
         self.max_payload_bytes,self.max_experiments=max_payload_bytes,max_experiments
         self.closed=False
+        self._coordinator_identity=None
         self.db=sqlite3.connect(self.path,timeout=60,isolation_level=None)
         try:
             self.db.execute('PRAGMA foreign_keys=ON')
@@ -121,6 +122,24 @@ class Store:
 
     def _open(self):
         if self.closed:raise ValueError('Checkpoint store is closed.')
+
+    @contextmanager
+    def coordinating(self,experiment):
+        """One parent operation may save only its active experiment.
+
+        This guards callback reentrancy, not a storage pin or another writer.
+        The caller still owns the financial session and this connection.
+        """
+        self._open()
+        if experiment.store is not self or self._coordinator_identity is not None:
+            raise ValueError('Checkpoint store already has an active coordinator.')
+        self._coordinator_identity=experiment.identity
+        try:yield
+        finally:self._coordinator_identity=None
+
+    def _writer(self,identity):
+        if self._coordinator_identity not in (None,identity):
+            raise ValueError('Another experiment cannot write during active trial coordination.')
 
     def open(self,binding):
         self._open()
@@ -233,6 +252,7 @@ class Experiment:
         return True,evicted
 
     def save(self,number,result):
+        self.store._writer(self.identity)
         self._number(number);self.store._open();self._result(number,result)
         payload=canonical(result);size=len(payload.encode('utf-8'));db=self.store.db
         backtest_control.checkpoint();db.execute('BEGIN IMMEDIATE')
@@ -313,6 +333,7 @@ class Experiment:
 
     def save_from(self,number,view):
         """Atomically retain a sealed trial; never collect its complete holdings."""
+        self.store._writer(self.identity)
         self._number(number);self.store._open()
         if view.number!=number:raise ValueError('Checkpoint trial number differs.')
         self._validate_view(number,view)

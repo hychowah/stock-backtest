@@ -10,6 +10,8 @@ import backtest_control
 from numerical_generation import GenerationStore
 from numerical_numba import NumbaExecutor
 from numerical_portfolio import NumericalPortfolio
+from numerical_workspace import RequestWorkspace
+from numerical_identity import compiler_identity
 import numerical_calendar
 import numerical_random
 from numerical_matrix import retained_size
@@ -28,7 +30,8 @@ class Session:
     def __init__(self, configuration):
         self.configuration = configuration
         self.inputs = self.provider = self.portfolio = self.checkpoints = None
-        self.trial_pool = None
+        self.trial_pool = self.workspace = None
+        self.expected_compiler = None
         execution = deepcopy(configuration.get('execution', {}))
         execution.setdefault('threads_per_worker', configuration['threads'])
         for key in ('workspace_bytes','matrix_cache_bytes','chunk_rows'):
@@ -66,7 +69,7 @@ class Session:
         if self.trial_pool is not None:
             self.trial_pool.close()
             self.trial_pool = None
-        for name in ('portfolio','provider','inputs'):
+        for name in ('portfolio','workspace','provider','inputs'):
             value = getattr(self,name)
             if value is not None:
                 value.close()
@@ -86,21 +89,35 @@ class Session:
             raise ValueError('Numerical generation changed. Close this runtime and start a new process.')
         if self.inputs is None:
             self.inputs = self.store.open_current()
-            self.provider = NumbaExecutor(self.inputs, limits=self.execution_policy.provider_limits)
-            self.portfolio = NumericalPortfolio(self.inputs,self.provider,result_workspace_bytes=self.result_workspace_bytes)
+            self.workspace = RequestWorkspace(self.inputs,result_workspace_bytes=self.result_workspace_bytes)
+            self.expected_compiler = compiler_identity(self.inputs,self.execution_policy.provider_limits['threads'])
             self.stats['attached_generations'] = 1
         self.inputs.validate()
         backtest_control.checkpoint()
 
+    def _portfolio(self):
+        """Construct the coordinator provider only for a custom calculation."""
+        if self.portfolio is None:
+            self.provider = NumbaExecutor(self.inputs,limits=self.execution_policy.provider_limits)
+            if self.provider.compiler != self.expected_compiler:
+                raise ValueError('Coordinator provider differs from its expected compiler identity.')
+            self.portfolio = NumericalPortfolio(self.inputs,self.provider,result_workspace_bytes=self.result_workspace_bytes)
+        return self.portfolio
+
+    def _binding(self,plan):
+        execution=numerical_random.provider_execution(self.inputs,self.execution_policy.provider_limits,self.expected_compiler)
+        execution['trial_pool']=self.execution_policy.execution_identity(self.expected_compiler)
+        return numerical_random.checkpoint_binding(self.workspace,plan,execution=execution)
+
     def pool(self):
-        """Lazily own trial workers; random orchestration remains with CB-19D."""
+        """Lazily own persistent workers after complete checkpoint inspection."""
         self.validate()
         if self.trial_pool is None:
             from numerical_trial_pool import TrialPool
             self.trial_pool = TrialPool(source_root=self.configuration['source_root'],
                 scratch=self.configuration['scratch']+'/trial-pool',
                 reference=self.inputs.worker_reference(), source_identity=self.loaded_source,
-                compiler_identity=self.provider.compiler, policy=self.execution_policy)
+                compiler_identity=self.expected_compiler, policy=self.execution_policy)
         return self.trial_pool
 
     def plan(self, options):
@@ -108,16 +125,16 @@ class Session:
         # planner, including its fresh default seed and exact envelope.
         configuration,selection,_=numerical_calendar.decode_request(options)
         selection.pop('trials',None);selection.pop('seed',None)
-        self.portfolio.validate_selection(selection)
+        self.workspace.validate_selection(selection)
         if 'calendar' in options:
-            return numerical_calendar.plan(self.portfolio._calendar().sessions,options,
+            return numerical_calendar.plan(self.workspace._calendar().sessions,options,
                 checkpoint=backtest_control.checkpoint)
-        return robustness.plan(self.portfolio.db,**deepcopy(options))
+        return robustness.plan(self.workspace.db,**deepcopy(options))
 
     def calculate(self, mode, options, progress, configuration, *, planned=None, capture=None):
         self.validate()  # Always before result/checkpoint lookup, even a full hit.
         if mode == 'random':
-            plan = self.plan(options) if planned is None else numerical_random.validate_configuration(self.portfolio,planned)
+            plan = self.plan(options) if planned is None else numerical_random.validate_configuration(self.workspace,planned)
             if planned is not None:
                 _validate_submitted(options, plan)
             count = min(len(self.inputs.symbols),plan['options'].get('rank_to',50)-plan['options'].get('rank_from',1)+1)
@@ -125,7 +142,8 @@ class Session:
             if estimate > self.result_workspace_bytes:
                 raise ValueError('Random result exceeds the runtime result workspace bound.')
             configuration(deepcopy(plan))
-            experiment = self.checkpoints.open(numerical_random.checkpoint_binding(self.portfolio,plan))
+            binding=self._binding(plan)
+            experiment = self.checkpoints.open(binding)
             details = []
             graph_bytes = 0
             def observed(number,result):
@@ -136,12 +154,13 @@ class Session:
                     raise ValueError('Random result exceeds the runtime result workspace bound.')
                 details.append(result)
                 if capture is not None: capture(number,result)
-            result = numerical_random.run(self.portfolio,plan,experiment,progress,capture=observed)['result']
+            result = numerical_random.run(self.workspace,plan,experiment,progress,capture=observed,execution=self.pool,binding=binding)['result']
             result['trial_results'] = details
         elif mode == 'custom':
+            self._portfolio()
             _, selection, _ = numerical_calendar.decode_request(options)
             selection.pop('dates', None)
-            self.portfolio.validate_selection(selection)
+            self.workspace.validate_selection(selection)
             key = (self.inputs.signature, trial_checkpoints.canonical(options))
             if key in self.results:
                 result = self.results.pop(key); self.results[key] = result
@@ -176,7 +195,7 @@ class Session:
         if planned is not None and mode!='random':raise ValueError('A recorded plan requires random mode.')
         plan=None
         if mode=='random':
-            plan=self.plan(options) if planned is None else numerical_random.validate_configuration(self.portfolio,planned)
+            plan=self.plan(options) if planned is None else numerical_random.validate_configuration(self.workspace,planned)
             if planned is not None:
                 _validate_submitted(options, plan)
             configuration(deepcopy(plan))
@@ -186,9 +205,11 @@ class Session:
             max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes,
             checkpoint=backtest_control.checkpoint)
         if plan is not None:
-            experiment=self.checkpoints.open(numerical_random.checkpoint_binding(self.portfolio,plan))
-            numerical_random.run_into(self.portfolio,plan,experiment,writer,progress)
+            binding=self._binding(plan)
+            experiment=self.checkpoints.open(binding)
+            numerical_random.run_into(self.workspace,plan,experiment,writer,progress,execution=self.pool,binding=binding)
         else:
+            self._portfolio()
             writer.start_trial(1)
             result=self.portfolio.backtest_calendar_into(writer.period,**options)['result']
             writer.end_trial(result);writer.finish(result)
@@ -196,9 +217,9 @@ class Session:
 
     def measurements(self):
         return dict(**self.stats,**process_metrics(),generation=self.inputs.signature,
-            compiler_identity=deepcopy(self.provider.compiler),
-            matrix=deepcopy(self.provider._calculate.stats),
-            provider=deepcopy(self.provider.stats),checkpoints=self.checkpoints.measurements(),
+            compiler_identity=deepcopy(self.expected_compiler),
+            matrix=deepcopy(self.provider._calculate.stats) if self.provider is not None else {},
+            provider=deepcopy(self.provider.stats) if self.provider is not None else dict(books=0,threads=self.execution_policy.provider_limits['threads']),checkpoints=self.checkpoints.measurements(),
             execution_policy=self.execution_policy.diagnostics(),
             trial_pool=self.trial_pool.measurements() if self.trial_pool is not None else None)
 

@@ -234,7 +234,7 @@ class TrialPool:
     def execution_identity(self):
         # Resource samples, timeouts and admission-only memory allowance are
         # deliberately absent. D binds this stable section to its checkpoints.
-        return dict(**self.policy.identity, backend='numba', compiler=self.compiler_identity['signature'])
+        return self.policy.execution_identity(self.compiler_identity)
 
     def _spec_path(self, slot): return self.scratch/('slot-'+str(slot)+'.json')
     def _artifact_path(self, slot): return self.scratch/('slot-'+str(slot)+'.evidence')

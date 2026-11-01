@@ -111,3 +111,5 @@ assert(closed.every(x => x.open));
 windowEvents.afterprint();
 assert(closed.every(x => !x.open));
 console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 12 setting combinations and print state.');
+
+assert(html.includes('Ordered random coordination checked 1 November 2026.') && html.includes('Full recovery constructs no provider and starts no workers.') && html.includes('Unretained artifacts keep bounded reservations') && html.includes('Completion progress follows a successful save.'), 'Explain recovery before compilation, parent commitment and bounded ordered presentation');

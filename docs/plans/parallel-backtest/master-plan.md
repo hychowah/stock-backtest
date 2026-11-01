@@ -1,7 +1,7 @@
 # Parallel experimental backtest program
 
 Recorded: 1 November 2026. Source owner: `main` in the WSL checkout.
-Status: CB-19A and CB-19B complete in audited commits; CB-19C completes in this audited commit. CB-19D–CB-19G are pending.
+Status: CB-19A–CB-19C are complete in audited commits. CB-19D completes in this audited commit. CB-19E–CB-19G are pending.
 
 The independent planner's report follows verbatim. Administrative tracking starts
 after its Unknowns section.
@@ -215,8 +215,8 @@ reports when a material design change needs a new independent planner.
 |---|---|---|
 | CB-19A | Complete (`84e2287`) | Delegated immutable generation attachment and WSL/native identity, lifetime and release checks pass; [phase](phases/CB-19A.md), [verification](phases/CB-19A.verify.md), [handoff](phases/CB-19A.implement.md), [design review](phases/CB-19A.review.md) and [audit](phases/CB-19A.audit.md) filed. |
 | CB-19B | Complete (`4382a6e`) | One complete recorded-trial evaluator and actual-number sealed artifact implemented. Required WSL/native financial, artifact, recovery and source-binding checks pass. Independent audit has no findings. See [phase](phases/CB-19B.md), [verification](phases/CB-19B.verify.md), [handoff](phases/CB-19B.implement.md), [design review](phases/CB-19B.review.md) and [audit](phases/CB-19B.audit.md). |
-| CB-19C | Complete in this audited commit | Persistent contained workers, stable capacity identity, total managed allowances and completion leases. All 16 pool tests pass on WSL and native Windows; required regression, source/lifetime/cancellation/retirement and pending-publication checks pass. Retained transient and interrupted attempts remain explicit. See [phase](phases/CB-19C.md), [verification](phases/CB-19C.verify.md), [handoff](phases/CB-19C.implement.md), [limit provenance](phases/CB-19C.limits.md) and [design review](phases/CB-19C.review.md) and [audit](phases/CB-19C.audit.md). |
-| CB-19D | Pending | Parent-owned ordered checkpoint coordination and application integration; parallel/sequential parity, recovery and manual/queue/evidence checks |
+| CB-19C | Complete (`8d73129`) | Persistent contained workers, stable capacity identity, total managed allowances and completion leases. All 16 pool tests pass on WSL and native Windows; required regression, source/lifetime/cancellation/retirement and pending-publication checks pass. Retained transient and interrupted attempts remain explicit. See [phase](phases/CB-19C.md), [verification](phases/CB-19C.verify.md), [handoff](phases/CB-19C.implement.md), [limit provenance](phases/CB-19C.limits.md) and [design review](phases/CB-19C.review.md) and [audit](phases/CB-19C.audit.md). |
+| CB-19D | Complete in this audited commit | One parent coordinator serves eager and streaming experimental random execution. WSL/private native parity, recovery, lifecycle, manual/queue/evidence and repaired diagnostic compatibility checks pass. Full recovery creates no provider or workers. All private native exports are removed. Original stays default. Failed attempts remain explicit. See [phase](phases/CB-19D.md), [design](phases/CB-19D.design.md), [identity resolution](phases/CB-19D.identity-resolution.md), [design review](phases/CB-19D.review.md), [handoff](phases/CB-19D.implement.md), [verification](phases/CB-19D.verify.md) and [audit](phases/CB-19D.audit.md). |
 | CB-19E | Pending | Complete Rust period candidate including guards, assembly, SQL and reducer; full parity, boundary/cancellation checks and private native portability |
 | CB-19F | Pending | Scoped reproducible end-to-end layout evidence, actual resource/cleanup observations and an explicit justified native-core decision |
 | CB-19G | Pending | Selected backend/layout integrated internally; WSL/native application qualification, complete parity, current guide and audited slice commits |

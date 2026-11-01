@@ -1,10 +1,11 @@
 # Completed-trial calculation checkpoints
 
-CB-10 adds offline numerical random recovery. Current application requests still
-use `backtest_jobs.calculate`, ordinary schedules and `book_batch`. The existing
-queue and saved library own user records. No application route selects this
-diagnostic. CB-11 supplies an explicit persistent numerical capability.
-Automatic startup, routing and weekly controls remain later work.
+CB-10 added offline numerical random recovery. Current application requests use
+`backtest_jobs.calculate`. Original uses ordinary schedules and `book_batch`.
+Opt-in experimental random requests use the CB-19D parallel coordinator. The
+existing queue and saved library own user records. Both engines support the
+current week/month calendars. Original remains the default. Source changes do
+not deploy or restart an installed server.
 
 ## Interface and ownership
 
@@ -198,3 +199,27 @@ A later receiver, callback or transfer failure does not erase committed trials.
 Jobs owns a separate complete temporary copy after verified transfer. Checkpoint
 eviction cannot invalidate that copy. This does not route ordinary jobs or queues
 to bounded evidence. See [temporary ownership](result-evidence.md).
+
+
+## Parallel ordered coordination (CB-19D)
+
+The experimental Session predicts its compiler and configured pool identity
+before checkpoint lookup. Full recovery creates no provider and starts no
+workers. Each recorded trial is validated before any lookup. Recovery checks one
+trial at a time with bounded replay; it does not collect the experiment.
+
+The parent alone calls `save_from`. Completion progress follows successful
+saves, even when fresh trials finish out of order. Retained artifacts release
+promptly and replay from this active experiment. Unretained artifacts retain
+bounded pool reservations until their turn in recorded output. The earliest
+missing trial is admitted first. Result rows, capture and eager/streaming evidence
+remain ordered. One parent writer owns this operation. It does not interleave
+another experiment's writes. Own-experiment retention preserves earlier rows.
+An unexpectedly missing retained row or corruption fails the request.
+
+Cancellation and callback/output failures preserve prior commits and close the
+active pool batch before the runtime releases financial ownership. Configured
+capacity, threads, provider bounds and compiler identity bind reuse. Actual
+started worker counts and sampled resources are diagnostics. Historical TEXT
+and BLOB rows keep their bindings and bytes. The new binding intentionally misses
+incompatible previous experiments. Durable user snapshots are independent.

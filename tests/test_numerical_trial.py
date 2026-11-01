@@ -297,7 +297,8 @@ class TrialEvaluatorTests(unittest.TestCase):
             result=original_collector(*args);portfolio.result_workspace_bytes=1;return result
         with patch.object(portfolio,'result_collector',side_effect=after_admission):
             with self.assertRaisesRegex(ValueError,'workspace'):numerical_random.run(portfolio,config,experiment)
-        self.assertIsNone(experiment.load(1));self.assertFalse(portfolio.db.in_transaction)
+        # Parent completion commits before eager output; failed collection preserves it.
+        self.assertIsNotNone(experiment.load(1));self.assertFalse(portfolio.db.in_transaction)
 
 
 if __name__=='__main__':unittest.main()

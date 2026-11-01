@@ -67,7 +67,7 @@ class Session(numerical_session.Session):
         if self.fault in ('cancel','stuck'):
             self._mark(pid=os.getpid(),running=True)
             while True:
-                if self.fault != 'stuck': self.portfolio.s.backtest_control.checkpoint()
+                if self.fault != 'stuck': self.workspace.s.backtest_control.checkpoint()
                 time.sleep(.01)
         if self.fault == 'descendant':
             import subprocess,sys
@@ -101,6 +101,7 @@ class Session(numerical_session.Session):
             raise OSError('fictional partial cleanup failure')
         portfolio,provider,inputs,checkpoints = self.portfolio,self.provider,self.inputs,self.checkpoints
         sql = portfolio.db if portfolio is not None else None
+        workspace_sql = self.workspace.db if self.workspace is not None else None
         checkpoint_db = checkpoints.db if checkpoints is not None else None
         super().close()
         def connection_closed(db):
@@ -116,4 +117,5 @@ class Session(numerical_session.Session):
                 provider_closed=provider is None or provider.inputs is None,
                 mappings_closed=inputs is None or inputs.closed and not inputs._arrays,
                 record_db_closed=inputs is None or inputs._db is None,
-                sql_closed=connection_closed(sql),checkpoint_db_closed=connection_closed(checkpoint_db))
+                sql_closed=connection_closed(sql) and connection_closed(workspace_sql),
+                workspace_sql_closed=connection_closed(workspace_sql),checkpoint_db_closed=connection_closed(checkpoint_db))

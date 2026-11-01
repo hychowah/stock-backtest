@@ -448,8 +448,8 @@ This process boundary prevents repeated generation changes from accumulating
 unqualified compiler allocations. `attached_generations` is zero during setup
 and one after attachment. There is no same-process replacement counter.
 Coordinated publication normally waits for the runtime to close. The replacement
-fixture models a private pointer change, verifies one provider construction and
-complete old-resource closure, then uses a fresh child. Its checkpoint binding
+fixture models a private pointer change. Random work constructs zero coordinator
+providers. It verifies complete old-resource closure, then uses a fresh child. Its checkpoint binding
 misses the old generation. It does not bypass production financial ownership.
 
 `scripts/numerical_books.py`, `numerical_numba.py`, `numerical_portfolio.py`,
@@ -458,8 +458,9 @@ code. The old tool modules remain compatibility imports. Complete eligible
 books still precede the existing SQL selector. No selected-only return path or
 ordinary `book_batch` workers run inside the runtime. `numerical_matrix.py`
 prewarms the accepted writable contiguous float64 signature without fast math
-or a disk compiler cache. The current random adapter still runs trials in order.
-CB-19C adds an explicit persistent trial pool. CB-19D owns application dispatch.
+or a disk compiler cache. Random workers calculate missing trials concurrently.
+The parent saves completion order and presents recorded order.
+CB-19D routes experimental random requests through the persistent trial pool.
 `numerical_execution.py` resolves threads from effective observed CPUs and
 internal settings. Four threads remain an initial comparison default. They are
 not a hardware ceiling. A selected larger layout needs no source edit. Numba's
@@ -637,18 +638,18 @@ Streams and immutable-byte lifetime belong to the caller. No path is accepted.
 An artifact is calculated evidence. It is not a committed checkpoint, completion
 event, application result or independently authenticated worker. CB-19C owns
 worker readiness, task-owned scratch, containment and total resource admission.
-CB-19D owns concurrent commitment and presentation. CB-19B creates no pool
+CB-19D supplies concurrent commitment and ordered presentation. CB-19B creates no pool
 or application route. Transitive calculation-source identity includes the new
 module and codec. Old checkpoint rows are preserved with their original bindings.
 
 ## Persistent trial workers (CB-19C)
 
-Current source provides an explicit pool. The existing random adapter does not
-use it yet. Original stays the application default. CB-19D owns random dispatch,
-checkpoint recovery/publication, committed progress and recorded-order output.
+Current experimental random requests use this pool through CB-19D. Original
+stays the application default. The parent owns checkpoint recovery/publication,
+committed progress and recorded-order output.
 
-`Session.pool()` creates its pool lazily. It retains the coordinator's existing
-provider and private SQL workspace. The session closes workers before checkpoints,
+`Session.pool()` creates its pool lazily. It shares the session's input attachment. The parent request workspace needs no
+provider. A custom calculation can retain its separate lazy provider. The session closes workers before checkpoints,
 portfolio, provider and input mappings. Financial and source ownership remain
 with the existing runtime. Its Windows Job or POSIX process session contains
 ordinary worker descendants. The pool creates no separate ownership domain.
@@ -730,3 +731,49 @@ Close verifies child exit, EOF, reader termination, stream closure and native
 handle release before removing reservations. Unconfirmed cleanup retains a strong
 owner and raises the existing retryable `ClosureError`. Cleanup success is required
 before cancellation is a completed outcome.
+
+
+## Ordered random coordinator (CB-19D)
+
+Experimental random requests now use one coordinator for eager and bounded
+streaming operations. `numerical_workspace.RequestWorkspace` owns calendar and
+shared SQL selection validation without creating a numerical provider.
+`Session.validate()` attaches current inputs and predicts the complete compiler
+identity without JIT compilation. Custom calculations construct their coordinator
+provider on first use. Random calculations use delegated persistent workers.
+
+Before opening a worker batch, the parent validates every recorded trial and
+checks each checkpoint with bounded replay. It retains only availability and
+scalar state. A complete recovery creates no provider or trial pool. Current
+source, generation, settings and execution identity still participate in lookup.
+Changed capacity or thread/provider settings select a different experiment. Old
+rows are preserved. Runtime measurements record configured capacity separately
+from the workers actually started for missing trials. Defaults remain provisional
+until the CB-19F comparison.
+
+Missing trials enter in recorded order. The parent validates and saves each
+completed artifact immediately at its next service opportunity. A successful save
+precedes completion progress. Retained artifacts release their reservations
+immediately. Their checkpoints supply later ordered output. An unretained
+artifact keeps its reservation until ordered output accepts it. This bounds
+reordering even when the earliest trial is slow and retention is zero. The
+earliest missing trial already owns a reservation, so it can finish without an
+extra slot. Capture, trial rows and evidence always follow recorded order.
+
+One parent writer owns the active experiment. Saves to that experiment preserve
+its previous rows. No checkpoint read transaction remains open while waiting for
+workers or writing another trial. If an expected retained row disappears or is
+corrupt, the request fails explicitly. It never silently recalculates it.
+Callback, output, cancellation and worker failures close the active batch and
+preserve committed trials. Streaming output remains incomplete on failure.
+
+Existing `numerical_random.run` and `run_into` diagnostic signatures retain a
+local single-trial capability. It uses the same evaluator, sealed artifacts,
+coordinator and financial checks. Eager result admission and cumulative result
+accounting remain in force. Manual jobs and queue retries keep their submitted
+engine and recorded plan. Saved readers still reopen immutable results without
+calculation. No application request fields or tuning controls are added.
+
+Focused synthetic checks are `tests/test_numerical_random.py`, the runtime,
+bounded-trial and application adapter checks. They qualify correctness and
+lifetime behavior, not real-input performance or large-result capacity.

@@ -233,7 +233,13 @@ class CandidateTests(unittest.TestCase):
             while time.monotonic()<deadline:
                 runtime=owner.runtime
                 marker=runtime.scratch/'fixture-state.json' if runtime is not None else None
-                if marker is not None and marker.exists() and json.loads(marker.read_bytes()).get('running'):break
+                try:
+                    state=json.loads(marker.read_bytes()) if marker is not None else {}
+                except (FileNotFoundError,PermissionError):
+                    # Native marker replacement can briefly deny this observer.
+                    # Retry within the same deadline; malformed JSON still fails.
+                    state={}
+                if state.get('running'):break
                 time.sleep(.02)
             else:self.fail('Numerical job did not reach calculation')
             if shutdown:owner.close()

@@ -143,7 +143,7 @@ class NumericalTrialsTests(unittest.TestCase):
             result=diagnostic.run(portfolio,config,experiment,events.append,capture=lambda n,r:captured.append(n))['result']
         self.assertEqual(captured,[1,2,3]);self.assertEqual(result['unique_schedules'],1)
         self.assertEqual([n for n,r in experiment.read()],[1,2,3])
-        self.assertEqual([e['completed'] for e in events],[0,1,1,2,2,3])
+        self.assertEqual([e['completed'] for e in events],[0,1,2,3])
         malformed=deepcopy(config);malformed['samples'][-1]=['2015-01-03']
         with patch.object(experiment,'load',side_effect=AssertionError('Validate all dates before lookup')):
             with self.assertRaises(ValueError):diagnostic.run(portfolio,malformed,experiment)
