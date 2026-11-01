@@ -20,7 +20,8 @@ def main(output=None):
     from holdings import load
     from dataset import load_screening_data
     from attribution import render as render_attribution
-    from research import connect, latest_screen
+    from research import connect
+    from backtest import screening
     from baseline import cutoff
     from pathlib import Path
 
@@ -104,7 +105,7 @@ def main(output=None):
     screening_data = load_screening_data()
     latest_db = connect()
     try:
-        latest_stocks = latest_screen(latest_db)
+        latest_stocks = screening.latest(latest_db)
     finally:
         latest_db.close()
     latest_asof = screening_data['latest']['metadata']['asof']

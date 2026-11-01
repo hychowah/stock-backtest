@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Differential candidate, temporal and source-expression checks for DuckDB."""
 from contextlib import closing
 from datetime import date, timedelta
@@ -73,7 +80,7 @@ class DuckDBCandidateTests(unittest.TestCase):
             db.executescript(s.SCHEMA)
             db.executemany('INSERT INTO companies VALUES(?,?,?,?)', self.inputs.companies)
             period = s.store_period(db, book)
-            rows = s.r._select(db, period=(period, period), **options)
+            rows = screening.select(db, period=(period, period), **options)
             for row in rows:
                 row.pop('year')
             return rows

@@ -8,7 +8,7 @@ It does not rewrite jobs, queued tests or saved results.
 
 ## Shared evaluator
 
-`scripts/portfolio_results.py` uses only the standard library. Its interface is:
+`backtest/portfolio_results.py` uses only the standard library. Its interface is:
 
 ```text
 evaluate(periods, select_period, common_start=None, checkpoint=None) -> result
@@ -131,7 +131,7 @@ the versioned diagnostic envelope. Explicit periods need no nominal interval.
 
 The adapter owns one private in-memory SQL workspace. It requests one complete
 eligible book at a time, checks count and identity, stages snapshots, ranking
-pairs and requested thresholds, and calls unchanged `research._select`.
+pairs and requested thresholds, and calls unchanged `screening.select`.
 `scripts/numerical_workspace.py` retains the existing staging operation for both
 the diagnostic adapter and historical runner. Every staging replaces derived
 rows, including empty books and alternating pools. No price history or annual

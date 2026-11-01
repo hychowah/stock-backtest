@@ -1,4 +1,9 @@
 """Candidate calendar/evidence qualification before browser controls."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from datetime import date
 from datetime import timedelta
@@ -10,9 +15,9 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts')]
 import test_numerical_trials as trial_tests
 from numerical_portfolio import compare_results
-import numerical_calendar as calendar
+from backtest import calendar_requests as calendar
 import numerical_random
-import portfolio_results
+from backtest import portfolio_results as portfolio_results
 
 
 class CalendarTests(unittest.TestCase):

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
 import run
 
-from paths import STOPS
+from backtest.paths import STOPS
 MERGER_PREFIXES = (
     "DEFM14A", "PREM14A", "DEFM14C", "PREM14C",
     "S-4", "SC TO", "SC 14D9", "425", "SC 13E3",

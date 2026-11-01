@@ -38,7 +38,7 @@ def expanded_fixture(case):
     for path in (ROOT / 'website').iterdir():
         if path.is_file(): shutil.copy2(path, f.source / 'website' / path.name)
     f.sources = {p.relative_to(f.source).as_posix(): sha(p)
-                 for folder in ('scripts', 'website') for p in (f.source / folder).glob('*.py')}
+                 for folder in ('scripts', 'website', 'backtest') for p in (f.source / folder).rglob('*.py')}
     with closing(sqlite3.connect(f.capture / 'research.sqlite')) as research, \
             closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as daily:
         for db in (research, daily):
@@ -65,8 +65,8 @@ def expanded_fixture(case):
         (raw / 'metrics.jsonl').write_bytes(b''.join(encoded(row) + b'\n' for row in metrics))
         (raw / 'spy-div.json').write_bytes(encoded([dict(date=day, adjClose=price) for day, price in daily.execute('SELECT day,price FROM sessions ORDER BY day')]))
         (raw / 'treasury.json').write_bytes(encoded([dict(date='2014-12-31', month3=1.)]))
-        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs')
-        modules = {name: SimpleNamespace(__file__=str(f.source / 'scripts' / (name + '.py'))) for name in names}
+        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')
+        modules = {name: SimpleNamespace(__file__=str(f.source / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py'))) for name in names}
         from datetime import date
         modules['baseline'].cutoff = lambda text: date(2026, 10, 21)
         f.freshness['inputs'] = signature(SimpleNamespace(ROOT=f.source, RAW=raw, RESULTS=f.source / 'results',

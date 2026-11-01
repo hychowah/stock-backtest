@@ -3,6 +3,11 @@
 Ordinary submission stays eager. This helper runs only in the test service's
 explicit evidence scenario, after real candidate preparation and before HTTP.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 import hashlib
 import json
@@ -15,7 +20,7 @@ def seed(server,source):
     import job_evidence
     import durable_evidence
     import serve_app
-    import metrics
+    from backtest.financial import metrics as metrics
     import saved_backtests
     from numerical_portfolio import compare_results
     from process_owner import process_metrics

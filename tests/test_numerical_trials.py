@@ -177,8 +177,8 @@ class NumericalTrialsTests(unittest.TestCase):
         with patch.dict(provider.limits,{'request_plan':False}):
             with self.assertRaisesRegex(ValueError,'binding'):diagnostic.run(portfolio,config,experiment)
         self.assertNotIn(str(ROOT),trial_checkpoints.canonical(original))
-        self.assertTrue({'scripts/metrics.py','scripts/portfolio_results.py','scripts/robustness.py',
-            'scripts/schedule_calendar.py','scripts/research.py','scripts/numerical_policy.py',
+        self.assertTrue({'backtest/financial/metrics.py','backtest/portfolio_results.py','scripts/robustness.py',
+            'backtest/calendar.py','scripts/research.py','scripts/numerical_policy.py',
             'scripts/numerical_trial.py','scripts/result_evidence.py',
             'tools/bench_candidates_numba.py','tools/portfolio_workspace.py'} <= sources.keys())
 

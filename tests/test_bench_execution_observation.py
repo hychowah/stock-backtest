@@ -85,7 +85,7 @@ with WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5):
                 binding=dict(generation='synthetic-live-workflow'))
             workflow.write_text(json.dumps(request))
         process = subprocess.Popen([sys.executable, '-X', 'utf8', '-c', code,
-            str(ROOT / 'scripts'), str(self.access.path), mode, str(ROOT / 'tests'),
+            str(self.root / 'scripts'), str(self.access.path), mode, str(ROOT / 'tests'),
             str(ROOT / 'website'), str(workflow)], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         def cleanup():
@@ -191,7 +191,7 @@ with WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5):
 
     def test_add_remove_replace_timestamp_report_source_and_journals_reject(self):
         candidates = ['raw/financial-inputs/income/new.json', 'raw/financial-inputs/income/A.json',
-                      'raw/metrics.jsonl', 'results/summary-exits.txt', 'scripts/metrics.py',
+                      'raw/metrics.jsonl', 'results/summary-exits.txt', 'backtest/financial/metrics.py',
                       'data/research.sqlite.publication.json']
         for relative in candidates:
             with self.subTest(relative=relative):

@@ -85,8 +85,8 @@ class CurrentObservation:
             for journal in ('deployment.pending.json', 'research.sqlite.publication.json'):
                 if (root / 'data' / journal).exists(): raise ComparisonError('stale')
         journals()
-        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs')
-        modules = {name: SimpleNamespace(__file__=str(root / 'scripts' / (name + '.py'))) for name in names}
+        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')
+        modules = {name: SimpleNamespace(__file__=str(root / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py'))) for name in names}
         modules['baseline'].cutoff = self.s.r.baseline.cutoff
         observed = signature(SimpleNamespace(ROOT=root, RAW=root / 'raw', RESULTS=root / 'results',
             __file__=str(root / 'scripts/research.py'), **modules), checkpoint)
@@ -99,8 +99,8 @@ class CurrentObservation:
         research = metadata(root / 'data/research.sqlite', checkpoint)
         daily = metadata(root / 'data/schedules.sqlite', checkpoint)
         engine = {}
-        for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py'):
-            checkpoint(); info = (root / 'scripts' / name).stat()
+        for name in ('scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'):
+            checkpoint(); info = (root / name).stat()
             engine[name] = [info.st_size, info.st_mtime_ns]
         report = file_hash(root / 'results/summary-exits.txt', checkpoint)
         if (observed != expected['inputs'] or research != request['captured_metadata']['research']

@@ -14,6 +14,11 @@ Does not print the API key or request URLs.
 
 from __future__ import annotations
 
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
 import json
 import threading
 import time
@@ -24,19 +29,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from paths import RAW, LEGACY
+from backtest.paths import RAW, LEGACY
+from backtest.financial.rules import (FIRST_YEAR, LAST_YEAR, ASOF, MIN_MARKET_CAP, MIN_EV, BUFFER, HOLD, LAG, MAX_AGE, parse_day, num, latest_statement)
 KEY_PATH = Path.home().joinpath(".grok", "secrets", "fmp_api_key")
 BASE = "https://financialmodelingprep.com/stable/"
 
-FIRST_YEAR = 1996
-LAST_YEAR = 2026
-ASOF = date(2026, 10, 21)
-MIN_MARKET_CAP = 100_000_000
-MIN_EV = 50_000_000
-BUFFER = 250
-HOLD = 50
-LAG = timedelta(days=90)
-MAX_AGE = timedelta(days=800)
 WORKERS = 16
 STARTS_PER_SEC = 12
 
@@ -335,26 +332,8 @@ def save_market() -> None:
     print(f"spy rows={len(spy)}", flush=True)
 
 
-def parse_day(value: object) -> date | None:
-    if not value:
-        return None
-    text = str(value)[:10]
-    try:
-        return datetime.strptime(text, "%Y-%m-%d").date()
-    except ValueError:
-        return None
 
 
-def num(value: object) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        out = float(value)
-    except (TypeError, ValueError):
-        return None
-    if out != out or out in (float("inf"), float("-inf")):
-        return None
-    return out
 
 
 def load_bars(path: Path, price_key: str) -> list[tuple[date, float]]:
@@ -467,14 +446,6 @@ def build_statements(universe: dict[str, dict]) -> dict[str, list[dict]]:
                 book[symbol] = parsed
     print(f"statements symbols={len(book)}", flush=True)
     return book
-
-
-def latest_statement(rows: list[dict], rebalance: date) -> dict | None:
-    chosen = None
-    for row in rows:
-        if row["known"] < rebalance and rebalance - row["fiscal"] <= MAX_AGE:
-            chosen = row
-    return chosen
 
 
 def screen(book: dict[str, list[dict]], yields: list[tuple[date, float]], sessions: list[date]) -> dict[int, list[dict]]:

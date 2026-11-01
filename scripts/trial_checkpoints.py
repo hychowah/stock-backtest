@@ -13,6 +13,11 @@ before commit. Commit precedes progress/capture. Callers hold source then cache
 ownership until this store, providers and input attachments close. This module
 acquires no financial lock, starts no worker and opens no application store.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from contextlib import contextmanager
 from datetime import date
@@ -23,8 +28,8 @@ from pathlib import Path
 import sqlite3
 
 import backtest_control
-import portfolio_results
-import numerical_calendar
+from backtest import portfolio_results as portfolio_results
+from backtest import calendar_requests as numerical_calendar
 import result_evidence
 from checkpoint_legacy import LegacyTrial
 

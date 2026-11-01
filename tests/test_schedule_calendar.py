@@ -1,4 +1,9 @@
 """Calendar policy against fictional sessions, independent of financial imports."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from dataclasses import FrozenInstanceError
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -6,7 +11,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-import schedule_calendar as c
+from backtest import calendar as c
 
 
 def days(first, last, weekdays=False):

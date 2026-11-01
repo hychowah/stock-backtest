@@ -48,7 +48,7 @@ class SetupLifetimeTests(unittest.TestCase):
         from process_owner import OwnedProcess,windows_processes
         with tempfile.TemporaryDirectory(prefix='cb19g-setup-death-') as folder:
             root=Path(folder)/'source';root.mkdir()
-            for name in ('scripts/numerical_toolchain_probe.py','scripts/process_owner.py','scripts/cache_access.py','scripts/paths.py','website/runtime_access.py'):
+            for name in ('scripts/numerical_toolchain_probe.py','scripts/process_owner.py','scripts/cache_access.py','backtest/__init__.py','backtest/paths.py','website/runtime_access.py'):
                 target=root/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/name,target)
             descriptor=native.inspect_toolchain(ROOT)
             fake=root/('fake-compiler.exe' if os.name=='nt' else 'fake-compiler')

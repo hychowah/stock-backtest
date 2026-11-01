@@ -4,6 +4,7 @@ Fixture allowances bound this verification exercise. They neither modify
 captured-execution limits nor qualify production capacity, installed
 compatibility, browser resources or real benchmark admission.
 """
+
 from contextlib import closing
 from datetime import date, timedelta
 import hashlib
@@ -66,8 +67,10 @@ class FictionalWorkspace:
         self._owners = []
         self.closed = False
         self.sources = {}
-        for folder in ('scripts', 'website'):
-            for path in sorted((ROOT / folder).iterdir()):
+        for folder in ('scripts', 'website', 'backtest'):
+            for path in sorted((ROOT / folder).rglob('*')):
+                if any(part in ('local','dist','__pycache__','node_modules','.openai') for part in path.relative_to(ROOT/folder).parts):
+                    continue
                 if path.suffix not in ('.py', '.js', '.css', '.html', '.rs') or not path.is_file():
                     continue
                 assert not path.is_symlink()
@@ -313,6 +316,14 @@ def guarded_environment(source):
     return dict(os.environ,PYTHONPATH=str(guard),PYTHONDONTWRITEBYTECODE='1')
 
 
+def assert_package_source(source):
+    """Every loaded package module belongs to the acquired private source."""
+    loaded=[module for name,module in sys.modules.items()
+            if name=='backtest' or name.startswith('backtest.')]
+    assert loaded
+    assert all(Path(module.__file__).resolve().is_relative_to(source) for module in loaded)
+
+
 def child(request_path):
     assert input()=='GO'
     request=json.loads(Path(request_path).read_bytes())
@@ -325,7 +336,7 @@ def child(request_path):
     # preparation/signature function is replaced. Children inherit the guard.
     os.environ.update(guarded_environment(source))
     dependency_guard(source)
-    sys.path[:0]=[str(source/'scripts'),str(source/'website')]
+    sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
     import runtime_access
     def emit(event,**values): print(json.dumps(dict(event=event,**values)),flush=True)
     def barrier(name):
@@ -339,6 +350,9 @@ def child(request_path):
         import run
         run.KEY_PATH=source.parent/'missing-fixture-key'
         import serve_app as app
+        import robustness
+        from backtest import screening
+        assert_package_source(source)
         if request['scenario'].get('fail_start'):raise RuntimeError('Fictional startup failure.')
         # Barriers observe actual operations. Results and ownership are unchanged.
         import cache_access
@@ -349,16 +363,17 @@ def child(request_path):
                 return original(*args,**kwargs)
             app.schedules.r.prepare=preparing
         app.ensure_ready()
-        for module in (app,app.schedules,app.robustness,app.data_manager,cache_access,run,runtime_access,app.schedules.r):
+        for module in (app,app.schedules,robustness,app.data_manager,cache_access,run,runtime_access,app.schedules.r):
             assert Path(module.__file__).resolve().is_relative_to(source)
+        assert_package_source(source)
         assert app.current_build()
         with cache_access.access(),closing(app.schedules.r.connect(full_prices=True)) as db:
             baseline=app.schedules.r.verify_reference(db)
-            latest=app.schedules.r.latest_screen(db)
-            historical=app.schedules.r.screen(db,first=2015,last=2016,rank_to=4)
-            browser_latest=app.schedules.r.latest_screen(db,pool='cached',metric='ev_ebitda_3y',rank_to=7,
+            latest=screening.latest(db)
+            historical=screening.historical(db,first=2015,last=2016,rank_to=4)
+            browser_latest=screening.latest(db,pool='cached',metric='ev_ebitda_3y',rank_to=7,
                 filters=[dict(field='pe',op='lt',value=20.)])
-            browser_historical=app.schedules.r.screen(db,first=2015,last=2016,pool='cached',rank_from=2,rank_to=4)
+            browser_historical=screening.historical(db,first=2015,last=2016,pool='cached',rank_from=2,rank_to=4)
             metadata={row[0]:json.loads(row[1]) for row in db.execute('SELECT * FROM metadata')}
         with cache_access.access(),closing(app.schedules.connect()) as db:
             daily_metadata={row[0]:json.loads(row[1]) for row in db.execute('SELECT * FROM metadata')}
@@ -370,10 +385,14 @@ def child(request_path):
             shutil.copy2(app.schedules.DATABASE,oracle)
             with cache_access.access(),closing(app.schedules.connect(oracle)) as db:
                 options=dict(start='2015-01-01',end='2016-12-30',months=12,pool='cached',rank_to=4)
-                config=app.robustness.plan(db,**options,trials=5,seed=42)
+                config=robustness.plan(db,**options,trials=5,seed=42)
                 fixed=app.schedules.backtest(db,**options)
-                random=app.robustness.run(db,config)
+                random=robustness.run(db,config)
                 inspected=app.schedules.backtest_dates(db,dates=config['samples'][2],**options)
+            # The HTTP adapter adds current producer metadata after closing resources.
+            # Keep full equality, including that explicit application contract.
+            for result in (fixed,random,inspected):
+                result['producer']=dict(engine='original',label='Original')
             write(control/'oracle.json',dict(fixed=fixed,random=random,inspected=inspected))
             # The oracle is disposable. Its selected books never warm the service.
             oracle.unlink()
@@ -383,28 +402,38 @@ def child(request_path):
                 barrier('rebuild_held')
                 return original_prepare(*args,**kwargs)
             app.schedules.r.prepare=rebuild_prepare
-        daily=cache_access.daily
+        from original_calculations import Original
+        financial=Original._financial
         from contextlib import contextmanager
         @contextmanager
-        def observed_daily():
-            with daily() as db:
-                emit('acquired',at=time.monotonic())
-                try:
-                    if request['scenario'].get('hold_request'):barrier('request_held')
-                    yield db
-                finally:emit('leaving',at=time.monotonic())
-            emit('released',at=time.monotonic())
-        cache_access.daily=observed_daily
+        def observed_financial(self,admission,progress):
+            entered=False
+            try:
+                with financial(self,admission,progress):
+                    entered=True
+                    emit('acquired',at=time.monotonic())
+                    try:
+                        if request['scenario'].get('hold_request'):barrier('request_held')
+                        yield
+                    finally:emit('leaving',at=time.monotonic())
+            finally:
+                if entered:emit('released',at=time.monotonic())
+        Original._financial=observed_financial
         if request['scenario'].get('disconnect'):
-            original_run=app.robustness.run
+            original_run=robustness.run
             def interrupted(db,config,progress=None,**kwargs):
                 def progress_barrier(value):
                     progress(value)
                     if value['type']=='progress' and value['completed']==1:barrier('trial_committed')
                 return original_run(db,config,progress=progress_barrier,**kwargs)
-            app.robustness.run=interrupted
+            robustness.run=interrupted
         app.Handler.log_message=lambda *args:None
         server=app.Server(('127.0.0.1',0),app.Handler)
+        close_admission=server.close_calculation_admission
+        def observed_close_admission():
+            close_admission()
+            emit('admission_closed',at=time.monotonic())
+        server.close_calculation_admission=observed_close_admission
         server.daemon_threads=False
         from threading import Thread
         listener=Thread(target=server.serve_forever,kwargs=dict(poll_interval=.02));listener.start()

@@ -9,11 +9,11 @@ from unittest.mock import patch
 def main():
     source,tests=map(Path,sys.argv[1:3]);scenario=sys.argv[3]
     sys.path[:0]=[str(tests),str(tests.parent/'tools')]
-    from bench_source_service_fixture import dependency_guard
+    from bench_source_service_fixture import dependency_guard, assert_package_source
     import mimetypes
     mimetypes.init()
     dependency_guard(source)
-    sys.path[:0]=[str(source/'scripts'),str(source/'website')]
+    sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
     import runtime_access
     with runtime_access.ownership(source),ExitStack() as context:
         import run
@@ -77,6 +77,7 @@ def main():
                             write_json(path,record)
             context.enter_context(patch.object(numerical_runtime,'RuntimeProcess',ObservedProcess))
         import serve_app
+        assert_package_source(source)
         if scenario=='selectable-workflow':
             emit=serve_app.DATA_JOBS.emit
             def report(**values):

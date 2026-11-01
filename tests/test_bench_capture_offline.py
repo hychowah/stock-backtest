@@ -31,9 +31,14 @@ class CaptureTests(unittest.TestCase):
         self.root = Path(self.temporary.name) / 'runtime'
         for name in ('scripts', 'website', 'raw/px', 'raw/financial-inputs/income', 'data', 'results', 'tmp'):
             (self.root / name).mkdir(parents=True, exist_ok=True)
+        shutil.copytree(ROOT / 'backtest', self.root / 'backtest', ignore=shutil.ignore_patterns('__pycache__'))
         for path in (ROOT / 'scripts').glob('*.py'):
             shutil.copy2(path, self.root / 'scripts' / path.name)
         shutil.copy2(ROOT / 'website/runtime_access.py', self.root / 'website/runtime_access.py')
+        # This retained offline protocol supports schema 7 only. Keep its
+        # disposable source fixture at that declaration; do not widen admission.
+        source=self.root/'scripts/research.py'
+        source.write_text(source.read_text().replace('SCHEMA_VERSION = 8','SCHEMA_VERSION = 7'))
         for name in ('universe.json', 'metrics.jsonl', 'spy-div.json', 'treasury.json'):
             (self.root / 'raw' / name).write_text('[]')
         (self.root / 'raw/px/A.json').write_text('[]')
@@ -48,7 +53,7 @@ class CaptureTests(unittest.TestCase):
             daily.commit()
         self.manifest = self.root / 'data/deployment.json'
         sources = {p.relative_to(self.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                   for directory in ('scripts', 'website') for p in (self.root / directory).glob('*.py')}
+                   for directory in ('scripts', 'website', 'backtest') for p in (self.root / directory).rglob('*.py')}
         self.manifest.write_text(json.dumps(dict(commit='a' * 40, files=sources)))
         self.destination = self.root / 'tmp/experiment'
 
@@ -206,11 +211,11 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(list(self.destination.glob('capture-*')), [])
 
     def test_current_source_manifest_mismatch_and_unsupported_schema_reject(self):
-        manifest = json.loads(self.manifest.read_bytes()); manifest['files']['scripts/metrics.py'] = '0' * 64
+        manifest = json.loads(self.manifest.read_bytes()); manifest['files']['backtest/financial/metrics.py'] = '0' * 64
         self.manifest.write_text(json.dumps(manifest))
         self.assert_reason('stale', self.run_capture)
         self.destination = self.root / 'tmp/schema'
-        manifest['files']['scripts/metrics.py'] = hashlib.sha256((self.root / 'scripts/metrics.py').read_bytes()).hexdigest()
+        manifest['files']['backtest/financial/metrics.py'] = hashlib.sha256((self.root / 'backtest/financial/metrics.py').read_bytes()).hexdigest()
         self.manifest.write_text(json.dumps(manifest))
         with closing(sqlite3.connect(self.root / 'data/research.sqlite')) as db:
             db.execute('DROP TABLE statements'); db.commit()
@@ -245,29 +250,30 @@ class CaptureTests(unittest.TestCase):
             return namespace[name]
         baseline_namespace = dict(re=re, date=date, run=SimpleNamespace(ASOF=capture.constant(self.root, 'run', 'ASOF')))
         cutoff = isolated('baseline', 'cutoff', baseline_namespace)
-        namespace = dict(ROOT=self.root, RAW=self.root / 'raw', RESULTS=self.root / 'results', Path=Path,
+        namespace = dict(os=__import__('os'), stat=__import__('stat'), ROOT=self.root, RAW=self.root / 'raw', RESULTS=self.root / 'results', Path=Path,
                          __file__=str(self.root / 'scripts/research.py'), baseline=SimpleNamespace(cutoff=cutoff, __file__=str(self.root / 'scripts/baseline.py')))
-        for name in ('metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs'):
-            namespace[name] = SimpleNamespace(__file__=str(self.root / 'scripts' / (name + '.py')))
+        for name in ('metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening'):
+            namespace[name] = SimpleNamespace(__file__=str(self.root / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py')))
+        isolated('research', '_metadata_entries', namespace)
         signature = isolated('research', 'signature', namespace)
         prices = isolated('research', 'price_sources', namespace)
         binding = isolated('research', 'prepared_price_binding', dict(
             DATABASE=self.root/'data/research.sqlite', Path=Path, closing=closing,
             json=json, hashlib=hashlib, connect=lambda path:sqlite3.connect(path)))
         fingerprint = isolated('schedules', 'fingerprint', dict(Path=Path, VERSION=3,
-            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(signature=signature,
+            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(ROOT=self.root,signature=signature,
                 DATABASE=self.root/'data/research.sqlite',prepared_price_binding=binding),
-            schedule_calendar=SimpleNamespace(__file__=str(self.root / 'scripts/schedule_calendar.py')),
-            portfolio_results=SimpleNamespace(__file__=str(self.root / 'scripts/portfolio_results.py'))))
+            schedule_calendar=SimpleNamespace(__file__=str(self.root / 'backtest/calendar.py')),
+            portfolio_results=SimpleNamespace(__file__=str(self.root / 'backtest/portfolio_results.py'))))
         for change in ('initial', 'added', 'removed', 'cutoff', 'calendar', 'portfolio','price_edit'):
             if change == 'added': (self.root / 'raw/financial-inputs/income/B.json').write_text('{}')
             elif change == 'removed': (self.root / 'raw/financial-inputs/income/B.json').unlink()
             elif change == 'cutoff': (self.root / capture.REPORT).write_text('Through 2025-12-31\n')
             elif change == 'calendar':
-                path=self.root / 'scripts/schedule_calendar.py'
+                path=self.root / 'backtest/calendar.py'
                 path.write_bytes(path.read_bytes()+b'\n# changed calendar fixture\n')
             elif change == 'portfolio':
-                path=self.root / 'scripts/portfolio_results.py'
+                path=self.root / 'backtest/portfolio_results.py'
                 path.write_bytes(path.read_bytes()+b'\n# changed result fixture\n')
             elif change == 'price_edit':
                 (self.root/'raw/px/A.json').write_text('[1,2,3]')

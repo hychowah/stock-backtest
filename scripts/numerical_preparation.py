@@ -110,8 +110,8 @@ class Preparation:
     def common_inventory(self):
         """Equivalent path/size/mtime checks, plus report/source/pointer content."""
         sources = {}
-        for folder in ('scripts', 'website', 'tools'):
-            for path in sorted((self.root / folder).glob('*.py')):
+        for folder in ('scripts', 'website', 'tools', 'backtest'):
+            for path in sorted((self.root / folder).rglob('*.py')):
                 sources[path.relative_to(self.root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
         pins = self.root / 'requirements-numerical.txt'
         sources[pins.name] = hashlib.sha256(pins.read_bytes()).hexdigest()

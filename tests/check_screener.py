@@ -1,4 +1,9 @@
 """Compare browser filtering with independent queries against prepared SQLite."""
+
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+from backtest import screening
 import json
 from pathlib import Path
 import subprocess
@@ -36,7 +41,7 @@ def main():
         latest_cases.append(dict(pool='cached',filters=[dict(field='return_1y',op='gt',value=-10),dict(field='return_3y',op='lt',value=100)]))
         latest_cases.append(dict(pool='cached',filters=[dict(field='operating_yield_spread_3y',op='gt',value=5)]))
         latest_cases += [dict(options,selection_order='rank_first') for options in latest_cases]
-        expected = dict(historical=[research.screen(db, **options) for options in CASES],latest=[research.latest_screen(db,**options) for options in latest_cases])
+        expected = dict(historical=[screening.historical(db, **options) for options in CASES],latest=[screening.latest(db,**options) for options in latest_cases])
     finally:
         db.close()
     with tempfile.TemporaryDirectory() as folder:

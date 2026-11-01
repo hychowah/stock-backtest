@@ -4,6 +4,11 @@ No runtime discovery, planner replacement, application routing or user store.
 Caller holds source-before-import and cache ownership through store, portfolio,
 provider and attachment closure. Validate current inputs even on full recovery.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 import ast
 from contextlib import contextmanager
 import tempfile
@@ -17,9 +22,9 @@ import sqlite3
 import sys
 import time
 
-import numerical_calendar
+from backtest import calendar_requests as numerical_calendar
 import numerical_trial
-import portfolio_results
+from backtest import portfolio_results as portfolio_results
 import robustness
 import trial_checkpoints
 
@@ -43,21 +48,51 @@ def source_identity():
     participate. This conservative closure may reject safe reuse after an
     unrelated local dependency edit; it cannot reuse changed calculation code.
     """
-    pending=[ROOT/name for name in SOURCE_ROOTS]
-    pending += [ROOT/name for name in COMPATIBILITY_ROOTS if (ROOT/name).is_file()]
+    return _source_closure(ROOT, (*SOURCE_ROOTS, *(name for name in COMPATIBILITY_ROOTS
+                            if (ROOT/name).is_file())))
+
+
+def _source_closure(root, roots):
+    """Resolve absolute/relative local imports and package initializers statically.
+
+    Reading syntax does not execute package code or load optional providers.
+    Keep the original flat-script search order for remaining command modules.
+    """
+    root=Path(root).resolve()
+    pending=[root/name for name in roots]
     seen={}
+
+    def resolve(parts):
+        if not parts:return []
+        candidates=[]
+        for folder in (root, root/'scripts', root/'tools', root/'website'):
+            target=folder.joinpath(*parts)
+            path=target.with_suffix('.py')
+            if not path.is_file():path=target/'__init__.py'
+            if not path.is_file():continue
+            # Importing a submodule also executes each enclosing initializer.
+            for parent in path.parents:
+                if parent==folder:break
+                init=parent/'__init__.py'
+                if init.is_file():candidates.append(init)
+            return [*candidates,path]
+        return []
+
     while pending:
         path=pending.pop()
-        key=path.relative_to(ROOT).as_posix()
+        key=path.relative_to(root).as_posix()
         if key in seen:continue
         content=path.read_bytes();seen[key]=hashlib.sha256(content).hexdigest()
+        package=list(path.relative_to(root).parts[:-1])
         for node in ast.walk(ast.parse(content,filename=key)):
-            names=([alias.name for alias in node.names] if isinstance(node,ast.Import)
-                   else [node.module] if isinstance(node,ast.ImportFrom) and node.module else [])
-            for name in names:
-                for folder in ('scripts','tools','website'):
-                    candidate=ROOT/folder/(name.split('.')[0]+'.py')
-                    if candidate.is_file():pending.append(candidate);break
+            if isinstance(node,ast.Import):
+                for alias in node.names:pending.extend(resolve(alias.name.split('.')))
+            elif isinstance(node,ast.ImportFrom):
+                base=(package[:len(package)-node.level+1] if node.level else [])
+                if node.module:base+=node.module.split('.')
+                pending.extend(resolve(base))
+                for alias in node.names:
+                    if alias.name!='*':pending.extend(resolve([*base,alias.name]))
     return dict(sorted(seen.items()))
 
 

@@ -22,7 +22,7 @@ by mode, pool, year, symbol and catalog metric ID. Latest observations use year
 three-year average EBITDA, and preserves the default metric's exact existing
 values. Missing history omits a pair. Consumers join or export these values;
 they never reconstruct formulas. Catalog and calculator code in
-`scripts/metrics.py` participates in freshness checks.
+`backtest/financial/metrics.py` participates in freshness checks.
 
 `schedules.sqlite` is the separate rebuildable daily-price index and dated-book
 cache, prepared by `python3 scripts/schedules.py prepare`. It stores only existing

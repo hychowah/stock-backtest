@@ -35,13 +35,13 @@ class ExecutionTests(unittest.TestCase):
         (f.source / 'results').mkdir()
         (f.source / 'results' / 'summary-exits.txt').write_bytes(REPORT)
         (f.source / 'data').mkdir()
-        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs')
-        modules = {name: SimpleNamespace(__file__=str(f.source / 'scripts' / (name + '.py'))) for name in names}
+        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')
+        modules = {name: SimpleNamespace(__file__=str(f.source / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py'))) for name in names}
         modules['baseline'].cutoff = lambda text: date(2026, 10, 21)
         observed = signature(SimpleNamespace(ROOT=f.source, RAW=raw, RESULTS=f.source / 'results',
             __file__=str(f.source / 'scripts/research.py'), **modules))
         engine = {name: [path.stat().st_size, path.stat().st_mtime_ns]
-                  for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py') for path in [f.source / 'scripts' / name]}
+                  for name in ('scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py') for path in [f.source / name]}
         f.freshness['inputs'] = observed
         f.freshness['daily_inputs'] = dict(version=3, inputs=observed, engine=engine)
         with closing(sqlite3.connect(f.capture / 'research.sqlite')) as r, closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as d:
@@ -174,9 +174,9 @@ class ExecutionTests(unittest.TestCase):
                 f = self.fixture
                 path = {'report': f.source / 'results/summary-exits.txt',
                         'journal': f.source / 'data/research.sqlite.publication.json',
-                        'source': f.source / 'scripts/metrics.py',
-                        'calendar': f.source / 'scripts/schedule_calendar.py',
-                        'portfolio': f.source / 'scripts/portfolio_results.py',
+                        'source': f.source / 'backtest/financial/metrics.py',
+                        'calendar': f.source / 'backtest/calendar.py',
+                        'portfolio': f.source / 'backtest/portfolio_results.py',
                         'prepared': f.source / 'data/research.sqlite'}[kind]
                 original = path.read_bytes() if path.exists() else None
                 info = path.stat() if original is not None else None

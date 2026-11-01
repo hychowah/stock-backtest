@@ -1,4 +1,9 @@
 """Explicit persistent runtime proof on disposable synthetic inputs only."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from datetime import date
 from contextlib import closing
@@ -244,7 +249,7 @@ class RuntimeTests(unittest.TestCase):
     def test_declared_weekly_pilot_fresh_complete_results_and_file_growth(self):
         # CB-14.gates.md declares these safety limits before execution. They are
         # fixture limits, not user acceptance budgets or full-window capacity.
-        import numerical_calendar
+        from backtest import calendar_requests as numerical_calendar
         value=self.make(threads=2,session_options=dict(result_cache_bytes=0))
         def logical():
             # Pool files publish and retire while this observer samples. A
@@ -552,7 +557,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_loaded_source_change_rejects_checkpoint_and_result_before_reuse(self):
         private=self.root/'private-source';private.mkdir()
-        for folder in ('scripts','website'):
+        for folder in ('scripts','website','backtest'):
             shutil.copytree(ROOT/folder,private/folder,ignore=shutil.ignore_patterns('__pycache__','dist','local','*.pyc'))
         (private/'tests').mkdir()
         self.assertFalse((private/'tools').exists())
@@ -562,7 +567,7 @@ class RuntimeTests(unittest.TestCase):
             python=sys.executable,threads=1,session_factory='numerical_runtime_fixture:Session',coordinator=self.fixture.owner)
         self.addCleanup(value.close)
         value.calculate('random',self.options(trials=1,seed=1))
-        path=private/'scripts/metrics.py'
+        path=private/'backtest/financial/metrics.py'
         path.write_bytes(path.read_bytes()+b'\n# Private changed loaded catalog source.\n')
         with self.assertRaisesRegex(ValueError,'Loaded calculation source changed'):
             value.calculate('random',self.options(trials=1,seed=1))

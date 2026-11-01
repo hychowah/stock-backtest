@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Compiler-free request workspace and private complete-book SQL staging."""
 from datetime import date
 import sqlite3
@@ -40,7 +47,7 @@ class RequestWorkspace:
 
     def validate_selection(self, options):
         try:
-            self.s.r._select(self.db, period=(-1, -1), **options)
+            screening.validate_selection(**options)
         except TypeError as error:
             raise ValueError('Unknown screening option.') from error
         require_supported(options)

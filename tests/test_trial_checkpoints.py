@@ -1,4 +1,9 @@
 """Atomic derived-trial publication and failure-closed replay on private stores."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from contextlib import closing
 from datetime import date
@@ -13,7 +18,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-import portfolio_results
+from backtest import portfolio_results as portfolio_results
 import trial_checkpoints as checkpoints
 
 

@@ -28,8 +28,10 @@ class GenerationTests(unittest.TestCase):
             (self.root / 'raw' / name).write_text('[]')
         modules = {}
         for name in ('baseline', 'research', 'metrics', 'books', 'cache_assets',
-                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch', 'schedule_calendar', 'portfolio_results'):
-            path = self.root / 'scripts' / (name + '.py')
+                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch', 'schedule_calendar', 'portfolio_results', 'rules', 'screening'):
+            relative = {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py','schedule_calendar':'backtest/calendar.py','portfolio_results':'backtest/portfolio_results.py'}.get(name,'scripts/'+name+'.py')
+            path = self.root / relative
+            path.parent.mkdir(parents=True,exist_ok=True)
             path.write_text('# fixture ' + name)
             modules[name] = SimpleNamespace(__file__=str(path))
         self.report = self.root / 'results/summary-exits.txt'
@@ -37,7 +39,7 @@ class GenerationTests(unittest.TestCase):
         self.asset = self.root / 'raw/financial-inputs/income-statement/A.json'
         self.asset.write_text('[]')
         self.r = SimpleNamespace(**{name: modules[name] for name in
-            ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs')},
+            ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')},
             ROOT=self.root, RAW=self.root / 'raw', RESULTS=self.root / 'results',
             DATABASE=self.root / 'data/research.sqlite',
             SCHEMA_VERSION=shared.s.r.SCHEMA_VERSION, __file__=modules['research'].__file__)
@@ -45,7 +47,7 @@ class GenerationTests(unittest.TestCase):
         namespace = dict(shared.s.r.signature.__globals__, **vars(self.r))
         self.r.signature = FunctionType(shared.s.r.signature.__code__, namespace)
         self.s = SimpleNamespace(r=self.r, VERSION=shared.s.VERSION,
-            DATABASE=self.root / 'data/schedules.sqlite', __file__=modules['schedules'].__file__)
+            DATABASE=self.root / 'data/schedules.sqlite', __file__=modules['schedules'].__file__, schedule_calendar=modules['schedule_calendar'], portfolio_results=modules['portfolio_results'])
         self.sources = [Path(self.r.metrics.__file__)]
         self.prepare()
 
@@ -61,10 +63,10 @@ class GenerationTests(unittest.TestCase):
         signature = self.r.signature()
         prices={path.name:[path.stat().st_size,path.stat().st_mtime_ns]
                 for path in (self.root/'raw/px').glob('*.json')}
-        engine = {path.name: [path.stat().st_size, path.stat().st_mtime_ns] for path in
+        engine = {path.relative_to(self.root).as_posix(): [path.stat().st_size, path.stat().st_mtime_ns] for path in
             (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
-             Path(self.s.__file__).with_name('schedule_calendar.py'),
-             Path(self.s.__file__).with_name('portfolio_results.py'))}
+             Path(self.s.schedule_calendar.__file__),
+             Path(self.s.portfolio_results.__file__))}
         self.write_metadata(self.s.DATABASE, dict(daily_inputs=dict(version=self.s.VERSION,
                             inputs=signature,prices=generation.digest(prices), engine=engine)))
         self.write_metadata(self.r.DATABASE, dict(version=self.r.SCHEMA_VERSION,
@@ -72,7 +74,7 @@ class GenerationTests(unittest.TestCase):
         self.inputs = SimpleNamespace(signature=generation.digest(signature),
             generation=json.dumps(generation.metadata(self.s.DATABASE)['daily_inputs']),
             policy=SimpleNamespace(signature='policy-fixture', source_paths=tuple(self.sources),
-                source_hashes={path.name: generation.file_hash(path) for path in self.sources}))
+                source_hashes={path.as_posix(): generation.file_hash(path) for path in self.sources}))
 
     def attach(self):
         return generation.PreparedGeneration(self.inputs, self.s, sources=self.sources)
@@ -118,7 +120,7 @@ class GenerationTests(unittest.TestCase):
 
     def test_calendar_dependency_changes_require_daily_preparation(self):
         old=self.attach()
-        path=self.root/'scripts/schedule_calendar.py'
+        path=self.root/'backtest/calendar.py'
         path.write_text('# changed private calendar fixture')
         with self.assertRaises(ValueError): old.validate()
         with self.assertRaises(ValueError): self.attach()
@@ -127,7 +129,7 @@ class GenerationTests(unittest.TestCase):
 
     def test_portfolio_dependency_changes_require_daily_preparation(self):
         old=self.attach()
-        path=self.root/'scripts/portfolio_results.py'
+        path=self.root/'backtest/portfolio_results.py'
         path.write_text('# changed private portfolio fixture')
         with self.assertRaises(ValueError): old.validate()
         with self.assertRaises(ValueError): self.attach()

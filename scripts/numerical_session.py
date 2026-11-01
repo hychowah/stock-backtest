@@ -3,6 +3,11 @@
 This is a calculation capability. Application jobs and queue records stay with
 backtest_jobs and backtest_queue. The bootstrap owns source then financial access.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 import robustness
 
@@ -12,7 +17,7 @@ from numerical_numba import NumbaExecutor as attach_provider
 from numerical_identity import compiler_identity
 from numerical_portfolio import NumericalPortfolio
 from numerical_workspace import RequestWorkspace
-import numerical_calendar
+from backtest import calendar_requests as numerical_calendar
 import numerical_random
 from numerical_matrix import retained_size
 import schedules
@@ -23,7 +28,7 @@ from collections import OrderedDict
 from numerical_execution import ExecutionPolicy
 
 
-from calendar_requests import validate_submitted as _validate_submitted
+from backtest.calendar_requests import validate_submitted as _validate_submitted
 
 
 class Session:

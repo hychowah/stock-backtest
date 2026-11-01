@@ -1,4 +1,9 @@
 """Private runtime/session lifecycle fixture. No installed data or factories in workers."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 import json
 import os
 from pathlib import Path
@@ -14,7 +19,7 @@ def __getattr__(name):
     # ownership. The fixed production trial worker never imports this fixture.
     from numerical_runtime_fixture import Session as Base
     import numerical_trial
-    import numerical_calendar
+    from backtest import calendar_requests as numerical_calendar
     class Session(Base):
         def __init__(self, configuration):
             super().__init__(configuration)

@@ -6,11 +6,16 @@ path, lock or publication. A calculation identity comes from the coordinator's
 validated binding. The trusted expected task envelope supplies authenticity;
 hashes alone do not authenticate an arbitrary producer.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from datetime import date
 
-import numerical_calendar
-import portfolio_results
+from backtest import calendar_requests as numerical_calendar
+from backtest import portfolio_results as portfolio_results
 import result_evidence
 import trial_checkpoints
 

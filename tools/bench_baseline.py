@@ -249,8 +249,8 @@ def identity(root):
         raise ValueError('An unfinished source or baseline publication blocks measurement.')
     deployment = load(root/'data/deployment.json') if (root/'data/deployment.json').exists() else None
     sources = {}
-    for directory in ('scripts', 'website'):
-        for path in sorted((root/directory).glob('*.py')):
+    for directory in ('scripts', 'website', 'backtest'):
+        for path in sorted((root/directory).rglob('*.py')):
             relative = path.relative_to(root).as_posix()
             sources[relative] = file_hash(path)
             if deployment and deployment['files'].get(relative) != sources[relative]:
@@ -434,7 +434,7 @@ def request(database, manifest, case, telemetry, *, require_fresh=True):
     os.environ['BACKTEST_BASELINE_TELEMETRY'] = str(attempt)
     holdings = []
     stages = dict(signature_seconds=0., selection_seconds=0.)
-    signature, select, summarize = s.r.signature, s.r._select, robust.summarize
+    signature, select, summarize = s.r.signature, s.screening.select, robust.summarize
     def observed_signature():
         began = time.perf_counter()
         try:
@@ -461,7 +461,7 @@ def request(database, manifest, case, telemetry, *, require_fresh=True):
     began = time.perf_counter()
     db = None
     try:
-        with patch.object(s.r, 'signature', observed_signature), patch.object(s.r, '_select', observed_select), \
+        with patch.object(s.r, 'signature', observed_signature), patch.object(s.screening, 'select', observed_select), \
                 patch.object(robust, 'summarize', observed_summary), \
                 patch.object(batch, 'initialize_worker', observed_initialize):
             validation = time.perf_counter()

@@ -7,6 +7,11 @@ their generation pin; their coordinator retains financial ownership. Close
 evaluators before closing the input attachment.
 No application routing, downloads or reference-report writes occur here.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from collections.abc import Mapping, Sequence
 from bisect import bisect_right
 from contextlib import closing
@@ -39,7 +44,7 @@ import numpy as np
 import cache_access
 import cache_assets
 from numerical_policy import PolicyProgram, FACTOR_VERSION
-from paths import ROOT
+from backtest.paths import ROOT
 
 FORMAT = 1
 TEMPORAL_VERSION = 1
@@ -309,9 +314,9 @@ def _valid_id(value):
 
 def _source_binding(policy, checkpoint=lambda: None):
     """One source definition for coordinator freshness and exact worker attach."""
-    source = {p.name: _sha(p, checkpoint) for p in policy.source_paths}
+    source = {p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else p.as_posix(): _sha(p, checkpoint) for p in policy.source_paths}
     for name in ('numerical_generation.py', 'numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_factors.py'):
-        source[name] = _sha(Path(__file__).with_name(name), checkpoint)
+        source['scripts/'+name] = _sha(Path(__file__).with_name(name), checkpoint)
     return source
 
 

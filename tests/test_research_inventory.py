@@ -18,7 +18,7 @@ import research as r
 
 def original_signature():
     paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
-    paths += [r.RAW/'px',Path(r.baseline.__file__),Path(r.__file__),Path(r.metrics.__file__),Path(r.books.__file__),Path(r.cache_assets.__file__),Path(r.run.__file__),Path(r.revalue.__file__)]
+    paths += [r.RAW/'px',Path(r.baseline.__file__),Path(r.__file__),Path(r.metrics.__file__),Path(r.books.__file__),Path(r.rules.__file__),Path(r.screening.__file__),Path(r.cache_assets.__file__),Path(r.run.__file__),Path(r.revalue.__file__)]
     paths += [Path(r.financial_inputs.__file__)]
     paths += sorted((r.RAW/'financial-inputs').glob('*/*.json'))
     return dict({p.relative_to(r.ROOT).as_posix():['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths},historical_through=str(r.baseline.cutoff((r.RESULTS/'summary-exits.txt').read_text(encoding='utf8'))))
@@ -31,7 +31,7 @@ def original_prices():
 def prior_signature():
     """Pre-projection-repair boundary: collect metadata before building keys."""
     paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
-    paths += [r.RAW/'px',r.Path(r.baseline.__file__),r.Path(r.__file__),r.Path(r.metrics.__file__),r.Path(r.books.__file__),r.Path(r.cache_assets.__file__),r.Path(r.run.__file__),r.Path(r.revalue.__file__)]
+    paths += [r.RAW/'px',r.Path(r.baseline.__file__),r.Path(r.__file__),r.Path(r.metrics.__file__),r.Path(r.books.__file__),r.Path(r.rules.__file__),r.Path(r.screening.__file__),r.Path(r.cache_assets.__file__),r.Path(r.run.__file__),r.Path(r.revalue.__file__)]
     paths += [r.Path(r.financial_inputs.__file__)]
     entries=[(p,p.stat()) for p in paths]
     entries += r._metadata_entries(r.RAW/'financial-inputs','*/*.json')
@@ -46,7 +46,7 @@ class InventoryTests(unittest.TestCase):
         self.px.mkdir(parents=True);(self.financial/'income').mkdir(parents=True);(self.root/'results').mkdir()
         for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(self.raw/n).write_text('[]')
         (self.root/'results/summary-exits.txt').write_text('Through 2026-10-20\n')
-        for module,name in ((r,'research.py'),(r.metrics,'metrics.py'),(r.books,'books.py'),(r.cache_assets,'cache_assets.py'),(r.financial_inputs,'financial_inputs.py'),(r.run,'run.py'),(r.revalue,'revalue.py'),(r.baseline,'baseline.py')):
+        for module,name in ((r,'research.py'),(r.metrics,'metrics.py'),(r.books,'books.py'),(r.rules,'rules.py'),(r.screening,'screening.py'),(r.cache_assets,'cache_assets.py'),(r.financial_inputs,'financial_inputs.py'),(r.run,'run.py'),(r.revalue,'revalue.py'),(r.baseline,'baseline.py')):
             p=self.root/name;p.write_text('source');self.context.enter_context(patch.object(module,'__file__',str(p)))
         for name,value in (('ROOT',self.root),('RAW',self.raw),('RESULTS',self.root/'results')):self.context.enter_context(patch.object(r,name,value))
         for p in (self.px/'A.json',self.px/'z.json',self.financial/'income/A.json'):p.write_text('[]')

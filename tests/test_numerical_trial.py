@@ -1,4 +1,9 @@
 """Complete recorded-trial and artifact checks on private fictional inputs."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from datetime import date
 import hashlib
@@ -13,10 +18,10 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tests'),str(ROOT/'tools')]
 import backtest_control
-import numerical_calendar
+from backtest import calendar_requests as numerical_calendar
 import numerical_random
 import numerical_trial
-import portfolio_results
+from backtest import portfolio_results as portfolio_results
 import result_evidence
 import trial_checkpoints
 import test_bounded_trials as bounded

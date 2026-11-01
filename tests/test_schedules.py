@@ -46,7 +46,7 @@ class CalendarTests(unittest.TestCase):
                 before=s.fingerprint()
                 path.write_text('# changed calendar source')
                 after=s.fingerprint()
-        self.assertEqual(set(before['engine']),{'schedules.py','book_batch.py','schedule_calendar.py','portfolio_results.py'})
+        self.assertEqual(set(before['engine']),{'scripts/schedules.py','scripts/book_batch.py','schedule_calendar.py','backtest/portfolio_results.py'})
         self.assertNotEqual(before['engine']['schedule_calendar.py'],after['engine']['schedule_calendar.py'])
 
     def sessions(self,first,last):

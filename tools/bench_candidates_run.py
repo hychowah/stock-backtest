@@ -285,13 +285,18 @@ def source_files():
         'numerical_workspace.py', 'process_owner.py', 'numerical_identity.py',
         'numerical_random.py', 'numerical_portfolio.py', 'numerical_runtime.py',
         'numerical_runtime_child.py', 'numerical_session.py')]
+    files.extend(sorted((ROOT / 'backtest').rglob('*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
     return list(dict.fromkeys(files))
 
 
 def hashes(files):
-    return {path.name: baseline.file_hash(path) for path in files}
+    # Tests may relocate only the candidate inputs; each source still uses its
+    # repository-relative name. Equal basenames in packages stay distinct.
+    repository=Path(__file__).resolve().parents[1]
+    return {path.relative_to(ROOT if path.is_relative_to(ROOT) else repository).as_posix():
+            baseline.file_hash(path) for path in files}
 
 
 def intermediate_proof(inputs, executor, source):

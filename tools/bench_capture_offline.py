@@ -35,7 +35,7 @@ MAX_MEMORY_BYTES = 512 * 1024 ** 2
 MAX_SECONDS = 900.
 DATABASES = {'research.sqlite': 'data/research.sqlite', 'schedules.sqlite': 'data/schedules.sqlite'}
 REPORT = 'results/summary-exits.txt'
-SIGNATURE_SOURCES = ('baseline', 'research', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs')
+SIGNATURE_SOURCES = ('scripts/baseline.py', 'scripts/research.py', 'backtest/financial/metrics.py', 'backtest/financial/books.py', 'backtest/financial/rules.py', 'backtest/screening.py', 'scripts/cache_assets.py', 'scripts/run.py', 'scripts/revalue.py', 'scripts/financial_inputs.py')
 
 
 class OfflineCaptureError(ValueError):
@@ -106,7 +106,8 @@ def receipt(path, budget):
 
 
 def constant(root, module, name):
-    tree = ast.parse((root / 'scripts' / (module + '.py')).read_text(encoding='utf-8'))
+    path = root / ('backtest/financial/rules.py' if module=='run' and name=='ASOF' else 'scripts/'+module+'.py')
+    tree = ast.parse(path.read_text(encoding='utf-8'))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
             try:
@@ -122,7 +123,7 @@ def freshness(root, budget):
     """Explicit-root equivalent of signature(), price_sources(), fingerprint()."""
     raw = root / 'raw'
     paths = [raw / name for name in ('universe.json', 'metrics.jsonl', 'spy-div.json', 'treasury.json')]
-    paths += [raw / 'px'] + [root / 'scripts' / (name + '.py') for name in SIGNATURE_SOURCES]
+    paths += [raw / 'px'] + [root / name for name in SIGNATURE_SOURCES]
     paths += sorted((raw / 'financial-inputs').glob('*/*.json'))
     inventory = {}
     for number, path in enumerate(paths):
@@ -138,8 +139,8 @@ def freshness(root, budget):
         if number % 1024 == 0: budget.check()
         info = path.stat(); prices[path.name] = [info.st_size, info.st_mtime_ns]
     engine = {}
-    for name in ('schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py'):
-        info = (root / 'scripts' / name).stat(); engine[name] = [info.st_size, info.st_mtime_ns]
+    for name in ('scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'):
+        info = (root / name).stat(); engine[name] = [info.st_size, info.st_mtime_ns]
     # Match the daily prerequisite binding, including when current raw prices
     # differ from the accepted research inventory. validate() rejects that state.
     with database(root / DATABASES['research.sqlite'], budget, readonly=True) as db:
@@ -167,8 +168,8 @@ def originals(root, budget):
     preflight(root)
     assets = {relative: receipt(root / relative, budget) for relative in (*DATABASES.values(), REPORT)}
     source = {}
-    for directory in ('scripts', 'website'):
-        for path in sorted((root / directory).glob('*.py')):
+    for directory in ('scripts', 'website', 'backtest'):
+        for path in sorted((root / directory).rglob('*.py')):
             budget.check(); source[path.relative_to(root).as_posix()] = file_hash(path, budget)
     installed = None
     deployment_path = root / 'data/deployment.json'

@@ -94,7 +94,8 @@ def _verify_sources(root, sources):
             raise ExecutionPolicyError('unsupported') from error
         _require(path.is_file(), 'incomplete')
         _require(_hash(path) == expected, 'mismatch')
-        name = path.stem
+        parts=list(Path(relative).parts)
+        name = ('.'.join(parts[:-1] if parts[-1]=='__init__.py' else [*parts[:-1],path.stem]) if parts[0]=='backtest' else path.stem)
         _require(name not in by_name, 'unsupported')
         by_name[name] = path
     return by_name
@@ -109,8 +110,7 @@ def _validate_binding(value, request):
         _require(value[name] == request[name], 'mismatch')
     _require(isinstance(value['policy_signature'], str) and _SHA.fullmatch(value['policy_signature']))
     sources = value['policy_sources']
-    expected_paths = {'scripts/' + name + '.py' for name in
-                      ('books', 'metrics', 'research', 'revalue', 'run', 'schedules')}
+    expected_paths = {'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/research.py','scripts/revalue.py','scripts/run.py','scripts/schedules.py'}
     _require(isinstance(sources, dict) and set(sources) == expected_paths, 'unsupported')
     _require(all(request['sources'].get(name) == sha for name, sha in sources.items()), 'mismatch')
     payload = {key: item for key, item in value.items() if key != 'identity'}
@@ -236,14 +236,14 @@ class CapturedPolicy:
         modules = event['modules']
         _require(isinstance(modules, dict) and bool(modules), 'incomplete')
         _require(all(sources.get(name) == sha for name, sha in modules.items()), 'mismatch')
-        _require({'scripts/schedules.py', 'scripts/research.py', 'scripts/metrics.py',
-                  'scripts/books.py', 'scripts/run.py', 'scripts/revalue.py'} <= modules.keys(), 'incomplete')
+        _require({'scripts/schedules.py', 'scripts/research.py', 'backtest/financial/metrics.py',
+                  'backtest/financial/books.py', 'scripts/run.py', 'scripts/revalue.py'} <= modules.keys(), 'incomplete')
         self._binding = _freeze(_validate_binding(event['binding'], self._request))
         evidence = event['program_evidence']
         _require(isinstance(evidence, dict) and set(evidence) ==
             {'signature', 'expressions', 'python', 'decisions', 'statuses', 'sources', 'constants', 'bankruptcy'}, 'protocol')
         _require(evidence['signature'] == self._binding['policy_signature'] and
-            evidence['sources'] == {Path(name).name: sha for name, sha in self._binding['policy_sources'].items()}, 'mismatch')
+            evidence['sources'] == dict(self._binding['policy_sources']), 'mismatch')
         self._program_evidence = evidence
         self._active = True
         self._record('attached')
@@ -359,14 +359,13 @@ class _SourceFinder(importlib.abc.MetaPathFinder):
         self.modules = modules
 
     def find_spec(self, fullname, path=None, target=None):
-        top = fullname.split('.')[0]
-        if top in self.modules:
-            _require(fullname == top, 'unsupported')
-            spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-            _require(spec is not None and Path(spec.origin).resolve() == self.modules[top], 'mismatch')
-            spec.loader = _SourceLoader(fullname, str(self.modules[top]))
+        if fullname in self.modules:
+            expected=self.modules[fullname]
+            spec=importlib.machinery.PathFinder.find_spec(fullname,path)
+            _require(spec is not None and Path(spec.origin).resolve()==expected,'mismatch')
+            spec.loader=_SourceLoader(fullname,str(expected))
             return spec
-        _require(top in sys.stdlib_module_names, 'unsupported')
+        _require(fullname.split('.')[0] in sys.stdlib_module_names,'unsupported')
         return None
 
 
@@ -384,7 +383,7 @@ def _child(request_path):
     modules = _verify_sources(root, request['sources'])
     _require(not (modules.keys() & sys.modules.keys()), 'unsupported')
     _require(not any(name in sys.modules for name in ('numpy', 'bench_candidates', 'bench_baseline')), 'unsupported')
-    sys.path[:0] = [str(root / 'scripts'), str(root / 'website')]
+    sys.path[:0] = [str(root),str(root / 'scripts'), str(root / 'website')]
     support_modules = {Path(name).stem: folder / 'tools' / name for name in _SUPPORT}
     _require(not (modules.keys() & support_modules.keys()), 'unsupported')
     finder = _SourceFinder(dict(modules, **support_modules))
@@ -407,8 +406,8 @@ def _child(request_path):
     policy_sources = {}
     for path in program.source_paths:
         relative = path.relative_to(root).as_posix()
-        _require(program.source_hashes[path.name] == request['sources'].get(relative) == _hash(path), 'mismatch')
-        policy_sources[relative] = program.source_hashes[path.name]
+        _require(program.source_hashes[relative] == request['sources'].get(relative) == _hash(path), 'mismatch')
+        policy_sources[relative] = program.source_hashes[relative]
     loaded = {}
     for name, path in modules.items():
         module = sys.modules.get(name)

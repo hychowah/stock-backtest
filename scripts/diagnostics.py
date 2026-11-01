@@ -4,6 +4,11 @@ Callers supply controlled operational context, never credentials, provider URLs
 or response bodies. Error chains retain types, OS codes and stack locations.
 Each server process owns its rotating files, including when ports run together.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 import hashlib
 import json
 import logging
@@ -15,7 +20,7 @@ from pathlib import Path
 import time
 import uuid
 
-from paths import ROOT
+from backtest.paths import ROOT
 
 MAX_BYTES=5*1024*1024
 BACKUPS=2

@@ -1,4 +1,9 @@
 """Filter/rank ordering, shortlist ranks and SQL/browser agreement. Offline only."""
+
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+from backtest import screening
 from pathlib import Path
 import json
 import sqlite3
@@ -38,11 +43,11 @@ class SelectionOrderTests(unittest.TestCase):
                             self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',(mode,pool,year,symbol,'pe',10))
 
     def ids(self,select,**options):
-        if select is r.screen:options=dict(first=2015,last=2015,**options)
+        if select is screening.historical:options=dict(first=2015,last=2015,**options)
         return [(h['symbol'],h['rank']) for h in select(self.db,**options)]
 
     def test_filter_first_default_and_rank_first_does_not_refill(self):
-        for select in (r.screen,r.latest_screen):
+        for select in (screening.historical,screening.latest):
             for pool in ('legacy','cached'):
                 options=dict(pool=pool,rank_to=2,min_cap=150e6)
                 self.assertEqual(self.ids(select,**options),[('B',1),('C',2)])
@@ -51,7 +56,7 @@ class SelectionOrderTests(unittest.TestCase):
                 self.assertEqual(self.ids(select,pool=pool,rank_from=2,rank_to=3,selection_order='rank_first',min_cap=250e6),[('C',3)])
 
     def test_all_user_conditions_move_together_and_missing_values_fail(self):
-        for select in (r.screen,r.latest_screen):
+        for select in (screening.historical,screening.latest):
             for condition in [dict(min_cap=150e6),dict(max_cap=300e6,sector='Technology'),dict(filters=[dict(field='pe',op='lt',value=11)])]:
                 self.assertEqual(self.ids(select,rank_to=1,**condition),[('B',1)])
                 self.assertEqual(self.ids(select,rank_to=1,selection_order='rank_first',**condition),[])
@@ -60,9 +65,9 @@ class SelectionOrderTests(unittest.TestCase):
                 select(self.db,selection_order='unknown')
 
     def test_years_rank_independently_and_ties_are_stable(self):
-        rows=r.screen(self.db,first=2015,last=2016,rank_to=2,min_cap=150e6,selection_order='rank_first')
+        rows=screening.historical(self.db,first=2015,last=2016,rank_to=2,min_cap=150e6,selection_order='rank_first')
         self.assertEqual([(h['year'],h['symbol'],h['rank']) for h in rows],[(2015,'B',2),(2016,'B',2)])
-        self.assertEqual(self.ids(r.latest_screen,rank_from=2,rank_to=3,selection_order='rank_first'),[('B',2),('C',3)])
+        self.assertEqual(self.ids(screening.latest,rank_from=2,rank_to=3,selection_order='rank_first'),[('B',2),('C',3)])
 
     def test_browser_sql_parity_in_both_modes_pools_orders_and_ranges(self):
         def copy_connection():
@@ -76,7 +81,7 @@ class SelectionOrderTests(unittest.TestCase):
                 for conditions in ({},{'min_cap':150e6},{'sector':'Technology'},{'filters':[dict(field='pe',op='lt',value=11)]},{'filters':[dict(field='pe',op='lt',value=10)]}):
                     for first,last in ((1,1),(1,2),(2,3),(3,4)):
                         options=dict(pool=pool,selection_order=order,rank_from=first,rank_to=last,**conditions)
-                        cases.append(dict(options=options,historical=self.ids(r.screen,**options),latest=self.ids(r.latest_screen,**options)))
+                        cases.append(dict(options=options,historical=self.ids(screening.historical,**options),latest=self.ids(screening.latest,**options)))
         code="""
 const assert=require('assert'),fs=require('fs'),engine=require(process.argv[1]);
 const {dataset,cases}=JSON.parse(fs.readFileSync(0,'utf8'));

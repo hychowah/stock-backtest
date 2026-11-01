@@ -89,6 +89,7 @@ class ExportedPreparationTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.base=Path(self.temp.name);self.root=self.base/'source';self.root.mkdir()
         (self.root/'scripts').mkdir();(self.root/'website').mkdir();(self.root/'tools').mkdir()
+        shutil.copytree(ROOT/'backtest',self.root/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
         for path in (ROOT/'scripts').glob('*.py'):shutil.copyfile(path,self.root/'scripts'/path.name)
         shutil.copyfile(ROOT/'website/runtime_access.py',self.root/'website/runtime_access.py')
         shutil.copyfile(ROOT/'tools/prepared_input_coverage.py',self.root/'tools/prepared_input_coverage.py')

@@ -4,6 +4,11 @@ Both engines supply full-precision results using the contract in revalue.calcula
 This module owns report formatting and publication, never financial calculations.
 Callers hold cache_access through recovery, calculation and final publication.
 """
+
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+from backtest import screening
 from contextlib import closing
 from datetime import date, datetime, timezone
 import csv
@@ -150,7 +155,7 @@ class Baseline:
             # prices. Never read today's raw file to guess yesterday's price.
             db.row_factory=sqlite3.Row
             import research
-            groups=research.aggregate(research.screen(db))
+            groups=research.aggregate(screening.historical(db))
             periods={p['year']:dict(p) for p in db.execute('SELECT * FROM periods')}
             return dict(through=str(self.through()),legacy_prices_unavailable=True,years=[dict(year=year,entry=periods[year]['entry'],exit=periods[year]['exit'],
                         spy=periods[year]['spy'],portfolio=group['portfolio'],holdings=[{key:h.get(key) for key in HOLDING_FIELDS} for h in group['holdings']])

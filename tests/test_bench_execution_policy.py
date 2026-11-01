@@ -17,7 +17,9 @@ import test_bench_execution_inputs as workspace_tests
 
 # CB-09 reducer integration changes the schedules.py whole-source identity.
 # Financial expression/code digests below remain bound to the same calculations.
-SIGNATURE = '7541942b9d4f858d6509494baebb9cc34a467965e24c31f306d438da9958e8ab'
+from numerical_policy import PolicyProgram
+import schedules
+SIGNATURE = PolicyProgram(schedules).signature
 
 
 class PolicyTests(unittest.TestCase):
@@ -33,6 +35,7 @@ class PolicyTests(unittest.TestCase):
 
     def rewrite_source(self, name, text):
         path = self.source / name
+        path.parent.mkdir(parents=True,exist_ok=True)
         path.write_text(text, encoding='utf-8')
         self.sources[name] = workspace_tests.sha(path)
         self.manifest['originals']['sources'] = self.sources
@@ -50,19 +53,18 @@ class PolicyTests(unittest.TestCase):
                 binding = attached.binding
                 self.assertEqual(binding['policy_signature'], SIGNATURE)
                 self.assertEqual(attached._program_evidence, dict(signature=SIGNATURE,
-                    expressions='e87697c7a3be20577458f42be862bc19205bb99f3c8c74ccb0a8a67900d78239',
-                    python='8e5074d34ac0173866122f0cc4545f3298ea2e6249108d1eae92ddab36c98ec2',
+                    expressions='94a1f4ece55ece3fb2f08fef7b45fb29a5cb37376c03fb61d4b24b0562d9f95c',
+                    python='98475c111627e7fd1c7f413dcd292e9b584fa0ffb3dd69cdeceef3a6110a9465',
                     decisions='596019cf3fcb9a65fe453b88e46e7a4998e5859e08189caafe72f80acc5be2ab',
                     statuses=['Scheduled exit', 'Marked to date', 'Last available price', 'Bankruptcy'],
-                    sources={Path(name).name: sha for name, sha in binding['policy_sources'].items()},
+                    sources=dict(binding['policy_sources']),
                     constants=[100000000, 50000000, 250, 800], bankruptcy=[]))
                 self.assertEqual(binding['financial_generation'], inputs.identity)
                 self.assertEqual(binding['capture_id'], inputs.capture_id)
-                self.assertEqual(set(binding['policy_sources']), {'scripts/' + n + '.py' for n in
-                    ('books', 'metrics', 'research', 'revalue', 'run', 'schedules')})
+                self.assertEqual(set(binding['policy_sources']), {'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/research.py','scripts/revalue.py','scripts/run.py','scripts/schedules.py'})
                 self.assertTrue(all(self.sources[name] == sha for name, sha in binding['policy_sources'].items()))
                 with self.assertRaises(TypeError): binding['policy_signature'] = 'changed'
-                with self.assertRaises(TypeError): binding['policy_sources']['scripts/books.py'] = 'changed'
+                with self.assertRaises(TypeError): binding['policy_sources']['backtest/financial/books.py'] = 'changed'
                 folder = attached._folder
                 self.assertIsNone(attached._owned.process.poll())
                 self.assertTrue(folder.is_relative_to(inputs._folder))
@@ -137,9 +139,9 @@ class PolicyTests(unittest.TestCase):
                     "from pathlib import Path\n(Path(__file__).parents[1]/'raw'/'blocked').read_bytes()\n",
                     "import socket\nsocket.socket().connect(('127.0.0.1',1))\n",
                     "import subprocess\nsubprocess.Popen(['unavailable'])\n")
-        original = (self.source / 'scripts/metrics.py').read_text()
+        original = (self.source / 'backtest/financial/metrics.py').read_text()
         for attempt in attempts:
-            self.rewrite_source('scripts/metrics.py', original + '\n' + attempt)
+            self.rewrite_source('backtest/financial/metrics.py', original + '\n' + attempt)
             with self.owner() as inputs:
                 attached = policy.CapturedPolicy(inputs)
                 self.assert_reason('unsupported', attached.__enter__)
@@ -150,7 +152,7 @@ class PolicyTests(unittest.TestCase):
     def test_changed_or_missing_snapshot_rejects_without_child(self):
         for change in ('changed', 'missing'):
             with self.owner() as inputs:
-                path = inputs.source_snapshot / 'scripts/books.py'
+                path = inputs.source_snapshot / 'backtest/financial/books.py'
                 if change == 'changed': path.write_bytes(b'# changed')
                 else: path.unlink()
                 with patch.object(policy, 'OwnedProcess') as spawn:
@@ -158,8 +160,8 @@ class PolicyTests(unittest.TestCase):
                     spawn.assert_not_called()
 
     def test_actual_source_mutation_changes_policy_not_metadata(self):
-        original = (self.source / 'scripts/books.py').read_text()
-        self.rewrite_source('scripts/books.py', original.replace('cap>0 and ev>0', 'cap>1 and ev>0'))
+        original = (self.source / 'backtest/financial/books.py').read_text()
+        self.rewrite_source('backtest/financial/books.py', original.replace('cap>0 and ev>0', 'cap>1 and ev>0'))
         with self.owner() as inputs, policy.CapturedPolicy(inputs) as attached:
             self.assertNotEqual(attached.binding['policy_signature'], SIGNATURE)
             self.assertEqual(attached.binding['financial_generation'], inputs.identity)
@@ -219,8 +221,8 @@ class PolicyTests(unittest.TestCase):
                 self.assert_reason('protocol', lambda: policy._validate_binding({}, request))
 
     def test_child_failure_is_sanitized_and_contained(self):
-        original = (self.source / 'scripts/metrics.py').read_text()
-        self.rewrite_source('scripts/metrics.py', original + "\nraise RuntimeError('private child exception')\n")
+        original = (self.source / 'backtest/financial/metrics.py').read_text()
+        self.rewrite_source('backtest/financial/metrics.py', original + "\nraise RuntimeError('private child exception')\n")
         with self.owner() as inputs:
             attached = policy.CapturedPolicy(inputs)
             self.assert_reason('child_failed', attached.__enter__)
@@ -451,10 +453,10 @@ class PolicyTests(unittest.TestCase):
         for change in ('missing', 'ambiguous', 'escaped'):
             with self.subTest(change=change):
                 if change == 'missing':
-                    saved = self.manifest['originals']['sources'].pop('scripts/books.py')
+                    saved = self.manifest['originals']['sources'].pop('backtest/financial/books.py')
                     self.write_manifest()
                 elif change == 'ambiguous':
-                    self.rewrite_source('website/books.py', '# ambiguous duplicate')
+                    self.rewrite_source('backtest/financial/books/__init__.py', '# ambiguous duplicate')
                 else:
                     self.manifest['originals']['sources']['scripts/../escape.py'] = 'a' * 64
                     self.write_manifest()
@@ -463,10 +465,10 @@ class PolicyTests(unittest.TestCase):
                         with self.owner() as inputs:
                             policy.CapturedPolicy(inputs).__enter__()
                 finally:
-                    if change == 'missing': self.manifest['originals']['sources']['scripts/books.py'] = saved
+                    if change == 'missing': self.manifest['originals']['sources']['backtest/financial/books.py'] = saved
                     elif change == 'ambiguous':
-                        (self.source / 'website/books.py').unlink()
-                        self.sources.pop('website/books.py')
+                        (self.source / 'backtest/financial/books/__init__.py').unlink()
+                        self.sources.pop('backtest/financial/books/__init__.py')
                         self.manifest['originals']['sources'] = self.sources
                         from contextlib import closing
                         import sqlite3

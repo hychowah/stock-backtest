@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as scratch:
     try:
         os.chdir(scratch)
         with patch.object(Path, 'read_text', cached_only), patch('urllib.request.urlopen', side_effect=AssertionError('Unexpected network request')):
-            modules = [importlib.import_module(name) for name in ['paths', 'run', 'revalue', 'list_stops', 'classify_stops', 'holdings']]
+            modules = [importlib.import_module(name) for name in ['backtest.paths', 'run', 'revalue', 'list_stops', 'classify_stops', 'holdings']]
             paths, run, revalue, stops, classify, holdings = modules
             assert run.RAW == ROOT / 'raw'
             assert revalue.RESULTS == ROOT / 'results'
@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as scratch:
         os.chdir(previous)
 
 # Every Python source must still compile after moving.
-for folder in ['scripts', 'tools', 'website', 'tests']:
-    for source in (ROOT / folder).glob('*.py'):
+for folder in ['scripts', 'tools', 'website', 'tests', 'backtest']:
+    for source in (ROOT / folder).rglob('*.py'):
         compile(source.read_text(), str(source), 'exec')
 print('Passed: relocated imports, external working directory, cache and report paths, no credentials/network, and Python syntax.')

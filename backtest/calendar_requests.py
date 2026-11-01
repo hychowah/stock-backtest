@@ -9,7 +9,7 @@ from copy import deepcopy
 import json
 import random
 
-import schedule_calendar as c
+from backtest import calendar as c
 
 
 def decode_request(options):

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
 import json
 from datetime import timedelta
 
 import run
 
-from paths import RAW, STOPS
+from backtest.paths import RAW, STOPS
 
 
 def main() -> None:

@@ -19,6 +19,11 @@ A failed writer is unusable; its incomplete output must never be published.
 Numerical diagnostics and derived checkpoints use this codec. Application
 protocols, snapshots, routing and eager admission limits remain unchanged.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from copy import deepcopy
 from datetime import date
 import hashlib
@@ -26,7 +31,7 @@ import json
 import math
 import struct
 
-import portfolio_results
+from backtest import portfolio_results as portfolio_results
 
 FORMAT_VERSION = 1
 MAX_PIECE_BYTES = 1024*1024

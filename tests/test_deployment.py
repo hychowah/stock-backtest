@@ -437,7 +437,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_publication_cli_installs_verified_archive(self):
         names = ('tools/deploy.py', 'website/runtime_access.py', 'website/launcher.py',
-                 'scripts/cache_access.py', 'scripts/paths.py')
+                 'scripts/cache_access.py', 'backtest/__init__.py', 'backtest/paths.py')
         with tarfile.open(self.stage / 'source.tar', 'w') as output:
             for name in names:
                 output.add(ROOT / name, arcname=name, recursive=False)

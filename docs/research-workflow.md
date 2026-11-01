@@ -86,7 +86,7 @@ The original 1996 pre-price buffer yields only 61 usable holdings, so it cannot 
 
 ## Current-date preparation
 
-Schema version 2 adds `latest_snapshots` and latest-date metadata. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `research.latest_screen()` exposes the same SQL filters and rank semantics without return fields.
+Schema version 2 adds `latest_snapshots` and latest-date metadata. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
 
 Historical preparation is capped at the saved canonical report's Through date (and the configured historical ASOF). Latest preparation can advance beyond that date without silently extending the historical backtest. The report cutoff is included in source freshness. The committed database stores the report content hash. Updating the generated report does not invalidate its own source signature. Updating a database and rebuilding HTML are separate from fetching missing or new market data.
 
@@ -106,8 +106,9 @@ CSV exports include the selected metric values. The original pool retains its
 single-year top-250 pre-screen; use the cached pool to compare signals across
 the broader available price universe. Neither pool represents full coverage.
 
-`scripts/metrics.py` owns the display catalog, calculator registry and metric
-preparation. `screening_metrics` stores ready-to-rank multiple/yield pairs by
+`backtest/financial/metrics.py` owns the display catalog, calculator registry and
+pure metric calculations. `research.prepare_metrics()` populates the prepared
+metric tables within the preparation transaction. `screening_metrics` stores ready-to-rank multiple/yield pairs by
 mode, pool, year, symbol and metric ID (year 0 represents latest mode). Thus
 screening-date values remain separate even when observations use the same fiscal
 report. Preparation preserves both default EV/EBITDA values exactly.
@@ -157,14 +158,14 @@ CAGR and growth unavailable. Choose any period to see its stocks, valuations,
 return contributions and top-10 gain/loss pies. CSV exports include period dates,
 actual stock entry/exit dates, selected metrics, weights and contributions.
 
-`scripts/schedule_calendar.py` owns calendar configuration, anchored boundaries,
+`backtest/calendar.py` owns calendar configuration, anchored boundaries,
 session rolling and seeded sampling. Read the
 [calendar contract](schedule-calendar.md) for its version and old-request mapping.
 Original remains the website default and accepts the five existing month counts.
 New engine — experimental accepts version-1 calendars with 1–104 weeks or
 1–24 months. The submitted engine controls calendar validation and readiness.
 `scripts/schedules.py` owns the daily SQLite index and dated books.
-`scripts/portfolio_results.py` reduces ordered selected books into complete
+`backtest/portfolio_results.py` reduces ordered selected books into complete
 dated results. It owns equal weights, signed contributions, compounding and
 common-window cash. It reads no files. The
 [financial result contract](portfolio-results.md) preserves complete holding
@@ -330,7 +331,7 @@ completed queue snapshots remain readable after current input changes. See the
 [checkpoint contract](trial-checkpoints.md) for identity and retention rules.
 
 `scripts/robustness.py` owns the random-date application adapter, fresh-seed
-policy and distribution summaries. It uses `scripts/schedule_calendar.py` to
+policy and distribution summaries. It uses `backtest/calendar.py` to
 divide the requested calendar window into nominal frequency blocks anchored
 to the lower bound and independently sample one cached SPY session in each
 nonempty block for each trial. The final partial block participates, and the end
@@ -382,7 +383,7 @@ port and opens that address. Direct `python3 website/serve.py` starts a foregrou
 server without replacement; `--managed` enables replacement. Missing API routes
 in old tabs instruct the user to relaunch and use the newly opened tab.
 
-Dated financial policy is shared in `scripts/books.py`: report-pool eligibility,
+Dated financial policy is shared in `backtest/financial/books.py`: report-pool eligibility,
 candidate buffering, entry valuation and holding returns. January preparation
 and the daily engine supply array and SQL price adapters respectively;
 `revalue.py` remains the independent baseline.
@@ -471,7 +472,7 @@ These use saved annual statement inputs. Select Full annual financial data in
 the data panel, download missing assets, then rebuild. Changing filters makes no
 provider requests. Missing inputs exclude only stocks filtered on those inputs.
 
-`scripts/metrics.py` defines the catalog and prepares threshold values.
+`backtest/financial/metrics.py` defines the catalog and prepares threshold values.
 Schema version 5 stores them in `filter_values`, separately from ranking pairs.
 Returns use dividend-adjusted closes on or before the screening date and its
 calendar anniversary, with a seven-calendar-day tolerance at each endpoint.

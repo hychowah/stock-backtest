@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Cached daily prices and reusable dated backtest books. No network access."""
 from datetime import date
 from pathlib import Path
@@ -7,12 +14,12 @@ import sqlite3
 import time
 
 import research as r
-import metrics
+from backtest.financial import metrics as metrics
 import cache_access
-import books as financial_books
+from backtest.financial import books as financial_books
 import backtest_control
-import schedule_calendar
-import portfolio_results
+from backtest import calendar as schedule_calendar
+from backtest import portfolio_results as portfolio_results
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
 VERSION = 3
@@ -37,7 +44,7 @@ def fingerprint(source=None):
     sources=[Path(__file__),Path(__file__).with_name('book_batch.py'),
              Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
     return dict(version=VERSION, inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
-                engine={p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
+                engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
 
 def connect(path=DATABASE,source=None):
@@ -253,7 +260,7 @@ def backtest_calendar(db, **request):
     Requested calendar metadata remains separate from resolved trading sessions.
     Explicit dates preserve the common cash window used by random trials.
     """
-    import calendar_requests
+    from backtest import calendar_requests as calendar_requests
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     periods,first,options,metadata=calendar_requests.periods(
         sessions,request,checkpoint=backtest_control.checkpoint)
@@ -285,14 +292,14 @@ def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=
     periods=portfolio_results.validate_periods(periods,common_start)
     allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters','selection_order'}
     if set(options)-allowed:raise ValueError('Unknown screening option.')
-    r._select(db,period=(-1,-1),**options)
+    screening.validate_selection(**options)
     pool=options.get('pool','legacy')
     missing=any(prepared_period(db,a,b,pool) is None for a,b in periods)
     books=histories(db) if missing else None
     cached=cached_symbols(db) if missing else set()
     def select_period(entry,exit_day):
         period_id=prepare_period(db,entry,exit_day,books,cached,pool)
-        stocks=r._select(db,period=(period_id,period_id),**options)
+        stocks=screening.select(db,period=(period_id,period_id),**options)
         spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
         return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:

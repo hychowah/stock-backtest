@@ -221,7 +221,7 @@ class CandidateTests(unittest.TestCase):
     def test_policy_is_source_bound_and_rejects_unknown_catalog(self):
         policy = core.PolicyProgram(s)
         self.assertIn('snapshot',policy._snapshot.__name__)
-        self.assertTrue({'books.py','metrics.py','schedules.py','run.py','revalue.py','research.py'}<=set(policy.source_hashes))
+        self.assertTrue({'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/schedules.py','scripts/run.py','scripts/revalue.py','scripts/research.py'}<=set(policy.source_hashes))
         self.assertEqual(len(policy.signature),64)
         self.assertTrue(all(node[0]!='var' for name in policy.output_names
                             for node in self.walk(policy.expanded(name))))

@@ -5,6 +5,11 @@ connections and worker pools. Keep ownership until workers finish and database
 connections close. Nested preparation in the same thread reuses ownership.
 The build subprocess reads under its parent's ownership and does not acquire it.
 """
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from contextlib import contextmanager
 import errno
 from functools import wraps
@@ -13,7 +18,7 @@ from threading import RLock, local
 import time
 import uuid
 
-from paths import ROOT
+from backtest.paths import ROOT
 
 # A source-bound observer requires this protocol, not a directory marker.
 OBSERVATION_PROTOCOL = 1

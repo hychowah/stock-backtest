@@ -208,7 +208,7 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
     model.deadline = began+budget_seconds if budget_seconds is not None else None
     rows,holdings = [],[]
     output = None
-    original_select = model.s.r._select
+    original_select = model.s.screening.select
     def select(*args,**kwargs):
         started = time.perf_counter()
         try:
@@ -238,7 +238,7 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
             stack.enter_context(patch.object(model.s,'prepared_period',lambda *unused:None))
             stack.enter_context(patch.object(model.s,'prepare_period',model.prepare))
             stack.enter_context(patch.object(model.s.metrics,'annual_average',model.annual_average))
-            stack.enter_context(patch.object(model.s.r,'_select',select))
+            stack.enter_context(patch.object(model.s.screening,'select',select))
             for number,dates in enumerate(configuration['samples'],1):
                 result = model.s.backtest_dates(model.db,dates=dates,start=configuration['start'],
                     end=configuration['end'],months=configuration['months'],**configuration['options'])

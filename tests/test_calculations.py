@@ -1,4 +1,9 @@
 """One application admission boundary, with real ordinary financial results."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from contextlib import ExitStack
 from http.client import HTTPConnection
 import io
@@ -105,7 +110,7 @@ class CalculationTests(unittest.TestCase):
         self.assertIsNone(empty['cagr'])
 
     def test_stop_during_canonical_planning_precedes_configuration_and_execution(self):
-        import calendar_requests
+        from backtest import calendar_requests as calendar_requests
         import backtest_control
         configuration=[]
         original=calendar_requests.c.SessionCalendar.sample

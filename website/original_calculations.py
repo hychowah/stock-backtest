@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Original execution adapter; jobs and user records belong to callers.
 
 Own financial admission, ordinary worker/database lifetime and full results.
@@ -10,7 +17,7 @@ import backtest_control
 import cache_access
 import robustness
 import schedules
-import calendar_requests
+from backtest import calendar_requests as calendar_requests
 from calculation_contract import Control, Busy, Unavailable
 
 
@@ -64,7 +71,7 @@ class Original(Control):
                     else:
                         calendar_requests.validate_submitted(options,planned)
                         planned=calendar_requests.validate_plan(sessions,planned,checkpoint=self._checkpoint)
-                    schedules.r._select(db,period=(-1,-1),**planned['options'])
+                    screening.validate_selection(**planned['options'])
                     if configuration:configuration(planned)
                     captured=[]
                     result=robustness.run(db,planned,progress=progress,

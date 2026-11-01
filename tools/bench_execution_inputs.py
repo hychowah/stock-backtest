@@ -36,12 +36,10 @@ _ID = re.compile(r'[0-9a-f]{32}')
 _REVISION = re.compile(r'[0-9a-f]{40}')
 # PolicyProgram.source_paths: books, metrics, schedules, run, research, revalue.
 # Trace their local imports below, without importing or attaching these modules.
-_POLICY_ROOTS = frozenset('scripts/' + name + '.py' for name in
-                          ('books', 'metrics', 'schedules', 'run', 'research', 'revalue', 'book_batch'))
+_POLICY_ROOTS = frozenset(('scripts/schedules.py','scripts/research.py','backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/run.py','scripts/revalue.py','scripts/book_batch.py'))
 _locks_guard = Lock()
 _locks = {}
-# An incomplete attachment close must not let generator collection release the
-# workspace lock. A successful explicit exit retry removes this retained owner.
+# Retain ownership until a failed attachment close is explicitly retried.
 _pending_closures = {}
 
 
@@ -219,7 +217,7 @@ def _manifest(folder):
     _require(isinstance(sources, dict) and bool(sources))
     for name, sha in sources.items():
         path = _relative(name)
-        _require(len(path.parts) == 2 and path.parts[0] in ('scripts', 'website') and path.suffix == '.py', 'unsupported')
+        _require(((len(path.parts)==2 and path.parts[0] in ('scripts','website')) or (len(path.parts)>=2 and path.parts[0]=='backtest')) and path.suffix == '.py', 'unsupported')
         _require(_sha(sha))
     _require(_POLICY_ROOTS <= sources.keys())
     _inventory(before['raw_inventory'])
@@ -232,7 +230,7 @@ def _manifest(folder):
     _require(type(daily['version']) is int and daily['version'] == artifacts.DAILY_VERSION, 'unsupported')
     _require(daily['inputs'] == freshness['inputs'], 'mismatch')
     _inventory(daily['engine'])
-    _require(set(daily['engine']) == {'schedules.py', 'book_batch.py', 'schedule_calendar.py', 'portfolio_results.py'})
+    _require(set(daily['engine']) == {'scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'})
     return value, raw
 
 
@@ -287,7 +285,7 @@ def _source_snapshot(root, target, sources, budget):
         _require(path.is_file())
         _require(_file_hash(path, budget) == expected, 'mismatch')
         destination = _inside(target, name)
-        destination.parent.mkdir(exist_ok=True)
+        destination.parent.mkdir(parents=True,exist_ok=True)
         # Bounded copies also check cancellation; verify both ends after copying.
         with path.open('rb') as source, destination.open('xb') as output:
             while chunk := source.read(65536):
@@ -297,39 +295,61 @@ def _source_snapshot(root, target, sources, budget):
     pending, visited = list(_POLICY_ROOTS), set()
     by_module = {}
     for name in sources:
-        by_module.setdefault(PurePosixPath(name).stem, []).append(name)
+        parts=list(PurePosixPath(name).parts)
+        if parts[0]=='backtest':
+            module='.'.join(parts[:-1] if parts[-1]=='__init__.py' else [*parts[:-1],PurePosixPath(name).stem])
+        else:module=PurePosixPath(name).stem
+        _require(module not in by_module,'unsupported')
+        by_module[module]=name
+
+    def dependency(parts):
+        module='.'.join(parts)
+        if module in by_module:
+            pending.append(by_module[module])
+            for length in range(1,len(parts)):
+                parent='.'.join(parts[:length])
+                if parent in by_module:pending.append(by_module[parent])
+            return True
+        return False
+
     while pending:
-        name = pending.pop()
-        if name in visited:
-            continue
+        name=pending.pop()
+        if name in visited:continue
         visited.add(name)
-        try:
-            tree = ast.parse((target / name).read_text(encoding='utf-8'))
-        except (SyntaxError, ValueError) as error:
-            raise ExecutionInputError('unsupported') from error
-        for number, node in enumerate(ast.walk(tree)):
-            if number % 1024 == 0:
-                budget.check()
-            if isinstance(node, ast.Call):
-                dynamic = isinstance(node.func, ast.Name) and node.func.id in ('__import__', 'exec', 'eval')
-                dynamic |= isinstance(node.func, ast.Attribute) and node.func.attr == 'import_module'
-                _require(not dynamic, 'unsupported')
-            modules = []
-            if isinstance(node, ast.Import):
-                modules = [alias.name.split('.')[0] for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                _require(node.level == 0 and bool(node.module), 'unsupported')
-                modules = [node.module.split('.')[0]]
-            for module in modules:
-                for directory in ('scripts', 'website'):
-                    dependency = root / directory / (module + '.py')
-                    if dependency.exists() or dependency.is_symlink():
-                        _require(directory + '/' + module + '.py' in sources)
-                if module in by_module:
-                    _require(len(by_module[module]) == 1, 'unsupported')
-                    pending.append(by_module[module][0])
-                else:
-                    _require(module in sys.stdlib_module_names, 'incomplete')
+        try:tree=ast.parse((target/name).read_text(encoding='utf-8'))
+        except (SyntaxError,ValueError) as error:raise ExecutionInputError('unsupported') from error
+        package=list(PurePosixPath(name).parts[:-1])
+        for number,node in enumerate(ast.walk(tree)):
+            if number%1024==0:budget.check()
+            if isinstance(node,ast.Call):
+                dynamic=isinstance(node.func,ast.Name) and node.func.id in ('__import__','exec','eval')
+                dynamic|=isinstance(node.func,ast.Attribute) and node.func.attr=='import_module'
+                _require(not dynamic,'unsupported')
+            imports=[]
+            if isinstance(node,ast.Import):imports=[alias.name.split('.') for alias in node.names]
+            elif isinstance(node,ast.ImportFrom):
+                base=(package[:len(package)-node.level+1] if node.level else [])
+                if node.module:base+=node.module.split('.')
+                imports=[base]
+                for alias in node.names:
+                    if alias.name!='*':
+                        alias_parts=[*base,alias.name]
+                        candidate=root.joinpath(*alias_parts)
+                        exists=candidate.with_suffix('.py').exists() or (candidate/'__init__.py').exists()
+                        base_name='.'.join(base)
+                        is_package=base_name in by_module and PurePosixPath(by_module[base_name]).name=='__init__.py'
+                        if exists or is_package:_require(dependency(alias_parts),'incomplete')
+                        else:dependency(alias_parts)
+            for parts in imports:
+                module='.'.join(parts)
+                # Reject an unrecorded local module even if its name is stdlib.
+                for directory in ('scripts','website'):
+                    candidate=root/directory/(parts[0]+'.py')
+                    if candidate.exists() or candidate.is_symlink():_require(directory+'/'+parts[0]+'.py' in sources)
+                candidate=root.joinpath(*parts)
+                if candidate.with_suffix('.py').exists() or (candidate/'__init__.py').exists():
+                    _require(module in by_module,'incomplete')
+                if not dependency(parts):_require(parts[0] in sys.stdlib_module_names,'incomplete')
     return target
 
 

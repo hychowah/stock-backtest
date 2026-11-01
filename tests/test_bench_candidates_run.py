@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Complete portfolio parity and containment for the common candidate adapter."""
 from contextlib import closing, ExitStack, nullcontext
 from copy import deepcopy
@@ -40,12 +47,13 @@ def agreed_method(requests):
 
 class SourceInventoryTests(unittest.TestCase):
     def test_extracted_policy_mutation_rejects_before_database_or_executor_access(self):
-        for relative in ('tools/bench_policy_program.py', 'scripts/numerical_policy.py', 'scripts/numerical_decisions.py', 'scripts/numerical_temporal.py', 'scripts/numerical_generation.py', 'scripts/numerical_factors.py', 'tools/portfolio_workspace.py'):
+        for relative in ('tools/bench_policy_program.py', 'scripts/numerical_policy.py', 'scripts/numerical_decisions.py', 'scripts/numerical_temporal.py', 'scripts/numerical_generation.py', 'scripts/numerical_factors.py', 'tools/portfolio_workspace.py', 'backtest/__init__.py', 'backtest/financial/__init__.py'):
             with self.subTest(implementation=relative): self.check_mutation(relative)
 
     def check_mutation(self, relative):
         with tempfile.TemporaryDirectory(prefix='cb02-policy-source-') as temporary:
             root = Path(temporary)
+            shutil.copytree(ROOT/'backtest',root/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
             tools = root / 'tools'; tools.mkdir()
             for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py', 'portfolio_workspace.py'):
                 shutil.copy2(ROOT / 'tools' / name, tools / name)
@@ -59,6 +67,9 @@ class SourceInventoryTests(unittest.TestCase):
                 files = runner.source_files()
                 self.assertIn(implementation, files)
                 frozen = runner.hashes(files)
+                self.assertIn('backtest/__init__.py',frozen)
+                self.assertIn('backtest/financial/__init__.py',frozen)
+                self.assertTrue(all('\\' not in key and not key.startswith('/') for key in frozen))
                 specification = root / 'specification.json'
                 shared.baseline.publish(specification, dict(staging='all', candidate_assembly='source',
                     source_hashes=frozen))
@@ -66,7 +77,7 @@ class SourceInventoryTests(unittest.TestCase):
                 changed = runner.hashes(runner.source_files())
                 self.assertEqual(set(changed), set(frozen))
                 self.assertEqual({name for name in changed if changed[name] != frozen[name]},
-                                 {implementation.name})
+                                 {relative})
                 args = SimpleNamespace(worker='python', runtime=root, workdir=root,
                     specification=specification, result=root / 'result.json', staging='all',
                     candidate_assembly='source')
@@ -202,14 +213,14 @@ class CandidateRequestTests(unittest.TestCase):
                             dict(rank_from=100,rank_to=110),dict(min_cap=1e100))
                         for extra in changes:
                             options=dict(dict(period=(1,1),pool=pool,metric=metric,min_cap=0.,min_ev=0.),**extra)
-                            selected=shared.s.r._select(complete,**options)
-                            self.assertEqual(selected,shared.s.r._select(projected,**options))
+                            selected=screening.select(complete,**options)
+                            self.assertEqual(selected,screening.select(projected,**options))
                             if missing=='all':self.assertEqual(selected,[])
                             if missing=='one':self.assertNotIn('A',{row['symbol'] for row in selected})
                         self.assertEqual(book,preserved)
                         runner.stage_book(projected,book,pool,ranking_metric='invalid')
                         with self.assertRaisesRegex(ValueError,'valid ranking metric'):
-                            shared.s.r._select(projected,period=(1,1),metric='invalid')
+                            screening.select(projected,period=(1,1),metric='invalid')
 
     def test_projection_does_not_hide_malformed_pairs_or_changed_book_identity(self):
         self.executor.begin(dict(options=shared.baseline.options('legacy','F0')))

@@ -35,7 +35,7 @@ class CoordinatorTests(unittest.TestCase):
             artifact_bytes=8*1024**2,piece_bytes=127,record_bytes=16384))
         self.workspace=RequestWorkspace(self.inputs,result_workspace_bytes=64*1024**2)
         self.addCleanup(self.workspace.close)
-        self.compiler=compiler_identity(self.inputs,1)
+        self.compiler=compiler_identity(self.inputs,1,decisions=self.inputs.policy.decisions)
         self.provider=None;self.portfolio=None;self.pools=[];self.store_count=0
 
     def local(self):
@@ -72,7 +72,7 @@ class CoordinatorTests(unittest.TestCase):
         return random.run(self.workspace,config,experiment,execution=self.pool,
                           binding=self.binding(config),**callbacks)['result']
 
-    def force_second_first(self,pool):
+    def force_second_first(self,pool,*,release_on_save=False):
         send,event=pool._send,pool._event;delayed=[]
         def send_later(worker,value):
             if value.get('command')=='trial' and worker.index==0 and not delayed and pool.stats['completed_trials']==0:
@@ -80,14 +80,18 @@ class CoordinatorTests(unittest.TestCase):
             return send(worker,value)
         def next_event(*args):
             worker,value=event(*args)
-            if value.get('event')=='completed' and delayed:send(*delayed.pop())
+            if value.get('event')=='completed' and delayed and not release_on_save:send(*delayed.pop())
             return worker,value
         self.enterContext(patch.object(pool,'_send',side_effect=send_later))
         self.enterContext(patch.object(pool,'_event',side_effect=next_event))
+        def release_first():
+            self.assertTrue(delayed, 'Trial 1 must remain held until trial 2 is committed.')
+            send(*delayed.pop())
+        return release_first
 
     def test_parallel_local_original_eager_streaming_parity_and_prompt_ordered_commits(self):
         maximum_absolute=maximum_relative=0.;cases=0
-        pool=self.pool();self.force_second_first(pool)
+        pool=self.pool();release_first=self.force_second_first(pool,release_on_save=True)
         for stock_pool in ('legacy','cached'):
             for order in ('filter_first','rank_first'):
                 for metric in self.fixture.s.metrics.METRICS:
@@ -96,12 +100,15 @@ class CoordinatorTests(unittest.TestCase):
                     experiment=self.experiment(config);commits=[];captures=[];events=[]
                     save=experiment.save_from
                     def save_observed(number,view):
-                        outcome=save(number,view);commits.append(number);return outcome
+                        outcome=save(number,view);commits.append(number)
+                        if cases==0 and number==2:release_first()
+                        return outcome
                     with patch.object(experiment,'save_from',side_effect=save_observed):
                         actual=random.run(self.workspace,config,experiment,events.append,capture=lambda n,r:captures.append((n,r)),
                             execution=lambda:pool,binding=self.binding(config))['result']
                     self.assertEqual([n for n,r in captures],[1,2,3])
-                    if cases==0:self.assertEqual(commits[:2],[2,1])
+                    if cases==0:self.assertEqual(commits[0],2)
+                    self.assertEqual(sorted(commits),[1,2,3])
                     self.assertEqual(pool.stats['reserved_slots'],0)
                     self.assertEqual(actual['execution']['calculated_trials'],3)
                     for number,result in captures:
@@ -195,7 +202,7 @@ class CoordinatorTests(unittest.TestCase):
             execution=dict(workers=2,threads_per_worker=1,close_seconds=.5,
                 artifact_bytes=8*1024**2,piece_bytes=127,record_bytes=16384))
         with patch.object(numerical_session,'GenerationStore',return_value=self.fixture.store),\
-             patch.object(numerical_session,'NumbaExecutor',side_effect=AssertionError('No provider on full recovery')):
+             patch.object(numerical_session,'attach_provider',side_effect=AssertionError('No provider on full recovery')):
             session=numerical_session.Session(configuration)
             try:
                 self.assertIsNone(session.provider);self.assertEqual(session.expected_compiler,self.compiler)

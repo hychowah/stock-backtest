@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Reproducible date sensitivity: independent random trades in every cycle.
 
 Each cycle is anchored to the requested lower date bound and spans the chosen
@@ -15,7 +22,7 @@ import time
 
 import schedules
 import book_batch
-import schedule_calendar
+from backtest import calendar as schedule_calendar
 
 
 def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
@@ -24,7 +31,7 @@ def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
     if seed is None:seed=random.SystemRandom().getrandbits(32)
     if type(seed) is not int or not 0<=seed<=4294967295:
         raise ValueError('Choose a whole-number seed between 0 and 4294967295.')
-    schedules.r._select(db,period=(-1,-1),**options)
+    screening.validate_selection(**options)
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     calendar=schedule_calendar.SessionCalendar(sessions)
     configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))

@@ -69,7 +69,7 @@ def main():
             value.path.write_text(json.dumps(wrong_report))
             try:assert value.status()['state']!='current'
             finally:value.path.write_bytes(saved)
-            for kind,path in (('input',source/'raw/px/ZZ000.json'),('source',source/'scripts/metrics.py'),
+            for kind,path in (('input',source/'raw/px/ZZ000.json'),('source',source/'backtest/financial/metrics.py'),
                               ('pending',source/'data/research.sqlite.publication.json')):
                 existed=path.exists();saved=path.read_bytes() if existed else None;stamp=path.stat() if existed else None
                 child=value._runtime();child.configuration['preparation_status']=True

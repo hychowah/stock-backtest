@@ -50,7 +50,7 @@ def signature(research, checkpoint=lambda: None):
     paths = [r.RAW / name for name in
              ('universe.json', 'metrics.jsonl', 'spy-div.json', 'treasury.json')]
     paths += [r.RAW / 'px', Path(r.baseline.__file__), Path(r.__file__),
-              Path(r.metrics.__file__), Path(r.books.__file__),
+              Path(r.metrics.__file__), Path(r.books.__file__), Path(r.rules.__file__), Path(r.screening.__file__),
               Path(r.cache_assets.__file__), Path(r.run.__file__),
               Path(r.revalue.__file__), Path(r.financial_inputs.__file__)]
     result = {}
@@ -148,10 +148,10 @@ class PreparedGeneration:
     def _prepared(self, inventory, daily, research, report_hash):
         engine = {}
         for path in (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
-                     Path(self.s.__file__).with_name('schedule_calendar.py'),
-                     Path(self.s.__file__).with_name('portfolio_results.py')):
+                     Path(self.s.schedule_calendar.__file__),
+                     Path(self.s.portfolio_results.__file__)):
             info = path.stat()
-            engine[path.name] = [info.st_size, info.st_mtime_ns]
+            engine[path.relative_to(self.root).as_posix()] = [info.st_size, info.st_mtime_ns]
         accepted_prices = research.get('prices')
         if not isinstance(accepted_prices, dict):
             raise ValueError('Research price inventory is missing; retry preparation.')
@@ -168,7 +168,7 @@ class PreparedGeneration:
         if self.inputs.generation is None or json.loads(self.inputs.generation) != daily.get('daily_inputs'):
             raise ValueError('Numerical inputs belong to a different prepared generation.')
         policy = self.inputs.policy
-        actual = {Path(path).name: file_hash(path) for path in policy.source_paths}
+        actual = {Path(path).relative_to(Path(__file__).resolve().parents[1]).as_posix() if Path(path).is_relative_to(Path(__file__).resolve().parents[1]) else Path(path).as_posix(): file_hash(path) for path in policy.source_paths}
         if actual != policy.source_hashes:
             raise ValueError('Attached policy source dependencies changed.')
 

@@ -51,6 +51,7 @@ class WorkspaceTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.capture = self.root / 'capture'; self.capture.mkdir()
         self.source = self.root / 'policy'; (self.source / 'scripts').mkdir(parents=True)
+        shutil.copytree(ROOT / 'backtest', self.source / 'backtest', ignore=shutil.ignore_patterns('__pycache__'))
         for path in (ROOT / 'scripts').glob('*.py'):
             shutil.copy2(path, self.source / 'scripts' / path.name)
         (self.source / 'website').mkdir()
@@ -60,7 +61,7 @@ class WorkspaceTests(unittest.TestCase):
         self.freshness = dict(inputs={'raw/universe.json': [2, 1], 'raw/px': ['directory', 1],
             'historical_through': '2026-10-21'}, prices={'A.json': [100, 1234]})
         self.freshness['daily_inputs'] = dict(version=3, inputs=self.freshness['inputs'],
-            engine={'schedules.py': [123, 456], 'book_batch.py': [234, 567], 'schedule_calendar.py': [345, 678], 'portfolio_results.py': [456, 789]})
+            engine={'scripts/schedules.py': [123, 456], 'scripts/book_batch.py': [234, 567], 'backtest/calendar.py': [345, 678], 'backtest/portfolio_results.py': [456, 789]})
         with closing(sqlite3.connect(self.capture / 'research.sqlite')) as research, closing(sqlite3.connect(self.capture / 'schedules.sqlite')) as daily:
             fill(SimpleNamespace(research=research, daily=daily,
                 write_report=lambda content: (self.capture / 'report.txt').write_bytes(content)))
@@ -136,12 +137,12 @@ class WorkspaceTests(unittest.TestCase):
         self.output.rename(self.root / 'closed-output')
 
     def test_missing_calendar_freshness_dependency_rejects_without_fallback(self):
-        del self.manifest['originals']['freshness']['daily_inputs']['engine']['schedule_calendar.py']
+        del self.manifest['originals']['freshness']['daily_inputs']['engine']['backtest/calendar.py']
         self.write_manifest()
         self.assert_reason('incomplete',self.owner().__enter__)
 
     def test_missing_portfolio_freshness_dependency_rejects_without_fallback(self):
-        del self.manifest['originals']['freshness']['daily_inputs']['engine']['portfolio_results.py']
+        del self.manifest['originals']['freshness']['daily_inputs']['engine']['backtest/portfolio_results.py']
         self.write_manifest()
         self.assert_reason('incomplete',self.owner().__enter__)
 
@@ -310,7 +311,7 @@ class WorkspaceTests(unittest.TestCase):
             self.manifest = deepcopy(original); self.manifest[key] = value; self.write_manifest()
             self.assert_reason('incomplete', self.owner().__enter__)
         changes = [
-            ('sources', None), ('sources', {'scripts/books.py': []}),
+            ('sources', None), ('sources', {'backtest/financial/books.py': []}),
             ('freshness', None), ('freshness', {'inputs': []}),
             ('raw_inventory', {'raw/x': [None, 1]}), ('assets', {'x': None}),
             ('deployment', {'bytes': True, 'mtime_ns': 1, 'sha256': 'a' * 64}),
@@ -340,14 +341,14 @@ class WorkspaceTests(unittest.TestCase):
         with self.owner(): pass
 
     def test_missing_changed_and_incomplete_source_dependencies_reject_without_fallback(self):
-        path = self.source / 'scripts/metrics.py'; saved = path.read_bytes()
+        path = self.source / 'backtest/financial/metrics.py'; saved = path.read_bytes()
         path.write_bytes(saved + b'\n# changed\n')
         self.assert_reason('mismatch', self.owner().__enter__)
         path.unlink()
         self.assert_reason('incomplete', self.owner().__enter__)
         path.write_bytes(saved)
-        for name in ('scripts/books.py', 'scripts/paths.py', 'scripts/diagnostics.py', 'scripts/book_batch.py',
-                     'scripts/schedule_calendar.py', 'scripts/portfolio_results.py'):
+        for name in ('backtest/financial/books.py', 'backtest/paths.py', 'scripts/diagnostics.py', 'scripts/book_batch.py',
+                     'backtest/calendar.py', 'backtest/portfolio_results.py'):
             expected = self.manifest['originals']['sources'].pop(name); self.write_manifest()
             self.assert_reason('incomplete', self.owner().__enter__)
             self.manifest['originals']['sources'][name] = expected
@@ -356,16 +357,16 @@ class WorkspaceTests(unittest.TestCase):
             self.assertFalse((inputs.source_snapshot / 'raw').exists())
 
     def test_unsupported_source_imports_or_syntax_never_attach_unrecorded_modules(self):
-        path = self.source / 'scripts/metrics.py'; original = path.read_bytes()
+        path = self.source / 'backtest/financial/metrics.py'; original = path.read_bytes()
         for appended in (b'\nimport missing_unrecorded_dependency\n', b'\nfrom . import policy\n',
                          b'\n__import__("hidden")\n', b'\nthis is invalid syntax!\n'):
             path.write_bytes(original + appended)
-            self.manifest['originals']['sources']['scripts/metrics.py'] = sha(path)
+            self.manifest['originals']['sources']['backtest/financial/metrics.py'] = sha(path)
             self.write_manifest()
             with self.assertRaises(execution.ExecutionInputError) as caught:
                 self.owner().__enter__()
             self.assertIn(caught.exception.reason, ('incomplete', 'unsupported'))
-        path.write_bytes(original); self.manifest['originals']['sources']['scripts/metrics.py'] = sha(path); self.write_manifest()
+        path.write_bytes(original); self.manifest['originals']['sources']['backtest/financial/metrics.py'] = sha(path); self.write_manifest()
         with self.owner(): pass
 
     def test_path_traversal_absolute_paths_and_output_overlap_reject(self):
@@ -393,7 +394,7 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(list(self.output.iterdir()), [])
 
     def test_symlink_source_capture_and_output_escapes_reject(self):
-        path = self.source / 'scripts/metrics.py'; saved = path.read_bytes(); path.unlink()
+        path = self.source / 'backtest/financial/metrics.py'; saved = path.read_bytes(); path.unlink()
         outside = self.root / 'outside.py'; outside.write_bytes(saved)
         try:
             path.symlink_to(outside)

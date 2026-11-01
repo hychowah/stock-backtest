@@ -1,7 +1,7 @@
 # Saved-session schedule calendar
 
 The source can plan fixed and random dates for 1–104 calendar weeks or 1–24
-calendar months. `scripts/schedule_calendar.py` owns these rules. It uses only
+calendar months. `backtest/calendar.py` owns these rules. It uses only
 the Python standard library. It reads no files and calculates no portfolios.
 
 Legacy standalone planners accept 1, 3, 6, 12 and 24 months. Both normal
@@ -119,8 +119,8 @@ existing application payloads. This verifies date/financial separation. It
 does not change the ordinary engine. The isolated preview uses the canonical
 metadata described below.
 
-The daily-cache engine fingerprint includes `schedule_calendar.py` and the
-CB-09 `portfolio_results.py` reducer. Its existing
+The daily-cache engine fingerprint includes `backtest/calendar.py` and the
+CB-09 `backtest/portfolio_results.py` reducer. Its existing
 capture and generation validators include the same dependency. A changed source
 requires ordinary offline preparation. There is no new identity mechanism or
 database schema version. Private source exports already include Python modules.
@@ -152,8 +152,8 @@ the same. Runtime use retains financial ownership across all reused jobs.
 
 ## Website requests and stored snapshots
 
-`scripts/calendar_requests.py` separates calendar settings from selection.
-`numerical_calendar.py` remains a compatibility import.
+`backtest/calendar_requests.py` separates calendar settings from selection.
+Both engines import this canonical owner.
 Send either legacy `start`, `end`, optional `months`, or one nested `calendar`
 with the version-1 configuration above. Mixed representations fail. Both
 website execution adapters accept canonical requests. Fixed results use `calendar`
@@ -195,8 +195,8 @@ keeps its original headers and remains unidentified. See the
 ## Both website engines
 
 Both Original and Experimental accept version-1 fixed and random requests.
-`scripts/calendar_requests.py` owns decoding, exact recorded-plan matching and
-saved-session validation. `numerical_calendar.py` is its compatibility name.
+`backtest/calendar_requests.py` owns decoding, exact recorded-plan matching and
+saved-session validation. Both engines import this canonical owner.
 Original's explicit `schedules.backtest_calendar` operation uses the existing
 book evaluator and reducer. The legacy `backtest`, `backtest_dates` and
 `robustness.plan` interfaces retain their accepted arguments and serialized

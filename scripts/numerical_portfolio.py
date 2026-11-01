@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Offline complete-book portfolio diagnostic. No runtime discovery or routing.
 
 The caller owns source before import/cache access, validates and holds its input
@@ -9,8 +16,8 @@ import math
 import sqlite3
 import time
 
-import numerical_calendar
-import portfolio_results
+from backtest import calendar_requests as numerical_calendar
+from backtest import portfolio_results as portfolio_results
 from numerical_workspace import RequestWorkspace, stage_book
 from numerical_matrix import retained_size
 
@@ -105,7 +112,7 @@ class NumericalPortfolio(RequestWorkspace):
             except (sqlite3.Error, TypeError, ValueError, KeyError) as error:
                 raise ValueError('Complete-book SQL staging contract differs.') from error
             self.s.backtest_control.checkpoint()
-            holdings = self.s.r._select(self.db, period=(period_id, period_id), **options)
+            holdings = screening.select(self.db, period=(period_id, period_id), **options)
             selected = dict(entry=requested[0], exit=requested[1], holdings=holdings, spy=book['period'][2])
             retained = (retained if emit_period is None else 0)+retained_size(selected)+4096
             self.peak_result_graph_bytes = max(self.peak_result_graph_bytes,retained)

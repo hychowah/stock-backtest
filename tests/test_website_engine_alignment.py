@@ -1,4 +1,9 @@
 """Actual adapters share canonical calendars, selection and immutable evidence."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from contextlib import ExitStack
 from copy import deepcopy
 import json
@@ -11,7 +16,7 @@ import test_candidate_calculations as candidate_tests
 from numerical_portfolio import compare_results
 from test_operating_spread_engine import financial_inputs, FILTERS
 import engine_selection
-import calendar_requests
+from backtest import calendar_requests as calendar_requests
 import backtest_queue
 from test_queue import request
 

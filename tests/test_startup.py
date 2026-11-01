@@ -139,7 +139,7 @@ class PortableFingerprintTests(unittest.TestCase):
             for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(raw/name).write_text('[]')
             (results/'summary-exits.txt').write_text('Through 2026-10-20\n')
             context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw));context.enter_context(patch.object(research,'RESULTS',results))
-            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.run,'run.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
+            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.screening,'screening.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.run,'run.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
                 file=root/name;file.write_text('source');context.enter_context(patch.object(module,'__file__',str(file)))
             expected=research.signature();original=Path.stat;directory=raw/'px'
             stamp=directory.stat().st_mtime_ns

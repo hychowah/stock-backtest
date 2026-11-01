@@ -1,6 +1,7 @@
 """Actual preparation/build/freshness and HTTP on fictional private roots only."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from http.client import RemoteDisconnected
 import json
 import os
 from pathlib import Path
@@ -164,11 +165,11 @@ class SourceServiceTests(unittest.TestCase):
             self.assertGreaterEqual(handoff,0.);self.assertLess(handoff,2.)
             s.wait('request_held')
             closing_service=clients.submit(s.close)
-            time.sleep(.05);self.assertFalse(closing_service.done())
+            s.wait('admission_closed');self.assertFalse(closing_service.done())
             with self.assertRaises(RuntimeError):
                 with runtime_access.ownership(self.workspace.source,exclusive=True,timeout=0):pass
             (s.control/'request_held.release').touch()
-            self.assertTrue(arrivals[0].result(timeout=60)['periods'])
+            with self.assertRaises(RemoteDisconnected):arrivals[0].result(timeout=60)
             closing_service.result(timeout=15)
         self.assertTrue(s.closed)
         with runtime_access.ownership(self.workspace.source,exclusive=True,timeout=0):pass

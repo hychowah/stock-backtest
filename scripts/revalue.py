@@ -5,13 +5,18 @@ prepared snapshots, books.snapshot, or the SQL selector.
 """
 from __future__ import annotations
 
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
 from contextlib import redirect_stdout
 from datetime import date
 import io
 import json
 
 import run
-from paths import RAW, RESULTS
+from backtest.paths import RAW, RESULTS
 
 # Filled after the filing check. Symbol-year pairs that are bankruptcies.
 BANKRUPT: set[tuple[int, str]] = set()

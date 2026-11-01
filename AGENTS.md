@@ -135,7 +135,7 @@ Change the screen, the universe, or the price cache in `scripts/run.py`. Run it 
 
 ## Project layout
 
-Backtest entry points live in `scripts/`, with shared paths in `scripts/paths.py`. API experiments and repair tools are in `tools/`. Current reports are in `results/`, older reports in `results/legacy/`, and stop analyses in `results/stops/`. Unused acquisition files are preserved in `raw/archive/`; active cache locations are unchanged.
+Documented backtest commands live in `scripts/`. Shared financial policy, screening, calendars and portfolio results live in `backtest/`. Paths are resolved by `backtest/paths.py`. API experiments and repair tools are in `tools/`. Current reports are in `results/`, older reports in `results/legacy/`, and stop analyses in `results/stops/`. Unused acquisition files are preserved in `raw/archive/`; active cache locations are unchanged.
 
 The website source lives in `website/`. Normal builds, startup and data-panel rebuilds write ignored `website/local/`, which the server serves. Build with `python3 website/build.py`. The tracked `website/dist/` is a portable snapshot. Refresh it only with explicit `python3 website/build.py --snapshot`. Do not auto-stage snapshot changes with unrelated code. Review its `snapshot.json` cutoffs and source hashes with generated diffs. Browser parity and range checks default to local output; pass `website/dist` to check the portable snapshot. Verify path handling with `python3 tests/check_paths.py` and website calculations with `node tests/check-range.cjs`. Python uses the standard library; the JavaScript check needs Node.js. Cache-only workflows require no API key.
 
@@ -193,14 +193,14 @@ research/schedule/robustness/queue checks and browser/artifact controls.
 
 ## Latest-date website screening
 
-Schema version 2 prepares `latest_snapshots` separately from historical snapshots. Latest date means the latest cached SPY session. Require an exact-session dividend-adjusted price and cached `listed=True`; never reuse old stopped prices in the latest screen. Use the same 90-day lag, strict availability-before-date rule and 800-day report-age limit. No future return or contribution is stored for latest picks. `research.latest_screen()` and `StockScreener.latestScreen()` must agree. The website opens in latest mode; historical mode retains year controls.
+Schema version 2 prepares `latest_snapshots` separately from historical snapshots. Latest date means the latest cached SPY session. Require an exact-session dividend-adjusted price and cached `listed=True`; never reuse old stopped prices in the latest screen. Use the same 90-day lag, strict availability-before-date rule and 800-day report-age limit. No future return or contribution is stored for latest picks. `screening.latest()` and `StockScreener.latestScreen()` must agree. The website opens in latest mode; historical mode retains year controls.
 
 Historical preparation is bounded by the canonical report's Through date and historical ASOF, while latest preparation can advance independently. The report cutoff participates in source freshness. Its full content hash binds the committed database to the report. Capture schedule fingerprints after research preparation, since preparation can update the report. Refresh prepared data and rebuild the HTML after cache updates; strategy calculations do not fetch market data. The separate data panel downloads missing inputs only after an explicit button action. Tests include exact-date exclusion, unavailable/stale reports, cached listing status, unchanged historical periods when latest prices advance, both SQL/browser screen modes and latest CSV output.
 
 ## Ranking metric catalog
 
 Schema version 4 stores uniform `screening_metrics` pairs (multiple and yield)
-for each mode, pool, year and symbol; `scripts/metrics.py` owns the display
+for each mode, pool, year and symbol; `backtest/financial/metrics.py` owns the display
 catalog, calculator registry and all metric calculations. Both website modes and SQL selection accept a metric
 ID, with the catalog embedded by `website/dataset.py`. Keep filtering/ranking
 and rendering generic: consumers read prepared pairs without interpreting formulas
@@ -218,7 +218,7 @@ and a loopback custom-schedule API. January and latest views remain standalone;
 custom dates use `website/schedule.js` and the local service. Dates are anchored
 to the original starting day, clamp month ends, and roll forward to SPY sessions;
 end marks roll back. Supported intervals are 1, 3, 6, 12 and 24 months. Persist dated
-books independently of filters and reuse `research._select` and
+books independently of filters and reuse `screening.select` and
 `metrics.evaluate` rather than duplicating filtering or metric formulas. Custom
 charts show dated period returns; don't label monthly/quarterly books as annual
 returns. Keep canonical January reports untouched. Verify with
@@ -324,7 +324,7 @@ Select eligible USD numerical inputs separately for calculations. New key-metric
 records in metrics.jsonl also keep full responses. Backfill old trimmed key metrics
 in the separate full-data cache without rewriting baseline inputs.
 Content-bound receipts include empty responses. Rebuild after download.
-`scripts/metrics.py` owns the formulas. Use the selected fiscal report only;
+`backtest/financial/metrics.py` owns the formulas. Use the selected fiscal report only;
 never fill missing fields with a newer report. PEG uses positive three-year
 diluted EPS CAGR in percentage points with four consecutive positive EPS years.
 ROE uses mean positive equity from the selected and previous fiscal years.
@@ -562,8 +562,8 @@ execution lifetimes. `calculation_contract.py` supplies identity, shared errors
 and admission lifecycle without job dependencies. `backtest_jobs.Calculations`
 remains a compatibility name for Original. `engine_selection.Selectable` is the
 single application router. Jobs and queue consumers do not choose an adapter.
-`scripts/calendar_requests.py` owns financial-free request/plan policy;
-`numerical_calendar.py` is a compatibility import. Preserve legacy planner hashes.
+`backtest/calendar_requests.py` owns financial-free request/plan policy;
+Both engines import this canonical owner. Preserve legacy planner hashes.
 `website/engine-controls.js` owns execution controls and advisory capabilities;
 `calendar-settings.js` owns dates and labels. Latest and January remain shared
 prepared-data views. Stored-result readers never infer producer from a selector.

@@ -1,11 +1,16 @@
 """Export compact prepared January records for the offline browser screener."""
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import json
 from research import connect
-from metrics import METRICS, FILTERS
+from backtest.financial.metrics import METRICS, FILTERS
 
 FIELDS = ['year','symbol','candidate_rank','fiscal','entry','exit',
           'market_cap','enterprise_value','ebitda_yield','ev_ebitda',

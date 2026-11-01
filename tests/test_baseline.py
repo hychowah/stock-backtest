@@ -1,4 +1,9 @@
 """Independent-engine agreement, priced revisions and recoverable publication."""
+
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+from backtest import screening
 from contextlib import closing
 from copy import deepcopy
 from datetime import date
@@ -63,7 +68,7 @@ class BaselineTests(unittest.TestCase):
         path=r.RAW/'px/TEST.json';rows=json.loads(path.read_text());rows['div'].append(dict(date='2016-01-04',adjClose=24));path.write_text(json.dumps(rows))
         r.prepare(self.path)
         self.assertEqual(self.owner.report.read_bytes(),report);self.assertEqual(self.history(),folders)
-        with closing(r.connect(self.path)) as db:self.assertEqual(r.latest_screen(db)[0]['price_date'],'2016-01-04')
+        with closing(r.connect(self.path)) as db:self.assertEqual(screening.latest(db)[0]['price_date'],'2016-01-04')
         self.assertEqual(self.result()['through'],'2015-10-20')
 
     def test_unchanged_inputs_start_neither_engine(self):

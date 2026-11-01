@@ -54,34 +54,17 @@ CALCULATORS = {
 }
 
 
+def validate_catalog():
+    """Reject catalog/calculator mismatch before preparation reads or writes."""
+    if METRICS.keys()!=CALCULATORS.keys():
+        raise ValueError('Every catalog metric must have exactly one calculator.')
+
+
 def evaluate(observation, history):
     """Resolve every registered metric into ready-to-rank values or omit it."""
-    if METRICS.keys()!=CALCULATORS.keys():
-        raise ValueError('Every catalog metric must have exactly one calculator.')
+    validate_catalog()
     return {metric:pair for metric,calculate in CALCULATORS.items()
             if (pair:=calculate(observation,history)) is not None}
-
-
-def prepare_metrics(db):
-    """Publish ready-to-rank values for each mode, pool, date and company.
-
-    The selected fiscal report bounds history; its availability and screening
-    eligibility were established when preparing the observation. Latest uses
-    year 0, while historical observations use their January book year.
-    """
-    if METRICS.keys()!=CALCULATORS.keys():
-        raise ValueError('Every catalog metric must have exactly one calculator.')
-    histories={}
-    for row in db.execute('SELECT * FROM statements ORDER BY symbol,fiscal'):
-        histories.setdefault(row['symbol'],[]).append(dict(row))
-    db.execute('DELETE FROM screening_metrics')
-    for mode,table in [('historical','snapshots'),('latest','latest_snapshots')]:
-        values=[]
-        for row in db.execute('SELECT * FROM '+table):
-            observation=dict(row)
-            for metric,pair in evaluate(observation,histories.get(row['symbol'],[])).items():
-                values.append((mode,row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
-        db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',values)
 
 
 # Threshold values use display units: millions of dollars, percent, or multiples.

@@ -228,13 +228,13 @@ class BoundedRuntimeTests(unittest.TestCase):
         # Preserve all actual source files. Change only an owned private export.
         import shutil
         private=self.root/'private-bounded-source';private.mkdir()
-        for folder in ('scripts','website','tools','tests'):
+        for folder in ('scripts','website','tools','tests','backtest'):
             shutil.copytree(ROOT/folder,private/folder,ignore=shutil.ignore_patterns('__pycache__','local','dist','node_modules'))
         value=numerical_runtime.NumericalRuntime(source_root=private,scratch=self.root/'source-bounded-runtime',
             generation_path=self.fixture.store.path,checkpoint_path=self.root/'source-bounded.sqlite',threads=1,
             python=sys.executable,session_factory='numerical_runtime_fixture:Session',coordinator=self.fixture.owner)
         self.addCleanup(value.close);self.into(value,'random',options)
-        path=private/'scripts'/'metrics.py';path.write_bytes(path.read_bytes()+b'\n# Fictional changed source.\n')
+        path=private/'backtest/financial/metrics.py';path.write_bytes(path.read_bytes()+b'\n# Fictional changed source.\n')
         with self.assertRaisesRegex(ValueError,'Loaded calculation source changed'):self.into(value,'random',options)
         self.assert_closed(value)
 

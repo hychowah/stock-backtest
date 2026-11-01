@@ -1,3 +1,10 @@
+
+# Resolve the importable package for direct-file commands and spawned fixtures.
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
+
+from backtest import screening
 """Plan missing books once, calculate ahead, and commit through one SQLite writer.
 
 Only requested date pairs are planned. Processes use read-only connections and
@@ -18,7 +25,7 @@ from threading import Thread
 import time
 
 import schedules as s
-import calendar_requests
+from backtest import calendar_requests as calendar_requests
 import backtest_control
 
 DEFAULT_WORKERS=4
@@ -36,7 +43,7 @@ def generation(db):
 def plan(db,configuration):
     """Deduplicate all required books, retaining first-use order by trial."""
     options=configuration['options']
-    s.r._select(db,period=(-1,-1),**options)
+    screening.validate_selection(**options)
     if len(configuration['samples'])!=configuration['requested']:
         raise ValueError('The number of sampled schedules must match the requested trials.')
     pool=options.get('pool','legacy')

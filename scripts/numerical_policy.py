@@ -15,6 +15,8 @@ from pathlib import Path
 import textwrap
 import types
 
+ROOT = Path(__file__).resolve().parents[1]
+
 FINANCIAL_FIELDS = ('pe', 'pb', 'fcf', 'fcf_yield', 'price_fcf',
                     'profit_margin', 'roe', 'current_ratio', 'interest_coverage',
                     'debt_equity', 'peg', 'operating_yield_spread_3y')
@@ -297,8 +299,8 @@ class PolicyProgram:
                                          m.current_multiple,m.financial_values,m.operating_yield_spread,
                                          schedules.compute_period,m.three_year_multiple)}
         source_files.update(Path(module.__file__).resolve() for module in
-            (schedules.financial_books.run,schedules.r,schedules.r.revalue))
-        self.source_hashes = {path.name:hashlib.sha256(path.read_bytes()).hexdigest()
+            (schedules.financial_books.run,schedules.r.run,schedules.r,schedules.r.revalue,schedules.screening))
+        self.source_hashes = {path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix():hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(source_files)}
         self.source_paths = tuple(sorted(source_files))
         identity = dict(sources=self.source_hashes, inputs=self.input_names,

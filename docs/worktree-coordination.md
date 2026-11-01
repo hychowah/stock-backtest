@@ -6,8 +6,9 @@ Keep frontend and unrelated backend changes small at shared boundaries.
 
 ## Worktree ownership
 
-For the CB-19 program only, the dated exception below assigns engine work to
-`main`. The general ownership table continues to govern other tasks.
+For CB-19 and the project-structure program, the dated exceptions below assign
+the specified engine work to `main`. The general ownership table governs other
+tasks.
 
 | Worktree | Branch | Work |
 |---|---|---|
@@ -31,9 +32,9 @@ The following map identifies the main areas to check.
 | Area | Main-side boundary |
 |---|---|
 | Presentation: `website/template.html`, CSS, `responsive.js`, labels, layout and result display | Continue UI work using existing request and result contracts. Preserve financial meaning, coverage warnings, missing values and exports. |
-| Financial policy: `scripts/books.py`, `metrics.py`, `run.py`, `revalue.py`, `financial_inputs.py`; browser screening/return formulas | Coordinate before changing formulas, eligibility, ranking, dates, returns, exits, metrics, filters or numerical tolerances. Presentation edits in the same browser files can continue. |
+| Financial policy: `backtest/financial/rules.py`, `books.py`, `metrics.py`; `scripts/run.py`, `revalue.py`, `financial_inputs.py`; browser screening/return formulas | Coordinate before changing formulas, eligibility, ranking, dates, returns, exits, metrics, filters or numerical tolerances. Presentation edits in the same browser files can continue. |
 | Execution: `scripts/schedules.py`, `book_batch.py`, `robustness.py` | Engine-owned. Coordinate changes to planning, calculation, result saving, worker startup, cancellation or progress semantics. |
-| Prepared inputs and evidence: `scripts/research.py`, `baseline.py`, `cache_assets.py`, `cache_access.py`, `paths.py` | Engine-related contracts are protected. Coordinate changes to schemas, report binding, freshness, paths, cache publication, locking or prepared-input semantics. |
+| Prepared inputs and evidence: `scripts/research.py`, `baseline.py`, `cache_assets.py`, `cache_access.py`; `backtest/paths.py` | Engine-related contracts are protected. Coordinate changes to schemas, report binding, freshness, paths, cache publication, locking or prepared-input semantics. |
 | Shared service/build edges: `website/serve_app.py`, `data_manager.py`, `dataset.py`, `build.py`, `build_state.py`; `scripts/fmp_download.py` | Unrelated backend work can continue with narrow edits. Coordinate changes to engine calls, preparation, data publication, embedded datasets, configuration, response fields or error/progress contracts. |
 | Startup and deployment: `website/serve.py`, `launcher.py`, `runtime_access.py`, `tools/deploy.py`, Windows launch scripts | Coordinate changes to source/cache ownership, dependency setup, process lifetime, publication recovery, revision selection or default engine selection. |
 | Browser/API edges: `website/schedule.js`, `robustness.js`, `range.js`, `screener.js`, holdings and export adapters | UI work can continue. Keep request fields, defaults, units, sampled dates, result shapes, selected-stock evidence and saved-result compatibility stable. |
@@ -361,3 +362,26 @@ Saved-row All parameters disclosures reuse this projection and its existing
 reader cleanup. They add no server or engine contract.
 Existing unrelated snapshot and market-scope
 files stay outside these commits. See the [master plan](plans/backtest-library/master-plan.md).
+
+
+## Project-structure ownership exception — 1 November 2026
+
+The user authorizes `main` to implement the four phases in the
+[project-structure plan](plans/project-structure/master-plan.md). This narrow
+exception covers package ownership, import migration, source identities and
+required application/presentation boundaries. Preserve financial behavior,
+Original as default, source-before-import ownership and durable evidence.
+The engine worktree remains untouched. No synchronization or automatic merge
+is authorized. Custom variables remain on hold.
+
+Phase 1 assigns shared configuration, book policy and metrics to
+`backtest/financial/`. `backtest/screening.py` owns validation and SQL selection.
+Shared calendars, requests, portfolio results and paths have one package owner.
+SQL metric population remains in research preparation until Phase 2. Source
+moves invalidate rebuildable identities where required. User records and
+historical measurements remain unchanged. Preserve closed benchmark admission.
+
+Each phase receives independent design, implementation, independent audit and
+one coherent commit. Check both process namespaces for automatic publication
+supervisors immediately before committing. Deployment, server restart,
+downloads and real-cache preparation remain outside this program.

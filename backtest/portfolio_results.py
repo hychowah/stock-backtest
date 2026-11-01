@@ -11,7 +11,7 @@ This standard-library module opens no resources and takes no ownership.
 from copy import deepcopy
 from datetime import date
 import math
-import numerical_calendar
+from backtest import calendar_requests as numerical_calendar
 
 CONTRACT_VERSION = 1
 COVERAGE = ('Cached-price companies only; additional early exits have not received '

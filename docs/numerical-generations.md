@@ -77,7 +77,7 @@ Existing historical receipts are not rewritten. Benchmark admission stays closed
 
 The CB-08 calendar adapter and CB-09 portfolio reducer change the whole-source
 hash of `schedules.py`. The daily engine fingerprint includes
-`schedule_calendar.py` and `portfolio_results.py`. Existing
+`backtest/calendar.py` and `backtest/portfolio_results.py`. Existing
 daily caches need ordinary offline preparation, followed by numerical export.
 Older artifacts cannot validate as current. Financial formulas stay the same.
 Format 1, temporal interface 1 and factor interface 1 stay the same. This source
@@ -642,9 +642,8 @@ remain CB-14 work. CB-15 and default selection remain blocked.
 ## Current website alignment
 
 The numerical generation, financial policy and result formats do not change in
-CB-18. `calendar_requests.py` now owns request representation and recorded-plan
-validation shared with Original. `numerical_calendar.py` remains a compatible
-import. Calculation source fingerprints include the shared owner. Prepare a new
+CB-18. `backtest/calendar_requests.py` owns request representation and recorded-plan
+validation shared with Original. Both engines import this canonical owner. Calculation source fingerprints include the shared owner. Prepare a new
 numerical generation after upgrading changed calculation source; old immutable
 results remain readable without preparation.
 

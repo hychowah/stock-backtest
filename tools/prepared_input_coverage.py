@@ -1,4 +1,10 @@
 """Read-only coverage evidence for an ordinary independently prepared workspace."""
+
+import sys as _package_sys
+from pathlib import Path as _PackagePath
+_package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+from backtest import screening
+
 from collections import Counter
 from contextlib import ExitStack, closing
 from datetime import date
@@ -12,7 +18,7 @@ SOURCE=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(SOURCE/'scripts'))
 import research as r
 import schedules as s
-import books
+from backtest.financial import books as books
 import cache_access
 
 
@@ -91,8 +97,8 @@ def _coverage(research,daily,spy_payload,treasury_payload,checkpoint,histories=N
         checkpoint();period=periods.get(year);counts={}
         statements,ranks=books.candidates(histories,date.fromisoformat(period['entry'])) if period else ({'legacy':{},'cached':{}},{})
         for pool in ('legacy','cached'):
-            filtered=r.screen(research,first=year,last=year,pool=pool,rank_to=5000)
-            selected=r.screen(research,first=year,last=year,pool=pool)
+            filtered=screening.historical(research,first=year,last=year,pool=pool,rank_to=5000)
+            selected=screening.historical(research,first=year,last=year,pool=pool)
             omitted=Counter();eligible=statements[pool]
             if pool=='legacy':eligible={symbol:row for symbol,row in eligible.items() if symbol in ranks}
             saved={row[0] for row in research.execute('SELECT symbol FROM snapshots WHERE pool=? AND year=?',(pool,year))}

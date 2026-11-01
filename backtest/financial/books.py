@@ -3,7 +3,7 @@
 Price adapters return (date, positive price) or None within the given tolerance.
 Storage, calendar planning and SQL insertion stay outside this module.
 """
-import run
+from backtest.financial import rules as run
 
 
 def statements(records, universe):
