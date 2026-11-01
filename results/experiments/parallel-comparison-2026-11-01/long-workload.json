@@ -1,0 +1,30 @@
+{
+  "request": {
+    "start": "2010-01-04",
+    "end": "2019-12-31",
+    "months": 12,
+    "trials": 24,
+    "seed": 42,
+    "pool": "cached",
+    "rank_from": 1,
+    "rank_to": 50,
+    "metric": "ev_ebitda",
+    "selection_order": "filter_first"
+  },
+  "plan_sha256": "bb936a2489f1386a755996144dc28ce2f7e1fe915a04a836fccab5a13e909a04",
+  "trial_count": 24,
+  "dated_periods": 240,
+  "rank_count": 50,
+  "eager_estimate_bytes": 53084160,
+  "existing_runtime_result_workspace_bytes": 268435456,
+  "within_existing_bound": true,
+  "universe": "Full qualified cached pool; no company cohort/subsample",
+  "purpose": "Amortize observed fixed setup and evaluate useful normalapplication scaling",
+  "source_binding": {
+    "declaration_sha256": "c02701f336b2b04c9343454fb393c357086752d68235fb8fa41c378fb9f1e609",
+    "generation": "e083abec0de70bfbf40a4ebf7863926caa48d3b00cdceaae675ec706857c67ec",
+    "report_sha256": "6bc2e59ea722f6f88491eaa8c7411d7e1262cdcbf7c0092f3d45e97a4ea5c9ea",
+    "preparation_inventory": "c2df3c0ec24f69261be790414e654e937a4c91b371370ab454844e12d59d96fd",
+    "plan_sha256": "bb936a2489f1386a755996144dc28ce2f7e1fe915a04a836fccab5a13e909a04"
+  }
+}

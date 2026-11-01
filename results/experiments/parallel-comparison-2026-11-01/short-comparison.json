@@ -1,0 +1,174 @@
+{
+  "binding": {
+    "declaration_sha256": "c02701f336b2b04c9343454fb393c357086752d68235fb8fa41c378fb9f1e609",
+    "generation": "e083abec0de70bfbf40a4ebf7863926caa48d3b00cdceaae675ec706857c67ec",
+    "report_sha256": "6bc2e59ea722f6f88491eaa8c7411d7e1262cdcbf7c0092f3d45e97a4ea5c9ea",
+    "preparation_inventory": "c2df3c0ec24f69261be790414e654e937a4c91b371370ab454844e12d59d96fd",
+    "plan_sha256": "a08d3ad47aa3be17fed9ecfda657a25fcb637797f80704ac3128815d3e140d69"
+  },
+  "agreement": [
+    {
+      "label": "original-1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "original-reuse",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "source-1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "compiled-1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "rust-1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "source-init",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "compiled-init",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "rust-init",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "compiled-recovery",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "rust-recovery",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    }
+  ],
+  "timings": {
+    "original:1x1:fresh_application": {
+      "raw_seconds": [
+        38.643074200022966
+      ],
+      "median_seconds": 38.643074200022966,
+      "minimum_seconds": 38.643074200022966,
+      "maximum_seconds": 38.643074200022966
+    },
+    "original:1x1:original_reuse": {
+      "raw_seconds": [
+        1.492691499995999
+      ],
+      "median_seconds": 1.492691499995999,
+      "minimum_seconds": 1.492691499995999,
+      "maximum_seconds": 1.492691499995999
+    },
+    "numba:1x4:fresh_application": {
+      "raw_seconds": [
+        36.85081179998815
+      ],
+      "median_seconds": 36.85081179998815,
+      "minimum_seconds": 36.85081179998815,
+      "maximum_seconds": 36.85081179998815
+    },
+    "numba_compiled:1x4:fresh_application": {
+      "raw_seconds": [
+        38.04473249998409
+      ],
+      "median_seconds": 38.04473249998409,
+      "minimum_seconds": 38.04473249998409,
+      "maximum_seconds": 38.04473249998409
+    },
+    "rust:1x4:fresh_application": {
+      "raw_seconds": [
+        35.32140300003812
+      ],
+      "median_seconds": 35.32140300003812,
+      "minimum_seconds": 35.32140300003812,
+      "maximum_seconds": 35.32140300003812
+    },
+    "numba:1x4:initialized_fresh": {
+      "raw_seconds": [
+        15.2707672000397
+      ],
+      "median_seconds": 15.2707672000397,
+      "minimum_seconds": 15.2707672000397,
+      "maximum_seconds": 15.2707672000397
+    },
+    "numba_compiled:1x4:initialized_fresh": {
+      "raw_seconds": [
+        14.818641999969259
+      ],
+      "median_seconds": 14.818641999969259,
+      "minimum_seconds": 14.818641999969259,
+      "maximum_seconds": 14.818641999969259
+    },
+    "rust:1x4:initialized_fresh": {
+      "raw_seconds": [
+        14.72392919997219
+      ],
+      "median_seconds": 14.72392919997219,
+      "minimum_seconds": 14.72392919997219,
+      "maximum_seconds": 14.72392919997219
+    },
+    "numba_compiled:1x4:full_recovery": {
+      "raw_seconds": [
+        20.642894600052387
+      ],
+      "median_seconds": 20.642894600052387,
+      "minimum_seconds": 20.642894600052387,
+      "maximum_seconds": 20.642894600052387
+    },
+    "rust:1x4:full_recovery": {
+      "raw_seconds": [
+        20.64445409999462
+      ],
+      "median_seconds": 20.64445409999462,
+      "minimum_seconds": 20.64445409999462,
+      "maximum_seconds": 20.64445409999462
+    }
+  },
+  "scope": "Whole request through complete holdings and confirmed closure; no host cache flush."
+}

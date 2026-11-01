@@ -1,0 +1,153 @@
+{
+  "binding": {
+    "declaration_sha256": "c02701f336b2b04c9343454fb393c357086752d68235fb8fa41c378fb9f1e609",
+    "generation": "e083abec0de70bfbf40a4ebf7863926caa48d3b00cdceaae675ec706857c67ec",
+    "report_sha256": "6bc2e59ea722f6f88491eaa8c7411d7e1262cdcbf7c0092f3d45e97a4ea5c9ea",
+    "preparation_inventory": "c2df3c0ec24f69261be790414e654e937a4c91b371370ab454844e12d59d96fd",
+    "plan_sha256": "bb936a2489f1386a755996144dc28ce2f7e1fe915a04a836fccab5a13e909a04"
+  },
+  "agreement": [
+    {
+      "label": "long-original",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-compiled-1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-rust-1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-compiled-22",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-compiled-41",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-compiled-24",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-rust-22-r1",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-compiled-22-r2",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-compiled-22-r3",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "long-rust-22-r2",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    }
+  ],
+  "timings": {
+    "original:1x1:fresh_application": {
+      "raw_seconds": [
+        71.01995379995788
+      ],
+      "median_seconds": 71.01995379995788,
+      "minimum_seconds": 71.01995379995788,
+      "maximum_seconds": 71.01995379995788
+    },
+    "numba_compiled:1x4:fresh_application": {
+      "raw_seconds": [
+        65.46609400003217
+      ],
+      "median_seconds": 65.46609400003217,
+      "minimum_seconds": 65.46609400003217,
+      "maximum_seconds": 65.46609400003217
+    },
+    "rust:1x4:fresh_application": {
+      "raw_seconds": [
+        61.47065830003703
+      ],
+      "median_seconds": 61.47065830003703,
+      "minimum_seconds": 61.47065830003703,
+      "maximum_seconds": 61.47065830003703
+    },
+    "numba_compiled:2x2:fresh_application": {
+      "raw_seconds": [
+        61.463091199984774,
+        59.77024350001011,
+        59.27196029998595
+      ],
+      "median_seconds": 59.77024350001011,
+      "minimum_seconds": 59.27196029998595,
+      "maximum_seconds": 61.463091199984774
+    },
+    "numba_compiled:4x1:fresh_application": {
+      "raw_seconds": [
+        71.48634939995827
+      ],
+      "median_seconds": 71.48634939995827,
+      "minimum_seconds": 71.48634939995827,
+      "maximum_seconds": 71.48634939995827
+    },
+    "numba_compiled:2x4:fresh_application": {
+      "raw_seconds": [
+        60.237637599988375
+      ],
+      "median_seconds": 60.237637599988375,
+      "minimum_seconds": 60.237637599988375,
+      "maximum_seconds": 60.237637599988375
+    },
+    "rust:2x2:fresh_application": {
+      "raw_seconds": [
+        52.233277899969835,
+        51.73534939996898
+      ],
+      "median_seconds": 51.98431364996941,
+      "minimum_seconds": 51.73534939996898,
+      "maximum_seconds": 52.233277899969835
+    }
+  },
+  "scope": "Whole request through complete holdings and confirmed closure; no host cache flush."
+}

@@ -117,3 +117,5 @@ assert(html.includes('Ordered random coordination checked 1 November 2026.') && 
 assert(html.includes('Complete period candidates checked 1 November 2026.') && html.includes('the same source-derived arithmetic and financial decision trees') && html.includes('Full recovery builds no provider.') && html.includes('not three permanent production engine choices') && html.includes('scripts/numerical_rust_kernel.rs'), 'Explain the shared compiled candidate boundary, lazy recovery and comparison-only native status');
 
 assert(html.includes('explicitly joins every numerical thread and its thread-local cleanup'), 'Explain complete native thread cleanup before library closure');
+
+assert(html.includes('Scoped current-source comparison checked 1 November 2026.') && html.includes('51.98 seconds for Rust and 59.52 seconds') && html.includes('startup and completed-build reuse benefit') && html.includes('failed shared statistics publication') && html.includes('tools/parallel_comparison.py') && html.includes('outside benchmark tmp paths'), 'Explain the scoped comparison, measured boundary, selected decision and remaining qualification gates');

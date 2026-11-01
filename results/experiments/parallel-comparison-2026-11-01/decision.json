@@ -1,0 +1,43 @@
+{
+  "selected": {
+    "backend": "rust",
+    "workers": 2,
+    "threads": 2
+  },
+  "rationale": "Repeatable wholeapplication startup/buildreuse saving: balancedRustmedian51.984314s vscompiledNumba59.521102s; warm diagnostics nearlyequal. Source-to-compiled gain separatelyrecorded. Nativebuildfirst1.43755s; normal optional availability stillrequired inG.",
+  "limitations": [
+    "NativeWindows machine andtwo declaredworkloads only; nophysicalcacheflush",
+    "ExistingRusttoolchainsetup used; installtime unmeasured",
+    "One sharedpostcompletionstatspublication PermissionError retained andexcluded fromsuccess; Gmustresolve",
+    "Serialreadiness measured; Gstartuprefinement requiresmatchedbackend/layoutconfirmation",
+    "Original remainsdefault; Fdoesnotintegrateselectedbackend"
+  ],
+  "g_handoff": [
+    "Normal optionalRustcompiler/buildavailability outsidebenchmarktmppaths, explicitmissingdependency failure, nofallback",
+    "Reproduce/repairsharedWindowsatomicIPCpublication withboundedcancellableretries ifapplicable; qualifytransient/permanent/atomicity/closure",
+    "Boundedconcurrentworkerstart afterfirstcoldmemoryadmission; preserveidentity/cancellation/lifetime/containment",
+    "FinalGsource sameplan balanced2\u00d72/4\u00d71 matchedRust/compiledNumba confirmation beforedeletingunselectedproductionpath",
+    "Fullfinancialparity andnative/WSLapplication lifecycle/recovery; updateguide andindependentaudit/commit"
+  ],
+  "comparison_sha256": "c3ea3c79204171db44c5a30c7de6282fdb828b8fccedad1df30c8e094f3e8f5e",
+  "original_remains_default": true,
+  "balanced_confirmation": {
+    "order": [
+      "long-rust-22-r1",
+      "long-compiled-22-r2",
+      "long-compiled-22-r3",
+      "long-rust-22-r2"
+    ],
+    "rust_seconds": [
+      52.233277899969835,
+      51.73534939996898
+    ],
+    "numba_compiled_seconds": [
+      59.77024350001011,
+      59.27196029998595
+    ]
+  },
+  "assembly": "compiled",
+  "machine_scope": "NativeWindows;16eligiblelogicalCPUs; actualobservations/limits inrawreceipts",
+  "decision_record": "docs/plans/parallel-backtest/phases/CB-19F.decision.md"
+}
