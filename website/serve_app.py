@@ -469,6 +469,10 @@ def main(*,candidate=None,arguments=None):
     print('Development log: '+diagnostics.relative_path(path) if path else 'Development log unavailable. Terminal logging remains active.',flush=True)
     diagnostics.event('server.starting',port=args.port,managed=args.managed)
     try:
+        # Report optional setup before data preparation, without blocking Original.
+        from numerical_preparation import dependencies, PreparationError
+        try:dependencies()
+        except PreparationError:pass
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
         with context as lifecycle:run_server(args,lifecycle,parser,candidate=candidate)
     except KeyboardInterrupt:

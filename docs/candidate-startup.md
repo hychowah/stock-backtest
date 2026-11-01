@@ -230,6 +230,16 @@ Missing packages or stale preparation block experimental execution only.
 Stored evidence and Original remain available. Data mutations invalidate
 experimental readiness. Prepare again after a rebuild or repaired inputs.
 
+Startup checks the optional dependencies without importing native libraries.
+Missing packages, wrong package versions or unsupported Python produce a
+terminal warning and a `candidate.dependencies_unavailable` WARNING entry in
+the development log. These identify the required and installed versions and
+the exact Python interpreter that needs setup. Preparation and status checks
+use the same check. Repeated checks do not repeat an unchanged warning.
+Changed failures and failures that return after a successful check are reported.
+This check never installs packages, downloads data or blocks Original because
+experimental dependencies are unavailable.
+
 `engine_selection.Selectable` composes the existing Original and candidate
 calculation owners. Submitted `options.engine` uses `original` or
 `experimental`. Omission always means Original. This implicit default is fixed;

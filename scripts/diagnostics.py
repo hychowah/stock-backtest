@@ -141,6 +141,10 @@ def event(name,**context):
     LOGGER.info(json.dumps(dict(event=name,pid=os.getpid(),**context),ensure_ascii=True))
 
 
+def warning(name,**context):
+    LOGGER.warning(json.dumps(dict(event=name,pid=os.getpid(),**context),ensure_ascii=True))
+
+
 def failure(name,error,**context):
     """Keep safe tracebacks, omitting arbitrary exception text and source lines."""
     errors=[];seen=set()

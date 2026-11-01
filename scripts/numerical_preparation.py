@@ -13,6 +13,7 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+from threading import Lock
 import uuid
 
 import backtest_control
@@ -24,6 +25,8 @@ import research
 import schedules
 
 PINS = {'numpy': '2.5.4', 'numba': '0.68.0', 'llvmlite': '0.50.0'}
+_dependency_warning = None
+_dependency_warning_lock = Lock()
 MESSAGES = {
     'dependencies unavailable': 'Candidate dependencies are unavailable. Follow docs/candidate-startup.md; setup is a separate offline operation.',
     'saved inputs need repair': 'Saved inputs need repair. Use the data panel or restore verified files.',
@@ -41,12 +44,37 @@ class PreparationError(ValueError):
 
 def dependencies():
     """Inspect installed metadata without importing the native stack or networking."""
-    if platform.python_implementation() != 'CPython' or sys.version_info[:2] not in ((3, 12), (3, 14)):
-        raise PreparationError('dependencies unavailable')
-    try: versions = {name: metadata.version(name) for name in PINS}
-    except metadata.PackageNotFoundError: raise PreparationError('dependencies unavailable') from None
-    if versions != PINS: raise PreparationError('dependencies unavailable')
-    return dict(python=platform.python_version(), packages=versions)
+    global _dependency_warning
+    implementation = platform.python_implementation()
+    python = platform.python_version()
+    supported = implementation == 'CPython' and sys.version_info[:2] in ((3, 12), (3, 14))
+    versions = {}
+    for name in PINS:
+        try: versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError: versions[name] = None
+    problems = [f'{name} is missing (required {expected})' if versions[name] is None
+                else f'{name} has version {versions[name]} (required {expected})'
+                for name, expected in PINS.items() if versions[name] != expected]
+    if not supported:
+        problems.append(f'{implementation} {python} is unsupported (required CPython 3.12 or 3.14)')
+    with _dependency_warning_lock:
+        if problems:
+            signature = (implementation, python, sys.executable, tuple(versions.items()))
+            if signature != _dependency_warning:
+                diagnostics.warning('candidate.dependencies_unavailable',
+                                    interpreter=sys.executable, implementation=implementation,
+                                    python=python, required=PINS, installed=versions,
+                                    supported_python=supported)
+                print('WARNING: Experimental engine dependencies are unavailable: '
+                      + '; '.join(problems) + '. Python interpreter: '
+                      + json.dumps(sys.executable) + '. Install requirements-numerical.txt '
+                      'in this environment, then select Prepare experimental engine in Manage backtest data. '
+                      'Original and stored results remain available.', file=sys.stderr, flush=True)
+                _dependency_warning = signature
+        else:
+            _dependency_warning = None
+    if problems: raise PreparationError('dependencies unavailable')
+    return dict(python=python, packages=versions)
 
 
 def _digest(value):
