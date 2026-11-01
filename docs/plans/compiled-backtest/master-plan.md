@@ -1,5 +1,17 @@
 # Master plan for a faster stock backtest engine
 
+## Current direction — parallel application trials, 1 November 2026
+
+The user authorizes the [CB-19 parallel experimental backtest program](../parallel-backtest/master-plan.md)
+on `main`. All seven slices are pending. It adds persistent trial processes and a
+complete Python/Numba versus Rust comparison before the native-core decision.
+This new direction reopens only its scoped private comparison. The historical
+live-cache benchmark route remains closed. Original stays the application
+default. The earlier phase records and qualification limits remain historical.
+See the [plan record](../parallel-backtest/phases/CB-19-plan.md) and
+[main ownership exception](../../worktree-coordination.md#cb-19-parallel-engine-ownership-exception--1-november-2026).
+This documentation commit starts no implementation or deployment.
+
 Created: 23 October 2026.
 
 Implementation workflow and comparative research updated: 24 October 2026.

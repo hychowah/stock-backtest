@@ -6,6 +6,9 @@ Keep frontend and unrelated backend changes small at shared boundaries.
 
 ## Worktree ownership
 
+For the CB-19 program only, the dated exception below assigns engine work to
+`main`. The general ownership table continues to govern other tasks.
+
 | Worktree | Branch | Work |
 |---|---|---|
 | `<wsl-checkout>` | `main` | Frontend presentation and backend features that preserve engine contracts |
@@ -306,3 +309,35 @@ result readers remain engine-neutral and preserve original evidence. Main's
 snapshot and market-qualification edits remain outside this work. No main
 advance, publication, restart or provider download is part of this task.
 See the [alignment record](plans/compiled-backtest/phases/CB-18.website-alignment.md).
+
+## CB-19 parallel engine ownership exception — 1 November 2026
+
+The user explicitly authorizes direct work and coherent audited commits on
+`main` for [CB-19A–CB-19G](plans/parallel-backtest/master-plan.md). This task
+agreement assigns main the generation attachment, complete trial evaluator,
+persistent trial pool, checkpoint coordinator, experimental application wiring,
+complete Rust candidate, scoped comparison and selected-backend qualification.
+It supersedes the general engine-worktree-only rule for this program. Preserve
+the other worktree and its history. Keep shared changes narrow and preserve
+financial rules, Original as default and durable evidence.
+
+The user requests autonomous progress with a GPT-6.1-sol high implementation
+agent and a separate GPT-6.1-sol high commit agent for each slice. Each code
+slice first obtains its detailed design from the skill's independent planner.
+The separate commit agent applies the independent smart-commit audit. Scope and
+finish criteria are recorded in the new plan. All seven slices are pending in
+this documentation record.
+
+The user expressly reopens complete Python/Numba versus Rust comparison within
+CB-19. Scoped private synthetic experiments and qualified copied-input
+comparisons are authorized. Declare exact assets, source/generation bindings,
+resources and cleanup ownership before execution. Use the current application
+lifetime owner. Do not modify closed historical benchmark admission or run its
+live-cache-locking route. A copied path alone establishes no current binding.
+
+The WSL checkout owns edits and commits. The native Windows runtime remains
+separate. No deployment, restart, downloads, stable-cache mutation or default
+replacement is part of CB-19. Check for an automatic publication supervisor
+immediately before every main commit; do not assume an earlier absent process
+stays absent. Preserve unrelated portable-snapshot and market-qualification
+files. Custom-variable work remains on hold.
