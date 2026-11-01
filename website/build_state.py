@@ -15,6 +15,10 @@ def inputs():
         if path.suffix in ('.py','.js','.css','.html'):
             normalized=path.read_bytes().replace(b'\r\n',b'\n')
             sources[path.name]=hashlib.sha256(normalized).hexdigest()
+    # Application source moved out of website; retain conservative freshness.
+    for path in sorted((ROOT.parent/'backtest/application').glob('*.py')):
+        normalized=path.read_bytes().replace(b'\r\n',b'\n')
+        sources[path.relative_to(ROOT.parent).as_posix()]=hashlib.sha256(normalized).hexdigest()
     database=ROOT.parent/'data'/'research.sqlite'
     stat=database.stat()
     return dict(sources=sources,database=[stat.st_size,stat.st_mtime_ns])

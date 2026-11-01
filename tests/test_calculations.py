@@ -2,6 +2,8 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.application.original_calculations import Original
+from backtest.application.calculation_contract import Unavailable
 from backtest.inputs import daily
 
 # Resolve the importable package for direct-file commands and spawned fixtures.
@@ -22,8 +24,8 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
-import backtest_jobs
-import backtest_queue
+from backtest.application import jobs as backtest_jobs
+from backtest.application import queue as backtest_queue
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -59,7 +61,7 @@ class CalculationTests(unittest.TestCase):
             db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;return db
         self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.options=dict(start='2015-01-01',end='2016-12-30',months=3,rank_to=1)
-        self.service=backtest_jobs.Calculations()
+        self.service=Original()
 
     def handler(self,path,options):
         handler=object.__new__(serve.Handler)
@@ -147,7 +149,7 @@ class CalculationTests(unittest.TestCase):
             self.assertTrue(waiting.wait(3));ready=False
         thread.join(3)
         self.assertFalse(thread.is_alive());self.assertEqual(len(outcome),1)
-        self.assertIsInstance(outcome[0],backtest_jobs.Unavailable)
+        self.assertIsInstance(outcome[0],Unavailable)
         self.assertEqual(self.closures,[])
 
     def test_queue_never_retries_validation_or_callback_failures(self):

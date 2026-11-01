@@ -13,8 +13,8 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'website'),str(ROOT/'scripts')]
-import saved_backtests as saved
+sys.path[:0]=[str(ROOT),str(ROOT/'website'),str(ROOT/'scripts')]
+from backtest.application import library as saved
 import serve
 
 

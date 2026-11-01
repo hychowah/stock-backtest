@@ -2,6 +2,8 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.application.original_calculations import Original
+from backtest.application.calculation_contract import Unavailable
 from backtest.inputs import daily
 import json
 from pathlib import Path
@@ -20,13 +22,13 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.engines.numerical.portfolio import compare_results
-from candidate_calculations import Candidate
+from backtest.application.candidate_calculations import Candidate
 from backtest.engines.original import robustness as robustness
-import backtest_jobs
+from backtest.application import jobs as backtest_jobs
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import cache_access as cache_access
 import data_manager
-import backtest_queue
+from backtest.application import queue as backtest_queue
 from test_queue import request
 from backtest.engines.numerical.runtime import ClosureError
 
@@ -138,7 +140,7 @@ class CandidateTests(unittest.TestCase):
         self.assertFalse(thread.is_alive());self.assertEqual(errors,[])
         self.assertTrue(published.is_set());self.assertIsNone(owner.runtime)
         self.assert_closed(owner.created[-1])
-        ordinary=backtest_jobs.Calculations()
+        ordinary=Original()
         def writable():
             db=sqlite3.connect(self.fixture.fixture.path)
             db.row_factory=sqlite3.Row
@@ -148,7 +150,7 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(compare_results(self.fixture.s.backtest(self.fixture.db,**self.options()),result)['exact'])
         # An unusable experimental preparation must not gate Original.
         owner.preparation.status.return_value=dict(state='unavailable')
-        with self.assertRaises(backtest_jobs.Unavailable):
+        with self.assertRaises(Unavailable):
             owner.calculate('custom',self.options(),None,None)
         with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(daily,'connect',side_effect=writable):
             self.assertEqual(ordinary.calculate('custom',self.options(),None,None)['periods'],result['periods'])
@@ -314,7 +316,7 @@ class UnavailableMappingTests(unittest.TestCase):
         for delayed in (False,True):
             with self.subTest(delayed=delayed):
                 owner,runtime=self.owner(InputsUnavailable('Private fixture inputs changed.'),delayed=delayed)
-                with self.assertRaises(backtest_jobs.Unavailable):
+                with self.assertRaises(Unavailable):
                     owner.calculate('custom',{},None,None)
                 self.assertIsNone(owner.runtime)
                 self.assertEqual(runtime.close.call_count,2 if delayed else 1)

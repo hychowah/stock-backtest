@@ -2,6 +2,7 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.application.original_calculations import Original
 from backtest.inputs import market
 import sys as _root_sys
 from pathlib import Path as _RootPath
@@ -501,7 +502,7 @@ class ServiceTests(unittest.TestCase):
 
     def request(self,payload,origin=None):
         handler=object.__new__(self.serve.Handler)
-        handler.server=SimpleNamespace(lifecycle=None,calculations=self.serve.backtest_jobs.Calculations())
+        handler.server=SimpleNamespace(lifecycle=None,calculations=Original())
         handler.disconnect_check=lambda:lambda:False
         body=json.dumps(payload).encode()
         handler.path='/api/schedule';handler.rfile=io.BytesIO(body)

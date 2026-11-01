@@ -5,7 +5,7 @@ from unittest.mock import patch
 import unittest
 
 import test_candidate_calculations as candidate_tests
-import backtest_queue
+from backtest.application import queue as backtest_queue
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))

@@ -2,6 +2,7 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.application.original_calculations import Original
 from backtest.engines.reference import legacy
 import sys as _root_sys
 from pathlib import Path as _RootPath
@@ -22,9 +23,7 @@ sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
 from backtest.engines.original import robustness as r
 from backtest.engines.original import schedules as s
 import serve
-import backtest_jobs
-
-
+from backtest.application import jobs as backtest_jobs
 class RobustnessTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
@@ -45,7 +44,7 @@ class RobustnessTests(unittest.TestCase):
         return r.plan(self.db,start='2015-01-01',end='2016-12-30',rank_to=1,**options)
 
     def stream(self,handler,configuration):
-        handler.server=SimpleNamespace(calculations=backtest_jobs.Calculations())
+        handler.server=SimpleNamespace(calculations=Original())
         def connection():
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
             self.db.backup(db);return db
@@ -229,7 +228,7 @@ class RobustnessTests(unittest.TestCase):
             self.db.backup(db);return db
         def handler(path,payload):
             obj=object.__new__(serve.Handler);body=json.dumps(payload).encode()
-            obj.server=SimpleNamespace(lifecycle=None,calculations=backtest_jobs.Calculations())
+            obj.server=SimpleNamespace(lifecycle=None,calculations=Original())
             obj.disconnect_check=lambda:lambda:False
             obj.path=path;obj.rfile=io.BytesIO(body);obj.wfile=io.BytesIO()
             obj.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}

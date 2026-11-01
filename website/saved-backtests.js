@@ -61,8 +61,8 @@ const SavedBacktests=(()=>{
     const generation=state.generation=(state.generation||0)+1;
     state.loading=true;state.error=null;render();
     try{
-      const description=await describeSaved(id);
-      if(disclosures.get(id)===state&&state.generation===generation)state.rows=description.parameters;
+      const description=await describeSaved(id,()=>disclosures.get(id)===state&&state.generation===generation);
+      if(disclosures.get(id)===state&&state.generation===generation)state.rows=description?.parameters;
     }catch(error){
       if(disclosures.get(id)===state&&state.generation===generation)state.error=error.message||'Could not load recorded parameters. Retry when the service is available.';
     }finally{
@@ -94,21 +94,9 @@ const SavedBacktests=(()=>{
     comparisonMessage(comparisonIds[0]&&comparisonIds[0]===comparisonIds[1]?'Choose two different saved tests.':'Choose two saved tests, then select Compare.');
     render();
   }
-  async function describeSaved(id){
-    let artifact=null,acquisitionId=null;
-    try{
-      try{artifact=(await request('/'+encodeURIComponent(id))).snapshot;}
-      catch(error){
-        if(!error.requires_reader)throw error;
-        // Keep the requested reader identity even if its response is lost, so
-        // a failed acquisition can release its independently owned display.
-        acquisitionId=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
-        artifact=await ResultArtifacts.acquire({kind:'saved',id},{},acquisitionId);
-      }
-      return BacktestComparison.describe(artifact);
-    }finally{
-      if(acquisitionId)ResultArtifacts.release(artifact||{version:3,evidence:{id:acquisitionId}});
-    }
+  async function describeSaved(id,current=()=>true){
+    const used=await ResultArtifacts.use({kind:'saved',id},artifact=>BacktestComparison.describe(artifact),{current});
+    return used.value;
   }
   async function compareSelected(){
     if(busy||comparisonIds.some(id=>!id)||comparisonIds[0]===comparisonIds[1])return;
@@ -116,7 +104,7 @@ const SavedBacktests=(()=>{
     comparisonLoading=true;comparison=null;comparisonMessage('Loading the two saved tests…');render();
     try{
       for(const id of ids){
-        descriptions.push(await describeSaved(id));
+        descriptions.push(await describeSaved(id,()=>generation===comparisonGeneration));
         if(generation!==comparisonGeneration)return;
       }
       comparison=BacktestComparison.compare(...descriptions);
@@ -170,12 +158,8 @@ const SavedBacktests=(()=>{
     const number=++operation,isCurrent=ResultArtifacts.opening();
     await perform(async()=>{
       message('Opening saved backtest…');
-      let record;
-      try{record=await request('/'+encodeURIComponent(id));}
-      catch(error){if(!error.requires_reader)throw error;record={name:records.find(r=>r.id===id)?.name||'Backtest',snapshot:await ResultArtifacts.acquire({kind:'saved',id})};}
-      if(number!==operation||!isCurrent()){ResultArtifacts.release(record.snapshot);return;}
-      try{openRecord(record.snapshot);}catch(error){ResultArtifacts.release(record.snapshot);throw error;}
-      message('Opened “'+record.name+'”. Original settings, traded stocks and returns were restored without rerunning.');
+      const used=await ResultArtifacts.use({kind:'saved',id},artifact=>openRecord(artifact),{current:()=>number===operation&&isCurrent()});
+      if(used.consumed)message('Opened “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'” without rerunning it.');
     });
   }
   async function remove(id){

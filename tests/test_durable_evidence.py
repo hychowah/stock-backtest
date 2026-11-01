@@ -22,11 +22,11 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import backtest_control as backtest_control
-import backtest_jobs
-import backtest_queue as queue
-import durable_evidence as durable
+from backtest.application import jobs as backtest_jobs
+from backtest.application import queue as queue
+from backtest.application import durable_evidence as durable
 from backtest import result_evidence as result_evidence
-import saved_backtests as saved
+from backtest.application import library as saved
 import test_result_evidence as codec
 from test_saved_backtests import snapshot as legacy_snapshot
 
@@ -143,7 +143,7 @@ class DurableTests(unittest.TestCase):
         # These unrelated disposable files represent evicted/replaced producer inputs.
         for name in ('checkpoints.sqlite','financial-generation'):
             path=self.root/name;path.write_bytes(b'old');path.unlink();path.write_bytes(b'new')
-        with patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')),patch('backtest.runtime.cache_access.access',side_effect=AssertionError('Financial ownership forbidden')):
+        with patch.object(backtest_jobs.Original,'calculate',side_effect=AssertionError('Calculation forbidden')),patch('backtest.runtime.cache_access.access',side_effect=AssertionError('Financial ownership forbidden')):
             for store,identifier in ((saved.Store(self.library.path),record['id']),(queue.Store(self.queue.path),req['id'])):
                 with store.open_evidence(identifier) as opened:
                     self.assertEqual(codec.collect(opened.reader),expected)
@@ -400,7 +400,7 @@ class DurableTests(unittest.TestCase):
         self.assertNotEqual(result['distributions'],changed['distributions']);self.assertEqual(experiment.read(),[])
         with ExitStack() as guards:
             for owner,name in ((trials.diagnostic,'run'),(trials.diagnostic,'run_into'),(trials.s,'backtest'),
-                    (trials.s,'backtest_dates'),(backtest_jobs,'calculate'),(trials.trial_checkpoints.Experiment,'load'),
+                    (trials.s,'backtest_dates'),(backtest_jobs.Original,'calculate'),(trials.trial_checkpoints.Experiment,'load'),
                     (trials.trial_checkpoints.Store,'open')):
                 guards.enter_context(patch.object(owner,name,side_effect=AssertionError('Stored evidence must not calculate')))
             for store,identifier in ((saved.Store(self.library.path),record['id']),(queue.Store(self.queue.path),req['id'])):
@@ -418,8 +418,9 @@ class DurableTests(unittest.TestCase):
         metadata=self.root/'metadata';metadata.write_text(json.dumps(meta))
         code="""import sys,json
 from pathlib import Path
-sys.path[:0]=[sys.argv[1]+'/website',sys.argv[1]+'/scripts']
-import saved_backtests,result_evidence
+sys.path[:0]=[sys.argv[1],sys.argv[1]+'/website',sys.argv[1]+'/scripts']
+from backtest.application import library as saved_backtests
+from backtest import result_evidence
 assert sys.stdin.readline()=='GO\\n'
 with open(sys.argv[3],'rb') as stream:
  reader=result_evidence.Reader(stream,max_bytes=4*1024**2)
@@ -452,8 +453,9 @@ with open(sys.argv[3],'rb') as stream:
         self.publish()
         code='''import sys,os,json,sqlite3
 from pathlib import Path
-sys.path[:0]=[sys.argv[1]+'/website',sys.argv[1]+'/scripts']
-import saved_backtests,result_evidence,durable_evidence
+sys.path[:0]=[sys.argv[1],sys.argv[1]+'/website',sys.argv[1]+'/scripts']
+from backtest.application import library as saved_backtests, durable_evidence
+from backtest import result_evidence
 with open(sys.argv[3],'rb') as stream:
  reader=result_evidence.Reader(stream,max_bytes=4*1024**2)
  store=saved_backtests.Store(sys.argv[2]);metadata=json.loads(Path(sys.argv[4]).read_text())

@@ -24,12 +24,14 @@ import data_manager
 from backtest.runtime import cache_access as cache_access
 from backtest.runtime import diagnostics as diagnostics
 from backtest.runtime import backtest_control as backtest_control
-import saved_backtests
-import backtest_jobs
-import backtest_queue
-import durable_evidence
-import evidence_views
-import result_exports
+from backtest.application import library as saved_backtests
+from backtest.application import jobs as backtest_jobs
+from backtest.application.calculation_contract import Busy, Unavailable
+from backtest.application.result_access import ResultAccess
+from backtest.application import queue as backtest_queue
+from backtest.application import durable_evidence as durable_evidence
+from backtest.application import evidence_views as evidence_views
+from backtest.application import result_exports as result_exports
 from build_state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -40,10 +42,11 @@ class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
         from backtest.application.preparation import Preparation
         from build_state import ensure_presentation
-        from engine_selection import Selectable
+        from backtest.application.calculations import Selectable
         self.calculations=Selectable(Preparation(ROOT.parent,ensure_presentation=ensure_presentation))
         self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
         self.backtest_queue=backtest_queue.Queue(calculations=self.calculations,library=SAVED_BACKTESTS)
+        self.result_access=ResultAccess(self.backtest_jobs,SAVED_BACKTESTS,self.backtest_queue.store)
         super().__init__(*args,**kwargs)
 
     def shutdown(self):
@@ -55,10 +58,13 @@ class Server(ThreadingHTTPServer):
         # Store.finish still gives a durable explicit Stop precedence.
         self.backtest_queue.request_stop()
         self.calculations.close()
+        self.backtest_jobs.request_stop()
+        self.result_access.close_admission()
 
     def server_close(self):
         self.close_calculation_admission()
         self.backtest_queue.close()
+        self.result_access.close()
         self.backtest_jobs.close()
         super().server_close()
         if hasattr(self.calculations,'retire'):self.calculations.retire()
@@ -193,10 +199,10 @@ class Handler(SimpleHTTPRequestHandler):
                 if self.path=='/api/robustness':
                     self.stream_batch(request)
                     return
-                result=backtest_jobs.calculate('custom',request,None,None,owner=self.server.calculations)
+                result=self.server.calculations.calculate('custom',request,None,None)
                 backtest_control.checkpoint()
             self.reply(200,result)
-        except backtest_jobs.Unavailable:
+        except Unavailable:
             self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # Contexts close databases and wait for worker cleanup before cache
@@ -281,28 +287,23 @@ class Handler(SimpleHTTPRequestHandler):
                 self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options'),planned=request.get('planned')))
             else:self.reply(404,dict(error='Unknown run action.'))
         except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
-        except backtest_jobs.Busy as error:self.reply(409,dict(error=str(error)))
+        except Busy as error:self.reply(409,dict(error=str(error)))
         except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
         except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
 
     def evidence_request(self,identifier,path):
         """Explicit reader operations. Never acquire financial ownership or readiness."""
-        jobs=self.server.backtest_jobs;started=False
+        access=self.server.result_access;started=False
         try:
             if self.command=='DELETE' and not path:
-                jobs.release_reader(identifier);self.reply(200,dict(released=True));return
+                access.release(identifier);self.reply(200,dict(released=True));return
             if self.command=='POST' and not path:
                 length=int(self.headers.get('Content-Length','0'))
                 if not 0<length<=durable_evidence.MAX_METADATA_BYTES:raise ValueError('Invalid reader request size.')
-                request=durable_evidence.decode(self.rfile.read(length));source=request.get('source',{})
-                kind=source.get('kind');record_id=source.get('id')
-                if kind=='run':opener=lambda:jobs.display_evidence(record_id,request.get('display',{}))
-                elif kind=='saved':opener=lambda:SAVED_BACKTESTS.open_evidence(record_id)
-                elif kind=='queue':opener=lambda:self.server.backtest_queue.store.open_evidence(record_id)
-                else:raise ValueError('Unknown evidence source.')
-                self.reply(200,jobs.acquire_reader(identifier,request,opener));return
+                request=durable_evidence.decode(self.rfile.read(length))
+                self.reply(200,access.acquire(identifier,request));return
             if self.command!='GET':raise ValueError('Unsupported evidence operation.')
-            with jobs.read_artifact(identifier) as (metadata,reader):
+            with access.read(identifier) as (metadata,reader):
                 if len(path)==3 and path[0]=='export':
                     kind=path[1];trial=int(path[2]);export=result_exports.prepare(reader,kind,trial)
                     name=export.filename
@@ -321,7 +322,7 @@ class Handler(SimpleHTTPRequestHandler):
                     try:
                         self.wfile.write(first)
                         for chunk in chunks:
-                            if jobs.closing:raise backtest_control.Cancelled()
+                            if access.closing:raise backtest_control.Cancelled()
                             self.wfile.write(chunk)
                         self.wfile.flush()
                     except (OSError,ValueError,backtest_control.Cancelled):
@@ -372,8 +373,7 @@ class Handler(SimpleHTTPRequestHandler):
                 request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
                 if not isinstance(request,dict):raise ValueError('Expected a completed backtest.')
                 if 'reader' in request:
-                    with self.server.backtest_jobs.read_artifact(request['reader']) as (metadata,reader):
-                        record=SAVED_BACKTESTS.save_evidence(request.get('name'),metadata,reader)
+                    record=self.server.result_access.save_reader(request.get('name'),request['reader'])
                     self.reply(201,record)
                 else:self.reply(201,SAVED_BACKTESTS.save(request.get('name'),request.get('snapshot')))
             else:self.reply(405,dict(error='Unsupported saved-backtest action.'))
@@ -419,8 +419,8 @@ class Handler(SimpleHTTPRequestHandler):
             started=True
             event(dict(type='configuration',configuration=value))
         try:
-            result=backtest_jobs.calculate('random',options,event,configuration,planned=planned,
-                owner=self.server.calculations,details=getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings')
+            result=self.server.calculations.calculate('random',options,event,configuration,planned=planned,
+                details=getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings')
             event(dict(type='complete',result=result))
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             # The completed trial transactions remain cached; stop before the
@@ -529,7 +529,7 @@ def run_server(args,lifecycle,parser,*,candidate=None):
     server.data_recovery=recovery
     server.candidate_preparation=candidate
     if candidate is not None:
-        from candidate_calculations import Candidate
+        from backtest.application.candidate_calculations import Candidate
         server.calculations=Candidate(candidate)
         server.backtest_jobs.calculations=server.calculations
         server.backtest_queue.calculations=server.calculations

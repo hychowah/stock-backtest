@@ -37,7 +37,7 @@ def main(request_path):
         from backtest.application import preparation as numerical_preparation
         from backtest.engines.original import schedules as schedules
         from backtest.engines.numerical.runtime import NumericalRuntime
-        from engine_selection import Selectable
+        from backtest.application.calculations import Selectable
         record=dict(status='failed',operation=request['operation'],started_at=time.time(),pid=os.getpid(),
                     resources_before=comparison.observe(ROOT),cleanup_owner=declaration['cleanup_owner'])
         comparison.write(response,record)

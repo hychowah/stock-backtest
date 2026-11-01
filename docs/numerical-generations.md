@@ -455,7 +455,8 @@ CB-12 candidate preparation entry verifies and closes this runtime before
 ordinary application owners start. Normal startup does not select it.
 This source capability has no job IDs, queue service or user-result store.
 An authorized caller must explicitly construct or inject it. The shared
-application adapter remains `website/backtest_jobs.py:calculate`.
+application entry is the calculation owner’s `calculate` method.
+`backtest/application/calculations.py` owns selectable dispatch.
 
 Construct the runtime with an explicit source root, new private scratch folder,
 numerical generation path, derived checkpoint path and Python interpreter.
@@ -477,7 +478,8 @@ Stop. A close deadline during construction retains the runtime even when its
 process owner has not yet been returned. It never reports successful closure. Reject dispatch if the calling thread
 already holds the supplied or current financial coordinator. CB-13A removes
 caller preholding from jobs, queue and legacy routes. One server-owned
-`backtest_jobs.Calculations` now owns ordinary financial admission and cleanup.
+`backtest.application.original_calculations.Original` owns ordinary financial
+admission and cleanup.
 Numerical dispatch remains unavailable. CB-13B must coordinate resident child
 ownership, status and parent data operations before selecting that runtime.
 
@@ -650,7 +652,7 @@ numerical generation after upgrading changed calculation source; old immutable
 results remain readable without preparation.
 
 The Original adapter owns ordinary database/worker access. The experimental
-adapter owns its numerical child. `engine_selection.Selectable` coordinates
+adapter owns its numerical child. `backtest.application.calculations.Selectable` coordinates
 admission, routing and confirmed cleanup before publication. Neither adapter
 owns jobs, queue or library records. Shared prepared Latest/January views keep
 their exact eligibility rules and offline browser calculation.

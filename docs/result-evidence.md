@@ -203,7 +203,7 @@ settings validation precede checkpoint lookup and calculation. Dates are never
 resampled. Eager requests retain their 1 MiB bound; eager payloads retain 64 MiB.
 Original configuration callbacks still receive the complete plan.
 
-Existing Jobs owns its private temporary workspace through `job_evidence`.
+Existing Jobs owns its private temporary workspace through `backtest.application.temporary_evidence`.
 It reserves both producer and receiver evidence ceilings, two staged-plan ceilings
 when a plan is supplied, and two 64 KiB slot buffers. The aggregate default is
 1 GiB of charged temporary evidence/input storage. It is a private dormant

@@ -16,19 +16,20 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'website'),str(ROOT/'scripts'),str(ROOT/'tests')]
-import backtest_jobs
-import backtest_queue
-import durable_evidence
-import evidence_views
-import job_evidence
-import result_exports
+sys.path[:0]=[str(ROOT),str(ROOT/'website'),str(ROOT/'scripts'),str(ROOT/'tests')]
+from backtest.application import jobs as backtest_jobs
+from backtest.application import queue as backtest_queue
+from backtest.application import durable_evidence as durable_evidence
+from backtest.application import evidence_views as evidence_views
+from backtest.application import temporary_evidence as job_evidence
+from backtest.application import result_exports as result_exports
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import result_evidence as result_evidence
-import saved_backtests
+from backtest.application import library as saved_backtests
 import serve_app
+from backtest.application.result_access import ResultAccess
 from test_durable_evidence import source,submission
 from test_saved_backtests import snapshot as legacy
 
@@ -40,6 +41,7 @@ class ViewTests(unittest.TestCase):
         self.budget=durable_evidence.Budget(96*1024**2)
         self.store=saved_backtests.Store(self.root/'library.sqlite',evidence_budget=self.budget)
         self.jobs=backtest_jobs.Jobs();self.addCleanup(self.jobs.close)
+        self.access=ResultAccess(self.jobs,self.store,None);self.addCleanup(self.access.close)
 
     def stored(self,kind='random',**kw):
         reader,metadata,original=source(kind,**kw)
@@ -48,12 +50,12 @@ class ViewTests(unittest.TestCase):
 
     def acquire(self,identifier='a'*32,record=None):
         record=record or self.stored()[0]
-        return self.jobs.acquire_reader(identifier,dict(kind='saved',id=record['id']),lambda:self.store.open_evidence(record['id']))
+        return self.access.acquire(identifier,dict(source=dict(kind='saved',id=record['id'])))
 
     def test_all_trials_periods_holdings_and_original_extensions(self):
         record,metadata,original=self.stored();artifact=self.acquire(record=record)
         self.assertEqual({k:v for k,v in artifact.items() if k!='evidence'},metadata)
-        with self.jobs.read_artifact('a'*32) as (meta,reader):
+        with self.access.read('a'*32) as (meta,reader):
             self.assertEqual(meta,metadata)
             for number,expected in enumerate(original,1):
                 info=evidence_views.trial(reader,number)
@@ -79,20 +81,20 @@ class ViewTests(unittest.TestCase):
         record,metadata,_=self.stored();artifact=self.acquire(record=record)
         self.assertEqual(self.acquire(record=record),artifact)
         self.assertEqual(self.budget.measurements()['reservations'],1)
-        with self.assertRaises(ValueError):self.jobs.acquire_reader('a'*32,{'different':True},lambda:None)
-        self.jobs.readers.limit=1
+        with self.assertRaises(ValueError):self.access._acquire('a'*32,{'different':True},lambda:None)
+        self.access.limit=1
         with self.assertRaisesRegex(ValueError,'capacity'):self.acquire('b'*32,record)
         self.store.delete(record['id'])
-        with self.jobs.read_artifact('a'*32) as (meta,reader):self.assertEqual(meta,metadata);self.assertEqual(reader.manifest['trials'],2)
-        self.jobs.release_reader('a'*32);self.jobs.release_reader('a'*32)
+        with self.access.read('a'*32) as (meta,reader):self.assertEqual(meta,metadata);self.assertEqual(reader.manifest['trials'],2)
+        self.access.release('a'*32);self.access.release('a'*32)
         self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
         with self.assertRaises(ValueError):
-            with self.jobs.read_artifact('a'*32):pass
+            with self.access.read('a'*32):pass
 
     def test_concurrent_readers_have_independent_seek_positions(self):
         record,_,_=self.stored();self.acquire(record=record)
         def inspect(number):
-            with self.jobs.read_artifact('a'*32) as (_,reader):
+            with self.access.read('a'*32) as (_,reader):
                 return evidence_views.trial(reader,number),list(evidence_views.holdings(reader,number,1))
         with ThreadPoolExecutor(max_workers=2) as pool:
             first,second=list(pool.map(inspect,(1,2)))
@@ -100,43 +102,43 @@ class ViewTests(unittest.TestCase):
 
     def test_request_rebinding_rejects_corruption_outside_requested_prefix(self):
         record,_,_=self.stored();self.acquire(record=record)
-        opened=self.jobs.readers.entries['a'*32]['opened']
+        opened=self.access.entries['a'*32]['opened']
         # The display was valid. A later change to its final byte must reject
         # even a first-period request, before any selected rows are exposed.
         with opened.path.open('r+b') as stream:
             stream.seek(-1,2);value=stream.read(1);stream.seek(-1,2)
             stream.write(bytes([value[0]^1]))
         with self.assertRaisesRegex(ValueError,'changed'):
-            with self.jobs.read_artifact('a'*32):self.fail('Corrupt reader escaped')
-        self.assertEqual(self.jobs.readers.measurements()['requests'],0)
-        self.jobs.release_reader('a'*32)
+            with self.access.read('a'*32):self.fail('Corrupt reader escaped')
+        self.assertEqual(self.access.measurements()['requests'],0)
+        self.access.release('a'*32)
         self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
 
     def test_release_and_shutdown_drain_request_pins(self):
         record,_,_=self.stored();self.acquire(record=record)
-        with self.jobs.read_artifact('a'*32) as (_,reader):
-            self.store.delete(record['id']);self.jobs.release_reader('a'*32)
+        with self.access.read('a'*32) as (_,reader):
+            self.store.delete(record['id']);self.access.release('a'*32)
             self.assertGreater(self.budget.measurements()['reserved_bytes'],0)
-            done=Event();thread=Thread(target=lambda:(self.jobs.close(),done.set()));thread.start()
+            done=Event();thread=Thread(target=lambda:(self.access.close(),done.set()));thread.start()
             self.assertFalse(done.wait(.05))
             chunks=result_exports.csv(reader,'holdings',1);self.assertTrue(next(chunks));chunks.close()
         thread.join(5);self.assertTrue(done.is_set());self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
 
     def test_open_failure_and_cleanup_failure_keep_retryable_ownership(self):
         def broken():raise OSError('fictional opener failure')
-        with self.assertRaises(OSError):self.jobs.acquire_reader('b'*32,{},broken)
-        self.assertEqual(self.jobs.readers.measurements()['acquiring'],0)
+        with self.assertRaises(OSError):self.access._acquire('b'*32,{},broken)
+        self.assertEqual(self.access.measurements()['acquiring'],0)
         record,_,_=self.stored();self.acquire(record=record)
         original=Path.unlink
         def fail(path,*args,**kw):
             if path.name.startswith('.evidence-reader-'):raise PermissionError('fictional sharing lock')
             return original(path,*args,**kw)
         with patch.object(Path,'unlink',fail):
-            with self.assertRaises(PermissionError):self.jobs.release_reader('a'*32)
-            self.assertEqual(self.jobs.readers.measurements()['readers'],1)
+            with self.assertRaises(PermissionError):self.access.release('a'*32)
+            self.assertEqual(self.access.measurements()['readers'],1)
             self.assertGreater(self.budget.measurements()['reserved_bytes'],0)
-        self.jobs.release_reader('a'*32);self.budget.collect()
-        self.assertEqual(self.jobs.readers.measurements()['readers'],0)
+        self.access.release('a'*32);self.budget.collect()
+        self.assertEqual(self.access.measurements()['readers'],0)
         self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
 
     def test_fresh_reader_survives_jobs_expiry_and_saves_original_metadata(self):
@@ -150,13 +152,13 @@ class ViewTests(unittest.TestCase):
         self.jobs.start_evidence('c'*32,'custom',{k:v for k,v in metadata['settings'].items() if k!='mode'},max_bytes=4*1024**2)
         self.jobs.runs['c'*32]['thread'].join(5);self.assertEqual(self.jobs.snapshot('c'*32)['state'],'complete')
         display={k:metadata[k] for k in ('catalog','presentation','captured_at')}
-        artifact=self.jobs.acquire_reader('a'*32,{'kind':'run','id':'c'*32},lambda:self.jobs.display_evidence('c'*32,display))
+        artifact=self.access._acquire('a'*32,{'kind':'run','id':'c'*32},lambda:self.jobs.display_evidence('c'*32,display))
         self.jobs.runs['c'*32]['finished']=time.time()-86401
         with self.assertRaises(backtest_jobs.Missing):self.jobs.snapshot('c'*32)
-        with self.jobs.read_artifact('a'*32) as (meta,reader):
+        with self.access.read('a'*32) as (meta,reader):
             row=self.store.save_evidence('From expired job',meta,reader)
             self.assertEqual(meta['result'],metadata['result'])
-        self.jobs.release_reader('a'*32)
+        self.access.release('a'*32)
         self.assertEqual(self.jobs.evidence.measurements()['reserved_bytes'],0)
         with self.store.open_evidence(row['id']) as opened:self.assertEqual(opened.metadata['settings'],artifact['settings'])
 
@@ -264,13 +266,13 @@ process.stdout.write(JSON.stringify(out));});"""
             def log_message(self,*args):pass
             def calculation_ready(self):raise AssertionError('Reading must not check readiness')
         server=serve_app.Server(('127.0.0.1',0),Handler)
-        server.backtest_jobs=self.jobs
+        server.backtest_jobs=self.jobs;server.result_access=self.access
         server.backtest_queue=backtest_queue.Queue(backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget),library=backtest_queue.saved_backtests.Store((backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget)).path.with_name('saved-library.sqlite')))
         thread=Thread(target=server.serve_forever);thread.start()
         def close():server.shutdown();thread.join(5);server.server_close()
         self.addCleanup(close)
         self.context.enter_context(patch.object(serve_app,'SAVED_BACKTESTS',self.store))
-        self.context.enter_context(patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')))
+        self.context.enter_context(patch.object(backtest_jobs.Original,'calculate',side_effect=AssertionError('Calculation forbidden')))
         def request(method,path,payload=None):
             client=HTTPConnection(*server.server_address,timeout=10)
             try:
@@ -309,10 +311,10 @@ process.stdout.write(JSON.stringify(out));});"""
         reader,metadata,_=source('random');store=backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget)
         request=submission(metadata);store.enqueue(request);store.claim()
         store.progress(request['id'],'configuration',reader.metadata['configuration']);store.finish_evidence(request['id'],metadata,reader)
-        with patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')):
-            artifact=self.jobs.acquire_reader('a'*32,dict(kind='queue',id=request['id']),lambda:store.open_evidence(request['id']))
+        with patch.object(backtest_jobs.Original,'calculate',side_effect=AssertionError('Calculation forbidden')):
+            artifact=self.access._acquire('a'*32,dict(kind='queue',id=request['id']),lambda:store.open_evidence(request['id']))
             store.change(request['id'],'delete',dict(revision=store.listing()['records'][0]['revision']))
-            with self.jobs.read_artifact('a'*32) as (meta,opened):
+            with self.access.read('a'*32) as (meta,opened):
                 self.assertEqual(meta,metadata);self.assertEqual(opened.metadata['configuration'],reader.metadata['configuration'])
                 self.assertEqual(artifact['evidence']['trials'],2)
 
@@ -323,10 +325,10 @@ process.stdout.write(JSON.stringify(out));});"""
             entered.set();resume.wait(5)
             with self.store.open_evidence(record['id']) as opened:yield opened
         def acquire():
-            try:self.jobs.acquire_reader('a'*32,{},paused)
+            try:self.access._acquire('a'*32,{},paused)
             except ValueError as error:errors.append(error)
         worker=Thread(target=acquire);worker.start();self.assertTrue(entered.wait(2))
-        closed=Event();closer=Thread(target=lambda:(self.jobs.close(),closed.set()));closer.start()
+        closed=Event();closer=Thread(target=lambda:(self.access.close(),closed.set()));closer.start()
         self.assertFalse(closed.wait(.02));resume.set();worker.join(5);closer.join(5)
         self.assertTrue(closed.is_set());self.assertEqual(len(errors),1);self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
 
@@ -334,7 +336,7 @@ process.stdout.write(JSON.stringify(out));});"""
         class Handler(serve_app.Handler):
             def log_message(self,*args):pass
             def calculation_ready(self):raise AssertionError('Readiness forbidden')
-        server=serve_app.Server(('127.0.0.1',0),Handler);server.backtest_jobs=self.jobs
+        server=serve_app.Server(('127.0.0.1',0),Handler);server.backtest_jobs=self.jobs;server.result_access=self.access
         worker=Thread(target=server.serve_forever);worker.start()
         def close():server.shutdown();worker.join(5);server.server_close()
         self.addCleanup(close)
@@ -348,28 +350,28 @@ process.stdout.write(JSON.stringify(out));});"""
                 entered.set()
                 if not resume.wait(5):raise TimeoutError('Fixture export pause expired')
                 yield chunk[32:]
-        with patch.object(result_exports.Prepared,'chunks',slow),patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')):
+        with patch.object(result_exports.Prepared,'chunks',slow),patch.object(backtest_jobs.Original,'calculate',side_effect=AssertionError('Calculation forbidden')):
             for index,disconnect in enumerate((False,True)):
                 with self.subTest(disconnect=disconnect):
                     entered.clear();resume.clear()
                     record,_,_=self.stored('custom');identifier=('a' if index==0 else 'b')*32
                     self.acquire(identifier,record)
-                    with self.jobs.read_artifact(identifier) as (_,reader):expected=b''.join(result_exports.csv(reader,'holdings',1))
+                    with self.access.read(identifier) as (_,reader):expected=b''.join(result_exports.csv(reader,'holdings',1))
                     client=HTTPConnection(*server.server_address,timeout=10)
                     try:
                         client.request('GET','/api/backtest-runs/'+identifier+'/reader/export/holdings/1')
                         response=client.getresponse();self.assertEqual(response.status,200)
                         self.assertTrue(entered.wait(2))
-                        self.store.delete(record['id']);self.jobs.release_reader(identifier)
-                        self.assertEqual(self.jobs.readers.measurements()['requests'],1)
+                        self.store.delete(record['id']);self.access.release(identifier)
+                        self.assertEqual(self.access.measurements()['requests'],1)
                         self.assertGreater(self.budget.measurements()['reserved_bytes'],0)
                         if disconnect:response.close();client.close()
                         resume.set()
                         if not disconnect:self.assertEqual(response.read(),expected)
                     finally:resume.set();client.close()
                     until=time.monotonic()+5
-                    while self.jobs.readers.measurements()['readers'] and time.monotonic()<until:time.sleep(.01)
-                    self.assertEqual(self.jobs.readers.measurements()['readers'],0)
+                    while self.access.measurements()['readers'] and time.monotonic()<until:time.sleep(.01)
+                    self.assertEqual(self.access.measurements()['readers'],0)
                     self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
 
     def test_near_limit_utf8_codec_record_survives_actual_http_paging(self):
@@ -399,7 +401,7 @@ process.stdout.write(JSON.stringify(out));});"""
         class Handler(serve_app.Handler):
             def log_message(self,*args):pass
             def calculation_ready(self):raise AssertionError('Readiness forbidden')
-        server=serve_app.Server(('127.0.0.1',0),Handler);server.backtest_jobs=self.jobs
+        server=serve_app.Server(('127.0.0.1',0),Handler);server.backtest_jobs=self.jobs;server.result_access=self.access
         worker=Thread(target=server.serve_forever);worker.start()
         def close():server.shutdown();worker.join(5);server.server_close()
         self.addCleanup(close)
@@ -431,14 +433,106 @@ process.stdout.write(JSON.stringify(out));});"""
             if not resume.wait(5):raise TimeoutError('Fixture acquisition pause expired')
             with self.store.open_evidence(record['id']) as opened:yield opened
         with ThreadPoolExecutor(max_workers=2) as pool:
-            first=pool.submit(self.jobs.acquire_reader,'a'*32,{},opener);self.assertTrue(entered.wait(2))
-            second=pool.submit(self.jobs.acquire_reader,'a'*32,{},opener);resume.set()
+            first=pool.submit(self.access._acquire,'a'*32,{},opener);self.assertTrue(entered.wait(2))
+            second=pool.submit(self.access._acquire,'a'*32,{},opener);resume.set()
             self.assertEqual(first.result(),second.result())
         self.assertEqual(len(calls),1)
-        self.jobs.readers.request_limit=1
-        with self.jobs.read_artifact('a'*32):
+        self.access.request_limit=1
+        with self.access.read('a'*32):
             with self.assertRaisesRegex(ValueError,'request capacity'):
-                with self.jobs.read_artifact('a'*32):pass
+                with self.access.read('a'*32):pass
+
+    def test_request_validation_and_captured_display_identity(self):
+        record,metadata,_=self.stored()
+        with patch.object(self.store,'open_evidence',side_effect=AssertionError('Invalid request opened a source')):
+            for request in (None,[],{},dict(source=[]),dict(source=dict(kind='saved',id=[])),
+                            dict(source=dict(kind='saved',id=record['id']),display=[])):
+                with self.assertRaises(ValueError):self.access.acquire('a'*32,request)
+        request=dict(source=dict(kind='saved',id=record['id']),display=dict(catalog={'old':'caller'}))
+        acquired=self.access.acquire('a'*32,request)
+        self.assertEqual(acquired['catalog'],metadata['catalog'])
+        self.assertEqual(self.access.acquire('a'*32,deepcopy(request)),acquired)
+        request['display']['catalog']['old']='changed'
+        with self.assertRaisesRegex(ValueError,'different source'):self.access.acquire('a'*32,request)
+        with self.assertRaises(ValueError):self.access.release([])
+        self.store.delete(record['id'])
+        saved=self.access.save_reader('Original after deletion','a'*32)
+        with self.store.open_evidence(saved['id']) as opened:self.assertEqual(opened.metadata,metadata)
+
+    def test_http_crossing_release_before_registration_and_during_detachment(self):
+        class Handler(serve_app.Handler):
+            def log_message(self,*args):pass
+            def calculation_ready(self):raise AssertionError('Readiness forbidden')
+        server=serve_app.Server(('127.0.0.1',0),Handler)
+        server.result_access=self.access
+        worker=Thread(target=server.serve_forever);worker.start()
+        def close():server.shutdown();worker.join(5);server.server_close()
+        self.addCleanup(close)
+        entered=Event();resume=Event();self.addCleanup(resume.set)
+        def request(method,identifier,body=None):
+            client=HTTPConnection(*server.server_address,timeout=10)
+            try:
+                data=json.dumps(body) if body is not None else None
+                client.request(method,'/api/backtest-runs/'+identifier+'/reader',data,
+                               {'Content-Type':'application/json'} if data else {})
+                response=client.getresponse();return response.status,json.loads(response.read())
+            finally:client.close()
+        record,_,_=self.stored()
+        captured=dict(source=dict(kind='saved',id=record['id']))
+        original_acquire=self.access.acquire
+        def delayed(identifier,body):
+            entered.set()
+            if not resume.wait(5):raise TimeoutError('Fixture delayed POST expired')
+            return original_acquire(identifier,body)
+        with patch.object(self.access,'acquire',delayed),ThreadPoolExecutor(max_workers=1) as pool:
+            pending=pool.submit(request,'POST','a'*32,captured);self.assertTrue(entered.wait(2))
+            self.assertEqual(request('DELETE','a'*32)[0],200)
+            resume.set();self.assertEqual(pending.result()[0],400)
+        self.assertEqual(self.access.measurements()['readers'],0)
+        entered.clear();resume.clear();original_open=self.store.open_evidence
+        @contextmanager
+        def detaching(identifier):
+            with original_open(identifier) as opened:
+                entered.set()
+                if not resume.wait(5):raise TimeoutError('Fixture detach pause expired')
+                yield opened
+        with patch.object(self.store,'open_evidence',detaching),ThreadPoolExecutor(max_workers=1) as pool:
+            pending=pool.submit(request,'POST','b'*32,captured);self.assertTrue(entered.wait(2))
+            self.assertEqual(request('DELETE','b'*32)[0],200)
+            self.assertGreater(self.budget.measurements()['reserved_bytes'],0)
+            resume.set();self.assertEqual(pending.result()[0],400)
+        self.assertEqual(self.access.measurements()['readers'],0)
+        self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
+
+    def test_server_shutdown_orders_result_drain_before_job_workspace(self):
+        record,_,_=self.stored();self.acquire(record=record)
+        entered=Event()
+        class Owner:
+            ready=lambda:True
+            def calculate(owner,*args,**kwargs):
+                entered.set()
+                while True:
+                    from backtest.runtime import backtest_control
+                    backtest_control.checkpoint();time.sleep(.005)
+            def close(owner):pass
+        server=serve_app.Server(('127.0.0.1',0),serve_app.Handler)
+        server.backtest_jobs=self.jobs;server.result_access=self.access
+        server.calculations=Owner();self.jobs.calculations=server.calculations
+        self.jobs.start('c'*32,'custom',{})
+        self.assertTrue(entered.wait(2))
+        closed=Event();errors=[]
+        def shutdown():
+            try:server.server_close();closed.set()
+            except BaseException as error:errors.append(error)
+        with self.access.read('a'*32) as (_,reader):
+            thread=Thread(target=shutdown);thread.start()
+            self.assertFalse(closed.wait(.05))
+            self.assertTrue(self.jobs.closing);self.assertTrue(self.access.closing)
+            self.assertFalse(self.jobs.evidence.closed)
+            self.assertTrue(next(result_exports.csv(reader,'holdings',1)))
+        thread.join(5);self.assertFalse(thread.is_alive());self.assertFalse(errors)
+        self.assertTrue(closed.is_set());self.assertTrue(self.jobs.evidence.closed)
+        self.assertEqual(self.jobs.snapshot('c'*32)['state'],'cancelled')
 
 
 if __name__=='__main__':unittest.main()

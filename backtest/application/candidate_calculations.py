@@ -4,7 +4,7 @@ from threading import Lock
 import time
 
 from backtest.runtime import backtest_control as backtest_control
-import calculation_contract
+from backtest.application import calculation_contract as calculation_contract
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.numerical.runtime import ClosureError, InputsUnavailable
 from backtest.engines.numerical.policy import require_supported

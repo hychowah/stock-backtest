@@ -2,6 +2,7 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.application.calculation_contract import Unavailable
 from backtest.inputs import daily
 from copy import deepcopy
 import json
@@ -14,9 +15,9 @@ from unittest.mock import Mock,patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
-import backtest_jobs
-import backtest_queue
-import engine_selection
+from backtest.application import jobs as backtest_jobs
+from backtest.application import queue as backtest_queue
+from backtest.application import calculations as engine_selection
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -43,7 +44,7 @@ class SelectionTests(unittest.TestCase):
             self.assertEqual(calculations.financial_result(actual),calculations.financial_result(expected))
             self.assertTrue(owner.ready_for({}));self.assertFalse(owner.ready_for({'engine':'experimental'}))
             self.assertEqual(owner.queue_engines(),{'original'})
-            with self.assertRaises(backtest_jobs.Unavailable):owner.calculate('custom',dict(self.options,engine='experimental'),None,None)
+            with self.assertRaises(Unavailable):owner.calculate('custom',dict(self.options,engine='experimental'),None,None)
         owner.preparation._runtime.assert_not_called()
 
     def test_engine_policy_and_recorded_plan_checked_before_dispatch(self):
@@ -160,7 +161,8 @@ class NoNative:
   if fullname.split('.')[0] in ('numpy','numba','llvmlite'):raise AssertionError('Original imported numerical dependencies')
 sys.meta_path.insert(0,NoNative())
 from backtest.inputs import daily
-import serve_app,engine_selection,saved_backtests
+import serve_app
+from backtest.application import calculations as engine_selection, library as saved_backtests
 owner=engine_selection.Selectable(Mock())
 def connect():
  db=sqlite3.connect(dbpath);db.row_factory=sqlite3.Row;return db

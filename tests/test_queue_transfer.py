@@ -11,9 +11,9 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
-import backtest_queue as queue
-import saved_backtests as saved
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+from backtest.application import queue as queue
+from backtest.application import library as saved
 from test_saved_backtests import snapshot
 from test_durable_evidence import source,submission
 from test_queue import request
@@ -201,7 +201,7 @@ class TransferTests(unittest.TestCase):
         spec,_=self.eager();self.store.pause(True)
         self.store.reserve_completed(spec['id'])  # A predecessor died before library publication.
         self.consumer.ready=lambda:False
-        with patch.object(queue.backtest_jobs,'calculate',side_effect=AssertionError('Transfer must not calculate')):
+        with patch.object(queue.Original,'calculate',side_effect=AssertionError('Transfer must not calculate')):
             self.consumer.start();deadline=time.monotonic()+5
             while time.monotonic()<deadline and self.store.get(spec['id'])['state']!='archived':time.sleep(.01)
             self.assertEqual(self.store.get(spec['id'])['state'],'archived')

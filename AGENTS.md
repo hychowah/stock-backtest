@@ -400,7 +400,7 @@ access or the installed older runtime. Keep `data/website-data-*.lock.live/`
 ignored. Real benchmark admission stays closed.
 ## Saved backtest library
 
-`website/saved_backtests.py` owns durable user records in
+`backtest/application/library.py` owns durable user records in
 `data/saved-backtests.sqlite`. This is not a rebuildable cache. Preserve it during
 preparation, cleanup and source deployment. `website/saved-backtests.js` saves the
 last completed result and its submitted settings, even when controls have pending
@@ -434,7 +434,7 @@ its own generation and never main-view opening/publication. Check
 
 Existing `/api/robustness` streaming clients opt into full trial details with
 `X-Backtest-Details: holdings`. Background jobs and queued random tests capture
-full trial holdings through `backtest_jobs.calculate`.
+full trial holdings through the calculation owner’s `calculate` method.
 The optional `robustness.run(..., capture=observer)` receives each completed
 trial's original result. Observers must not mutate it. Preserve the default
 summary-only result and all existing calculation/progress contracts. Saved
@@ -451,7 +451,7 @@ Ignore list responses that precede a newer acknowledged mutation. Check
 
 ## Overnight backtest queue
 
-`website/backtest_queue.py` owns durable fixed/random test records in
+`backtest/application/queue.py` owns durable fixed/random test records in
 `data/backtest-queue.sqlite`. Preserve this file during rebuilds, cleanup and
 deployment. It is separate from financial caches and the 100-slot saved library.
 Keep up to 100 visible records without automatic eviction. Complete results move
@@ -471,7 +471,7 @@ on WSL and native Windows alongside the queue/library/evidence checks.
 `data/backtest-queue.lock` elects one consumer across local server instances.
 Only the consumer holding this OS lock may recover interrupted running rows.
 End queue database transactions before requesting financial cache ownership.
-Use the existing `backtest_jobs.calculate` adapter and engine cancellation
+Use the calculation owner’s `calculate` method and engine cancellation
 checks. Retain queue/source/financial ownership through worker completion and
 financial database closure. Cache contention defers queue work. It must not
 turn a batch into failed tests after a manual-run lock timeout.
@@ -537,7 +537,7 @@ Original remains default. This readiness work authorizes no deployment.
 
 ## Selectable dated engines
 
-CB-15 adds `website/engine_selection.py` behind existing calculation owners.
+CB-15 adds `backtest/application/calculations.py` behind existing calculation owners.
 Original remains the default. `options.engine` is `original` or `experimental`;
 omission always means Original. Preserve it in accepted jobs, queue receipts,
 held edits, recovery and browser replay. Keep engine metadata outside financial
@@ -557,11 +557,12 @@ publication, deployment, push or installed restart. Custom variables stay held.
 
 ## Website engine alignment
 
-`website/original_calculations.py` and `candidate_calculations.py` own separate
-execution lifetimes. `calculation_contract.py` supplies identity, shared errors
-and admission lifecycle without job dependencies. `backtest_jobs.Calculations`
-remains a compatibility name for Original. `engine_selection.Selectable` is the
-single application router. Jobs and queue consumers do not choose an adapter.
+`backtest/application/original_calculations.py` and
+`backtest/application/candidate_calculations.py` own separate
+execution lifetimes. `backtest/application/calculation_contract.py` supplies identity, shared errors
+and admission lifecycle without job dependencies.
+`backtest.application.calculations.Selectable` is the single application router.
+Call the calculation owner directly. Jobs does not forward calculation calls. Jobs and queue consumers do not choose an adapter.
 `backtest/calendar_requests.py` owns financial-free request/plan policy;
 Both engines import this canonical owner. Preserve legacy planner hashes.
 `website/engine-controls.js` owns execution controls and advisory capabilities;
@@ -569,3 +570,20 @@ Both engines import this canonical owner. Preserve legacy planner hashes.
 prepared-data views. Stored-result readers never infer producer from a selector.
 Check `tests/test_website_engine_alignment.py`, engine/candidate/calendar/batch/
 queue/library checks and the actual native `tests/test_selectable_browser.py`.
+
+## Application result access
+
+`backtest/application/result_access.py` owns acquired results separately from Jobs.
+It dispatches original run, saved and queue evidence. Each read or save has its
+own request pin. Preserve 16 display readers and 32 active request pins. A valid
+release fences a delayed acquisition under the same ID. Cleanup failures retain
+strong owners and charged bytes for retry. Stored operations never prepare or
+calculate results and never consult a current catalog.
+
+`website/result-artifacts.js` owns `ResultArtifacts.use`. All opening, comparison
+and parameter consumers use this scope. It retains the requested reader ID before
+POST and releases unaccepted acquisitions, including lost responses. Publication
+transfers a reader to the view. Preserve StrategyDraft restoration and its held
+queue-edit refusal. Shutdown closes queue, calculation, job and reader admission;
+then joins the queue, drains readers, closes jobs, joins HTTP requests and retires
+the calculation child before bootstrap source ownership ends.

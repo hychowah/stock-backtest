@@ -9,9 +9,10 @@ import uuid
 import zlib
 
 from backtest.runtime import backtest_control as backtest_control
-import durable_evidence
-
-DATABASE = Path(__file__).resolve().parents[1]/'data'/'saved-backtests.sqlite'
+from backtest.application import durable_evidence as durable_evidence
+from backtest.application import artifacts
+from backtest.paths import ROOT
+DATABASE = ROOT/'data'/'saved-backtests.sqlite'
 LIMIT = 100
 MAX_BYTES = 512*1024*1024
 SCHEMA = '''CREATE TABLE IF NOT EXISTS records (
@@ -28,52 +29,6 @@ class Missing(ValueError):
     pass
 
 
-def validate(snapshot):
-    """Check completeness, without reinterpreting financial calculations."""
-    if not isinstance(snapshot,dict) or snapshot.get('version') not in (1,2):
-        raise ValueError('Unsupported saved backtest format.')
-    kind=snapshot.get('kind')
-    if kind not in ('january','custom','random'):
-        raise ValueError('Run a historical backtest before saving it.')
-    settings=snapshot.get('settings');result=snapshot.get('result')
-    if not isinstance(settings,dict) or settings.get('mode')!=kind or not isinstance(result,dict):
-        raise ValueError('The result and its submitted settings are required.')
-    groups=result.get('years' if kind=='january' else 'periods')
-    if kind=='random':
-        details=result.get('trial_results');trials=result.get('trials')
-        if not isinstance(details,list) or not isinstance(trials,list) or not trials or len(details)!=len(trials) or len(trials)!=result.get('completed'):
-            raise ValueError('All random trials must include their traded stocks before saving.')
-        groups=[]
-        for trial,detail in zip(trials,details):
-            if not isinstance(trial,dict):raise ValueError('Missing random-trial summary.')
-            if not isinstance(detail,dict) or not isinstance(detail.get('periods'),list):
-                raise ValueError('Missing random-trial holdings.')
-            if len(detail['periods'])!=trial.get('periods'):
-                raise ValueError('Incomplete random-trial holdings.')
-            groups.extend(detail['periods'])
-    if not isinstance(groups,list) or not groups:
-        raise ValueError('The complete holding periods are required.')
-    for group in groups:
-        if not isinstance(group,dict) or not isinstance(group.get('holdings'),list) or len(group['holdings'])!=group.get('names'):
-            raise ValueError('Each holding period must contain all traded stocks.')
-        if 'portfolio' not in group or 'spy' not in group or any(not isinstance(h,dict) or 'symbol' not in h or 'return_value' not in h for h in group['holdings']):
-            raise ValueError('Stock and period returns are required.')
-    catalog=snapshot.get('catalog')
-    if catalog is not None and (not isinstance(catalog,dict) or not isinstance(catalog.get('metrics'),dict) or not isinstance(catalog.get('filters'),dict)):
-        raise ValueError('Saved display labels are invalid.')
-    if snapshot['version']==2 and not isinstance(snapshot.get('presentation'),dict):
-        raise ValueError('Saved presentation context is required.')
-    return snapshot
-
-
-def information(snapshot):
-    result=snapshot['result'];kind=snapshot['kind']
-    configuration=result.get('configuration',{}) if kind=='random' else result
-    dates=configuration.get('calendar',configuration)
-    return dict(kind=kind,start=dates.get('start',result.get('first')),
-                end=dates.get('end',result.get('end')),
-                cagr=result.get('cagr') if kind!='random' else result.get('distributions',{}).get('cagr',{}).get('mean'),
-                trials=result.get('completed') if kind=='random' else None)
 
 
 class Store:
@@ -105,11 +60,11 @@ class Store:
     def save(self,name,snapshot):
         if not isinstance(name,str) or not name.strip() or len(name.strip())>120:
             raise ValueError('Use a backtest name with 1–120 characters.')
-        validate(snapshot)
+        artifacts.validate(snapshot)
         packed=json.dumps(snapshot,allow_nan=False,separators=(',',':')).encode('utf-8')
         if len(packed)>MAX_BYTES:raise ValueError('This backtest is too large to save as one record.')
         compressed=zlib.compress(packed,3)
-        info=information(snapshot)
+        info=artifacts.information(snapshot)
         record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
         db=self.connect()
         try:
@@ -126,7 +81,7 @@ class Store:
         """Atomically save a complete pinned source; never evict another record."""
         if not isinstance(name,str) or not 1<=len(name.strip())<=120:
             raise ValueError('Use a backtest name with 1–120 characters.')
-        info=information(metadata)
+        info=artifacts.information(metadata)
         record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
         db=self.connect()
         try:
@@ -171,14 +126,14 @@ class Store:
                     if not isinstance(name,str) or not 1<=len(name.strip())<=120:
                         raise ValueError('Use a backtest name with 1–120 characters.')
                     metadata=source if isinstance(source,dict) else source.metadata
-                    info=information(metadata)
+                    info=artifacts.information(metadata)
                     record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
                     def insert(packed):
                         db.execute('INSERT INTO records VALUES(?,?,?,?,?)',
                             (record['id'],record['name'],record['created_at'],json.dumps(info,allow_nan=False),packed))
                         db.execute('INSERT INTO queue_imports VALUES(?,?)',(source_id,record['id']))
                     if isinstance(source,dict):
-                        validate(source)
+                        artifacts.validate(source)
                         packed=json.dumps(source,allow_nan=False,separators=(',',':')).encode('utf-8')
                         if len(packed)>MAX_BYTES:raise ValueError('This backtest is too large to save as one record.')
                         insert(zlib.compress(packed,3))
@@ -219,7 +174,7 @@ class Store:
             row=db.execute('SELECT * FROM records WHERE id=?',(identifier,)).fetchone()
             if row is None:raise Missing('Saved backtest not found.')
             durable_evidence.eager_guard(row['snapshot'])
-            try:snapshot=validate(json.loads(zlib.decompress(row['snapshot'])))
+            try:snapshot=artifacts.validate(json.loads(zlib.decompress(row['snapshot'])))
             except (ValueError,TypeError,zlib.error) as error:
                 raise ValueError('This saved backtest cannot be read. Its stored record was kept.') from error
             return dict(**self.metadata(row),snapshot=snapshot)

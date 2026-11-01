@@ -104,6 +104,17 @@ class BuildStateTests(unittest.TestCase):
         self.context.enter_context(patch.object(build_state,'LOCAL_OUTPUT',self.website/'local'))
         self.context.enter_context(patch.object(build_state,'STAMP',self.website/'local'/'.build-state.json'))
 
+    def test_application_source_moves_retain_freshness_and_normalized_keys(self):
+        application=self.website.parent/'backtest/application';application.mkdir(parents=True)
+        owner=application/'jobs.py';owner.write_bytes(b'value=1;\r\n')
+        sources=build_state.inputs()['sources']
+        self.assertIn('backtest/application/jobs.py',sources)
+        build_state.record_build();self.assertTrue(build_state.current_build())
+        owner.write_bytes(b'value=1;\n');self.assertTrue(build_state.current_build())
+        owner.write_bytes(b'value=2;\n');self.assertFalse(build_state.current_build())
+        generated=application/'__pycache__';generated.mkdir();(generated/'jobs.py').write_text('ignored')
+        self.assertNotIn('backtest/application/__pycache__/jobs.py',build_state.inputs()['sources'])
+
     def test_portable_snapshot_does_not_satisfy_local_build(self):
         snapshot=self.website/'dist';snapshot.mkdir()
         for path in (self.website/'local').iterdir():

@@ -244,7 +244,7 @@ an explicit stop request. The controls stay busy until the server confirms
 worker cleanup and database closure. A Stop request made while disconnected
 retries when this browser reconnects.
 
-`website/backtest_jobs.py` accepts one active run per server. It uses the
+`backtest/application/jobs.py` accepts one active run per server. It uses the
 existing engine cancellation checks and `cache_access.daily()` ownership.
 Shutdown requests a stop and joins the thread before server lifetime ownership
 ends. Finished results remain in server memory for 24 hours, up to four recent

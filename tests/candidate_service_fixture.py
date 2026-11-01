@@ -6,6 +6,16 @@ from threading import Thread
 from unittest.mock import patch
 
 
+def forbid_calculations(context):
+    """Install only after any intentional evidence production has finished."""
+    from unittest.mock import patch
+    from backtest.application.original_calculations import Original
+    from backtest.application.candidate_calculations import Candidate
+    from backtest.application.calculations import Selectable
+    for adapter in (Original,Candidate,Selectable):
+        context.enter_context(patch.object(adapter,'calculate',side_effect=AssertionError('Stored result requested calculation')))
+
+
 def main():
     source,tests=map(Path,sys.argv[1:3]);scenario=sys.argv[3]
     sys.path[:0]=[str(tests),str(tests.parent/'tools')]
@@ -98,6 +108,7 @@ def main():
                         import traceback
                         (source/'data/evidence-fixture-failure.txt').write_text(traceback.format_exc(),encoding='utf-8')
                         raise
+                    forbid_calculations(context)
                     serve()
                 value.serve_forever=serve_evidence
             def stop():
@@ -113,8 +124,8 @@ def main():
             forbid_read_dependencies(context,serve_app)
         if scenario=='evidence':
             context.enter_context(patch.object(serve_app.backtest_queue.Queue,'start',return_value=None))
-        if scenario not in ('workflow','ordinary-workflow','selectable-workflow'):
-            context.enter_context(patch.object(serve_app.backtest_jobs,'calculate',side_effect=AssertionError('Stored result requested calculation')))
+        if scenario not in ('workflow','ordinary-workflow','selectable-workflow','evidence'):
+            forbid_calculations(context)
         if scenario.startswith('ordinary') or scenario=='selectable-workflow':
             serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
         else:

@@ -4,14 +4,19 @@ function node(id){if(!nodes.has(id))nodes.set(id,{id,value:'',innerHTML:'',textC
 const make=(id,kind='custom',version=2)=>({id,name:'Saved '+id[0],created_at:'2026-11-01T00:00:00Z',kind,cagr:.12,start:'2015-01-02',end:'2020-12-31',snapshot:{version,kind,settings:{mode:kind,start:'2015-01-01',end:'2020-12-31',months:12,rank_to:id[0]==='a'?25:50},result:{start:'2015-01-02',end:'2020-12-31',cagr:.12,spy_cagr:.08,growth:2,producer:{engine:'original',label:'Original'},...(kind==='random'?{completed:2,valid:2,incomplete:0,configuration:{seed:42,window_start:'2015-01-02',window_end:'2020-12-31'},distributions:{cagr:{mean:.12,median:.11,p10:.05,p90:.2}}}:{}),periods:[]},catalog:{metrics:{},filters:{}},presentation:{},...(version===3?{evidence:{id:'e'.repeat(32)}}:{})}});
 const ids=['a','b','c'].map(c=>c.repeat(32));let records=[make(ids[0]),make(ids[1],'random',3),make(ids[2])],requests=[],released=[],acquired=[],rejectAcquire=false,invalidAcquire=false,holdAcquire=false,releaseAcquire=null,comparisonPublished=0;
 const main=Object.freeze({version:2,kind:'custom',settings:{mode:'custom'},result:{cagr:.99}});
-const context=vm.createContext({document:{getElementById:node},location:{protocol:'http:'},crypto:require('node:crypto').webcrypto,Uint8Array,Date,console,CalendarSettings,ResultArtifacts:{opening(){throw Error('Comparison must not use main opening identity')},publish(){comparisonPublished++;throw Error('No main publication')},release:artifact=>released.push(artifact.evidence?.id),async acquire(source,display,id){
- acquired.push(id);const snapshot={...copy(records.find(record=>record.id===source.id).snapshot),evidence:{id}};
- if(holdAcquire){holdAcquire=false;await new Promise(resolve=>releaseAcquire=resolve);}
- if(rejectAcquire)throw Error('Lost acquisition response');
- if(invalidAcquire)snapshot.kind='invalid';
- return snapshot;
-}},async fetch(url,options={}){
- requests.push({url,method:options.method||'GET'});const id=url.split('/')[3],record=records.find(record=>record.id===id);let value,status=200;
+const context=vm.createContext({document:{getElementById:node},location:{protocol:'http:'},crypto:require('node:crypto').webcrypto,Uint8Array,Date,console,CalendarSettings,async fetch(url,options={}){
+ requests.push({url,method:options.method||'GET'});
+ if(url.startsWith('/api/backtest-runs/')){
+   const id=url.split('/')[3];
+   if(options.method==='DELETE'){released.push(id);return {ok:true,json:async()=>({released:true})};}
+   acquired.push(id);const source=JSON.parse(options.body).source;
+   const snapshot={...copy(records.find(record=>record.id===source.id).snapshot),evidence:{id,format_version:1,trials:2,periods:2,holdings:2}};
+   if(holdAcquire){holdAcquire=false;await new Promise(resolve=>releaseAcquire=resolve);}
+   if(rejectAcquire)throw Error('Lost acquisition response');
+   if(invalidAcquire)snapshot.kind='invalid';
+   return {ok:true,json:async()=>snapshot};
+ }
+ const id=url.split('/')[3],record=records.find(record=>record.id===id);let value,status=200;
  if(options.method==='POST'){record.name=JSON.parse(options.body).name;const {snapshot,...metadata}=record;value=metadata;}
  else if(options.method==='DELETE'){records=records.filter(item=>item.id!==id);value={deleted:true};}
  else if(!id)value={limit:100,records:records.map(({snapshot,...metadata})=>metadata)};
@@ -19,8 +24,9 @@ const context=vm.createContext({document:{getElementById:node},location:{protoco
  else value=record;
  return {ok:status<400,status,json:async()=>copy(value)};
 }});
-for(const name of ['backtest-comparison.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website',name),'utf8'),context);
-const run=code=>vm.runInContext(code,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
+for(const name of ['result-artifacts.js','backtest-comparison.js','saved-backtests.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website',name),'utf8'),context);
+const run=code=>vm.runInContext(code,context);run('ResultArtifacts.opening=()=>{throw Error("Compact inspection cannot get a main-view ticket")};ResultArtifacts.publish=()=>{throw Error("Compact inspection cannot publish")};');
+const settle=()=>new Promise(resolve=>setImmediate(resolve));
 function choose(left,right){for(const [id,value] of [['saved-compare-left',left],['saved-compare-right',right]]){node(id).value=value;node(id).handlers.change();}}
 (async()=>{
  run('SavedBacktests.init({current:()=>null,isRunning:()=>false,open:()=>{throw Error("No restoration")}})');await settle();
@@ -38,7 +44,7 @@ function choose(left,right){for(const [id,value] of [['saved-compare-left',left]
  assert(node('saved-comparison').innerHTML.includes('not one portfolio return'));assert(node('saved-comparison').innerHTML.includes('P90 trial strategy CAGR'));
  // Readers release even when projection fails or acquisition acknowledgment is lost.
  invalidAcquire=true;await node('saved-compare').handlers.click();invalidAcquire=false;
- assert(node('saved-compare-message').textContent.includes('cannot be compared'));assert.deepEqual(released,acquired);
+ assert(node('saved-compare-message').textContent.includes('Unsupported saved backtest format'));assert.deepEqual(released,acquired);
  rejectAcquire=true;await node('saved-compare').handlers.click();rejectAcquire=false;
  assert(node('saved-compare-message').textContent.includes('Lost acquisition response'));assert.deepEqual(released,acquired);
  // Clear and a changed selection invalidate late responses without changing main-view identity.

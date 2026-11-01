@@ -228,9 +228,8 @@ const ScheduleView=(()=>{
       if(!isCurrent())return;
       let next=state.result;
       if(state.evidence){
-        const artifact=await ResultArtifacts.acquire({kind:'run',id:run.id},{catalog:sourceCatalog(),presentation:scheduledPresentation({mode:run.mode,...body}),captured_at:new Date().toISOString()});
-        if(!isCurrent()){ResultArtifacts.release(artifact);return;}
-        next=artifact.result;publishResult(artifact);
+        const used=await ResultArtifacts.use({kind:'run',id:run.id},artifact=>{next=artifact.result;publishResult(artifact);},{current:isCurrent,display:{catalog:sourceCatalog(),presentation:scheduledPresentation({mode:run.mode,...body}),captured_at:new Date().toISOString()}});
+        if(!used.consumed)return;
       }else completeResult({mode:random?'random':'custom',...body},next);
       if(random){
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';

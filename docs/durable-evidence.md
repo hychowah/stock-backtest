@@ -9,7 +9,7 @@ Read the [reader contract](evidence-views.md) for acquisition and browser lifeti
 
 ## Operations and ownership
 
-`website/durable_evidence.py` owns one representation and copy implementation.
+`backtest/application/durable_evidence.py` owns one representation and copy implementation.
 It owns no database path, financial lock, scheduler or job registry. Queue and
 library owners keep their existing transactions, limits, receipts and mutations.
 
@@ -34,7 +34,7 @@ with library.open_evidence(record['id']) as opened:
 library record. The library cap remains atomic at 20 across connections. It never
 evicts a record. As with eager `save`, a repeated call creates another record.
 
-`backtest_queue.Store.finish_evidence(id, metadata, reader)` completes an already
+`backtest.application.queue.Store.finish_evidence(id, metadata, reader)` completes an already
 running queue record. It verifies the submitted settings, original labels and
 exact stored plan. An acknowledged Stop wins over later completion. Exact
 completion retries keep the first bytes and revision. Conflicting retries fail.

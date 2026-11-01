@@ -40,7 +40,8 @@ def main():
             output.write_text(json.dumps(dict(moved=True,generation=initial['generation'],closure=initial['closure'])))
             return
         # Actual application dispatch and equivalent child-owned freshness.
-        from candidate_calculations import Candidate
+        from backtest.application.calculation_contract import Unavailable
+        from backtest.application.candidate_calculations import Candidate
         from backtest.runtime import cache_access as cache_access
         owner=Candidate(candidate)
         options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',rank_to=5)
@@ -80,9 +81,9 @@ def main():
             journal.unlink()
         # Stale request rejection occurs before a cached numerical result.
         journal=source/'data/numerical/publication.json';journal.write_text('{}')
-        import backtest_jobs
+        from backtest.application import jobs as backtest_jobs
         try:owner.calculate('custom',options,None,None)
-        except backtest_jobs.Unavailable:pass
+        except Unavailable:pass
         else:raise AssertionError('Stale result reuse admitted')
         assert owner.runtime is None
         journal.unlink()

@@ -18,12 +18,12 @@ from unittest.mock import patch
 import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import backtest_control as backtest_control
-import backtest_queue as queue
+from backtest.application import original_calculations, queue as queue
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import schedules as schedules
 import serve
@@ -327,7 +327,7 @@ class ConsumerTests(unittest.TestCase):
             first_plan=json.loads(db.execute('SELECT plan FROM jobs WHERE id=?',(item['id'],)).fetchone()[0])
         self.assertEqual(self.store.get(item['id'])['state'],'queued')
         self.assertEqual(self.closed,[True])
-        self.context.enter_context(patch.object(queue.backtest_jobs.robustness,'plan',side_effect=AssertionError('Recovery must reuse the recorded dates.')))
+        self.context.enter_context(patch.object(original_calculations.robustness,'plan',side_effect=AssertionError('Recovery must reuse the recorded dates.')))
         self.release.set();self.consumer=queue.Queue(self.store,library=queue.saved_backtests.Store((self.store).path.with_name('saved-library.sqlite')));self.consumer.start()
         complete=self.terminal(item['id'])
         self.assertEqual(complete['configuration']['seed'],first_config['seed'])

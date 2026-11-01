@@ -4,22 +4,18 @@ Engine metadata never enters financial plans. Producer metadata describes only
 new completed results; request defaults cannot establish old result provenance.
 """
 
-# Resolve the importable package for direct-file commands and spawned fixtures.
-import sys as _package_sys
-from pathlib import Path as _PackagePath
-_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 from contextlib import contextmanager
 
-import calculation_contract
+from backtest.application import calculation_contract as calculation_contract
 from backtest import calendar_requests as calendar_requests
-from original_calculations import Original
+from backtest.application.original_calculations import Original
 
 
 class Selectable:
     calendar_version=None  # Legacy clients still see Original's calendar.
 
     def __init__(self,preparation):
-        from candidate_calculations import Candidate
+        from backtest.application.candidate_calculations import Candidate
         self.preparation=preparation
         self.original=Original()
         self.closed=self.original.closed

@@ -4,10 +4,6 @@ Own financial admission, ordinary worker/database lifetime and full results.
 Publish only after workers and connections close. Queue waiting repeats only
 admission, never calculation. Optional numerical dependencies are not imported.
 """
-# Resolve the importable package for direct-file commands and spawned fixtures.
-import sys as _package_sys
-from pathlib import Path as _PackagePath
-_package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 
 from backtest.inputs import daily
 from backtest import screening
@@ -19,7 +15,7 @@ from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import robustness as robustness
 from backtest.engines.original import schedules as schedules
 from backtest import calendar_requests as calendar_requests
-from calculation_contract import Control, Busy, Unavailable
+from backtest.application.calculation_contract import Control, Busy, Unavailable
 
 
 class Original(Control):

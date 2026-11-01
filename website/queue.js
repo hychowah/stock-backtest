@@ -190,14 +190,10 @@ const BacktestQueue=(()=>{
     if(action==='keep'){pendingDelete=null;render();return;}
     await perform(async()=>{
       if(action==='open'){
-        const isCurrent=ResultArtifacts.opening();let value;
-        try{value=await request('/'+id);}
-        catch(error){if(!error.requires_reader)throw error;value={snapshot:await ResultArtifacts.acquire({kind:'queue',id})};}
-        if(value.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it from the saved list.');return;}
-        if(!value.snapshot)throw Error('This result is not ready yet.');
-        if(!isCurrent()){ResultArtifacts.release(value.snapshot);return;}
-        try{callbacks.open(value.snapshot);}catch(error){ResultArtifacts.release(value.snapshot);throw error;}
-        message('Opened “'+record.name+'” from its stored results.');return;
+        const isCurrent=ResultArtifacts.opening();
+        const used=await ResultArtifacts.use({kind:'queue',id},artifact=>callbacks.open(artifact),{current:isCurrent});
+        if(used.record?.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it from the saved list.');return;}
+        if(used.consumed)message('Opened “'+record.name+'” from its stored results.');return;
       }
       if(action==='copy'){
         callbacks.prepare?.();callbacks.restore({mode:record.mode,...record.options});node('queue-name').value=(record.name+' copy').slice(0,120);

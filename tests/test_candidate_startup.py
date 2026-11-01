@@ -29,8 +29,8 @@ import data_manager
 import build_state
 import serve
 import serve_candidate
-import backtest_queue
-import saved_backtests
+from backtest.application import queue as backtest_queue
+from backtest.application import library as saved_backtests
 from test_saved_backtests import snapshot
 from test_queue import request
 
@@ -275,7 +275,7 @@ class MutationAndHttpTests(unittest.TestCase):
             calculate.assert_not_called();self.assertEqual(store.get(record['id'])['state'],'queued')
 
     def test_background_admission_rechecks_freshness_inside_financial_snapshot(self):
-        import backtest_jobs
+        from backtest.application import jobs as backtest_jobs
         with tempfile.TemporaryDirectory() as temporary:
             owner=cache_access.WorkspaceAccess(Path(temporary)/'financial.lock');jobs=backtest_jobs.Jobs()
             def ready():
@@ -341,7 +341,7 @@ class MutationAndHttpTests(unittest.TestCase):
             server=serve.Server(('127.0.0.1',0),serve.Handler)
             # This case models the isolated candidate entry. Normal servers
             # now keep Original available when optional preparation fails.
-            from candidate_calculations import Candidate
+            from backtest.application.candidate_calculations import Candidate
             server.calculations=Candidate(capability)
             server.candidate_preparation=capability;server.data_recovery=True
             server.backtest_queue.ready=lambda:False

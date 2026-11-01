@@ -1,7 +1,7 @@
 # Completed-trial calculation checkpoints
 
 CB-10 added offline numerical random recovery. Current application requests use
-`backtest_jobs.calculate`. Original uses ordinary schedules and `book_batch`.
+the calculation owner’s `calculate` method. Original uses ordinary schedules and `book_batch`.
 Opt-in experimental random requests use the CB-19D parallel coordinator. The
 existing queue and saved library own user records. Both engines support the
 current week/month calendars. Original remains the default. Source changes do

@@ -2,6 +2,8 @@
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.application import original_calculations
+from backtest.application.original_calculations import Original
 from backtest.inputs import daily
 from contextlib import ExitStack
 import io
@@ -16,7 +18,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'website')]
 from backtest.runtime import cache_access as access
 from backtest.inputs import research as research
 from backtest.engines.original import schedules as schedules
@@ -64,14 +66,14 @@ class AccessTests(unittest.TestCase):
                 handler=object.__new__(serve.Handler)
                 handler.disconnect_check=lambda:lambda:False
                 handler.path=path;handler.client_address=('127.0.0.1',1)
-                handler.server=SimpleNamespace(calculations=serve.backtest_jobs.Calculations());handler.headers={'Host':'127.0.0.1:3000','Content-Length':'2'}
+                handler.server=SimpleNamespace(calculations=Original());handler.headers={'Host':'127.0.0.1:3000','Content-Length':'2'}
                 handler.rfile=io.BytesIO(b'{}');handler.reply=lambda status,payload:responses.append(status)
                 handler.wfile=io.BytesIO();handler.send_response=responses.append
                 handler.send_header=lambda *args:None;handler.end_headers=lambda:None
                 def request():
                     try:handler.do_POST()
                     except BaseException as error:errors.append(error)
-                with patch.object(daily,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(serve.backtest_jobs.robustness,'plan',return_value={'options':{}}),patch.object(serve.backtest_jobs.robustness,'run',side_effect=calculate):
+                with patch.object(daily,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(original_calculations.robustness,'plan',return_value={'options':{}}),patch.object(original_calculations.robustness,'run',side_effect=calculate):
                     thread=Thread(target=request);thread.start()
                     try:
                         self.assertTrue(entered.wait(5))

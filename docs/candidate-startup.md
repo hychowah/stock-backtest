@@ -331,7 +331,7 @@ Changed failures and failures that return after a successful check are reported.
 This check never installs packages, downloads data or blocks Original because
 experimental dependencies are unavailable.
 
-`engine_selection.Selectable` composes the existing Original and candidate
+`backtest.application.calculations.Selectable` composes the existing Original and candidate
 calculation owners. Submitted `options.engine` uses `original` or
 `experimental`. Omission always means Original. This implicit default is fixed;
 old queue specifications are not rewritten. New browser submissions include
@@ -360,10 +360,11 @@ that cannot open version-3 evidence.
 
 ## Aligned website execution boundary
 
-Original execution now lives in `website/original_calculations.py`. Experimental
-execution stays in `candidate_calculations.py`. Their shared lifecycle and errors
-live in `calculation_contract.py`; neither adapter owns jobs or queue records.
-The `backtest_jobs.Calculations` name remains compatible for standalone callers.
+Original execution now lives in `backtest/application/original_calculations.py`. Experimental
+execution lives in `backtest/application/candidate_calculations.py`.
+Their shared lifecycle and errors live in `backtest/application/calculation_contract.py`.
+Neither adapter owns jobs or queue records. Standalone callers construct Original
+and call its `calculate` method directly.
 `calendar_requests.py` validates both engines' recorded plans without resampling.
 Legacy monthly entry points and their serialized plans are unchanged.
 

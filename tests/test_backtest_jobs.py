@@ -2,6 +2,7 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.application.calculation_contract import Busy
 from backtest.inputs import daily
 from contextlib import ExitStack
 from http.client import HTTPConnection
@@ -22,9 +23,9 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import backtest_control as control
-import backtest_jobs
+from backtest.application import jobs as backtest_jobs
 from backtest.runtime import cache_access as cache_access
-from backtest.engines.original import schedules as schedules
+from backtest.engines.original import schedules as schedules, robustness
 import serve
 import test_robustness as fixtures
 
@@ -145,7 +146,7 @@ class JobTests(unittest.TestCase):
         self.assertEqual(self.server.backtest_jobs.snapshot(self.identifier)['state'],'cancelled')
         self.assertEqual(self.closures,[True])
         self.assertFalse(self.server.backtest_jobs.runs[self.identifier]['thread'].is_alive())
-        with self.assertRaises(backtest_jobs.Busy):
+        with self.assertRaises(Busy):
             self.server.backtest_jobs.start('b'*32,'custom',self.options)
 
     def test_duplicate_id_and_busy_rejection_do_not_start_more_work(self):
@@ -175,7 +176,7 @@ class JobTests(unittest.TestCase):
     def test_recorded_plan_submission_is_idempotent_and_rejects_changed_plan(self):
         self.release.set()
         options=dict(self.options,trials=2,seed=42)
-        planned=backtest_jobs.robustness.plan(self.db,**options)
+        planned=robustness.plan(self.db,**options)
         payload=dict(mode='random',options=options,planned=planned)
         self.assertEqual(self.request('POST',payload=payload)[0],202)
         result=self.terminal()

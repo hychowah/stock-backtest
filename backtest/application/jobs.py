@@ -12,39 +12,24 @@ from threading import Event, RLock, Thread
 import time
 
 from backtest.runtime import backtest_control as backtest_control
-from backtest.runtime import cache_access as cache_access
 from backtest.runtime import diagnostics as diagnostics
-from backtest.engines.original import robustness as robustness
-from backtest.engines.original import schedules as schedules
-import job_evidence
+from backtest.application import temporary_evidence as job_evidence
 from backtest.engines.numerical import transfer as numerical_transfer
-import durable_evidence
-
-
+from backtest.application import durable_evidence as durable_evidence
 class Missing(ValueError):
     pass
 
 
-# Compatibility names for callers that used the former job-owned adapter.
-from calculation_contract import Busy, Unavailable, ENGINES, engine_id
-from original_calculations import Original as Calculations
-
-
-def calculate(mode,options,progress,configuration,*,planned=None,owner=None,
-              admission='interactive',details=True):
-    """Shared application entry; standalone callers retain ordinary execution."""
-    return (owner if owner is not None else Calculations()).calculate(
-        mode,options,progress,configuration,planned=planned,admission=admission,details=details)
-
+from backtest.application.calculation_contract import Busy, engine_id
+from backtest.application.original_calculations import Original
 
 class Jobs:
     def __init__(self,calculations=None,*,evidence_root=None,evidence_bytes=1024**3):
         self.lock=RLock()
         self.runs={}
         self.closing=False
-        self.calculations=calculations if calculations is not None else Calculations()
+        self.calculations=calculations if calculations is not None else Original()
         self.evidence=job_evidence.Workspace(evidence_root,max_bytes=evidence_bytes)
-        self.readers=job_evidence.Readers()
 
     @property
     def ready(self):return self.calculations.ready
@@ -160,16 +145,6 @@ class Jobs:
             yield Opened()
         finally:pin.__exit__(None,None,None)
 
-    def acquire_reader(self,identifier,source,opener):
-        with self.lock:
-            if self.closing:raise Busy('The server is stopping.')
-        return self.readers.acquire(identifier,source,opener)
-
-    def release_reader(self,identifier):self.readers.release(identifier)
-
-    def read_artifact(self,identifier):
-        return self.readers.pin(identifier)
-
     def cancel(self,identifier):
         with self.lock:
             self.snapshot(identifier)
@@ -195,7 +170,7 @@ class Jobs:
                     descriptor=self.evidence.publish(entry,completion)
                     result=None
                 else:
-                    result=calculate(run['mode'],run['options'],progress,configuration,owner=self.calculations,
+                    result=self.calculations.calculate(run['mode'],run['options'],progress,configuration,
                         **({'planned':run['planned']} if run.get('planned') is not None else {}))
             # Publish only after worker cleanup, database closure and cache release.
             with self.lock:
@@ -214,13 +189,15 @@ class Jobs:
             if run.get('_evidence') is not None and run['state']!='complete':self.evidence.discard(run['_evidence'])
             with self.lock:run['finished']=time.time()
 
-    def close(self):
+    def request_stop(self):
+        """Close admission and signal all accepted work before owners drain."""
         with self.lock:
             self.closing=True
-            threads=[]
             for run in self.runs.values():
                 run['stop'].set()
-                threads.append(run['thread'])
+
+    def close(self):
+        self.request_stop()
+        with self.lock:threads=[run['thread'] for run in self.runs.values()]
         for thread in threads:thread.join()
-        self.readers.close()
         self.evidence.close()

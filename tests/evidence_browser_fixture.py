@@ -17,14 +17,14 @@ from threading import local
 
 
 def seed(server,source):
-    import job_evidence
-    import durable_evidence
+    from backtest.application import temporary_evidence as job_evidence
+    from backtest.application import durable_evidence as durable_evidence
     import serve_app
     from backtest.financial import metrics as metrics
-    import saved_backtests
+    from backtest.application import library as saved_backtests
     from backtest.engines.numerical.portfolio import compare_results
     from backtest.runtime.process_owner import process_metrics
-    import result_exports
+    from backtest.application import result_exports as result_exports
     server.backtest_jobs.evidence=job_evidence.Workspace(source/'tmp'/'browser-evidence-jobs',max_bytes=128*1024**2)
     budget=durable_evidence.Budget(96*1024**2)
     library=saved_backtests.Store(evidence_budget=budget)

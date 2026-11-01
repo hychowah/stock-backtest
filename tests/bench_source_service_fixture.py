@@ -404,7 +404,7 @@ def child(request_path):
                 barrier('rebuild_held')
                 return original_prepare(*args,**kwargs)
             research.prepare=rebuild_prepare
-        from original_calculations import Original
+        from backtest.application.original_calculations import Original
         financial=Original._financial
         from contextlib import contextmanager
         @contextmanager

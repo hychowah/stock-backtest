@@ -196,10 +196,9 @@ class NumericalTrialsTests(unittest.TestCase):
             with self.assertRaises(ValueError):robustness.consume_trials(config,iter(stream))
 
     def test_durable_snapshots_reopen_and_export_after_generation_replacement_and_eviction(self):
-        import backtest_jobs
-        import backtest_queue
-        import saved_backtests
-
+        from backtest.application import jobs as backtest_jobs
+        from backtest.application import queue as backtest_queue
+        from backtest.application import artifacts, library as saved_backtests
         inputs,provider,portfolio,store=self.evaluator()
         config=self.config(months=12,rank_to=3,metric='ev_ebitda',pool='cached')
         binding=diagnostic.checkpoint_binding(portfolio,config);experiment=store.open(binding)
@@ -234,7 +233,7 @@ class NumericalTrialsTests(unittest.TestCase):
         self.assertEqual(saved_edit['edit']['state'],'saved')
         self.assertEqual(queue.claim()['id'],item['id'])
         queue.progress(item['id'],'configuration',config)
-        saved_backtests.validate(modern)
+        artifacts.validate(modern)
         queue.finish(item['id'],'complete',snapshot=modern)
 
         before=[library.get(row['id']) for row in saved_records]+[queue.get(item['id'])]
@@ -274,7 +273,7 @@ class NumericalTrialsTests(unittest.TestCase):
         # old results against the new financial generation.
         with ExitStack() as guards:
             for owner,name in ((diagnostic,'run'),(s,'backtest_dates'),(s,'backtest'),
-                    (robustness,'plan'),(robustness,'run'),(backtest_jobs,'calculate'),
+                    (robustness,'plan'),(robustness,'run'),(backtest_jobs.Original,'calculate'),
                     (trial_checkpoints.Experiment,'load'),(trial_checkpoints.Store,'open')):
                 guards.enter_context(patch.object(owner,name,side_effect=AssertionError('Stored snapshots must not calculate')))
             reopened=saved_backtests.Store(library_path);reopened_queue=backtest_queue.Store(queue_path)

@@ -20,13 +20,15 @@ import time
 import zlib
 
 from backtest.runtime import backtest_control as backtest_control
-import backtest_jobs
+from backtest.application.calculation_contract import Busy, Unavailable, engine_id
+from backtest.application.original_calculations import Original
+from backtest.application import artifacts
+from backtest.paths import ROOT
 from backtest.runtime import cache_access as cache_access
 from backtest.runtime import diagnostics as diagnostics
-import durable_evidence
-import saved_backtests
-
-DATABASE=Path(__file__).resolve().parents[1]/'data'/'backtest-queue.sqlite'
+from backtest.application import durable_evidence as durable_evidence
+from backtest.application import library as saved_backtests
+DATABASE=ROOT/'data'/'backtest-queue.sqlite'
 LIMIT=100
 COLUMNS='id,name,spec,original_hash,position,revision,state,created_at,started,finished,seed,progress,configuration,error,cagr'
 SCHEMA='''
@@ -104,7 +106,7 @@ class Store:
         if any(not isinstance(request['catalog'].get(key),dict) for key in ('metrics','filters')):
             raise ValueError('The test metric and filter labels are required.')
         options=request['options']
-        backtest_jobs.engine_id(options)
+        engine_id(options)
         dates=options.get('calendar',options)
         if not isinstance(dates,dict) or not isinstance(dates.get('start'),str) or not isinstance(dates.get('end'),str):
             raise ValueError('Choose start and end dates.')
@@ -248,7 +250,7 @@ class Store:
         with self.database() as db:
             if db.execute('SELECT paused FROM control').fetchone()[0]:return None
             rows=db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state='queued' ORDER BY position,id")
-            row=next((row for row in rows if engines is None or backtest_jobs.engine_id(json.loads(row['spec'])['options']) in engines),None)
+            row=next((row for row in rows if engines is None or engine_id(json.loads(row['spec'])['options']) in engines),None)
             if row is None:return None
             db.execute("UPDATE jobs SET state='running',started=?,finished=NULL,error=NULL,progress=NULL,revision=revision+1 WHERE id=?",(now(),row['id']))
             return dict(self.row(db,row['id'],include_plan=True))
@@ -358,7 +360,7 @@ class Store:
                 raise Conflict('Snapshot differs from the recorded queue plan.')
             with durable_evidence.publication(db,identifier,metadata,reader,budget=self.evidence_budget) as packed:
                 db.execute("UPDATE jobs SET state='complete',snapshot=?,cagr=?,error=NULL,finished=?,revision=revision+1 WHERE id=?",
-                    (packed,saved_backtests.information(metadata)['cagr'],now(),identifier))
+                    (packed,artifacts.information(metadata)['cagr'],now(),identifier))
                 backtest_control.checkpoint();db.commit()
             return dict(id=identifier,state='complete')
 
@@ -380,7 +382,7 @@ class Store:
 
     def finish(self,identifier,state,*,snapshot=None,error=None):
         packed=zlib.compress(encode(snapshot).encode(),3) if snapshot is not None else None
-        cagr=saved_backtests.information(snapshot)['cagr'] if snapshot else None
+        cagr=artifacts.information(snapshot)['cagr'] if snapshot else None
         with self.database() as db:
             current=self.row(db,identifier)['state']
             transfer=db.execute('SELECT * FROM transfers WHERE job_id=?',(identifier,)).fetchone()
@@ -397,7 +399,7 @@ class Queue:
     def __init__(self,store=None,*,calculations=None,library=None):
         self.store=store or Store();self.library=library if library is not None else saved_backtests.Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
         self.owner=cache_access.WorkspaceAccess(self.store.path.with_suffix('.lock'))
-        self.calculations=calculations if calculations is not None else backtest_jobs.Calculations()
+        self.calculations=calculations if calculations is not None else Original()
 
     @property
     def ready(self):return self.calculations.ready
@@ -463,17 +465,17 @@ class Queue:
                 self.store.progress(identifier,'progress',event);last_progress=stamp
         try:
             with backtest_control.cancel_when(stopped):
-                result=backtest_jobs.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
+                result=self.calculations.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
                                                planned=json.loads(job['plan']) if job['plan'] else None,
-                                               owner=self.calculations,admission='queue')
+                                               admission='queue')
                 backtest_control.checkpoint()
             snapshot=dict(version=2,kind=spec['mode'],settings=dict(mode=spec['mode'],**spec['options']),
                           result=result,catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
-            saved_backtests.validate(snapshot)
+            artifacts.validate(snapshot)
             self.store.finish(identifier,'complete',snapshot=snapshot)
         except backtest_control.Cancelled:
             self.store.finish(identifier,'queued' if self.stopping.is_set() else 'cancelled')
-        except (backtest_jobs.Unavailable,backtest_jobs.Busy):
+        except (Unavailable,Busy):
             self.store.finish(identifier,'queued')
         except Exception as error:
             diagnostics.failure('queue.test_failed',error)

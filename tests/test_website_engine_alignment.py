@@ -18,9 +18,9 @@ from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.engines.numerical.portfolio import compare_results
 from test_operating_spread_engine import financial_inputs, FILTERS
-import engine_selection
+from backtest.application import calculations as engine_selection
 from backtest import calendar_requests as calendar_requests
-import backtest_queue
+from backtest.application import queue as backtest_queue
 from test_queue import request
 
 

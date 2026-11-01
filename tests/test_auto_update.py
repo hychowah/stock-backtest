@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'tools'),str(ROOT/'website'),str(ROOT/'scripts')]
+sys.path[:0]=[str(ROOT),str(ROOT/'tools'),str(ROOT/'website'),str(ROOT/'scripts')]
 import deploy as d
 import runtime_access
 
@@ -173,7 +173,7 @@ sys.path[:0]=[str(source),str(source/'website'),str(source/'scripts')]
 spec=importlib.util.spec_from_file_location('integrated_app',source/'website/serve_app.py')
 app=importlib.util.module_from_spec(spec);spec.loader.exec_module(app)
 from backtest.runtime import backtest_control
-import backtest_queue
+from backtest.application import queue as backtest_queue
 store=backtest_queue.Store(root/'queue.sqlite')
 options=dict(engine='original',start='2015-01-01',end='2016-12-30',months=3,trials=2,seed=42)
 plan=dict(options={{}},start=options['start'],end=options['end'],months=3,requested=2,seed=42,samples=[['2015-01-02']])

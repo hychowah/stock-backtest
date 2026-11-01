@@ -6,8 +6,7 @@ no current input generation, candidate readiness or financial calculation.
 """
 import math
 import re
-import evidence_views
-
+from backtest.application import evidence_views as evidence_views
 CHUNK_BYTES=65536
 HOLDINGS=['period_start','period_end','rank','symbol','name','exchange','sector',
     'market_cap','enterprise_value','metric','metric_multiple','metric_yield',

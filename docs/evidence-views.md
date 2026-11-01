@@ -17,8 +17,8 @@ and queue execution remain eager. Current eager limits are unchanged.
 
 ## Ownership
 
-Existing Jobs owns a finite collection of acquired read lifetimes through
-`job_evidence.Readers`. It is separate from the four calculation-run slots.
+`backtest.application.result_access.ResultAccess` owns a finite collection of
+acquired read lifetimes. It is separate from Jobs and its four calculation-run slots.
 Acquisition reserves one of 16 display slots before opening outside the state
 lock. A client supplies an unguessable 32-character hexadecimal identity.
 An exact retry returns the same acquisition. Conflicting reuse fails.
@@ -65,7 +65,7 @@ Byte checks measure the bytes sent, so ASCII expansion cannot reject an otherwis
 valid maximum-size Unicode record. A page never drops stored rows.
 Following every next cursor visits each matching row exactly once.
 
-`website/evidence_views.py` scans validated immutable evidence. It has no index,
+`backtest/application/evidence_views.py` scans validated immutable evidence. It has no index,
 financial input, database path or scheduler. It retains bounded rows rather than
 assembling complete trials or periods. An index or other performance layer needs
 a measured requirement before implementation.
@@ -78,6 +78,21 @@ queue receipts, held edits, exact plans and Stop/shutdown rules stay with their
 original owners. Old records reopen without rewriting their stored bytes.
 
 ## Browser composition and exports
+
+`backtest/application/result_access.py` owns acquisition for run, saved and
+queue sources. It preserves the complete request as retry identity. Durable
+metadata stays with its stored source. A valid release remembers its ID even
+before acquisition registers. The bounded history retains 128 released IDs.
+Failed cleanup retains its source owners and byte charge for retry.
+
+`ResultArtifacts.use(source, consume, {current, display})` owns browser access.
+It tries eager saved and queue reads first. Only `requires_reader` selects the
+evidence route. It records its requested ID before POST. Lost, malformed and
+rejected responses release that requested ID. The synchronous consumer runs only
+while its selection is current. Publication transfers the reader to its view.
+A refusal before publication releases it. A later presentation error preserves
+the published reader until replacement or page exit. In-flight IDs participate in
+page-exit cleanup. Network release remains best effort.
 
 One immutable artifact owns completed metadata. Mutable forms remain separate.
 Library opening, queue opening and recovery restore through `StrategyDraft`.
@@ -101,7 +116,7 @@ any subsequent pages in original order. Moving the table does not change the
 attribution input. Period, sequence and artifact fences still reject late replies.
 There is no page map, cross-selection reuse or general transport cache.
 
-`website/result_exports.py` emits complete UTF-8 attachment bytes in chunks of at
+`backtest/application/result_exports.py` emits complete UTF-8 attachment bytes in chunks of at
 most 64 KiB. It preserves eager CSV columns, row order, quoted cells, escaped
 quotes, CRLF separators, no final separator, numeric spelling and filenames.
 Random schedule exports use the selected trial. Downloads use ordinary attachment
@@ -206,3 +221,11 @@ decoding and cancellation remain. Ordinary codec iteration and initial complete
 validation keep their existing behavior. Exports use this same traversal boundary;
 their counting, output passes and byte formatting remain unchanged.
 No index, persistent cache, format, formula, automatic route or limit changes.
+
+## Shutdown ownership
+
+Queue shutdown intent precedes closing calculation and job admission. Result
+admission then closes. The server joins the queue, drains acquired readers, joins
+jobs and retires their temporary workspace, joins HTTP requests, and retires any
+calculation child. This order keeps job bytes alive through acquired request pins.
+The native bootstrap holds source ownership through the entire sequence.

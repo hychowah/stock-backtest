@@ -59,7 +59,7 @@ const context=vm.createContext({CalendarSettings,console,crypto:require('node:cr
   }
   return {ok:status<400,status,json:async()=>copy(value)};
 }});
-context.ResultArtifacts={opening:()=>()=>true,release:()=>{}};
+context.ResultArtifacts={opening:()=>()=>true,release:()=>{},async use(source,consume){const response=await context.fetch((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+source.id);const record=await response.json();if(record.state==='archived')return {consumed:false,record};if(!record.snapshot)throw Error('This result is not ready yet.');return {consumed:true,value:consume(record.snapshot),record};}};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/engine-controls.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
