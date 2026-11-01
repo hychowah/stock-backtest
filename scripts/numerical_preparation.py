@@ -25,8 +25,19 @@ import research
 import schedules
 
 PINS = {'numpy': '2.5.4', 'numba': '0.68.0', 'llvmlite': '0.50.0'}
+DEFAULT_PROFILE='numba_compiled'
+PROFILES=(DEFAULT_PROFILE,)
 _dependency_warning = None
 _dependency_warning_lock = Lock()
+_metrics_lock=Lock()
+_metrics=dict(environment_checks=0)
+
+
+def measurements():
+    """Process-local dependency diagnostics; never part of readiness identity."""
+    with _metrics_lock:return dict(_metrics)
+
+
 MESSAGES = {
     'dependencies unavailable': 'Candidate dependencies are unavailable. Follow docs/candidate-startup.md; setup is a separate offline operation.',
     'saved inputs need repair': 'Saved inputs need repair. Use the data panel or restore verified files.',
@@ -42,8 +53,10 @@ class PreparationError(ValueError):
         super().__init__(MESSAGES[category])
 
 
-def dependencies():
+def dependencies(profile=DEFAULT_PROFILE):
     """Inspect installed metadata without importing the native stack or networking."""
+    if profile not in PROFILES:raise ValueError('Unsupported internal preparation profile.')
+    with _metrics_lock:_metrics['environment_checks']+=1
     global _dependency_warning
     implementation = platform.python_implementation()
     python = platform.python_version()
@@ -74,7 +87,7 @@ def dependencies():
         else:
             _dependency_warning = None
     if problems: raise PreparationError('dependencies unavailable')
-    return dict(python=python, packages=versions)
+    return dict(python=python,packages=versions,profile=profile,rust_required=False)
 
 
 def _digest(value):
@@ -82,17 +95,19 @@ def _digest(value):
 
 
 class Preparation:
-    def __init__(self, root, *, python=None):
+    def __init__(self, root, *, python=None, profile=DEFAULT_PROFILE):
         self.root = Path(root).absolute()
         if self.root != Path(research.ROOT).absolute():
             raise ValueError('Candidate root must match the loaded application source. Use a new source-owned process.')
         self.python = str(python or sys.executable)  # Preserve the venv entry path.
+        if profile not in PROFILES:raise ValueError('Unsupported internal preparation profile.')
+        self.profile=profile
         self.path = self.root / 'data' / 'numerical-preparation.json'
         self.gate = cache_access.WorkspaceAccess(self.path.with_suffix('.lock'))
         self.runtime = None
         self.last_closure = None
 
-    def inventory(self):
+    def common_inventory(self):
         """Equivalent path/size/mtime checks, plus report/source/pointer content."""
         sources = {}
         for folder in ('scripts', 'website', 'tools'):
@@ -103,7 +118,13 @@ class Preparation:
         pointer = self.root / 'data' / 'numerical' / 'current.json'
         return _digest(dict(inputs=research.signature(), prices=research.price_sources(),
             report=hashlib.sha256((research.RESULTS / 'summary-exits.txt').read_bytes()).hexdigest(),
-            sources=sources, pointer=json.loads(pointer.read_bytes()) if pointer.exists() else None))
+            sources=sources,
+            pointer=json.loads(pointer.read_bytes()) if pointer.exists() else None))
+
+    def inventory(self):
+        """Selected compiled-provider readiness over the complete common inventory."""
+        return _digest(dict(common=self.common_inventory(),profile=self.profile,
+            dependencies=dict(rust_required=False)))
 
     def status(self):
         """Small detached status; missing dependencies do not prevent this read."""
@@ -114,10 +135,19 @@ class Preparation:
         except ValueError:
             return dict(state='unavailable',category='preparation failed',busy=True)
         try:
+            try:installed=dependencies(self.profile)
+            except PreparationError:return dict(state='unavailable',category='dependencies unavailable')
             report = json.loads(self.path.read_bytes())
             if not isinstance(report,dict) or report.get('state') not in ('current','stale','failed'):
                 raise ValueError('Invalid candidate preparation report.')
             if report.get('state') != 'current': return deepcopy(report)
+            if report.get('profile')!=self.profile or report.get('dependencies')!=installed:
+                return dict(state='unavailable',category='dependencies unavailable',profile=self.profile)
+            provider=report['runtime']['provider']
+            if provider.get('backend')!='numba' or provider.get('candidate_assembly')!='compiled':
+                raise ValueError('Compiled preparation provider differs.')
+            if not all(provider.get('nopython_signatures',{}).get(name) for name in ('reports','prices','factors','decisions','materialize')):
+                raise ValueError('Compiled preparation has no genuine kernel evidence.')
             if any((self.root / 'data' / name).exists() for name in
                    ('deployment.pending.json', 'research.sqlite.publication.json')):
                 return dict(state='stale', category='publication needs recovery')
@@ -126,7 +156,7 @@ class Preparation:
             if report.get('inventory') != self.inventory():
                 return dict(state='stale', category='saved inputs need repair')
             return deepcopy(report)
-        except (OSError, ValueError, RuntimeError, KeyError):
+        except (OSError, ValueError, RuntimeError, KeyError, ImportError):
             return dict(state='unavailable', category='preparation failed')
         finally:ownership.__exit__(None,None,None)
 
@@ -142,7 +172,8 @@ class Preparation:
         from numerical_runtime import NumericalRuntime
         return NumericalRuntime(source_root=self.root,
             scratch=self.root / 'tmp' / ('candidate-runtime-' + uuid.uuid4().hex),
-            python=self.python, coordinator=cache_access.workspace)
+            python=self.python, coordinator=cache_access.workspace,preparation_profile=self.profile,
+            session_options=dict(execution=dict(backend=self.profile)))
 
     def prepare(self, progress=lambda **kw: None, cancelled=lambda: False):
         """Recover, prepare, publish, attach/prewarm, CLOSE, verify and build."""
@@ -156,7 +187,7 @@ class Preparation:
             try:
                 self.close()
                 stage('Checking candidate dependencies (offline)…')
-                installed = dependencies()
+                installed = dependencies(self.profile)
                 with cache_access.access():
                     self.invalidate()
                     category = 'publication needs recovery'
@@ -176,6 +207,10 @@ class Preparation:
                 self.runtime = self._runtime()
                 try:
                     self.runtime.start(cancelled=cancelled)
+                    verification=self.runtime.calculate('__prepare__', {}, cancelled=cancelled)
+                    if (not isinstance(verification,dict) or verification.get('verified') is not True
+                            or verification.get('profile')!=self.profile):
+                        raise PreparationError('preparation failed')
                     runtime_stats = deepcopy(self.runtime.last_stats)
                     if runtime_stats.get('generation') != generation['identity']:
                         raise PreparationError('saved inputs need repair')
@@ -194,7 +229,7 @@ class Preparation:
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     check()
                     if self.inventory() != expected: raise PreparationError('saved inputs need repair')
-                    report = dict(state='current', inventory=expected, generation=generation,
+                    report = dict(state='current', profile=self.profile,inventory=expected, generation=generation,
                                   dependencies=installed, runtime=runtime_stats, closure=self.last_closure)
                     write_json(self.path, report)
                     return deepcopy(report)

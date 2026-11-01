@@ -212,6 +212,11 @@ class Batch:
         self.pool.active = None
 
 
+# Source-owned worker startup emits source-owned, attaching, initializing and
+# ready once each. All concurrent workers may emit before the parent drains.
+STARTUP_EVENTS_PER_WORKER = 4
+
+
 class TrialPool:
     def __init__(self, *, source_root, scratch, reference, source_identity, compiler_identity,
                  policy, checkpoint=backtest_control.checkpoint, python=None):
@@ -220,7 +225,7 @@ class TrialPool:
         self.reference, self.source_identity = deepcopy(reference), deepcopy(source_identity)
         self.compiler_identity = deepcopy(compiler_identity)
         self.policy, self.checkpoint, self.python = policy, checkpoint, str(python or sys.executable)
-        self.events = Queue(maxsize=policy.workers*3+1)
+        self.events = Queue(maxsize=policy.workers*STARTUP_EVENTS_PER_WORKER+1)
         self.workers = []
         self.active = None
         self.started = self.closed = self.poisoned = self.transport_failure = False
@@ -285,31 +290,39 @@ class TrialPool:
             source=trial_checkpoints.digest(trial_checkpoints.canonical(self.source_identity)),
             provider_limits=self.policy.provider_limits, artifact_limits=self.policy.artifact_limits,
             slots=self.policy.identity['pending_slots'], close_seconds=self.policy.close_seconds)
-        expected = dict(generation=self.reference['identity'], source=configuration['source'], backend='rust' if self.policy.backend=='rust' else 'numba',
+        expected = dict(generation=self.reference['identity'], source=configuration['source'], backend='numba',
                         compiler=self.compiler_identity['signature'], threads=self.policy.provider_limits['threads'])
         try:
             write_payload(launch, configuration, REQUEST_BYTES)
-            # First readiness is the cold-cost probe. Do not duplicate an
-            # unmeasured compiler/provider footprint just because CPUs exist.
-            for index in range(len(self.workers), target):
+            def launch_worker(index):
                 self.checkpoint()
                 worker = _Worker.__new__(_Worker)
                 self.workers.append(worker)  # Adopt before any constructor can fail.
+                deadline=time.monotonic()+self.policy.start_seconds
                 _Worker.__init__(worker, self, index, launch)
-                deadline = time.monotonic()+self.policy.start_seconds
-                while True:
-                    owner, event = self._event(deadline)
-                    if owner is not worker or not self._stage(owner,event): break
-                if owner is not worker or event.get('event') != 'ready':
-                    raise RuntimeError('Trial worker failed before readiness.')
-                if any(event.get(key) != value for key, value in expected.items()):
-                    raise ValueError('Trial worker readiness differs from its expected execution identity.')
-                if type(event.get('pid')) is not int: raise ValueError('Invalid trial worker readiness PID.')
-                worker.ready = deepcopy(event)
-                self.stats['readiness'].append(deepcopy(event))
-                self.stats['started_workers'] += 1
-                if index == 0:
-                    self.stats['cold_admission'] = self.policy.admit_cold_worker(event['measurements'])
+                return deadline
+            def await_ready(pending):
+                while pending:
+                    owner,event = self._event(min(pending.values()))
+                    if owner.index not in pending: raise RuntimeError('Unexpected trial worker readiness owner.')
+                    if self._stage(owner,event): continue
+                    if event.get('event') != 'ready': raise RuntimeError('Trial worker failed before readiness.')
+                    if any(event.get(key) != value for key,value in expected.items()):
+                        raise ValueError('Trial worker readiness differs from its expected execution identity.')
+                    if type(event.get('pid')) is not int: raise ValueError('Invalid trial worker readiness PID.')
+                    owner.ready=deepcopy(event)
+                    self.stats['readiness'].append(deepcopy(event))
+                    self.stats['started_workers']+=1
+                    del pending[owner.index]
+            # First readiness probes actual cold memory and publishes an
+            # immutable Rust build. Only then may remaining bounded launches
+            # overlap. No partially initialized worker receives a trial.
+            if not self.workers:
+                await_ready({0:launch_worker(0)})
+                self.stats['cold_admission']=self.policy.admit_cold_worker(self.workers[0].ready['measurements'])
+            pending={}
+            for index in range(len(self.workers),target): pending[index]=launch_worker(index)
+            await_ready(pending)
             self.started = True
             return self
         except BaseException as error: self._fail(error)

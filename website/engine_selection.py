@@ -34,8 +34,10 @@ class Selectable:
         return engine
 
     def status(self):
-        from numerical_preparation import dependencies,PreparationError
-        try:dependencies()
+        from numerical_preparation import dependencies,PreparationError,DEFAULT_PROFILE
+        profile=getattr(self.preparation,'profile',DEFAULT_PROFILE)
+        if not isinstance(profile,str):profile=DEFAULT_PROFILE
+        try:dependencies(profile)
         except PreparationError as error:return dict(state='unavailable',category=error.category)
         return self.experimental.status()
 

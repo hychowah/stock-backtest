@@ -1,0 +1,96 @@
+{
+  "binding": {
+    "declaration_sha256": "84a40b3011cc6306680c17e1621950e4e64124c9721d33b0b0292384e53785b8",
+    "generation": "cb1916f2ee1d435d4bda70f1258a3ae06f2a6fa6f0f760ada04a1bbccf1d275b",
+    "report_sha256": "6bc2e59ea722f6f88491eaa8c7411d7e1262cdcbf7c0092f3d45e97a4ea5c9ea",
+    "financial_inventory": "87694a2dcec39f091eb17cb8451c40a465d3296562439971173e8601682757db",
+    "plan_sha256": "bb936a2489f1386a755996144dc28ce2f7e1fe915a04a836fccab5a13e909a04"
+  },
+  "agreement": [
+    {
+      "label": "g-final-original-warm",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "g-final-selected",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "g-final-full-hit",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    },
+    {
+      "label": "g-final-partial",
+      "exact": true,
+      "structural": [],
+      "numeric": [],
+      "maximum_absolute": 0.0,
+      "maximum_relative": 0.0
+    }
+  ],
+  "boundaries": {
+    "g-final-original-warm": {
+      "adapter": "normal Selectable.calculate",
+      "timing_scope": "elapsed: normal adapter calculate through complete result and confirmed closure"
+    },
+    "g-final-selected": {
+      "adapter": "normal Selectable.calculate",
+      "timing_scope": "elapsed: normal adapter calculate through complete result and confirmed closure"
+    },
+    "g-final-full-hit": {
+      "adapter": "normal Selectable.calculate",
+      "timing_scope": "elapsed: normal adapter calculate through complete result and confirmed closure"
+    },
+    "g-final-partial": {
+      "adapter": "normal Selectable.calculate",
+      "timing_scope": "elapsed: normal adapter calculate through complete result and confirmed closure"
+    }
+  },
+  "timings": {
+    "original:2x2:original_prepared_books": {
+      "raw_seconds": [
+        7.600490499986336
+      ],
+      "median_seconds": 7.600490499986336,
+      "minimum_seconds": 7.600490499986336,
+      "maximum_seconds": 7.600490499986336
+    },
+    "numba_compiled:2x2:fresh_application": {
+      "raw_seconds": [
+        120.68559830001323
+      ],
+      "median_seconds": 120.68559830001323,
+      "minimum_seconds": 120.68559830001323,
+      "maximum_seconds": 120.68559830001323
+    },
+    "numba_compiled:2x2:full_recovery": {
+      "raw_seconds": [
+        51.4137748000212
+      ],
+      "median_seconds": 51.4137748000212,
+      "minimum_seconds": 51.4137748000212,
+      "maximum_seconds": 51.4137748000212
+    },
+    "numba_compiled:2x2:partial_recovery": {
+      "raw_seconds": [
+        123.26666680001654
+      ],
+      "median_seconds": 123.26666680001654,
+      "minimum_seconds": 123.26666680001654,
+      "maximum_seconds": 123.26666680001654
+    }
+  },
+  "scope": "Each observation retains its actual adapter boundary and starting state. Normal Selectable elapsed includes delivery and closure. Initialized direct Runtime elapsed excludes startup, warmup and final closure; its total session records those separately. Historical opt-in retains original source scope. No host cache flush."
+}

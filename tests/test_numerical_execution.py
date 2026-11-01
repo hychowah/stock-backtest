@@ -17,10 +17,15 @@ OBSERVATIONS = dict(logical_cpus=16, affinity_cpus=12, cpu_quota_lanes=6.5,
 class ExecutionTests(unittest.TestCase):
     def test_effective_resources_attribution_and_higher_layout(self):
         policy = execution.ExecutionPolicy(observations=OBSERVATIONS)
-        self.assertEqual(policy.workers, 1)
-        self.assertEqual(policy.provider_limits['threads'], 4)
+        self.assertEqual(policy.backend,'numba_compiled')
+        self.assertEqual(policy.workers, 2)
+        self.assertEqual(policy.provider_limits['threads'], 2)
         self.assertEqual(policy.identity['numerical_lane_budget'], 6)
-        self.assertIn('comparison', policy.provenance['threads'])
+        self.assertIn('measured', policy.provenance['threads'])
+        self.assertIn('256 MiB',policy.provenance['memory'])
+        for backend in ('rust','numba'):
+            with self.assertRaisesRegex(ValueError,'historical'):
+                execution.ExecutionPolicy({'backend':backend},observations=OBSERVATIONS)
         larger = execution.ExecutionPolicy(dict(workers=2, threads_per_worker=3), observations=OBSERVATIONS)
         self.assertEqual(larger.identity['workers']*larger.identity['threads_per_worker'], 6)
         self.assertEqual(larger.identity['workspace_total_bytes'], 3*64*1024**2)
@@ -31,6 +36,46 @@ class ExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'lane budget'):
             execution.ExecutionPolicy(dict(workers=3, threads_per_worker=3), observations=OBSERVATIONS)
         self.assertEqual(execution.effective_lanes(dict(logical_cpus=None)), 1)
+
+    def test_default_capacity_resolves_before_identity_and_unknown_memory_is_single(self):
+        for lanes,workers,threads in ((1,1,1),(2,1,2),(3,1,2),(4,2,2),(16,2,2)):
+            observed=dict(OBSERVATIONS,logical_cpus=lanes,affinity_cpus=lanes,cpu_quota_lanes=None)
+            value=execution.ExecutionPolicy(observations=observed)
+            self.assertEqual((value.workers,value.provider_limits['threads']),(workers,threads))
+            changed=dict(observed,available_bytes=1)
+            resolved=execution.ExecutionPolicy(value.settings,observations=changed)
+            self.assertEqual(value.identity,resolved.identity)
+        for available in (None,1):
+            observed=dict(OBSERVATIONS,available_bytes=available)
+            self.assertEqual(execution.ExecutionPolicy(observations=observed).workers,1)
+        explicit=execution.ExecutionPolicy(dict(workers=4,threads_per_worker=2,lane_budget=8),observations=OBSERVATIONS)
+        self.assertEqual(explicit.workers,4)
+
+    def test_job_headroom_limits_both_default_and_actual_cold_admission(self):
+        restricted=dict(OBSERVATIONS,job_headroom_bytes=1000)
+        self.assertEqual(execution.ExecutionPolicy(observations=restricted).workers,1)
+        missing=dict(OBSERVATIONS,restricted_memory_unobserved=True)
+        self.assertEqual(execution.ExecutionPolicy(observations=missing).workers,1)
+        policy=execution.ExecutionPolicy(dict(workers=2,threads_per_worker=1),observations=OBSERVATIONS)
+        with patch.object(execution,'observe_resources',return_value=restricted):
+            with self.assertRaisesRegex(ValueError,'available memory'):policy.admit_cold_worker({'sampled_private_bytes':1001})
+        with patch.object(execution,'observe_resources',return_value=missing):
+            with self.assertRaisesRegex(ValueError,'memory observation'):policy.admit_cold_worker({'sampled_private_bytes':1})
+        explicit=execution.ExecutionPolicy(dict(workers=2,threads_per_worker=1,private_memory_budget_bytes=1000),observations=missing)
+        with patch.object(execution,'observe_resources',return_value=missing):
+            self.assertEqual(explicit.admit_cold_worker({'sampled_private_bytes':100})['duplication_bytes'],100)
+
+    def test_runtime_and_session_normalization_preserve_legacy_per_provider_bounds_and_origin(self):
+        from numerical_runtime import NumericalRuntime
+        with patch.object(execution,'observe_resources',return_value=OBSERVATIONS):
+            value=NumericalRuntime(source_root=ROOT,scratch=ROOT/'tmp/not-started-policy-test',session_options={'matrix_cache_bytes':32768})
+        settings=value.configuration['session_options']['execution']
+        self.assertEqual(settings['matrix_cache_bytes'],32768*(settings['workers']+1))
+        configured=dict(value.configuration,**value.configuration['session_options'])
+        session=execution.ExecutionPolicy.from_configuration(configured)
+        self.assertEqual(session.provider_limits['matrix_cache_bytes'],32768)
+        self.assertIn('measured',session.provenance['layout'])
+        self.assertEqual(session.observations,OBSERVATIONS)
 
     def test_total_provider_and_artifact_accounting(self):
         policy = execution.ExecutionPolicy(dict(workers=2, threads_per_worker=1,

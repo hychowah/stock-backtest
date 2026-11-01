@@ -39,6 +39,20 @@ def write(path, value):
     path.write_text(json.dumps(value, separators=(',', ':'), allow_nan=False), encoding='utf-8')
 
 
+def copy_native(destination):
+    """Borrow immutable compiler bytes through fixture-owned hard-link names."""
+    native=ROOT/'data/numerical-native'
+    if not (native/'installation.json').is_file():return 0
+    target=Path(destination)/'data/numerical-native';target.mkdir(parents=True)
+    shutil.copy2(native/'installation.json',target/'installation.json')
+    directory=json.loads((native/'installation.json').read_bytes())['directory']
+    def link(source,destination):
+        try:os.link(source,destination)
+        except OSError:shutil.copy2(source,destination)
+    shutil.copytree(native/'toolchains'/directory,target/'toolchains'/directory,copy_function=link)
+    return sum(p.stat().st_size for p in target.rglob('*') if p.is_file())
+
+
 class FictionalWorkspace:
     """Create a complete fictional workspace from an explicit source inventory
     and saved-input specification. Prepared databases, baseline reports and
@@ -54,7 +68,7 @@ class FictionalWorkspace:
         self.sources = {}
         for folder in ('scripts', 'website'):
             for path in sorted((ROOT / folder).iterdir()):
-                if path.suffix not in ('.py', '.js', '.css', '.html') or not path.is_file():
+                if path.suffix not in ('.py', '.js', '.css', '.html', '.rs') or not path.is_file():
                     continue
                 assert not path.is_symlink()
                 relative = path.relative_to(ROOT)
@@ -65,6 +79,9 @@ class FictionalWorkspace:
         dependency_file = ROOT / 'requirements-numerical.txt'
         shutil.copy2(dependency_file, self.source / dependency_file.name)
         self.sources[dependency_file.name] = sha(self.source / dependency_file.name)
+        # The selected application path must prepare and run without Rust.
+        # Direct comparison-only Rust fixtures may explicitly copy_native().
+        self.native_components_bytes=0
         self._generate()
         self.inputs = self.input_inventory()
         write(self.root / 'specification.json', dict(specification=SPEC, allowances=ALLOWANCES,
@@ -125,7 +142,7 @@ class FictionalWorkspace:
         write(raw/'download-coverage.json', ledger)
         (self.source/'results').mkdir()
         (self.source/'results/summary-exits.txt').write_text('Fictional bootstrap only.\nThrough 2026-10-21\n', encoding='utf-8')
-        (self.source/'data').mkdir()
+        (self.source/'data').mkdir(exist_ok=True)
         (self.root/'downloads').mkdir()
 
     def input_inventory(self):
@@ -171,7 +188,9 @@ class FictionalWorkspace:
             if p.is_file(): files.append((p, p.stat().st_size))
         assert all(sha(self.source/n)==s for n,s in self.sources.items())
         size = lambda root: sum(n for p,n in files if p.is_relative_to(root))
-        result = dict(total=sum(n for _,n in files), raw=size(self.source/'raw'),
+        native=size(self.source/'data/numerical-native')
+        assert native<=self.native_components_bytes+64*MIB, ('native fixture components plus build allowance',native)
+        result = dict(total=sum(n for _,n in files)-native, native=native, raw=size(self.source/'raw'),
             website=size(self.source/'website/local'), history=size(self.source/'results/baseline-history'),
             control=sum(n for p,n in files if not p.is_relative_to(self.source) and p.suffix!='.sqlite'),
             downloads=size(self.root/'downloads'), databases={p.name:n for p,n in files

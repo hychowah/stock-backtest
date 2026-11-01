@@ -5,13 +5,24 @@ Inputs, projections and compiler/generation identities are exact cache keys.
 """
 from collections import OrderedDict
 import sys
+from threading import Lock
 
 import backtest_control
 import numpy as np
 from numba import njit, prange
 
+_compilation_requests=0
+_compilation_lock=Lock()
+
+
+def compilation_requests():
+    """Actual factor-kernel compilation entries in this process, including failures."""
+    with _compilation_lock:return _compilation_requests
+
 
 def compile_matrix(policy, outputs=None):
+    global _compilation_requests
+    with _compilation_lock:_compilation_requests+=1
     selected = policy.output_names if outputs is None else tuple(outputs)
     namespace = {}
     exec(policy.python_source('_row', outputs=outputs), namespace)

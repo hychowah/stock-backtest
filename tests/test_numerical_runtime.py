@@ -111,6 +111,30 @@ class RuntimeTests(unittest.TestCase):
         return dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',
                     min_cap=0.,min_ev=0.,rank_to=5,**overrides)
 
+    def test_statistics_failure_never_publishes_completion_and_owner_closes(self):
+        value=self.make(session_options={'fault':'stats-publication'})
+        with self.assertRaisesRegex(ValueError,'PermissionError'):
+            value.calculate('custom',self.options())
+        self.assert_closed(value)
+        self.assertEqual(json.loads((value.scratch/'payload.json').read_bytes())['periods'][0]['entry'],'2015-01-02')
+        self.assertTrue((value.scratch/'stats.pending').is_file())
+        failure=[event for event in value.diagnostics if event.get('stage')=='publication-failed']
+        self.assertTrue(failure)
+        self.assertEqual(failure[-1]['role'],'statistics');self.assertEqual(failure[-1]['phase'],'replace')
+        self.assertEqual(failure[-1]['winerror'],32)
+
+    def test_selected_provider_construction_counter_has_a_positive_fresh_control(self):
+        value=self.make();value.start()
+        self.assertEqual(value.last_stats['provider_builds'],0)
+        self.assertEqual(value.last_stats['provider_constructions'],0)
+        self.assertEqual(value.last_stats['factor_kernel_compilation_requests'],0)
+        value.calculate('custom',self.options())
+        self.assertEqual(value.last_stats['provider_builds'],1)
+        self.assertEqual(value.last_stats['provider_constructions'],1)
+        self.assertEqual(value.last_stats['provider_compilations'],1)
+        self.assertEqual(value.last_stats['factor_kernel_compilation_requests'],1)
+        value.close();self.assert_closed(value)
+
     def assert_closed(self,value):
         closure=value.closure()
         self.assertEqual(closure['state'],'closed')
@@ -204,6 +228,8 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(replay['execution']['workers'],0)
             self.assertIsNone(recovered.last_stats['trial_pool'])
             self.assertEqual(recovered.last_stats['provider_builds'],0)
+            self.assertEqual(recovered.last_stats['provider_constructions'],0)
+            self.assertEqual(recovered.last_stats['factor_kernel_compilation_requests'],0)
         self.assert_closed(recovered)
 
     def test_result_graph_and_ipc_budgets_reject_before_unbounded_accumulation(self):

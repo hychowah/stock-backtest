@@ -169,9 +169,15 @@ def main():
                     factory = getattr(importlib.import_module(factory_module),factory_name)
                     emit(dict(event='diagnostic',stage='session-construct-prewarm'))
                     session = factory(options)
-                def stats():
-                    write_payload(scratch/'stats.json',session.measurements(),MAX_REQUEST_BYTES)
-                    return True
+                def stats(required=True):
+                    try:
+                        write_payload(scratch/'stats.json',session.measurements(),MAX_REQUEST_BYTES)
+                        return True
+                    except BaseException as error:
+                        details=getattr(error,'numerical_publication',None)
+                        if details:emit(dict(event='diagnostic',stage='publication-failed',**details))
+                        if required:raise
+                        return False
                 emit(dict(event='ready',stats=stats(),pid=os.getpid()))
                 while not shutdown.is_set():
                     try: command = commands.get(timeout=.05)
@@ -199,10 +205,12 @@ def main():
                             emit(dict(event='diagnostic',stage='validate-calculate'))
                             status = None
                             if configuration.get('preparation_status'):
-                                from numerical_preparation import Preparation
-                                status = Preparation(ROOT).status()
+                                from numerical_preparation import Preparation,DEFAULT_PROFILE
+                                status = Preparation(ROOT,profile=configuration.get('preparation_profile') or DEFAULT_PROFILE).status()
                             if request['mode'] == '__inspect__':
                                 result = status
+                            elif request['mode'] == '__prepare__':
+                                result = session.verify_provider()
                             elif status is not None and status.get('state') != 'current':
                                 emit(dict(event='error',category='unavailable'))
                                 shutdown.set()
@@ -231,9 +239,11 @@ def main():
                             write_payload(scratch/'payload.json',result,MAX_PAYLOAD_BYTES)
                             emit(dict(event='result',stats=stats()))
                     except backtest_control.Cancelled:
-                        emit(dict(event='cancelled',stats=stats()))
+                        emit(dict(event='cancelled',stats=stats(required=False)))
                         shutdown.set()
                     except BaseException as error:
+                        details=getattr(error,'numerical_publication',None)
+                        if details:emit(dict(event='diagnostic',stage='publication-failed',**details))
                         # Error text may contain provider paths or URLs. Stable
                         # source-owned validation messages are safe; other types
                         # are reported by category without exception text.

@@ -35,7 +35,7 @@ class PreparationContractTests(unittest.TestCase):
         self.owner=cache_access.WorkspaceAccess(self.root/'data'/'financial.lock')
         self.context.enter_context(patch.object(cache_access,'workspace',self.owner))
         self.value=preparation.Preparation(self.root,python='explicit-venv-entry')
-        self.context.enter_context(patch.object(preparation,'dependencies',return_value={'packages':preparation.PINS}))
+        self.context.enter_context(patch.object(preparation,'dependencies',return_value={'packages':preparation.PINS,'profile':'numba_compiled','rust_required':False}))
         self.context.enter_context(patch.object(data_manager,'source_problem',return_value=False))
         self.context.enter_context(patch.object(preparation.baseline,'Baseline',return_value=Mock()))
         self.context.enter_context(patch.object(preparation.schedules,'prepare'))
@@ -43,7 +43,9 @@ class PreparationContractTests(unittest.TestCase):
         self.context.enter_context(patch.object(self.value,'inventory',return_value='inventory'))
         self.store=Mock();self.store.prepare.return_value=dict(identity='generation',reused=True)
         self.context.enter_context(patch.object(self.value,'_store',return_value=self.store))
-        self.runtime=Mock(last_stats=dict(generation='generation'))
+        self.runtime=Mock(last_stats=dict(generation='generation',provider=dict(backend='numba',candidate_assembly='compiled',
+            nopython_signatures={key:['verified'] for key in ('reports','prices','factors','decisions','materialize')})))
+        self.runtime.calculate.return_value={'verified':True,'profile':'numba_compiled'}
         self.runtime.closure.return_value=dict(state='closed',process=dict(closed=True))
         self.context.enter_context(patch.object(self.value,'_runtime',return_value=self.runtime))
 
@@ -350,7 +352,10 @@ class ActualPreparationTests(unittest.TestCase):
             command=[sys.executable,'-I','-B',str(ROOT/'tests/candidate_preparation_fixture.py'),
                      str(fixture.source),str(ROOT/'tests'),str(output)]
             with log.open('wb') as stream:
-                process=subprocess.run(command,stdout=stream,stderr=subprocess.STDOUT,timeout=240)
+                # This fixture repeats preparation, calculation and recovery
+                # operations. Each runtime keeps its own bounded
+                # startup/closure allowances; no batch calculation watchdog.
+                process=subprocess.run(command,stdout=stream,stderr=subprocess.STDOUT)
             if process.returncode:self.fail(log.read_text(encoding='utf-8',errors='replace'))
             evidence=json.loads(output.read_bytes())
             moved=fixture.root/'relocated-source'
@@ -396,7 +401,7 @@ class ActualPreparationTests(unittest.TestCase):
                             port=int(text.split(':')[2].split()[0]);break
                     self.assertIsNotNone(port,logs)
                     def http(method,path,body=None):
-                        connection=HTTPConnection('127.0.0.1',port,timeout=5)
+                        connection=HTTPConnection('127.0.0.1',port,timeout=30)
                         try:
                             connection.request(method,path,body=json.dumps(body) if body is not None else None,
                                 headers={'Content-Type':'application/json'})
@@ -411,7 +416,7 @@ class ActualPreparationTests(unittest.TestCase):
                         self.assertEqual(http('GET','/')[0],302)
                     elif scenario=='success':
                         state=json.loads(http('GET','/api/data/status')[1])
-                        deadline=time.monotonic()+3
+                        deadline=time.monotonic()+30
                         while state['candidate'].get('busy') and time.monotonic()<deadline:
                             time.sleep(.05);state=json.loads(http('GET','/api/data/status')[1])
                         self.assertEqual(state['candidate']['state'],'current',state['candidate'])

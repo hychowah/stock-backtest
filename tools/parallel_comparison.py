@@ -187,11 +187,12 @@ def launch(workspace, operation, payload, label):
     result=read(response) if response.exists() else dict(status='failed',error_type='MissingChildReceipt')
     result.update(child_exit=code,child_elapsed_seconds=time.perf_counter()-began,command=command)
     write(response,result)
-    if code or result.get('status')!='complete': raise RuntimeError('Comparison child failed; retained '+str(response))
+    expected='qualified_interruption' if operation=='case' and payload.get('case',{}).get('state')=='interrupted_application' else 'complete'
+    if code or result.get('status')!=expected: raise RuntimeError('Comparison child failed; retained '+str(response))
     return result
 
 
-def prepare(declaration):
+def prepare(declaration, *, native_setup=None):
     declaration=validate_declaration(declaration)
     source=Path(declaration['source_root']); destination=Path(declaration['destination'])
     assert_sources(source,declaration['source_sha256'])
@@ -226,11 +227,14 @@ def prepare(declaration):
         shutil.copy2(source/name,target)
         if file_hash(target)!=expected: raise ValueError('Source export content differs.')
     assert_sources(source,declaration['source_sha256']); assert_sources(destination,declaration['source_sha256'])
+    # Explicit task-owned offline installation precedes ordinary Preparation.
+    # Normal requests/status never discover, download or install a toolchain.
+    if native_setup is not None:native_setup(destination)
     result=launch(destination,'prepare',{},'preparation')
     after=storage(destination)
     if after['logical_bytes']>declaration['storage_max_bytes']: raise ValueError('Prepared storage exceeds declaration.')
     write(evidence/'workspace.json',dict(version=SCHEMA,declaration_sha256=digest(declaration),
-        materialization=copied,preparation=result,storage=after,resources=observe(destination)))
+        materialization=copied,preparation=result,profiles={result['preparation']['profile']:result},storage=after,resources=observe(destination)))
     return read(evidence/'workspace.json')
 
 
@@ -246,42 +250,51 @@ def validate_workspace(root):
 def validate_case(case):
     case=deepcopy(case)
     required={'label','backend','workers','threads','state','checkpoint','repeat_of','purpose'}
-    if set(case)-{'request'}!=required:
+    if set(case)-{'request','interrupt_after'}!=required:
         raise ValueError('Invalid comparison case.')
     if 'request' in case and (not isinstance(case['request'],dict) or not case['request']):
         raise ValueError('A scoped workload override must be an explicit request.')
-    if case['backend'] not in ('original','numba','numba_compiled','rust'):
-        raise ValueError('Unknown comparison backend.')
-    if case['state'] not in ('fresh_application','initialized_fresh','full_recovery','original_reuse'):
+    if case['backend'] not in ('original','numba_compiled'):
+        raise ValueError('Unsupported historical comparison backend; use its archived source.')
+    if case['state'] not in ('fresh_application','initialized_fresh','full_recovery','partial_recovery',
+                             'interrupted_application','original_reuse','original_prepared_books'):
         raise ValueError('Unknown starting state.')
     for name in ('label','checkpoint'):
         if not isinstance(case[name],str) or not case[name] or not all(c.isalnum() or c in '-_' for c in case[name]):
             raise ValueError('Comparison path token is invalid.')
     for name in ('workers','threads'):
         if type(case[name]) is not int or case[name]<1: raise ValueError('Invalid comparison layout.')
-    if case['backend']=='original' and case['state'] not in ('fresh_application','original_reuse'):
+    if case['backend']=='original' and case['state'] not in ('fresh_application','original_reuse','original_prepared_books'):
         raise ValueError('Original does not use experimental trial checkpoints.')
-    if case['backend']!='original' and case['state']=='original_reuse': raise ValueError('Invalid reuse classification.')
-    if case['state']=='full_recovery' and not case['repeat_of']: raise ValueError('Recovery requires a completed matching case.')
+    if case['backend']!='original' and case['state'] in ('original_reuse','original_prepared_books'): raise ValueError('Invalid reuse classification.')
+    if case['state'] in ('full_recovery','partial_recovery') and not case['repeat_of']:
+        raise ValueError('Recovery requires a matching retained case.')
+    if case['state']=='interrupted_application':
+        if type(case.get('interrupt_after')) is not int or case['interrupt_after']<1:
+            raise ValueError('Interruption requires a positive completed-trial count.')
+    elif 'interrupt_after' in case:raise ValueError('Unexpected interruption setting.')
     return case
 
 
 def run_case(workspace, case):
     declaration,receipt=validate_workspace(workspace); case=validate_case(case)
-    observation=launch(workspace,'case',dict(case=case,prepared=receipt['preparation']['binding']),case['label'])
+    prepared=receipt['preparation'];profile=prepared['preparation']['profile']
+    if prepared['preparation']['profile']!=profile:raise ValueError('The requested preparation profile has not been qualified.')
+    observation=launch(workspace,'case',dict(case=case,prepared=prepared['binding'],profile=profile),case['label'])
     assert_sources(workspace,declaration['source_sha256'])
     return observation
 
 
-def financial_payload(value):
+def financial_payload(value, *, root=True):
     """Remove explicit timing/execution telemetry only; preserve every stock field."""
     if isinstance(value,dict):
-        return {key:financial_payload(item) for key,item in value.items() if key not in ('seconds','execution')}
-    if isinstance(value,list):return [financial_payload(item) for item in value]
+        return {key:financial_payload(item,root=False) for key,item in value.items()
+                if key not in ('seconds','execution') and not(root and key=='producer')}
+    if isinstance(value,list):return [financial_payload(item,root=False) for item in value]
     return value
 
 
-def compare(observations):
+def compare(observations, *, historical=False):
     if not observations or any(row.get('status')!='complete' for row in observations):
         raise ValueError('Only completed observations can support comparison.')
     # Reuse the current complete financial validator, without entering any
@@ -293,22 +306,41 @@ def compare(observations):
     if len(bindings)!=1: raise ValueError('Comparison financial/source binding differs.')
     agreement=[]
     for row in observations:
+        ready=row.get('readiness',{})
+        profile=ready.get('profile')
+        if (profile not in ('rust','numba_compiled') or ready.get('rust_required') is not (profile=='rust')
+                or row['case']['backend']!='original' and profile!=row['case']['backend']
+                or not all(ready.get(key) for key in ('inventory','receipt_sha256'))):
+            raise ValueError('Comparison preparation profile is missing or differs.')
         path=Path(row['result_path'])
         if file_hash(path)!=row['result_sha256']: raise ValueError('Completed result evidence changed.')
-        verdict=compare_results(evidence,financial_payload(read(path)))
+        actual=read(path);producer=actual.get('producer');boundary=row.get('adapter_boundary')
+        engine='original' if row['case']['backend']=='original' else 'experimental'
+        expected_producer=dict(engine=engine,label='Original' if engine=='original' else 'New engine — experimental')
+        if boundary=='normal Selectable.calculate':
+            if producer!=expected_producer:raise ValueError('Completed result producer differs or is missing.')
+        elif boundary=='initialized NumericalRuntime.calculate':
+            if producer is not None and producer!=expected_producer:raise ValueError('Direct result producer differs.')
+        elif historical and boundary is None:
+            if producer is not None and producer!=expected_producer:raise ValueError('Historical result producer differs.')
+        else:raise ValueError('Comparison boundary missing or unsupported; historical evidence requires explicit opt-in.')
+        verdict=compare_results(evidence,financial_payload(actual))
         if not verdict['exact']: raise ValueError('Complete financial disagreement: '+json.dumps(verdict))
         agreement.append(dict(label=row['case']['label'],**verdict))
     groups={}
     for row in observations:
         c=row['case']; key=':'.join((c['backend'],str(c['workers'])+'x'+str(c['threads']),c['state']))
         groups.setdefault(key,[]).append(row['elapsed_seconds'])
-    return dict(binding=first['binding'],agreement=agreement,timings={key:dict(raw_seconds=values,
+    return dict(binding=first['binding'],agreement=agreement,
+        boundaries={row['case']['label']:dict(adapter=row.get('adapter_boundary','explicit historical source boundary'),
+            timing_scope=row.get('timing_scope','See retained historical source; no inferred Selectable claim')) for row in observations},
+        timings={key:dict(raw_seconds=values,
         median_seconds=statistics.median(values),minimum_seconds=min(values),maximum_seconds=max(values))
-        for key,values in groups.items()},scope='Whole request through complete holdings and confirmed closure; no host cache flush.')
+        for key,values in groups.items()},scope='Each observation retains its actual adapter boundary and starting state. Normal Selectable elapsed includes delivery and closure. Initialized direct Runtime elapsed excludes startup, warmup and final closure; its total session records those separately. Historical opt-in retains original source scope. No host cache flush.')
 
 
 def decide(comparison, *, backend, workers, threads, rationale, limitations, g_handoff):
-    if backend not in ('numba','numba_compiled','rust') or not rationale or not g_handoff:
+    if backend!='numba_compiled' or not rationale or not g_handoff:
         raise ValueError('Decision requires a supported backend and explicit reasoning/handoff.')
     key=backend+':'+str(workers)+'x'+str(threads)+':fresh_application'
     if key not in comparison['timings'] or len(comparison['timings'][key]['raw_seconds'])<2:
@@ -324,13 +356,13 @@ def main():
     sub=parser.add_subparsers(dest='operation',required=True)
     p=sub.add_parser('prepare');p.add_argument('declaration')
     p=sub.add_parser('run');p.add_argument('workspace');p.add_argument('case')
-    p=sub.add_parser('compare');p.add_argument('workspace');p.add_argument('labels',nargs='+')
+    p=sub.add_parser('compare');p.add_argument('workspace');p.add_argument('labels',nargs='+');p.add_argument('--historical',action='store_true')
     args=parser.parse_args()
     if args.operation=='prepare':result=prepare(read(args.declaration))
     elif args.operation=='run':result=run_case(args.workspace,read(args.case))
     else:
         rows=[read(Path(args.workspace)/'comparison'/(label+'.json')) for label in args.labels]
-        result=compare(rows);write(Path(args.workspace)/'comparison/comparison.json',result)
+        result=compare(rows,historical=args.historical);write(Path(args.workspace)/'comparison/comparison.json',result)
     print(json.dumps(result,allow_nan=False),flush=True)
 
 

@@ -18,8 +18,15 @@ def main():
         import baseline
         import research
         from unittest.mock import patch
+        import os
+        ambient_builds=source/'tmp/ignored-ambient-builds'
+        os.environ['BACKTEST_RUST_BUILDS']=str(ambient_builds)
         candidate=Preparation(source,python=sys.executable)
         initial=candidate.prepare()
+        assert not ambient_builds.exists(),'Ambient benchmark build path redirected ordinary preparation'
+        assert not (source/'data/numerical-native').exists(),'Normal selected preparation created unused Rust state'
+        assert initial['runtime']['provider']['candidate_assembly']=='compiled'
+        assert initial['runtime']['provider']['nopython_signatures']['materialize']
         assert candidate.runtime is None and initial['closure']['state']=='closed'
         assert initial['closure']['process']['descendants_empty']
         assert candidate.status()['state']=='current'

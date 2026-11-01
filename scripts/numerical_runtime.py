@@ -31,11 +31,72 @@ def encoded(value, limit):
     return payload
 
 
-def write_payload(path, value, limit):
-    data = encoded(value,limit)
+PUBLISH_RETRY_DELAYS = (.05, .1, .2, .4, .4, .4, .4)
+
+
+def _pending_write(path, data):
+    if os.name != 'nt':
+        with path.open('wb') as handle:handle.write(data)
+        return
+    # CRT open can erase the original WinError and leave only EACCES. Preserve
+    # the actual native denial class; never infer a sharing lock from errno 13.
+    import ctypes as c
+    from ctypes import wintypes as w
+    import msvcrt
+    kernel=c.WinDLL('kernel32',use_last_error=True)
+    kernel.CreateFileW.argtypes=[w.LPCWSTR,w.DWORD,w.DWORD,c.c_void_p,w.DWORD,w.DWORD,w.HANDLE]
+    kernel.CreateFileW.restype=w.HANDLE
+    kernel.CloseHandle.argtypes=[w.HANDLE]
+    native=kernel.CreateFileW(str(path),0x40000000,1,None,2,0x80,None)
+    if native == c.c_void_p(-1).value:raise c.WinError(c.get_last_error())
+    try:descriptor=msvcrt.open_osfhandle(native,os.O_WRONLY|os.O_BINARY)
+    except BaseException:
+        kernel.CloseHandle(native);raise
+    try:stream=os.fdopen(descriptor,'wb')
+    except BaseException:
+        os.close(descriptor);raise
+    with stream:stream.write(data)
+
+
+def write_payload(path, value, limit, *, checkpoint=None):
+    """Publish one bounded complete protocol value atomically.
+
+    Recognized Windows sharing failures receive bounded cancellable retries.
+    Failure preserves prior published content and returns no completion indication.
+    Diagnostics contain a source-owned role and phase, never arbitrary paths.
+    """
+    import backtest_control
+    import diagnostics
+    checkpoint = checkpoint or backtest_control.checkpoint
+    data = encoded(value, limit)
+    path = Path(path)
     temporary = path.with_suffix('.pending')
-    with temporary.open('wb') as handle: handle.write(data)
-    temporary.replace(path)
+    roles = {'launch.json':'launch', 'request.json':'request', 'payload.json':'payload',
+             'stats.json':'statistics', 'diagnostics.json':'diagnostics', 'worker.json':'worker-launch'}
+    role = roles.get(path.name, 'trial-request' if path.name.startswith('slot-') else 'protocol')
+    for attempt in range(len(PUBLISH_RETRY_DELAYS)+1):
+        checkpoint()
+        phase = 'pending-write'
+        try:
+            _pending_write(temporary,data)
+            checkpoint()
+            phase = 'replace'
+            temporary.replace(path)
+            return
+        except OSError as error:
+            details = dict(role=role, phase=phase, attempt=attempt+1,
+                           exception=type(error).__name__, errno=error.errno,
+                           winerror=getattr(error, 'winerror', None))
+            error.numerical_publication = details
+            retry = isinstance(error, PermissionError) and details['winerror'] in (5, 32, 33)
+            diagnostics.event('numerical.publication_retry' if retry else 'numerical.publication_failed', **details)
+            if not retry or attempt == len(PUBLISH_RETRY_DELAYS): raise
+            deadline = time.monotonic()+PUBLISH_RETRY_DELAYS[attempt]
+            while True:
+                checkpoint()
+                remaining = deadline-time.monotonic()
+                if remaining <= 0: break
+                time.sleep(min(.025, remaining))
 
 
 def read_payload(path, limit):
@@ -112,10 +173,16 @@ class NumericalRuntime:
     """
     def __init__(self, *, source_root, scratch, generation_path=None, checkpoint_path=None,
                  threads=None, python=None, preparation_status=False, session_factory='numerical_session:Session',
-                 session_options=None, coordinator=None, start_seconds=120., close_seconds=30.):
+                 session_options=None, coordinator=None, start_seconds=120., close_seconds=30.,preparation_profile=None):
         self.root, self.scratch = Path(source_root).absolute(), Path(scratch).absolute()
-        settings = {} if threads is None else dict(threads_per_worker=threads)
-        threads = ExecutionPolicy(settings).provider_limits['threads']
+        options = deepcopy(session_options or {})
+        policy = ExecutionPolicy.from_configuration(dict(options,threads=threads,start_seconds=start_seconds,close_seconds=close_seconds))
+        threads = policy.provider_limits['threads']
+        options['execution'] = policy.settings
+        if preparation_profile is None:
+            preparation_profile=policy.backend
+        if preparation_profile is not None and preparation_profile!=policy.backend:
+            raise ValueError('Runtime execution differs from its preparation profile.')
         if any(type(value) not in (int,float) or not math.isfinite(value) or value <= 0
                for value in (start_seconds,close_seconds)):
             raise ValueError('Invalid numerical lifecycle timeout.')
@@ -124,7 +191,9 @@ class NumericalRuntime:
             generation_path=str(generation_path or self.root/'data'/'numerical'),
             checkpoint_path=str(checkpoint_path or self.root/'data'/'numerical-trials.sqlite'),
             cache_lock=str(coordinator.path if coordinator is not None else self.root/'data'/'website-data-0.lock'),
-            preparation_status=preparation_status,session_factory=session_factory,session_options=deepcopy(session_options or {}),
+            preparation_status=preparation_status,session_factory=session_factory,session_options=options,
+            preparation_profile=preparation_profile,
+            execution_origin=dict(provenance=deepcopy(policy.provenance),observations=deepcopy(policy.observations)),
             close_seconds=close_seconds)
         encoded(self.configuration,MAX_REQUEST_BYTES)
         self.python = str(python or sys.executable)  # Never resolve a venv redirector/symlink.

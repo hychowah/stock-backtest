@@ -118,4 +118,14 @@ assert(html.includes('Complete period candidates checked 1 November 2026.') && h
 
 assert(html.includes('explicitly joins every numerical thread and its thread-local cleanup'), 'Explain complete native thread cleanup before library closure');
 
-assert(html.includes('Scoped current-source comparison checked 1 November 2026.') && html.includes('51.98 seconds for Rust and 59.52 seconds') && html.includes('startup and completed-build reuse benefit') && html.includes('failed shared statistics publication') && html.includes('tools/parallel_comparison.py') && html.includes('outside benchmark tmp paths'), 'Explain the scoped comparison, measured boundary, selected decision and remaining qualification gates');
+assert(html.includes('Scoped comparison history checked 1 November 2026.') && html.includes('51.98 seconds for Rust and 59.52 seconds') && html.includes('startup and completed-build reuse benefit') && html.includes('failed shared statistics publication') && html.includes('tools/parallel_comparison.py'), 'Keep historical F comparison scope and failed publication explicit');
+
+assert(html.includes('Selected experimental path checked 1 November 2026.') && html.includes('one compiled-Numba complete-book provider') && html.includes('117.432 seconds') && html.includes('123.548 seconds') && html.includes('additional readiness checks outside that clock') && html.includes('not a contiguous balanced sequence'), 'Explain G selection and distinguish measured Candidate and selectable boundaries');
+
+assert(html.includes('256 MiB readiness estimate') && html.includes('first actual worker reaches readiness') && html.includes('Each worker has its own readiness identity and deadline.') && html.includes('Resolved capacity cannot change after checkpoint binding.'), 'Explain measured admission provenance, concurrent startup and fixed recovery identity');
+
+assert(html.includes('Normal startup, status and experimental preparation require no Rust') && html.includes('requests no factor-kernel compilation') && html.includes('Ordinary preparation can reuse'), 'Explain selected dependencies and complete recovery without provider construction');
+
+assert(html.includes('tools/setup_numerical_native.py') && html.includes('outside benchmark tmp paths') && html.includes('durable pointer checks') && html.includes('within that inspection') && html.includes('Payload and required statistics must publish before a result frame.'), 'Explain retained offline native comparison setup and atomic protocol publication');
+
+assert(html.includes('Final-source normal application qualification checked 1 November 2026.') && html.includes('120.686 seconds') && html.includes('51.414 seconds') && html.includes('remaining 21') && html.includes('single qualification observations') && html.includes('Recovery still validates inputs'), 'Explain final normal adapter qualification without equating recovery with instant delivery or a fresh Original comparison');

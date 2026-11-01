@@ -33,12 +33,13 @@ class Session(numerical_session.Session):
                 backtest_control.checkpoint(); time.sleep(.01)
         if self.fault == 'startup': raise RuntimeError('fictional startup failure')
         self.provider_builds = 0
-        self.original_provider = numerical_session.NumbaExecutor
+        self.original_provider = numerical_session.attach_provider
         def provider(*args,**kwargs):
             self.provider_builds += 1
-            return self.original_provider(*args,**kwargs)
+            value=self.original_provider(*args,**kwargs)
+            return value
         self.provider_factory = provider
-        numerical_session.NumbaExecutor = provider
+        numerical_session.attach_provider = provider
         original = numerical_session.GenerationStore
         numerical_session.GenerationStore = FixtureStore
         try: super().__init__(configuration)
@@ -58,6 +59,13 @@ class Session(numerical_session.Session):
         return super().calculate_into(*args,**kwargs)
 
     def _before_calculation(self,progress):
+        if self.fault == 'stats-publication':
+            original=Path.replace
+            def denied(path,target):
+                if Path(target).name=='stats.json':
+                    error=PermissionError(13,'private-fixture');error.winerror=32;raise error
+                return original(path,target)
+            Path.replace=denied
         if self.fault == 'callback-stuck':
             import backtest_control
             try: progress(dict(type='progress',completed=0,total=1,trial=1))
@@ -78,6 +86,7 @@ class Session(numerical_session.Session):
         values = super().measurements()
         values['pid'] = os.getpid()
         values['provider_builds'] = self.provider_builds
+        values['provider_compilations']=values['factor_kernel_compilation_requests']
         if os.name == 'posix' and Path('/proc/self/status').exists():
             lines = dict(line.split(':',1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)
             values['sampled_working_set_bytes'] = int(lines['VmRSS'].split()[0])*1024
@@ -109,8 +118,8 @@ class Session(numerical_session.Session):
             try:db.execute('SELECT 1')
             except sqlite3.ProgrammingError:return True
             return False
-        if numerical_session.NumbaExecutor is getattr(self,'provider_factory',None):
-            numerical_session.NumbaExecutor = self.original_provider
+        if numerical_session.attach_provider is getattr(self,'provider_factory',None):
+            numerical_session.attach_provider = self.original_provider
         if hasattr(self,'marker'):
             self._mark(closed=True,close_attempts=self.close_attempts,provider_builds=self.provider_builds,
                 portfolio_closed=portfolio is None or portfolio.closed,

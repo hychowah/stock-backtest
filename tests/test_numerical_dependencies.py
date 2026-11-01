@@ -92,9 +92,15 @@ class DependencyDiagnosticsTests(unittest.TestCase):
         self.assertEqual(len(self.warnings()), 3)
 
     def test_current_packages_have_no_warning(self):
-        self.assertEqual(preparation.dependencies(), dict(python='3.12.1', packages=preparation.PINS))
+        self.assertEqual(preparation.dependencies(), dict(python='3.12.1', packages=preparation.PINS,profile='numba_compiled',rust_required=False))
         self.assertEqual(self.stderr.getvalue(), '')
         self.assertEqual(self.warnings(), [])
+
+    def test_selected_dependencies_never_import_or_require_comparison_rust(self):
+        with patch.dict(sys.modules,{'numerical_toolchain':None,'numerical_rust':None}):
+            installed=preparation.dependencies()
+            self.assertFalse(installed['rust_required']);self.assertNotIn('native',installed)
+        with self.assertRaises(ValueError):preparation.dependencies('rust')
 
     def test_normal_startup_reports_optional_dependencies_and_still_serves_original(self):
         self.versions.clear()

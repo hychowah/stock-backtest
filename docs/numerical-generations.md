@@ -1,5 +1,50 @@
 # Offline numerical generations
 
+## Current execution ownership (CB-19G)
+
+Python owns recorded plans, shared SQL selection, the financial reducer,
+checkpoints and application lifetime. The selected complete-book provider stays
+behind that boundary. Compiled Numba is the sole production provider; Original
+remains the default application engine. Read
+[candidate startup](candidate-startup.md#current-optional-native-setup-cb-19g)
+for genuine selected preparation and separately labelled comparison-only Rust setup.
+Normal preparation and calculation import no Rust capability or native resource.
+The forwarding comparison factory and multiple Preparation profiles are removed.
+Historical app configurations require their exact retained source, not current dispatch.
+
+Runtime and Session use `ExecutionPolicy.from_configuration`. It preserves old
+per-provider workspace/cache allowances while resolving aggregate capacity once.
+The parent's resolved identity and its original observation/provenance reach
+Session together. A second observation cannot silently change workers or threads
+after checkpoint lookup. Admission observations stay outside stable identity.
+
+The first actual worker verifies readiness and supplies its cold private-memory
+sample. Remaining required workers can then initialize concurrently. Startup
+transport reserves four source-owned messages per configured worker. Each worker
+keeps its own launch deadline. Other workers' traffic cannot extend that deadline.
+No financial task reaches a partially ready pool. Identity, launch, timeout or
+cancellation failure poisons the pool and closes every adopted worker.
+Windows memory observations use
+[job information queries](https://learn.microsoft.com/windows/win32/api/jobapi2/nf-jobapi2-queryinformationjobobject).
+The current-usage layout follows
+[Microsoft's hcsshim definition](https://github.com/microsoft/hcsshim/blob/main/internal/winapi/jobobject.go).
+
+Protocol writes share one atomic, bounded, cancellable publication operation.
+Windows pending writes preserve the genuine native error code. Only recognized
+sharing/access classes get bounded retries. Payload and required statistics must
+publish before a completion frame. Failed statistics cannot prevent error or
+cancellation reporting. The earlier F statistics-replacement hypothesis remains
+historical. Its exact external locking cause is unproven.
+
+Complete recovery validates the generation, source and configured compiler/layout
+before reuse. It starts no trial workers, constructs no provider and compiles no
+factor kernel. Actual constructor and factor-compilation counters have positive
+fresh controls and remain zero on a new-runtime full recovery. Durable queue and saved-result readers remain engine-neutral. No input
+format, financial formula, historical report cutoff or immutable result shape
+changes in this integration.
+
+## Historical generation interfaces
+
 CB-04 adds an offline input artifact. It does not route website requests to
 Numba. CB-12 adds separate closed candidate preparation; see
 [candidate startup](candidate-startup.md). The installed website

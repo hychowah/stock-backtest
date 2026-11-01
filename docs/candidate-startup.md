@@ -1,5 +1,95 @@
 # Isolated candidate preparation
 
+<a id="current-optional-native-setup-cb-19g"></a>
+## Current selected preparation (CB-19G)
+
+Original remains the application default. Stored results open without Rust or
+the numerical packages. Experimental calculation uses compiled Numba with the
+measured 2×2 preference, reduced by current CPU and memory observations. Backend
+and worker controls are not application settings. Read the
+[final measured decision](plans/parallel-backtest/phases/CB-19G.decision.md).
+
+Install `requirements-numerical.txt` in the chosen supported Python environment,
+then select **Prepare experimental engine**. This checks saved inputs, performs
+ordinary research/daily preparation and publishes or verifies immutable numerical
+inputs. It constructs the genuine compiled provider and checks all five nopython
+kernel groups before closing the runtime. Only confirmed closure permits a
+current readiness receipt. Status binds the pinned environment, whole-source
+inventory, saved inputs, report and numerical pointer. Pending publication still
+blocks readiness. Normal startup, status and preparation never install packages
+or contact a package service. Neither application engine uses a Rust compiler,
+managed Rust installation, native build manifest or Rust resource file.
+
+Complete checkpoint recovery validates source, inputs, configured capacity and
+compiler identity. It constructs no calculation provider, starts no trial worker
+and compiles no factor kernel. Actual construction and factor-compilation counters
+have fresh positive controls; zero books alone does not prove zero construction.
+
+Capacity resolves before checkpoint lookup. Defaults use the measured preference
+and current CPU entitlement and memory headroom. Known Windows job/process limits
+and applicable container headroom participate. Unknown useful headroom selects a
+single worker unless an internal qualification supplies an explicit allowance.
+The conservative rounded 256 MiB readiness estimate comes from selected Windows
+cold private samples near 152.3–152.7 MB. It is not an RSS limit or complete-run
+budget. Managed workspace/cache totals and generation storage remain separate.
+The first actual worker supplies the cold private-memory sample. Only after that
+admission can remaining required workers initialize concurrently. Each worker has
+its own readiness identity and deadline. A late failure closes every adopted
+worker. Startup never changes the resolved checkpoint identity. There is no
+historical four-worker, CPU-percentage or 2 GiB machine ceiling.
+
+Runtime protocol publication preserves encoded limits and atomic replacement.
+Recognized Windows sharing/access errors get at most eight attempts and 1.95
+seconds of retry waits. Cancellation is checked during those waits. Previous
+published content remains intact until replacement succeeds. Terminal failure
+retains pending evidence. Payload and required statistics precede a result frame.
+Cancellation and errors remain reportable if statistics publication fails. Logs
+name a controlled file role, publication phase, exception type and OS codes.
+They omit exception text and arbitrary paths. No financial calculation or
+checkpoint commitment is retried by this file-publication policy. F's historical
+external locking cause remains unproved.
+
+## Comparison-only Rust setup
+
+Rust ABI/code-generation and managed setup/probe capabilities remain for direct
+qualification and retained comparison evidence. They are not a selectable
+application backend. Current Runtime and comparison requests reject historical
+Rust and source-guard configurations explicitly. To reproduce E/F or intermediate
+G application comparisons, use their recorded revision or exact archived source,
+not the final current application source.
+
+An explicit offline qualification command accepts previously qualified local
+compiler/linker components and a checksum manifest:
+
+```text
+python tools/setup_numerical_native.py --components <local-components> --manifest <qualified-manifest.json>
+```
+
+This command performs no download and does not enable a different app engine.
+A version-2 manifest names platform, machine, compiler, target, complete relative
+file hashes, managed linker paths and provenance. Supported qualification targets
+are x86-64 Windows MSVC and Linux GNU. Include compiler runtime libraries, target
+`.rlib` and `.rmeta` files, linker executables and target runtime inputs. Windows
+needs qualified MSVC, UCRT and SDK inputs. Linux needs its qualified GNU bundle.
+All search paths remain relative to the managed bundle. Ambient `BACKTEST_RUSTC`,
+`BACKTEST_RUST_LINKER` and `BACKTEST_RUST_BUILDS` select no normal dependency or
+comparison build storage.
+
+The comparison-only installer copies these components into ignored
+`data/numerical-native/toolchains/` with a receipt. Equal verified files can share
+an inode within one immutable installation. No installed file borrows the
+qualification bundle's inode. Inspection checks every path and content, hashes a
+shared physical file once per inspection and retains no cross-call hash cache.
+Setup holds source ownership and its installation lock. Its contained child
+compiles, loads, calls and closes a small ABI probe before publication. Durable
+receipt inspection protects an installation during publication interruption.
+Unconfirmed closure retains its owner and files for retry. POSIX monitors
+installer death and drains compiler descendants before source release; Windows
+also uses Job owner-death containment. Direct Rust build identity separately
+binds its own comparison source, generated kernel and compiler/linker inventory.
+
+## Historical preparation sequence
+
 CB-12 adds a separate preparation entry. The installed website is unchanged by this source task. CB-15 now adds an
 optional normal-app selector; see the final section. CB-13A gives all calculation routes one
 application owner. CB-13B connects persistent numerical dispatch only in this

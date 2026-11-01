@@ -20,7 +20,7 @@ class ComparisonTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='cb19f-synthetic-')
         self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name)
-        self.case=dict(label='first',backend='numba',workers=1,threads=1,state='fresh_application',
+        self.case=dict(label='first',backend='numba_compiled',workers=1,threads=1,state='fresh_application',
                        checkpoint='first',repeat_of=None,purpose='Fictional orchestration verification')
         self.declaration=dict(version=1,base_commit='fictional',source_root=str(self.root/'source'),
             source_sha256={'scripts/test.py':'f'*64},capture=str(self.root/'capture'),
@@ -32,15 +32,18 @@ class ComparisonTests(unittest.TestCase):
         path=self.root/(label+'.result.json')
         pc.write(path,dict(trial_results=[dict(periods=[dict(entry='2015-01-02',holdings=[
             dict(symbol='A',rank=1,return_value=.25,exit_basis='last price',missing=None)])],seconds=seconds)],
-            execution=dict(recovered=seconds),seconds=seconds))
+            execution=dict(recovered=seconds),seconds=seconds,
+            producer=dict(engine='experimental',label='New engine — experimental')))
         return dict(status='complete',binding=dict(source='same',plan='same'),case=dict(self.case,label=label),
+                    readiness=dict(profile='numba_compiled',rust_required=False,inventory='profile-bound',receipt_sha256='receipt'),
+                    adapter_boundary='normal Selectable.calculate',timing_scope='Complete normal adapter through closure',
                     elapsed_seconds=seconds,result_path=str(path),result_sha256=pc.file_hash(path))
 
     def test_complete_financial_comparison_keeps_stock_identity_and_exact_categories(self):
         first=self.observation();second=self.observation('two',2.)
         compared=pc.compare([first,second])
         self.assertTrue(all(row['exact'] for row in compared['agreement']))
-        self.assertEqual(compared['timings']['numba:1x1:fresh_application']['raw_seconds'],[1.,2.])
+        self.assertEqual(compared['timings']['numba_compiled:1x1:fresh_application']['raw_seconds'],[1.,2.])
         changed=pc.read(second['result_path']);changed['trial_results'][0]['periods'][0]['holdings'][0]['rank']=2
         pc.write(second['result_path'],changed);second['result_sha256']=pc.file_hash(second['result_path'])
         with self.assertRaisesRegex(ValueError,'financial disagreement'):pc.compare([first,second])
@@ -63,12 +66,43 @@ class ComparisonTests(unittest.TestCase):
         second['status']='complete';second['binding']['plan']='different'
         with self.assertRaisesRegex(ValueError,'binding differs'):pc.compare([first,second])
 
+    def test_dependency_profiles_differ_explicitly_while_financial_binding_stays_exact(self):
+        compiled=self.observation();native=self.observation('rust')
+        native['case']['backend']='rust'
+        native['readiness']=dict(profile='rust',rust_required=True,inventory='different-native-inventory',receipt_sha256='different-receipt')
+        self.assertTrue(all(row['exact'] for row in pc.compare([compiled,native])['agreement']))
+        native['readiness']['profile']='numba_compiled'
+        with self.assertRaisesRegex(ValueError,'profile'):pc.compare([compiled,native])
+
+    def test_normal_selectable_producer_is_checked_separately_from_all_financial_fields(self):
+        original=self.observation('original');original['case']['backend']='original'
+        selected=self.observation('selected')
+        for row,engine,label in ((original,'original','Original'),(selected,'experimental','New engine — experimental')):
+            payload=pc.read(row['result_path']);payload['producer']=dict(engine=engine,label=label)
+            payload['trial_results'][0]['periods'][0]['holdings'][0]['producer']='stock-extension'
+            pc.write(row['result_path'],payload);row['result_sha256']=pc.file_hash(row['result_path'])
+        self.assertTrue(all(row['exact'] for row in pc.compare([original,selected])['agreement']))
+        payload=pc.read(selected['result_path']);producer=payload.pop('producer')
+        pc.write(selected['result_path'],payload);selected['result_sha256']=pc.file_hash(selected['result_path'])
+        with self.assertRaisesRegex(ValueError,'producer'):pc.compare([original,selected])
+        direct=dict(selected,adapter_boundary='initialized NumericalRuntime.calculate')
+        self.assertTrue(pc.compare([original,direct])['agreement'][1]['exact'])
+        legacy=dict(selected);legacy.pop('adapter_boundary')
+        with self.assertRaisesRegex(ValueError,'boundary'):pc.compare([legacy])
+        self.assertTrue(pc.compare([legacy],historical=True)['agreement'][0]['exact'])
+        payload['producer']=producer;payload['producer']['engine']='original'
+        pc.write(selected['result_path'],payload);selected['result_sha256']=pc.file_hash(selected['result_path'])
+        with self.assertRaisesRegex(ValueError,'producer'):pc.compare([original,selected])
+        payload['producer']['engine']='experimental';payload['trial_results'][0]['periods'][0]['holdings'][0]['producer']='changed'
+        pc.write(selected['result_path'],payload);selected['result_sha256']=pc.file_hash(selected['result_path'])
+        with self.assertRaisesRegex(ValueError,'financial disagreement'):pc.compare([original,selected])
+
     def test_decision_needs_repeated_complete_selected_layout_and_handoff(self):
         compared=pc.compare([self.observation(),self.observation('two',2.)])
-        result=pc.decide(compared,backend='numba',workers=1,threads=1,rationale='Comparable measured work',
+        result=pc.decide(compared,backend='numba_compiled',workers=1,threads=1,rationale='Comparable measured work',
             limitations=['Fictional inputs'],g_handoff=['Verify native workflow'])
         self.assertTrue(result['original_remains_default'])
-        with self.assertRaisesRegex(ValueError,'comparable repetitions'):
+        with self.assertRaisesRegex(ValueError,'supported backend'):
             pc.decide(compared,backend='rust',workers=1,threads=1,rationale='Unsupported choice',limitations=[],g_handoff=['G'])
 
     def test_capture_path_and_storage_declaration_reject_overlap(self):
@@ -193,14 +227,25 @@ class FixedChildTests(unittest.TestCase):
             prepared=pc.launch(private,'prepare',{},'preparation')
             pc.write(private/'comparison/workspace.json',dict(version=1,declaration_sha256=pc.digest(declaration),
                 preparation=prepared))
-            case=dict(label='new',backend='numba',workers=1,threads=1,state='fresh_application',
+            case=dict(label='new',backend='numba_compiled',workers=1,threads=1,state='fresh_application',
                 checkpoint='fresh',repeat_of=None,purpose='Fictional application lifetime')
             fresh=pc.run_case(private,case)
             recovered=pc.run_case(private,dict(case,label='recovered',state='full_recovery',repeat_of='new'))
+            initialized=pc.run_case(private,dict(case,label='initialized',state='initialized_fresh',checkpoint='initialized'))
+            self.assertEqual(initialized['adapter_boundary'],'initialized NumericalRuntime.calculate')
+            self.assertIn('excludes startup, warmup and final closure',initialized['timing_scope'])
+            self.assertGreater(initialized['total_session_seconds'],initialized['elapsed_seconds'])
+            interrupted=pc.run_case(private,dict(case,label='interrupted',state='interrupted_application',
+                checkpoint='interrupted',interrupt_after=1))
+            self.assertEqual(interrupted['status'],'qualified_interruption')
+            partial=pc.run_case(private,dict(case,label='partial',state='partial_recovery',
+                checkpoint='interrupted',repeat_of='interrupted'))
+            self.assertGreaterEqual(pc.read(partial['result_path'])['execution']['recovered_trials'],1)
             original=pc.run_case(private,dict(case,label='original',backend='original',checkpoint='original'))
             reused=pc.run_case(private,dict(case,label='reuse',backend='original',state='original_reuse',
                 checkpoint='original',repeat_of='original'))
-            compared=pc.compare([original,fresh,recovered,reused])
+            compared=pc.compare([original,fresh,recovered,reused,partial,initialized])
+            self.assertEqual(compared['boundaries']['initialized']['adapter'],'initialized NumericalRuntime.calculate')
             self.assertTrue(all(row['exact'] for row in compared['agreement']))
             self.assertIsNone(recovered['runtime_observations'][0]['stats']['trial_pool'])
             self.assertEqual(original['books_before'],0)

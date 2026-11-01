@@ -8,10 +8,10 @@ import robustness
 
 import backtest_control
 from numerical_generation import GenerationStore
-from numerical_numba import NumbaExecutor
+from numerical_numba import NumbaExecutor as attach_provider
+from numerical_identity import compiler_identity
 from numerical_portfolio import NumericalPortfolio
 from numerical_workspace import RequestWorkspace
-from numerical_provider import expected_identity, attach as attach_provider
 import numerical_calendar
 import numerical_random
 from numerical_matrix import retained_size
@@ -32,17 +32,11 @@ class Session:
         self.inputs = self.provider = self.portfolio = self.checkpoints = None
         self.trial_pool = self.workspace = None
         self.expected_compiler = None
-        execution = deepcopy(configuration.get('execution', {}))
-        execution.setdefault('threads_per_worker', configuration['threads'])
-        for key in ('workspace_bytes','matrix_cache_bytes','chunk_rows'):
-            if key in configuration:
-                # Legacy Session options describe one provider. The new
-                # internal execution section declares aggregate allowances.
-                providers = execution.get('workers',1)+1
-                value = configuration[key] if key == 'chunk_rows' else configuration[key]*providers
-                execution.setdefault(key, value)
-        execution.setdefault('close_seconds', configuration.get('close_seconds',30.))
-        self.execution_policy = ExecutionPolicy(execution)
+        self.execution_policy = ExecutionPolicy.from_configuration(configuration)
+        if configuration.get('preparation_status') and configuration.get('preparation_profile') is None:
+            raise ValueError('A prepared request requires its execution profile.')
+        if configuration.get('preparation_profile') not in (None,self.execution_policy.backend):
+            raise ValueError('Session execution differs from its preparation profile.')
         self.loaded_source = numerical_random.source_identity()
         self.results = OrderedDict()
         self.result_bytes = configuration.get('result_cache_bytes',16*1024**2)
@@ -52,7 +46,7 @@ class Session:
             raise ValueError('Invalid runtime result budgets.')
         self.store = GenerationStore(schedules, configuration['generation_path'])
         self.closed = False
-        self.stats = dict(result_hits=0,result_misses=0,result_retained_bytes=0,attached_generations=0,
+        self.stats = dict(provider_constructions=0,result_hits=0,result_misses=0,result_retained_bytes=0,attached_generations=0,
                           peak_result_graph_bytes=0,result_workspace_bytes=self.result_workspace_bytes)
         try:
             self.checkpoints = trial_checkpoints.Store(configuration['checkpoint_path'],
@@ -90,7 +84,8 @@ class Session:
         if self.inputs is None:
             self.inputs = self.store.open_current()
             self.workspace = RequestWorkspace(self.inputs,result_workspace_bytes=self.result_workspace_bytes)
-            self.expected_compiler = expected_identity(self.inputs,self.execution_policy.provider_limits)
+            self.expected_compiler = compiler_identity(self.inputs,self.execution_policy.provider_limits['threads'],
+                decisions=self.inputs.policy.decisions)
             self.stats['attached_generations'] = 1
         self.inputs.validate()
         backtest_control.checkpoint()
@@ -98,12 +93,21 @@ class Session:
     def _portfolio(self):
         """Construct the coordinator provider only for a custom calculation."""
         if self.portfolio is None:
-            self.provider = (NumbaExecutor(self.inputs,limits=self.execution_policy.provider_limits)
-                if self.execution_policy.backend=='numba' else attach_provider(self.inputs,self.execution_policy.provider_limits))
+            self.stats['provider_constructions']+=1
+            self.provider = attach_provider(self.inputs,limits=self.execution_policy.provider_limits)
             if self.provider.compiler != self.expected_compiler:
                 raise ValueError('Coordinator provider differs from its expected compiler identity.')
             self.portfolio = NumericalPortfolio(self.inputs,self.provider,result_workspace_bytes=self.result_workspace_bytes)
         return self.portfolio
+
+    def verify_provider(self):
+        """Exercise the genuine selected provider without calculating a market book."""
+        self._portfolio()
+        profile=self.execution_policy.backend
+        signatures=self.provider.stats.get('nopython_signatures',{})
+        if not all(signatures.get(name) for name in ('reports','prices','factors','decisions','materialize')):
+            raise ValueError('Compiled provider preparation is incomplete.')
+        return dict(verified=True,profile=profile,rust_required=False,compiler=self.expected_compiler['signature'])
 
     def _binding(self,plan):
         execution=numerical_random.provider_execution(self.inputs,self.execution_policy.provider_limits,self.expected_compiler)
@@ -217,7 +221,10 @@ class Session:
         backtest_control.checkpoint()
 
     def measurements(self):
+        import numerical_preparation,numerical_matrix
         return dict(**self.stats,**process_metrics(),generation=self.inputs.signature,
+            factor_kernel_compilation_requests=numerical_matrix.compilation_requests(),
+            preparation_dependency_checks=numerical_preparation.measurements(),
             compiler_identity=deepcopy(self.expected_compiler),
             matrix=deepcopy(self.provider._calculate.stats) if self.provider is not None else {},
             provider=deepcopy(self.provider.stats) if self.provider is not None else dict(books=0,threads=self.execution_policy.provider_limits['threads']),checkpoints=self.checkpoints.measurements(),

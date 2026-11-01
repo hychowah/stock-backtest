@@ -1,6 +1,7 @@
 """Complete source-derived Rust candidate behind a checked synchronous C ABI.
 
-This is an internal comparison configuration. Shared Python planning, adjusted
+This is a direct comparison-only qualification capability. Normal application
+construction and preparation never import it. Shared Python planning, adjusted
 query preparation, mechanical encoding, SQL selection and reducer remain timed
 work. It never falls back to source guards or a scalar numerical provider.
 
@@ -27,6 +28,7 @@ import numerical_candidates as candidates
 from numerical_identity import compiler_identity
 from numerical_matrix import CompiledMatrix
 import numerical_rust_codegen as codegen
+import numerical_toolchain
 
 ABI=codegen.ABI
 FLAGS=('--edition=2021','-C','opt-level=3','-C','panic=abort','-C','target-cpu=native')
@@ -43,19 +45,24 @@ def _sha(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def compiler():
-    value=os.environ.get('BACKTEST_RUSTC') or shutil.which('rustc')
-    if not value:raise ImportError('The Rust comparison requires an explicitly available native compiler.')
-    path=Path(value).absolute()
-    if not path.is_file() or os.name!='nt' and path.suffix.lower()=='.exe':
-        raise ImportError('The Rust comparison requires a compiler for this Python platform.')
-    return path
+    return Path(numerical_toolchain.inspect_toolchain()['compiler'])
+
+
+class _Command(list):
+    def __init__(self, values, descriptor):
+        super().__init__(values)
+        self.environment=numerical_toolchain.environment(descriptor)
+
+
+def _build_root():return numerical_toolchain.location(numerical_toolchain.ROOT)/'builds'
 
 
 def _run_compiler(command):
     """Cancellable metadata/build child within the caller's process domain."""
     backtest_control.checkpoint()
     with tempfile.TemporaryFile() as output:
-        child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT)
+        child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,
+            env=getattr(command,'environment',None))
         try:
             while child.poll() is None:
                 time.sleep(.025)
@@ -75,20 +82,18 @@ def _run_compiler(command):
 
 def identity(inputs,threads):
     """Predict exact recovery identity without building or loading a provider."""
-    path=compiler()
-    version=_run_compiler([str(path),'-vV']).decode('utf-8')
+    descriptor=numerical_toolchain.inspect_toolchain()
+    path=Path(descriptor['compiler'])
+    version=descriptor['version']
     generated=codegen.source(inputs.policy)
     fields=compiler_identity(inputs,threads,decisions=inputs.policy.decisions)['fields']
-    linker=os.environ.get('BACKTEST_RUST_LINKER')
-    link_identity=None
-    if linker:
-        located=shutil.which(linker) or linker
-        if not Path(located).is_file():raise ImportError('Configured Rust linker is unavailable.')
-        link_identity=dict(sha256=_sha(located),name=Path(located).name)
+    link_identity=dict(signature=numerical_toolchain.digest(descriptor['linker']))
     fields['native']=dict(backend='rust',abi=ABI,layout=candidates.signature(inputs.policy),
+        qualification_sources={name:_sha(Path(__file__).with_name(name)) for name in
+            ('numerical_rust.py','numerical_rust_codegen.py','numerical_rust_kernel.rs','numerical_toolchain.py')},
         generated_source_sha256=hashlib.sha256(generated.encode()).hexdigest(),
         compiler_version=version.strip(),compiler_sha256=_sha(path),flags=list(FLAGS),
-        linker=link_identity,pointer_bits=ctypes.sizeof(ctypes.c_void_p)*8,
+        linker=link_identity,installation=descriptor['signature'],pointer_bits=ctypes.sizeof(ctypes.c_void_p)*8,
         buffer_size=ctypes.sizeof(Buffer),buffer_alignment=ctypes.alignment(Buffer),
         reassociation=False,fastmath=False)
     signature=hashlib.sha256(json.dumps(fields,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
@@ -98,12 +103,12 @@ def identity(inputs,threads):
 def _build(inputs,expected):
     """Publish a completed immutable build once; workers verify and reuse it.
 
-    Trial readiness is serial at present. A private unique build directory also
-    makes concurrent independent runtimes safe without replacing a loaded DLL.
+    A private unique build directory makes concurrent independent qualification
+    callers safe without replacing a loaded DLL.
     The manifest is an atomic pointer to immutable bytes; broken bytes fail and
     are never silently recompiled under the existing manifest.
     """
-    root=Path(os.environ.get('BACKTEST_RUST_BUILDS') or Path(inputs.s.r.ROOT)/'tmp/numerical-rust')
+    root=Path(_build_root())
     root.mkdir(parents=True,exist_ok=True)
     manifest=root/(expected['signature']+'.json')
     def verify():
@@ -126,9 +131,9 @@ def _build(inputs,expected):
     with tempfile.TemporaryDirectory(prefix='build-',dir=root) as temporary:
         directory=Path(temporary);source=directory/'kernel.rs';source.write_bytes(generated.encode('utf-8'))
         library=directory/('kernel.dll' if os.name=='nt' else 'kernel.so')
-        command=[str(compiler()),'--crate-name','numerical_candidate','--crate-type','cdylib',*FLAGS]
-        linker=os.environ.get('BACKTEST_RUST_LINKER')
-        if linker:command+=['-C','linker='+linker]
+        descriptor=numerical_toolchain.inspect_toolchain()
+        command=_Command([descriptor['compiler'],'--crate-name','numerical_candidate','--crate-type','cdylib',*FLAGS,
+            '-C','linker='+str(Path(descriptor['directory'])/descriptor['linker']['path'])],descriptor)
         command += [str(source),'-o',str(library)]
         backtest_control.checkpoint()
         # No historical setup deadline becomes a calculation capacity limit.

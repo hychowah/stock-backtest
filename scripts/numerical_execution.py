@@ -94,12 +94,34 @@ def _windows_resources(result):
             process_limit=extended.basic.processes if extended.basic.flags & 8 else None,
             process_memory_bytes=extended.process_memory if extended.basic.flags & 0x100 else None,
             job_memory_bytes=extended.job_memory if extended.basic.flags & 0x200 else None)
+        # Microsoft's hcsshim uses information class 28 for current job commit.
+        # A known restriction without a usable usage sample stays unresolved.
+        class Usage(c.Structure):
+            _fields_=[('current',c.c_uint64),('peak',c.c_uint64)]
+        usage=Usage()
+        if kernel.QueryInformationJobObject(None,28,c.byref(usage),c.sizeof(usage),None):
+            result['current_job'].update(current_memory_bytes=usage.current,peak_memory_bytes=usage.peak)
+            if result['current_job']['job_memory_bytes'] is not None:
+                result['job_headroom_bytes']=max(0,extended.job_memory-usage.current)
+        elif result['current_job']['job_memory_bytes'] is not None:
+            result['restricted_memory_unobserved']=True
+        if result['current_job']['process_memory_bytes'] is not None:
+            from process_owner import process_metrics
+            private=process_metrics().get('sampled_private_bytes')
+            if type(private) is int:
+                result['process_headroom_bytes']=max(0,extended.process_memory-private)
+            else:result['restricted_memory_unobserved']=True
         if kernel.QueryInformationJobObject(None, 15, c.byref(rate), c.sizeof(rate), None):
             result['current_job']['cpu_rate_flags'] = rate.flags
             result['current_job']['cpu_rate'] = rate.rate if rate.flags & 1 else None
             if rate.flags & 5 == 5:
                 result['cpu_quota_lanes'] = result['affinity_cpus']*rate.rate/10000
-    else: result['current_job'] = None
+    else:
+        result['current_job'] = None
+        assigned=w.BOOL()
+        kernel.IsProcessInJob.argtypes=[w.HANDLE,w.HANDLE,c.POINTER(w.BOOL)]
+        if not kernel.IsProcessInJob(kernel.GetCurrentProcess(),None,c.byref(assigned)) or assigned.value:
+            result['restricted_memory_unobserved']=True
     result['unknown'].extend(('Nested job constraints beyond current job',
                               'Processor groups beyond the current affinity mask',
                               'Future memory and commit availability'))
@@ -124,6 +146,14 @@ def effective_lanes(observations):
     return max(1, math.floor(min(counts))) if counts else 1
 
 
+def memory_headroom(observations):
+    """One consumable headroom contract for default resolution and duplication."""
+    values=[observations.get(name) for name in ('available_bytes','commit_headroom_bytes',
+        'container_headroom_bytes','job_headroom_bytes','process_headroom_bytes')]
+    values=[value for value in values if type(value) is int and value>=0]
+    return (min(values) if values else None),bool(observations.get('restricted_memory_unobserved'))
+
+
 def initial_threads(observations=None):
     # Four is an initial sequential comparison point, not a machine ceiling.
     return min(4, effective_lanes(observations or observe_resources()))
@@ -137,6 +167,32 @@ def numba_threads(requested, maximum):
 
 
 class ExecutionPolicy:
+    """Resolve configured capacity before checkpoint lookup.
+
+    Observations guide admission but do not promise future memory availability.
+    Worker startup cannot change the resolved identity.
+    """
+    @classmethod
+    def from_configuration(cls,configuration):
+        """Normalize legacy per-provider allowances and resolved Runtime input."""
+        settings=deepcopy(configuration.get('execution',{}))
+        for key,default in (('start_seconds',120.),('close_seconds',30.)):
+            settings.setdefault(key,configuration.get(key,default))
+        if configuration.get('threads') is not None:
+            settings.setdefault('threads_per_worker',configuration['threads'])
+        policy=cls(settings)
+        changed=False
+        for key in ('workspace_bytes','matrix_cache_bytes','chunk_rows'):
+            if key in configuration and key not in settings:
+                settings[key]=configuration[key] if key=='chunk_rows' else configuration[key]*(policy.workers+1)
+                changed=True
+        if changed:policy=cls(settings,observations=policy.observations)
+        origin=configuration.get('execution_origin')
+        if origin is not None:
+            policy.provenance=deepcopy(origin['provenance'])
+            policy.observations=deepcopy(origin['observations'])
+        return policy
+
     def __init__(self, settings=None, *, observations=None, coordinator=True):
         settings = deepcopy(settings or {})
         allowed = {'backend', 'workers', 'threads_per_worker', 'lane_budget', 'workspace_bytes',
@@ -144,13 +200,24 @@ class ExecutionPolicy:
             'piece_bytes', 'record_bytes', 'private_memory_budget_bytes', 'chunk_rows',
             'start_seconds', 'close_seconds'}
         if set(settings)-allowed: raise ValueError('Unknown internal numerical execution setting.')
-        self.backend=settings.get('backend','numba')
-        if self.backend not in ('numba','numba_compiled','rust'):
-            raise ValueError('Unknown trusted numerical comparison configuration.')
+        self.backend=settings.get('backend','numba_compiled')
+        if self.backend!='numba_compiled':
+            raise ValueError('Unsupported historical numerical backend. Current execution uses compiled Numba.')
         self.observations = deepcopy(observations if observations is not None else observe_resources())
-        self.workers = _positive(settings.get('workers', 1), 'workers')
         lanes = _positive(settings.get('lane_budget', effective_lanes(self.observations)), 'lane budget')
-        threads = _positive(settings.get('threads_per_worker', min(4, lanes)), 'threads')
+        # G's selected native Numba 2x2 worker-zero private samples were
+        # 152,326,144 and 152,657,920 bytes. 256 MiB is a conservative rounded readiness
+        # estimate with margin, not an RSS bound or a complete-run budget.
+        readiness_estimate = 256*1024**2
+        useful_memory,unresolved_memory=memory_headroom(self.observations)
+        default_workers = min(2, max(1, lanes//2))
+        default_managed = (default_workers+int(coordinator))*80*1024**2
+        explicit_allowance=settings.get('private_memory_budget_bytes')
+        if ((useful_memory is None or unresolved_memory) and explicit_allowance is None
+                or useful_memory is not None and useful_memory < default_workers*readiness_estimate+default_managed):
+            default_workers = 1
+        self.workers = _positive(settings.get('workers', default_workers), 'workers')
+        threads = _positive(settings.get('threads_per_worker', min(2, max(1,lanes//self.workers))), 'threads')
         if self.workers*threads > lanes:
             raise ValueError('Numerical workers times threads exceed the selected numerical-lane budget.')
         providers = self.workers+int(coordinator)
@@ -181,24 +248,30 @@ class ExecutionPolicy:
         self._identity = dict(version=1, workers=self.workers, threads_per_worker=threads,
             numerical_lane_budget=lanes, live_providers=providers,
             workspace_total_bytes=workspace, matrix_cache_total_bytes=cache,
-            provider_limits=dict(threads=threads, request_plan=True, candidate_assembly=('source' if self.backend=='numba' else 'compiled'),
+            provider_limits=dict(threads=threads, request_plan=True, candidate_assembly='compiled',
                 workspace_bytes=workspace//providers, matrix_cache_bytes=cache//providers,
                 chunk_rows=_positive(settings.get('chunk_rows', 1024), 'chunk rows')),
             pending_slots=slots, artifact_total_bytes=total,
             artifact_limits=dict(max_bytes=artifact, piece_bytes=piece, record_bytes=record))
-        if self.backend=='rust':self._identity['provider_limits']['backend']='rust'
+        # A parent runtime passes this resolved configuration to Session. A
+        # second resource sample cannot silently change its checkpoint identity.
+        self.settings = dict(settings, backend=self.backend, workers=self.workers,
+            threads_per_worker=threads, lane_budget=lanes, workspace_bytes=workspace,
+            matrix_cache_bytes=cache, pending_slots=slots, artifact_bytes=artifact,
+            artifact_total_bytes=total, piece_bytes=piece, record_bytes=record)
         self.provenance = dict(
             layout='Explicit internal experiment' if 'workers' in settings else
-                   'One worker until CB-19F qualifies duplication and scaling',
+                   'G measured compiled Numba 2x2 preference, reduced by observed CPU and readiness headroom',
             threads='Explicit internal experiment' if 'threads_per_worker' in settings else
-                    'Initial four-thread comparison, bounded by effective observed CPU entitlement',
+                    'G measured two-thread preference, bounded by effective observed CPU entitlement',
             lanes='Explicit internal experiment' if 'lane_budget' in settings else
                   'Minimum observed affinity, visible CPUs and CPU quota; unknowns remain recorded',
             managed='Explicit totals, or existing 64 MiB workspace and 16 MiB cache compatibility allowances '
                     'per live provider; aggregate recorded, divided, and duplication cold-cost gated',
             artifacts='Finite encoded evidence reservations; default 64 MiB per task slot',
             lifecycle='Configurable cold initialization and cleanup response allowances; no calculation watchdog',
-            memory='Cold private-memory sample gates duplication; admission estimate only, never an RSS limit')
+            memory='256 MiB conservative rounded readiness estimate from G selected Numba private samples (~152.3–152.7 MB), plus separate managed totals; '
+                   'unknown useful headroom selects one worker. Actual cold sample gates duplication; never an RSS limit')
 
     @property
     def identity(self): return deepcopy(self._identity)
@@ -211,7 +284,7 @@ class ExecutionPolicy:
 
     def execution_identity(self, compiler):
         """Expected stable worker contract; no process or JIT is needed."""
-        return dict(**self.identity, backend='rust' if self.backend=='rust' else 'numba', compiler=compiler['signature'])
+        return dict(**self.identity, backend='numba', compiler=compiler['signature'])
 
     def admit_cold_worker(self, measurements):
         """Check incremental duplication before starting remaining workers.
@@ -225,13 +298,11 @@ class ExecutionPolicy:
         if type(cost) is not int or cost <= 0:
             raise ValueError('Parallel worker admission requires a measured cold private-memory cost.')
         observation = observe_resources()
-        available = [observation.get(name) for name in
-            ('available_bytes', 'commit_headroom_bytes', 'container_headroom_bytes')]
-        available = [value for value in available if type(value) is int]
-        if not available and self.private_memory_budget_bytes is None:
+        available,unresolved=memory_headroom(observation)
+        if (available is None or unresolved) and self.private_memory_budget_bytes is None:
             raise ValueError('Parallel worker admission lacks a memory observation or internal allowance.')
         additional = cost*(self.workers-1)
-        if available and additional > min(available):
+        if available is not None and additional > available:
             raise ValueError('Cold worker duplication exceeds observed available memory or commit headroom.')
         if (self.private_memory_budget_bytes is not None
                 and cost*self.workers > self.private_memory_budget_bytes):
