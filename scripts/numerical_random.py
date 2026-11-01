@@ -16,6 +16,7 @@ import sys
 import time
 
 import numerical_calendar
+import numerical_trial
 import portfolio_results
 import robustness
 import trial_checkpoints
@@ -98,6 +99,8 @@ def run(portfolio,configuration,experiment,progress=None,*,capture=None):
     if trial_checkpoints.canonical(binding) != trial_checkpoints.canonical(experiment.binding):
         raise ValueError('Checkpoint experiment belongs to a different calculation binding.')
     config=binding['configuration']
+    evaluator=numerical_trial.TrialEvaluator(portfolio,
+        calculation_identity=numerical_trial.calculation_identity(binding))
     stats=dict(recovered_trials=0,calculated_trials=0,retained_trials=0,unretained_trials=0,
                evicted_experiments=0,workers=0)
 
@@ -111,11 +114,9 @@ def run(portfolio,configuration,experiment,progress=None,*,capture=None):
             event(number-1,number)
             result=experiment.load(number)
             if result is None:
-                evaluate=portfolio.backtest_calendar if 'calendar' in config else portfolio.backtest_dates
-                envelope=evaluate(dates=dates,**numerical_calendar.request_fields(config),**config['options'])
-                if envelope['contract_version'] != portfolio_results.CONTRACT_VERSION:
-                    raise ValueError('Financial result contract differs.')
-                result=envelope['result']
+                collector=portfolio.result_collector(len(dates),config['options'])
+                summary=evaluator.evaluate_into(numerical_trial.specification(binding,number),collector.period)
+                result=collector.finish(summary)
                 outcome=experiment.save(number,result)
                 stats['calculated_trials']+=1
                 stats['retained_trials' if outcome['retained'] else 'unretained_trials']+=1
@@ -141,6 +142,8 @@ def run_into(portfolio,configuration,experiment,writer,progress=None):
         if trial_checkpoints.canonical(binding)!=trial_checkpoints.canonical(experiment.binding):
             raise ValueError('Checkpoint experiment belongs to a different calculation binding.')
         config=binding['configuration']
+        evaluator=numerical_trial.TrialEvaluator(portfolio,
+            calculation_identity=numerical_trial.calculation_identity(binding))
         if writer.expected_trials!=config['requested']:
             raise ValueError('Evidence trial count differs from the recorded plan.')
         stats=dict(recovered_trials=0,calculated_trials=0,retained_trials=0,unretained_trials=0,
@@ -158,11 +161,7 @@ def run_into(portfolio,configuration,experiment,writer,progress=None):
                 counts[0]+=1;counts[1]+=period['names']==0;counts[2]+=period['names']<requested
             summary=experiment.replay_into(number,emit)
             if summary is None:
-                evaluate=portfolio.backtest_calendar_into if 'calendar' in config else portfolio.backtest_dates_into
-                envelope=evaluate(emit,dates=dates,**numerical_calendar.request_fields(config),**config['options'])
-                if envelope['contract_version']!=portfolio_results.CONTRACT_VERSION:
-                    raise ValueError('Financial result contract differs.')
-                summary=envelope['result']
+                summary=evaluator.evaluate_into(numerical_trial.specification(binding,number),emit)
                 view=writer.end_trial(summary)
                 outcome=experiment.save_from(number,view)
                 stats['calculated_trials']+=1

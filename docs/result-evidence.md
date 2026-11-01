@@ -85,6 +85,27 @@ forwards complete periods and returns the original scalar summary. These methods
 do not retain earlier periods. They do not validate financial arithmetic.
 Checkpoint recovery additionally uses the shared financial reducer.
 
+`SingleTrialWriter(stream, number=37, max_bytes=..., piece_bytes=...,
+record_bytes=...)` writes one standalone sealed trial. Send complete periods to
+`period`, then call `finish(summary)` to obtain its `TrialView`. The actual
+recorded number stays 37. No preceding trials or batch header are fabricated.
+This reuses the batch writer's framing, bounds and structural validation.
+Standalone bytes are a sealed trial range, not a completed batch for `Reader`.
+The stream remains caller-owned. Failure makes the writer unusable.
+
+`scripts/numerical_trial.py` binds this range to a detached recorded trial and
+the existing calculation-binding identity. Its descriptor includes the actual
+trial number, specification digest, byte range, byte digest and all three codec
+limits. `open_artifact` accepts an already opened stream and a trusted expected
+specification. It checks exact bytes, dates, settings and financial arithmetic.
+It accepts no producer path. The validated view can feed `save_from(37, view)`.
+Sealing proves calculation, not checkpoint commitment or application completion.
+
+The caller declares the total ceiling. Piece and record ceilings retain the
+format's existing 1 MiB and 8 MiB maxima. These codec limits bound decoding and
+encoded records. They are not hardware recommendations or total process-memory
+limits. CB-19C owns pool-wide resource admission and task-owned scratch files.
+
 Sealing a trial does not complete its batch. A cancelled or failed batch has no
 final manifest. Existing owners control publication after successful completion
 and required resource closure. A checkpoint can retain a sealed completed trial

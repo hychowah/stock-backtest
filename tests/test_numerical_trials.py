@@ -179,6 +179,7 @@ class NumericalTrialsTests(unittest.TestCase):
         self.assertNotIn(str(ROOT),trial_checkpoints.canonical(original))
         self.assertTrue({'scripts/metrics.py','scripts/portfolio_results.py','scripts/robustness.py',
             'scripts/schedule_calendar.py','scripts/research.py','scripts/numerical_policy.py',
+            'scripts/numerical_trial.py','scripts/result_evidence.py',
             'tools/bench_candidates_numba.py','tools/portfolio_workspace.py'} <= sources.keys())
 
     def test_consumer_rejects_noncontiguous_and_missing_results(self):

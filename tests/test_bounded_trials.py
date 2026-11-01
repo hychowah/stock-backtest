@@ -247,7 +247,9 @@ class BoundedNumericalTests(unittest.TestCase):
                     config=self.config(portfolio,pool=pool,rank_from=ranks[0],rank_to=ranks[1],filters=filters)
                     experiment=store.open(numerical_random.checkpoint_binding(portfolio,config))
                     expected=[]
-                    eager=numerical_random.run(portfolio,config,experiment,capture=lambda n,r:expected.append(r))['result']
+                    with patch.object(portfolio,'backtest_calendar',side_effect=AssertionError('No separate eager producer')), \
+                         patch.object(portfolio_results,'evaluate',side_effect=AssertionError('No collecting reducer')):
+                        eager=numerical_random.run(portfolio,config,experiment,capture=lambda n,r:expected.append(r))['result']
                     store.db.execute('DELETE FROM experiments')
                     with patch.object(experiment,'load',side_effect=AssertionError('No eager checkpoint load')), \
                          patch.object(portfolio,'backtest_calendar',side_effect=AssertionError('No eager producer')), \

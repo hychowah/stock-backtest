@@ -112,6 +112,23 @@ class NumericalPortfolio:
     def _evaluate_periods(self, periods, metadata, *, common_start=None, **options):
         return self._reduce_periods(periods,metadata,None,common_start=common_start,**options)
 
+    def admit_eager_result(self,period_count,options):
+        """Keep the existing conservative eager estimate before provider work."""
+        if self.result_workspace_bytes is not None:
+            count=min(len(self.inputs.symbols),options.get('rank_to',50)-options.get('rank_from',1)+1)
+            if period_count*(16384+4096*count)>self.result_workspace_bytes:
+                raise ValueError('Complete result exceeds the runtime result workspace bound.')
+
+    def result_collector(self,period_count,options):
+        """Collect incremental trial evidence within the existing eager budget.
+
+        The caller chooses eager retention. Streaming evaluation does not use
+        this collector. Its accounting includes cumulative detached periods and
+        the final graph; this does not raise or replace the owner's byte budget.
+        """
+        self.admit_eager_result(period_count,options)
+        return _ResultCollector(self)
+
     def _reduce_periods(self, periods, metadata, emit_period, /, *, common_start=None, **options):
         started = time.perf_counter()
         periods = portfolio_results.validate_periods(periods, common_start)
@@ -119,10 +136,7 @@ class NumericalPortfolio:
         # This unchanged selector validates options before any provider work or
         # SQL writes, including unknown keyword arguments and strict filters.
         self.validate_selection(options)
-        if emit_period is None and self.result_workspace_bytes is not None:
-            count = min(len(self.inputs.symbols),options.get('rank_to',50)-options.get('rank_from',1)+1)
-            if len(periods)*(16384+4096*count) > self.result_workspace_bytes:
-                raise ValueError('Complete result exceeds the runtime result workspace bound.')
+        if emit_period is None:self.admit_eager_result(len(periods),options)
         retained = 0
         self.provider.begin(dict(options=options))
         pool = options.get('pool', 'legacy')
@@ -217,6 +231,29 @@ class NumericalPortfolio:
 
     def __exit__(self, *exc):
         self.close()
+
+
+class _ResultCollector:
+    def __init__(self,portfolio):
+        self.portfolio=portfolio
+        self.periods=[]
+        self.retained=0
+
+    def _check(self,size):
+        portfolio=self.portfolio
+        portfolio.peak_result_graph_bytes=max(portfolio.peak_result_graph_bytes,size)
+        if portfolio.result_workspace_bytes is not None and size>portfolio.result_workspace_bytes:
+            raise ValueError('Complete result exceeds the runtime result workspace bound.')
+
+    def period(self,period):
+        self.retained+=retained_size(period)+4096
+        self._check(self.retained)
+        self.periods.append(period)
+
+    def finish(self,summary):
+        result=dict(periods=self.periods,**summary)
+        self._check(retained_size(result))
+        return result
 
 
 def compare_results(reference, observed):

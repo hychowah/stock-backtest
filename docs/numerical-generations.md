@@ -603,3 +603,36 @@ adapter owns its numerical child. `engine_selection.Selectable` coordinates
 admission, routing and confirmed cleanup before publication. Neither adapter
 owns jobs, queue or library records. Shared prepared Latest/January views keep
 their exact eligibility rules and offline browser calculation.
+
+
+## Complete recorded trial operation
+
+CB-19B adds `scripts/numerical_trial.py`. `specification(binding, number)` detaches
+one trial from the validated recorded plan. Its calculation identity uses the
+existing canonical checkpoint binding. Its digest also binds the actual trial
+number, exact dates, requested calendar, resolved window and selection settings.
+The full batch is not sent with each trial.
+
+`TrialEvaluator(portfolio, calculation_identity=...)` borrows an existing
+`NumericalPortfolio`. `evaluate_into(spec, sink)` validates the specification,
+saved-session calendar and selection before provider work. It emits complete
+periods and returns the existing scalar summary. It never samples dates, changes
+settings or writes checkpoints. Both fresh random adapters now use this operation.
+The eager adapter collects periods under the existing planned-result and retained
+graph budget. The streaming adapter retains one complete period. Session's
+batch admission and existing recovery/commit/callback order stay unchanged.
+
+`produce(spec, stream, limits=...)` seals one provisional artifact through
+`result_evidence.SingleTrialWriter`. The actual recorded number is preserved,
+including trial 37. `open_artifact(stream, descriptor, expected_spec=..., limits=...,
+checkpoint=...)` verifies the trusted task envelope, complete sealed bytes and
+financial evidence through the existing reducer. It exposes the original summary,
+period replay and checkpoint-compatible `TrialView`. Extra fields remain intact.
+Streams and immutable-byte lifetime belong to the caller. No path is accepted.
+
+An artifact is calculated evidence. It is not a committed checkpoint, completion
+event, application result or independently authenticated worker. CB-19C owns
+worker readiness, task-owned scratch, containment and total resource admission.
+CB-19D owns concurrent commitment and presentation. This slice creates no pool
+or application route. Transitive calculation-source identity includes the new
+module and codec. Old checkpoint rows are preserved with their original bindings.

@@ -78,7 +78,8 @@ def _day(value):
 
 class _Order:
     """Structural completeness only; financial arithmetic stays in the reducer."""
-    def __init__(self):
+    def __init__(self, first_trial=1):
+        self.first_trial = first_trial
         self.header = self.footer = None
         self.trials = self.periods = self.holdings = self.records = 0
         self.active_trial = self.active_period = False
@@ -107,7 +108,7 @@ class _Order:
             self.header = record
         elif kind == 'trial':
             if (self.active_trial or self.trials >= self.header['trials']
-                    or type(record['number']) is not int or record['number'] != self.trials+1):
+                    or type(record['number']) is not int or record['number'] != self.first_trial+self.trials):
                 raise ValueError('Evidence trials must be contiguous and ordered.')
             self.active_trial = True
             self.trial_periods = 0
@@ -177,6 +178,12 @@ class Writer:
     """
     def __init__(self, stream, *, trials, metadata, max_bytes,
                  piece_bytes=MAX_PIECE_BYTES, record_bytes=MAX_RECORD_BYTES, checkpoint=None):
+        self._initialize(stream,max_bytes,piece_bytes,record_bytes,checkpoint)
+        self._write(dict(type='header',format_version=FORMAT_VERSION,
+            result_contract=portfolio_results.CONTRACT_VERSION,trials=trials,metadata=metadata))
+
+    def _initialize(self,stream,max_bytes,piece_bytes,record_bytes,checkpoint):
+        """Shared physical writer state; standalone trials omit the batch header."""
         _limits(max_bytes,piece_bytes,record_bytes)
         if stream.tell() != 0 or stream.seek(0,2) != 0:
             raise ValueError('Evidence output must be empty.')
@@ -187,8 +194,6 @@ class Writer:
         self.failed = False
         self._order, self._digest = _Order(), hashlib.sha256()
         self._trial_start = self._trial_digest = None
-        self._write(dict(type='header',format_version=FORMAT_VERSION,
-            result_contract=portfolio_results.CONTRACT_VERSION,trials=trials,metadata=metadata))
 
     def _write(self, record):
         if self.failed or self._order.footer is not None:
@@ -280,6 +285,51 @@ class Writer:
             sha256=self._digest.hexdigest(),summary=summary)
         self._write(manifest)
         return deepcopy(manifest)
+
+
+class SingleTrialWriter:
+    """Seal one actual recorded trial using the existing TrialView encoding.
+
+    The caller owns the empty binary stream. finish() returns a sealed view,
+    not a batch manifest or committed checkpoint. No placeholder trials, batch
+    header or completion record are written. On any failure discard the bytes.
+    """
+    def __init__(self,stream,*,number,max_bytes,piece_bytes=MAX_PIECE_BYTES,
+                 record_bytes=MAX_RECORD_BYTES,checkpoint=None):
+        if type(number) is not int or not 1<=number<=100:
+            raise ValueError('Invalid sealed trial number.')
+        self._writer=object.__new__(Writer)
+        self._writer._initialize(stream,max_bytes,piece_bytes,record_bytes,checkpoint)
+        self._writer._order=_Order(first_trial=number)
+        self._writer._order.accept(dict(type='header',format_version=FORMAT_VERSION,
+            result_contract=portfolio_results.CONTRACT_VERSION,trials=1,metadata={}),None)
+        self._finished=False
+        self._writer.start_trial(number)
+
+    @property
+    def failed(self):return self._writer.failed
+
+    @failed.setter
+    def failed(self,value):self._writer.failed=value
+
+    @property
+    def bytes_written(self):return self._writer.bytes_written
+
+    @property
+    def peak_piece_bytes(self):return self._writer.peak_piece_bytes
+
+    @property
+    def peak_record_bytes(self):return self._writer.peak_record_bytes
+
+    def period(self,value):
+        if self._finished:raise ValueError('Single-trial evidence is already sealed.')
+        self._writer.period(value)
+
+    def finish(self,summary):
+        if self._finished:raise ValueError('Single-trial evidence is already sealed.')
+        view=self._writer.end_trial(summary)
+        self._finished=True
+        return view
 
 
 def _object(pairs):
@@ -471,7 +521,8 @@ class TrialView:
     def _from_writer(cls,writer,summary):
         view=object.__new__(cls)
         view.stream,view.start,view.end=writer.stream,writer._trial_start,writer.bytes_written
-        view.sha256,view.number=writer._trial_digest.hexdigest(),writer._order.trials
+        view.sha256=writer._trial_digest.hexdigest()
+        view.number=writer._order.first_trial+writer._order.trials-1
         view.piece_bytes,view.record_bytes=writer.piece_bytes,writer.record_bytes
         view.checkpoint=writer.checkpoint
         view._summary=deepcopy(summary);view.period_count=writer._order.trial_periods

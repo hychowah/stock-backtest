@@ -1,7 +1,7 @@
 # Parallel experimental backtest program
 
 Recorded: 1 November 2026. Source owner: `main` in the WSL checkout.
-Status: CB-19A complete in its audited commit; CB-19B–CB-19G are pending.
+Status: CB-19A and CB-19B complete in audited commits; CB-19C–CB-19G are pending.
 
 The independent planner's report follows verbatim. Administrative tracking starts
 after its Unknowns section.
@@ -147,6 +147,21 @@ active. A supervisor could install a new main commit. The 1 November entry probe
 observed none through native Windows process inspection and the WSL host
 namespace. That is a point-in-time observation, not a lifetime guarantee.
 
+### Complete-period comparison clarification — 1 November 2026
+
+Independent CB-19E planning found that the existing Numba provider with
+`candidate_assembly="compiled"` already compiles snapshot, eligibility and pair
+guards. The old Rust candidate replaces arithmetic while keeping Python guards
+and assembly. CB-19E must qualify both equivalent compiled Numba and complete
+Rust against the current source-guard Numba baseline through the same typed
+candidate boundary and encoder. CB-19F must separate the source-to-compiled gain
+from the Numba-versus-Rust gain. This avoids crediting Rust merely for moving
+Python guards into compiled code. Shared source policy, SQL and reducer remain
+authoritative. This is a narrow clarification of the existing period/backend
+scope, not a broad method matrix or three permanent production engine choices.
+The verbatim original design above remains unchanged. CB-19B implements no
+CB-19E provider work.
+
 ### Per-slice execution protocol
 
 User clarification — 1 November 2026: the user says that some original hardware
@@ -198,8 +213,8 @@ reports when a material design change needs a new independent planner.
 
 | Slice | Status | Required outcome before completion |
 |---|---|---|
-| CB-19A | Complete in this audited commit | Delegated immutable generation attachment and WSL/native identity, lifetime and release checks pass; [phase](phases/CB-19A.md), [verification](phases/CB-19A.verify.md), [handoff](phases/CB-19A.implement.md), [design review](phases/CB-19A.review.md) and [audit](phases/CB-19A.audit.md) filed. |
-| CB-19B | Pending | One complete evaluator and bounded reusable artifact; complete financial fixture agreement across settings/calendars and eager/streaming operations |
+| CB-19A | Complete (`84e2287`) | Delegated immutable generation attachment and WSL/native identity, lifetime and release checks pass; [phase](phases/CB-19A.md), [verification](phases/CB-19A.verify.md), [handoff](phases/CB-19A.implement.md), [design review](phases/CB-19A.review.md) and [audit](phases/CB-19A.audit.md) filed. |
+| CB-19B | Complete in this audited commit | One complete recorded-trial evaluator and actual-number sealed artifact implemented. Required WSL/native financial, artifact, recovery and source-binding checks pass. Independent audit has no findings. See [phase](phases/CB-19B.md), [verification](phases/CB-19B.verify.md), [handoff](phases/CB-19B.implement.md), [design review](phases/CB-19B.review.md) and [audit](phases/CB-19B.audit.md). |
 | CB-19C | Pending | Persistent contained spawn pool; explicit total resource bounds and execution binding; WSL/native failure, cancellation, shutdown and retirement checks |
 | CB-19D | Pending | Parent-owned ordered checkpoint coordination and application integration; parallel/sequential parity, recovery and manual/queue/evidence checks |
 | CB-19E | Pending | Complete Rust period candidate including guards, assembly, SQL and reducer; full parity, boundary/cancellation checks and private native portability |
