@@ -1,4 +1,9 @@
 """Coverage populations, omissions and read-only freshness boundaries."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
+from backtest.engines.reference import legacy
 from contextlib import closing, nullcontext
 import json
 from pathlib import Path
@@ -19,7 +24,7 @@ class CoverageTests(unittest.TestCase):
         self.fixture=test_research.ResearchTests();self.fixture.setUp()
         self.addCleanup(self.fixture.db.close);self.research=self.fixture.db
         self.daily=sqlite3.connect(':memory:');self.daily.row_factory=sqlite3.Row
-        self.daily.executescript(coverage.s.SCHEMA);self.addCleanup(self.daily.close)
+        self.daily.executescript(coverage.daily_inputs.SCHEMA);self.addCleanup(self.daily.close)
         for i in range(1,4):
             row=(f'S{i}','2014-01-01','2014-04-01',i*100e6,200e6,100e6/i,.5/i)
             for db in (self.research,self.daily):db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',row)
@@ -73,7 +78,7 @@ class CoverageTests(unittest.TestCase):
             with closing(sqlite3.connect(path)) as db:
                 db.execute('CREATE TABLE metadata(key,value)');db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs','{}'));db.commit()
             original=path.read_bytes()
-            with patch.object(coverage.cache_access,'access',side_effect=lambda:nullcontext()),patch.object(coverage.r,'connect',return_value=self.research),patch.object(coverage.s,'fingerprint',return_value={'new':1}):
+            with patch.object(coverage.cache_access,'access',side_effect=lambda:nullcontext()),patch.object(coverage.r,'connect',return_value=self.research),patch.object(coverage.daily_inputs,'fingerprint',return_value={'new':1}):
                 with self.assertRaisesRegex(ValueError,'Daily cache changed'):coverage.report(Path(tmp)/'research.sqlite',path)
             self.assertEqual(path.read_bytes(),original)
 

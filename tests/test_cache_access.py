@@ -1,4 +1,8 @@
 """Shared workspace ownership covers database use, closure and preparation."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 from contextlib import ExitStack
 import io
 import json
@@ -13,9 +17,9 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
-import cache_access as access
-import research
-import schedules
+from backtest.runtime import cache_access as access
+from backtest.inputs import research as research
+from backtest.engines.original import schedules as schedules
 import serve
 
 
@@ -46,8 +50,8 @@ class AccessTests(unittest.TestCase):
 
     def test_preparation_entrypoints_take_shared_ownership(self):
         self.assertTrue(hasattr(research.prepare,'__wrapped__'))
-        self.assertTrue(hasattr(schedules.prepare,'__wrapped__'))
-        for prepare in (research.prepare,schedules.prepare):
+        self.assertTrue(hasattr(daily.prepare,'__wrapped__'))
+        for prepare in (research.prepare,daily.prepare):
             class Entered(Exception):pass
             with patch.object(access,'access',side_effect=Entered),self.assertRaises(Entered):prepare()
 
@@ -55,7 +59,7 @@ class AccessTests(unittest.TestCase):
         for path in ('/api/schedule','/api/robustness'):
             with self.subTest(path=path):
                 entered=Event();finish=Event();responses=[];close_probes=[];errors=[]
-                db=SimpleNamespace(execute=lambda *a:None,close=lambda:close_probes.append(self.probe()))
+                db=SimpleNamespace(execute=lambda *a:[],close=lambda:close_probes.append(self.probe()))
                 def calculate(*args,**kwargs):entered.set();finish.wait(10);return {'result':'complete'}
                 handler=object.__new__(serve.Handler)
                 handler.disconnect_check=lambda:lambda:False
@@ -67,7 +71,7 @@ class AccessTests(unittest.TestCase):
                 def request():
                     try:handler.do_POST()
                     except BaseException as error:errors.append(error)
-                with patch.object(schedules,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(serve.backtest_jobs.robustness,'plan',return_value={}),patch.object(serve.backtest_jobs.robustness,'run',side_effect=calculate):
+                with patch.object(daily,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(serve.backtest_jobs.robustness,'plan',return_value={'options':{}}),patch.object(serve.backtest_jobs.robustness,'run',side_effect=calculate):
                     thread=Thread(target=request);thread.start()
                     try:
                         self.assertTrue(entered.wait(5))
@@ -77,6 +81,30 @@ class AccessTests(unittest.TestCase):
                 self.assertEqual(close_probes,[2],'Ownership must remain held while the DB closes.')
                 self.assertEqual(self.probe(),0)
                 if path.endswith('schedule'):self.assertEqual(responses,[200])
+
+
+@unittest.skipUnless(sys.platform=='win32','Native LockFileEx reader-gate verification.')
+class NativeReaderGateTests(unittest.TestCase):
+    def test_multiple_readers_exclude_retirement_and_exclusive_excludes_attach(self):
+        with tempfile.TemporaryDirectory() as folder,ExitStack() as handles:
+            path=Path(folder)/'mapping-gate.lock';path.write_bytes(b'0')
+            first=handles.enter_context(path.open('rb',buffering=0))
+            second=handles.enter_context(path.open('rb',buffering=0))
+            exclusive=handles.enter_context(path.open('r+b',buffering=0))
+            release_first=access._windows_reader_lock(first,False)
+            release_second=access._windows_reader_lock(second,False)
+            try:
+                with self.assertRaises(BlockingIOError):access._windows_reader_lock(exclusive,True)
+                release_first();release_first=None
+                with self.assertRaises(BlockingIOError):access._windows_reader_lock(exclusive,True)
+            finally:
+                if release_first is not None:release_first()
+                release_second()
+            release_exclusive=access._windows_reader_lock(exclusive,True)
+            try:
+                with self.assertRaises(BlockingIOError):access._windows_reader_lock(first,False)
+            finally:release_exclusive()
+            access._windows_reader_lock(first,False)()
 
 
 if __name__=='__main__':

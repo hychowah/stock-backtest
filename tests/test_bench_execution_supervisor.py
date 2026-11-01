@@ -80,7 +80,7 @@ with patch.object(c.admission,'require_execution'), patch.object(e.MeasurementEx
     def test_actual_reference_numba_controller_runs_and_closes_inside_domain(self):
         # Participating source ownership creates its normal coordination files.
         # Establish those disposable files before the immutable-byte snapshot.
-        import cache_access
+        from backtest.runtime import cache_access as cache_access
         import runtime_access
         source = self.fixture.fixture.source
         with runtime_access.ownership(source, timeout=0):

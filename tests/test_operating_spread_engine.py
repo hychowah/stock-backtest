@@ -1,4 +1,9 @@
 """Source-derived operating spread over private annual and dated inputs."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import metrics
 from copy import deepcopy
 from datetime import date
 import inspect
@@ -10,13 +15,13 @@ from unittest.mock import patch
 import numpy as np
 import test_numerical_generation as generations
 import test_bench_candidates as candidates
-from numerical_generation import DatedYields
-from numerical_factors import FactorEvaluator
-from numerical_policy import PolicyProgram
-from numerical_numba import NumbaExecutor
-from numerical_portfolio import NumericalPortfolio, compare_results
-import robustness
-import numerical_random
+from backtest.engines.numerical.generation import DatedYields
+from backtest.engines.numerical.factors import FactorEvaluator
+from backtest.engines.numerical.policy import PolicyProgram
+from backtest.engines.numerical.numba import NumbaExecutor
+from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
+from backtest.engines.original import robustness as robustness
+from backtest.engines.numerical import random as numerical_random
 
 
 FIELD = 'operating_yield_spread_3y'
@@ -59,11 +64,11 @@ class SpreadTests(unittest.TestCase):
         series = DatedYields(rows)
         self.db.executemany('INSERT INTO treasury10 VALUES(?,?)', rows)
         for day in ('2015-01-01', '2015-01-02', '2015-01-04', '2015-01-05', '2015-01-06', '2026-01-01'):
-            self.assertEqual(series(day), self.s.r.ten_year_yield(self.db, day))
+            self.assertEqual(series(day), research.ten_year_yield(self.db, day))
         self.assertIsNone(DatedYields([])(date(2015, 1, 2)))
 
     def test_specialization_executes_source_history_guards_and_arithmetic(self):
-        policy = PolicyProgram(self.s)
+        policy = PolicyProgram()
         reports = {f'{year}-06-30': dict(revenue=100e6, operatingIncome=amount)
                    for year, amount in ((2012, -10e6), (2013, 30e6), (2014, 40e6))}
         # Same-year variants and newer reports exercise the source fiscal cutoff.
@@ -86,7 +91,7 @@ class SpreadTests(unittest.TestCase):
                 matrix[0, policy.input_index['treasury10']] = np.nan if treasury is None else treasury
                 output = policy.evaluate(matrix)[0]
                 ev = output[policy.output_index['ev']]
-                expected = self.s.metrics.operating_yield_spread(
+                expected = metrics.operating_yield_spread(
                     dict(fiscal='2014-06-30', enterprise_value=ev), annual, treasury)
                 actual = output[policy.output_index['filter_' + FIELD]]
                 if expected is None:
@@ -96,8 +101,8 @@ class SpreadTests(unittest.TestCase):
         self.assertIn(FIELD, policy.filter_order)
 
     def test_source_formula_mutations_change_policy_and_unsupported_shapes_fail(self):
-        original = self.s.metrics.operating_yield_spread
-        base = PolicyProgram(self.s)
+        original = metrics.operating_yield_spread
+        base = PolicyProgram()
         text = inspect.getsource(original)
         for index, replacement in enumerate(('value=sales*statistics.mean(margins)/ev*200-treasury10',
                                               'value=sales*statistics.mean(margins)/(ev+sales)*100-treasury10')):
@@ -106,20 +111,20 @@ class SpreadTests(unittest.TestCase):
             path.write_text(source)
             namespace = dict(original.__globals__)
             exec(compile(source, str(path), 'exec'), namespace)
-            with patch.object(self.s.metrics, 'operating_yield_spread', namespace[original.__name__]):
-                changed = PolicyProgram(self.s)
+            with patch.object(metrics, 'operating_yield_spread', namespace[original.__name__]):
+                changed = PolicyProgram()
                 self.assertNotEqual(changed.signature, base.signature)
         source = text.replace('ev<=0', 'ev<=100')
         path = self.root / 'spread-guard.py'
         path.write_text(source)
         namespace = dict(original.__globals__)
         exec(compile(source, str(path), 'exec'), namespace)
-        with patch.object(self.s.metrics, 'operating_yield_spread', namespace[original.__name__]):
+        with patch.object(metrics, 'operating_yield_spread', namespace[original.__name__]):
             with self.assertRaisesRegex(ValueError, 'Unsupported symbolic'):
-                PolicyProgram(self.s)
+                PolicyProgram()
 
     def test_complete_books_both_matrix_and_assembly_paths_match(self):
-        from numerical_books import PythonExecutor
+        from backtest.engines.numerical.books import PythonExecutor
         financial_inputs(self.db)
         self.prepare()
         inputs = self.attach()
@@ -136,8 +141,8 @@ class SpreadTests(unittest.TestCase):
                     for book, observed in zip(books, actual, strict=True):
                         entry, exit_day, pool = book
                         expected = self.s.compute_period(self.db, date.fromisoformat(entry),
-                            date.fromisoformat(exit_day), self.s.histories(self.db),
-                            self.s.cached_symbols(self.db), pool)
+                            date.fromisoformat(exit_day), daily.histories(self.db),
+                            daily.cached_symbols(self.db), pool)
                         self.assertTrue(candidates.baseline.compare(expected, observed)['exact'])
                         self.assertTrue(any(field == FIELD for _, field, _ in observed['filters']))
             finally:
@@ -169,7 +174,7 @@ class SpreadTests(unittest.TestCase):
         request = dict(start='2015-01-05', end='2016-12-30', months=12, pool='cached', rank_to=30)
         book = self.s.backtest(self.db, **request)['periods'][0]
         holding = next(h for h in book['holdings'] if h['symbol'] == 'A')
-        expected = self.s.metrics.operating_yield_spread(holding, inputs.financials['A'],
+        expected = metrics.operating_yield_spread(holding, inputs.financials['A'],
             inputs.ten_year_yield(book['entry']))
         for value in (math.nextafter(expected, -math.inf), expected, math.nextafter(expected, math.inf)):
             for op in ('lt', 'gt'):

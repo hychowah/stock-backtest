@@ -1,4 +1,8 @@
 """Durable queue transactions, consumer ownership and real engine recovery."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 from contextlib import closing, ExitStack
 from http.client import HTTPConnection
 import json
@@ -15,10 +19,13 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
-import backtest_control
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
 import backtest_queue as queue
-import cache_access
-import schedules
+from backtest.runtime import cache_access as cache_access
+from backtest.engines.original import schedules as schedules
 import serve
 import test_robustness as fixtures
 
@@ -218,7 +225,7 @@ class ConsumerTests(unittest.TestCase):
             def close(db):closed.append(getattr(owner.state,'held',False));super().close()
         def connect():
             db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;return db
-        self.context.enter_context(patch.object(schedules,'connect',side_effect=connect))
+        self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.entered=Event();self.release=Event()
         original=schedules.compute_period
         def compute(*args,**kwargs):

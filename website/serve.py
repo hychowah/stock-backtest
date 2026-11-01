@@ -52,6 +52,7 @@ if __name__ == '__main__':
         with _supervised_stop():
             _source_owner = _own_source()
             try:
+                sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
                 import serve_app
                 serve_app.main()
             finally:
@@ -64,8 +65,10 @@ elif __name__ == '__mp_main__':
     import atexit
     _source_owner = _own_source()
     atexit.register(_source_owner.__exit__, None, None, None)
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
     import serve_app
 else:
     # Keep existing imports and unittest patch targets on the actual module.
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
     import serve_app
     sys.modules[__name__] = serve_app

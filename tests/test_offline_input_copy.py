@@ -22,8 +22,8 @@ FIXTURE = ROOT/'tests/fixtures/offline-copy-ownership'
 PEER = r'''
 import importlib.util,sys,time
 from pathlib import Path
-fixture, scripts, root, kind, action, ready, release = sys.argv[1:]
-sys.path[:0]=[str(Path(scripts).parent),scripts]
+fixture, source_root, root, kind, action, ready, release = sys.argv[1:]
+sys.path.insert(0,source_root)
 from backtest import paths
 sys.modules['paths']=paths  # The retained qualified peer predates the package.
 name = 'runtime_access' if kind=='source' else 'cache_access'
@@ -88,7 +88,7 @@ class OfflineInputCopyTests(unittest.TestCase):
 
     def peer_command(self, kind, action, ready='', release=''):
         return [sys.executable, '-I', '-B', '-X', 'utf8', '-c', PEER, str(FIXTURE),
-                str(Path(copier.cache_access.__file__).parent), str(self.source),
+                str(ROOT), str(self.source),
                 kind, action, str(ready), str(release)]
 
     @contextmanager

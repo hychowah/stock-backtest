@@ -6,7 +6,10 @@ import unittest
 
 import test_candidate_calculations as candidate_tests
 import backtest_queue
-import backtest_control
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
 import test_calculations as calculation_tests
 from unittest.mock import Mock
 from test_queue import request

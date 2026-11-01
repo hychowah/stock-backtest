@@ -66,10 +66,10 @@ class CompiledCandidateTests(NumbaCandidateTests):
         batch = [('2015-01-02','2016-01-04',pool) for pool in ('cached','legacy')]
         original = base.evaluate(batch,self.all_fields())
         mutations = (
-            (source_tests.s.financial_books,'snapshot','ev<=0 or cap<=0','ev<=0 or cap<=160000000'),
-            (source_tests.s.financial_books,'snapshot',"'Scheduled exit'","'Changed source exit'"),
-            (source_tests.s.financial_books,'eligible','cap>0','cap>200000000'),
-            (source_tests.s.metrics,'three_year_multiple','average<=0','average<=1000000000'))
+            (source_tests.financial_books,'entry_valuation','ev<=0 or cap<=0','ev<=0 or cap<=160000000'),
+            (source_tests.financial_books,'snapshot',"'Scheduled exit'","'Changed source exit'"),
+            (source_tests.financial_books,'eligible','cap>0','cap>200000000'),
+            (source_tests.metrics,'three_year_multiple','average<=0','average<=1000000000'))
         for module,name,old,new in mutations:
             with self.subTest(function=name,change=new),self.mutation(module,name,old,new):
                 inputs,compiled = self.make()
@@ -93,13 +93,13 @@ class CompiledCandidateTests(NumbaCandidateTests):
             ("    fiscal_px=lookup(statement['fiscal'],'price',False,7)\n", '' ),
             ("    fiscal_px=lookup(statement['fiscal'],'price',False,7)\n    entry_px=lookup(entry_day,'price',True,4)\n    if fiscal_px is None or entry_px is None:\n        return None\n", "    entry_px=lookup(entry_day,'price',True,4)\n"))
         for old,new in mutations:
-            with self.subTest(change=new),self.mutation(source_tests.s.financial_books,'snapshot',old,new):
-                with self.assertRaisesRegex(ValueError,'Unsupported (candidate|entry) policy'):
-                    source_tests.core.PolicyProgram(source_tests.s).decisions
+            with self.subTest(change=new),self.mutation(source_tests.financial_books,'entry_valuation' if ('ev<=0' in old or 'fiscal_px=lookup' in old or 'lookup(statement' in old) else 'snapshot',old,new):
+                with self.assertRaisesRegex(ValueError,'Unsupported ((candidate|entry) policy|source entry valuation)'):
+                    source_tests.core.PolicyProgram().decisions
         original_inputs,original = self.make()
         batch = [('2015-01-02','2016-01-04','legacy')]
         original_book = original.evaluate(batch,self.all_fields())
-        with patch.object(source_tests.s.financial_books.run,'MIN_MARKET_CAP',200000000):
+        with patch.object(source_tests.financial_books.run,'MIN_MARKET_CAP',200000000):
             changed_inputs,changed = self.make()
             source = source_tests.core.PythonExecutor(changed_inputs)
             self.addCleanup(source.close)
@@ -110,7 +110,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
 
     def test_source_guard_syntax_does_not_require_compiled_translation(self):
         batch = [('2015-01-02','2016-01-04',pool) for pool in ('legacy','cached')]
-        with self.mutation(source_tests.s.financial_books, 'eligible',
+        with self.mutation(source_tests.financial_books, 'eligible',
                            'cap>0', 'all((cap>0,))'):
             inputs = source_tests.core.NumericInputs(self.reader, source_tests.s)
             self.addCleanup(inputs.close)
@@ -170,7 +170,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
                     if not resolved or abs(resolved-target.toordinal())>slack:return None
                     return date.fromordinal(resolved),float(prices[row,slot])
                 observation = policy._snapshot(dict(fiscal=fiscal),entry,exit_day,lookup,bankrupt,numeric[row])
-                if observation is None or not source_tests.s.financial_books.eligible(pool,observation[3],observation[4]):continue
+                if observation is None or not source_tests.financial_books.eligible(pool,observation[3],observation[4]):continue
                 metric_observation = dict(fiscal=str(fiscal),enterprise_value=observation[4],
                                            ev_ebitda=observation[7],ebitda_yield=observation[6])
                 pair = policy._three(metric_observation,numeric[row],None if np.isnan(average) else average)

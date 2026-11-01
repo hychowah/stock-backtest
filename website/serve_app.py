@@ -17,12 +17,13 @@ import webbrowser
 import launcher
 
 ROOT=Path(__file__).resolve().parent
-sys.path.insert(0,str(ROOT.parent/'scripts'))
-import schedules
+sys.path.insert(0,str(ROOT.parent))
+from backtest.inputs import daily, cache_assets
+from backtest.engines.original import schedules as schedules
 import data_manager
-import cache_access
-import diagnostics
-import backtest_control
+from backtest.runtime import cache_access as cache_access
+from backtest.runtime import diagnostics as diagnostics
+from backtest.runtime import backtest_control as backtest_control
 import saved_backtests
 import backtest_jobs
 import backtest_queue
@@ -37,9 +38,10 @@ SAVED_BACKTESTS=saved_backtests.Store()
 
 class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
-        from numerical_preparation import Preparation
+        from backtest.application.preparation import Preparation
+        from build_state import ensure_presentation
         from engine_selection import Selectable
-        self.calculations=Selectable(Preparation(ROOT.parent))
+        self.calculations=Selectable(Preparation(ROOT.parent,ensure_presentation=ensure_presentation))
         self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
         self.backtest_queue=backtest_queue.Queue(calculations=self.calculations,library=SAVED_BACKTESTS)
         super().__init__(*args,**kwargs)
@@ -439,7 +441,7 @@ def ensure_ready():
     """Resolve all derived-data dependencies before accepting website requests."""
     print('Checking local caches (no downloads)…',flush=True)
     with cache_access.access():
-        schedules.prepare()
+        daily.prepare()
         if not current_build():
             print('Rebuilding the website…',flush=True)
             subprocess.run([sys.executable,'-X','utf8',str(ROOT/'build.py'),'--cache-owned'],cwd=ROOT.parent,check=True)
@@ -476,7 +478,7 @@ def main(*,candidate=None,arguments=None):
     diagnostics.event('server.starting',port=args.port,managed=args.managed)
     try:
         # Report optional setup before data preparation, without blocking Original.
-        from numerical_preparation import dependencies, PreparationError
+        from backtest.application.preparation import dependencies, PreparationError
         try:dependencies()
         except PreparationError:pass
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
@@ -494,7 +496,7 @@ def main(*,candidate=None,arguments=None):
 def run_server(args,lifecycle,parser,*,candidate=None):
     try:
         if candidate is not None:
-            from numerical_preparation import PreparationError
+            from backtest.application.preparation import PreparationError
             try:
                 candidate.prepare(progress=lambda **value:print(value['message'],flush=True))
                 recovery=False
@@ -503,7 +505,7 @@ def run_server(args,lifecycle,parser,*,candidate=None):
                 print(str(error),flush=True)
         else:
             with cache_access.access():
-                recovery=data_manager.source_problem()
+                recovery=cache_assets.source_problem()
                 if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
                 else:ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:

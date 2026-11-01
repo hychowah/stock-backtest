@@ -7,9 +7,12 @@ import unittest
 from unittest.mock import patch,Mock
 ROOT=Path(__file__).absolute().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-import backtest_control
-from numerical_execution import ExecutionPolicy
-import numerical_trial_pool as pools
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical.execution import ExecutionPolicy
+from backtest.engines.numerical import trial_pool as pools
 
 
 class ConcurrentReadinessTests(unittest.TestCase):

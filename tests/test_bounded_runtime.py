@@ -11,13 +11,16 @@ import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
-import backtest_control
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
 import backtest_jobs
-import numerical_runtime
-import numerical_transfer
-import result_evidence
-import robustness
-from numerical_portfolio import compare_results
+from backtest.engines.numerical import runtime as numerical_runtime
+from backtest.engines.numerical import transfer as numerical_transfer
+from backtest import result_evidence as result_evidence
+from backtest.engines.original import robustness as robustness
+from backtest.engines.numerical.portfolio import compare_results
 import test_numerical_runtime as runtime_fixtures
 import test_candidate_calculations as candidate_fixtures
 from test_result_evidence import collect
@@ -219,7 +222,7 @@ class BoundedRuntimeTests(unittest.TestCase):
         value=self.make();self.into(value,'random',options)
         # Inject a pointer replacement only in this disposable fixture. Real
         # publication must retire the child before taking financial ownership.
-        import cache_access
+        from backtest.runtime import cache_access as cache_access
         with patch.object(self.fixture.store,'coordinator',cache_access.WorkspaceAccess(self.root/'fixture-publication.lock')):
             self.fixture.advance()
         (self.root/'binding.json').write_text(json.dumps(self.fixture.binding))

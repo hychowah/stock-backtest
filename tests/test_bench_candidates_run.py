@@ -1,9 +1,16 @@
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
 
 # Resolve the importable package for direct-file commands and spawned fixtures.
 import sys as _package_sys
 from pathlib import Path as _PackagePath
 _package_sys.path.insert(0, str(_PackagePath(__file__).resolve().parents[1]))
 
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 """Complete portfolio parity and containment for the common candidate adapter."""
 from contextlib import closing, ExitStack, nullcontext
@@ -47,7 +54,7 @@ def agreed_method(requests):
 
 class SourceInventoryTests(unittest.TestCase):
     def test_extracted_policy_mutation_rejects_before_database_or_executor_access(self):
-        for relative in ('tools/bench_policy_program.py', 'scripts/numerical_policy.py', 'scripts/numerical_decisions.py', 'scripts/numerical_temporal.py', 'scripts/numerical_generation.py', 'scripts/numerical_factors.py', 'tools/portfolio_workspace.py', 'backtest/__init__.py', 'backtest/financial/__init__.py'):
+        for relative in ('tools/bench_policy_program.py', 'backtest/engines/numerical/policy.py', 'backtest/engines/numerical/decisions.py', 'backtest/engines/numerical/temporal.py', 'backtest/engines/numerical/generation.py', 'backtest/engines/numerical/factors.py', 'backtest/engines/numerical/workspace.py', 'backtest/__init__.py', 'backtest/financial/__init__.py'):
             with self.subTest(implementation=relative): self.check_mutation(relative)
 
     def check_mutation(self, relative):
@@ -55,13 +62,9 @@ class SourceInventoryTests(unittest.TestCase):
             root = Path(temporary)
             shutil.copytree(ROOT/'backtest',root/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
             tools = root / 'tools'; tools.mkdir()
-            for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py', 'portfolio_workspace.py'):
+            for name in ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py', 'bench_candidates_process.py'):
                 shutil.copy2(ROOT / 'tools' / name, tools / name)
             scripts = root / 'scripts'; scripts.mkdir()
-            for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py',
-                'numerical_books.py','numerical_numba.py','numerical_matrix.py','numerical_workspace.py','process_owner.py','numerical_identity.py',
-                'numerical_random.py','numerical_portfolio.py','numerical_runtime.py','numerical_runtime_child.py','numerical_session.py'):
-                shutil.copy2(ROOT / 'scripts' / name, scripts / name)
             implementation = root / relative
             with patch.object(runner, 'ROOT', root):
                 files = runner.source_files()
@@ -109,7 +112,7 @@ class CandidateRequestTests(unittest.TestCase):
     def test_batched_requests_preserve_complete_source_evidence_and_replay(self):
         for pool in ('legacy','cached'):
             for profile in ('F0','F1','F2'):
-                for metric in shared.s.metrics.METRICS:
+                for metric in shared.metrics.METRICS:
                     config=self.fixture.configuration(pool,profile,metric=metric)
                     reference,summary=self.fixture.reference(config)
                     counts={}
@@ -188,7 +191,7 @@ class CandidateRequestTests(unittest.TestCase):
             self.executor.begin(dict(options=shared.baseline.options(pool,'F0')))
             original=self.executor.evaluate([('2015-01-02','2016-01-04',pool)],
                 shared.baseline.options(pool,'F0'))[0]
-            for metric in shared.s.metrics.METRICS:
+            for metric in shared.metrics.METRICS:
                 for missing in ('none','one','all'):
                     book=deepcopy(original)
                     if missing!='none':
@@ -328,8 +331,8 @@ class CandidateRequestTests(unittest.TestCase):
                 stack.enter_context(patch.object(runner.baseline,'request',return_value=(
                     dict(summary=summary,wall_seconds=2.),reference)))
                 stack.enter_context(patch.object(runner.baseline.coordinator,'access',return_value=nullcontext()))
-                stack.enter_context(patch.object(shared.s.r,'connect',side_effect=connect))
-                stack.enter_context(patch.object(shared.s,'connect',side_effect=connect))
+                stack.enter_context(patch.object(research,'connect',side_effect=connect))
+                stack.enter_context(patch.object(daily,'connect',side_effect=connect))
                 stack.enter_context(patch.object(runner,'smoke_requests',return_value=[]))
                 stack.enter_context(patch.object(runner,'reference_smokes',return_value=[]))
                 stack.enter_context(patch.object(runner,'run_isolated',side_effect=isolated))
@@ -485,7 +488,7 @@ class TerminalEvidenceTests(unittest.TestCase):
                     return measured,picks
                 with self.worker_context(), patch.object(runner,'intermediate_proof',return_value=dict(comparison=dict(exact=True))), \
                         patch.object(runner,'run_candidate',side_effect=invalid) as request,patch.object(runner,'emit'), \
-                        patch.object(shared.s,'connect',side_effect=lambda:sqlite3.connect(self.fixture.path)):
+                        patch.object(daily,'connect',side_effect=lambda:sqlite3.connect(self.fixture.path)):
                     runner.worker(args)
                 request.assert_called_once()
                 report = self.assert_worker_stopped(args,1)
@@ -574,8 +577,8 @@ class TerminalEvidenceTests(unittest.TestCase):
                     stack.enter_context(patch.object(runner.baseline,'configuration',return_value=config))
                     controls = stack.enter_context(patch.object(runner.baseline,'request',return_value=(dict(summary=summary,wall_seconds=2.),reference)))
                     stack.enter_context(patch.object(runner.baseline.coordinator,'access',return_value=nullcontext()))
-                    stack.enter_context(patch.object(shared.s.r,'connect',side_effect=connect))
-                    stack.enter_context(patch.object(shared.s,'connect',side_effect=connect))
+                    stack.enter_context(patch.object(research,'connect',side_effect=connect))
+                    stack.enter_context(patch.object(daily,'connect',side_effect=connect))
                     stack.enter_context(patch.object(runner,'smoke_requests',return_value=[]))
                     stack.enter_context(patch.object(runner,'reference_smokes',return_value=[]))
                     methods = stack.enter_context(patch.object(runner,'run_isolated',side_effect=isolated))
@@ -663,9 +666,9 @@ class CompiledCandidateRequestTests(unittest.TestCase):
     def test_complete_requests_preserve_evidence_summaries_filters_and_replay(self):
         for pool in ('legacy','cached'):
             for profile in ('F0','F1','F2','all','slice','empty'):
-                for metric in shared.s.metrics.METRICS:
+                for metric in shared.metrics.METRICS:
                     extra = dict(metric=metric)
-                    if profile == 'all':extra['filters'] = [dict(field=field,op='gt',value=-999999.) for field in shared.s.metrics.FILTERS]
+                    if profile == 'all':extra['filters'] = [dict(field=field,op='gt',value=-999999.) for field in shared.metrics.FILTERS]
                     if profile == 'slice':extra.update(rank_from=2,rank_to=100)
                     if profile == 'empty':extra['min_cap'] = 1e100
                     config = self.fixture.configuration(pool,profile if profile in ('F0','F1','F2') else 'F0',**extra)

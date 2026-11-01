@@ -1,4 +1,10 @@
 """Selection, temporal availability, price alignment, and invalidation checks."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import market
+from backtest.engines.reference import legacy
+from backtest.financial import rules
 
 import sys as _package_sys
 from pathlib import Path as _PackagePath
@@ -17,7 +23,7 @@ from unittest.mock import patch
 from datetime import date
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-import research as r
+from backtest.inputs import research as r
 
 
 class PreparedPriceBindingTests(unittest.TestCase):
@@ -160,9 +166,9 @@ class ResearchTests(unittest.TestCase):
 
     def test_statement_availability_and_max_age(self):
         statement=dict(fiscal=date(2014,12,31),known=date(2015,3,31))
-        self.assertIsNone(r.run.latest_statement([statement],date(2015,3,31)))
-        self.assertEqual(r.run.latest_statement([statement],date(2015,4,1)),statement)
-        self.assertIsNone(r.run.latest_statement([statement],date(2018,1,1)))
+        self.assertIsNone(rules.latest_statement([statement],date(2015,3,31)))
+        self.assertEqual(rules.latest_statement([statement],date(2015,4,1)),statement)
+        self.assertIsNone(rules.latest_statement([statement],date(2018,1,1)))
 
     def test_early_stop_bankruptcy_and_valuation(self):
         statement={'fiscal':date(2014,6,30),'market_cap':100e6,'enterprise':150e6,'yield':.2}
@@ -245,8 +251,8 @@ class PreparationTests(unittest.TestCase):
             dict(date='2015-01-02', adjClose=20),
             dict(date='2015-10-20', adjClose=22)])))
         for owner, key, value in [(r, 'ROOT', root), (r, 'RAW', raw),
-                                  (r, 'RESULTS', results), (r.run, 'RAW', raw), (r.run, 'FIRST_YEAR', 2015),
-                                  (r.run, 'LAST_YEAR', 2015)]:
+                                  (r, 'RESULTS', results), (market, 'RAW', raw), (legacy, 'RAW', raw), (legacy, 'FIRST_YEAR', 2015), (rules, 'FIRST_YEAR', 2015),
+                                  (legacy, 'LAST_YEAR', 2015), (rules, 'LAST_YEAR', 2015)]:
             self.context.enter_context(patch.object(owner, key, value))
         self.context.enter_context(patch.object(r, 'signature', return_value={'fixture': 1}))
         self.context.enter_context(patch.object(r, 'verify_reference', side_effect=lambda db: (self.verify_fixture(db),r.prepared_baseline(db))[1]))

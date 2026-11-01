@@ -10,20 +10,23 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tests'),str(ROOT/'tools'),str(ROOT/'website')]
-import backtest_control
-import numerical_random as random
-import numerical_session
-from numerical_books import PythonExecutor
-from numerical_execution import ExecutionPolicy
-from numerical_identity import compiler_identity
-from numerical_numba import NumbaExecutor
-from numerical_portfolio import NumericalPortfolio, compare_results
-from numerical_trial_pool import TrialPool
-from numerical_workspace import RequestWorkspace
-import result_evidence
-import robustness
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical import random as random
+from backtest.engines.numerical import session as numerical_session
+from backtest.engines.numerical.books import PythonExecutor
+from backtest.engines.numerical.execution import ExecutionPolicy
+from backtest.engines.numerical.identity import compiler_identity
+from backtest.engines.numerical.numba import NumbaExecutor
+from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
+from backtest.engines.numerical.trial_pool import TrialPool
+from backtest.engines.numerical.workspace import RequestWorkspace
+from backtest import result_evidence as result_evidence
+from backtest.engines.original import robustness as robustness
 import test_numerical_generation as generations
-import trial_checkpoints
+from backtest.engines.numerical import checkpoints as trial_checkpoints
 
 
 class CoordinatorTests(unittest.TestCase):
@@ -231,7 +234,7 @@ class CoordinatorTests(unittest.TestCase):
     def test_custom_portfolio_staging_errors_keep_financial_contract_and_close_transaction(self):
         portfolio=self.local();config=self.configuration(1)
         for error in (sqlite3.OperationalError('fictional SQL'),KeyError('fictional row')):
-            with patch('numerical_portfolio.stage_book',side_effect=error):
+            with patch('backtest.engines.numerical.portfolio.stage_book',side_effect=error):
                 with self.assertRaisesRegex(ValueError,'SQL staging contract differs'):
                     portfolio.backtest_dates(dates=config['samples'][0],
                         **{key:config[key] for key in ('start','end','months')},**config['options'])
@@ -241,7 +244,7 @@ class CoordinatorTests(unittest.TestCase):
         provider=PythonExecutor(self.inputs);self.addCleanup(provider.close)
         portfolio=NumericalPortfolio(self.inputs,provider);self.addCleanup(portfolio.close)
         config=self.configuration(2);binding=random.checkpoint_binding(portfolio,config)
-        self.assertEqual(binding['execution']['provider'],'numerical_books.PythonExecutor')
+        self.assertEqual(binding['execution']['provider'],'backtest.engines.numerical.books.PythonExecutor')
         self.assertIsNone(binding['execution']['compiler'])
         store=trial_checkpoints.Store(self.fixture.root/'python-diagnostic.sqlite');self.addCleanup(store.close)
         experiment=store.open(binding);captures=[]

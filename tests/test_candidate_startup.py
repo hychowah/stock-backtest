@@ -1,4 +1,8 @@
 """Closed candidate preparation and recovery, on disposable private inputs."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, cache_assets
 from contextlib import ExitStack
 from http.client import HTTPConnection
 import json
@@ -16,9 +20,13 @@ from unittest.mock import Mock, patch
 
 ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
-import numerical_preparation as preparation
-import cache_access
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.application import preparation as preparation
+from backtest.runtime import cache_access as cache_access
 import data_manager
+import build_state
 import serve
 import serve_candidate
 import backtest_queue
@@ -34,11 +42,11 @@ class PreparationContractTests(unittest.TestCase):
         self.context.enter_context(patch.object(preparation.research,'ROOT',self.root))
         self.owner=cache_access.WorkspaceAccess(self.root/'data'/'financial.lock')
         self.context.enter_context(patch.object(cache_access,'workspace',self.owner))
-        self.value=preparation.Preparation(self.root,python='explicit-venv-entry')
+        self.value=preparation.Preparation(self.root,python='explicit-venv-entry',ensure_presentation=build_state.ensure_presentation)
         self.context.enter_context(patch.object(preparation,'dependencies',return_value={'packages':preparation.PINS,'profile':'numba_compiled','rust_required':False}))
-        self.context.enter_context(patch.object(data_manager,'source_problem',return_value=False))
+        self.context.enter_context(patch.object(cache_assets,'source_problem',return_value=False))
         self.context.enter_context(patch.object(preparation.baseline,'Baseline',return_value=Mock()))
-        self.context.enter_context(patch.object(preparation.schedules,'prepare'))
+        self.context.enter_context(patch.object(daily,'prepare'))
         self.context.enter_context(patch('build_state.current_build',return_value=True))
         self.context.enter_context(patch.object(self.value,'inventory',return_value='inventory'))
         self.store=Mock();self.store.prepare.return_value=dict(identity='generation',reused=True)
@@ -52,21 +60,26 @@ class PreparationContractTests(unittest.TestCase):
     def test_order_and_financial_handoff_and_detached_closed_report(self):
         calls=[]
         preparation.baseline.Baseline.return_value.recover.side_effect=lambda:calls.append('recover')
-        preparation.schedules.prepare.side_effect=lambda:calls.append('base')
+        daily.prepare.side_effect=lambda:calls.append('base')
         self.store.prepare.side_effect=lambda check:calls.append('generation') or dict(identity='generation',reused=True)
         def start(**options):
             self.assertFalse(getattr(self.owner.state,'held',False));calls.append('runtime')
         self.runtime.start.side_effect=start
         self.runtime.close.side_effect=lambda:calls.append('close')
+        def presentation():
+            self.assertIsNone(self.value.runtime)
+            self.assertTrue(getattr(self.owner.state,'held',False))
+            calls.append('presentation')
+        self.value.ensure_presentation=presentation
         report=self.value.prepare()
-        self.assertEqual(calls,['recover','base','generation','runtime','close'])
+        self.assertEqual(calls,['recover','base','generation','runtime','close','presentation'])
         self.assertEqual(report['closure']['state'],'closed');self.assertIsNone(self.value.runtime)
         report['runtime']['generation']='edited';self.assertEqual(self.value.status()['runtime']['generation'],'generation')
 
     def test_publication_recovery_precedes_invalid_input_check(self):
         calls=[]
         preparation.baseline.Baseline.return_value.recover.side_effect=lambda:calls.append('recover')
-        data_manager.source_problem.side_effect=lambda:calls.append('inputs') or True
+        cache_assets.source_problem.side_effect=lambda:calls.append('inputs') or True
         with self.assertRaises(preparation.PreparationError):self.value.prepare()
         self.assertEqual(calls,['recover','inputs']);self.runtime.start.assert_not_called()
 
@@ -75,7 +88,7 @@ class PreparationContractTests(unittest.TestCase):
         with self.assertRaises(preparation.PreparationError) as error:self.value.prepare()
         self.assertEqual(error.exception.category,'publication needs recovery')
         self.assertNotIn('private unsafe',str(error.exception))
-        preparation.schedules.prepare.assert_not_called();self.runtime.start.assert_not_called()
+        daily.prepare.assert_not_called();self.runtime.start.assert_not_called()
 
     def test_dependency_failure_never_imports_numerical_store_or_calls_network(self):
         preparation.dependencies.side_effect=preparation.PreparationError('dependencies unavailable')
@@ -89,16 +102,27 @@ class PreparationContractTests(unittest.TestCase):
         self.assertNotIn('https:',str(error.exception));self.assertEqual(self.value.status()['state'],'failed')
 
     def test_uncertain_close_retains_strong_owner_and_cannot_publish_ready(self):
-        from numerical_runtime import ClosureError
+        from backtest.engines.numerical.runtime import ClosureError
         self.runtime.close.side_effect=ClosureError(self.runtime)
         with self.assertRaises(ClosureError):self.value.prepare()
         self.assertIs(self.value.runtime,self.runtime);self.assertNotEqual(self.value.status()['state'],'current')
         self.runtime.close.side_effect=None;self.value.close();self.assertIsNone(self.value.runtime)
 
     def test_build_failure_occurs_after_runtime_closure(self):
-        with patch('build_state.current_build',return_value=False),patch.object(preparation.subprocess,'run',side_effect=OSError('unsafe')):
+        with patch('build_state.current_build',return_value=False),patch('subprocess.run',side_effect=OSError('unsafe')):
             with self.assertRaises(preparation.PreparationError):self.value.prepare()
         self.runtime.close.assert_called_once();self.assertIsNone(self.value.runtime)
+
+    def test_presentation_input_change_rejects_ready_publication(self):
+        self.value.ensure_presentation=lambda:setattr(self.value.inventory,'return_value','changed')
+        with self.assertRaises(preparation.PreparationError):self.value.prepare()
+        self.runtime.close.assert_called_once()
+        self.assertEqual(json.loads(self.value.path.read_text())['state'],'failed')
+
+    def test_numerical_only_preparation_omits_presentation(self):
+        self.value.ensure_presentation=None
+        with patch('build_state.current_build',side_effect=AssertionError('No presentation dependency')):
+            self.assertEqual(self.value.prepare()['state'],'current')
 
     def test_changed_inputs_between_child_and_build_reject(self):
         self.value.inventory.side_effect=['before','after']
@@ -138,7 +162,7 @@ class PreparationContractTests(unittest.TestCase):
 
 class DependencyAndIsolationTests(unittest.TestCase):
     def test_repeated_interrupts_preserve_uncertain_owner_until_close_is_proved(self):
-        from numerical_runtime import ClosureError
+        from backtest.engines.numerical.runtime import ClosureError
         capability=Mock();capability.close.side_effect=[ClosureError(capability),KeyboardInterrupt(),ClosureError(capability),None]
         pause=Mock(side_effect=[KeyboardInterrupt(),KeyboardInterrupt()])
         with patch('builtins.print'):
@@ -246,7 +270,7 @@ class MutationAndHttpTests(unittest.TestCase):
             def ready():
                 self.assertTrue(getattr(owner.state,'held',False));return False
             consumer.ready=ready
-            with patch.object(cache_access,'workspace',owner),patch.object(backtest_queue.backtest_jobs.schedules,'connect') as calculate:
+            with patch.object(cache_access,'workspace',owner),patch.object(daily,'connect') as calculate:
                 consumer._run(store.claim())
             calculate.assert_not_called();self.assertEqual(store.get(record['id'])['state'],'queued')
 
@@ -257,7 +281,7 @@ class MutationAndHttpTests(unittest.TestCase):
             def ready():
                 self.assertTrue(getattr(owner.state,'held',False));return False
             jobs.ready=ready
-            with patch.object(cache_access,'workspace',owner),patch.object(backtest_jobs.schedules,'connect') as calculate:
+            with patch.object(cache_access,'workspace',owner),patch.object(daily,'connect') as calculate:
                 identifier='a'*32;jobs.start(identifier,'custom',{})
                 jobs.runs[identifier]['thread'].join(3)
             calculate.assert_not_called();self.assertEqual(jobs.snapshot(identifier)['state'],'failed')
@@ -272,7 +296,7 @@ class MutationAndHttpTests(unittest.TestCase):
                 store.change(record['id'],'stop',dict(revision=current['revision']))
                 return False
             consumer.ready=ready
-            with patch.object(cache_access,'workspace',owner),patch.object(backtest_queue.backtest_jobs.schedules,'connect') as calculate:
+            with patch.object(cache_access,'workspace',owner),patch.object(daily,'connect') as calculate:
                 consumer._run(claimed)
             calculate.assert_not_called();self.assertEqual(store.get(record['id'])['state'],'cancelled')
 
@@ -370,7 +394,7 @@ class ActualPreparationTests(unittest.TestCase):
 
     def test_actual_entry_failures_success_and_ordinary_restart_preserve_stores(self):
         from bench_source_service_fixture import FictionalWorkspace
-        from process_owner import OwnedProcess,ProcessLimits
+        from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
         with FictionalWorkspace() as fixture:
             library=saved_backtests.Store(fixture.source/'data/saved-backtests.sqlite')
             record=library.save('Original',snapshot())
@@ -408,9 +432,18 @@ class ActualPreparationTests(unittest.TestCase):
                             response=connection.getresponse();return response.status,response.read()
                         finally:connection.close()
                     self.assertEqual(http('GET','/data.html')[0],200)
-                    self.assertEqual(json.loads(http('GET','/api/backtests/'+record['id'])[1])['snapshot'],snapshot())
+                    status,body=http('GET','/api/backtests/'+record['id'])
+                    self.assertEqual(status,200,body)
+                    self.assertEqual(json.loads(body)['snapshot'],snapshot())
                     self.assertEqual(json.loads(http('GET','/api/backtest-queue/'+held['id'])[1])['state'],'held')
-                    self.assertEqual(json.loads(http('GET','/api/backtest-queue/'+done['id'])[1])['snapshot'],complete_snapshot)
+                    queued=json.loads(http('GET','/api/backtest-queue/'+done['id'])[1])
+                    if queued['state']=='archived':
+                        self.assertEqual(queued['transfer']['state'],'archived')
+                        imported=json.loads(http('GET','/api/backtests/'+queued['transfer']['saved_id'])[1])
+                        self.assertEqual(imported['snapshot'],complete_snapshot)
+                    else:
+                        self.assertEqual(queued['state'],'complete')
+                        self.assertEqual(queued['snapshot'],complete_snapshot)
                     if scenario not in ('success','ordinary'):
                         self.assertEqual(http('POST','/api/schedule',{})[0],503)
                         self.assertEqual(http('GET','/')[0],302)

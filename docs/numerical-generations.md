@@ -48,7 +48,8 @@ changes in this integration.
 CB-04 adds an offline input artifact. It does not route website requests to
 Numba. CB-12 adds separate closed candidate preparation; see
 [candidate startup](candidate-startup.md). The installed website
-and the independent `scripts/revalue.py` stay on their existing paths.
+and the independent reference calculator keep their existing financial behavior.
+The calculator now lives in `backtest/engines/reference/revalue.py`.
 
 Use the tested NumPy environment. From the project folder, run:
 
@@ -84,7 +85,7 @@ Format 1, temporal interface 1 and factor interface 1 stay the same. This source
 change does not create a new financial policy version or rewrite old evidence.
 
 CB-09 adds an offline complete-result diagnostic. `NumericalPortfolio` in
-`scripts/numerical_portfolio.py` borrows an explicitly owned attachment and the
+`backtest/engines/numerical/portfolio.py` borrows an explicitly owned attachment and the
 accepted complete-book provider. It stages one complete eligible book at a time
 in private memory, calls the existing SQL selector and uses the same portfolio
 reducer as ordinary schedules. It opens no default application database and
@@ -118,7 +119,7 @@ same reducer. Explicit dates retain their existing monthly envelope. This adds
 no website control, selected-only optimization or production routing.
 CB-11 adds the explicit runtime described below. Historical benchmark admission stays closed.
 
-CB-10 adds an offline random adapter in `scripts/numerical_random.py`. It composes
+CB-10 adds an offline random adapter in `backtest/engines/numerical/random.py`. It composes
 the complete-result diagnostic with generation-bound completed-trial checkpoints.
 The shared robustness consumer preserves summaries and ordered full capture.
 Whole-plan and current-input checks precede checkpoint lookup. Recovery uses the
@@ -339,7 +340,7 @@ capacity or make a new speed comparison. See the
 
 ## Temporal interface 1
 
-CB-05 adds `scripts/numerical_temporal.py`. Its `TemporalEvaluator(inputs)`
+CB-05 adds `backtest/engines/numerical/temporal.py`. Its `TemporalEvaluator(inputs)`
 borrows an open attachment. It does not compile factors or open another database.
 The caller still owns source and cache through job validation and closure.
 Close the evaluator before closing the attachment.
@@ -376,7 +377,7 @@ financial policy and compiler versions remain separate identities.
 
 ## Factor interface 1
 
-CB-06 adds `scripts/numerical_factors.py`. `FactorEvaluator(inputs)` borrows an
+CB-06 adds `backtest/engines/numerical/factors.py`. `FactorEvaluator(inputs)` borrows an
 open attachment. It calculates entry-date valuations, both ranking pairs and
 requested threshold fields. It does not need an exit date or future returns.
 It does not apply the original candidate buffer, financial thresholds, ranking
@@ -448,7 +449,7 @@ for verification scope and memory observations.
 
 ## Explicit persistent runtime (CB-11)
 
-`scripts/numerical_runtime.py` supplies `NumericalRuntime`. Current website
+`backtest/engines/numerical/runtime.py` supplies `NumericalRuntime`. Current website
 calculations, jobs and the queue still use the ordinary engine. The separate
 CB-12 candidate preparation entry verifies and closes this runtime before
 ordinary application owners start. Normal startup does not select it.
@@ -497,16 +498,17 @@ fixture models a private pointer change. Random work constructs zero coordinator
 providers. It verifies complete old-resource closure, then uses a fresh child. Its checkpoint binding
 misses the old generation. It does not bypass production financial ownership.
 
-`scripts/numerical_books.py`, `numerical_numba.py`, `numerical_portfolio.py`,
-`numerical_workspace.py` and `numerical_random.py` own the promoted calculation
-code. The old tool modules remain compatibility imports. Complete eligible
+`backtest/engines/numerical/books.py`, `numba.py`, `portfolio.py`,
+`workspace.py` and `random.py` own the promoted calculation code in the same
+package. Callers import these owners directly. The former workspace, portfolio
+and random tool aliases have been removed. Complete eligible
 books still precede the existing SQL selector. No selected-only return path or
-ordinary `book_batch` workers run inside the runtime. `numerical_matrix.py`
+ordinary `book_batch` workers run inside the runtime. `backtest/engines/numerical/matrix.py`
 prewarms the accepted writable contiguous float64 signature without fast math
 or a disk compiler cache. Random workers calculate missing trials concurrently.
 The parent saves completion order and presents recorded order.
 CB-19D routes experimental random requests through the persistent trial pool.
-`numerical_execution.py` resolves threads from effective observed CPUs and
+`backtest/engines/numerical/execution.py` resolves threads from effective observed CPUs and
 internal settings. Four threads remain an initial comparison default. They are
 not a hardware ceiling. A selected larger layout needs no source edit. Numba's
 initialization environment must permit the selected count before native imports.
@@ -656,7 +658,7 @@ their exact eligibility rules and offline browser calculation.
 
 ## Complete recorded trial operation
 
-CB-19B adds `scripts/numerical_trial.py`. `specification(binding, number)` detaches
+CB-19B adds `backtest/engines/numerical/trial.py`. `specification(binding, number)` detaches
 one trial from the validated recorded plan. Its calculation identity uses the
 existing canonical checkpoint binding. Its digest also binds the actual trial
 number, exact dates, requested calendar, resolved window and selection settings.
@@ -835,7 +837,7 @@ CB-19G will retain the selected path after that decision.
 Both compiled configurations consume the same `PolicyProgram` arithmetic and the
 same validated `CandidateDecisionProgram` trees. Unsupported source syntax fails
 attachment. Neither compiled identity can fall back to Python source guards.
-`numerical_candidates.py` owns the typed candidate layout and its mechanical
+`backtest/engines/numerical/candidates.py` owns the typed candidate layout and its mechanical
 encoder. Each input row retains its original identity. Native output supplies
 acceptance, fiscal/buy/sell ordinals, status tag, snapshot values, ranking-pair
 values and validity, and requested threshold values and validity. Signed finite
@@ -851,7 +853,7 @@ whole operation through the ordinary portfolio/trial boundary; kernel timing is
 not a complete-period result. The same bounded factor cache serves both compiled
 paths. Shared request planning and SQL are deliberate parts of this boundary.
 
-`numerical_rust_kernel.rs` defines a versioned synchronous C ABI. Buffers carry
+`backtest/engines/numerical/rust_kernel.rs` defines a versioned synchronous C ABI. Buffers carry
 addresses and element capacities. The Python bridge checks native dtype,
 alignment, contiguity, dimensions, lengths, scalar/index ranges and writable
 non-overlap. Native entry points check dimensions, size arithmetic and structural

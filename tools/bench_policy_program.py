@@ -2,4 +2,7 @@
 from pathlib import Path
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1] / "scripts"))
-from numerical_policy import *  # noqa: F401,F403
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical.policy import *

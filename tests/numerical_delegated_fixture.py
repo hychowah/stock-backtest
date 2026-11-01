@@ -26,18 +26,19 @@ def main():
     sys.path[:0] = [str(ROOT / 'website')]
     import runtime_access
     with runtime_access.ownership(ROOT):
-        sys.path[:0] = [str(ROOT / 'scripts')]
+        sys.path.insert(0,str(ROOT))
+        from backtest.inputs import daily, research
         from unittest.mock import patch
-        import schedules
-        import numerical_generation as ng
+        from backtest.engines.original import schedules as schedules
+        from backtest.engines.numerical import generation as ng
         def forbidden(*args, **kwargs):
             raise AssertionError('Worker entered financial coordination or current-input preparation.')
         with patch.object(ng.cache_access.WorkspaceAccess, 'hold', forbidden), \
              patch.object(ng.GenerationStore, '_binding', forbidden), \
              patch.object(ng.GenerationStore, '_recover', forbidden), \
-             patch.object(schedules, 'connect', forbidden), \
-             patch.object(schedules.r, 'connect', forbidden):
-            with ng.open_delegated(json.loads(reference_path.read_text()), schedules,
+             patch.object(daily,'connect', forbidden), \
+             patch.object(research, 'connect', forbidden):
+            with ng.open_delegated(json.loads(reference_path.read_text()),
                                    checkpoint=lambda: None) as inputs:
                 inputs.validate()
                 ready.write_text(json.dumps(dict(pid=os.getpid(), identity=inputs.signature,

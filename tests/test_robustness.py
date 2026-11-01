@@ -1,4 +1,12 @@
 """Independent sampled rebalances, comparable averages and recoverable batches."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.engines.reference import legacy
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 from datetime import date,timedelta
 from pathlib import Path
 import io
@@ -11,8 +19,8 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
-import robustness as r
-import schedules as s
+from backtest.engines.original import robustness as r
+from backtest.engines.original import schedules as s
 import serve
 import backtest_jobs
 
@@ -20,7 +28,7 @@ import backtest_jobs
 class RobustnessTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(s.SCHEMA)
+        self.addCleanup(self.db.close);self.db.executescript(daily.SCHEMA)
         self.db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         self.db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
         self.db.execute("INSERT INTO statements VALUES('A','2015-06-30','2015-09-28',100000000,150000000,30000000,.2)")
@@ -41,7 +49,7 @@ class RobustnessTests(unittest.TestCase):
         def connection():
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
             self.db.backup(db);return db
-        with patch.object(s,'connect',side_effect=connection):
+        with patch.object(daily,'connect',side_effect=connection):
             handler.stream_batch({},planned=configuration)
 
     def test_seed_count_and_independent_draws_in_each_block(self):
@@ -95,7 +103,7 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(r.distribution([0,10])['p10'],1)
         self.assertEqual(r.distribution([0,10])['stddev'],5)
         # New filters over the same sampled books never re-read raw/daily prices.
-        with patch.object(s,'price',side_effect=AssertionError('Cached books must be reused')):
+        with patch.object(daily,'price',side_effect=AssertionError('Cached books must be reused')):
             repeat=r.run(self.db,config)
         self.assertEqual([t['cagr'] for t in repeat['trials']],expected)
 
@@ -149,7 +157,7 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM period_pools WHERE pool='cached'").fetchone()[0],2)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],periods)
         self.assertEqual([tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")],legacy)
-        with patch.object(s,'price',side_effect=AssertionError('Original pool remains complete')),patch.object(s,'histories',side_effect=AssertionError('Original pool remains complete')):
+        with patch.object(daily,'price',side_effect=AssertionError('Original pool remains complete')),patch.object(daily,'histories',side_effect=AssertionError('Original pool remains complete')):
             replay=r.run(self.db,original)
         self.assertEqual([row['cagr'] for row in replay['trials']],[row['cagr'] for row in first['trials']])
         retry=r.run(self.db,wider)
@@ -230,11 +238,11 @@ class RobustnessTests(unittest.TestCase):
             obj.replies=[];obj.reply=lambda status,value:obj.replies.append((status,value))
             return obj
         batch=handler('/api/robustness',dict(start='2015-01-01',end='2016-12-30',months=24,trials=2,seed=42,rank_to=1))
-        with patch.object(serve.schedules,'connect',side_effect=connection):batch.do_POST()
+        with patch.object(daily,'connect',side_effect=connection):batch.do_POST()
         self.assertEqual(batch.statuses,[200])
         result=json.loads(batch.wfile.getvalue().splitlines()[-1])['result']
         inspect=handler('/api/schedule',dict(start='2015-01-01',end='2016-12-30',months=24,dates=result['trials'][0]['dates'],rank_to=1))
-        with patch.object(serve.schedules,'connect',side_effect=connection):inspect.do_POST()
+        with patch.object(daily,'connect',side_effect=connection):inspect.do_POST()
         self.assertEqual(inspect.replies[0][0],200)
         self.assertAlmostEqual(inspect.replies[0][1]['cagr'],result['trials'][0]['cagr'])
 

@@ -22,8 +22,8 @@ def seed(server,source):
     import serve_app
     from backtest.financial import metrics as metrics
     import saved_backtests
-    from numerical_portfolio import compare_results
-    from process_owner import process_metrics
+    from backtest.engines.numerical.portfolio import compare_results
+    from backtest.runtime.process_owner import process_metrics
     import result_exports
     server.backtest_jobs.evidence=job_evidence.Workspace(source/'tmp'/'browser-evidence-jobs',max_bytes=128*1024**2)
     budget=durable_evidence.Budget(96*1024**2)

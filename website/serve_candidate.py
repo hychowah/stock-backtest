@@ -10,7 +10,7 @@ ROOT = Path(__file__).absolute().parents[1]
 
 def close_before_source_release(preparation, *, pause=time.sleep):
     """Repeated terminal interrupts cannot turn unknown closure into completion."""
-    from numerical_runtime import ClosureError
+    from backtest.engines.numerical.runtime import ClosureError
     while True:
         try:
             try:
@@ -55,11 +55,14 @@ def main():
         # Disable credentials before any application import. An explicit panel
         # download reports missing setup; candidate startup never downloads.
         sys.path.insert(0, str(root / 'scripts'))
-        import run
-        run.KEY_PATH = root / 'tmp' / ('candidate-no-credentials-' + uuid.uuid4().hex)
-        if run.KEY_PATH.exists():raise RuntimeError('Candidate offline credential path is not empty.')
-        from numerical_preparation import Preparation
-        preparation = Preparation(root)
+        from backtest.financial import rules
+        from backtest.inputs import market, fmp_download, cache_assets
+        from backtest.engines.reference import legacy
+        fmp_download.KEY_PATH = root / 'tmp' / ('candidate-no-credentials-' + uuid.uuid4().hex)
+        if fmp_download.KEY_PATH.exists():raise RuntimeError('Candidate offline credential path is not empty.')
+        from backtest.application.preparation import Preparation
+        from build_state import ensure_presentation
+        preparation = Preparation(root,ensure_presentation=ensure_presentation)
         import serve_app
         serve_app.main(candidate=preparation, arguments=['--host', '127.0.0.1', '--port', str(args.port),
             *(['--no-browser'] if args.no_browser else [])])

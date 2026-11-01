@@ -1,6 +1,7 @@
 """Actual HTTP, priority and orderly restart on private synthetic roots only."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from http.client import RemoteDisconnected
 import json
 import hashlib
 import os
@@ -19,7 +20,11 @@ from bench_service_fixture import SyntheticService, expanded_fixture, _pending_s
 from bench_comparison import ComparisonError
 from bench_methods import clean
 import bench_execution_observation as observations
-import cache_access
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import cache_access as cache_access
+from backtest.engines.original import schedules
 import runtime_access
 import test_bench_execution as fixtures
 
@@ -32,7 +37,7 @@ class AvailabilityTests(unittest.TestCase):
         self.request, self.scale = expanded_fixture(self.fixture)
         self.f = self.fixture.fixture
         self.access = cache_access.WorkspaceAccess(self.f.source / 'data/website-data-0.lock')
-        self.provider = observations.CurrentObservation(self.request, __import__('schedules'), seconds=15.)
+        self.provider = observations.CurrentObservation(self.request, schedules, seconds=15.)
         # Declare five trials and rank 1..4 for HTTP and direct-function evidence.
         self.fixture.configuration['options']['rank_to'] = 4
         self.originals = self.immutable()
@@ -231,7 +236,7 @@ class AvailabilityTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as clients:
             work = clients.submit(service.request, 'POST', '/api/schedule', self.explicit())
             service.wait('request_held')
-            # Let the owner close the listener while the handler retains its DB.
+            # Close the listener while the handler retains financial ownership.
             closing_service = clients.submit(service.close)
             service.wait('shutdown_started')
             self.assertIsNone(service.owned.process.poll())
@@ -239,7 +244,8 @@ class AvailabilityTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 with runtime_access.ownership(self.f.source, exclusive=True, timeout=0): pass
             self.release(service, 'request_held')
-            self.assertTrue(work.result(timeout=30)['periods'])
+            # Normal shutdown cancels the active Original calculation.
+            with self.assertRaises(RemoteDisconnected): work.result(timeout=30)
             closing_service.result(timeout=20)
         self.assertEqual(service.owned.process.returncode, 0)
         self.assertTrue(service.owned.closure()['closed'])

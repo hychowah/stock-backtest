@@ -1,4 +1,8 @@
 """One application admission boundary, with real ordinary financial results."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 
 # Resolve the importable package for direct-file commands and spawned fixtures.
 import sys as _package_sys
@@ -20,9 +24,12 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
 import backtest_jobs
 import backtest_queue
-import cache_access
-import robustness
-import schedules
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import cache_access as cache_access
+from backtest.engines.original import robustness as robustness
+from backtest.engines.original import schedules as schedules
 import serve
 from test_queue import request
 import test_robustness as fixtures
@@ -50,7 +57,7 @@ class CalculationTests(unittest.TestCase):
                 closures.append(getattr(owner.state,'held',False));super().close()
         def connect():
             db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;return db
-        self.context.enter_context(patch.object(schedules,'connect',side_effect=connect))
+        self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.options=dict(start='2015-01-01',end='2016-12-30',months=3,rank_to=1)
         self.service=backtest_jobs.Calculations()
 
@@ -111,7 +118,7 @@ class CalculationTests(unittest.TestCase):
 
     def test_stop_during_canonical_planning_precedes_configuration_and_execution(self):
         from backtest import calendar_requests as calendar_requests
-        import backtest_control
+        from backtest.runtime import backtest_control as backtest_control
         configuration=[]
         original=calendar_requests.c.SessionCalendar.sample
         service=self.service

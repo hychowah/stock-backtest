@@ -13,7 +13,10 @@ from unittest.mock import patch
 
 import test_engine_selection as selection_tests
 import test_candidate_calculations as candidate_tests
-from numerical_portfolio import compare_results
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical.portfolio import compare_results
 from test_operating_spread_engine import financial_inputs, FILTERS
 import engine_selection
 from backtest import calendar_requests as calendar_requests
@@ -38,8 +41,8 @@ class WebsiteAlignmentTests(unittest.TestCase):
         def connect():
             db=sqlite3.connect(self.fixture.fixture.path);db.row_factory=sqlite3.Row;return db
         context=ExitStack();self.addCleanup(context.close)
-        context.enter_context(patch('schedules.connect',side_effect=connect))
-        context.enter_context(patch('cache_access.workspace',self.fixture.owner))
+        context.enter_context(patch('backtest.inputs.daily.connect',side_effect=connect))
+        context.enter_context(patch('backtest.runtime.cache_access.workspace',self.fixture.owner))
         return owner,candidate
 
     def compare(self,a,b):

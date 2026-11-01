@@ -10,7 +10,10 @@ import time
 import unittest
 ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
-import numerical_toolchain as native
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical import toolchain as native
 import runtime_access
 
 FAKE=r'''
@@ -31,24 +34,26 @@ OWNER=r'''
 import json,sys,time
 from pathlib import Path
 root,request,state=map(Path,sys.argv[1:])
-sys.path[:0]=[str(root/'scripts'),str(root/'website')]
+sys.path[:0]=[str(root/'website')]
 import runtime_access
-from cache_access import WorkspaceAccess
-from process_owner import OwnedProcess
-with runtime_access.ownership(root),WorkspaceAccess(root/'data/numerical-native/setup.lock').hold():
- owner=OwnedProcess([sys.executable,'-I','-B',str(root/'scripts/numerical_toolchain_probe.py'),str(request)])
- owner.process.stdin.write('GO\n');owner.process.stdin.flush()
- state.write_text(json.dumps({'probe':owner.process.pid}))
- while True:time.sleep(.05)
+with runtime_access.ownership(root):
+ sys.path.insert(0,str(root))
+ from backtest.runtime.cache_access import WorkspaceAccess
+ from backtest.runtime.process_owner import OwnedProcess
+ with WorkspaceAccess(root/'data/numerical-native/setup.lock').hold():
+  owner=OwnedProcess([sys.executable,'-I','-B',str(root/'backtest/engines/numerical/toolchain_probe.py'),str(request)])
+  owner.process.stdin.write('GO\n');owner.process.stdin.flush()
+  state.write_text(json.dumps({'probe':owner.process.pid}))
+  while True:time.sleep(.05)
 '''
 
 
 class SetupLifetimeTests(unittest.TestCase):
     def test_installer_death_drains_compiler_descendant_and_releases_own_source_guard(self):
-        from process_owner import OwnedProcess,windows_processes
+        from backtest.runtime.process_owner import OwnedProcess, windows_processes
         with tempfile.TemporaryDirectory(prefix='cb19g-setup-death-') as folder:
             root=Path(folder)/'source';root.mkdir()
-            for name in ('scripts/numerical_toolchain_probe.py','scripts/process_owner.py','scripts/cache_access.py','backtest/__init__.py','backtest/paths.py','website/runtime_access.py'):
+            for name in ('backtest/engines/numerical/toolchain_probe.py','backtest/runtime/process_owner.py','backtest/runtime/cache_access.py','backtest/__init__.py','backtest/paths.py','website/runtime_access.py'):
                 target=root/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/name,target)
             descriptor=native.inspect_toolchain(ROOT)
             fake=root/('fake-compiler.exe' if os.name=='nt' else 'fake-compiler')

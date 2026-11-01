@@ -1,4 +1,8 @@
 """Protocol checks for isolation, frozen samples, complete evidence and recovery."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
 from datetime import date, timedelta
 from contextlib import nullcontext
 import json
@@ -33,7 +37,7 @@ class BaselineTests(unittest.TestCase):
         self.path = self.root/'daily.sqlite'
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(s.SCHEMA)
+        self.db.executescript(daily.SCHEMA)
         self.db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         for year in range(2011, 2017):
             self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',
@@ -105,7 +109,7 @@ class BaselineTests(unittest.TestCase):
         def connection(path):
             db = sqlite3.connect(path);db.row_factory = sqlite3.Row
             return db
-        with patch.object(s, 'connect', connection), patch.object(r, 'plan', planner):
+        with patch.object(daily,'connect', connection), patch.object(r, 'plan', planner):
             measurement, fresh = bench.request(self.path, manifest, case, self.root/'telemetry/fresh')
             replay_measurement, replay = bench.request(self.path, manifest, case, self.root/'telemetry/replay', require_fresh=False)
             self.assertEqual(len(fresh), 24)
@@ -129,7 +133,7 @@ class BaselineTests(unittest.TestCase):
         self.assertIsNotNone(original)
         bench.clear_books(self.db)
         manifest, case, config = self.fixture('F1')
-        with patch.object(s, 'connect', connection), patch.object(r, 'plan', planner):
+        with patch.object(daily,'connect', connection), patch.object(r, 'plan', planner):
             measurement, evidence = bench.request(self.path, manifest, case, self.root/'telemetry/empty')
         self.assertEqual(measurement['valid'], 0)
         self.assertEqual(measurement['incomplete'], 24)
@@ -203,7 +207,7 @@ class BaselineTests(unittest.TestCase):
             attempt = Path(os.environ['BACKTEST_BASELINE_TELEMETRY'])
             bench.publish(attempt/'old-worker.json', dict(pid=-1, initialization_seconds=100.))
             raise KeyboardInterrupt()
-        with patch.object(s, 'connect', connection), patch.object(r, 'plan', return_value=config):
+        with patch.object(daily,'connect', connection), patch.object(r, 'plan', return_value=config):
             with patch.object(r, 'run', interrupted):
                 with self.assertRaises(KeyboardInterrupt):
                     bench.request(self.path, manifest, case, telemetry)
@@ -232,8 +236,8 @@ class BaselineTests(unittest.TestCase):
                 patch.object(bench.coordinator, 'access', nullcontext), \
                 patch.object(bench, 'identity', return_value=dict(inputs='synthetic')), \
                 patch.object(bench, 'validate_manifest'), \
-                patch.object(s.r, 'connect', side_effect=lambda **unused: tracked(self.path)), \
-                patch.object(s, 'connect', side_effect=lambda unused=None: tracked(unused or self.path)), \
+                patch.object(research, 'connect', side_effect=lambda **unused: tracked(self.path)), \
+                patch.object(daily,'connect', side_effect=lambda unused=None: tracked(unused or self.path)), \
                 patch.object(r, 'plan', return_value=config), \
                 patch.object(bench.sqlite3, 'connect', side_effect=tracked):
             bench.runner(args)

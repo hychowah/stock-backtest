@@ -1,4 +1,8 @@
 """Read-only mapped inputs and loaded-worker request/lifetime checks."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.financial import rules
 import json
 import os
 from pathlib import Path
@@ -114,7 +118,7 @@ class PersistentTests(unittest.TestCase):
             executor.evaluate(self.books())
 
     def test_spawn_preserves_frozen_source_bankruptcy_override(self):
-        with patch.object(shared.s.r.revalue,'BANKRUPT',{(2015,'A')}):
+        with patch.object(rules,'BANKRUPT',{(2015,'A')}):
             frozen = NumericInputs(self.fixture.reader,shared.s)
         self.addCleanup(frozen.close)
         executor = backend.attach(frozen,limits=dict(workers=1,workdir=self.root/'bankruptcy',setup_seconds=60.))

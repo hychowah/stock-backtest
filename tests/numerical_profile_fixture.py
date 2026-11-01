@@ -8,7 +8,7 @@ import sys
 @contextmanager
 def forbid_rust():
     from unittest.mock import patch
-    import numerical_toolchain,numerical_rust
+    from backtest.engines.numerical import toolchain as numerical_toolchain; from backtest.engines.numerical import rust as numerical_rust
     def rejected(*args,**kwargs):raise AssertionError('Compiled-Numba invoked unused Rust capability.')
     with ExitStack() as stack:
         for module,names in ((numerical_toolchain,('inspect_toolchain','verify_build','setup_toolchain')),
@@ -19,7 +19,7 @@ def forbid_rust():
 
 def __getattr__(name):
     if name!='Session':raise AttributeError(name)
-    from numerical_session import Session as Base
+    from backtest.engines.numerical.session import Session as Base
     class Session(Base):
         def __init__(self,configuration):
             self.guard=ExitStack()
@@ -33,15 +33,17 @@ def __getattr__(name):
 
 
 def main():
-    source,output=map(Path,sys.argv[1:3]);sys.path[:0]=[str(source/'website'),str(source/'scripts')]
+    source,output=map(Path,sys.argv[1:3]);sys.path[:0]=[str(source),str(source/'website'),str(source/'scripts')]
     import runtime_access
     with runtime_access.ownership(source):
-        import run
-        run.KEY_PATH=source/'nonexistent-profile-key'
-        import numerical_preparation as preparation
-        import numerical_toolchain
-        from numerical_runtime import NumericalRuntime
-        import cache_access
+        from backtest.financial import rules
+        from backtest.inputs import market, fmp_download, cache_assets
+        from backtest.engines.reference import legacy
+        fmp_download.KEY_PATH=source/'nonexistent-profile-key'
+        from backtest.application import preparation as preparation
+        from backtest.engines.numerical import toolchain as numerical_toolchain
+        from backtest.engines.numerical.runtime import NumericalRuntime
+        from backtest.runtime import cache_access as cache_access
         from unittest.mock import patch
         options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',rank_to=5)
         profiles={};checks=[]
@@ -109,7 +111,7 @@ def main():
             except ValueError:pass
             else:raise AssertionError('Child accepted an execution/profile mismatch')
         finally:wrong.close()
-        import numerical_random
+        from backtest.engines.numerical import random as numerical_random
         source_identity=numerical_random.source_identity()
         assert not any('rust' in name or 'toolchain' in name for name in source_identity)
         output.write_text(json.dumps(dict(profiles={key:dict(profile=row['profile'],generation=row['generation'],

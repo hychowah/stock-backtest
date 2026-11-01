@@ -10,8 +10,11 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'website')]
-import diagnostics
-import numerical_preparation as preparation
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import diagnostics as diagnostics
+from backtest.application import preparation as preparation
 import serve
 
 
@@ -110,7 +113,7 @@ class DependencyDiagnosticsTests(unittest.TestCase):
                 patch.object(serve.diagnostics, 'close'), \
                 patch.object(serve, 'ensure_ready'), \
                 patch.object(serve.cache_access, 'access', side_effect=lambda: ExitStack()), \
-                patch.object(serve.data_manager, 'source_problem', return_value=False), \
+                patch.object(serve.cache_assets, 'source_problem', return_value=False), \
                 patch.object(serve, 'Server', return_value=server):
             serve.main(arguments=['--no-browser'])
         server.serve_forever.assert_called_once()

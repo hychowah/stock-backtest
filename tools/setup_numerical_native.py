@@ -13,7 +13,8 @@ def main():
     args=parser.parse_args()
     import runtime_access
     with runtime_access.ownership(ROOT):
-        from numerical_toolchain import setup_toolchain,SetupClosureError
+        sys.path.insert(0,str(ROOT))
+        from backtest.engines.numerical.toolchain import setup_toolchain, SetupClosureError
         import time
         try:value=setup_toolchain(ROOT,args.components,json.loads(args.manifest.read_bytes()))
         except SetupClosureError as error:

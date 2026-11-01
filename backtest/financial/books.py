@@ -45,15 +45,10 @@ def eligible(pool, cap, ev):
 
 def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
     """Rescale report equity at entry and retain stopped holdings at last price."""
-    fiscal_px=lookup(statement['fiscal'],'price',False,7)
-    entry_px=lookup(entry_day,'price',True,4)
-    if fiscal_px is None or entry_px is None:
+    valuation=entry_valuation(statement,entry_day,lookup)
+    if valuation is None:
         return None
-    cap=statement['market_cap']*(entry_px[1]/fiscal_px[1])
-    ev=cap+(statement['enterprise']-statement['market_cap'])
-    if ev<=0 or cap<=0:
-        return None
-    ebitda=statement['yield']*statement['enterprise']
+    fiscal_px,entry_px,cap,ev,ebitda=valuation
     start=lookup(entry_px[0],'adjusted',True,4)
     if start is None or start[0]>=exit_day:
         return None
@@ -70,3 +65,25 @@ def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
         status='Bankruptcy'
     return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,ebitda/ev,ev/ebitda,ret,status]
 
+
+
+def entry_valuation(statement, entry_day, lookup):
+    """Return fiscal and entry observations, cap, EV and EBITDA without an exit."""
+    fiscal_px=lookup(statement['fiscal'],'price',False,7)
+    entry_px=lookup(entry_day,'price',True,4)
+    if fiscal_px is None or entry_px is None:
+        return None
+    cap=statement['market_cap']*(entry_px[1]/fiscal_px[1])
+    ev=cap+(statement['enterprise']-statement['market_cap'])
+    if ev<=0 or cap<=0:
+        return None
+    ebitda=statement['yield']*statement['enterprise']
+    return fiscal_px,entry_px,cap,ev,ebitda
+
+
+def benchmark_return(entry_price, exit_price):
+    return exit_price/entry_price-1
+
+
+def yield_spread(earnings_yield, treasury_yield):
+    return earnings_yield-treasury_yield

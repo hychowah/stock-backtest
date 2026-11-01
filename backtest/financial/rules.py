@@ -43,3 +43,28 @@ def latest_statement(rows: list[dict], rebalance: date) -> dict | None:
         if row["known"] < rebalance and rebalance - row["fiscal"] <= MAX_AGE:
             chosen = row
     return chosen
+
+def us_exchange(name: str) -> bool:
+    text = (name or "").upper()
+    if any(token in text for token in ("ARCA", "OTC", "PINK", "BATS")):
+        return False
+    return any(token in text for token in ("NYSE", "NASDAQ", "AMEX", "ASE"))
+
+
+def common_stock(symbol: str, name: str) -> bool:
+    if not symbol or not symbol.isupper() or "." in symbol or len(symbol) > 6:
+        return False
+    if "-" in symbol:
+        left, right = symbol.split("-", 1)
+        if not (left.isalpha() and len(right) == 1 and right.isalpha()):
+            return False
+    elif not symbol.isalnum():
+        return False
+    label = (name or "").upper()
+    if any(token in label for token in (" ETF", "ETF ", " FUND", "FUND ", " ETN", "PROSHARES", "ISHARES")):
+        return False
+    return True
+
+
+# Symbol-year pairs checked as bankruptcies. Shared by all engines.
+BANKRUPT: set[tuple[int, str]] = set()

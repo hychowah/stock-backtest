@@ -18,7 +18,6 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-from bench_candidates_process import OwnedProcess, ProcessLimits
 from bench_comparison import encoded
 
 START_SECONDS = 20.
@@ -33,12 +32,14 @@ def expanded_fixture(case):
     from test_bench_execution_inputs import sha, receipt, semantic
     from test_bench_input_store import metadata
     from bench_generation import signature
+    from bench_input_artifacts import SOURCE_ASSETS
     from types import SimpleNamespace
     f = case.fixture
     for path in (ROOT / 'website').iterdir():
         if path.is_file(): shutil.copy2(path, f.source / 'website' / path.name)
     f.sources = {p.relative_to(f.source).as_posix(): sha(p)
-                 for folder in ('scripts', 'website', 'backtest') for p in (f.source / folder).rglob('*.py')}
+                 for folder in ('scripts', 'website', 'backtest') for p in (f.source / folder).rglob('*')
+                 if p.is_file() and (p.suffix=='.py' or p.relative_to(f.source).as_posix() in SOURCE_ASSETS)}
     with closing(sqlite3.connect(f.capture / 'research.sqlite')) as research, \
             closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as daily:
         for db in (research, daily):
@@ -65,12 +66,12 @@ def expanded_fixture(case):
         (raw / 'metrics.jsonl').write_bytes(b''.join(encoded(row) + b'\n' for row in metrics))
         (raw / 'spy-div.json').write_bytes(encoded([dict(date=day, adjClose=price) for day, price in daily.execute('SELECT day,price FROM sessions ORDER BY day')]))
         (raw / 'treasury.json').write_bytes(encoded([dict(date='2014-12-31', month3=1.)]))
-        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')
-        modules = {name: SimpleNamespace(__file__=str(f.source / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py'))) for name in names}
+        names = ('baseline', 'metrics', 'books', 'cache_assets', 'market', 'legacy', 'revalue', 'financial_inputs', 'rules', 'screening')
+        modules = {name: SimpleNamespace(__file__=str(f.source / {'metrics': 'backtest/financial/metrics.py', 'books': 'backtest/financial/books.py', 'rules': 'backtest/financial/rules.py', 'screening': 'backtest/screening.py', 'baseline': 'backtest/inputs/baseline.py', 'cache_assets': 'backtest/inputs/cache_assets.py', 'market': 'backtest/inputs/market.py', 'legacy': 'backtest/engines/reference/legacy.py', 'revalue': 'backtest/engines/reference/revalue.py', 'financial_inputs': 'backtest/inputs/financial_inputs.py'}[name])) for name in names}
         from datetime import date
         modules['baseline'].cutoff = lambda text: date(2026, 10, 21)
         f.freshness['inputs'] = signature(SimpleNamespace(ROOT=f.source, RAW=raw, RESULTS=f.source / 'results',
-            __file__=str(f.source / 'scripts/research.py'), **modules))
+            __file__=str(f.source / 'backtest/inputs/research.py'), **modules))
         f.freshness['prices'] = {p.name: [p.stat().st_size, p.stat().st_mtime_ns] for p in (raw / 'px').glob('*.json')}
         f.freshness['daily_inputs']['inputs'] = f.freshness['inputs']
         metadata(research, dict(inputs=f.freshness['inputs'], prices=f.freshness['prices']))
@@ -128,6 +129,7 @@ class SyntheticService:
         self.stop_sent = self.closed = self.ready = False
 
     def start(self):
+        from backtest.runtime.process_owner import OwnedProcess
         self.control.mkdir()
         request = dict(self.request_spec, control=str(self.control), scenario=self.scenario)
         path = self.control / 'request.json'; path.write_bytes(encoded(request))
@@ -156,6 +158,7 @@ class SyntheticService:
             str(ROOT / 'tests'), str(ROOT / 'tools'), str(path)]
 
     def limits(self):
+        from backtest.runtime.process_owner import ProcessLimits
         return ProcessLimits(512 * 1024**2, 8, 25, close_seconds=5.)
 
     def wait(self, event, seconds=None):
@@ -278,10 +281,12 @@ def child(request_path):
     with runtime_access.ownership(source, timeout=0):
         if request['scenario'].get('fail_start'): raise RuntimeError('Synthetic startup failure.')
         s, robust, _ = _bind(request)
+        from backtest.inputs import daily, research
+        from backtest.financial import metrics
         # A service owns mutable prepared storage; the private financial binding
         # keeps its copied freshness baseline. Observation tests independently
         # exercise current enumeration. This is not production preparation.
-        s.r.signature = lambda: request['captured_freshness']['inputs']
+        research.signature = lambda: request['captured_freshness']['inputs']
         (Path(request['database']).parent / 'binding.json').write_bytes(encoded(request))
         if request['scenario'].get('oracle'):
             oracle = control / 'oracle.sqlite'
@@ -289,33 +294,36 @@ def child(request_path):
             reference = dict(request, database=str(oracle))
             (control / 'binding.json').write_bytes(encoded(reference))
             s, robust, _ = _bind(reference)
-            s.r.signature = lambda: request['captured_freshness']['inputs']
+            research.signature = lambda: request['captured_freshness']['inputs']
             config = request['configuration']
-            with closing(s.connect()) as db:
+            with closing(daily.connect()) as db:
                 planned = robust.plan(db, start=config['start'], end=config['end'], months=config['months'],
                     trials=config['requested'], seed=config['seed'], **config['options'])
                 batch = robust.run(db, planned)
                 inspections = [s.backtest_dates(db, dates=dates, start=config['start'], end=config['end'],
                     months=config['months'], **config['options']) for dates in planned['samples']]
+            # The normal engine adapter adds its producer after calculation.
+            for result in (batch, *inspections):
+                result['producer'] = dict(engine='original', label='Original')
             (control / 'expected.json').write_bytes(encoded(dict(random=batch, inspections=inspections)))
             s, robust, _ = _bind(request)
-            s.r.signature = lambda: request['captured_freshness']['inputs']
+            research.signature = lambda: request['captured_freshness']['inputs']
         import serve_app
-        import cache_access
-        for module in (serve_app, s, robust, cache_access, s.r, s.metrics, runtime_access):
+        from backtest.runtime import cache_access as cache_access
+        for module in (serve_app, s, robust, cache_access, research, metrics, runtime_access):
             assert Path(module.__file__).resolve().is_relative_to(source)
         assert cache_access.workspace.path.resolve() == source / 'data/website-data-0.lock'
-        daily = cache_access.daily
+        access_context = cache_access.access
         @contextmanager
-        def observed_daily():
-            with daily() as db:
+        def observed_access(*args, **kwargs):
+            with access_context(*args, **kwargs) as owner:
                 emit('acquired', at=time.monotonic())
                 try:
                     if request['scenario'].get('hold_request'): barrier('request_held')
-                    yield db
+                    yield owner
                 finally: emit('leaving', at=time.monotonic())
             emit('released', at=time.monotonic())
-        cache_access.daily = observed_daily
+        cache_access.access = observed_access
         if request['scenario'].get('disconnect'):
             run = robust.run
             def interrupted_run(db, config, progress=None, **kwargs):

@@ -140,7 +140,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
             return owner.run()
 
     def test_actual_reference_numba_and_pinned_storage_share_lifetime(self):
-        import cache_access,runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -157,7 +157,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
         print(json.dumps(dict(check='lifetime_financial',evidence=owner.evidence)),flush=True)
 
     def test_successful_helper_tail_cannot_restart_finalization(self):
-        import cache_access,runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         source=self.base.fixture.fixture.source
         with runtime_access.ownership(source,timeout=0):
             with cache_access.WorkspaceAccess(source/'data/website-data-0.lock').observe():pass

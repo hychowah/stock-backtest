@@ -1,4 +1,8 @@
 """Complete recorded-trial and artifact checks on private fictional inputs."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.financial import metrics
 
 # Resolve the importable package for direct-file commands and spawned fixtures.
 import sys as _package_sys
@@ -17,18 +21,19 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tests'),str(ROOT/'tools')]
-import backtest_control
+from backtest.engines.original import schedules
+from backtest.runtime import backtest_control as backtest_control
 from backtest import calendar_requests as numerical_calendar
-import numerical_random
-import numerical_trial
+from backtest.engines.numerical import random as numerical_random
+from backtest.engines.numerical import trial as numerical_trial
 from backtest import portfolio_results as portfolio_results
-import result_evidence
-import trial_checkpoints
+from backtest import result_evidence as result_evidence
+from backtest.engines.numerical import checkpoints as trial_checkpoints
 import test_bounded_trials as bounded
 import test_numerical_trials as trials
 import test_result_evidence as codec
 import test_trial_checkpoints as fixtures
-from numerical_portfolio import compare_results
+from backtest.engines.numerical.portfolio import compare_results
 
 LIMITS=dict(max_bytes=32*1024**2,piece_bytes=127,record_bytes=16384)
 
@@ -118,18 +123,18 @@ class TrialEvaluatorTests(unittest.TestCase):
     def test_original_eager_incremental_artifact_complete_settings_matrix(self):
         inputs,provider,portfolio,store=self.evaluator('source')
         cases=0;maximum_absolute=maximum_relative=0.;statuses=set();empty=0
-        conditions=[[]]+[[dict(field=field,op='gt',value=-1e20)] for field in sorted(portfolio.s.metrics.FILTERS)]
+        conditions=[[]]+[[dict(field=field,op='gt',value=-1e20)] for field in sorted(metrics.FILTERS)]
         # Cross every supported field with both pools/orders/metrics/calendars.
         for pool in ('legacy','cached'):
             for order in ('filter_first','rank_first'):
-                for metric in portfolio.s.metrics.METRICS:
+                for metric in metrics.METRICS:
                     for unit in ('week','month'):
                         config=self.config(portfolio,unit=unit,pool=pool,selection_order=order,metric=metric)
                         for filters in conditions:
                             config['options']['filters']=filters
                             binding,spec,operation=self.operation(portfolio,config)
                             request=dict(**spec['request'],**spec['options'])
-                            reference=portfolio.s.backtest_calendar(self.db,**request)
+                            reference=schedules.backtest_calendar(self.db,**request)
                             eager=portfolio.backtest_calendar(**request)['result']
                             periods=[];summary=operation.evaluate_into(spec,periods.append)
                             incremental=dict(periods=periods,**summary)
@@ -151,7 +156,7 @@ class TrialEvaluatorTests(unittest.TestCase):
         _,spec,operation=self.operation(portfolio,config)
         _,artifact,_=self.artifact(operation,spec)
         periods=list(artifact.periods())
-        reference=portfolio.s.backtest_dates(self.db,**spec['request'],**spec['options'])
+        reference=schedules.backtest_dates(self.db,**spec['request'],**spec['options'])
         self.assertTrue(compare_results(reference,dict(periods=periods,**artifact.summary))['exact'])
         statuses.update(h['status'] for p in periods for h in p['holdings'])
         self.assertIn('Last available price',statuses)
@@ -181,8 +186,8 @@ class TrialEvaluatorTests(unittest.TestCase):
                 self.assertFalse(stream.closed)
             renamed=path.with_suffix('.closed');path.rename(renamed);renamed.unlink()
         self.assertFalse(portfolio.db.in_transaction)
-        self.assertIn('scripts/numerical_trial.py',numerical_random.source_identity())
-        self.assertIn('scripts/result_evidence.py',numerical_random.source_identity())
+        self.assertIn('backtest/engines/numerical/trial.py',numerical_random.source_identity())
+        self.assertIn('backtest/result_evidence.py',numerical_random.source_identity())
 
     def test_specification_task_swaps_and_validation_before_provider(self):
         inputs,provider,portfolio,store=self.evaluator('source')

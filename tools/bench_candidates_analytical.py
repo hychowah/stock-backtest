@@ -4,6 +4,10 @@ The expression walkers translate the source-bound PolicyProgram tree. They
 contain no valuation or filter formulas. Temporal tables expose complete input
 histories; the executors receive no preselected reports or calculated factors.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import research
 from pathlib import Path
 from datetime import date
 import os
@@ -147,11 +151,11 @@ def work_root(inputs, limits, method):
     requested = limits.get('workdir')
     if requested is None:
         if os.name == 'nt':
-            requested = Path(inputs.s.r.ROOT) / 'tmp/cb02-all-methods' / method
+            requested = Path(research.ROOT) / 'tmp/cb02-all-methods' / method
         else:
             requested = Path(tempfile.gettempdir()) / ('cb02-candidates-' + method)
     path = Path(requested).resolve()
-    if os.name == 'nt' and not path.is_relative_to((Path(inputs.s.r.ROOT) / 'tmp').resolve()):
+    if os.name == 'nt' and not path.is_relative_to((Path(research.ROOT) / 'tmp').resolve()):
         raise ValueError('Native analytical temporary files must stay below runtime tmp/.')
     path.mkdir(parents=True, exist_ok=True)
     return path

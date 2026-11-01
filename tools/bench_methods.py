@@ -7,6 +7,12 @@ Execution is closed until bound input ownership and resource/availability
 admission are qualified. The retained orchestration is historical. Source-only
 attachment and numerical/evidence helpers remain available for synthetic tests.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest import screening
+from backtest.financial import rules, books as financial_books, metrics
 import argparse
 from bisect import bisect_right
 from calendar import monthrange
@@ -45,8 +51,8 @@ class Model:
     def __init__(self, source, schedules):
         self.s = schedules
         began = time.perf_counter()
-        self.books = schedules.histories(source)
-        self.cached = schedules.cached_symbols(source)
+        self.books = daily.histories(source)
+        self.cached = daily.cached_symbols(source)
         self.histories = {symbol:[dict(row,fiscal=str(row['fiscal']),known=str(row['known']))
                                   for row in rows] for symbol,rows in self.books[0].items()}
         self.financials = {}
@@ -58,13 +64,13 @@ class Model:
         self.treasury_values = [row[1] for row in treasuries]
         self.db = sqlite3.connect(':memory:')
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(schedules.SCHEMA)
+        self.db.executescript(daily.SCHEMA)
         self.db.executemany('INSERT INTO companies VALUES(?,?,?,?)',
                             source.execute('SELECT * FROM companies'))
         self.db.executemany('INSERT INTO sessions VALUES(?,?)',self.sessions.items())
         self.db.commit()
         self.base_seconds = time.perf_counter()-began
-        self.original_average = schedules.metrics.annual_average
+        self.original_average = metrics.annual_average
         self.average_cache = {}
         self.stages = {}
 
@@ -81,7 +87,7 @@ class Model:
         self.stages[key] = self.stages.get(key,0.) + time.perf_counter()-began
 
     def candidate_reports(self, entry):
-        return self.s.financial_books.candidates(self.books,entry)
+        return financial_books.candidates(self.books,entry)
 
     def needs_thresholds(self, needed):
         # The first-wave methods remain eager controls for later experiments.
@@ -124,7 +130,7 @@ class Model:
         treasury_index = bisect_right(self.treasury_days,str(entry))-1
         treasury = self.treasury_values[treasury_index] if treasury_index>=0 else 0.
         snapshots,pairs,filters = [],[],[]
-        metric = self.options.get('metric',self.s.metrics.DEFAULT_METRIC)
+        metric = self.options.get('metric',metrics.DEFAULT_METRIC)
         for symbol,statement in candidates.items():
             self.check_deadline()
             def lookup(day,column,forward=False,slack=None):
@@ -136,18 +142,18 @@ class Model:
                     return None
                 return date.fromordinal(value[0]),value[1]
             began = time.perf_counter()
-            row = self.s.financial_books.snapshot(statement,entry,exit_day,lookup,
-                            (entry.year,symbol) in self.s.r.revalue.BANKRUPT)
+            row = financial_books.snapshot(statement,entry,exit_day,lookup,
+                            (entry.year,symbol) in rules.BANKRUPT)
             self.add_time('snapshot_seconds',began)
             if row is None:
                 continue
             fiscal,buy,sell,cap,ev,ebitda,yield_value,multiple,ret,status = row
-            if not self.s.financial_books.eligible(pool,cap,ev):
+            if not financial_books.eligible(pool,cap,ev):
                 continue
             observation = dict(symbol=symbol,fiscal=fiscal,market_cap=cap,
                 enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
             began = time.perf_counter()
-            evaluated = self.s.metrics.evaluate(observation,self.histories[symbol])
+            evaluated = metrics.evaluate(observation,self.histories[symbol])
             self.add_time('metric_seconds',began)
             # Call the complete authoritative calculator. Store only fields
             # required by this request; unused missing fields never exclude.
@@ -156,7 +162,7 @@ class Model:
             values = {}
             if thresholds:
                 began = time.perf_counter()
-                values = self.s.metrics.filter_values(observation,evaluated,entry,lookup,
+                values = metrics.filter_values(observation,evaluated,entry,lookup,
                                                       self.financials.get(symbol,{}))
                 self.add_time('threshold_seconds',began)
             snapshots.append((pool,1,symbol,ranks.get(symbol),fiscal,buy,sell,cap,ev,
@@ -208,7 +214,7 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
     model.deadline = began+budget_seconds if budget_seconds is not None else None
     rows,holdings = [],[]
     output = None
-    original_select = model.s.screening.select
+    original_select = screening.select
     def select(*args,**kwargs):
         started = time.perf_counter()
         try:
@@ -233,12 +239,12 @@ def run_request(model,resolver,expected,store_path,*,freshness=lambda:None,progr
         output.commit()
         delivery.send(dict(type='configuration',configuration=configuration))
         with ExitStack() as stack:
-            stack.enter_context(patch.object(model.s,'histories',lambda unused:model.books))
-            stack.enter_context(patch.object(model.s,'cached_symbols',lambda unused:model.cached))
-            stack.enter_context(patch.object(model.s,'prepared_period',lambda *unused:None))
+            stack.enter_context(patch.object(daily,'histories',lambda unused:model.books))
+            stack.enter_context(patch.object(daily,'cached_symbols',lambda unused:model.cached))
+            stack.enter_context(patch.object(daily,'prepared_period',lambda *unused:None))
             stack.enter_context(patch.object(model.s,'prepare_period',model.prepare))
-            stack.enter_context(patch.object(model.s.metrics,'annual_average',model.annual_average))
-            stack.enter_context(patch.object(model.s.screening,'select',select))
+            stack.enter_context(patch.object(metrics,'annual_average',model.annual_average))
+            stack.enter_context(patch.object(screening,'select',select))
             for number,dates in enumerate(configuration['samples'],1):
                 result = model.s.backtest_dates(model.db,dates=dates,start=configuration['start'],
                     end=configuration['end'],months=configuration['months'],**configuration['options'])
@@ -326,8 +332,8 @@ def main():
                                'Loading and compilation are excluded from warm time and separately measured.'],
                   method_request_budget_seconds=args.max_seconds)
     with baseline.coordinator.access():
-        reference = s.r.connect(full_prices=True);reference.close()
-        source = s.connect()
+        reference = research.connect(full_prices=True);reference.close()
+        source = daily.connect()
         model = None
         try:
             baseline.validate_manifest(manifest,source)
@@ -377,7 +383,7 @@ def main():
                         setup_seconds = time.perf_counter()-started
                         setup_memory = setup_resources.finish()
                         def freshness():
-                            checked = s.connect()
+                            checked = daily.connect()
                             checked.close()
                         def progress(event):
                             if event['completed'] in (1,8,16,24):

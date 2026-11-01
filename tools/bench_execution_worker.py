@@ -4,6 +4,9 @@ Application source, prepared databases and every writable path are explicitly
 bound. Production financial functions remain authoritative. Source-only policy
 attachment has no dependency on this financial protocol. Real entry is closed.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from contextlib import closing
 from datetime import date
 import hashlib
@@ -74,17 +77,24 @@ def _observe(request, schedules):
 
 def _bind(request):
     """Bind actual private modules and all reference spawn paths explicitly."""
+    global daily, research, metrics
     import sqlite3
     source = Path(request['source']).resolve()
     _verify(source, request['sources'])
-    sys.path[:0] = [str(source / 'scripts'), str(source / 'website')]
-    import schedules as s
-    import robustness
-    import book_batch
+    sys.path[:0] = [str(source), str(source / 'scripts'), str(source / 'website')]
+    from backtest.inputs import daily, research
+    from backtest.financial import metrics
+    from backtest.engines.original import schedules as s
+    from backtest.engines.original import robustness as robustness
+    from backtest.engines.original import book_batch as book_batch
     import bench_baseline as baseline
-    for module in (s, s.r, s.metrics, robustness, book_batch):
+    for module in (s, research, metrics, robustness, book_batch):
         if not Path(module.__file__).resolve().is_relative_to(source):
             raise ComparisonError('mismatch')
+    for name,module in list(sys.modules.items()):
+        if name=='backtest' or name.startswith('backtest.'):
+            if not Path(module.__file__).resolve().is_relative_to(source):
+                raise ComparisonError('mismatch')
     captured = Path(request['capture'])
     database = Path(request['database'])
 
@@ -105,10 +115,10 @@ def _bind(request):
         return db
 
     # Binding substitutes storage discovery, not eligibility/formulas/calendar.
-    s.DATABASE, s.r.DATABASE = database, captured / 'research.sqlite'
-    s.connect, s.r.connect = connect, research_connect
-    s.fingerprint = lambda: json.loads(encoded(request['captured_freshness']['daily_inputs']))
-    s.r.signature = lambda: _observe(request, s)
+    daily.DATABASE, research.DATABASE = database, captured / 'research.sqlite'
+    daily.connect, research.connect = connect, research_connect
+    daily.fingerprint = lambda: json.loads(encoded(request['captured_freshness']['daily_inputs']))
+    research.signature = lambda: _observe(request, s)
     book_batch.initialize_worker = initialize_bound_worker
     baseline.s, baseline.batch, baseline.robust = s, book_batch, robustness
     return s, robustness, baseline
@@ -124,7 +134,7 @@ def initialize_bound_worker(path, expected):
     from threading import Thread
     request = json.loads((Path(path).parent / 'binding.json').read_bytes())
     s, _, _ = _bind(request)
-    import book_batch
+    from backtest.engines.original import book_batch as book_batch
     parent = multiprocessing.parent_process()
     if parent is not None:
         def follow():
@@ -132,8 +142,8 @@ def initialize_bound_worker(path, expected):
             os._exit(0)
         Thread(target=follow, daemon=True).start()
     book_batch._reader = book_batch.open_reader(path, expected)
-    book_batch._books = s.histories(book_batch._reader)
-    book_batch._cached = s.cached_symbols(book_batch._reader)
+    book_batch._books = daily.histories(book_batch._reader)
+    book_batch._cached = daily.cached_symbols(book_batch._reader)
 
 
 def _proof(source, s, configuration, executor=None):
@@ -144,13 +154,13 @@ def _proof(source, s, configuration, executor=None):
     jobs = [(str(a), str(b), pool) for pool in ('legacy', 'cached') for a, b in periods[:3]]
     if not jobs:
         raise ComparisonError('incomplete')
-    fields = set(s.metrics.FILTERS)
+    fields = set(metrics.FILTERS)
     if executor is not None:
         options = dict(configuration['options'], filters=[dict(field=field, op='gt', value=0.) for field in fields])
         executor.begin(dict(options=options))
         books = executor.evaluate(jobs, options)
     else:
-        histories, cached = s.histories(source), s.cached_symbols(source)
+        histories, cached = daily.histories(source), daily.cached_symbols(source)
         books = []
         for a, b, pool in jobs:
             source.execute('BEGIN')
@@ -176,7 +186,7 @@ def _reference(request, s, robust, baseline):
     began = time.perf_counter()
     try:
         _observe(request, s)
-        db = s.connect()
+        db = daily.connect()
         planned = robust.plan(db, start=configuration['start'], end=configuration['end'],
             months=configuration['months'], trials=configuration['requested'], seed=configuration['seed'],
             **configuration['options'])
@@ -229,7 +239,7 @@ def run(request_path):
     try:
         source = sqlite3.connect((Path(request['capture']) / 'schedules.sqlite').as_uri() + '?mode=ro&immutable=1', uri=True)
         source.row_factory = sqlite3.Row
-        policy = PolicyProgram(s)
+        policy = PolicyProgram()
         if request['step'].startswith('numba_'):
             from bench_candidates import NumericInputs
             from bench_candidates_numba import attach

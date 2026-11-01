@@ -3,8 +3,11 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
-import backtest_control
-from numerical_matrix import CompiledMatrix
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical.matrix import CompiledMatrix
 
 
 class Policy:

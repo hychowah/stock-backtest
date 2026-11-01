@@ -1,4 +1,8 @@
 """Cooperative stop keeps transactions, worker cleanup and request ownership safe."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 import json
 from pathlib import Path
 import socket
@@ -11,11 +15,11 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website'),str(ROOT/'tests')]
-import backtest_control as control
-import book_batch
-import cache_access
-import robustness
-import schedules
+from backtest.runtime import backtest_control as control
+from backtest.engines.original import book_batch as book_batch
+from backtest.runtime import cache_access as cache_access
+from backtest.engines.original import robustness as robustness
+from backtest.engines.original import schedules as schedules
 import serve
 import test_robustness as fixtures
 
@@ -45,12 +49,12 @@ class CancellationTests(unittest.TestCase):
         configuration=self.config(trials=3,seed=11)
         planned=book_batch.plan(self.db,configuration)
         first=len(planned['trials'][0]);writes=0;stopped=False
-        original=schedules.store_period
+        original=daily.store_period
         def store(*args,**kwargs):
             nonlocal writes,stopped
             original(*args,**kwargs);writes+=1
             if writes>first:stopped=True
-        with control.cancel_when(lambda:stopped),patch.object(schedules,'store_period',side_effect=store):
+        with control.cancel_when(lambda:stopped),patch.object(daily,'store_period',side_effect=store):
             with self.assertRaises(control.Cancelled):robustness.run(self.db,configuration,workers=1)
         self.assertFalse(self.db.in_transaction)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],first)
@@ -131,7 +135,7 @@ class CancellationTests(unittest.TestCase):
                 client=socket.create_connection(server.server_address,timeout=5)
                 body=json.dumps(dict(start='2015-01-01',end='2016-12-30',months=3,rank_to=1,**({'trials':2,'seed':42} if endpoint.endswith('robustness') else {}))).encode()
                 try:
-                    with patch.object(cache_access,'workspace',owner),patch.object(schedules,'connect',side_effect=connect),patch.object(schedules,'compute_period',side_effect=compute):
+                    with patch.object(cache_access,'workspace',owner),patch.object(daily,'connect',side_effect=connect),patch.object(schedules,'compute_period',side_effect=compute):
                         client.sendall(f'POST {endpoint} HTTP/1.0\r\nHost: 127.0.0.1\r\nContent-Length: {len(body)}\r\n\r\n'.encode()+body)
                         self.assertTrue(entered.wait(5),'The real route must reach calculation.')
                         client.close()

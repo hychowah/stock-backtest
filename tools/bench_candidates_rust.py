@@ -5,6 +5,11 @@ call. No pointer survives that call. Generated financial expressions come from
 the common source-bound policy. Hash-named build directories prevent replacing
 a DLL while Windows still maps it. The caller owns input and cache lifetimes.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import research
+from backtest.financial import rules
 import ctypes
 import hashlib
 import math
@@ -212,7 +217,7 @@ def _compiler(inputs, limits):
         path = Path(supplied)
     else:
         located = shutil.which('rustc')
-        path = Path(located) if located else Path(inputs.s.r.ROOT) / 'tmp/cb02-all-methods/rust/toolchain/bin/rustc.exe'
+        path = Path(located) if located else Path(research.ROOT) / 'tmp/cb02-all-methods/rust/toolchain/bin/rustc.exe'
     if not path.is_file():
         raise ImportError('A native Rust compiler is required for this candidate.')
     if os.name != 'nt' and path.suffix.lower() == '.exe':
@@ -242,7 +247,7 @@ class NativeKernel:
         source = rust_source(policy)
         compile_flags = ('--edition=2021','-O','-C','panic=abort','-C','target-cpu=native')
         signature = hashlib.sha256((str(ABI)+policy.signature+version+repr(compile_flags)+source).encode()).hexdigest()
-        workdir = Path(limits.get('workdir') or Path(inputs.s.r.ROOT) / 'tmp/cb02-candidates/rust')
+        workdir = Path(limits.get('workdir') or Path(research.ROOT) / 'tmp/cb02-candidates/rust')
         workdir.mkdir(parents=True, exist_ok=True)
         self.directory = Path(tempfile.mkdtemp(prefix='kernel-'+signature[:16]+'-', dir=workdir))
         source_path = self.directory / 'kernel.rs'
@@ -301,7 +306,7 @@ class NativeKernel:
                 if len(entries) and count:
                     code = self._reports(_ptr(entries,_I32),len(entries),_ptr(offsets,_I64),count,
                         _ptr(ids,_I32),len(ids),_ptr(known,_I32),_ptr(fiscal,_I32),len(known),
-                        inputs.s.financial_books.run.MAX_AGE.days,_ptr(output,_I32))
+                        rules.MAX_AGE.days,_ptr(output,_I32))
                     if code:
                         raise RuntimeError('Rust report search failed.')
                 outputs.append(output)

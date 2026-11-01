@@ -63,7 +63,7 @@ class StorageDeclarationTests(unittest.TestCase):
 
     def test_readonly_coordination_never_creates_files_and_uses_same_locks(self):
         import tempfile
-        import cache_access
+        from backtest.runtime import cache_access as cache_access
         import runtime_access
         with tempfile.TemporaryDirectory(prefix='cb02-readonly-lock-') as folder:
             root = Path(folder); path = root / 'data/website-data-0.lock'
@@ -129,7 +129,7 @@ class StorageLifetimeTests(unittest.TestCase):
         return storage.inspect_evidence(owner.storage.target)
 
     def test_actual_reference_both_numba_guards_inside_one_storage_boundary(self):
-        import cache_access, runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         f = self.base.fixture.fixture
         with runtime_access.ownership(f.source, timeout=0):
             with cache_access.WorkspaceAccess(f.source / 'data/website-data-0.lock').observe(): pass
@@ -289,7 +289,7 @@ assert len(list(Path('/proc').glob('[0-9]*')))<12
         self.assertFalse(self.records(owner)['header']['storage_received'])
 
     def test_collection_and_publication_time_still_consume_finalization(self):
-        import cache_access,runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -311,7 +311,7 @@ assert len(list(Path('/proc').glob('[0-9]*')))<12
         with self.assertRaisesRegex(ComparisonError,'incomplete'):_=owner.result
 
     def test_readonly_namespace_preserves_direct_edit_detection_and_live_priority(self):
-        import cache_access,runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass
@@ -426,7 +426,7 @@ finally:db.close()
         with self.assertRaisesRegex(ComparisonError,'incomplete'):_=owner.result
 
     def test_final_receipt_exhaustion_reports_limit_after_confirmed_domain_close(self):
-        import cache_access,runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass

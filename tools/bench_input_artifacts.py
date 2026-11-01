@@ -8,6 +8,8 @@ import json
 
 RESEARCH_VERSION = 7
 DAILY_VERSION = 3
+# A bound source resource, never an importable module or general extension gate.
+SOURCE_ASSETS = frozenset({'backtest/engines/numerical/rust_kernel.rs'})
 BASE_TABLES = {
     'companies': 'symbol name exchange sector',
     'statements': 'symbol fiscal known market_cap enterprise_value ebitda ebitda_yield',

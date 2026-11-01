@@ -3,6 +3,9 @@
 import sys as _package_sys
 from pathlib import Path as _PackagePath
 _package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 import json
 from pathlib import Path
@@ -12,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import research
+from backtest.inputs import research as research
 
 CASES = [
     dict(first=2015,last=2020,filters=[dict(field='pe',op='lt',value=20)]),

@@ -12,7 +12,10 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-from process_owner import OwnedProcess, ProcessLimits
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
 
 
 def write_fixture(root):
@@ -33,16 +36,23 @@ from pathlib import Path
 from contextlib import closing
 import json,sys
 root=Path(sys.argv[1]);out=Path(sys.argv[2])
-sys.path[:0]=[str(root/'scripts'),str(root/'website'),str(root/'tools')]
+sys.path[:0]=[str(root/'website'),str(root/'tools')]
 import runtime_access
 with runtime_access.ownership(root,timeout=0):
- import run
- run.KEY_PATH=root.parent/'nonexistent-preparation-key';assert not run.KEY_PATH.exists()
- import research as r,schedules as s,prepared_input_coverage as coverage
- for m in (r,s,r.run,r.books,r.metrics,r.baseline,r.cache_assets,r.financial_inputs,r.revalue,r.cache_access,s.portfolio_results,s.schedule_calendar,coverage):
+ sys.path.insert(0,str(root))
+ from backtest.inputs import fmp_download
+ fmp_download.KEY_PATH=root.parent/'nonexistent-preparation-key';assert not fmp_download.KEY_PATH.exists()
+ from backtest.inputs import research as r, daily
+ from backtest.engines.original import schedules as s
+ from backtest import portfolio_results, calendar as schedule_calendar
+ import prepared_input_coverage as coverage
+ for m in (r,s,r.market,r.legacy,r.books,r.metrics,r.baseline,r.cache_assets,r.financial_inputs,r.revalue,r.cache_access,portfolio_results,schedule_calendar,coverage):
   assert Path(m.__file__).resolve().is_relative_to(root.resolve()),m.__name__
- assert run.FIRST_YEAR==1996 and run.LAST_YEAR==2026
- r.prepare();s.prepare()
+ for name,module in list(sys.modules.items()):
+  if name=='backtest' or name.startswith('backtest.'):
+   assert Path(module.__file__).resolve().is_relative_to(root.resolve()),name
+ assert r.rules.FIRST_YEAR==1996 and r.rules.LAST_YEAR==2026
+ r.prepare();daily.prepare()
  result=coverage.report()
  assert len(result['years'])==31 and all(y['prepared_period'] for y in result['years'])
  assert all(y['pools']['legacy']['selected_holdings']==1 for y in result['years'])
@@ -63,12 +73,13 @@ assert __import__('sys').stdin.readline()=='GO'+chr(10)
 from pathlib import Path
 import sqlite3,sys,time
 root=Path(sys.argv[1]);ready=Path(sys.argv[2])
-sys.path[:0]=[str(root/'scripts'),str(root/'website')]
+sys.path[:0]=[str(root/'website')]
 import runtime_access
 with runtime_access.ownership(root,timeout=0):
- import run
- run.KEY_PATH=root.parent/'nonexistent-preparation-key'
- import research
+ sys.path.insert(0,str(root))
+ from backtest.inputs import fmp_download
+ fmp_download.KEY_PATH=root.parent/'nonexistent-preparation-key'
+ from backtest.inputs import research as research
  original=sqlite3.connect
  def connect(path,*args,**kwargs):
   db=original(path,*args,**kwargs)
@@ -144,10 +155,14 @@ class ExportedPreparationTests(unittest.TestCase):
         # A fresh process must acquire both owners and accept the old published pair.
         verify=r'''from pathlib import Path
 import sys
-root=Path(sys.argv[1]);sys.path[:0]=[str(root/'scripts'),str(root/'website')]
-import runtime_access,cache_access,research
-with runtime_access.ownership(root,timeout=0),cache_access.access(timeout=0):
- db=research.connect(full_prices=True);db.close()
+root=Path(sys.argv[1]);sys.path[:0]=[str(root/'website')]
+import runtime_access
+with runtime_access.ownership(root,timeout=0):
+ sys.path.insert(0,str(root))
+ from backtest.runtime import cache_access
+ from backtest.inputs import research
+ with cache_access.access(timeout=0):
+  db=research.connect(full_prices=True);db.close()
 '''
         result=subprocess.run([sys.executable,'-I','-B','-c',verify,str(self.root)],capture_output=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stderr.decode())

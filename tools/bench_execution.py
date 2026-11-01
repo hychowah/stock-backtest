@@ -32,8 +32,7 @@ def environment(envelope):
                 packages={name: version(name) for name in ('numpy', 'numba', 'llvmlite')},
                 envelope=asdict(envelope),
                 tool_sources={path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                              for path in sorted((*Path(__file__).parent.glob('bench_*.py'),
-                                                  Path(__file__).with_name('portfolio_workspace.py')))})
+                              for path in sorted(Path(__file__).parent.glob('bench_*.py'))})
 
 
 @dataclass(frozen=True)
@@ -201,8 +200,8 @@ class MeasurementExecution:
             if self.observation_mode == 'coordinated':
                 # This reads verified coordination source only. Observation
                 # itself remains in each timed child request.
-                import cache_access
-                expected = manifest['originals']['sources'].get('scripts/cache_access.py')
+                from backtest.runtime import cache_access as cache_access
+                expected = manifest['originals']['sources'].get('backtest/runtime/cache_access.py')
                 if not expected or hashlib.sha256(Path(cache_access.__file__).read_bytes()).hexdigest() != expected:
                     raise ComparisonError('unsupported')
                 self._priority = cache_access.WorkspaceAccess(observation / 'data/website-data-0.lock',
@@ -210,8 +209,7 @@ class MeasurementExecution:
             self._tools = workspace._folder / 'tools'
             self._tools.mkdir()
             self._tool_hashes = {}
-            for path in (*Path(__file__).parent.glob('bench_*.py'),
-                         Path(__file__).with_name('portfolio_workspace.py')):
+            for path in Path(__file__).parent.glob('bench_*.py'):
                 data = path.read_bytes()
                 self._tool_hashes[path.name] = hashlib.sha256(data).hexdigest()
                 (self._tools / path.name).write_bytes(data)

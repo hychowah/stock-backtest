@@ -1,4 +1,8 @@
 """One launcher resolves dependencies and opens the browser without manual steps."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +17,10 @@ sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
 import serve
 import build_state
 import build
-import research
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import research as research
 
 
 class StartupTests(unittest.TestCase):
@@ -22,18 +29,18 @@ class StartupTests(unittest.TestCase):
         self.context.enter_context(patch.object(serve.cache_access,'access',side_effect=lambda:nullcontext()))
         self.context.enter_context(patch.object(serve.diagnostics,'configure',return_value=None))
         self.context.enter_context(patch.object(serve.diagnostics,'close'))
-        self.context.enter_context(patch.object(serve.data_manager,'source_problem',return_value=False))
+        self.context.enter_context(patch.object(serve.cache_assets,'source_problem',return_value=False))
 
     def test_prepare_then_build_when_stale(self):
         calls=[]
-        with patch.object(serve.schedules,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve.subprocess,'run',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
+        with patch.object(daily,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve.subprocess,'run',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
             serve.ensure_ready()
         self.assertEqual(calls,['prepare','check_build','build'])
         self.assertEqual(run.call_args.args[0],[sys.executable,'-X','utf8',str(serve.ROOT/'build.py'),'--cache-owned'])
         self.assertTrue(run.call_args.kwargs['check'])
 
     def test_unchanged_caches_do_not_rebuild_page(self):
-        with patch.object(serve.schedules,'prepare'),patch.object(serve,'current_build',return_value=True),patch.object(serve.subprocess,'run') as run:
+        with patch.object(daily,'prepare'),patch.object(serve,'current_build',return_value=True),patch.object(serve.subprocess,'run') as run:
             serve.ensure_ready()
         run.assert_not_called()
 
@@ -47,7 +54,7 @@ class StartupTests(unittest.TestCase):
 
     def test_missing_sources_open_recovery_panel_without_preparation(self):
         server=Mock();server.server_address=('127.0.0.1',3000)
-        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve.data_manager,'source_problem',return_value=True),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'Server',return_value=server):
+        with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve.cache_assets,'source_problem',return_value=True),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'Server',return_value=server):
             serve.main()
         prepare.assert_not_called();self.assertTrue(server.data_recovery)
         server.serve_forever.assert_called_once()
@@ -139,8 +146,9 @@ class PortableFingerprintTests(unittest.TestCase):
             for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(raw/name).write_text('[]')
             (results/'summary-exits.txt').write_text('Through 2026-10-20\n')
             context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw));context.enter_context(patch.object(research,'RESULTS',results))
-            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.screening,'screening.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.run,'run.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
+            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.screening,'screening.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.market,'market.py'),(research.legacy,'legacy.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
                 file=root/name;file.write_text('source');context.enter_context(patch.object(module,'__file__',str(file)))
+            for name in ('legacy_downloads.py','fmp_download.py'):(root/name).write_text('source')
             expected=research.signature();original=Path.stat;directory=raw/'px'
             stamp=directory.stat().st_mtime_ns
             def stat(path,*args,**kwargs):

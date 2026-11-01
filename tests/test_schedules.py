@@ -1,4 +1,14 @@
 """Dated books: calendar anchoring, point-in-time prices, compounding and reuse."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import market
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import rules, books as financial_books, metrics
+from backtest import calendar as schedule_calendar, portfolio_results
 from datetime import date, timedelta
 from pathlib import Path
 import sqlite3
@@ -14,40 +24,40 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-import schedules as s
+from backtest.engines.original import schedules as s
 
 
 class CalendarTests(unittest.TestCase):
     def test_daily_binding_and_connect_use_explicit_research_source(self):
         with tempfile.TemporaryDirectory() as folder:
             source=Path(folder)/'custom-research.sqlite';path=Path(folder)/'daily.sqlite'
-            with patch.object(s.r,'signature',return_value={'fixture':1}),patch.object(s.r,'prepared_price_binding',
+            with patch.object(research,'signature',return_value={'fixture':1}),patch.object(research,'prepared_price_binding',
                     side_effect=lambda selected:'custom' if selected==source else 'default'):
-                inputs=s.fingerprint(source)
+                inputs=daily.fingerprint(source)
                 with closing(sqlite3.connect(path)) as db:
                     db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
                     db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(inputs)));db.commit()
-                with closing(s.connect(path,source)) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM metadata').fetchone()[0],1)
-                with self.assertRaisesRegex(ValueError,'Daily cache changed'):s.connect(path)
+                with closing(daily.connect(path,source)) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM metadata').fetchone()[0],1)
+                with self.assertRaisesRegex(ValueError,'Daily cache changed'):daily.connect(path)
 
     def test_daily_fingerprint_tracks_portfolio_reducer(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'portfolio_results.py';path.write_text('# first')
-            with patch.object(s.r,'signature',return_value={'private-fixture':1}),patch.object(s.r,'prepared_price_binding',return_value='fixture'),patch.object(s.portfolio_results,'__file__',str(path)):
-                before=s.fingerprint()
+            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(portfolio_results,'__file__',str(path)):
+                before=daily.fingerprint()
                 path.write_text('# changed portfolio source')
-                after=s.fingerprint()
-        self.assertNotEqual(before['engine']['portfolio_results.py'],after['engine']['portfolio_results.py'])
+                after=daily.fingerprint()
+        self.assertNotEqual(before['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name],after['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name])
 
     def test_daily_fingerprint_tracks_calendar_source(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
-            with patch.object(s.r,'signature',return_value={'private-fixture':1}),patch.object(s.r,'prepared_price_binding',return_value='fixture'),patch.object(s.schedule_calendar,'__file__',str(path)):
-                before=s.fingerprint()
+            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(schedule_calendar,'__file__',str(path)):
+                before=daily.fingerprint()
                 path.write_text('# changed calendar source')
-                after=s.fingerprint()
-        self.assertEqual(set(before['engine']),{'scripts/schedules.py','scripts/book_batch.py','schedule_calendar.py','backtest/portfolio_results.py'})
-        self.assertNotEqual(before['engine']['schedule_calendar.py'],after['engine']['schedule_calendar.py'])
+                after=daily.fingerprint()
+        self.assertEqual(set(before['engine']),{'backtest/inputs/daily.py','backtest/engines/original/schedules.py','backtest/engines/original/book_batch.py',path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name,'backtest/portfolio_results.py'})
+        self.assertNotEqual(before['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name],after['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name])
 
     def sessions(self,first,last):
         days=[]
@@ -79,7 +89,7 @@ class CalendarTests(unittest.TestCase):
 class BacktestTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(s.SCHEMA)
+        self.addCleanup(self.db.close);self.db.executescript(daily.SCHEMA)
         self.db.executemany('INSERT INTO sessions VALUES(?,?)',[('2015-01-02',100),('2015-04-01',110),('2015-07-01',121)])
         for symbol,ebitda,prices in [('A',30e6,[10,20,30,15]),('B',10e6,[10,10,20,20])]:
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
@@ -90,7 +100,7 @@ class BacktestTests(unittest.TestCase):
 
     def test_weekly_dates_use_ordinary_financial_evaluation_with_legacy_metadata(self):
         sessions=[date.fromisoformat(row[0]) for row in self.db.execute('SELECT day FROM sessions ORDER BY day')]
-        calendar=s.schedule_calendar.SessionCalendar(sessions)
+        calendar=schedule_calendar.SessionCalendar(sessions)
         configuration=dict(version=1,start='2015-01-01',end='2015-07-01',interval=dict(unit='week',count=1))
         dates=[str(a) for a,b in calendar.fixed(configuration)]
         self.assertEqual(dates,['2015-01-02','2015-04-01'])
@@ -159,18 +169,18 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(survivor['contribution_pp'],100)
 
     def test_array_and_sql_price_adapters_share_financial_policy(self):
-        statement=s.histories(self.db)[0]['A'][0]
+        statement=daily.histories(self.db)[0]['A'][0]
         entry,exit_day=date(2015,1,2),date(2015,7,1)
         series=[(date.fromisoformat(row[0]),row[1]) for row in self.db.execute("SELECT day,price FROM prices WHERE symbol='A' ORDER BY day")]
-        array=s.r.snapshot(statement,entry,exit_day,series,series,False)
-        lookup=lambda day,column,forward,slack:s.price(self.db,'A',day,column,forward=forward,slack=slack)
-        self.assertEqual(array,s.financial_books.snapshot(statement,entry,exit_day,lookup,False))
+        array=research.snapshot(statement,entry,exit_day,series,series,False)
+        lookup=lambda day,column,forward,slack:daily.price(self.db,'A',day,column,forward=forward,slack=slack)
+        self.assertEqual(array,financial_books.snapshot(statement,entry,exit_day,lookup,False))
         # A stopped holding is retained, and a declared bankruptcy overrides price.
         self.db.execute("DELETE FROM prices WHERE symbol='A' AND day='2015-07-01'")
-        stopped=s.financial_books.snapshot(statement,entry,exit_day,lookup,False)
+        stopped=financial_books.snapshot(statement,entry,exit_day,lookup,False)
         self.assertEqual(stopped[-1],'Last available price')
         self.assertEqual(stopped[-2],.5)
-        bankrupt=s.financial_books.snapshot(statement,entry,exit_day,lookup,True)
+        bankrupt=financial_books.snapshot(statement,entry,exit_day,lookup,True)
         self.assertEqual(bankrupt[-2:],[-1.,'Bankruptcy'])
 
     def test_rebalance_and_compounding(self):
@@ -182,7 +192,7 @@ class BacktestTests(unittest.TestCase):
         self.assertAlmostEqual(result['spy_growth'],1.21)
         self.assertEqual(result['periods'][0]['holdings'][0]['weight'],1)
         # Cached period books are independent of screening filters.
-        with patch.object(s,'price',side_effect=AssertionError('Repeated books must not read daily prices')):
+        with patch.object(daily,'price',side_effect=AssertionError('Repeated books must not read daily prices')):
             second=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=2)
         self.assertAlmostEqual(second['growth'],1.75*.75)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],2)
@@ -226,7 +236,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM screening_metrics WHERE pool='cached'").fetchone()[0],0)
         saved=[tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")]
         periods=[tuple(row) for row in self.db.execute('SELECT * FROM periods ORDER BY year')]
-        with patch.object(s,'price',wraps=s.price) as lookup:
+        with patch.object(daily,'price',wraps=daily.price) as lookup:
             wider=s.backtest(self.db,pool='cached',**options)
         self.assertGreater(lookup.call_count,0)
         self.assertEqual([p['holdings'][0]['symbol'] for p in wider['periods']],['C','C'])
@@ -241,7 +251,7 @@ class BacktestTests(unittest.TestCase):
             self.db.backup(copy);copy.close()
             reopened=sqlite3.connect(path);reopened.row_factory=sqlite3.Row
             try:
-                with patch.object(s,'price',side_effect=AssertionError('Completed pool')),patch.object(s,'histories',side_effect=AssertionError('Completed pool')):
+                with patch.object(daily,'price',side_effect=AssertionError('Completed pool')),patch.object(daily,'histories',side_effect=AssertionError('Completed pool')):
                     for pool in ('cached','legacy'):
                         repeat=s.backtest(reopened,pool=pool,**options)
                         expected=wider if pool=='cached' else original
@@ -269,7 +279,7 @@ class BacktestTests(unittest.TestCase):
         self.assertIsNone(empty['cagr'])
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0],0)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],2)
-        with patch.object(s,'price',side_effect=AssertionError('Empty completed pool')),patch.object(s,'histories',side_effect=AssertionError('Empty completed pool')):
+        with patch.object(daily,'price',side_effect=AssertionError('Empty completed pool')),patch.object(daily,'histories',side_effect=AssertionError('Empty completed pool')):
             repeat=s.backtest(self.db,pool='legacy',**options)
         self.assertEqual(repeat['periods'],empty['periods'])
         populated=s.backtest(self.db,pool='cached',**options)
@@ -294,7 +304,7 @@ class ShutdownTests(unittest.TestCase):
 
     def test_interrupted_second_pool_preserves_completed_first_pool(self):
         before=self.contents(self.db)
-        with patch.object(s.metrics,'evaluate',side_effect=KeyboardInterrupt()):
+        with patch.object(metrics,'evaluate',side_effect=KeyboardInterrupt()):
             with self.assertRaises(KeyboardInterrupt):
                 s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=12,pool='cached',rank_to=1)
         self.assertEqual(self.contents(self.db),before)
@@ -325,7 +335,7 @@ class ShutdownTests(unittest.TestCase):
 import sqlite3,sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
-import schedules as s
+from backtest.engines.original import schedules as s
 db=sqlite3.connect(sys.argv[2]);db.row_factory=sqlite3.Row
 db.execute('PRAGMA cache_size=1')
 original=s.prepare_period
@@ -337,7 +347,7 @@ def paused(*args):
 s.prepare_period=paused
 s.backtest(db,start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
 """
-            process=subprocess.Popen([sys.executable,'-c',child_code,str(Path(s.__file__).parent),str(path),str(marker)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            process=subprocess.Popen([sys.executable,'-c',child_code,str(Path(__file__).resolve().parents[1]),str(path),str(marker)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             try:
                 deadline=time.monotonic()+15
                 while not marker.exists() and process.poll() is None and time.monotonic()<deadline:
@@ -371,40 +381,40 @@ class PreparationTests(unittest.TestCase):
         (raw/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=10)])))
         (raw/'spy-div.json').write_text(json.dumps([dict(date='2015-01-02',adjClose=100)]))
         (raw/'treasury.json').write_text('[]')
-        db=sqlite3.connect(self.source);db.executescript(s.r.SCHEMA)
+        db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
         db.commit();db.close()
-        self.context.enter_context(patch.object(s.r,'RAW',raw))
-        self.context.enter_context(patch.object(s.r.run,'RAW',raw))
-        self.context.enter_context(patch.object(s,'fingerprint',return_value={'fixture':1}))
-        self.context.enter_context(patch.object(s.r,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
+        self.context.enter_context(patch.object(research,'RAW',raw))
+        self.context.enter_context(patch.object(market,'RAW',raw))
+        self.context.enter_context(patch.object(daily,'fingerprint',return_value={'fixture':1}))
+        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
 
     def test_publish_and_unchanged_skip(self):
         db=sqlite3.connect(self.source)
         db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)");db.commit();db.close()
-        with patch.object(s.r,'prepare') as prerequisite:
-            s.prepare(self.path,self.source)
+        with patch.object(research,'prepare') as prerequisite:
+            daily.prepare(self.path,self.source)
         prerequisite.assert_called_once_with(self.source)
         original=self.path.read_bytes()
-        db=s.connect(self.path)
-        self.assertEqual(s.r.ten_year_yield(db,date(2015,1,2)),3)
+        db=daily.connect(self.path)
+        self.assertEqual(research.ten_year_yield(db,date(2015,1,2)),3)
         self.assertEqual(db.execute('SELECT COUNT(*) FROM prices').fetchone()[0],1);db.close()
         with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')):
-            s.prepare(self.path,self.source)
+            daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
 
     def test_failure_preserves_previous_cache(self):
-        s.prepare(self.path,self.source);original=self.path.read_bytes()
-        with patch.object(s,'fingerprint',return_value={'fixture':2}),patch.object(s.r,'bars',side_effect=ValueError('bad fixture')):
-            with self.assertRaisesRegex(ValueError,'bad fixture'):s.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source);original=self.path.read_bytes()
+        with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(research,'bars',side_effect=ValueError('bad fixture')):
+            with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
 
     def version_one_cache(self):
-        s.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source)
         previous=dict(version=1,inputs={'raw':'unchanged'},prices='fixture-prices',engine=[10,20])
-        current=dict(version=s.VERSION,inputs=previous['inputs'],prices=previous['prices'],engine=[30,40])
+        current=dict(version=daily.VERSION,inputs=previous['inputs'],prices=previous['prices'],engine=[30,40])
         db=sqlite3.connect(self.path)
         db.execute('DROP TABLE period_pools')
         db.execute("INSERT INTO periods VALUES(1,'2015-01-02','2015-07-01',.1,0,1,1)")
@@ -426,12 +436,12 @@ class PreparationTests(unittest.TestCase):
                         ('prices','companies','statements','sessions','treasuries','periods','snapshots','screening_metrics')}
             finally:db.close()
         before=contents()
-        with patch.object(s,'fingerprint',return_value=current),patch.object(s.r,'bars',side_effect=AssertionError('Migration must not parse prices')):
-            with self.assertRaises(ValueError):s.connect(self.path)
-            s.prepare(self.path,self.source)
-            db=s.connect(self.path)
+        with patch.object(daily,'fingerprint',return_value=current),patch.object(research,'bars',side_effect=AssertionError('Migration must not parse prices')):
+            with self.assertRaises(ValueError):daily.connect(self.path)
+            daily.prepare(self.path,self.source)
+            db=daily.connect(self.path)
             self.assertEqual(db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],4)
-            self.assertEqual(s.prepared_period(db,date(2015,7,1),date(2015,12,31),'cached'),2)
+            self.assertEqual(daily.prepared_period(db,date(2015,7,1),date(2015,12,31),'cached'),2)
             self.assertEqual(json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0]),current)
             db.close()
         self.assertEqual(contents(),before)
@@ -439,7 +449,7 @@ class PreparationTests(unittest.TestCase):
     def test_upgrade_rejects_changed_inputs_without_modifying_cache(self):
         previous,current=self.version_one_cache();before=self.path.read_bytes()
         current['inputs']={'raw':'changed'}
-        self.assertFalse(s.upgrade_daily_cache(self.path,current))
+        self.assertFalse(daily.upgrade_daily_cache(self.path,current))
         self.assertEqual(self.path.read_bytes(),before)
 
     def test_upgrade_never_rebinds_missing_or_changed_price_evidence(self):
@@ -447,24 +457,24 @@ class PreparationTests(unittest.TestCase):
         before=self.path.read_bytes()
         for prices in (None,'changed-prices'):
             changed=dict(current,prices=prices)
-            self.assertFalse(s.upgrade_daily_cache(self.path,changed))
+            self.assertFalse(daily.upgrade_daily_cache(self.path,changed))
             self.assertEqual(self.path.read_bytes(),before)
         with closing(sqlite3.connect(self.path)) as db:
             previous.pop('prices')
             db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),));db.commit()
         before=self.path.read_bytes()
-        self.assertFalse(s.upgrade_daily_cache(self.path,current))
+        self.assertFalse(daily.upgrade_daily_cache(self.path,current))
         self.assertEqual(self.path.read_bytes(),before)
 
     def test_version_two_upgrade_preserves_partial_pool_completion(self):
         previous,current=self.version_one_cache()
-        db=sqlite3.connect(self.path);db.execute(s.POOL_SCHEMA)
+        db=sqlite3.connect(self.path);db.execute(daily.POOL_SCHEMA)
         prices=db.execute('SELECT * FROM prices').fetchall()
         db.execute("INSERT INTO period_pools VALUES(1,'legacy')")
         previous['version']=2
         db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),))
         db.commit();db.close()
-        self.assertTrue(s.upgrade_daily_cache(self.path,current))
+        self.assertTrue(daily.upgrade_daily_cache(self.path,current))
         db=sqlite3.connect(self.path)
         self.assertEqual(db.execute('SELECT * FROM period_pools').fetchall(),[(1,'legacy')])
         self.assertEqual(db.execute('SELECT * FROM prices').fetchall(),prices)
@@ -476,10 +486,10 @@ class PreparationTests(unittest.TestCase):
         db.execute("CREATE TRIGGER fail_upgrade BEFORE UPDATE ON metadata BEGIN SELECT RAISE(ABORT,'interrupted upgrade'); END")
         db.commit();db.close();before=self.path.read_bytes()
         with self.assertRaisesRegex(sqlite3.IntegrityError,'interrupted upgrade'):
-            s.upgrade_daily_cache(self.path,current)
+            daily.upgrade_daily_cache(self.path,current)
         self.assertEqual(self.path.read_bytes(),before)
         db=sqlite3.connect(self.path);db.execute('DROP TRIGGER fail_upgrade');db.commit();db.close()
-        self.assertTrue(s.upgrade_daily_cache(self.path,current))
+        self.assertTrue(daily.upgrade_daily_cache(self.path,current))
 
 
 class ServiceTests(unittest.TestCase):
@@ -501,7 +511,7 @@ class ServiceTests(unittest.TestCase):
         def connection():
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
             self.db.backup(db);return db
-        with patch.object(self.serve.schedules,'connect',side_effect=connection):handler.do_POST()
+        with patch.object(daily,'connect',side_effect=connection):handler.do_POST()
         return response[0]
 
     def test_real_handler_calculates_dates_without_a_socket(self):

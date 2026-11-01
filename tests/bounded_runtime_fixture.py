@@ -9,13 +9,16 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import backtest_control
-import numerical_random
-import numerical_session
-from numerical_portfolio import NumericalPortfolio
-import schedules
-import trial_checkpoints
-from process_owner import process_metrics
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical import random as numerical_random
+from backtest.engines.numerical import session as numerical_session
+from backtest.engines.numerical.portfolio import NumericalPortfolio
+from backtest.engines.original import schedules as schedules
+from backtest.engines.numerical import checkpoints as trial_checkpoints
+from backtest.runtime.process_owner import process_metrics
 
 
 def input_record(long=False):

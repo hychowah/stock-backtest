@@ -3,6 +3,10 @@
 All inputs are fictional private SQLite fixtures. Compiler discovery is explicit;
 platform release evidence must run these tests with a native compiler, not skip.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.financial import books as financial_books
 from copy import deepcopy
 from datetime import date
 import io
@@ -19,22 +23,22 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'tests'),str(ROOT/'website')]
 import numpy as np
-import backtest_control
-import numerical_candidates as candidates
-import numerical_rust as rust
-import numerical_rust_codegen as codegen
-from numerical_books import PythonExecutor
-from numerical_numba import NumbaExecutor
-from numerical_portfolio import NumericalPortfolio,compare_results
-from numerical_execution import ExecutionPolicy
-import numerical_random
-import numerical_session
-import numerical_trial
-from numerical_trial_pool import TrialPool
-from numerical_workspace import RequestWorkspace
-import result_evidence
-import robustness
-import trial_checkpoints
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical import candidates as candidates
+from backtest.engines.numerical import rust as rust
+from backtest.engines.numerical import rust_codegen as codegen
+from backtest.engines.numerical.books import PythonExecutor
+from backtest.engines.numerical.numba import NumbaExecutor
+from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
+from backtest.engines.numerical.execution import ExecutionPolicy
+from backtest.engines.numerical import random as numerical_random
+from backtest.engines.numerical import session as numerical_session
+from backtest.engines.numerical import trial as numerical_trial
+from backtest.engines.numerical.trial_pool import TrialPool
+from backtest.engines.numerical.workspace import RequestWorkspace
+from backtest import result_evidence as result_evidence
+from backtest.engines.original import robustness as robustness
+from backtest.engines.numerical import checkpoints as trial_checkpoints
 import test_bench_candidates as source_tests
 import test_bench_candidates_numba as numba_tests
 import test_numerical_generation as generations
@@ -68,7 +72,7 @@ class RustCandidates(source_tests.CandidateTests):
         books=[('2015-01-02','2016-01-04',pool) for pool in ('cached','legacy')]
         options=self.all_fields();expected=source.evaluate(books,options)
         with patch.object(inputs.policy,'_snapshot',side_effect=AssertionError('No Python snapshot')), \
-             patch.object(inputs.s.financial_books,'eligible',side_effect=AssertionError('No Python eligibility')), \
+             patch.object(financial_books,'eligible',side_effect=AssertionError('No Python eligibility')), \
              patch.object(inputs.policy,'_current',side_effect=AssertionError('No Python pair')), \
              patch.object(inputs.policy,'_three',side_effect=AssertionError('No Python three-year pair')), \
              patch.object(PythonExecutor,'_encode_candidate',side_effect=AssertionError('No source encoding')):
@@ -175,7 +179,7 @@ class RustCandidates(source_tests.CandidateTests):
         print(json.dumps(dict(check='repeated-rust-call-close',repeats=8,caller_lifetime='Held alive after ABI return through provider close')),flush=True)
 
     def test_native_tls_destructors_complete_before_abi_returns(self):
-        policy=source_tests.core.PolicyProgram(source_tests.s)
+        policy=source_tests.core.PolicyProgram()
         source=self.root/'tls-proof.rs';source.write_bytes(codegen.source(policy).encode('utf-8'))
         binary=self.root/('tls-proof.exe' if os.name=='nt' else 'tls-proof')
         descriptor=rust.numerical_toolchain.inspect_toolchain()
@@ -255,20 +259,27 @@ class RustCandidates(source_tests.CandidateTests):
 
 
 class RustSourceTests(unittest.TestCase):
+    def test_unknown_nonpython_resource_fails_source_closure(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'unknown.rs').write_text('fn main() {}')
+            with self.assertRaisesRegex(ValueError,'source resource'):
+                numerical_random._source_closure(root,['unknown.rs'])
+
     def test_rejected_source_syntax_and_lowered_representation(self):
         from types import SimpleNamespace
         import ast
         program=SimpleNamespace(trees={'eligible':ast.parse('def f(numeric,pool):\n return eval("unknown")').body[0]})
         with self.assertRaisesRegex(ValueError,'Unsupported validated'):codegen.DecisionLowering(program).source()
         self.assertNotIn('bench_candidates',Path(rust.__file__).read_text())
-        policy=source_tests.core.PolicyProgram(source_tests.s)
+        policy=source_tests.core.PolicyProgram()
         from types import SimpleNamespace
         with self.assertRaisesRegex(ValueError,'compiled provider'):
             PythonExecutor(SimpleNamespace(policy=policy),limits=dict(candidate_assembly='compiled'))
         text=codegen.source(policy)
         self.assertNotIn('__',text);self.assertIn('fn decision_snapshot',text)
         self.assertEqual(set(policy.decisions.trees),{'snapshot','eligible','current','three'})
-        self.assertIn('scripts/numerical_rust_kernel.rs',numerical_random.source_identity())
+        self.assertIn('backtest/engines/numerical/rust_kernel.rs',numerical_random.source_identity())
 
 
 @unittest.skipUnless(AVAILABLE,'An explicit native Rust compiler is required.')
@@ -315,7 +326,7 @@ class RustTrials(unittest.TestCase):
 
     @unittest.skip('Historical Rust runtime selection retained in archived E/F/G comparison source; current app selects compiled Numba.')
     def test_rust_runtime_session_releases_provider_library_and_input_mappings(self):
-        from numerical_runtime import NumericalRuntime
+        from backtest.engines.numerical.runtime import NumericalRuntime
         (self.fixture.root/'binding.json').write_text(json.dumps(self.fixture.binding))
         scratch=self.fixture.root/'actual-rust-runtime'
         runtime=NumericalRuntime(source_root=ROOT,scratch=scratch,generation_path=self.fixture.store.path,

@@ -19,10 +19,10 @@ from threading import Event, Lock, Thread
 import time
 import zlib
 
-import backtest_control
+from backtest.runtime import backtest_control as backtest_control
 import backtest_jobs
-import cache_access
-import diagnostics
+from backtest.runtime import cache_access as cache_access
+from backtest.runtime import diagnostics as diagnostics
 import durable_evidence
 import saved_backtests
 

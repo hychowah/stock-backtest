@@ -1,4 +1,10 @@
 """Random complete-result parity and replay with fictional owned numerical inputs."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.financial import metrics
+from backtest import calendar as schedule_calendar
+from backtest.runtime import backtest_control
 from copy import deepcopy
 from contextlib import closing,ExitStack
 import hashlib
@@ -17,10 +23,10 @@ import test_bench_methods as shared
 import test_numerical_generation as generations
 from bench_candidates import NumericInputs,PythonExecutor
 from bench_candidates_numba import NumbaExecutor
-from numerical_portfolios import NumericalPortfolio,compare_results
-import numerical_trials as diagnostic
-import robustness
-import trial_checkpoints
+from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
+from backtest.engines.numerical import random as diagnostic
+from backtest.engines.original import robustness as robustness
+from backtest.engines.numerical import checkpoints as trial_checkpoints
 
 s=shared.s
 
@@ -73,7 +79,7 @@ class NumericalTrialsTests(unittest.TestCase):
         inputs,provider,portfolio,store=self.evaluator();cases=0;holding_occurrences=0
         maximum_absolute=maximum_relative=0.
         for pool in ('legacy','cached'):
-            for metric in s.metrics.METRICS:
+            for metric in metrics.METRICS:
                 for rank_from,rank_to in ((1,100),(2,3)):
                     for filters in ([],[dict(field='pe',op='lt',value=20.)],
                                     [dict(field='return_1y',op='gt',value=0.)]):
@@ -98,7 +104,7 @@ class NumericalTrialsTests(unittest.TestCase):
                                 maximum_relative=max(maximum_relative,agreement['maximum_relative'])
                             with patch.object(provider,'begin',side_effect=AssertionError('Replay must not begin provider')), \
                                     patch.object(provider,'evaluate',side_effect=AssertionError('Replay must not calculate')), \
-                                    patch('numerical_portfolios.stage_book',side_effect=AssertionError('Replay must not stage')):
+                                    patch('backtest.engines.numerical.portfolio.stage_book',side_effect=AssertionError('Replay must not stage')):
                                 replayed=[]
                                 replay=diagnostic.run(portfolio,config,experiment,capture=lambda n,r:replayed.append(r))['result']
                             self.assertEqual(captured,replayed)
@@ -130,14 +136,14 @@ class NumericalTrialsTests(unittest.TestCase):
         self.assertEqual(captured,[1,2,3])
         self.assertEqual(result['execution']['recovered_trials'],2)
         self.assertEqual(result['execution']['calculated_trials'],1)
-        with patch.object(s.backtest_control,'checkpoint',side_effect=KeyboardInterrupt), \
+        with patch.object(backtest_control,'checkpoint',side_effect=KeyboardInterrupt), \
                 patch.object(experiment,'load',side_effect=AssertionError('Cancel before recovery')):
             with self.assertRaises(KeyboardInterrupt):diagnostic.run(portfolio,config,experiment)
 
     def test_duplicate_schedules_recorded_dates_invalid_late_trial_and_oversize(self):
         inputs,provider,portfolio,store=self.evaluator();config=self.config(months=12)
         config['samples']=[config['samples'][0][:] for _ in range(3)]
-        with patch.object(portfolio.s.schedule_calendar.SessionCalendar,'sample',side_effect=AssertionError('Never resample')):
+        with patch.object(schedule_calendar.SessionCalendar,'sample',side_effect=AssertionError('Never resample')):
             experiment=store.open(diagnostic.checkpoint_binding(portfolio,config))
             captured=[];events=[]
             result=diagnostic.run(portfolio,config,experiment,events.append,capture=lambda n,r:captured.append(n))['result']
@@ -177,10 +183,10 @@ class NumericalTrialsTests(unittest.TestCase):
         with patch.dict(provider.limits,{'request_plan':False}):
             with self.assertRaisesRegex(ValueError,'binding'):diagnostic.run(portfolio,config,experiment)
         self.assertNotIn(str(ROOT),trial_checkpoints.canonical(original))
-        self.assertTrue({'backtest/financial/metrics.py','backtest/portfolio_results.py','scripts/robustness.py',
-            'backtest/calendar.py','scripts/research.py','scripts/numerical_policy.py',
-            'scripts/numerical_trial.py','scripts/result_evidence.py',
-            'tools/bench_candidates_numba.py','tools/portfolio_workspace.py'} <= sources.keys())
+        self.assertTrue({'backtest/financial/metrics.py','backtest/portfolio_results.py','backtest/engines/original/robustness.py',
+            'backtest/calendar.py','backtest/inputs/research.py','backtest/engines/numerical/policy.py',
+            'backtest/engines/numerical/trial.py','backtest/result_evidence.py',
+            'tools/bench_candidates_numba.py','backtest/engines/numerical/workspace.py'} <= sources.keys())
 
     def test_consumer_rejects_noncontiguous_and_missing_results(self):
         inputs,provider,portfolio,store=self.evaluator();config=self.config()
@@ -243,7 +249,7 @@ class NumericalTrialsTests(unittest.TestCase):
         self.assertEqual(json.loads(originals[1][0][-1]),config,'The queue retains the exact sampled date plan.')
 
         # Replace actual fictional price inputs and attach a newly built numeric
-        # generation. This changes financial results as well as its identity.
+        # generation. This changes financial results as its identity.
         with self.db:
             self.db.execute("UPDATE prices SET adjusted=adjusted*1.1 WHERE day>='2016-01-04'")
         replacement=NumericInputs(self.reader,s);self.addCleanup(replacement.close)

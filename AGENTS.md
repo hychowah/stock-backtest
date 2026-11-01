@@ -82,7 +82,7 @@ fallback. See `docs/workspaces.md`. Verify deployment with
 
 `results/legacy/summary.txt` and `results/legacy/picks.csv` are the earlier pass. That pass dropped a stock when its price stopped more than 10 days before the January sale. Do not quote those files as the latest result.
 
-`scripts/revalue.py` requests a verified refresh of `results/summary-exits.txt` and the research database. Its `calculate(through)` function is the independent read-only engine. It reads the cache and does not download. `scripts/run.py` still uses the old exit rule and rewrites `results/legacy/summary.txt`.
+`scripts/revalue.py` requests a verified refresh of `results/summary-exits.txt` and the research database. The independent read-only `calculate(through)` lives in `backtest/engines/reference/revalue.py`. It reads the cache and does not download. `scripts/run.py` invokes the retained downloader and the older report in `backtest/engines/reference/legacy.py`. That report keeps the old exit rule and writes `results/legacy/summary.txt`.
 
 ## What the test does
 
@@ -98,7 +98,7 @@ The 3-month Treasury yield is one number for every stock that day. Subtracting i
 - Market cap at least $100 million. Enterprise value at least $50 million. Currency USD.
 - A stock with no buy price is left out.
 - If trading stops before the January sale, the exit is the last price. That covers an acquisition, a called note, and a SPAC that returns cash.
-- A bankruptcy is a total loss. `BANKRUPT` in `scripts/revalue.py` is the set of `(year, symbol)` pairs that get −100%. It is empty. The 37 stops were checked. They were acquisitions, redemptions, SPAC cash, or warrants. None was marked a bankruptcy.
+- A bankruptcy is a total loss. `BANKRUPT` in `backtest/financial/rules.py` is the set of `(year, symbol)` pairs that get −100%. It is empty. The 37 stops were checked. They were acquisitions, redemptions, SPAC cash, or warrants. None was marked a bankruptcy.
 - A stock that still has a January price keeps that price. A later delisting does not rewrite the year.
 
 ## Cache
@@ -111,13 +111,13 @@ Do not refetch data that is already here.
 - `raw/spy-div.json` — SPY total-return prices from 1995.
 - `raw/treasury.json` — daily Treasury yields from 1995. The 3-month yield is `month3`, in percent.
 
-`raw/archive/*.csv` and `raw/archive/delisted-*.json` are leftover bulk downloads. `scripts/run.py` does not read them.
+`raw/archive/*.csv` and `raw/archive/delisted-*.json` are leftover bulk downloads. `backtest/engines/reference/legacy.py` does not read them.
 
 ## FMP limits
 
-A 30-year price or Treasury request returns only the latest rows. Request short date windows. One stock price history is capped at about 5,000 sessions, so `scripts/run.py` asks for three windows.
+A 30-year price or Treasury request returns only the latest rows. Request short date windows. One stock price history is capped at about 5,000 sessions, so `backtest/inputs/legacy_downloads.py` asks for three windows.
 
-Bulk statement files (`key-metrics-bulk`, `income-statement-bulk`) are refused when many run at once. Per-symbol `key-metrics` calls work at about 16 at a time. The pace gate inside `scripts/run.py` made those calls stall. `fetch_metrics` turns that gate off.
+Bulk statement files (`key-metrics-bulk`, `income-statement-bulk`) are refused when many run at once. Per-symbol `key-metrics` calls work at about 16 at a time. The pace gate inside `backtest/inputs/legacy_downloads.py` made those calls stall. `fetch_metrics` turns that gate off.
 
 ## How to continue
 
@@ -127,11 +127,11 @@ Recompute exits from the cache:
 python scripts/revalue.py
 ```
 
-Add a bankruptcy as a total loss by putting `(year, "SYMBOL")` in `BANKRUPT` in `scripts/revalue.py`, then run that file again.
+Add a bankruptcy as a total loss by putting `(year, "SYMBOL")` in `BANKRUPT` in `backtest/financial/rules.py`, then run `python scripts/revalue.py` again.
 
-Change the screen, the universe, or the price cache in `scripts/run.py`. Run it only when the cache is missing data. Merge any new exit rule into `scripts/revalue.py` before treating `results/legacy/summary.txt` as current.
+The independent screen lives in `backtest/engines/reference/legacy.py`. Universe and price downloads live in `backtest/inputs/legacy_downloads.py`. Run `scripts/run.py` only when the cache is missing data. Production financial policy lives in `backtest/financial/`. Merge any new exit rule into `backtest/engines/reference/revalue.py` before treating `results/legacy/summary.txt` as current.
 
-`scripts/classify_stops.py` and `results/stops/stops-class.json` record SEC form types for the 37 stops. The merger flag in that file is broad. `scripts/revalue.py` does not read it. It uses the last price for every stop. Use the form list as a clue, and check a name before calling it a bankruptcy.
+`scripts/classify_stops.py` and `results/stops/stops-class.json` record SEC form types for the 37 stops. The merger flag in that file is broad. `backtest/engines/reference/revalue.py` does not read it. It uses the last price for every stop. Use the form list as a clue, and check a name before calling it a bankruptcy.
 
 ## Project layout
 
@@ -168,13 +168,13 @@ to satisfy this rule.
 
 ## Fast research workflow
 
-`scripts/research.py prepare` creates the offline `data/research.sqlite` January data layer from the raw cache. It compares the prepared baseline with `revalue.calculate(through)` at full precision; repeated preparation skips parsing when inputs are current. `scripts/baseline.py` owns the report cutoff, report rendering, holding-level agreement, revision evidence and recoverable report/database publication. Both engines must agree on all years, ranks, symbols, dates, prices, valuations, returns and exit basis. Verified changes update the canonical report without advancing its Through date. Preserve previous reports verbatim and priced snapshots under ignored `results/baseline-history/`. First-run unavailable prices must stay null. An unfinished `data/research.sqlite.publication.json` blocks readers; preparation completes its hash-verified publication before freshness checks. Do not bypass disagreement or relax the full-precision tolerance. Test with `python3 tests/test_baseline.py`, including native Windows. Use `scripts/research.py screen --top 100` or other flags for experiments, rather than editing `HOLD` and reparsing daily history. The website uses the prepared database. `scripts/revalue.py` remains the independent slower reference calculation.
+`scripts/research.py prepare` creates the offline `data/research.sqlite` January data layer from the raw cache. It compares the prepared baseline with `revalue.calculate(through)` at full precision; repeated preparation skips parsing when inputs are current. `backtest/inputs/baseline.py` owns the report cutoff, report rendering, holding-level agreement, revision evidence and recoverable report/database publication. Both engines must agree on all years, ranks, symbols, dates, prices, valuations, returns and exit basis. Verified changes update the canonical report without advancing its Through date. Preserve previous reports verbatim and priced snapshots under ignored `results/baseline-history/`. First-run unavailable prices must stay null. An unfinished `data/research.sqlite.publication.json` blocks readers; preparation completes its hash-verified publication before freshness checks. Do not bypass disagreement or relax the full-precision tolerance. Test with `python3 tests/test_baseline.py`, including native Windows. Use `scripts/research.py screen --top 100` or other flags for experiments, rather than editing `HOLD` and reparsing daily history. The website uses the prepared database. `backtest/engines/reference/revalue.py` remains the independent slower reference calculation.
 
 The `legacy` research pool preserves the original 250-candidate pre-price screen and uses the **current** exit rule. The `cached` pool broadens the screen to available cached-price companies, not the full universe. Report missing coverage and unreviewed new early stops; do not imply all expanded holdings received the earlier bankruptcy review. See `docs/research-workflow.md`. Test with `python3 tests/test_research.py`.
 
 ## Website strategy builder
 
-`website/dataset.py` exports both prepared January pools as compact records embedded in the HTML. `website/screener.js` implements browser filtering/ranking; `website/range.js` connects controls and renders results. Each runtime shares filtering and ranking between historical and latest modes; only historical mode validates years. Browser parameters must match the SQL selection semantics in `scripts/research.py`. Check parity with `python3 tests/check_screener.py` after building; it requires a current prepared database. Keep the original static top-50 fallback and baseline CSV/JSON exports. Browser downloads reflect the current strategy. Show short/empty-year coverage explicitly; do not calculate a full-period strategy CAGR when any selected year is empty.
+`website/dataset.py` exports both prepared January pools as compact records embedded in the HTML. `website/screener.js` implements browser filtering/ranking; `website/range.js` connects controls and renders results. Each runtime shares filtering and ranking between historical and latest modes; only historical mode validates years. Browser parameters must match the SQL selection semantics in `backtest/inputs/research.py`. Check parity with `python3 tests/check_screener.py` after building; it requires a current prepared database. Keep the original static top-50 fallback and baseline CSV/JSON exports. Browser downloads reflect the current strategy. Show short/empty-year coverage explicitly; do not calculate a full-period strategy CAGR when any selected year is empty.
 
 Yearly attribution uses `website/contributions.js` for browser calculations and `website/attribution.py` for the static fallback. Top contributors means the first `min(10, actual selected count)` stocks, ordered by signed contribution (return / actual selected count), with ties by symbol. Gain/loss pies are normalized separately; never draw negative slices or describe them as shares of net return. Check with `node tests/check-contributions.cjs`, `python3 tests/test_attribution.py`, and the existing range/control tests.
 
@@ -236,7 +236,7 @@ retain their individual markers. Changed research inputs still require preparati
 
 ## Automatic local launcher
 
-`backtest-web.cmd` and `start.cmd` (Windows) use `website/launcher.py` to manage a terminal-owned server. Terminal logs stay visible; Ctrl+C stops the server. Safe development diagnostics also persist in `data/logs/website-<namespace>-<pid>.log`, with a 5 MiB active log and two rotated backups per process. `scripts/diagnostics.py` owns this logging. Startup removes logs older than 14 days, then oldest logs toward a 100 MiB total target. Delete only stopped-process logs from the current process namespace. Preserve legacy logs and foreign or unknown namespaces. Linux ownership includes the boot and PID namespace; Windows ownership uses the machine identity. Protected files and growth between starts can exceed the target. Cleanup errors do not stop startup. Keep exception types, OS codes and stack locations; omit exception text, source lines, locals, keys, provider URLs and response bodies. Startup and the data panel show the current log path. Test with `python3 tests/test_diagnostics.py`, including native Windows. The default listener is `0.0.0.0:3000`; the local browser uses `http://127.0.0.1:3000`. A per-port startup lock serializes preparation and binding. A separate lifetime lock stays held until the listener and all request threads close. An unreachable HTTP endpoint never proves that the old server has finished. Replacement waits up to 30 seconds for ownership, then reports a retry instruction. `website/launcher.py` owns identity publication, control requests, cleanup and both locks. An authenticated loopback identity endpoint identifies this project. Each managed launch stops the identified previous server and starts current code in the invoking terminal. This transfers ownership even from an unchanged background instance. Do not stop unknown port owners. Identity and startup lock files live under ignored `data/website-*` paths. Direct `python3 website/serve.py` remains a foreground option. The daily
+`backtest-web.cmd` and `start.cmd` (Windows) use `website/launcher.py` to manage a terminal-owned server. Terminal logs stay visible; Ctrl+C stops the server. Safe development diagnostics also persist in `data/logs/website-<namespace>-<pid>.log`, with a 5 MiB active log and two rotated backups per process. `backtest/runtime/diagnostics.py` owns this logging. Startup removes logs older than 14 days, then oldest logs toward a 100 MiB total target. Delete only stopped-process logs from the current process namespace. Preserve legacy logs and foreign or unknown namespaces. Linux ownership includes the boot and PID namespace; Windows ownership uses the machine identity. Protected files and growth between starts can exceed the target. Cleanup errors do not stop startup. Keep exception types, OS codes and stack locations; omit exception text, source lines, locals, keys, provider URLs and response bodies. Startup and the data panel show the current log path. Test with `python3 tests/test_diagnostics.py`, including native Windows. The default listener is `0.0.0.0:3000`; the local browser uses `http://127.0.0.1:3000`. A per-port startup lock serializes preparation and binding. A separate lifetime lock stays held until the listener and all request threads close. An unreachable HTTP endpoint never proves that the old server has finished. Replacement waits up to 30 seconds for ownership, then reports a retry instruction. `website/launcher.py` owns identity publication, control requests, cleanup and both locks. An authenticated loopback identity endpoint identifies this project. Each managed launch stops the identified previous server and starts current code in the invoking terminal. This transfers ownership even from an unchanged background instance. Do not stop unknown port owners. Identity and startup lock files live under ignored `data/website-*` paths. Direct `python3 website/serve.py` remains a foreground option. The daily
 preparer first ensures the research cache, then the server checks the website
 build stamp and rebuilds if needed. Open the browser only after successful
 preparation and binding; `--no-browser` supports headless use. Keep dependency
@@ -269,7 +269,7 @@ and runtimes for automatic-update checks, never the engine branch or live cache.
 
 ## Random-date sensitivity
 
-`scripts/robustness.py` samples one SPY trading session independently in every
+`backtest/engines/original/robustness.py` samples one SPY trading session independently in every
 nominal frequency block for each seeded trial. Trial count is configurable
 (1–100, default 24). `schedules.backtest_dates` shares the dated-book evaluator
 with fixed schedules. All trial CAGRs use a common window with zero-return cash
@@ -281,7 +281,7 @@ seed reuses books after interruption. Inspect trials using the ordinary schedule
 API with explicit dates. Check `python3 tests/test_robustness.py` and
 `node tests/check-robustness.cjs` alongside existing checks.
 
-`scripts/book_batch.py` plans unique missing date-pair/pool books across the
+`backtest/engines/original/book_batch.py` plans unique missing date-pair/pool books across the
 whole random batch. Bounded process workers read the daily SQLite cache through
 read-only connections and use `schedules.compute_period`; only the parent calls
 `store_period`. Group price lookups into one read transaction per book and release
@@ -313,7 +313,7 @@ threshold calculations for January, latest and dated books. Trailing returns
 use only adjusted prices on or before the screen date and its anniversary,
 within seven calendar days. Clamp leap-day anniversaries to 28 February. Financial ratio filters include P/E, P/B, free cash flow amount/yield, price/FCF,
 net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity.
-`scripts/financial_inputs.py` validates separate annual statement assets under
+`backtest/inputs/financial_inputs.py` validates separate annual statement assets under
 `raw/financial-inputs/`. Downloads require the data-panel Full annual financial data action.
 Save full annual income, balance-sheet, cash-flow, key-metrics and ratios responses.
 Preserve all returned fields, nulls, currencies and filing metadata in raw assets.
@@ -337,7 +337,7 @@ unrequested price ranges; preserve valid records. Keep the key and provider
 request URLs out of status responses. Serve the panel from source so startup can
 open it when required raw files are missing or invalid.
 
-`scripts/cache_assets.py` owns normalized annual records, series validation,
+`backtest/inputs/cache_assets.py` owns normalized annual records, series validation,
 atomic series publication and completion evidence. Preparation and data-group
 inspection share `books.statements()` for financial eligibility. Completion
 entries in `raw/download-coverage.json` use `sha256`, `windows`, `base_span` and
@@ -351,7 +351,7 @@ back up invalid originals before repair. Empty provider responses can be reused
 only while their associated asset remains intact. Saved date spans do not prove
 that every session exists; internal gaps are not repaired automatically. Finite zero or negative adjusted prices are excluded and recorded as `skipped_dates` in the content-bound receipt. Even an entirely excluded price window is checked but unavailable; preserve existing usable prices, show the exclusion warning, and continue the batch. Malformed records, missing/nonfinite values and out-of-window dates still fail before publication. Atomic JSON publication retries Windows access or sharing locks up to eight attempts, with less than two seconds of total retry waits. Keep cache ownership and receipt-before-asset ordering through retries. Other file errors fail immediately.
 
-`scripts/cache_access.py` owns shared resource coordination. Startup, standalone
+`backtest/runtime/cache_access.py` owns shared resource coordination. Startup, standalone
 preparation, data jobs, fixed schedules and random batches must use it. Lock
 order is the process-local reentrant lock, project file lock, then database
 connections and worker pools. Hold ownership through worker completion and
@@ -367,7 +367,7 @@ Run the cache-access and data-manager checks on native Windows too.
 
 ## Parallel FMP downloads
 
-`scripts/fmp_download.py` owns the data panel transport. Use 32 request
+`backtest/inputs/fmp_download.py` owns the data panel transport. Use 32 request
 workers with reusable connections, gzip responses and a shared 45-starts-per-second
 default cap (2,700/minute, below this account's stated 3,000/minute allowance).
 Decode successful gzip responses inside the transport. Accept plain responses.

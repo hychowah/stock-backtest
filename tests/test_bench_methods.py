@@ -1,4 +1,9 @@
 """Synthetic financial parity and durable evidence for the shared prototype."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import metrics
 from datetime import date, timedelta
 from contextlib import closing
 from contextlib import ExitStack
@@ -39,7 +44,7 @@ class SharedMethodsTests(unittest.TestCase):
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.addCleanup(self.db.close)
-        self.db.executescript(s.SCHEMA)
+        self.db.executescript(daily.SCHEMA)
         companies = {
             'A': (150e6, 180e6, 60e6),
             'B': (200e6, 250e6, 50e6),
@@ -119,7 +124,7 @@ class SharedMethodsTests(unittest.TestCase):
         inputs = self.base_inputs()
         for pool in ('legacy', 'cached'):
             for profile in ('F0', 'F1', 'F2'):
-                for metric in s.metrics.METRICS:
+                for metric in metrics.METRICS:
                     with self.subTest(pool=pool, profile=profile, metric=metric):
                         configuration = self.configuration(pool, profile, metric=metric)
                         reference, summary = self.reference(configuration)
@@ -196,7 +201,7 @@ class SharedMethodsTests(unittest.TestCase):
         history = self.model.histories['A']
         original = Mock(wraps=self.model.original_average)
         self.model.original_average = original
-        expected = s.metrics.annual_average(history, '2014-06-30', 3)
+        expected = metrics.annual_average(history, '2014-06-30', 3)
         self.assertEqual(self.model.annual_average(history, '2014-06-30', 3), expected)
         self.assertEqual(self.model.annual_average(history, '2014-06-30', 3), expected)
         original.assert_called_once_with(history, '2014-06-30', 3)
@@ -306,8 +311,8 @@ class SharedMethodsTests(unittest.TestCase):
             stack.enter_context(patch.object(baseline,'identity',return_value={'synthetic':True}))
             stack.enter_context(patch.object(baseline,'request',return_value=(
                 dict(summary=summary,wall_seconds=1.),reference)))
-            stack.enter_context(patch.object(s,'connect',side_effect=open_source))
-            stack.enter_context(patch.object(s.r,'connect',side_effect=open_source))
+            stack.enter_context(patch.object(daily,'connect',side_effect=open_source))
+            stack.enter_context(patch.object(research,'connect',side_effect=open_source))
             stack.enter_context(patch.object(methods,'run_request',side_effect=interrupted))
             methods.main()
         report = json.loads((workdir/'comparison.json').read_text(encoding='utf-8'))

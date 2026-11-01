@@ -29,10 +29,10 @@ def source_constant(path, name):
         and target.id == name for target in node.targets)))
 
 
-RESEARCH_SCHEMA = source_constant(ROOT / 'scripts/research.py', 'SCHEMA')
-POOL_SCHEMA = source_constant(ROOT / 'scripts/schedules.py', 'POOL_SCHEMA')
+RESEARCH_SCHEMA = source_constant(ROOT / 'backtest/inputs/research.py', 'SCHEMA')
+POOL_SCHEMA = source_constant(ROOT / 'backtest/inputs/daily.py', 'POOL_SCHEMA')
 # The real daily schema is research schema + its literal extension + pool schema.
-_schedule_tree = ast.parse((ROOT / 'scripts/schedules.py').read_text(encoding='utf-8'))
+_schedule_tree = ast.parse((ROOT / 'backtest/inputs/daily.py').read_text(encoding='utf-8'))
 _daily_expr = next(node.value for node in _schedule_tree.body if isinstance(node, ast.Assign)
     and any(isinstance(t, ast.Name) and t.id == 'SCHEMA' for t in node.targets))
 DAILY_SCHEMA = RESEARCH_SCHEMA + ast.literal_eval(_daily_expr.left.right) + POOL_SCHEMA
@@ -89,8 +89,9 @@ class InputStoreTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, reason)
 
     def test_real_schema_versions_and_owned_handoff_readonly_and_closure(self):
-        self.assertEqual(store.RESEARCH_VERSION, source_constant(ROOT / 'scripts/research.py', 'SCHEMA_VERSION'))
-        self.assertEqual(store.DAILY_VERSION, source_constant(ROOT / 'scripts/schedules.py', 'VERSION'))
+        self.assertEqual(store.RESEARCH_VERSION, 7)  # Historical capture remains schema 7.
+        self.assertEqual(source_constant(ROOT / 'backtest/inputs/research.py', 'SCHEMA_VERSION'), 8)
+        self.assertEqual(store.DAILY_VERSION, source_constant(ROOT / 'backtest/inputs/daily.py', 'VERSION'))
         identifier = self.produce()
         with self.store.open(identifier) as inputs:
             self.assertEqual(inputs.report, REPORT)

@@ -36,7 +36,7 @@ Thirty-seven holdings stopped trading more than 10 days before the January sale.
 
 If another company bought them, or a note was called, or a SPAC returned cash, the exit is the last trade. Examples are Orbital ATK, FairPoint, Callon Petroleum, American Equity, and Civitas. Two warrants, Mudrick and HighPeak, finished at about −99% on the last trade.
 
-A bankruptcy is a total loss. None of those 37 stops was a bankruptcy, so none was entered as −100%. The list of forced total losses is `BANKRUPT` in `scripts/revalue.py`. It is empty.
+A bankruptcy is a total loss. None of those 37 stops was a bankruptcy, so none was entered as −100%. The list of forced total losses is `BANKRUPT` in `backtest/financial/rules.py`. It is empty.
 
 A stock that still trades on the January sale date keeps that price. Being delisted in a later year does not change the year already finished. A crash that still has a January price stays at that price. Spanish Broadcasting in 2008 stays at about −95%, not −100%.
 
@@ -44,8 +44,11 @@ A stock that still trades on the January sale date keeps that price. Being delis
 
 | Path | Role |
 |---|---|
-| `scripts/revalue.py` | Recomputes the book from the cache. Writes `results/summary-exits.txt`. This is the script to run. |
-| `scripts/run.py` | Builds the universe, downloads metrics and prices, and writes the older `results/legacy/summary.txt`. |
+| `scripts/revalue.py` | Requests a verified refresh of `results/summary-exits.txt` and the research database. This is the command to run. |
+| `backtest/engines/reference/revalue.py` | Independently calculates the book from saved files. It never publishes or downloads. |
+| `scripts/run.py` | Invokes the retained downloader and older report. Run only when saved inputs are missing. |
+| `backtest/inputs/legacy_downloads.py` | Builds the universe and downloads metrics and prices. |
+| `backtest/engines/reference/legacy.py` | Owns the independent original arithmetic and older `results/legacy/summary.txt` report. |
 | `results/summary-exits.txt` | Latest year-by-year result. |
 | `results/legacy/summary.txt`, `results/legacy/picks.csv` | Older pass. The holdings file matches this pass, not `results/summary-exits.txt`. |
 | `results/stops/stops.json` | The 37 names that stopped trading early. |
@@ -78,6 +81,6 @@ python scripts/revalue.py
 
 That uses the saved data and does not call FMP.
 
-To count a bankruptcy as a total loss, add the year and ticker to `BANKRUPT` in `scripts/revalue.py` and run it again.
+To count a bankruptcy as a total loss, add the year and ticker to `BANKRUPT` in `backtest/financial/rules.py` and run it again.
 
 `AGENTS.md` is the note for the next agent: which file is current, which cache to keep, and which FMP calls fail if they are too wide.

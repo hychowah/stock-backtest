@@ -5,7 +5,7 @@ from stored producer evidence, never from this default. Closing admission is
 separate from draining accepted work; the application owns that drain.
 """
 from threading import Event, RLock
-import backtest_control
+from backtest.runtime import backtest_control as backtest_control
 
 
 class Busy(ValueError):

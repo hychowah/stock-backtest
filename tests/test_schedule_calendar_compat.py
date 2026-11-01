@@ -1,4 +1,8 @@
 """Exact old monthly evidence retained as compact, content-bound expectations."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 import atexit
 from datetime import date, timedelta
 import hashlib
@@ -14,10 +18,12 @@ import runtime_access
 _owner = runtime_access.ownership(ROOT)
 _owner.__enter__()
 atexit.register(_owner.__exit__, None, None, None)
-import run
-run.KEY_PATH = ROOT/'tmp/cb08/nonexistent-key'
-import schedules as s
-import robustness as r
+from backtest.financial import rules
+from backtest.inputs import market, fmp_download, cache_assets
+from backtest.engines.reference import legacy
+fmp_download.KEY_PATH = ROOT/'tmp/cb08/nonexistent-key'
+from backtest.engines.original import schedules as s
+from backtest.engines.original import robustness as r
 
 
 def digest(value):
@@ -34,7 +40,7 @@ class MonthlyCompatibilityTests(unittest.TestCase):
                     and str(first+timedelta(days=n)) not in specification['holidays']]
         self.assertEqual(digest([str(d) for d in sessions]),specification['sha256'])
         db = sqlite3.connect(':memory:'); db.row_factory = sqlite3.Row
-        self.addCleanup(db.close); db.executescript(s.SCHEMA)
+        self.addCleanup(db.close); db.executescript(daily.SCHEMA)
         db.executemany('INSERT INTO sessions VALUES(?,100)',[(str(d),) for d in sessions])
         examples = {(e['start'],e['months'],e['seed']):e for e in fixture['examples']}
         self.assertEqual(len(fixture['cases']),60)

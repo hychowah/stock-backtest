@@ -1,4 +1,9 @@
 """Private synthetic proof of immutable numerical publication and attachment."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import metrics
 from contextlib import closing
 from datetime import date
 import json
@@ -12,7 +17,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'tools')]
 import test_bench_methods as shared
-import numerical_generation as ng
+from backtest.engines.numerical import generation as ng
 from bench_candidates import NumericInputs, PythonExecutor
 import numpy as np
 
@@ -27,17 +32,17 @@ class GenerationTests(unittest.TestCase):
         self.report = self.root / 'summary-exits.txt'
         self.report.write_text('Through 2016-12-30\nSynthetic unchanged report\n')
         self.binding = dict(temporal_version=ng.TEMPORAL_VERSION, factor_version=ng.FACTOR_VERSION,
-                            field_schema=ng.PolicyProgram(self.s).field_schema, daily={}, prices={}, report=ng._sha(self.report),
-                            policy=ng.PolicyProgram(self.s).signature,
-                            sources=ng._source_binding(ng.PolicyProgram(self.s)))
+                            field_schema=ng.PolicyProgram().field_schema, daily={}, prices={}, report=ng._sha(self.report),
+                            policy=ng.PolicyProgram().signature,
+                            sources=ng._source_binding(ng.PolicyProgram()))
         self.owner = ng.cache_access.WorkspaceAccess(self.root / 'cache.lock')
-        self.store = ng.GenerationStore(self.s, self.root / 'numerical', self.owner)
-        self.binding_patch = self.enterContext(patch.object(self.store, '_binding', side_effect=lambda: (self.binding.copy(), ng.PolicyProgram(self.s))))
+        self.store = ng.GenerationStore(self.root / 'numerical', self.owner)
+        self.binding_patch = self.enterContext(patch.object(self.store, '_binding', side_effect=lambda: (self.binding.copy(), ng.PolicyProgram())))
         def connect():
             db = ng.sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
             db.row_factory = ng.sqlite3.Row
             return db
-        self.enterContext(patch.object(self.s, 'connect', side_effect=connect))
+        self.enterContext(patch.object(daily,'connect', side_effect=connect))
 
     def prepare(self): return self.store.prepare()
     def attach(self):
@@ -81,28 +86,28 @@ class GenerationTests(unittest.TestCase):
         for pool in ('legacy', 'cached'):
             books = [('2015-01-02', '2016-01-04', pool)]
             result = self.s.compute_period(self.db, date(2015,1,2), date(2016,1,4),
-                                           self.s.histories(self.db), self.s.cached_symbols(self.db), pool)
-            self.s.store_period(self.db, result)
+                                           daily.histories(self.db), daily.cached_symbols(self.db), pool)
+            daily.store_period(self.db, result)
         self.assertTrue(self.prepare()['reused'])
         self.assertEqual(self.store._pointer()['current'], first['identity'])
         self.assertEqual(ng._sha(self.report), report_sha)
 
     def test_preparation_source_books_and_factors_do_not_translate_compiled_guards(self):
-        from numerical_numba import NumbaExecutor
-        from numerical_factors import FactorEvaluator
-        with patch('numerical_decisions.CandidateDecisionProgram',
+        from backtest.engines.numerical.numba import NumbaExecutor
+        from backtest.engines.numerical.factors import FactorEvaluator
+        with patch('backtest.engines.numerical.decisions.CandidateDecisionProgram',
                    side_effect=AssertionError('Optional guard translator invoked')) as translator:
             self.prepare()
             inputs = self.attach()
             inputs.validate()
             fields = dict(filters=[dict(field=field,op='gt',value=-999999.)
-                                   for field in ng.PolicyProgram(self.s).fields['thresholds']])
+                                   for field in ng.PolicyProgram().fields['thresholds']])
             with closing(NumbaExecutor(inputs, limits=dict(threads=2))) as executor:
                 for pool in ('legacy', 'cached'):
                     book = ('2015-01-02', '2016-01-04', pool)
                     actual = executor.evaluate([book],fields)[0]
                     expected = self.s.compute_period(self.db, date(2015,1,2), date(2016,1,4),
-                        self.s.histories(self.db), self.s.cached_symbols(self.db), pool)
+                        daily.histories(self.db), daily.cached_symbols(self.db), pool)
                     self.assertTrue(shared.baseline.compare(expected, actual)['exact'])
                 self.assertNotIn('candidate_decisions', executor.compiler['fields'])
             with closing(FactorEvaluator(inputs)) as factors:
@@ -117,7 +122,7 @@ class GenerationTests(unittest.TestCase):
         self.assertTrue(inputs.histories['A'])
         self.enterContext(patch.object(ng._Records, '__getitem__',
             side_effect=AssertionError('Source assembly loaded an unused history')))
-        fields = [dict(field=field,op='gt',value=-999999) for field in ng.PolicyProgram(self.s).fields['thresholds']]
+        fields = [dict(field=field,op='gt',value=-999999) for field in ng.PolicyProgram().fields['thresholds']]
         maximum_absolute=maximum_relative=0.
         for factory in (PythonExecutor, NumbaExecutor):
             executor = factory(inputs, limits=dict(threads=2, request_plan=True))
@@ -131,7 +136,7 @@ class GenerationTests(unittest.TestCase):
                         for book, value in zip(batch, actual):
                             a,b,pool = book
                             expected = self.s.compute_period(self.db,date.fromisoformat(a),date.fromisoformat(b),
-                                self.s.histories(self.db),self.s.cached_symbols(self.db),pool)
+                                daily.histories(self.db),daily.cached_symbols(self.db),pool)
                             # Source computes every filter; evaluator projects only requested fields.
                             needed = {f['field'] for f in filters}
                             expected['filters'] = [r for r in expected['filters'] if r[1] in needed]
@@ -144,10 +149,10 @@ class GenerationTests(unittest.TestCase):
                             with closing(ng.sqlite3.connect(':memory:')) as left, closing(ng.sqlite3.connect(':memory:')) as right:
                                 for db, book_value in ((left, expected), (right, value)):
                                     db.row_factory = ng.sqlite3.Row
-                                    db.executescript(self.s.SCHEMA)
+                                    db.executescript(daily.SCHEMA)
                                     db.executemany('INSERT INTO companies VALUES(?,?,?,?)',inputs.companies)
-                                    self.s.store_period(db,book_value)
-                                for metric in self.s.metrics.METRICS:
+                                    daily.store_period(db,book_value)
+                                for metric in metrics.METRICS:
                                     options['metric'] = metric
                                     for extra in ({}, dict(rank_from=100,rank_to=110)):
                                         settings = dict(options,**extra)
@@ -242,9 +247,9 @@ class GenerationTests(unittest.TestCase):
 
     def test_readiness_checks_full_price_inventory_report_and_pending_journals(self):
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs','{}')); self.db.commit()
-        with patch.object(self.s.r,'ROOT',self.root), patch.object(self.s.r,'RESULTS',self.root), \
-             patch.object(self.s.r,'connect',return_value=self.fixture.reader) as ready, \
-             patch.object(self.s.r,'price_sources',return_value={'A.json':[12,34]}):
+        with patch.object(research,'ROOT',self.root), patch.object(research,'RESULTS',self.root), \
+             patch.object(research,'connect',return_value=self.fixture.reader) as ready, \
+             patch.object(research,'price_sources',return_value={'A.json':[12,34]}):
             # Use a fresh reader because readiness owns and closes its handle.
             ready.side_effect=lambda **kwargs: ng.sqlite3.connect(self.fixture.path)
             actual,_ = ng.GenerationStore._binding(self.store)
@@ -291,11 +296,11 @@ class GenerationTests(unittest.TestCase):
             def execute(self,*args): return Cursor(self_db.execute(*args))
         self_test,self_db=self,self.db
         folder=self.root/'bounded'; folder.mkdir()
-        ng._export(Source(),self.s,ng.PolicyProgram(self.s),folder,lambda:None)
+        ng._export(Source(),ng.PolicyProgram(),folder,lambda:None)
         shutil.rmtree(folder); folder.mkdir()
         with patch.object(ng,'MAX_HISTORY',2):
             with self.assertRaisesRegex(ValueError,'per-symbol bound'):
-                ng._export(Source(),self.s,ng.PolicyProgram(self.s),folder,lambda:None)
+                ng._export(Source(),ng.PolicyProgram(),folder,lambda:None)
 
     def test_owned_abandoned_staging_and_first_publication_recovery(self):
         self.store.path.mkdir()
@@ -334,13 +339,13 @@ class GenerationTests(unittest.TestCase):
         script='''import sys,time
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
-import cache_access
+from backtest.runtime import cache_access as cache_access
 handle=Path(sys.argv[2]).open('x+b',buffering=0); handle.write(b'0')
 cache_access._file_lock(handle,True)
 Path(sys.argv[3]).write_text('ready')
 time.sleep(30)
 '''
-        process=subprocess.Popen([sys.executable,'-I','-B','-c',script,str(ROOT/'scripts'),str(lease),str(ready)])
+        process=subprocess.Popen([sys.executable,'-I','-B','-c',script,str(ROOT),str(lease),str(ready)])
         try:
             deadline=ng.time.monotonic()+10
             while not ready.exists():

@@ -18,8 +18,11 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import portfolio_results as portfolio_results
-import trial_checkpoints as checkpoints
+from backtest.engines.numerical import checkpoints as checkpoints
 
 
 def binding(**changes):
@@ -146,10 +149,10 @@ class CheckpointTests(unittest.TestCase):
         # A new owned child per stage; parent waits for termination before reopen.
         code='''import sys,os,json
 from pathlib import Path
-root=Path(sys.argv[1]);sys.path[:0]=[str(root/'scripts'),str(root/'website')]
+root=Path(sys.argv[1]);sys.path[:0]=[str(root),str(root/'scripts'),str(root/'website')]
 import runtime_access
 with runtime_access.ownership(root):
- import trial_checkpoints as t
+ from backtest.engines.numerical import checkpoints as t
  path=Path(sys.argv[2]);stage=sys.argv[3]
  store=t.Store(path);exp=store.open(json.loads(sys.argv[4]));result=json.loads(sys.argv[5])
  calls=0

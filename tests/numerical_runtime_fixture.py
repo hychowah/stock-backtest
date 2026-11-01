@@ -5,20 +5,19 @@ from pathlib import Path
 import sqlite3
 import time
 
-import numerical_generation
-import numerical_session
-import schedules
-from cache_assets import write_json
+from backtest.engines.numerical import generation as numerical_generation
+from backtest.engines.numerical import session as numerical_session
+from backtest.inputs.cache_assets import write_json
 
 
 class FixtureStore(numerical_generation.GenerationStore):
-    def __init__(self, s, path):
-        super().__init__(s,path)
+    def __init__(self, path):
+        super().__init__(path)
         self.binding_path = Path(path).parent/'binding.json'
 
     def _binding(self):
         binding = json.loads(self.binding_path.read_text())
-        return binding,numerical_generation.PolicyProgram(self.s)
+        return binding,numerical_generation.PolicyProgram()
 
 
 class Session(numerical_session.Session):
@@ -28,7 +27,7 @@ class Session(numerical_session.Session):
         self.close_attempts = 0
         if self.fault == 'startup-cancel':
             self._mark(starting=True,pid=os.getpid())
-            import backtest_control
+            from backtest.runtime import backtest_control as backtest_control
             while True:
                 backtest_control.checkpoint(); time.sleep(.01)
         if self.fault == 'startup': raise RuntimeError('fictional startup failure')
@@ -59,6 +58,7 @@ class Session(numerical_session.Session):
         return super().calculate_into(*args,**kwargs)
 
     def _before_calculation(self,progress):
+        from backtest.runtime import backtest_control
         if self.fault == 'stats-publication':
             original=Path.replace
             def denied(path,target):
@@ -67,7 +67,7 @@ class Session(numerical_session.Session):
                 return original(path,target)
             Path.replace=denied
         if self.fault == 'callback-stuck':
-            import backtest_control
+            from backtest.runtime import backtest_control as backtest_control
             try: progress(dict(type='progress',completed=0,total=1,trial=1))
             except backtest_control.Cancelled: pass
             self._mark(pid=os.getpid(),running=True)
@@ -75,7 +75,7 @@ class Session(numerical_session.Session):
         if self.fault in ('cancel','stuck'):
             self._mark(pid=os.getpid(),running=True)
             while True:
-                if self.fault != 'stuck': self.workspace.s.backtest_control.checkpoint()
+                if self.fault != 'stuck': backtest_control.checkpoint()
                 time.sleep(.01)
         if self.fault == 'descendant':
             import subprocess,sys

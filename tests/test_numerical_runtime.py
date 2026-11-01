@@ -24,11 +24,14 @@ from unittest.mock import patch
 ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'website')]
 import test_numerical_generation as generations
-import numerical_runtime as runtime
-from numerical_portfolio import compare_results
-import backtest_control
-import cache_access
-import robustness
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical import runtime as runtime
+from backtest.engines.numerical.portfolio import compare_results
+from backtest.runtime import backtest_control as backtest_control
+from backtest.runtime import cache_access as cache_access
+from backtest.engines.original import robustness as robustness
 
 
 class InputProtocolTests(unittest.TestCase):
@@ -43,7 +46,7 @@ class InputProtocolTests(unittest.TestCase):
         return receive
 
     def test_raw_frames_keep_go_read_ahead_crlf_and_fragmented_utf8(self):
-        from numerical_runtime_child import _framed_lines
+        from backtest.engines.numerical.runtime_child import _framed_lines
         command=json.dumps(dict(command='cancel',label='測試'),ensure_ascii=False).encode('utf-8')
         polls=[]
         lines=_framed_lines(self.receiver([None,b'GO\r\n'+command+b'\r\n']),pause=lambda:polls.append(True))
@@ -55,7 +58,7 @@ class InputProtocolTests(unittest.TestCase):
         self.assertEqual(list(fragmented),[])
 
     def test_raw_frames_reject_truncated_invalid_and_oversized_protocol(self):
-        from numerical_runtime_child import _framed_lines
+        from backtest.engines.numerical.runtime_child import _framed_lines
         for parts,message in (([b'{"a":'], 'inside a frame'),([b'x'*8+b'\n'],'byte bound')):
             with self.assertRaisesRegex(ValueError,message):
                 list(_framed_lines(self.receiver(parts),frame_bytes=8))
@@ -67,9 +70,9 @@ class InputProtocolTests(unittest.TestCase):
         # Actual source-owned, contained cold import. The old blocked text reader
         # hung in NumPy's extension create_module under the same native owner.
         code = ("import sys,os,json,time\nfrom pathlib import Path\nfrom threading import Thread,Event\n"
-            +"root=Path("+repr(str(ROOT))+");sys.path[:0]=[str(root/'website'),str(root/'scripts')]\n"
+            +"root=Path("+repr(str(ROOT))+");sys.path[:0]=[str(root),str(root/'website'),str(root/'scripts')]\n"
             +"import runtime_access\nsource=runtime_access.ownership(root);source.__enter__()\n"
-            +"from numerical_runtime_child import _stdin_lines\nlines=_stdin_lines();assert next(lines)=='GO\\n'\n"
+            +"from backtest.engines.numerical.runtime_child import _stdin_lines\nlines=_stdin_lines();assert next(lines)=='GO\\n'\n"
             +"stopped=Event()\ndef controls():\n for line in lines:\n  if json.loads(line).get('command')=='close':stopped.set();return\n"
             +"Thread(target=controls,daemon=True).start()\nimport numpy,numba\n"
             +"print(json.dumps(dict(event='ready',numpy=numpy.__version__,numba=numba.__version__)),flush=True)\n"
@@ -398,7 +401,7 @@ class RuntimeTests(unittest.TestCase):
             def close():
                 try:value.close()
                 except BaseException as error:close_errors.append(error)
-            with patch('numerical_runtime.RuntimeProcess',side_effect=constructor):
+            with patch('backtest.engines.numerical.runtime.RuntimeProcess',side_effect=constructor):
                 starter=Thread(target=start);starter.start()
                 try:
                     self.assertTrue(entered.wait(5));self.assertIsNone(value.owner)
@@ -517,7 +520,7 @@ class RuntimeTests(unittest.TestCase):
         state=json.loads((value.scratch/'fixture-state.json').read_text())
         self.assertGreaterEqual(state['close_attempts'],3)
         # Rename/delete the actual mapped asset after terminal close. This is a
-        # Windows share-handle assertion as well as a POSIX filesystem check.
+        # Windows share-handle assertion as a POSIX filesystem check.
         path=self.fixture.store.path/value.last_stats['generation']/'raw_values.npy'
         target=path.with_suffix('.released');path.rename(target)
         original=target.read_bytes();target.unlink();path.write_bytes(original)
@@ -606,8 +609,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(identity['signature']),64)
         self.assertEqual(fields['threads'],1)
         self.assertFalse(fields['fastmath']);self.assertFalse(fields['compiler_cache'])
-        self.assertIn('scripts/numerical_matrix.py',fields['sources'])
-        self.assertIn('scripts/numerical_runtime_child.py',fields['sources'])
+        self.assertIn('backtest/engines/numerical/matrix.py',fields['sources'])
+        self.assertIn('backtest/engines/numerical/runtime_child.py',fields['sources'])
         self.assertEqual(set(fields['versions']),{'numpy','numba','llvmlite'})
         self.assertTrue(fields['target']['cpu']);self.assertTrue(fields['catalog'])
         # The persistent recovery binding must retain the same target/compiler
@@ -633,9 +636,9 @@ class RuntimeTests(unittest.TestCase):
                 session_factory='numerical_runtime_fixture:Session',session_options=dict(fault='cancel') if active else dict(fault='descendant') if scenario=='descendant' else {},
                 close_seconds=.5)
             code=("import sys,os,json,time\nfrom pathlib import Path\n"
-                +"root=Path("+repr(str(ROOT))+");sys.path[:0]=[str(root/'website'),str(root/'scripts')]\n"
+                +"root=Path("+repr(str(ROOT))+");sys.path[:0]=[str(root),str(root/'website'),str(root/'scripts')]\n"
                 +"import runtime_access\nsource=runtime_access.ownership(root);source.__enter__()\n"
-                +"from numerical_runtime import NumericalRuntime\n"
+                +"from backtest.engines.numerical.runtime import NumericalRuntime\n"
                 +"value=NumericalRuntime(**"+repr(config)+");value.start()\n"
                 +"Path("+repr(str(marker))+").write_text(json.dumps(value.last_stats))\n")
             if active:

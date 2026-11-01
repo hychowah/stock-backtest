@@ -167,7 +167,7 @@ def unpack(stage):
 
 
 def support(path):
-    for folder in ('website', 'scripts'):
+    for folder in ('', 'website', 'scripts'):
         sys.path.insert(0, str(Path(path) / folder))
 
 
@@ -196,7 +196,8 @@ def stop_servers(root):
 
 @contextmanager
 def cache_ownership(root):
-    import cache_access
+    sys.path.insert(0,str(ROOT))
+    from backtest.runtime import cache_access as cache_access
     with cache_access.WorkspaceAccess(Path(root) / 'data' / 'website-data-0.lock').hold():
         yield
 
@@ -291,7 +292,7 @@ def export_runtime_report(root, destination):
     support(root)
     import runtime_access
     with runtime_access.ownership(root):
-        import baseline
+        from backtest.inputs import baseline as baseline
         with cache_ownership(root):
             db = sqlite3.connect((root / 'data/research.sqlite').resolve().as_uri() + '?mode=ro', uri=True)
             try:

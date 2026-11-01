@@ -14,8 +14,8 @@ from copy import deepcopy
 import json
 import re
 
-import numerical_transfer as transfer
-import result_evidence
+from backtest.engines.numerical import transfer as transfer
+from backtest import result_evidence as result_evidence
 
 
 class Workspace:

@@ -10,7 +10,10 @@ import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).absolute().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-import numerical_toolchain as native
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical import toolchain as native
 
 
 class NativeInventoryTests(unittest.TestCase):
@@ -107,7 +110,7 @@ class NativeInstallationTests(unittest.TestCase):
         owner=Mock();owner.close.side_effect=[TimeoutError('private'),None]
         error=RuntimeError('private');error.owned_process=owner
         operation=native.Installation(self.root/'application',components,manifest,None)
-        with patch.object(native,'_requirements'),patch.object(native,'environment',return_value={}),patch('process_owner.OwnedProcess',side_effect=error):
+        with patch.object(native,'_requirements'),patch.object(native,'environment',return_value={}),patch('backtest.runtime.process_owner.OwnedProcess',side_effect=error):
             with self.assertRaises(native.SetupClosureError) as caught:operation.run()
         self.assertIs(caught.exception.installation,operation)
         self.assertTrue(operation.directory.is_dir());self.assertIs(operation.owner,owner)
@@ -122,7 +125,7 @@ class NativeInstallationTests(unittest.TestCase):
         def started():
             (operation.scratch/'verified.json').write_text(json.dumps(dict(answer=19,library_closed=True,version='host: fixture\n')))
         owner.process.stdin.flush.side_effect=started
-        with patch.object(native,'_requirements'),patch.object(native,'environment',return_value={}),patch('process_owner.OwnedProcess',return_value=owner),patch.object(native,'inspect_toolchain',side_effect=ImportError('changed after publication')):
+        with patch.object(native,'_requirements'),patch.object(native,'environment',return_value={}),patch('backtest.runtime.process_owner.OwnedProcess',return_value=owner),patch.object(native,'inspect_toolchain',side_effect=ImportError('changed after publication')):
             with self.assertRaises(ImportError):operation.run()
         self.assertTrue(operation.published);self.assertTrue(operation.closed)
         self.assertTrue(operation.directory.is_dir())
@@ -130,20 +133,20 @@ class NativeInstallationTests(unittest.TestCase):
 
     def test_interrupt_after_durable_replace_preserves_current_installation(self):
         from unittest.mock import patch,Mock
-        import numerical_runtime
+        from backtest.engines.numerical import runtime as numerical_runtime
         components,manifest=self.fixture_manifest()
         operation=native.Installation(self.root/'application',components,manifest,None)
         owner=Mock(closed=True);owner.process.returncode=0
         owner.process.stdin.flush.side_effect=lambda:(operation.scratch/'verified.json').write_text(json.dumps(dict(answer=19,library_closed=True,version='host: fixture\n')))
         original=numerical_runtime.write_payload
         def interrupted(*args,**kwargs):original(*args,**kwargs);raise KeyboardInterrupt()
-        with patch.object(native,'_requirements'),patch.object(native,'environment',return_value={}),patch('process_owner.OwnedProcess',return_value=owner),patch.object(numerical_runtime,'write_payload',side_effect=interrupted):
+        with patch.object(native,'_requirements'),patch.object(native,'environment',return_value={}),patch('backtest.runtime.process_owner.OwnedProcess',return_value=owner),patch.object(numerical_runtime,'write_payload',side_effect=interrupted):
             with self.assertRaises(KeyboardInterrupt):operation.run()
         self.assertTrue(operation.published);self.assertTrue(operation.directory.is_dir());self.assertTrue(operation.closed)
 
     def test_ambient_benchmark_build_root_cannot_redirect_selected_storage(self):
         from unittest.mock import patch
-        import numerical_rust
+        from backtest.engines.numerical import rust as numerical_rust
         expected=numerical_rust._build_root()
         with patch.dict(os.environ,BACKTEST_RUST_BUILDS=str(self.root/'unexpected-builds')):
             self.assertEqual(numerical_rust._build_root(),expected)

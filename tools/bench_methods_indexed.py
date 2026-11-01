@@ -5,6 +5,10 @@ membership is applied. It returns the complete source candidate mappings and
 stable original-buffer ranks. Index storage is proportional to annual reports;
 no entry-date factors or completed portfolios are retained between requests.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.financial import rules
 from bisect import bisect_left
 from datetime import date
 from pathlib import Path
@@ -22,7 +26,7 @@ SOURCE_FILES = (Path(__file__).with_name('bench_methods_arrays.py'),)
 class ReportIndex:
     """Select the last available, nonstale report in each prepared pool.
 
-    ``books`` is the unchanged ``schedules.histories`` result. ``policy`` is
+    ``books`` is the unchanged ``daily.histories`` result. ``policy`` is
     its production ``run`` module, which owns MAX_AGE and BUFFER. Fiscal and
     availability dates must be nondecreasing within each history. Equal dates
     preserve row order. Unsupported ordering fails during untimed setup.
@@ -88,7 +92,7 @@ class IndexedModel(Model):
     def __init__(self, source, schedules):
         super().__init__(source,schedules)
         try:
-            self.report_index = ReportIndex(self.books,schedules.financial_books.run)
+            self.report_index = ReportIndex(self.books,rules)
         except BaseException:
             self.close()
             raise

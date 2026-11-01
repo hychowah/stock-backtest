@@ -9,19 +9,23 @@ def main():
     sys.path[:0]=[str(tests),str(tests.parent/'tools')]
     from bench_source_service_fixture import dependency_guard
     dependency_guard(source)
-    sys.path[:0]=[str(source/'scripts'),str(source/'website')]
+    sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
     import runtime_access
     with runtime_access.ownership(source):
-        import run
-        run.KEY_PATH=source.parent/'nonexistent-offline-key'
-        from numerical_preparation import Preparation
-        import baseline
-        import research
+        from backtest.financial import rules
+        from backtest.inputs import market, fmp_download, cache_assets
+        from backtest.engines.reference import legacy
+        fmp_download.KEY_PATH=source.parent/'nonexistent-offline-key'
+        from backtest.application.preparation import Preparation
+        from backtest.inputs import baseline as baseline
+        from backtest.inputs import research as research
+        from backtest.inputs import daily
         from unittest.mock import patch
         import os
         ambient_builds=source/'tmp/ignored-ambient-builds'
         os.environ['BACKTEST_RUST_BUILDS']=str(ambient_builds)
-        candidate=Preparation(source,python=sys.executable)
+        from build_state import ensure_presentation
+        candidate=Preparation(source,python=sys.executable,ensure_presentation=ensure_presentation)
         initial=candidate.prepare()
         assert not ambient_builds.exists(),'Ambient benchmark build path redirected ordinary preparation'
         assert not (source/'data/numerical-native').exists(),'Normal selected preparation created unused Rust state'
@@ -37,13 +41,13 @@ def main():
             return
         # Actual application dispatch and equivalent child-owned freshness.
         from candidate_calculations import Candidate
-        import cache_access
+        from backtest.runtime import cache_access as cache_access
         owner=Candidate(candidate)
         options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',rank_to=5)
         result=owner.calculate('custom',options,None,None)
         assert owner.runtime is None
         assert owner.status()['state']=='current'
-        from numerical_portfolio import compare_results
+        from backtest.engines.numerical.portfolio import compare_results
         assert compare_results(owner.calculate('custom',options,None,None),result)['exact']
         assert owner.runtime is None
         checks=[source/'requirements-numerical.txt',source/'website/serve_app.py',
@@ -95,8 +99,8 @@ def main():
         # In-place raw edits leave directory metadata and report cutoff intact.
         # Research must invalidate daily prices before a new numeric export.
         from contextlib import closing
-        import schedules
-        from numerical_generation import GenerationStore
+        from backtest.engines.original import schedules as schedules
+        from backtest.engines.numerical.generation import GenerationStore
         import os
         prices=source/'raw/px';directory_stamp=prices.stat()
         price=prices/'ZZ000.json';payload=json.loads(price.read_bytes())
@@ -108,7 +112,7 @@ def main():
         with cache_access.access():
             research.prepare()
             assert baseline.cutoff((source/'results/summary-exits.txt').read_text())==cutoff
-            try:GenerationStore(schedules).prepare()
+            try:GenerationStore().prepare()
             except ValueError as error:assert 'Daily cache changed' in str(error)
             else:raise AssertionError('Stale daily prices were exported as a new generation')
         price_changed=candidate.prepare()
@@ -117,14 +121,14 @@ def main():
         updated_result=owner.calculate('custom',options,None,None)
         assert updated_result['cagr']!=result['cagr']
         owner.close();owner.retire()
-        daily=source/'data/schedules.sqlite';daily_content=daily.read_bytes()
+        daily_path=source/'data/schedules.sqlite';daily_content=daily_path.read_bytes()
         with cache_access.access(),patch.object(research,'price_sources',side_effect=AssertionError('Daily connect scanned raw inventory')):
-            with closing(schedules.connect()) as db:
+            with closing(daily.connect()) as db:
                 actual=db.execute("SELECT adjusted FROM prices WHERE symbol='ZZ000' AND day='2015-02-02'").fetchone()[0]
                 assert actual==next(row['adjClose'] for row in payload['div'] if row['date']=='2015-02-02')
         with patch.object(research,'bars',side_effect=AssertionError('Unchanged restart reparsed raw prices')):
             assert candidate.prepare()['generation']['reused']
-        assert daily.read_bytes()==daily_content
+        assert daily_path.read_bytes()==daily_content
         print(json.dumps(dict(check='in-place-price-preparation',original_cagr=result['cagr'],
             updated_cagr=updated_result['cagr'],generation=price_changed['generation']['identity'],
             daily_adjusted=actual,unchanged_daily_bytes=True)),flush=True)
@@ -155,7 +159,7 @@ def main():
         assert changed['generation']['identity']!=initial['generation']['identity']
         assert not changed['generation']['reused']
         # A pending numerical pointer is recovered before the verified restart.
-        from cache_assets import write_json
+        from backtest.inputs.cache_assets import write_json
         current=source/'data/numerical/current.json'
         write_json(source/'data/numerical/publication.json',dict(
             candidate=changed['generation']['identity'],prior=json.loads(current.read_bytes())))

@@ -437,7 +437,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_publication_cli_installs_verified_archive(self):
         names = ('tools/deploy.py', 'website/runtime_access.py', 'website/launcher.py',
-                 'scripts/cache_access.py', 'backtest/__init__.py', 'backtest/paths.py')
+                 'backtest/runtime/cache_access.py', 'backtest/__init__.py', 'backtest/paths.py')
         with tarfile.open(self.stage / 'source.tar', 'w') as output:
             for name in names:
                 output.add(ROOT / name, arcname=name, recursive=False)
@@ -471,11 +471,13 @@ class DeploymentTests(unittest.TestCase):
             deploy.export_runtime_report(self.root, bundle)
 
     def test_report_export_owns_source_before_financial_imports(self):
-        scripts = self.root / 'scripts'
-        scripts.mkdir()
+        scripts = self.root / 'backtest'/'inputs'
+        scripts.mkdir(parents=True)
+        (self.root/'backtest/__init__.py').write_text('')
+        (scripts/'__init__.py').write_text('')
         marker = self.root / 'financial-import'
         (scripts / 'baseline.py').write_text('from pathlib import Path\n'
-                'Path(__file__).resolve().parents[1].joinpath("financial-import").write_text("yes")\n'
+                'Path(__file__).resolve().parents[2].joinpath("financial-import").write_text("yes")\n'
                 'raise RuntimeError("import probe finished")\n')
         code = ('import sys;sys.path[:0]=[sys.argv[1],sys.argv[2]];import deploy;'
                 'deploy.export_runtime_report(sys.argv[3],sys.argv[4])')

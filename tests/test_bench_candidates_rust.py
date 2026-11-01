@@ -108,7 +108,7 @@ class RustNativeTests(unittest.TestCase):
                 options = dict(shared.baseline.options(pool, 'F0' if profile == 'all' else profile))
                 if profile == 'all':
                     options['filters'] = [dict(field=field, op='gt', value=0.)
-                                          for field in shared.s.metrics.FILTERS]
+                                          for field in shared.metrics.FILTERS]
                 self.ordinary.begin(dict(options=options))
                 self.executor.begin(dict(options=options))
                 books = [('2015-01-02', '2016-01-04', pool),

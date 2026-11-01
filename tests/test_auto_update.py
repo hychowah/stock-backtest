@@ -169,10 +169,11 @@ class NativeStopTests(unittest.TestCase):
 from pathlib import Path
 from unittest.mock import patch
 source=Path({str(ROOT)!r});root=Path(__file__).parents[1]
-sys.path[:0]=[str(source/'website'),str(source/'scripts')]
+sys.path[:0]=[str(source),str(source/'website'),str(source/'scripts')]
 spec=importlib.util.spec_from_file_location('integrated_app',source/'website/serve_app.py')
 app=importlib.util.module_from_spec(spec);spec.loader.exec_module(app)
-import backtest_control,backtest_queue
+from backtest.runtime import backtest_control
+import backtest_queue
 store=backtest_queue.Store(root/'queue.sqlite')
 options=dict(engine='original',start='2015-01-01',end='2016-12-30',months=3,trials=2,seed=42)
 plan=dict(options={{}},start=options['start'],end=options['end'],months=3,requested=2,seed=42,samples=[['2015-01-02']])
@@ -192,7 +193,7 @@ class Server(Base):
   self.calculations.original.calculate=slow
 app.Server=Server
 def main():
- with patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.data_manager,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
+ with patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.cache_assets,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
   app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
  value=store.get(item['id']);replayed=store.claim()
  assert value['state']=='queued' and value['options']==options
@@ -227,6 +228,7 @@ class CommittedUpdateTests(unittest.TestCase):
                 subprocess.run(command('config',key,value),check=True)
             website=source/'website';website.mkdir()
             (source/'tools').mkdir();shutil.copy2(ROOT/'tools'/'deploy.py',source/'tools'/'deploy.py')
+            shutil.copytree(ROOT/'backtest',source/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
             for name in ('serve.py','runtime_access.py','launcher.py'):shutil.copy2(ROOT/'website'/name,website/name)
             def app(version):
                 return ('from pathlib import Path\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\nimport launcher\n'

@@ -17,7 +17,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]/'scripts'),str(Path(__file__).parent)]
-import result_evidence as evidence
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest import result_evidence as evidence
 from backtest import portfolio_results as portfolio_results
 from test_portfolio_results import holding
 

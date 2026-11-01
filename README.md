@@ -130,7 +130,7 @@ python3 tests/check_screener.py
 python3 tests/check_paths.py
 ```
 
-Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records. The independent `scripts/revalue.py` reference run still reads raw prices.
+Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records. The independent `backtest/engines/reference/revalue.py` reference run still reads raw prices.
 
 ## Project layout
 
@@ -164,7 +164,7 @@ The current report is [results/summary-exits.txt](results/summary-exits.txt). Fr
 
 Normal backtest and website runs are offline and reuse `raw/`. No API key is required for those operations. See [raw/README.md](raw/README.md) for cache contents.
 
-`scripts/run.py` may fetch missing data and writes the **legacy** reports. Use it only when the cache needs additional data; its exit rule still differs from the current `scripts/revalue.py`. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when the main downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
+`backtest/engines/reference/legacy.py` may fetch missing data and writes the **legacy** reports. Use it only when the cache needs additional data; its exit rule still differs from the current `backtest/engines/reference/revalue.py`. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when the main downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
 
 The local website is ready to use. Hosted publication has not completed because the current environment cannot reach the Sites source server. Preserve `website/.openai/hosting.json` when retrying publication.
 

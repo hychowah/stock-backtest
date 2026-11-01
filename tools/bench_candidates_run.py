@@ -9,6 +9,11 @@ Execution is closed until bound input ownership and resource/availability
 admission are qualified. Source-only imports and numerical helpers remain
 available for synthetic tests. The retained runner is not an isolation proof.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import books as financial_books, metrics
 import argparse
 from collections import deque
 from contextlib import closing
@@ -28,7 +33,7 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import bench_baseline as baseline
 import bench_methods as previous
 import bench_admission as admission
-from portfolio_workspace import stage_book
+from backtest.engines.numerical.workspace import stage_book
 
 METHODS = ('numba', 'python', 'duckdb', 'persistent', 'polars', 'rust')
 STAGING = ('all', 'requested')
@@ -102,7 +107,7 @@ def memory_workspace(source, schedules):
     db = sqlite3.connect(':memory:')
     db.row_factory = sqlite3.Row
     try:
-        db.executescript(schedules.SCHEMA)
+        db.executescript(daily.SCHEMA)
         db.executemany('INSERT INTO companies VALUES(?,?,?,?)',
                        source.execute('SELECT * FROM companies'))
         db.executemany('INSERT INTO sessions VALUES(?,?)',
@@ -140,7 +145,7 @@ class BatchModel(previous.Model):
         self.db = memory_workspace(source, self.s)
         self.executor = executor
         self.expected = expected
-        self.original_average = self.s.metrics.annual_average
+        self.original_average = metrics.annual_average
         self.average_cache = {}
         self.stages = {}
         self.last_request = None
@@ -195,7 +200,7 @@ class BatchModel(previous.Model):
         if requested != key:
             raise ValueError('Candidate executor changed first-use order.')
         began = time.perf_counter()
-        ranking_metric = (self.options.get('metric', self.s.metrics.DEFAULT_METRIC)
+        ranking_metric = (self.options.get('metric', metrics.DEFAULT_METRIC)
                           if self.staging == 'requested' else None)
         result = stage_book(db, book, pool, ranking_metric=ranking_metric,
                             staged_rows=self.staged_rows)
@@ -236,7 +241,7 @@ def normalized_book(book, needed):
 def reference_smokes(source, requests, directory):
     """Untimed independent real-data checks use the original read-only engine."""
     s = baseline.s
-    books, cached = s.histories(source), s.cached_symbols(source)
+    books, cached = daily.histories(source), daily.cached_symbols(source)
     records = []
     for item in requests:
         expected = item['configuration']
@@ -256,7 +261,7 @@ def reference_smokes(source, requests, directory):
                             book = s.compute_period(source, a, b, books, cached, expected['options']['pool'])
                         finally:
                             source.rollback()
-                        s.store_period(db, book)
+                        daily.store_period(db, book)
                 result = s.backtest_dates(db, dates=dates, start=expected['start'],
                     end=expected['end'], months=expected['months'], **expected['options'])
                 evidence.append(previous.clean(result))
@@ -279,12 +284,7 @@ def source_files():
     files = [Path(__file__), Path(previous.__file__), Path(baseline.__file__)]
     files += [ROOT / 'tools' / name for name in
               ('bench_methods_arrays.py', 'bench_generation.py', 'bench_policy_program.py',
-               'portfolio_workspace.py')]
-    files += [ROOT / 'scripts' / name for name in ('numerical_policy.py', 'numerical_decisions.py', 'numerical_temporal.py', 'numerical_generation.py', 'numerical_factors.py',
-        'numerical_books.py', 'numerical_numba.py', 'numerical_matrix.py',
-        'numerical_workspace.py', 'process_owner.py', 'numerical_identity.py',
-        'numerical_random.py', 'numerical_portfolio.py', 'numerical_runtime.py',
-        'numerical_runtime_child.py', 'numerical_session.py')]
+               'bench_candidates_process.py')]
     files.extend(sorted((ROOT / 'backtest').rglob('*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.py')))
     files.extend(sorted((ROOT / 'tools').glob('bench_candidates*.rs')))
@@ -320,7 +320,7 @@ def intermediate_proof(inputs, executor, source):
         trace = executor.trace
         report_ids = {id(row):index for index,row in enumerate(inputs.report_rows)}
         for number,(entry,exit_day,pool) in enumerate(jobs):
-            statements,ranks = s.financial_books.candidates(inputs.books,date.fromisoformat(entry))
+            statements,ranks = financial_books.candidates(inputs.books,date.fromisoformat(entry))
             for label,key in (('cached','broad_reports'),('legacy','legacy_reports')):
                 expected_ids = np.full(len(inputs.symbols),-1,dtype=np.int32)
                 for symbol,row in statements[label].items():
@@ -425,7 +425,7 @@ def worker(args):
                     # Untimed smoke checks use the immutable inputs owned by the
                     # parent. They never supply a headline performance number.
                     if case['kind'] == 'primary':
-                        checked = baseline.s.connect(); checked.close()
+                        checked = daily.connect(); checked.close()
                 def progress(event):
                     if event['completed'] in (1, 8, 16, 24):
                         emit('trial', method=args.worker, case=case['id'], completed=event['completed'])
@@ -639,8 +639,8 @@ def parent(args):
                      'Setup, compilation, cloning, proof and evidence comparison are separate from warm request time.',
                      'One primary pool/profile/seed is a pilot; no full-matrix qualification. OS cache is uncontrolled.'])
     with baseline.coordinator.access():
-        ready=baseline.s.r.connect(full_prices=True);ready.close()
-        source=baseline.s.connect()
+        ready=research.connect(full_prices=True);ready.close()
+        source=daily.connect()
         before=None
         try:
             baseline.validate_manifest(manifest,source)

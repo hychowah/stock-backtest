@@ -3,6 +3,9 @@
 import sys as _package_sys
 from pathlib import Path as _PackagePath
 _package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 from pathlib import Path
 import json
@@ -14,7 +17,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
-import research as r
+from backtest.inputs import research as r
 import dataset
 
 

@@ -19,20 +19,20 @@ source=Path(sys.argv[1]); tests=Path(sys.argv[2]); result=Path(sys.argv[3])
 sys.path[:0]=[str(tests),str(tests.parent/'tools')]
 from bench_source_service_fixture import dependency_guard
 dependency_guard(source)
-sys.path[:0]=[str(source/'scripts'),str(source/'website')]
+sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
 import runtime_access
 with runtime_access.ownership(source):
-    import run
-    run.KEY_PATH=source.parent/'nonexistent-key'
-    import schedules as s
-    s.prepare()
-    import numerical_generation as ng
-    import numerical_decisions
+    from backtest.inputs import daily, fmp_download
+    fmp_download.KEY_PATH=source.parent/'nonexistent-key'
+    from backtest.engines.original import schedules as s
+    daily.prepare()
+    from backtest.engines.numerical import generation as ng
+    from backtest.engines.numerical import decisions as numerical_decisions
     def reject_optional_translation(*args, **kwargs):
         raise AssertionError('Offline preparation invoked optional compiled guards')
     numerical_decisions.CandidateDecisionProgram = reject_optional_translation
     import numpy as np
-    store=ng.GenerationStore(s)
+    store=ng.GenerationStore()
     report=ng._sha(source/'results/summary-exits.txt')
     tracemalloc.start()
     published=store.prepare()
@@ -40,7 +40,7 @@ with runtime_access.ownership(source):
     with store.open_current() as inputs:
         inputs.validate()
         from bench_candidates import NumericInputs
-        with closing(s.connect()) as db:
+        with closing(daily.connect()) as db:
             old=NumericInputs(db,s)
             try:
                 for name in ng.ARRAYS:
@@ -92,13 +92,13 @@ source=Path(sys.argv[1]);tests=Path(sys.argv[2])
 sys.path[:0]=[str(tests),str(tests.parent/'tools')]
 from bench_source_service_fixture import dependency_guard
 dependency_guard(source)
-sys.path[:0]=[str(source/'scripts'),str(source/'website')]
+sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
 import runtime_access
 with runtime_access.ownership(source):
-    import run
-    run.KEY_PATH=source.parent/'nonexistent-key'
-    import schedules,numerical_generation as ng
-    with ng.GenerationStore(schedules).open_current() as inputs:
+    from backtest.inputs import daily, fmp_download
+    fmp_download.KEY_PATH=source.parent/'nonexistent-key'
+    from backtest.engines.numerical import generation as ng
+    with ng.GenerationStore().open_current() as inputs:
         inputs.validate()
         assert inputs.signature==sys.argv[3]
         assert len(inputs.symbols)==64

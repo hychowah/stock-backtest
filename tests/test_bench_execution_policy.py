@@ -1,4 +1,8 @@
 """Owned source-only policy fixtures. No real capture, raw cache or requests."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
 import json
 import logging
 import os
@@ -17,9 +21,9 @@ import test_bench_execution_inputs as workspace_tests
 
 # CB-09 reducer integration changes the schedules.py whole-source identity.
 # Financial expression/code digests below remain bound to the same calculations.
-from numerical_policy import PolicyProgram
-import schedules
-SIGNATURE = PolicyProgram(schedules).signature
+from backtest.engines.numerical.policy import PolicyProgram
+from backtest.engines.original import schedules as schedules
+SIGNATURE = PolicyProgram().signature
 
 
 class PolicyTests(unittest.TestCase):
@@ -61,7 +65,7 @@ class PolicyTests(unittest.TestCase):
                     constants=[100000000, 50000000, 250, 800], bankruptcy=[]))
                 self.assertEqual(binding['financial_generation'], inputs.identity)
                 self.assertEqual(binding['capture_id'], inputs.capture_id)
-                self.assertEqual(set(binding['policy_sources']), {'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/research.py','scripts/revalue.py','scripts/run.py','scripts/schedules.py'})
+                self.assertEqual(set(binding['policy_sources']), {'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','backtest/inputs/research.py','backtest/engines/reference/revalue.py','backtest/engines/reference/legacy.py','backtest/engines/original/schedules.py','backtest/inputs/market.py','backtest/inputs/daily.py','backtest/engines/original/book_batch.py'})
                 self.assertTrue(all(self.sources[name] == sha for name, sha in binding['policy_sources'].items()))
                 with self.assertRaises(TypeError): binding['policy_signature'] = 'changed'
                 with self.assertRaises(TypeError): binding['policy_sources']['backtest/financial/books.py'] = 'changed'

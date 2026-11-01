@@ -1,4 +1,8 @@
 """Pinned application engines, optional setup and immutable producer evidence."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -13,7 +17,10 @@ sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
 import backtest_jobs
 import backtest_queue
 import engine_selection
-import numerical_preparation
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.application import preparation as numerical_preparation
 import test_calculations as calculations
 from test_queue import request
 
@@ -135,7 +142,7 @@ class SelectionTests(unittest.TestCase):
         owner=self.selectable()
         jobs=data_manager.Jobs(owner.preparation,optional_preparation=True)
         options=data_manager.options(dict(scope='symbols',symbols='A',start='2015-01-01',end='2016-12-30',datasets=['prices']))
-        with patch.object(data_manager.schedules,'prepare'),patch.object(data_manager.subprocess,'run'),patch.object(data_manager,'inspect',return_value={}):
+        with patch.object(daily,'prepare'),patch.object(data_manager.subprocess,'run'),patch.object(data_manager,'inspect',return_value={}):
             jobs._work('rebuild',options)
             self.assertIsNone(jobs.state['error']);self.assertTrue(jobs.rebuilt)
             owner.preparation.prepare.assert_not_called();owner.preparation.invalidate.assert_called_once()
@@ -147,16 +154,17 @@ class SelectionTests(unittest.TestCase):
 import sys,json,sqlite3
 from pathlib import Path
 from unittest.mock import Mock,patch
-root,dbpath=map(Path,sys.argv[1:3]);sys.path[:0]=[str(root/'scripts'),str(root/'website')]
+root,dbpath=map(Path,sys.argv[1:3]);sys.path[:0]=[str(root),str(root/'scripts'),str(root/'website')]
 class NoNative:
  def find_spec(self,fullname,path=None,target=None):
   if fullname.split('.')[0] in ('numpy','numba','llvmlite'):raise AssertionError('Original imported numerical dependencies')
 sys.meta_path.insert(0,NoNative())
-import serve_app,engine_selection,schedules,saved_backtests
+from backtest.inputs import daily
+import serve_app,engine_selection,saved_backtests
 owner=engine_selection.Selectable(Mock())
 def connect():
  db=sqlite3.connect(dbpath);db.row_factory=sqlite3.Row;return db
-with patch.object(schedules,'connect',side_effect=connect):
+with patch.object(daily,'connect',side_effect=connect):
  result=owner.calculate('custom',dict(start='2015-01-01',end='2016-12-30',months=3,rank_to=1),None,None)
 store=saved_backtests.Store(dbpath.parent/'saved-test.sqlite')
 snapshot=dict(version=2,kind='custom',settings=dict(mode='custom'),result=result,catalog=dict(metrics={},filters={}),presentation={})
@@ -179,7 +187,7 @@ class RuntimeSelectionTests(unittest.TestCase):
         CandidateTests.assert_closed(self,value)
     def test_matched_fixed_seeded_random_replay_and_return_to_original(self):
         from test_candidate_calculations import CandidateTests
-        from numerical_portfolio import compare_results
+        from backtest.engines.numerical.portfolio import compare_results
         from test_operating_spread_engine import financial_inputs, FILTERS
         financial_inputs(self.fixture.fixture.db)
         self.fixture.binding['daily'] = dict(operating_spread=True)
@@ -191,7 +199,7 @@ class RuntimeSelectionTests(unittest.TestCase):
         self.addCleanup(owner.close);self.addCleanup(owner.retire)
         def connect():
             db=sqlite3.connect(self.fixture.fixture.path);db.row_factory=sqlite3.Row;return db
-        with patch('schedules.connect',side_effect=connect),patch('cache_access.workspace',self.fixture.owner):
+        with patch('backtest.inputs.daily.connect',side_effect=connect),patch('backtest.runtime.cache_access.workspace',self.fixture.owner):
             for mode,extra in (('custom',{}),('random',dict(trials=2,seed=2607948532))):
                 options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',min_cap=0.,min_ev=0.,rank_to=5,selection_order='rank_first',filters=FILTERS,**extra)
                 plans=[]

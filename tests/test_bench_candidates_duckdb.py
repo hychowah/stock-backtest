@@ -1,3 +1,8 @@
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import rules, books as financial_books, metrics
 
 # Resolve the importable package for direct-file commands and spawned fixtures.
 import sys as _package_sys
@@ -57,11 +62,13 @@ class DuckDBCandidateTests(unittest.TestCase):
         for symbol, fiscal, body in self.fixture.db.execute(
                 'SELECT symbol,fiscal,values_json FROM financial_inputs').fetchall():
             values = json.loads(body)
-            values.update(revenue=200e6, totalCurrentAssets=110e6,
+            values.update(revenue=200e6, operatingIncome=70e6, totalCurrentAssets=110e6,
                           totalCurrentLiabilities=50e6, ebit=70e6,
                           interestExpense=5e6, totalDebt=40e6)
             self.fixture.db.execute('UPDATE financial_inputs SET values_json=? WHERE symbol=? AND fiscal=?',
                                     (json.dumps(values), symbol, fiscal))
+        self.fixture.db.executemany('INSERT OR IGNORE INTO treasury10 VALUES(?,?)',
+            [('2014-12-31',2.),('2015-07-01',3.),('2016-07-01',0.)])
         self.fixture.db.commit()
         self.inputs = core.NumericInputs(self.fixture.reader, s)
         self.addCleanup(self.inputs.close)
@@ -77,9 +84,9 @@ class DuckDBCandidateTests(unittest.TestCase):
     def selected(self, book, options):
         with closing(sqlite3.connect(':memory:')) as db:
             db.row_factory = sqlite3.Row
-            db.executescript(s.SCHEMA)
+            db.executescript(daily.SCHEMA)
             db.executemany('INSERT INTO companies VALUES(?,?,?,?)', self.inputs.companies)
-            period = s.store_period(db, book)
+            period = daily.store_period(db, book)
             rows = screening.select(db, period=(period, period), **options)
             for row in rows:
                 row.pop('year')
@@ -105,13 +112,13 @@ class DuckDBCandidateTests(unittest.TestCase):
     def test_complete_candidate_books_profiles_metrics_and_sql_membership(self):
         profiles = list(baseline.PROFILES.values()) + [
             baseline.PROFILES['F1'] + baseline.PROFILES['F2'],
-            [dict(field=field, op='gt', value=-1e100) for field in s.metrics.FILTERS],
+            [dict(field=field, op='gt', value=-1e100) for field in metrics.FILTERS],
         ]
         for pool in ('legacy', 'cached'):
             jobs = [('2015-01-02', '2016-01-04', pool),
                     ('2015-07-01', '2016-06-30', pool),
                     ('2016-07-01', '2016-12-30', pool)]
-            for metric in s.metrics.METRICS:
+            for metric in metrics.METRICS:
                 for conditions in profiles:
                     with self.subTest(pool=pool, metric=metric, fields=[c['field'] for c in conditions]):
                         options = dict(baseline.options(pool, 'F0'), min_cap=0., min_ev=0.,
@@ -122,12 +129,12 @@ class DuckDBCandidateTests(unittest.TestCase):
     def test_report_availability_age_boundaries_and_complete_pool_identity(self):
         days = set()
         for row in self.inputs.report_rows:
-            for anchor in (row['known'], row['fiscal'] + s.financial_books.run.MAX_AGE):
+            for anchor in (row['known'], row['fiscal'] + rules.MAX_AGE):
                 days.update(anchor + timedelta(days=offset) for offset in (-1, 0, 1))
         ordered = sorted(days)
         actual = self.executor.select_reports(np.array([day.toordinal() for day in ordered], dtype=np.int32))
         for number, day in enumerate(ordered):
-            expected, unused = s.financial_books.candidates(self.inputs.books, day)
+            expected, unused = financial_books.candidates(self.inputs.books, day)
             for output, pool in zip(actual, ('cached', 'legacy'), strict=True):
                 for sid, symbol in enumerate(self.inputs.symbols):
                     report_id = int(output[number, sid])
@@ -148,7 +155,7 @@ class DuckDBCandidateTests(unittest.TestCase):
             np.array(symbols, dtype=np.int32), np.array(days, dtype=np.int32),
             np.array(columns, dtype=np.int8), np.array(forwards, dtype=np.bool_))
         for index, (symbol, day, column, forward) in enumerate(reversed(queries)):
-            expected = None if symbol < 0 else s.price(self.fixture.reader,
+            expected = None if symbol < 0 else daily.price(self.fixture.reader,
                 self.inputs.symbols[symbol], date.fromordinal(day),
                 'price' if column == 0 else 'adjusted', forward=forward)
             if expected is None:
@@ -210,7 +217,7 @@ class DuckDBCandidateTests(unittest.TestCase):
         jobs = [('2015-07-01', '2016-06-30', 'cached')]
         book = self.source_books(jobs)[0]
         values = {field: value for symbol, field, value in book['filters'] if symbol == 'A'}
-        self.assertEqual(set(values), set(s.metrics.FILTERS))
+        self.assertEqual(set(values), set(metrics.FILTERS))
         for field, value in values.items():
             for operator in ('lt', 'gt'):
                 with self.subTest(field=field, operator=operator):
@@ -226,7 +233,7 @@ class DuckDBCandidateTests(unittest.TestCase):
         for job in jobs:
             selected_options = dict(options, pool=job[2])
             self.assert_books([job], selected_options)
-        with patch.object(s.r.revalue, 'BANKRUPT', {(2015, 'A')}):
+        with patch.object(rules,'BANKRUPT', {(2015, 'A')}):
             # Bankruptcy overrides belong to the immutable input identity.
             # Attach a new generation instead of mutating an attached one.
             previous_inputs, previous_executor = self.inputs, self.executor

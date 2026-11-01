@@ -33,13 +33,13 @@ class Selectable:
         if planned is not None:
             calendar_requests.validate_submitted({key:value for key,value in options.items() if key!='engine'},planned)
         if engine=='experimental':
-            from numerical_policy import require_supported
+            from backtest.engines.numerical.policy import require_supported
             require_supported(options)
             if planned is not None:require_supported(planned.get('options',{}))
         return engine
 
     def status(self):
-        from numerical_preparation import dependencies,PreparationError,DEFAULT_PROFILE
+        from backtest.application.preparation import dependencies, PreparationError, DEFAULT_PROFILE
         profile=getattr(self.preparation,'profile',DEFAULT_PROFILE)
         if not isinstance(profile,str):profile=DEFAULT_PROFILE
         try:dependencies(profile)

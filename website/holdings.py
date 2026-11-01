@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent / 'scripts'))
-from research import website_holdings
+from backtest.inputs.research import website_holdings
 
 
 def load():

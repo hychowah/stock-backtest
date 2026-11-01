@@ -1,4 +1,9 @@
 """Parallel read-only calculation, first-use planning, and atomic trial saves."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
+from backtest.financial import metrics
 from datetime import date
 import copy
 import os
@@ -13,9 +18,9 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tests')]
-import book_batch as b
-import robustness as r
-import schedules as s
+from backtest.engines.original import book_batch as b
+from backtest.engines.original import robustness as r
+from backtest.engines.original import schedules as s
 import test_robustness as fixtures
 
 
@@ -52,12 +57,12 @@ class BookBatchTests(unittest.TestCase):
         planned=b.plan(self.db,config)
         self.assertEqual(planned['trials'][1],[])
         self.assertEqual(len(planned['jobs']),len(set(planned['jobs'])))
-        with patch.object(s,'compute_period',wraps=s.compute_period) as compute,patch.object(s,'histories',wraps=s.histories) as histories:
+        with patch.object(s,'compute_period',wraps=s.compute_period) as compute,patch.object(daily,'histories',wraps=daily.histories) as histories:
             result=r.run(self.db,config,workers=1)
         self.assertEqual(compute.call_count,len(planned['jobs']))
         self.assertEqual(histories.call_count,1)
         self.assertEqual(result['execution']['saved_books'],len(planned['jobs']))
-        with patch.object(s,'histories',side_effect=AssertionError('Replay reads no histories')),patch.object(b,'ProcessPoolExecutor',side_effect=AssertionError('Replay starts no processes')):
+        with patch.object(daily,'histories',side_effect=AssertionError('Replay reads no histories')),patch.object(b,'ProcessPoolExecutor',side_effect=AssertionError('Replay starts no processes')):
             replay=r.run(self.db,config,workers=4)
         self.assertEqual(financial(replay)['distributions'],financial(result)['distributions'])
         self.assertEqual(replay['execution']['workers'],0)
@@ -77,7 +82,7 @@ class BookBatchTests(unittest.TestCase):
     def test_spawn_matches_serial_holdings_both_pools_and_metrics(self):
         db,path=self.file_copy()
         for pool in ('legacy','cached'):
-            for metric in s.metrics.METRICS:
+            for metric in metrics.METRICS:
                 config=self.config(trials=4,seed=51,pool=pool,metric=metric,min_cap=0,min_ev=0)
                 serial=r.run(self.db,config,workers=1)
                 parallel=r.run(db,config,workers=2)
@@ -113,13 +118,13 @@ class BookBatchTests(unittest.TestCase):
 
     def test_mid_trial_write_failure_rolls_back_and_retry_completes(self):
         config=self.config(trials=3,seed=11)
-        planned=b.plan(self.db,config);original=s.store_period;calls=0
+        planned=b.plan(self.db,config);original=daily.store_period;calls=0
         def fail(*args,**kwargs):
             nonlocal calls
             calls+=1
             if calls==len(planned['trials'][0])+2:raise RuntimeError('write stopped')
             return original(*args,**kwargs)
-        with patch.object(s,'store_period',side_effect=fail):
+        with patch.object(daily,'store_period',side_effect=fail):
             with self.assertRaisesRegex(RuntimeError,'write stopped'):r.run(self.db,config,workers=1)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],len(planned['trials'][0]))
         self.assertEqual(r.run(self.db,config,workers=1)['completed'],3)
@@ -154,21 +159,21 @@ class BookBatchTests(unittest.TestCase):
         db.rollback()
         with self.assertRaisesRegex(ValueError,'changed'):b.open_reader(path,'different generation')
         db.execute("INSERT INTO metadata VALUES('daily_inputs','{}')");db.commit()
-        with patch.object(s,'fingerprint',return_value={'synthetic':True}),self.assertRaisesRegex(ValueError,'stale'):
+        with patch.object(daily,'fingerprint',return_value={'synthetic':True}),self.assertRaisesRegex(ValueError,'stale'):
             b.open_reader(path,'{}')
 
     def test_another_writer_completing_the_same_book_is_idempotent(self):
         entry=date(2015,1,1);end=date(2015,7,1)
-        book=s.compute_period(self.db,entry,end,s.histories(self.db),s.cached_symbols(self.db),'legacy')
-        with self.db:one=s.store_period(self.db,book)
+        book=s.compute_period(self.db,entry,end,daily.histories(self.db),daily.cached_symbols(self.db),'legacy')
+        with self.db:one=daily.store_period(self.db,book)
         before=[tuple(row) for row in self.db.execute('SELECT * FROM snapshots')]
-        with self.db:two=s.store_period(self.db,book)
+        with self.db:two=daily.store_period(self.db,book)
         self.assertEqual(one,two)
         self.assertEqual(before,[tuple(row) for row in self.db.execute('SELECT * FROM snapshots')])
 
     def test_book_read_transaction_releases_on_success_and_failure(self):
         key=('2015-01-01','2015-07-01','legacy')
-        books=s.histories(self.db);cached=s.cached_symbols(self.db)
+        books=daily.histories(self.db);cached=daily.cached_symbols(self.db)
         original=s.compute_period
         def observed(db,*args):
             self.assertTrue(db.in_transaction)
@@ -189,8 +194,8 @@ class BookBatchTests(unittest.TestCase):
 import multiprocessing,os,sys
 from pathlib import Path
 from threading import Event
-sys.path.insert(0,'''+repr(str(ROOT/'scripts'))+''')
-import book_batch as b
+sys.path.insert(0,'''+repr(str(ROOT))+''')
+from backtest.engines.original import book_batch as b
 if __name__=='__main__':
     with ProcessPoolExecutor(max_workers=1,mp_context=multiprocessing.get_context('spawn'),initializer=b.initialize_worker,initargs=(sys.argv[1],None)) as pool:
         pid=pool.submit(os.getpid).result(timeout=15)

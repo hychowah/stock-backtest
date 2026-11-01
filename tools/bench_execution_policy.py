@@ -3,6 +3,9 @@
 The child imports actual private application source. Its process contains import
 side effects. A binding is captured provenance, never permission to run an engine.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from contextlib import suppress
 import hashlib
 import importlib.abc
@@ -94,6 +97,7 @@ def _verify_sources(root, sources):
             raise ExecutionPolicyError('unsupported') from error
         _require(path.is_file(), 'incomplete')
         _require(_hash(path) == expected, 'mismatch')
+        if relative in artifacts.SOURCE_ASSETS:continue
         parts=list(Path(relative).parts)
         name = ('.'.join(parts[:-1] if parts[-1]=='__init__.py' else [*parts[:-1],path.stem]) if parts[0]=='backtest' else path.stem)
         _require(name not in by_name, 'unsupported')
@@ -110,7 +114,7 @@ def _validate_binding(value, request):
         _require(value[name] == request[name], 'mismatch')
     _require(isinstance(value['policy_signature'], str) and _SHA.fullmatch(value['policy_signature']))
     sources = value['policy_sources']
-    expected_paths = {'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/research.py','scripts/revalue.py','scripts/run.py','scripts/schedules.py'}
+    expected_paths = {'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','backtest/inputs/research.py','backtest/engines/reference/revalue.py','backtest/engines/reference/legacy.py','backtest/engines/original/schedules.py','backtest/inputs/market.py','backtest/inputs/daily.py','backtest/engines/original/book_batch.py'}
     _require(isinstance(sources, dict) and set(sources) == expected_paths, 'unsupported')
     _require(all(request['sources'].get(name) == sha for name, sha in sources.items()), 'mismatch')
     payload = {key: item for key, item in value.items() if key != 'identity'}
@@ -236,8 +240,8 @@ class CapturedPolicy:
         modules = event['modules']
         _require(isinstance(modules, dict) and bool(modules), 'incomplete')
         _require(all(sources.get(name) == sha for name, sha in modules.items()), 'mismatch')
-        _require({'scripts/schedules.py', 'scripts/research.py', 'backtest/financial/metrics.py',
-                  'backtest/financial/books.py', 'scripts/run.py', 'scripts/revalue.py'} <= modules.keys(), 'incomplete')
+        _require({'backtest/engines/original/schedules.py', 'backtest/inputs/research.py', 'backtest/financial/metrics.py',
+                  'backtest/financial/books.py', 'backtest/engines/reference/legacy.py', 'backtest/engines/reference/revalue.py'} <= modules.keys(), 'incomplete')
         self._binding = _freeze(_validate_binding(event['binding'], self._request))
         evidence = event['program_evidence']
         _require(isinstance(evidence, dict) and set(evidence) ==
@@ -388,7 +392,8 @@ def _child(request_path):
     _require(not (modules.keys() & support_modules.keys()), 'unsupported')
     finder = _SourceFinder(dict(modules, **support_modules))
     sys.meta_path.insert(0, finder)
-    allowed_files = set(modules.values()) | {folder / 'tools' / name for name in _SUPPORT}
+    allowed_files = set(modules.values()) | {root / name for name in request['sources']
+        if name in artifacts.SOURCE_ASSETS} | {folder / 'tools' / name for name in _SUPPORT}
     stdlib = Path(sys.base_prefix).resolve()
     memory_path = Path('/proc/self/statm').resolve()
     def audit(event, args):
@@ -400,9 +405,10 @@ def _child(request_path):
             _require(path in allowed_files or path == memory_path or
                      path.is_relative_to(stdlib) and not path.is_relative_to(root), 'unsupported')
     sys.addaudithook(audit)
-    import schedules
+    from backtest.engines.original import schedules as schedules
+    from backtest.financial import rules
     from bench_policy_program import PolicyProgram
-    program = PolicyProgram(schedules)
+    program = PolicyProgram()
     policy_sources = {}
     for path in program.source_paths:
         relative = path.relative_to(root).as_posix()
@@ -427,8 +433,8 @@ def _child(request_path):
     evidence = dict(signature=program.signature, expressions=artifacts.digest(program.expressions),
         python=artifacts.digest(program.python_source()), decisions=artifacts.digest(program.decisions.source),
         statuses=program.decisions.statuses, sources=program.source_hashes,
-        constants=[schedules.r.run.MIN_MARKET_CAP, schedules.r.run.MIN_EV, schedules.r.run.BUFFER,
-                   schedules.r.run.MAX_AGE.days], bankruptcy=sorted(schedules.r.revalue.BANKRUPT))
+        constants=[rules.MIN_MARKET_CAP, rules.MIN_EV, rules.BUFFER,
+                   rules.MAX_AGE.days], bankruptcy=sorted(rules.BANKRUPT))
     print(json.dumps(dict(event='attached', binding=binding, modules=loaded, memory_bytes=memory,
                          program_evidence=evidence)), flush=True)
     while not (folder / 'stop').exists():

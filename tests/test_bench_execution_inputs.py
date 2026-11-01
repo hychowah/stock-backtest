@@ -57,11 +57,12 @@ class WorkspaceTests(unittest.TestCase):
         (self.source / 'website').mkdir()
         shutil.copy2(ROOT / 'website/runtime_access.py', self.source / 'website/runtime_access.py')
         self.sources = {p.relative_to(self.source).as_posix(): sha(p)
-                        for p in self.source.rglob('*.py')}
+                        for p in self.source.rglob('*') if p.is_file() and
+                        (p.suffix=='.py' or p.relative_to(self.source).as_posix() in artifacts.SOURCE_ASSETS)}
         self.freshness = dict(inputs={'raw/universe.json': [2, 1], 'raw/px': ['directory', 1],
             'historical_through': '2026-10-21'}, prices={'A.json': [100, 1234]})
         self.freshness['daily_inputs'] = dict(version=3, inputs=self.freshness['inputs'],
-            engine={'scripts/schedules.py': [123, 456], 'scripts/book_batch.py': [234, 567], 'backtest/calendar.py': [345, 678], 'backtest/portfolio_results.py': [456, 789]})
+            engine={'backtest/inputs/daily.py': [111, 222], 'backtest/engines/original/schedules.py': [123, 456], 'backtest/engines/original/book_batch.py': [234, 567], 'backtest/calendar.py': [345, 678], 'backtest/portfolio_results.py': [456, 789]})
         with closing(sqlite3.connect(self.capture / 'research.sqlite')) as research, closing(sqlite3.connect(self.capture / 'schedules.sqlite')) as daily:
             fill(SimpleNamespace(research=research, daily=daily,
                 write_report=lambda content: (self.capture / 'report.txt').write_bytes(content)))
@@ -118,7 +119,8 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(inputs.daily.execute('SELECT COUNT(*) FROM periods').fetchone()[0], 1)
             self.assertEqual(inputs.daily.execute('SELECT * FROM period_pools').fetchone()[1], 'legacy')
             self.assertEqual({p.relative_to(inputs.source_snapshot).as_posix(): sha(p)
-                              for p in inputs.source_snapshot.rglob('*.py')}, self.sources)
+                              for p in inputs.source_snapshot.rglob('*') if p.is_file() and
+                              (p.suffix=='.py' or p.relative_to(inputs.source_snapshot).as_posix() in artifacts.SOURCE_ASSETS)}, self.sources)
             daily, research = inputs.daily, inputs.research
             for db in (daily, research):
                 with self.assertRaises(sqlite3.OperationalError):
@@ -347,7 +349,7 @@ class WorkspaceTests(unittest.TestCase):
         path.unlink()
         self.assert_reason('incomplete', self.owner().__enter__)
         path.write_bytes(saved)
-        for name in ('backtest/financial/books.py', 'backtest/paths.py', 'scripts/diagnostics.py', 'scripts/book_batch.py',
+        for name in ('backtest/financial/books.py', 'backtest/paths.py', 'backtest/runtime/diagnostics.py', 'backtest/engines/original/book_batch.py',
                      'backtest/calendar.py', 'backtest/portfolio_results.py'):
             expected = self.manifest['originals']['sources'].pop(name); self.write_manifest()
             self.assert_reason('incomplete', self.owner().__enter__)
@@ -368,6 +370,32 @@ class WorkspaceTests(unittest.TestCase):
             self.assertIn(caught.exception.reason, ('incomplete', 'unsupported'))
         path.write_bytes(original); self.manifest['originals']['sources']['backtest/financial/metrics.py'] = sha(path); self.write_manifest()
         with self.owner(): pass
+
+    def test_exact_native_template_is_bound_copied_and_never_a_general_extension_gate(self):
+        name='backtest/engines/numerical/rust_kernel.rs'
+        path=self.source/name
+        saved=path.read_bytes()
+        with self.owner() as attached:
+            self.assertEqual((attached.source_snapshot/name).read_bytes(),saved)
+            import bench_execution_policy as policy
+            modules=policy._verify_sources(attached.source_snapshot,self.sources)
+            self.assertNotIn(attached.source_snapshot/name,modules.values())
+        path.write_bytes(saved+b'\n// synthetic changed template\n')
+        self.assert_reason('mismatch',self.owner().__enter__)
+        path.unlink()
+        self.assert_reason('incomplete',self.owner().__enter__)
+        path.write_bytes(saved)
+        expected=self.manifest['originals']['sources'].pop(name)
+        self.write_manifest()
+        self.assert_reason('incomplete',self.owner().__enter__)
+        self.manifest['originals']['sources'][name]=expected
+        for unknown in ('backtest/engines/numerical/other.rs','scripts/rust_kernel.rs'):
+            self.manifest['originals']['sources'][unknown]='a'*64
+            self.write_manifest()
+            self.assert_reason('unsupported',self.owner().__enter__)
+            del self.manifest['originals']['sources'][unknown]
+        self.write_manifest()
+        with self.owner():pass
 
     def test_path_traversal_absolute_paths_and_output_overlap_reject(self):
         for name in ('../escape.py', '/escape.py', 'scripts/../escape.py', 'scripts//books.py',

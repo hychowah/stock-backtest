@@ -13,18 +13,21 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'tests'), str(ROOT/'tools'), str(ROOT/'website')]
-import backtest_control
-from numerical_execution import ExecutionPolicy, effective_lanes, observe_resources
-import numerical_random
-import numerical_trial
-import numerical_trial_pool as pools
-from numerical_numba import NumbaExecutor
-from numerical_portfolio import NumericalPortfolio, compare_results
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical.execution import ExecutionPolicy, effective_lanes, observe_resources
+from backtest.engines.numerical import random as numerical_random
+from backtest.engines.numerical import trial as numerical_trial
+from backtest.engines.numerical import trial_pool as pools
+from backtest.engines.numerical.numba import NumbaExecutor
+from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
 import test_numerical_generation as generations
-import robustness
-import numerical_runtime
+from backtest.engines.original import robustness as robustness
+from backtest.engines.numerical import runtime as numerical_runtime
 import runtime_access
-from process_owner import windows_processes
+from backtest.runtime.process_owner import windows_processes
 
 
 class TrialPoolTests(unittest.TestCase):
@@ -350,7 +353,7 @@ class TrialPoolTests(unittest.TestCase):
         # Only the source-owning bootstrap can run in this deliberately minimal
         # private root. Rejection must precede every calculation/native import.
         private = self.fixture.root/'source-exclusion'
-        for name in ('scripts/numerical_trial_worker.py','website/runtime_access.py'):
+        for name in ('backtest/engines/numerical/trial_worker.py','website/runtime_access.py'):
             target = private/name; target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(ROOT/name,target)
         pool = self.make(source_root=private)

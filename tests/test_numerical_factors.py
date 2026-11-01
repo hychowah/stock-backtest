@@ -1,4 +1,9 @@
 """Artifact-backed factor comparisons against ordinary source calculators."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import rules, books as financial_books, metrics
 from datetime import date
 import importlib.util
 import inspect
@@ -11,8 +16,8 @@ from unittest.mock import patch
 
 import test_numerical_generation as fixtures
 import test_bench_candidates as candidate_tests
-from numerical_factors import FactorEvaluator
-from numerical_policy import PolicyProgram, FACTOR_VERSION, _schema_tree, UNSUPPORTED_THRESHOLDS
+from backtest.engines.numerical.factors import FactorEvaluator
+from backtest.engines.numerical.policy import PolicyProgram, FACTOR_VERSION, _schema_tree, UNSUPPORTED_THRESHOLDS
 import numpy as np
 
 
@@ -32,23 +37,23 @@ class FactorTests(unittest.TestCase):
     def compare_source(self, inputs, evaluator, days=(date(2015,1,2), date(2016,2,29))):
         counts = {field: 0 for field in inputs.policy.fields['thresholds']}
         maximum_absolute = maximum_relative = 0.
-        history = self.s.histories(self.db)
+        history = daily.histories(self.db)
         for pool, book in zip(('cached','legacy'), history, strict=True):
             for day, batch in zip(days, evaluator.evaluate([d.toordinal() for d in days], pool), strict=True):
                 for row, (sid, report_id) in enumerate(zip(batch.symbols, batch.reports, strict=True)):
                     symbol = inputs.symbols[int(sid)]
-                    statement = self.s.financial_books.run.latest_statement(book.get(symbol, []), day)
+                    statement = rules.latest_statement(book.get(symbol, []), day)
                     self.assertEqual(inputs.report_rows[int(report_id)], statement)
-                    lookup = lambda target,column,forward=False,slack=None: self.s.price(self.db,symbol,target,column,forward,slack)
-                    ordinary = self.s.financial_books.snapshot(statement,day,date(2016,12,30),lookup,False)
+                    lookup = lambda target,column,forward=False,slack=None: daily.price(self.db,symbol,target,column,forward,slack)
+                    ordinary = financial_books.snapshot(statement,day,date(2016,12,30),lookup,False)
                     self.assertEqual(bool(batch.valuation_valid[row]), ordinary is not None)
                     if ordinary is None: continue
                     fiscal,buy,sell,cap,ev,ebitda,yield_value,multiple,ret,status = ordinary
                     observation = dict(fiscal=fiscal,market_cap=cap,enterprise_value=ev,
                                        ev_ebitda=multiple,ebitda_yield=yield_value)
-                    pairs = self.s.metrics.evaluate(observation, inputs.histories[symbol])
-                    thresholds = self.s.metrics.filter_values(observation,pairs,day,lookup,
-                        inputs.financials.get(symbol,{}),self.s.r.ten_year_yield(self.db,day))
+                    pairs = metrics.evaluate(observation, inputs.histories[symbol])
+                    thresholds = metrics.filter_values(observation,pairs,day,lookup,
+                        inputs.financials.get(symbol,{}),research.ten_year_yield(self.db,day))
                     np.testing.assert_allclose(batch.valuation[row], [cap,ev,ebitda],rtol=1e-12,atol=1e-12)
                     for name, values in batch.pairs.items():
                         self.assertEqual(bool(batch.pair_valid[name][row]), name in pairs)
@@ -67,8 +72,8 @@ class FactorTests(unittest.TestCase):
         inputs,evaluator=self.make()
         counts,absolute,relative=self.compare_source(inputs,evaluator)
         self.assertTrue(all(counts.values()),counts)
-        self.assertEqual(set(json.loads(evaluator.catalog)['metrics']),set(self.s.metrics.METRICS))
-        self.assertEqual(set(json.loads(evaluator.catalog)['thresholds']),set(self.s.metrics.FILTERS)-UNSUPPORTED_THRESHOLDS)
+        self.assertEqual(set(json.loads(evaluator.catalog)['metrics']),set(metrics.METRICS))
+        self.assertEqual(set(json.loads(evaluator.catalog)['thresholds']),set(metrics.FILTERS)-UNSUPPORTED_THRESHOLDS)
         result=evaluator.evaluate([date(2015,1,2).toordinal()])[0]
         self.assertTrue(any(result.thresholds['fcf'][result.threshold_valid['fcf']]<0))
         self.assertTrue(any(result.thresholds['profit_margin'][result.threshold_valid['profit_margin']]<0))
@@ -97,7 +102,7 @@ class FactorTests(unittest.TestCase):
         self.assertFalse(missing.threshold_valid['roe'][pos])
 
     def test_currency_conflicts_and_denominators_keep_independent_validity(self):
-        import financial_inputs
+        from backtest.inputs import financial_inputs as financial_inputs
         raw=self.root/'annual';ledger={}
         rows=[dict(symbol='A',date='2014-06-30',period='FY',reportedCurrency=currency,
                    netIncome=income,epsDiluted=5.,revenue=100e6,ebit=40e6,interestExpense=0.)
@@ -135,7 +140,7 @@ class FactorTests(unittest.TestCase):
         self.compare_source(inputs,evaluator)
         rows=inputs.histories['A']
         report=next(i for i,r in enumerate(inputs.report_rows) if inputs.symbols[int(inputs.report_symbol[i])]=='A' and r['fiscal']==date(2014,6,30))
-        self.assertEqual(inputs.average_3y[report],self.s.metrics.annual_average(rows,'2014-06-30',3))
+        self.assertEqual(inputs.average_3y[report],metrics.annual_average(rows,'2014-06-30',3))
         batch=evaluator.evaluate([date(2016,2,29).toordinal()])[0]
         pos=list(batch.symbols).index(inputs.symbol_ids['A']);self.assertTrue(batch.threshold_valid['return_3y'][pos])
         evaluator.close();inputs.close()
@@ -212,18 +217,18 @@ class FactorTests(unittest.TestCase):
         self.binding['factor_version']=FACTOR_VERSION
         self.binding['field_schema']=True
         with self.assertRaisesRegex(ValueError,'factor'):self.prepare()
-        code="import sys;sys.path.insert(0,sys.argv[1]);import numerical_policy;assert 'numpy' not in sys.modules and 'numba' not in sys.modules"
-        p=subprocess.run([sys.executable,'-I','-B','-c',code,str(Path(fixtures.ng.__file__).parent)],capture_output=True,text=True)
+        code="import sys;sys.path.insert(0,sys.argv[1]);from backtest.engines.numerical import policy as numerical_policy;assert 'numpy' not in sys.modules and 'numba' not in sys.modules"
+        p=subprocess.run([sys.executable,'-I','-B','-c',code,str(Path(__file__).resolve().parents[1])],capture_output=True,text=True)
         self.assertEqual(p.returncode,0,p.stderr)
 
     def test_entry_source_guard_mutation_is_not_a_holding_exit(self):
         path=self.root/'changed_books.py'
-        text=inspect.getsource(self.s.financial_books.snapshot).replace('ev<=0 or cap<=0','ev<=0 or cap<=160000000')
+        text=inspect.getsource(financial_books.entry_valuation).replace('ev<=0 or cap<=0','ev<=0 or cap<=160000000')
         path.write_text(text)
         spec=importlib.util.spec_from_file_location('changed_books',path)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        with patch.object(self.s.financial_books,'snapshot',module.snapshot):
-            policy=PolicyProgram(self.s)
+        with patch.object(financial_books,'entry_valuation',module.entry_valuation):
+            policy=PolicyProgram()
             self.binding.update(policy=policy.signature,field_schema=policy.field_schema)
             inputs,evaluator=self.make()
             self.compare_source(inputs,evaluator)

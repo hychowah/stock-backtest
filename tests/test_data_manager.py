@@ -1,4 +1,8 @@
 """Data inventory, resumable missing-only downloads, job and HTTP boundaries."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, fmp_download, market
 from contextlib import ExitStack, nullcontext
 from datetime import date
 import io
@@ -24,14 +28,14 @@ class CacheTests(unittest.TestCase):
         self.context=ExitStack();self.addCleanup(self.context.close)
         self.root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
         self.raw=self.root/'raw';self.raw.mkdir();(self.raw/'px').mkdir()
-        for module in (d,d.run):self.context.enter_context(patch.object(module,'RAW',self.raw))
+        for module in (d,market):self.context.enter_context(patch.object(module,'RAW',self.raw))
         self.context.enter_context(patch.object(d,'ROOT',self.root))
         self.context.enter_context(patch.object(d,'COVERAGE',self.raw/'download-coverage.json'))
         self.context.enter_context(patch.object(d,'derived_status',return_value=[]))
         self.context.enter_context(patch.object(d,'baseline_audit',return_value=None))
-        self.context.enter_context(patch.object(d.run,'KEY_PATH',self.root/'absent-key'))
+        self.context.enter_context(patch.object(fmp_download,'KEY_PATH',self.root/'absent-key'))
         self.context.enter_context(patch.object(d.cache_access,'access',side_effect=lambda:nullcontext()))
-        self.context.enter_context(patch.object(d.run,'get_json',side_effect=AssertionError('Unexpected request')))
+        self.context.enter_context(patch('urllib.request.urlopen',side_effect=AssertionError('Unexpected request')))
         self.put('universe.json',[dict(symbol='A',listed=True),dict(symbol='B',listed=True)])
         (self.raw/'metrics.jsonl').write_text(json.dumps(dict(symbol='A',rows=[])))
         self.o=d.options(dict(scope='symbols',symbols='A',start='2020-01-01',end='2020-12-31'))
@@ -349,7 +353,7 @@ class CacheTests(unittest.TestCase):
         import threading
         import urllib.parse
         self.o.update(start='2000-01-01',end='2020-12-31',datasets=['prices'])
-        d.run.KEY_PATH.write_text('test-key')
+        fmp_download.KEY_PATH.write_text('test-key')
         writers=[];fetchers=[];responses=[];gate=threading.Barrier(3)
         store=d.cache_assets.SeriesAsset._store
         def record(asset,*args,**kwargs):writers.append(threading.get_ident());return store(asset,*args,**kwargs)
@@ -376,7 +380,7 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(len(set(fetchers)),3);self.assertEqual(set(writers),{threading.get_ident()})
         self.assertEqual(report['prices'][0]['windows'],0);self.assertTrue(all(r.closed for r in responses))
         saved=(self.raw/'px/A.json').read_bytes();receipt=d.COVERAGE.read_bytes()
-        d.run.KEY_PATH.unlink()
+        fmp_download.KEY_PATH.unlink()
         with patch.object(d.fmp_download.http.client,'HTTPSConnection',side_effect=AssertionError('No network for saved windows')):
             report=d.download(self.o,self.emit,self.stop)
         self.assertFalse(report['api_key_present']);self.assertEqual(report['prices'][0]['windows'],0)
@@ -449,7 +453,7 @@ class CacheTests(unittest.TestCase):
 
     def test_rebuild_runs_offline_dependency_chain_then_checks(self):
         jobs=d.Jobs();calls=[]
-        with patch.object(d.schedules,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(d.subprocess,'run',side_effect=lambda *a,**kw:calls.append('build')),patch.object(d,'inspect',return_value={'checked_at':'new'}) as inspect:
+        with patch.object(daily,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(d.subprocess,'run',side_effect=lambda *a,**kw:calls.append('build')),patch.object(d,'inspect',return_value={'checked_at':'new'}) as inspect:
             jobs.start('rebuild',{});jobs.thread.join(3)
         self.assertEqual(calls,['prepare','build']);self.assertTrue(jobs.rebuilt)
         self.assertFalse(jobs.snapshot()['job']['running']);inspect.assert_called_once()

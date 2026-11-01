@@ -9,7 +9,7 @@ not deploy or restart an installed server.
 
 ## Interface and ownership
 
-`scripts/trial_checkpoints.py` uses only the standard library. The caller supplies
+`backtest/engines/numerical/checkpoints.py` uses only the standard library. The caller supplies
 one disposable SQLite path. It does not discover a default cache or user store.
 
 ```python
@@ -42,8 +42,8 @@ These methods retain one complete period and bounded encoded buffers.
 
 ## Calculation identity
 
-`scripts/numerical_random.py` owns the builder. The old
-`tools/numerical_trials.py` is a compatibility import. The builder binds:
+`backtest/engines/numerical/random.py` owns the builder. Callers import this
+owner directly. The builder binds:
 
 - Exact numerical generation, source-derived policy and field schema.
 - Financial result contract version 1.
@@ -85,7 +85,7 @@ record limit. The remaining bytes are the original sealed trial range. No
 second user-result store or staging directory is added.
 
 SQLite incremental BLOB access reads both representations in bounded buffers.
-The private `checkpoint_legacy.py` decoder checks canonical version-1 JSON
+The private `backtest/engines/numerical/legacy_checkpoints.py` decoder checks canonical version-1 JSON
 spelling and ordered keys. It splits periods and individual holdings. Metadata
 and each holding must fit the codec's 8 MiB maximum record bound and 64-level
 nesting limit. A record beyond these limits fails explicitly on bounded replay;

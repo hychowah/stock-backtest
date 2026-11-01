@@ -7,7 +7,7 @@ derived checkpoints now use the codec. Additive read routes connect
 [snapshot version 3](durable-evidence.md) through [acquired readers](evidence-views.md).
 Automatic calculation and queue execution remain eager; their snapshots remain versions 1/2.
 
-`scripts/result_evidence.py` uses the standard library. It owns no database, job,
+`backtest/result_evidence.py` uses the standard library. It owns no database, job,
 file path, financial lock or publication. Existing resource owners must supply
 private files and control their lifetime. It does not add a user-result store.
 Reading completed evidence requires no current inputs or financial calculation.
@@ -93,7 +93,7 @@ This reuses the batch writer's framing, bounds and structural validation.
 Standalone bytes are a sealed trial range, not a completed batch for `Reader`.
 The stream remains caller-owned. Failure makes the writer unusable.
 
-`scripts/numerical_trial.py` binds this range to a detached recorded trial and
+`backtest/engines/numerical/trial.py` binds this range to a detached recorded trial and
 the existing calculation-binding identity. Its descriptor includes the actual
 trial number, specification digest, byte range, byte digest and all three codec
 limits. `open_artifact` accepts an already opened stream and a trusted expected

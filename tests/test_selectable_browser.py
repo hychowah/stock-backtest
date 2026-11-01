@@ -13,7 +13,10 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 from candidate_browser_fixture import FictionalWorkspace,CandidateService
 from test_candidate_browser import WorkflowBrowser
 from bench_native_browser import BrowserStorage
-from numerical_portfolio import compare_results
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical.portfolio import compare_results
 
 
 @unittest.skipUnless(os.name=='nt','Actual native Chrome requires Windows.')

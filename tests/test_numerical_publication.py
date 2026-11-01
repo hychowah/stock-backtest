@@ -11,8 +11,11 @@ import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).absolute().parents[1]
 sys.path.insert(0,str(ROOT/'scripts'))
-import backtest_control
-import numerical_runtime as runtime
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
+from backtest.engines.numerical import runtime as runtime
 
 
 class PublicationTests(unittest.TestCase):
@@ -89,7 +92,7 @@ class PublicationTests(unittest.TestCase):
                 def release():time.sleep(.12);released.append(bool(kernel.CloseHandle(handle)))
                 worker=Thread(target=release);worker.start()
                 try:
-                    with patch('diagnostics.event') as events:runtime.write_payload(self.path,{'new':phase},100)
+                    with patch('backtest.runtime.diagnostics.event') as events:runtime.write_payload(self.path,{'new':phase},100)
                 finally:worker.join()
                 self.assertEqual(released,[True])
                 self.assertTrue(events.called)

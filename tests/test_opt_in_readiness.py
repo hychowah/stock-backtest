@@ -1,4 +1,8 @@
 """Supported experimental selection and catalog validation on owned fictional inputs."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.financial import metrics
 from copy import deepcopy
 from datetime import date
 import sys
@@ -9,9 +13,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).absolute().parents[1]
 sys.path[:0] = [str(ROOT/'tests'), str(ROOT/'scripts'), str(ROOT/'tools')]
 import test_numerical_portfolios as portfolios
-import numerical_random
-from numerical_policy import PolicyProgram
-import robustness
+from backtest.engines.numerical import random as numerical_random
+from backtest.engines.numerical.policy import PolicyProgram
+from backtest.engines.original import robustness as robustness
 
 
 class ReadinessTests(unittest.TestCase):
@@ -23,7 +27,7 @@ class ReadinessTests(unittest.TestCase):
         inputs, provider, portfolio = self.evaluator(candidate_assembly='source')
         differences = []
         for pool in ('cached', 'legacy'):
-            for metric in self.s.metrics.METRICS:
+            for metric in metrics.METRICS:
                 for order in ('filter_first', 'rank_first'):
                     options = dict(pool=pool, metric=metric, selection_order=order,
                         rank_to=5, min_cap=0., min_ev=0.,
@@ -50,10 +54,10 @@ class ReadinessTests(unittest.TestCase):
 
     def test_full_capability_catalog_and_unknown_future_fields_fail(self):
         inputs, provider, portfolio = self.evaluator(candidate_assembly='source')
-        self.assertEqual(set(inputs.policy.fields['thresholds']), set(self.s.metrics.FILTERS))
-        with patch.dict(self.s.metrics.FILTERS, {'unknown_future_field':dict(available=True)}):
+        self.assertEqual(set(inputs.policy.fields['thresholds']), set(metrics.FILTERS))
+        with patch.dict(metrics.FILTERS, {'unknown_future_field':dict(available=True)}):
             with self.assertRaisesRegex(ValueError,'Unsupported threshold catalog'):
-                PolicyProgram(self.s)
+                PolicyProgram()
 
 
 if __name__ == '__main__': unittest.main()

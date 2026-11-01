@@ -12,6 +12,7 @@ import time
 import numpy as np
 
 from bench_candidates import PythonExecutor
+from backtest.financial import rules
 from bench_candidates_analytical import (
     begin_stats, matrix_columns, polars_expression, price_columns, price_queries,
     report_columns, report_queries, stage_stats,
@@ -105,7 +106,7 @@ class Executor(PythonExecutor):
         if not len(queries['query_id']):
             return np.empty(shape, dtype=np.int32), np.empty(shape, dtype=np.int32)
         query_frame = pl.DataFrame(queries).sort(['sid', 'day'])
-        age = int(self._inputs.s.financial_books.run.MAX_AGE.days)
+        age = int(rules.MAX_AGE.days)
         outputs = []
         for pool in ('cached', 'legacy'):
             frame = (

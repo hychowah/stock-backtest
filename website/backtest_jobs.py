@@ -11,13 +11,13 @@ import re
 from threading import Event, RLock, Thread
 import time
 
-import backtest_control
-import cache_access
-import diagnostics
-import robustness
-import schedules
+from backtest.runtime import backtest_control as backtest_control
+from backtest.runtime import cache_access as cache_access
+from backtest.runtime import diagnostics as diagnostics
+from backtest.engines.original import robustness as robustness
+from backtest.engines.original import schedules as schedules
 import job_evidence
-import numerical_transfer
+from backtest.engines.numerical import transfer as numerical_transfer
 import durable_evidence
 
 

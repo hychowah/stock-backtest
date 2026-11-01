@@ -3,6 +3,9 @@
 import sys as _package_sys
 from pathlib import Path as _PackagePath
 _package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 from contextlib import closing
 from copy import deepcopy
@@ -17,8 +20,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-import baseline as b
-import research as r
+from backtest.inputs import baseline as b
+from backtest.inputs import research as r
 import test_research as fixtures
 
 VERIFY=r.verify_reference

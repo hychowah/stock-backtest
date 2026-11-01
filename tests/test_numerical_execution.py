@@ -7,7 +7,10 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'scripts'))
-import numerical_execution as execution
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical import execution as execution
 
 
 OBSERVATIONS = dict(logical_cpus=16, affinity_cpus=12, cpu_quota_lanes=6.5,
@@ -66,7 +69,7 @@ class ExecutionTests(unittest.TestCase):
             self.assertEqual(explicit.admit_cold_worker({'sampled_private_bytes':100})['duplication_bytes'],100)
 
     def test_runtime_and_session_normalization_preserve_legacy_per_provider_bounds_and_origin(self):
-        from numerical_runtime import NumericalRuntime
+        from backtest.engines.numerical.runtime import NumericalRuntime
         with patch.object(execution,'observe_resources',return_value=OBSERVATIONS):
             value=NumericalRuntime(source_root=ROOT,scratch=ROOT/'tmp/not-started-policy-test',session_options={'matrix_cache_bytes':32768})
         settings=value.configuration['session_options']['execution']

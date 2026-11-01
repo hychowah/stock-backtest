@@ -5,6 +5,11 @@ they never download, publish trials or interpret independently written financial
 formulas. Numeric arithmetic is extracted from the current source functions.
 The original snapshot function supplies temporal, missing-price and exit guards.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
+from backtest.financial import rules, metrics
 from array import array
 from bisect import bisect_left, bisect_right
 from calendar import monthrange
@@ -19,7 +24,7 @@ import numpy as np
 
 from bench_methods_arrays import ArrayPrices
 from bench_policy_program import PolicyProgram, FINANCIAL_FIELDS
-from numerical_generation import TEMPORAL_VERSION, DatedYields
+from backtest.engines.numerical.generation import TEMPORAL_VERSION, DatedYields
 LOOKUP_FIELDS = ('fiscal_raw', 'raw_entry', 'adjusted_entry', 'adjusted_exit',
                  'screen_adjusted', 'trailing_1y', 'trailing_3y')
 
@@ -31,8 +36,8 @@ class NumericInputs:
         self.closed = False
         self.temporal_version = TEMPORAL_VERSION
         self.s = schedules
-        self.books = schedules.histories(source)
-        self.cached = schedules.cached_symbols(source)
+        self.books = daily.histories(source)
+        self.cached = daily.cached_symbols(source)
         self.histories = {symbol:[dict(row,fiscal=str(row['fiscal']),known=str(row['known']))
                                  for row in rows] for symbol,rows in self.books[0].items()}
         self.financials = {}
@@ -45,8 +50,8 @@ class NumericInputs:
         self.treasury_values = [row[1] for row in treasuries]
         self.ten_year_yield = DatedYields(source.execute(
             'SELECT day,yield_percent FROM treasury10 ORDER BY day'))
-        self.bankrupt = frozenset(schedules.r.revalue.BANKRUPT)
-        self.policy = PolicyProgram(schedules,bankrupt=self.bankrupt)
+        self.bankrupt = frozenset(rules.BANKRUPT)
+        self.policy = PolicyProgram(bankrupt=self.bankrupt)
         prices = ArrayPrices(source)
         symbols = list(self.books[0])
         symbols.extend(symbol for symbol in prices._series if symbol not in self.books[0])
@@ -102,7 +107,7 @@ class NumericInputs:
         self.financial_parameters = np.full((len(rows),len(self.policy.parameter_names)),np.nan,dtype=np.float64)
         for index,row in enumerate(rows):
             symbol = symbols[int(self.report_symbol[index])]
-            average = schedules.metrics.annual_average(self.histories[symbol],str(row['fiscal']),3)
+            average = metrics.annual_average(self.histories[symbol],str(row['fiscal']),3)
             if average is not None:self.average_3y[index] = average
             self.financial_parameters[index] = self.policy.specialize_financial(
                 str(row['fiscal']),self.financials.get(symbol,{}))
@@ -152,7 +157,7 @@ class NumericInputs:
 
 
 # Compatibility exports; production code owns complete-book evaluation.
-from numerical_books import PythonExecutor, RequestPlan, LOOKUP_FIELDS
+from backtest.engines.numerical.books import PythonExecutor, RequestPlan, LOOKUP_FIELDS
 
 def attach(inputs,policy=None,limits=None):
     return PythonExecutor(inputs,policy,limits)

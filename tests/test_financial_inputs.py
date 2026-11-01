@@ -13,7 +13,10 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'website')]
-import financial_inputs as f
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import financial_inputs as f
 from backtest.financial import metrics as metrics
 import data_manager as d
 
@@ -138,7 +141,7 @@ class FinancialTests(unittest.TestCase):
             self.assertEqual(f.history(raw,'A'),{'2019-12-31':{'netIncome':20}})
             self.assertTrue(f.completed(raw,'A','income-statement',ledger))
             metrics_rows=[dict(date='2019-12-31',otherMetric=123,nullable=None)]
-            record=d.run.financial_record('A',metrics_rows)
+            record=d.cache_assets.financial_record('A',metrics_rows)
             self.assertEqual(record['rows'],metrics_rows);self.assertTrue(record['full_response'])
 
     def test_duplicate_dates_preserve_all_rows_and_only_prepare_agreed_inputs(self):
@@ -168,7 +171,7 @@ class FinancialTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             raw=Path(folder);(raw/'universe.json').write_text(json.dumps([dict(symbol='A')]))
             rows=[dict(date='2019-12-31',symbol='A',period='FY',reportedCurrency='USD',netIncome=20)]*2
-            (raw/'metrics.jsonl').write_text(json.dumps(d.run.financial_record('A',rows)))
+            (raw/'metrics.jsonl').write_text(json.dumps(d.cache_assets.financial_record('A',rows)))
             o=d.options(dict(scope='symbols',symbols='A',datasets=['fundamentals']))
             with patch.object(d,'RAW',raw),patch.object(d,'COVERAGE',raw/'coverage.json'),patch.object(d,'inspect',return_value={}),patch.object(d,'request_json',return_value=rows) as get:
                 d.download(o,lambda **kw:None,lambda:None)
@@ -181,7 +184,7 @@ class FinancialTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             raw=Path(folder);(raw/'universe.json').write_text(json.dumps([dict(symbol='A')]))
             rows=[dict(date='2019-12-31',reportedCurrency='USD',futureMetric=123)]
-            (raw/'metrics.jsonl').write_text(json.dumps(d.run.financial_record('A',rows)))
+            (raw/'metrics.jsonl').write_text(json.dumps(d.cache_assets.financial_record('A',rows)))
             o=d.options(dict(scope='symbols',symbols='A',datasets=['fundamentals']))
             with patch.object(d,'RAW',raw),patch.object(d,'COVERAGE',raw/'coverage.json'),patch.object(d,'inspect',return_value={}),patch.object(d,'request_json',return_value=[]) as get:
                 d.download(o,lambda **kw:None,lambda:None)

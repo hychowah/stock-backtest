@@ -24,7 +24,10 @@ import uuid
 SOURCE = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(SOURCE / 'website'), str(SOURCE / 'scripts')]
 import runtime_access
-import cache_access
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import cache_access as cache_access
 from bench_input_store import _memory_bytes, InputStoreError
 from bench_input_artifacts import BASE_TABLES, DAILY_BASE, RESEARCH_TABLES, DAILY_TABLES
 import bench_input_artifacts as artifacts
@@ -35,7 +38,7 @@ MAX_MEMORY_BYTES = 512 * 1024 ** 2
 MAX_SECONDS = 900.
 DATABASES = {'research.sqlite': 'data/research.sqlite', 'schedules.sqlite': 'data/schedules.sqlite'}
 REPORT = 'results/summary-exits.txt'
-SIGNATURE_SOURCES = ('scripts/baseline.py', 'scripts/research.py', 'backtest/financial/metrics.py', 'backtest/financial/books.py', 'backtest/financial/rules.py', 'backtest/screening.py', 'scripts/cache_assets.py', 'scripts/run.py', 'scripts/revalue.py', 'scripts/financial_inputs.py')
+SIGNATURE_SOURCES = ('backtest/inputs/baseline.py', 'backtest/inputs/research.py', 'backtest/financial/metrics.py', 'backtest/financial/books.py', 'backtest/financial/rules.py', 'backtest/screening.py', 'backtest/inputs/cache_assets.py', 'backtest/inputs/market.py', 'backtest/inputs/legacy_downloads.py', 'backtest/inputs/fmp_download.py', 'backtest/engines/reference/legacy.py', 'backtest/engines/reference/revalue.py', 'backtest/inputs/financial_inputs.py')
 
 
 class OfflineCaptureError(ValueError):
@@ -106,7 +109,8 @@ def receipt(path, budget):
 
 
 def constant(root, module, name):
-    path = root / ('backtest/financial/rules.py' if module=='run' and name=='ASOF' else 'scripts/'+module+'.py')
+    relative={'run':'backtest/financial/rules.py','research':'backtest/inputs/research.py','schedules':'backtest/inputs/daily.py'}.get(module)
+    path=root/relative if relative and (root/relative).is_file() else root/('scripts/'+module+'.py')
     tree = ast.parse(path.read_text(encoding='utf-8'))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
@@ -139,7 +143,7 @@ def freshness(root, budget):
         if number % 1024 == 0: budget.check()
         info = path.stat(); prices[path.name] = [info.st_size, info.st_mtime_ns]
     engine = {}
-    for name in ('scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'):
+    for name in ('backtest/inputs/daily.py', 'backtest/engines/original/schedules.py', 'backtest/engines/original/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'):
         info = (root / name).stat(); engine[name] = [info.st_size, info.st_mtime_ns]
     # Match the daily prerequisite binding, including when current raw prices
     # differ from the accepted research inventory. validate() rejects that state.
@@ -171,6 +175,10 @@ def originals(root, budget):
     for directory in ('scripts', 'website', 'backtest'):
         for path in sorted((root / directory).rglob('*.py')):
             budget.check(); source[path.relative_to(root).as_posix()] = file_hash(path, budget)
+    for relative in artifacts.SOURCE_ASSETS:
+        path=root/relative
+        if path.is_file():
+            budget.check(); source[relative]=file_hash(path,budget)
     installed = None
     deployment_path = root / 'data/deployment.json'
     deployment_receipt = None

@@ -16,8 +16,6 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tests'))
 sys.path.append(str(ROOT/'tools'))
-import bench_execution as execution
-import bench_execution_supervisor as supervisor
 from bench_comparison import ComparisonProtocol,digest
 
 MIB=1024**2
@@ -64,8 +62,10 @@ def measurement(workspace,capture,output,*,storage=False,cancel=None):
     The capture producer's limits remain in its manifest. This operation's
     separate bounds and frozen ordinary samples belong to its own protocol.
     """
+    import bench_execution as execution
+    import bench_execution_supervisor as supervisor
     manifest=json.loads((capture/'capture.json').read_bytes())
-    import robustness
+    from backtest.engines.original import robustness as robustness
     with closing(sqlite3.connect(capture/'schedules.sqlite')) as db:
         db.row_factory=sqlite3.Row
         configuration=robustness.plan(db,start='2015-01-01',end='2016-12-30',months=12,
@@ -111,6 +111,7 @@ def dispatch(role,request_path,scenario_text):
                 patch.object(helper._ApplicationSupervisor,'_command',controller):
             raise SystemExit(helper.main())
     if role=='controller':
+        import bench_execution as execution
         import bench_execution_controller as controller
         def worker(owner,request):return command('worker',request,scenario,tools=owner._tools)
         if scenario.get('phase')=='attachment':
@@ -135,35 +136,37 @@ def dispatch(role,request_path,scenario_text):
     if role!='worker':raise AssertionError('Unknown combined fixture role.')
     import bench_execution_worker as worker
     phase=scenario.get('phase')
-    if phase=='observation':
-        import bench_execution_observation as observations
-        original=observations.signature
-        def scanning(research,checkpoint):
-            barrier(path.parent/'joint-observation',checkpoint=checkpoint)
-            return original(research,checkpoint)
-        observations.signature=scanning
-    elif phase=='setup':
-        from bench_candidates import NumericInputs
-        original=NumericInputs.__init__
-        def initializing(owner,*args,**kwargs):
-            result=original(owner,*args,**kwargs)
-            barrier(path.parent/'joint-setup')
-            return result
-        NumericInputs.__init__=initializing
-    elif phase=='calculation':
-        original=worker._bind
-        def binding(request):
-            s,robust,baseline=original(request)
-            run=robust.run
+    original_bind=worker._bind
+    def binding(request):
+        # Validate and attach private source before importing any engine or
+        # numerical interception. Controller/support imports stay in their role.
+        s,robust,baseline=original_bind(request)
+        if phase=='observation':
+            import bench_execution_observation as observations
+            original=observations.signature
+            def scanning(research,checkpoint):
+                barrier(path.parent/'joint-observation',checkpoint=checkpoint)
+                return original(research,checkpoint)
+            observations.signature=scanning
+        elif phase=='setup':
+            from bench_candidates import NumericInputs
+            original=NumericInputs.__init__
+            def initializing(owner,*args,**kwargs):
+                result=original(owner,*args,**kwargs)
+                barrier(path.parent/'joint-setup')
+                return result
+            NumericInputs.__init__=initializing
+        elif phase=='calculation':
+            original=robust.run
             def calculating(db,configuration,progress=None,**kwargs):
                 def committed(value):
                     if progress:progress(value)
                     if value['type']=='progress' and value['completed']==1:
                         barrier(path.parent/'joint-calculation')
-                return run(db,configuration,progress=committed,**kwargs)
+                return original(db,configuration,progress=committed,**kwargs)
             robust.run=calculating
-            return s,robust,baseline
-        worker._bind=binding
+        return s,robust,baseline
+    worker._bind=binding
     sys.argv=['fixture',str(path)]
     with patch.object(worker.admission,'require_execution'):worker.main()
 

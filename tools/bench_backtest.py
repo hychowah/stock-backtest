@@ -7,6 +7,11 @@ The template has no prepared dated books. File-copy/reset time is benchmark
 setup, excluded for every engine; opening, loading, calculation, selection and
 per-trial commits are timed. No network or third-party packages are needed.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
+from backtest.financial import rules, books as financial_books, metrics
 from array import array
 from bisect import bisect_left, bisect_right
 from contextlib import ExitStack
@@ -34,8 +39,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import bench_admission as admission
 sys.path.insert(0, str(ROOT / 'scripts'))
-import schedules as s
-import robustness
+from backtest.engines.original import schedules as s
+from backtest.engines.original import robustness as robustness
 
 MODES = ('sqlite_128mb', 'sqlite_512mb', 'sqlite_mmap', 'arrays',
          'arrays_shared_reports', 'selected_pool', 'arrays_selected_pool', 'production')
@@ -102,7 +107,7 @@ def prepare_reference_period(db, entry, exit_day, books, cached, pool='legacy'):
     if existing:
         return existing[0]
     broad, legacy = books
-    statements, ranks = s.financial_books.candidates(books, entry)
+    statements, ranks = financial_books.candidates(books, entry)
     spy = dict(db.execute('SELECT day,price FROM sessions WHERE day IN (?,?)',
                           (str(entry), str(exit_day))).fetchall())
     treasury = db.execute('SELECT yield_value FROM treasuries WHERE day<=? ORDER BY day DESC LIMIT 1',
@@ -117,13 +122,13 @@ def prepare_reference_period(db, entry, exit_day, books, cached, pool='legacy'):
             if symbol not in cached or (pool == 'legacy' and symbol not in ranks):
                 continue
             def lookup(day, column, forward, slack):
-                return s.price(db, symbol, day, column, forward=forward, slack=slack)
-            row = s.financial_books.snapshot(statement, entry, exit_day, lookup,
-                                            (entry.year, symbol) in s.r.revalue.BANKRUPT)
+                return daily.price(db, symbol, day, column, forward=forward, slack=slack)
+            row = financial_books.snapshot(statement, entry, exit_day, lookup,
+                                            (entry.year, symbol) in rules.BANKRUPT)
             if row is None:
                 continue
             fiscal, entry_date, end_date, cap, ev, ebitda, yield_value, multiple, ret, status = row
-            if not s.financial_books.eligible(pool, cap, ev):
+            if not financial_books.eligible(pool, cap, ev):
                 continue
             observation = dict(symbol=symbol, fiscal=fiscal, enterprise_value=ev,
                                ev_ebitda=multiple, ebitda_yield=yield_value)
@@ -131,7 +136,7 @@ def prepare_reference_period(db, entry, exit_day, books, cached, pool='legacy'):
                        (pool, period_id, symbol, ranks.get(symbol), fiscal, entry_date,
                         end_date, cap, ev, ebitda, yield_value, multiple, yield_value-treasury, ret, status))
             history = [dict(row, fiscal=str(row['fiscal']), known=str(row['known'])) for row in broad[symbol]]
-            for metric, (multiple, yield_value) in s.metrics.evaluate(observation, history).items():
+            for metric, (multiple, yield_value) in metrics.evaluate(observation, history).items():
                 db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
                            ('historical', pool, period_id, symbol, metric, multiple, yield_value))
         db.execute('INSERT INTO period_pools VALUES(?,?)', (period_id, pool))
@@ -154,7 +159,7 @@ def worker(args):
     phase = 'fresh'
     signatures = {'fresh': [], 'cached': []}
     checkpoints = {}
-    original_histories = s.histories
+    original_histories = daily.histories
     arrays = None
     init_start = time.perf_counter()
     with ExitStack() as stack:
@@ -246,7 +251,7 @@ def main():
     parser.add_argument('--mode', choices=MODES, default='sqlite_128mb')
     parser.add_argument('--modes', nargs='+', choices=MODES,
                         default=['sqlite_128mb', 'production'])
-    parser.add_argument('--database', type=Path, default=s.DATABASE)
+    parser.add_argument('--database', type=Path, default=daily.DATABASE)
     parser.add_argument('--worker-output')
     parser.add_argument('--workers',type=int,choices=range(1,9),default=1)
     parser.add_argument('--worker-counts',type=int,nargs='+',choices=range(1,9),help='Sequential production comparisons; never time competing runs.')
@@ -277,7 +282,7 @@ def main():
                                    excluded='Common benchmark-only database cloning/reset; OS page cache is not flushed',
                                    production_changes=False, parent_cpu_only=True),
                   source_hashes={str(p.relative_to(ROOT)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest()
-                                 for p in (ROOT/name for name in ('scripts/schedules.py','scripts/book_batch.py','scripts/robustness.py','backtest/calendar.py','backtest/portfolio_results.py'))},runs=[])
+                                 for p in (ROOT/name for name in ('backtest/engines/original/schedules.py','backtest/engines/original/book_batch.py','backtest/engines/original/robustness.py','backtest/calendar.py','backtest/portfolio_results.py'))},runs=[])
     if args.reference_report:
         report['reference_report']=str(args.reference_report)
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -288,11 +293,11 @@ def main():
         clone_start = time.perf_counter()
         source.backup(destination)
         source.close()
-        destination.execute(s.POOL_SCHEMA)
+        destination.execute(daily.POOL_SCHEMA)
         for table in ('period_pools', 'screening_metrics', 'snapshots', 'latest_snapshots', 'periods'):
             destination.execute('DELETE FROM '+table)
         destination.commit(); destination.close()
-        s.upgrade_daily_cache(template,s.fingerprint())
+        daily.upgrade_daily_cache(template,daily.fingerprint())
         report['benchmark_setup_seconds'] = time.perf_counter()-clone_start
         print(json.dumps(dict(event='template_ready', seconds=round(report['benchmark_setup_seconds'], 3))), flush=True)
         def comparable(result):

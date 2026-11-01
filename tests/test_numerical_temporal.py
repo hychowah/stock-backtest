@@ -1,4 +1,9 @@
 """Artifact-backed differential temporal checks using private fictional inputs."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
+from backtest.financial import rules, books as financial_books
 from datetime import date, timedelta
 import json
 import time
@@ -6,8 +11,8 @@ import unittest
 from unittest.mock import patch
 
 import test_numerical_generation as fixtures
-import numerical_generation as ng
-from numerical_temporal import TemporalEvaluator, _reports, _resolve
+from backtest.engines.numerical import generation as ng
+from backtest.engines.numerical.temporal import TemporalEvaluator, _reports, _resolve
 import numpy as np
 
 
@@ -47,7 +52,7 @@ class TemporalTests(unittest.TestCase):
         evaluator.resolve(symbols, targets, columns, forwards)
         warm = time.perf_counter()-began
         for i,(sid,day,column,forward) in enumerate(requests):
-            expected = None if sid<0 else self.s.price(self.db,inputs.symbols[sid],date.fromisoformat(day),
+            expected = None if sid<0 else daily.price(self.db,inputs.symbols[sid],date.fromisoformat(day),
                 ('price','adjusted')[column],forward=forward)
             if expected is None:
                 self.assertEqual(actual[i],0); self.assertTrue(np.isnan(values[i]))
@@ -56,7 +61,7 @@ class TemporalTests(unittest.TestCase):
                 self.assertEqual(values[i],expected[1])
             for slack in (0,4,7,10):
                 observed = None if actual[i]==0 or abs(int(actual[i])-int(targets[i]))>slack else (date.fromordinal(int(actual[i])),float(values[i]))
-                expected_slack = None if sid<0 else self.s.price(self.db,inputs.symbols[sid],date.fromisoformat(day),
+                expected_slack = None if sid<0 else daily.price(self.db,inputs.symbols[sid],date.fromisoformat(day),
                     ('price','adjusted')[column],forward=forward,slack=slack)
                 self.assertEqual(observed,expected_slack)
         self.assertTrue(_resolve.nopython_signatures)
@@ -78,14 +83,14 @@ class TemporalTests(unittest.TestCase):
         self.assertEqual([inputs.symbols[i] for i in inputs.symbol_sort],sorted(inputs.symbols))
         days = sorted({date(2000,1,1),date(2030,1,1)} | {
             anchor+timedelta(days=delta) for row in inputs.report_rows
-            for anchor in (row['known'],row['fiscal']+self.s.financial_books.run.MAX_AGE)
+            for anchor in (row['known'],row['fiscal']+rules.MAX_AGE)
             for delta in (-1,0,1)})
         selected = evaluator.select_reports(np.array([d.toordinal() for d in days],dtype=np.int32))
-        books = self.s.histories(self.db)
+        books = daily.histories(self.db)
         for matrix, book in zip(selected,books,strict=True):
             for i,day in enumerate(days):
                 for sid,symbol in enumerate(inputs.symbols):
-                    expected = self.s.financial_books.run.latest_statement(book.get(symbol,[]),day)
+                    expected = rules.latest_statement(book.get(symbol,[]),day)
                     identity = int(matrix[i,sid])
                     if expected is None:self.assertEqual(identity,-1)
                     else:self.assertEqual(inputs.report_rows[identity],expected)
@@ -94,17 +99,17 @@ class TemporalTests(unittest.TestCase):
     def test_snapshot_calendar_limits_and_short_intervals_match_source(self):
         inputs,evaluator = self.evaluator()
         entry=date(2015,1,2)
-        statement=self.s.financial_books.run.latest_statement(self.s.histories(self.db)[0]['A'],entry)
+        statement=rules.latest_statement(daily.histories(self.db)[0]['A'],entry)
         def native(day,column,forward,slack):
             ds,vs=evaluator.resolve(np.array([inputs.symbol_ids['A']],dtype=np.int32),
                 np.array([day.toordinal()],dtype=np.int32),np.array([int(column=='adjusted')],dtype=np.int8),
                 np.array([forward],dtype=np.bool_))
             return None if ds[0]==0 or abs(int(ds[0])-day.toordinal())>slack else (date.fromordinal(int(ds[0])),float(vs[0]))
-        sql=lambda day,column,forward,slack:self.s.price(self.db,'A',day,column,forward,slack)
+        sql=lambda day,column,forward,slack:daily.price(self.db,'A',day,column,forward,slack)
         for exit_day in (entry,entry+timedelta(days=1),date(2015,1,5),date(2015,1,6),date(2016,1,4)):
             for bankruptcy in (False,True):
-                expected=self.s.financial_books.snapshot(statement,entry,exit_day,sql,bankruptcy)
-                actual=self.s.financial_books.snapshot(statement,entry,exit_day,native,bankruptcy)
+                expected=financial_books.snapshot(statement,entry,exit_day,sql,bankruptcy)
+                actual=financial_books.snapshot(statement,entry,exit_day,native,bankruptcy)
                 self.assertEqual(actual,expected)
         for name,array in inputs._arrays.items():self.assertFalse(array.flags.writeable,name)
 
@@ -115,11 +120,11 @@ class TemporalTests(unittest.TestCase):
         cases=[(0,[-2]),(0,[len(inputs.symbols)]),(0,[2**63]),(0,[0.5]),(0,[[0]]),
                (1,[0]),(1,[date.max.toordinal()+1]),(1,[float('nan')]),(2,[-1]),(2,[2]),
                (2,[False]),(3,[1]),(3,[[True]]),(1,np.array([],dtype=np.int32))]
-        with patch('numerical_temporal._resolve',side_effect=AssertionError('native entered')):
+        with patch('backtest.engines.numerical.temporal._resolve',side_effect=AssertionError('native entered')):
             for slot,bad in cases:
                 args=valid.copy();args[slot]=bad
                 with self.subTest(slot=slot,bad=bad),self.assertRaises(ValueError):evaluator.resolve(*args)
-        with patch('numerical_temporal._reports',side_effect=AssertionError('native entered')):
+        with patch('backtest.engines.numerical.temporal._reports',side_effect=AssertionError('native entered')):
             for entries in ([[1]],np.array([0]),np.array([1.1]),np.array([True])):
                 with self.assertRaises(ValueError):evaluator.select_reports(entries)
         days,values=evaluator.resolve(*(np.array([],dtype=d) for d in (np.int32,np.int32,np.int8,np.bool_)))

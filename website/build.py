@@ -3,8 +3,9 @@ import argparse
 import sys
 from contextlib import nullcontext
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-import cache_access
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from backtest.runtime import cache_access as cache_access
 from build_state import LOCAL_OUTPUT, SNAPSHOT_OUTPUT
 
 
@@ -20,9 +21,9 @@ def main(output=None):
     from holdings import load
     from dataset import load_screening_data
     from attribution import render as render_attribution
-    from research import connect
+    from backtest.inputs.research import connect
     from backtest import screening
-    from baseline import cutoff
+    from backtest.inputs.baseline import cutoff
     from pathlib import Path
 
     ROOT = Path(__file__).resolve().parent

@@ -35,13 +35,13 @@ class ExecutionTests(unittest.TestCase):
         (f.source / 'results').mkdir()
         (f.source / 'results' / 'summary-exits.txt').write_bytes(REPORT)
         (f.source / 'data').mkdir()
-        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')
-        modules = {name: SimpleNamespace(__file__=str(f.source / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py'))) for name in names}
+        names = ('baseline', 'metrics', 'books', 'cache_assets', 'market', 'legacy', 'revalue', 'financial_inputs', 'rules', 'screening')
+        modules = {name: SimpleNamespace(__file__=str(f.source / {'metrics': 'backtest/financial/metrics.py', 'books': 'backtest/financial/books.py', 'rules': 'backtest/financial/rules.py', 'screening': 'backtest/screening.py', 'baseline': 'backtest/inputs/baseline.py', 'cache_assets': 'backtest/inputs/cache_assets.py', 'market': 'backtest/inputs/market.py', 'legacy': 'backtest/engines/reference/legacy.py', 'revalue': 'backtest/engines/reference/revalue.py', 'financial_inputs': 'backtest/inputs/financial_inputs.py'}[name])) for name in names}
         modules['baseline'].cutoff = lambda text: date(2026, 10, 21)
         observed = signature(SimpleNamespace(ROOT=f.source, RAW=raw, RESULTS=f.source / 'results',
-            __file__=str(f.source / 'scripts/research.py'), **modules))
+            __file__=str(f.source / 'backtest/inputs/research.py'), **modules))
         engine = {name: [path.stat().st_size, path.stat().st_mtime_ns]
-                  for name in ('scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py') for path in [f.source / name]}
+                  for name in ('backtest/inputs/daily.py', 'backtest/engines/original/schedules.py', 'backtest/engines/original/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py') for path in [f.source / name]}
         f.freshness['inputs'] = observed
         f.freshness['daily_inputs'] = dict(version=3, inputs=observed, engine=engine)
         with closing(sqlite3.connect(f.capture / 'research.sqlite')) as r, closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as d:
@@ -81,7 +81,7 @@ class ExecutionTests(unittest.TestCase):
         f.write_manifest()
         # Generate ordinary samples from actual source without live bootstrap.
         sys.path[:0] = [str(ROOT / 'scripts')]
-        import robustness
+        from backtest.engines.original import robustness as robustness
         with closing(sqlite3.connect(f.capture / 'schedules.sqlite')) as db:
             db.row_factory = sqlite3.Row
             self.configuration = robustness.plan(db, start='2015-01-01', end='2016-12-30',
@@ -128,7 +128,7 @@ class ExecutionTests(unittest.TestCase):
         with patch.object(execution.admission, 'require_execution'), \
                 patch.object(owner, '_command', side_effect=lambda request: self.fixture_command(owner, request)):
             with owner:
-                helper='portfolio_workspace.py'
+                helper='bench_candidates_process.py'
                 expected=hashlib.sha256((ROOT/'tools'/helper).read_bytes()).hexdigest()
                 self.assertEqual(owner.protocol.value['environment']['tool_sources'][helper],expected)
                 self.assertEqual(hashlib.sha256((owner._tools/helper).read_bytes()).hexdigest(),expected)

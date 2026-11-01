@@ -1,4 +1,7 @@
 """Fixed private comparison entry; source ownership precedes financial imports."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from copy import deepcopy
 import json
 import os
@@ -20,17 +23,20 @@ def main(request_path):
     if response.parent!=ROOT/'comparison': raise ValueError('Comparison response is outside owned evidence.')
     if cancel.parent!=response.parent or cancel.stem!=response.stem:raise ValueError('Invalid cancellation marker.')
     with runtime_access.ownership(ROOT,timeout=0):
-        sys.path[:0]=[str(ROOT/name) for name in ('scripts','website','tools')]
+        sys.path[:0]=[str(ROOT),*[str(ROOT/name) for name in ('scripts','website','tools')]]
+        from backtest.inputs import daily
         import parallel_comparison as comparison
         declaration=comparison.validate_declaration(comparison.read(ROOT/'comparison/declaration.json'))
         comparison.assert_sources(ROOT,declaration['source_sha256'])
-        import run
-        run.KEY_PATH=ROOT/'comparison'/'nonexistent-key'
-        import backtest_control
-        import cache_access
-        import numerical_preparation
-        import schedules
-        from numerical_runtime import NumericalRuntime
+        from backtest.financial import rules
+        from backtest.inputs import market, fmp_download, cache_assets
+        from backtest.engines.reference import legacy
+        fmp_download.KEY_PATH=ROOT/'comparison'/'nonexistent-key'
+        from backtest.runtime import backtest_control as backtest_control
+        from backtest.runtime import cache_access as cache_access
+        from backtest.application import preparation as numerical_preparation
+        from backtest.engines.original import schedules as schedules
+        from backtest.engines.numerical.runtime import NumericalRuntime
         from engine_selection import Selectable
         record=dict(status='failed',operation=request['operation'],started_at=time.time(),pid=os.getpid(),
                     resources_before=comparison.observe(ROOT),cleanup_owner=declaration['cleanup_owner'])
@@ -64,7 +70,7 @@ def main(request_path):
                 finally:self.clocks.append(dict(stage='runtime-close-returned',seconds=time.perf_counter()-began))
 
         def sample_processes():
-            from process_owner import windows_processes
+            from backtest.runtime.process_owner import windows_processes
             if os.name=='nt':return windows_processes()
             parents={}
             for path in Path('/proc').glob('[0-9]*/stat'):
@@ -111,9 +117,9 @@ def main(request_path):
                 if case['state']=='interrupted_application' and case['interrupt_after']>=options['trials']:
                     raise ValueError('Interrupted qualification must leave missing trials.')
                 with cache_access.access():
-                    db=schedules.connect()
+                    db=daily.connect()
                     try:
-                        import robustness
+                        from backtest.engines.original import robustness as robustness
                         plan=robustness.plan(db,**options)
                         if case['backend']=='original' and case['state']=='fresh_application':
                             # Exact task-owned derived tables only; retain daily
@@ -122,7 +128,7 @@ def main(request_path):
                                 for table in ('filter_values','screening_metrics','snapshots','period_pools','periods'):
                                     db.execute('DELETE FROM '+table)
                         books_before=db.execute('SELECT COUNT(*) FROM periods').fetchone()[0]
-                        import book_batch
+                        from backtest.engines.original import book_batch as book_batch
                         original_books=book_batch.plan(db,plan) if case['backend']=='original' else None
                         if case['state'] in ('original_reuse','original_prepared_books') and original_books['jobs']:
                             raise ValueError('Original reuse has missing required books.')
@@ -221,7 +227,7 @@ def main(request_path):
                 if case['state']=='partial_recovery' and result.get('execution',{}).get('recovered_trials',0)<previous['interrupted_after_completed']:
                     raise ValueError('Partial recovery lost committed trial work.')
                 with cache_access.access():
-                    db=schedules.connect()
+                    db=daily.connect()
                     try:
                         record['books_after']=db.execute('SELECT COUNT(*) FROM periods').fetchone()[0]
                         if case['backend']=='original':

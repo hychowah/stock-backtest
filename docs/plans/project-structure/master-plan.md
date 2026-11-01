@@ -1,7 +1,7 @@
 # Project structure and modularity
 
 Recorded: 1 November 2026. Source owner: `main` in the WSL checkout.
-Status: Phase 1 complete in this audited commit. Phases 2–4 pending.
+Status: Phase 1 complete at `07b34d1`. Phase 2 complete in this commit. Phases 3–4 pending.
 
 The independent GPT-6.1 Sol high planner's report follows verbatim.
 
@@ -225,7 +225,7 @@ for each substantial phase. The goal is active until all phases are complete.
 
 | Phase | Status | Record |
 |---|---|---|
-| 1: Shared policy and selection | Complete in this audited commit | phases/phase-01.md |
-| 2: Inputs, engines and runtime | Pending | phases/phase-02.md |
+| 1: Shared policy and selection | Complete at `07b34d1` | phases/phase-01.md |
+| 2: Inputs, engines and runtime | Complete in this commit | phases/phase-02.md |
 | 3: Application and result access | Pending | phases/phase-03.md |
 | 4: Presentation and command shell | Pending | phases/phase-04.md |

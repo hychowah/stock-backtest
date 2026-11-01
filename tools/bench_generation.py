@@ -4,6 +4,12 @@ Every validation enumerates the annual assets again. Directory enumeration is
 an implementation of the current size/mtime contract, not a replacement token,
 watcher or permission to defer manual-edit detection until restart.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily as daily_inputs, research as research_inputs
+from backtest.financial import rules
+from backtest import calendar as schedule_calendar, portfolio_results
 from contextlib import closing
 import hashlib
 import json
@@ -51,7 +57,7 @@ def signature(research, checkpoint=lambda: None):
              ('universe.json', 'metrics.jsonl', 'spy-div.json', 'treasury.json')]
     paths += [r.RAW / 'px', Path(r.baseline.__file__), Path(r.__file__),
               Path(r.metrics.__file__), Path(r.books.__file__), Path(r.rules.__file__), Path(r.screening.__file__),
-              Path(r.cache_assets.__file__), Path(r.run.__file__),
+              Path(r.cache_assets.__file__), Path(r.market.__file__), Path(r.__file__).with_name('legacy_downloads.py'), Path(r.__file__).with_name('fmp_download.py'), Path(r.legacy.__file__),
               Path(r.revalue.__file__), Path(r.financial_inputs.__file__)]
     result = {}
     for path in paths:
@@ -111,7 +117,7 @@ class PreparedGeneration:
     """
     def __init__(self, inputs, schedules, *, sources=()):
         self.inputs, self.s = inputs, schedules
-        self.root = Path(schedules.r.ROOT)
+        self.root = Path(research_inputs.ROOT)
         self.sources = tuple(Path(path) for path in sources)
         self.source_hashes = {str(path): file_hash(path) for path in self.sources}
         self.numeric_signature = inputs.signature
@@ -119,17 +125,17 @@ class PreparedGeneration:
         self.stats = {}
         self._journals()
         began = time.perf_counter()
-        authoritative = schedules.r.signature()
+        authoritative = research_inputs.signature()
         self.stats['authoritative_scan_seconds'] = time.perf_counter() - began
         began = time.perf_counter()
-        observed = signature(schedules.r)
+        observed = signature(research_inputs)
         self.stats['inventory_scan_seconds'] = time.perf_counter() - began
         if authoritative != observed:
             raise ValueError('Prepared-generation inventory differs from the authoritative scan.')
         self.inventory = observed
-        self.daily = metadata(schedules.DATABASE)
-        self.research = metadata(schedules.r.DATABASE)
-        self.report_hash = file_hash(schedules.r.RESULTS / 'summary-exits.txt')
+        self.daily = metadata(daily_inputs.DATABASE)
+        self.research = metadata(research_inputs.DATABASE)
+        self.report_hash = file_hash(research_inputs.RESULTS / 'summary-exits.txt')
         self._attachment(self.daily)
         self._prepared(observed, self.daily, self.research, self.report_hash)
         self.identity = digest(dict(version=1, numeric=self.numeric_signature,
@@ -147,19 +153,19 @@ class PreparedGeneration:
 
     def _prepared(self, inventory, daily, research, report_hash):
         engine = {}
-        for path in (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
-                     Path(self.s.schedule_calendar.__file__),
-                     Path(self.s.portfolio_results.__file__)):
+        for path in (Path(daily_inputs.__file__),Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
+                     Path(schedule_calendar.__file__),
+                     Path(portfolio_results.__file__)):
             info = path.stat()
             engine[path.relative_to(self.root).as_posix()] = [info.st_size, info.st_mtime_ns]
         accepted_prices = research.get('prices')
         if not isinstance(accepted_prices, dict):
             raise ValueError('Research price inventory is missing; retry preparation.')
-        expected = dict(version=self.s.VERSION, inputs=inventory,
+        expected = dict(version=daily_inputs.VERSION, inputs=inventory,
                         prices=digest(accepted_prices), engine=engine)
         if daily.get('daily_inputs') != expected:
             raise ValueError('Daily prepared generation changed; retry preparation.')
-        if research.get('version') != self.s.r.SCHEMA_VERSION or research.get('inputs') != inventory:
+        if research.get('version') != research_inputs.SCHEMA_VERSION or research.get('inputs') != inventory:
             raise ValueError('Research prepared generation changed; retry preparation.')
         if research.get('baseline_report_sha') != report_hash:
             raise ValueError('Report content differs from its prepared generation.')
@@ -174,9 +180,9 @@ class PreparedGeneration:
 
     def validate(self):
         self._journals()
-        observed = signature(self.s.r)
-        daily, research = metadata(self.s.DATABASE), metadata(self.s.r.DATABASE)
-        report_hash = file_hash(self.s.r.RESULTS / 'summary-exits.txt')
+        observed = signature(research_inputs)
+        daily, research = metadata(daily_inputs.DATABASE), metadata(research_inputs.DATABASE)
+        report_hash = file_hash(research_inputs.RESULTS / 'summary-exits.txt')
         self._attachment(daily)
         self._prepared(observed, daily, research, report_hash)
         if observed != self.inventory or daily.get('daily_inputs') != self.daily.get('daily_inputs') or research != self.research:

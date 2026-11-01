@@ -18,11 +18,14 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'website'),str(ROOT/'scripts'),str(ROOT/'tests')]
-import backtest_control
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
 import backtest_jobs
 import backtest_queue as queue
 import durable_evidence as durable
-import result_evidence
+from backtest import result_evidence as result_evidence
 import saved_backtests as saved
 import test_result_evidence as codec
 from test_saved_backtests import snapshot as legacy_snapshot
@@ -140,7 +143,7 @@ class DurableTests(unittest.TestCase):
         # These unrelated disposable files represent evicted/replaced producer inputs.
         for name in ('checkpoints.sqlite','financial-generation'):
             path=self.root/name;path.write_bytes(b'old');path.unlink();path.write_bytes(b'new')
-        with patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')),patch('cache_access.access',side_effect=AssertionError('Financial ownership forbidden')):
+        with patch.object(backtest_jobs,'calculate',side_effect=AssertionError('Calculation forbidden')),patch('backtest.runtime.cache_access.access',side_effect=AssertionError('Financial ownership forbidden')):
             for store,identifier in ((saved.Store(self.library.path),record['id']),(queue.Store(self.queue.path),req['id'])):
                 with store.open_evidence(identifier) as opened:
                     self.assertEqual(codec.collect(opened.reader),expected)
@@ -368,8 +371,8 @@ class DurableTests(unittest.TestCase):
         import test_numerical_trials as trials
         from bench_candidates import NumericInputs
         from bench_candidates_numba import NumbaExecutor
-        from numerical_portfolio import NumericalPortfolio
-        from numerical_portfolios import compare_results
+        from backtest.engines.numerical.portfolio import NumericalPortfolio
+        from backtest.engines.numerical.portfolio import compare_results
         fixture=trials.NumericalTrialsTests('test_full_month_pool_metric_filter_rank_matrix_and_exact_recovery')
         fixture.setUp();self.addCleanup(fixture.doCleanups)
         inputs,provider,portfolio,checkpoints=fixture.evaluator('source')

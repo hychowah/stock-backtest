@@ -3,11 +3,11 @@ from contextlib import contextmanager
 from threading import Lock
 import time
 
-import backtest_control
+from backtest.runtime import backtest_control as backtest_control
 import calculation_contract
-import cache_access
-from numerical_runtime import ClosureError
-from numerical_policy import require_supported
+from backtest.runtime import cache_access as cache_access
+from backtest.engines.numerical.runtime import ClosureError, InputsUnavailable
+from backtest.engines.numerical.policy import require_supported
 
 
 class Candidate(calculation_contract.Control):
@@ -126,8 +126,14 @@ class Candidate(calculation_contract.Control):
                 self._retire()
                 # A runtime cannot publish its primary outcome before proof.
                 # Once retirement succeeds, restore that outcome for jobs/queue.
-                if error.primary_error is not None: raise error.primary_error
+                if error.primary_error is not None:
+                    if isinstance(error.primary_error,InputsUnavailable):
+                        raise calculation_contract.Unavailable(str(error.primary_error)) from None
+                    raise error.primary_error
                 raise
+            except InputsUnavailable as error:
+                self._retire()
+                raise calculation_contract.Unavailable(str(error)) from None
             except BaseException:
                 self._retire()
                 raise

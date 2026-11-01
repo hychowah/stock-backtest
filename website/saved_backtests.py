@@ -8,7 +8,7 @@ import sqlite3
 import uuid
 import zlib
 
-import backtest_control
+from backtest.runtime import backtest_control as backtest_control
 import durable_evidence
 
 DATABASE = Path(__file__).resolve().parents[1]/'data'/'saved-backtests.sqlite'

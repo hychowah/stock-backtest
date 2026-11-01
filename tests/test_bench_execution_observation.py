@@ -1,4 +1,8 @@
 """Fresh observations and cooperative priority, using only disposable roots."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
 from contextlib import contextmanager
 from pathlib import Path
 import json
@@ -11,7 +15,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'tools'), str(ROOT / 'scripts'), str(ROOT / 'website')]
-import cache_access
+from backtest.runtime import cache_access as cache_access
 import runtime_access
 import bench_execution_observation as observations
 from bench_comparison import ComparisonError
@@ -23,12 +27,12 @@ def stable_workflow(request_path):
     from bench_execution_worker import _bind
     request = json.loads(Path(request_path).read_bytes())
     s, robust, _ = _bind(request)
-    s.r.signature = lambda: request['captured_freshness']['inputs']
+    research.signature = lambda: request['captured_freshness']['inputs']
     (Path(request['database']).parent / 'binding.json').write_text(json.dumps(request))
     import sqlite3
     from contextlib import closing
     from bench_methods import clean
-    with closing(s.connect()) as db:
+    with closing(daily.connect()) as db:
         config = request['configuration']
         planned = robust.plan(db, start=config['start'], end=config['end'], months=config['months'],
             trials=config['requested'], seed=config['seed'], **config['options'])
@@ -59,7 +63,7 @@ class ObservationTests(unittest.TestCase):
         self.access = cache_access.WorkspaceAccess(self.root / 'data/website-data-0.lock')
         self.request = dict(observation_root=str(self.root), observation_mode='coordinated',
             sources=f.sources, captured_freshness=f.freshness, captured_metadata=f.meta)
-        import schedules
+        from backtest.engines.original import schedules as schedules
         self.s = schedules
 
     def provider(self, **changes):
@@ -68,9 +72,15 @@ class ObservationTests(unittest.TestCase):
     def live(self, mode='hold'):
         code = '''import os,sys,time
 from pathlib import Path
-sys.path[:0]=[sys.argv[1],sys.argv[4],sys.argv[5]]
-from cache_access import WorkspaceAccess
-with WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5):
+root=Path(sys.argv[1])
+sys.path[:0]=[str(root/'website'),sys.argv[4],sys.argv[5]]
+import runtime_access
+from contextlib import ExitStack
+with ExitStack() as scope:
+    scope.enter_context(runtime_access.ownership(root))
+    sys.path.insert(0,str(root))
+    from backtest.runtime.cache_access import WorkspaceAccess
+    scope.enter_context(WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5))
     print('owned',flush=True)
     if sys.argv[3]=='crash':os._exit(0)
     if sys.argv[3]=='workflow':
@@ -85,7 +95,7 @@ with WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5):
                 binding=dict(generation='synthetic-live-workflow'))
             workflow.write_text(json.dumps(request))
         process = subprocess.Popen([sys.executable, '-X', 'utf8', '-c', code,
-            str(self.root / 'scripts'), str(self.access.path), mode, str(ROOT / 'tests'),
+            str(self.root), str(self.access.path), mode, str(ROOT / 'tests'),
             str(ROOT / 'website'), str(workflow)], stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         def cleanup():
@@ -212,7 +222,7 @@ with WorkspaceAccess(Path(sys.argv[2])).hold(timeout=5):
 
     def test_nonparticipating_coordination_source_cannot_claim_priority(self):
         self.request['sources'] = dict(self.request['sources'])
-        self.request['sources']['scripts/cache_access.py'] = '0' * 64
+        self.request['sources']['backtest/runtime/cache_access.py'] = '0' * 64
         with self.assertRaisesRegex(ComparisonError, 'unsupported'): self.provider().current()
 
     def test_cancel_and_limit_leave_no_source_or_cache_ownership(self):

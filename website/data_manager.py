@@ -10,18 +10,18 @@ import sqlite3
 import subprocess
 import sys
 from threading import Event, Lock, Thread
-import financial_inputs
-import cache_assets
-import cache_access
-from cache_assets import read_json, write_json, series
+from backtest.inputs import financial_inputs as financial_inputs
+from backtest.inputs import cache_assets as cache_assets
+from backtest.runtime import cache_access as cache_access
+from backtest.inputs.cache_assets import read_json, write_json, series
 
-import schedules
-import research as r
-import run
-import fmp_download
-import diagnostics
-import baseline
-import backtest_control
+from backtest.inputs import daily
+from backtest.inputs import research as r
+from backtest.financial import rules
+from backtest.inputs import market, fmp_download
+from backtest.runtime import diagnostics as diagnostics
+from backtest.inputs import baseline as baseline
+from backtest.runtime import backtest_control as backtest_control
 
 ROOT=r.ROOT
 RAW=r.RAW
@@ -34,24 +34,12 @@ Cancelled=fmp_download.Cancelled
 
 
 
-def source_problem():
-    """Allow the repair panel to open when essential source data is absent."""
-    for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):
-        path=RAW/name
-        if not path.is_file() or not path.stat().st_size:return True
-    try:
-        if not universe_rows() or financial_records()[1]:return True
-        for file,field in [('spy-div.json','adjClose'),('treasury.json','month3')]:
-            if not series(read_json(RAW/file,[]),field):return True
-    except (ValueError,OSError):return True
-    return not (ROOT/'results'/'summary-exits.txt').is_file() or not any((RAW/'px').glob('*.json'))
-
 
 def options(request):
     if set(request)-{'scope','symbols','start','end','datasets'}:
         raise ValueError('Unknown data option.')
     start=date.fromisoformat(request.get('start','1995-01-01'))
-    end=date.fromisoformat(request.get('end',str(run.ASOF)))
+    end=date.fromisoformat(request.get('end',str(rules.ASOF)))
     if not date(1990,1,1)<=start<=end<=date.today():
         raise ValueError('Choose dates from 1990 through today, with start before end.')
     scope=request.get('scope','baseline')
@@ -93,16 +81,16 @@ def target_symbols(o,universe,records):
         if unknown:raise ValueError('Symbols absent from the saved US universe: '+', '.join(sorted(unknown)[:20]))
         return o['symbols']
     if o['scope']=='cached':
-        return sorted(s for s in universe if run.cache_path_for(s).exists())
+        return sorted(s for s in universe if market.cache_path_for(s).exists())
     broad=r.books.statements(records,universe)
     if o['scope']=='financials':return sorted(broad)
     pools=r.books.pools(broad)
     spy=series(read_json(RAW/'spy-div.json',[]),'adjClose')
     sessions=[date.fromisoformat(row['date'][:10]) for row in spy]
     selected=set()
-    for year in range(run.FIRST_YEAR,run.LAST_YEAR+1):
-        entry=run.session_on_or_after(sessions,date(year,1,1))
-        if entry and entry<=run.ASOF:
+    for year in range(rules.FIRST_YEAR,rules.LAST_YEAR+1):
+        entry=market.session_on_or_after(sessions,date(year,1,1))
+        if entry and entry<=rules.ASOF:
             _,ranks=r.books.candidates(pools,entry);selected.update(ranks)
     # Include the current saved-session candidate set without changing history.
     if sessions:
@@ -113,7 +101,7 @@ def target_symbols(o,universe,records):
 
 def derived_status():
     result=[]
-    for name,path,open_db in [('January and latest database',r.DATABASE,r.connect),('Custom-date database',schedules.DATABASE,schedules.connect)]:
+    for name,path,open_db in [('January and latest database',r.DATABASE,r.connect),('Custom-date database',daily.DATABASE,daily.connect)]:
         state='missing'
         if path.exists():
             try:
@@ -155,7 +143,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
     start,end=map(date.fromisoformat,(o['start'],o['end']))
     missing=[s for s in universe if s not in records]
     empty=[s for s,record in records.items() if not record['rows']]
-    fiscal_dates=sorted(str(row['date'])[:10] for record in records.values() for row in record['rows'] if isinstance(row,dict) and run.parse_day(row.get('date')))
+    fiscal_dates=sorted(str(row['date'])[:10] for record in records.values() for row in record['rows'] if isinstance(row,dict) and rules.parse_day(row.get('date')))
     assets=[dict(name='US stock universe',state='saved' if universe else 'missing',count=len(universe),first=None,last=None),
             dict(name='Annual financials',state='invalid lines' if invalid else ('partial' if missing else 'saved'),count=sum(len(record['rows']) for record in records.values()),first=fiscal_dates[0] if fiscal_dates else None,last=fiscal_dates[-1] if fiscal_dates else None)]
     for name,file,field in [('SPY total-return prices','spy-div.json','adjClose'),('3-month Treasury yield','treasury.json','month3')]:
@@ -170,7 +158,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
     assets.append(dict(name='Financial ratio inputs (annual statements)',state='missing inputs' if any(fundamental_missing.values()) else 'checked',count=sum(len(targets)-len(missing) for missing in fundamental_missing.values()),first=None,last=None))
     prices=[];available=0
     for i,symbol in enumerate(targets,1):
-        stop();path=run.cache_path_for(symbol)
+        stop();path=market.cache_path_for(symbol)
         asset=cache_assets.SeriesAsset(path,'adjClose',stock=True)
         rows=asset.rows;bad=path.exists() and not asset.valid
         gaps=asset.missing(start,end,ledger)
@@ -179,7 +167,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         if skipped:warnings.append(price_warning(symbol,skipped))
         prices.append(dict(symbol=symbol,state='invalid' if bad else ('missing' if not path.exists() else 'empty' if not rows else 'unrequested dates' if gaps else 'checked range'),count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,windows=len(gaps),skipped_dates=skipped))
         if i%50==0 or i==len(targets):emit(message=f'Checked stock prices {i}/{len(targets)}',completed=i,total=len(targets))
-    return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=run.KEY_PATH.is_file() and run.KEY_PATH.stat().st_size>0,
+    return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=fmp_download.KEY_PATH.is_file() and fmp_download.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
                 target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),baseline=baseline_audit(),
                 missing_ratio_inputs=fundamental_missing, unavailable_metrics=[])
@@ -211,7 +199,7 @@ def download_series(specs,o,ledger,emit,stop,client):
         nonlocal finished
         for file,field,endpoint,symbol in specs:
             stop()
-            path=run.cache_path_for(symbol) if symbol else RAW/file
+            path=market.cache_path_for(symbol) if symbol else RAW/file
             asset=cache_assets.SeriesAsset(path,field,stock=bool(symbol))
             asset.repair(ledger,COVERAGE)
             windows=[window for a,b in asset.missing(date.fromisoformat(o['start']),date.fromisoformat(o['end']),ledger)
@@ -257,7 +245,7 @@ def _download(o,emit,stop,client):
                 for row in rows:
                     symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '')
                     ex=str(row.get('exchangeShortName') or row.get('exchange') or exchange)
-                    if run.common_stock(symbol,name) and run.us_exchange(ex) and not row.get('isEtf') and not row.get('isFund'):
+                    if rules.common_stock(symbol,name) and rules.us_exchange(ex) and not row.get('isEtf') and not row.get('isFund'):
                         universe[symbol]=dict(symbol=symbol,exchange=ex,sector=row.get('sector') or '',name=name,listed=True)
                 if len(rows)<1000:break
             else:raise ValueError('US stock universe exceeded the page limit. No partial universe was saved.')
@@ -265,7 +253,7 @@ def _download(o,emit,stop,client):
             rows=request_json('delisted-companies',dict(page=page,limit=100),stop,client)
             for row in rows:
                 symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '');ex=str(row.get('exchange') or '')
-                if run.common_stock(symbol,name) and run.us_exchange(ex):
+                if rules.common_stock(symbol,name) and rules.us_exchange(ex):
                     universe.setdefault(symbol,dict(symbol=symbol,exchange=ex,sector='',name=name,listed=False))
             if len(rows)<100:break
         else:raise ValueError('Delisted list exceeded the page limit. No partial universe was saved.')
@@ -291,7 +279,7 @@ def _download(o,emit,stop,client):
         pending=[s for s in wanted if s not in records]
         for completed,(symbol,rows) in enumerate(client.map(pending,lambda symbol:request_json('key-metrics',dict(symbol=symbol,period='annual',limit=40),stop,client)),1):
             stop()
-            record=run.financial_record(symbol,rows)
+            record=cache_assets.financial_record(symbol,rows)
             path=RAW/'metrics.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
             # A valid final JSONL record need not end with a newline.
             needs_newline=path.exists() and path.stat().st_size>0
@@ -390,7 +378,7 @@ class Jobs:
                 if action=='rebuild':
                     if self.preparation is not None:self.preparation.invalidate()
                     self.emit(message='Preparing January and custom-date databases…')
-                    schedules.prepare();self.stop()
+                    daily.prepare();self.stop()
                     self.emit(message='Rebuilding the website…')
                     subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     self.rebuilt=True

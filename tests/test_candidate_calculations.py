@@ -1,4 +1,8 @@
 """Persistent candidate application admission on fictional numerical inputs."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily
 import json
 from pathlib import Path
 import sys
@@ -12,16 +16,19 @@ ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
 import test_numerical_runtime as runtime_tests
 import test_calculations as calculation_tests
-from numerical_portfolio import compare_results
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical.portfolio import compare_results
 from candidate_calculations import Candidate
-import robustness
+from backtest.engines.original import robustness as robustness
 import backtest_jobs
-import backtest_control
-import cache_access
+from backtest.runtime import backtest_control as backtest_control
+from backtest.runtime import cache_access as cache_access
 import data_manager
 import backtest_queue
 from test_queue import request
-from numerical_runtime import ClosureError
+from backtest.engines.numerical.runtime import ClosureError
 
 
 class CandidateTests(unittest.TestCase):
@@ -136,19 +143,19 @@ class CandidateTests(unittest.TestCase):
             db=sqlite3.connect(self.fixture.fixture.path)
             db.row_factory=sqlite3.Row
             return db
-        with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(self.fixture.s,'connect',side_effect=writable):
+        with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(daily,'connect',side_effect=writable):
             result=ordinary.calculate('custom',self.options(),None,None)
         self.assertTrue(compare_results(self.fixture.s.backtest(self.fixture.db,**self.options()),result)['exact'])
         # An unusable experimental preparation must not gate Original.
         owner.preparation.status.return_value=dict(state='unavailable')
         with self.assertRaises(backtest_jobs.Unavailable):
             owner.calculate('custom',self.options(),None,None)
-        with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(self.fixture.s,'connect',side_effect=writable):
+        with patch.object(cache_access,'workspace',self.fixture.owner), patch.object(daily,'connect',side_effect=writable):
             self.assertEqual(ordinary.calculate('custom',self.options(),None,None)['periods'],result['periods'])
 
     def test_unsupported_filter_rejected_before_readiness_runtime_or_replay(self):
         # Simulate a future unsupported catalog; all current fields are supported.
-        context=patch('numerical_policy.UNSUPPORTED_THRESHOLDS',frozenset({'future_threshold'}))
+        context=patch('backtest.engines.numerical.policy.UNSUPPORTED_THRESHOLDS',frozenset({'future_threshold'}))
         context.start();self.addCleanup(context.stop)
         owner=self.candidate();owner.preparation.status.side_effect=AssertionError('No preparation')
         options=self.options(filters=[dict(field='future_threshold',op='gt',value=5.)])
@@ -287,6 +294,59 @@ class CandidateTests(unittest.TestCase):
         self.assertFalse(thread.is_alive());self.assertIsInstance(errors[0],backtest_control.Cancelled)
         first.retire();second.calculate('custom',self.options(),None,None)
         second.retire()
+
+
+class UnavailableMappingTests(unittest.TestCase):
+    def owner(self, primary, *, delayed=False):
+        from backtest.engines.numerical.runtime import InputsUnavailable
+        runtime=Mock(configuration={},state='ready')
+        runtime.calculate.side_effect=ClosureError(runtime,primary) if delayed else primary
+        if delayed:runtime.close.side_effect=[ClosureError(runtime),None]
+        preparation=Mock()
+        preparation.status.return_value={'state':'current'}
+        preparation._runtime.return_value=runtime
+        owner=Candidate(preparation)
+        self.addCleanup(owner.retire)
+        return owner,runtime
+
+    def test_direct_and_delayed_unavailable_map_after_confirmed_retirement(self):
+        from backtest.engines.numerical.runtime import InputsUnavailable
+        for delayed in (False,True):
+            with self.subTest(delayed=delayed):
+                owner,runtime=self.owner(InputsUnavailable('Private fixture inputs changed.'),delayed=delayed)
+                with self.assertRaises(backtest_jobs.Unavailable):
+                    owner.calculate('custom',{},None,None)
+                self.assertIsNone(owner.runtime)
+                self.assertEqual(runtime.close.call_count,2 if delayed else 1)
+                self.assertEqual(runtime.calculate.call_count,1)
+
+    def test_other_restored_primary_preserves_exception_identity(self):
+        primary=RuntimeError('Private fixture failure.')
+        owner,runtime=self.owner(primary,delayed=True)
+        with self.assertRaises(RuntimeError) as failure:owner.calculate('custom',{},None,None)
+        self.assertIs(failure.exception,primary)
+        self.assertIsNone(owner.runtime)
+        self.assertEqual(runtime.close.call_count,2)
+
+    def test_delayed_unavailable_keeps_original_queue_settings_waiting(self):
+        from backtest.engines.numerical.runtime import InputsUnavailable
+        import tempfile
+        owner,runtime=self.owner(InputsUnavailable('Private fixture inputs changed.'),delayed=True)
+        with tempfile.TemporaryDirectory() as folder:
+            store=backtest_queue.Store(Path(folder)/'queue.sqlite')
+            submitted=request('Retain original settings')
+            submitted['options']['engine']='experimental'
+            original=json.loads(json.dumps(submitted['options']))
+            item=store.enqueue(submitted)
+            job=store.claim()
+            queue=backtest_queue.Queue(store,calculations=owner,library=Mock())
+            queue._run(job)
+            record=store.get(item['id'])
+            self.assertEqual(record['state'],'queued')
+            self.assertEqual(record['options'],original)
+            self.assertIsNone(record['error'])
+            self.assertIsNone(owner.runtime)
+            self.assertEqual(runtime.close.call_count,2)
 
 
 if __name__=='__main__':unittest.main()

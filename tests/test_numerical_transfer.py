@@ -11,7 +11,10 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts')]
-import numerical_transfer as transfer
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical import transfer as transfer
 
 
 class TransferTests(unittest.TestCase):
@@ -95,7 +98,7 @@ class TransferTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'content differs'):self.copy(stream=Altered())
         sys.path.insert(0,str(ROOT/'tests'))
         from test_result_evidence import collect,fixture
-        import result_evidence,portfolio_results
+        from backtest import result_evidence as result_evidence; from backtest import portfolio_results
         pairs,select=fixture();original=portfolio_results.evaluate(pairs,select);original.update(months=1,options={},seconds=.1)
         original['diagnostics']={'unicode':'測試 🐈','null':None,'ordered':[True,1,1.0,-0.0]}
         original['periods'][0]['holdings'][0]['extension']={'original':[None,'a','b']}

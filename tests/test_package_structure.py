@@ -12,9 +12,12 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'scripts')]
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 from backtest.financial import metrics
-from numerical_random import _source_closure, source_identity
+from backtest.engines.numerical.random import _source_closure, source_identity
 
 
 class PackageTests(unittest.TestCase):
@@ -34,7 +37,7 @@ class PackageTests(unittest.TestCase):
         self.assertNotIn('db',inspect.signature(screening.validate_selection).parameters)
 
     def test_preparation_catalog_rejects_before_first_database_operation(self):
-        import research
+        from backtest.inputs import research as research
         class NoDatabase:
             def execute(self,*args):raise AssertionError('Catalog validation must precede SQL')
         with patch.dict(metrics.METRICS,{'unsupported':dict(label='Unsupported')}):
@@ -64,9 +67,21 @@ class PackageTests(unittest.TestCase):
         self.assertTrue({'backtest/__init__.py','backtest/financial/__init__.py',
             'backtest/financial/rules.py','backtest/financial/books.py','backtest/financial/metrics.py',
             'backtest/screening.py','backtest/calendar.py','backtest/calendar_requests.py',
-            'backtest/portfolio_results.py','scripts/research.py','scripts/run.py','scripts/revalue.py',
-            'scripts/numerical_policy.py','scripts/cache_access.py','website/runtime_access.py'}<=sources.keys())
+            'backtest/portfolio_results.py','backtest/inputs/research.py','backtest/engines/reference/legacy.py','backtest/engines/reference/revalue.py',
+            'backtest/engines/numerical/policy.py','backtest/runtime/cache_access.py','website/runtime_access.py'}<=sources.keys())
         self.assertTrue(all('\\' not in name and not name.startswith('/') for name in sources))
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'website').mkdir()
+            owner=root/'website/runtime_access.py'
+            owner.write_bytes((ROOT/'website/runtime_access.py').read_bytes())
+            entry=root/'entry.py'
+            entry.write_text('import importlib.util\n')
+            before=_source_closure(root,['entry.py','website/runtime_access.py'])
+            owner.write_bytes(owner.read_bytes()+b'\n# private ownership mutation\n')
+            after=_source_closure(root,['entry.py','website/runtime_access.py'])
+            self.assertEqual(set(before),set(after))
+            self.assertEqual(before['entry.py'],after['entry.py'])
+            self.assertNotEqual(before['website/runtime_access.py'],after['website/runtime_access.py'])
 
     def test_private_source_fixture_contains_nested_financial_package(self):
         from bench_source_service_fixture import FictionalWorkspace
@@ -118,6 +133,19 @@ assert 'numpy' not in sys.modules and 'numba' not in sys.modules
 """
             result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],cwd=folder,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
+
+
+class ExecutableErrors(unittest.TestCase):
+    def test_research_missing_private_database_is_clean_from_another_directory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            missing=Path(folder)/'PRIVATE-never-created.sqlite'
+            result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/research.py'),
+                '--database',str(missing),'status'],cwd=folder,capture_output=True,text=True)
+            self.assertEqual(result.returncode,1,result.stdout+result.stderr)
+            self.assertNotIn('Traceback',result.stderr)
+            self.assertIn('missing',result.stderr.lower())
+            self.assertIn('scripts/research.py prepare',result.stderr)
+            self.assertFalse(missing.exists())
 
 
 if __name__=='__main__':unittest.main()

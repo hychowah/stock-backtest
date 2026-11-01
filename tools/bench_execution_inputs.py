@@ -36,7 +36,7 @@ _ID = re.compile(r'[0-9a-f]{32}')
 _REVISION = re.compile(r'[0-9a-f]{40}')
 # PolicyProgram.source_paths: books, metrics, schedules, run, research, revalue.
 # Trace their local imports below, without importing or attaching these modules.
-_POLICY_ROOTS = frozenset(('scripts/schedules.py','scripts/research.py','backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/run.py','scripts/revalue.py','scripts/book_batch.py'))
+_POLICY_ROOTS = frozenset(('backtest/engines/original/schedules.py','backtest/inputs/research.py','backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','backtest/engines/reference/legacy.py','backtest/engines/reference/revalue.py','backtest/engines/original/book_batch.py'))
 _locks_guard = Lock()
 _locks = {}
 # Retain ownership until a failed attachment close is explicitly retried.
@@ -217,9 +217,11 @@ def _manifest(folder):
     _require(isinstance(sources, dict) and bool(sources))
     for name, sha in sources.items():
         path = _relative(name)
-        _require(((len(path.parts)==2 and path.parts[0] in ('scripts','website')) or (len(path.parts)>=2 and path.parts[0]=='backtest')) and path.suffix == '.py', 'unsupported')
+        _require((((len(path.parts)==2 and path.parts[0] in ('scripts','website')) or (len(path.parts)>=2 and path.parts[0]=='backtest')) and path.suffix == '.py') or name in artifacts.SOURCE_ASSETS, 'unsupported')
         _require(_sha(sha))
     _require(_POLICY_ROOTS <= sources.keys())
+    if 'backtest/engines/numerical/random.py' in sources:
+        _require(artifacts.SOURCE_ASSETS <= sources.keys(), 'incomplete')
     _inventory(before['raw_inventory'])
     freshness = before['freshness']
     _require(isinstance(freshness, dict) and set(freshness) == {'inputs', 'prices', 'daily_inputs'})
@@ -230,7 +232,7 @@ def _manifest(folder):
     _require(type(daily['version']) is int and daily['version'] == artifacts.DAILY_VERSION, 'unsupported')
     _require(daily['inputs'] == freshness['inputs'], 'mismatch')
     _inventory(daily['engine'])
-    _require(set(daily['engine']) == {'scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'})
+    _require(set(daily['engine']) == {'backtest/inputs/daily.py', 'backtest/engines/original/schedules.py', 'backtest/engines/original/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'})
     return value, raw
 
 
@@ -295,6 +297,7 @@ def _source_snapshot(root, target, sources, budget):
     pending, visited = list(_POLICY_ROOTS), set()
     by_module = {}
     for name in sources:
+        if name in artifacts.SOURCE_ASSETS:continue
         parts=list(PurePosixPath(name).parts)
         if parts[0]=='backtest':
             module='.'.join(parts[:-1] if parts[-1]=='__init__.py' else [*parts[:-1],PurePosixPath(name).stem])

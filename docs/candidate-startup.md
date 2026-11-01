@@ -132,10 +132,11 @@ download action cannot obtain a credential here.
 
 ## Preparation and lifetime
 
-`scripts/numerical_preparation.py` supplies one `Preparation` capability:
+`backtest/application/preparation.py` supplies one `Preparation` capability:
 
 ```python
-owner = Preparation(private_source_root, python=exact_environment_python)
+owner = Preparation(private_source_root, python=exact_environment_python,
+                    ensure_presentation=ensure_website_build)
 report = owner.prepare(progress=report_stage, cancelled=is_cancelled)
 status = owner.status()
 owner.invalidate()  # Within coordinated download or repair ownership.
@@ -143,7 +144,7 @@ owner.close()       # Retry if closure remains unconfirmed.
 ```
 
 Acquire shared source ownership before application imports. Keep it through
-application shutdown and confirmed preparation closure. Redirect `run.KEY_PATH`
+application shutdown and confirmed preparation closure. Redirect `backtest.inputs.fmp_download.KEY_PATH`
 to a private nonexistent path before full application imports, as the entry does.
 
 Preparation follows this order:

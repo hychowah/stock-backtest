@@ -63,7 +63,7 @@ Normal builds write ignored `website/local/`, which the local server serves. Sta
 
 The website builder queries the prepared database and embeds both historical and latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for the year-based results. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange, pool and year filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. Each year also has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
 
-The original `scripts/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
+The original `backtest/engines/reference/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
 
 ## Checks
 
@@ -164,7 +164,8 @@ session rolling and seeded sampling. Read the
 Original remains the website default and accepts the five existing month counts.
 New engine — experimental accepts version-1 calendars with 1–104 weeks or
 1–24 months. The submitted engine controls calendar validation and readiness.
-`scripts/schedules.py` owns the daily SQLite index and dated books.
+`backtest/inputs/daily.py` owns the daily SQLite index and saved books.
+`backtest/engines/original/schedules.py` calculates missing dated books.
 `backtest/portfolio_results.py` reduces ordered selected books into complete
 dated results. It owns equal weights, signed contributions, compounding and
 common-window cash. It reads no files. The
@@ -330,7 +331,7 @@ Checkpoint retention applies only to derived calculations. Saved-library and
 completed queue snapshots remain readable after current input changes. See the
 [checkpoint contract](trial-checkpoints.md) for identity and retention rules.
 
-`scripts/robustness.py` owns the random-date application adapter, fresh-seed
+`backtest/engines/original/robustness.py` owns the random-date application adapter, fresh-seed
 policy and distribution summaries. It uses `backtest/calendar.py` to
 divide the requested calendar window into nominal frequency blocks anchored
 to the lower bound and independently sample one cached SPY session in each
@@ -349,7 +350,7 @@ scenarios. Empty-book trials stay in the table and are excluded from both sides
 of paired averages. Percentiles are scenario descriptions, not confidence limits.
 
 The loopback `/api/robustness` endpoint streams NDJSON trial progress and a final
-summary. `scripts/book_batch.py` validates every sampled schedule upfront and
+summary. `backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
 deduplicates missing date-pair/pool books across the batch. Bounded process
 workers read prepared inputs with read-only SQLite connections and calculate
 ahead through `schedules.compute_period`. Each process loads report histories
@@ -599,7 +600,7 @@ strategy page after rebuilding to load the new embedded data.
 `website/data_manager.py` owns the inventory and background job. The local
 service exposes `/api/data/status`, `/api/data/report`, and POST actions
 `check`, `download`, `rebuild`, and `cancel`. Data endpoints accept only local,
-same-origin requests. `scripts/cache_access.py` owns one project-wide resource
+same-origin requests. `backtest/runtime/cache_access.py` owns one project-wide resource
 coordinator, backed by ignored `data/website-data-0.lock`. Startup, standalone
 research/daily preparation, data jobs, fixed schedules and random batches use
 the same coordinator. Lock order is process-local reentrant lock, project file
@@ -678,7 +679,7 @@ arithmetic. It does not call the prepared engine. Full-precision numbers use
 relative and absolute tolerances of `1e-12`. All years and holding identities must
 match. Equal annual averages cannot conceal a holding mismatch.
 
-When the engines agree, `scripts/baseline.py` updates the report and research
+When the engines agree, `backtest/inputs/baseline.py` updates the report and research
 database together under cache ownership. `results/baseline-history/<generation>/`
 retains the previous report verbatim, previous and new priced snapshots, the new
 report and `audit.json`. The audit lists changed years, added or removed stocks,

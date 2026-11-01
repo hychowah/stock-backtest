@@ -11,7 +11,10 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
-import run
+from backtest.inputs import legacy_downloads
+from backtest.financial import rules
+from backtest.inputs import market, fmp_download, cache_assets
+from backtest.engines.reference import legacy
 
 from backtest.paths import STOPS
 MERGER_PREFIXES = (
@@ -21,7 +24,7 @@ MERGER_PREFIXES = (
 
 
 def load_forms(path: str, params: dict) -> tuple[int, object]:
-    return run.get_json(path, params, paced=False)
+    return legacy_downloads.get_json(path, params, paced=False)
 
 
 def filings(symbol: str, start: str, end: str) -> list[dict]:

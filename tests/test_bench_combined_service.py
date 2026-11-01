@@ -1,4 +1,8 @@
-"""Full ordinary fictional generation, real comparison owner and live service."""
+"""Protocol-7 synthetic storage, actual comparison owners and live handlers.
+
+Storage discovery is explicitly bound. These checks do not qualify ordinary
+preparation, current schema-8 capture, real benchmark admission or capacity.
+"""
 from concurrent.futures import Future,ThreadPoolExecutor
 from contextlib import closing
 import json
@@ -15,23 +19,50 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'tools'),str(ROOT/'scripts'),str(ROOT/'website')]
-from bench_source_service_fixture import FictionalWorkspace,SourceService,sha,MIB,_retained_workspaces
+from bench_source_service_fixture import FictionalWorkspace,sha,MIB,_retained_workspaces
+from bench_service_fixture import SyntheticService,expanded_fixture
+import test_bench_execution as execution_fixture
 from bench_combined_service_fixture import MeasurementOutput,measurement,command,STEP_COSTS,COSTS
 import bench_execution_inputs as inputs
 import bench_execution_supervisor as supervisor
 from bench_comparison import ComparisonError,digest,STEPS,STEP_COSTS as PHASES
 
 
+class ProtocolWorkspace(FictionalWorkspace):
+    """Reuse strong dependency closure around the explicit protocol-7 fixture.
+
+    No source declaration or ordinary prepared generation is relabeled. The
+    existing fixture writes only its declared synthetic rows and metadata.
+    """
+    def __init__(self):
+        self.base=execution_fixture.ExecutionTests('runTest')
+        self.base.setUp()
+        self.request,self.scale=expanded_fixture(self.base)
+        fixture=self.base.fixture
+        self.fixture=fixture
+        self.temporary=fixture.temporary
+        self.root,self.source,self.sources=fixture.root,fixture.source,fixture.sources
+        self.native_components_bytes=0
+        self._owners=[]
+        self.closed=False
+        # Read-only strict observation needs the normal coordination files.
+        import runtime_access
+        from backtest.runtime.cache_access import WorkspaceAccess
+        with runtime_access.ownership(self.source,timeout=0), \
+                WorkspaceAccess(self.source/'data/website-data-0.lock').hold(timeout=0):pass
+
+
 class CombinedServiceTests(unittest.TestCase):
     def setUp(self):
-        self.workspace=FictionalWorkspace()
+        self.workspace=ProtocolWorkspace()
         self.addCleanup(self.workspace.close)
         self.output=self.workspace.own(MeasurementOutput()).create()
-        cold=SourceService(self.workspace).start();cold.close()
-        self.capture=self.workspace.capture_prepared()
+        self.capture=self.workspace.fixture.capture
         self.manifest=json.loads((self.capture/'capture.json').read_bytes())
 
-    def service(self,**scenario):return SourceService(self.workspace,**scenario).start()
+    def service(self,**scenario):
+        w=self.workspace
+        return w.own(SyntheticService(w.fixture,w.request,**scenario)).start()
 
     def immutable(self):
         w=self.workspace
@@ -91,7 +122,7 @@ class CombinedServiceTests(unittest.TestCase):
 
     def delivery(self,service):
         page=service.request('GET','/');panel=service.request('GET','/data.html')
-        self.assertIn(b'Fictional Company',page)
+        self.assertIn(b'Disposable static delivery fixture',page)
         self.assertIn(b'<html',panel.lower())
         return dict(page_bytes=len(page),panel_bytes=len(panel))
 
@@ -137,26 +168,29 @@ class CombinedServiceTests(unittest.TestCase):
         return closure
 
     def saved_pools(self):
-        import runtime_access,cache_access
+        import runtime_access; from backtest.runtime import cache_access as cache_access
         source=self.workspace.source
         with runtime_access.ownership(source,timeout=0), \
                 cache_access.WorkspaceAccess(source/'data/website-data-0.lock').hold(timeout=0), \
                 closing(sqlite3.connect((source/'data/schedules.sqlite').as_uri()+'?mode=ro',uri=True)) as db:
             return db.execute('SELECT count(*) FROM period_pools').fetchone()[0]
 
-    def test_truthful_capture_and_unchanged_public_fixture_rejection(self):
+    def test_explicit_protocol7_capture_and_unchanged_public_fixture_limits(self):
         x=self.manifest;w=self.workspace
-        self.assertIsNone(x['installed_revision'])
+        self.assertEqual(x['metadata']['research']['version'],7)
         self.assertFalse(x['benchmark_admitted']);self.assertTrue(x['originals_unchanged'])
         self.assertEqual(x['metadata']['research']['baseline_report_sha'],sha(self.capture/'report.txt'))
-        self.assertEqual({name:value for name,value in w.sources.items() if name.endswith('.py')},x['originals']['sources'])
-        with self.assertRaises(inputs.ExecutionInputError) as caught:
-            with inputs.CapturedWorkspace(self.capture,w.source,self.output.path):pass
-        self.assertEqual(caught.exception.reason,'limit')
+        self.assertEqual(w.sources,x['originals']['sources'])
+        before=self.immutable()
+        with inputs.CapturedWorkspace(self.capture,w.source,self.output.path) as bound:
+            self.assertEqual(bound.identity,x['financial_generation'])
+        self.assertEqual(before,self.immutable())
         self.assertEqual((inputs.MAX_DATABASE_BYTES,inputs.MAX_OUTPUT_BYTES,inputs.MAX_MEMORY_BYTES,inputs.MAX_SECONDS),
                          (32*MIB,64*MIB,128*MIB,10.))
-        self.report('combined_truthful_capture',database_bytes=sum((self.capture/n).stat().st_size for n in ('research.sqlite','schedules.sqlite')),
-            public_size_rejection='limit',producer_limits=x['limits'],generation=x['financial_generation'])
+        self.report('combined_explicit_protocol7',
+            preparation='synthetic_storage_binding',ordinary_preparation='unqualified',
+            database_bytes=sum((self.capture/n).stat().st_size for n in ('research.sqlite','schedules.sqlite')),
+            generation=x['financial_generation'])
 
     def test_default_measured_admission_still_rejects_before_effects(self):
         owner,bound=self.owner()
@@ -220,6 +254,7 @@ class CombinedServiceTests(unittest.TestCase):
 
     def live(self,phase):
         s=self.service(hold_request=True);before=self.immutable();owner,_=self.owner()
+        original_pools=self.saved_pools()
         with ThreadPoolExecutor(max_workers=2) as workers:
             experiment=workers.submit(self.run_owner,owner,dict(phase=phase))
             self.marker(phase,experiment);self.assertFalse(experiment.done());delivery=self.delivery(s)
@@ -233,8 +268,8 @@ class CombinedServiceTests(unittest.TestCase):
             (s.control/'request_held.release').touch()
             request.result(timeout=60)
         self.assertEqual(before,self.immutable())
-        saved=self.saved_pools();self.assertEqual(saved,2)
-        s.close();restarted=s.restart()
+        saved=self.saved_pools();self.assertEqual(saved,original_pools+2)
+        s.close();restarted=self.workspace.own(s.restart())
         inspection=restarted.request('POST','/api/schedule',dict(self.options(),dates=['2015-01-01','2016-01-01']))
         self.assertEqual(len(inspection['periods']),2)
         self.assertEqual(self.saved_pools(),saved)

@@ -8,8 +8,11 @@ import unittest
 ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT/'website')]
 from bench_source_service_fixture import FictionalWorkspace
-import numerical_preparation as preparation
-from numerical_runtime import NumericalRuntime
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.application import preparation as preparation
+from backtest.engines.numerical.runtime import NumericalRuntime
 
 
 class ProfileTests(unittest.TestCase):

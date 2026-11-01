@@ -18,7 +18,7 @@ def __getattr__(name):
     # The real numerical runtime loads this factory only after source/cache
     # ownership. The fixed production trial worker never imports this fixture.
     from numerical_runtime_fixture import Session as Base
-    import numerical_trial
+    from backtest.engines.numerical import trial as numerical_trial
     from backtest import calendar_requests as numerical_calendar
     class Session(Base):
         def __init__(self, configuration):
@@ -58,8 +58,8 @@ def main():
     import runtime_access
     with runtime_access.ownership(ROOT):
         sys.path[:0] = [str(ROOT/'scripts')]
-        from numerical_runtime import NumericalRuntime
-        import cache_access
+        from backtest.engines.numerical.runtime import NumericalRuntime
+        from backtest.runtime import cache_access as cache_access
         launch['coordinator'] = cache_access.WorkspaceAccess(Path(launch.pop('fixture_coordinator')))
         value = NumericalRuntime(**launch)
         value.start()

@@ -1,4 +1,9 @@
 """Disposable freshness, publication and reattachment checks for the pilot."""
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest import calendar as schedule_calendar, portfolio_results
 from contextlib import closing
 import json
 import os
@@ -28,8 +33,8 @@ class GenerationTests(unittest.TestCase):
             (self.root / 'raw' / name).write_text('[]')
         modules = {}
         for name in ('baseline', 'research', 'metrics', 'books', 'cache_assets',
-                     'run', 'revalue', 'financial_inputs', 'schedules', 'book_batch', 'schedule_calendar', 'portfolio_results', 'rules', 'screening'):
-            relative = {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py','schedule_calendar':'backtest/calendar.py','portfolio_results':'backtest/portfolio_results.py'}.get(name,'scripts/'+name+'.py')
+                     'market', 'legacy', 'legacy_downloads', 'fmp_download', 'daily', 'revalue', 'financial_inputs', 'schedules', 'book_batch', 'schedule_calendar', 'portfolio_results', 'rules', 'screening'):
+            relative = {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py','schedule_calendar':'backtest/calendar.py','portfolio_results':'backtest/portfolio_results.py'}.get(name,{'legacy':'backtest/engines/reference/legacy.py','revalue':'backtest/engines/reference/revalue.py','schedules':'backtest/engines/original/schedules.py','book_batch':'backtest/engines/original/book_batch.py'}.get(name,'backtest/inputs/'+name+'.py'))
             path = self.root / relative
             path.parent.mkdir(parents=True,exist_ok=True)
             path.write_text('# fixture ' + name)
@@ -39,19 +44,25 @@ class GenerationTests(unittest.TestCase):
         self.asset = self.root / 'raw/financial-inputs/income-statement/A.json'
         self.asset.write_text('[]')
         self.r = SimpleNamespace(**{name: modules[name] for name in
-            ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')},
+            ('baseline', 'metrics', 'books', 'cache_assets', 'market', 'legacy', 'revalue', 'financial_inputs', 'rules', 'screening')},
             ROOT=self.root, RAW=self.root / 'raw', RESULTS=self.root / 'results',
             DATABASE=self.root / 'data/research.sqlite',
-            SCHEMA_VERSION=shared.s.r.SCHEMA_VERSION, __file__=modules['research'].__file__)
-        self.r.baseline.cutoff = shared.s.r.baseline.cutoff
-        namespace = dict(shared.s.r.signature.__globals__, **vars(self.r))
-        self.r.signature = FunctionType(shared.s.r.signature.__code__, namespace)
-        self.s = SimpleNamespace(r=self.r, VERSION=shared.s.VERSION,
+            SCHEMA_VERSION=research.SCHEMA_VERSION, __file__=modules['research'].__file__)
+        self.r.baseline.cutoff = research.baseline.cutoff
+        namespace = dict(research.signature.__globals__, **vars(self.r))
+        self.r.signature = FunctionType(research.signature.__code__, namespace)
+        self.s = SimpleNamespace(r=self.r, VERSION=daily.VERSION,
             DATABASE=self.root / 'data/schedules.sqlite', __file__=modules['schedules'].__file__, schedule_calendar=modules['schedule_calendar'], portfolio_results=modules['portfolio_results'])
+        self.daily=SimpleNamespace(VERSION=daily.VERSION,DATABASE=self.s.DATABASE,__file__=modules['daily'].__file__)
+        self.enterContext(patch.object(generation,'daily_inputs',self.daily))
+        self.enterContext(patch.object(generation,'research_inputs',self.r))
+        self.enterContext(patch.object(generation,'schedule_calendar',modules['schedule_calendar']))
+        self.enterContext(patch.object(generation,'portfolio_results',modules['portfolio_results']))
         self.sources = [Path(self.r.metrics.__file__)]
         self.prepare()
 
     def write_metadata(self, path, values):
+        self.assertTrue(Path(path).resolve().is_relative_to(self.root.resolve()),path)
         with closing(sqlite3.connect(path)) as db:
             db.execute('CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
             with db:
@@ -64,15 +75,14 @@ class GenerationTests(unittest.TestCase):
         prices={path.name:[path.stat().st_size,path.stat().st_mtime_ns]
                 for path in (self.root/'raw/px').glob('*.json')}
         engine = {path.relative_to(self.root).as_posix(): [path.stat().st_size, path.stat().st_mtime_ns] for path in
-            (Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
-             Path(self.s.schedule_calendar.__file__),
-             Path(self.s.portfolio_results.__file__))}
-        self.write_metadata(self.s.DATABASE, dict(daily_inputs=dict(version=self.s.VERSION,
+            (Path(self.daily.__file__),Path(self.s.__file__), Path(self.s.__file__).with_name('book_batch.py'),
+             Path(generation.schedule_calendar.__file__),Path(generation.portfolio_results.__file__))}
+        self.write_metadata(self.daily.DATABASE, dict(daily_inputs=dict(version=daily.VERSION,
                             inputs=signature,prices=generation.digest(prices), engine=engine)))
         self.write_metadata(self.r.DATABASE, dict(version=self.r.SCHEMA_VERSION,
             inputs=signature,prices=prices, baseline_report_sha=generation.file_hash(self.report)))
         self.inputs = SimpleNamespace(signature=generation.digest(signature),
-            generation=json.dumps(generation.metadata(self.s.DATABASE)['daily_inputs']),
+            generation=json.dumps(generation.metadata(self.daily.DATABASE)['daily_inputs']),
             policy=SimpleNamespace(signature='policy-fixture', source_paths=tuple(self.sources),
                 source_hashes={path.as_posix(): generation.file_hash(path) for path in self.sources}))
 
@@ -209,19 +219,19 @@ class GenerationTests(unittest.TestCase):
 
     def test_changed_daily_metadata_rejects_and_valid_reprepare_recovers(self):
         old = self.attach()
-        metadata = generation.metadata(self.s.DATABASE)
+        metadata = generation.metadata(self.daily.DATABASE)
         metadata['daily_inputs']['version'] += 1
-        self.write_metadata(self.s.DATABASE, metadata)
+        self.write_metadata(self.daily.DATABASE, metadata)
         with self.assertRaisesRegex(ValueError, 'different prepared generation'): old.validate()
         self.prepare(); old.validate()
 
     def test_current_daily_price_binding_rejects_missing_or_mismatched_evidence(self):
         self.attach().validate()
         for changed in (None,'changed'):
-            daily=generation.metadata(self.s.DATABASE)
+            daily=generation.metadata(self.daily.DATABASE)
             if changed is None:daily['daily_inputs'].pop('prices')
             else:daily['daily_inputs']['prices']=changed
-            self.write_metadata(self.s.DATABASE,daily)
+            self.write_metadata(self.daily.DATABASE,daily)
             self.inputs.generation=json.dumps(daily['daily_inputs'])
             with self.assertRaisesRegex(ValueError,'Daily prepared generation'):self.attach()
             self.prepare()

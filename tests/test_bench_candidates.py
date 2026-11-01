@@ -1,4 +1,13 @@
 """Source differential proof for immutable inputs and candidate factor batches."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.engines.reference import legacy
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import daily, research
+from backtest.financial import rules, books as financial_books, metrics
 from datetime import date,timedelta
 import json
 from pathlib import Path
@@ -28,7 +37,7 @@ class CandidateTests(unittest.TestCase):
         return inputs,executor
 
     def all_fields(self):
-        return dict(filters=[dict(field=field,op='gt',value=-999999.) for field in core.PolicyProgram(s).fields['thresholds']])
+        return dict(filters=[dict(field=field,op='gt',value=-999999.) for field in core.PolicyProgram().fields['thresholds']])
 
     def test_planned_batches_preserve_all_fields_and_projected_request_results(self):
         self.rich_financials()
@@ -82,7 +91,7 @@ class CandidateTests(unittest.TestCase):
             expected = self.reference(inputs,book)
             self.assertTrue(baseline.compare(expected,actual)['exact'])
             fields.update(row[1] for row in actual['filters'])
-        self.assertEqual(fields,set(core.PolicyProgram(s).fields['thresholds']))
+        self.assertEqual(fields,set(core.PolicyProgram().fields['thresholds']))
         first = results[0]
         self.assertTrue(any(field=='fcf' and value<0 for symbol,field,value in first['filters']))
         self.assertTrue(any(field=='profit_margin' and value<0 for symbol,field,value in first['filters']))
@@ -99,12 +108,12 @@ class CandidateTests(unittest.TestCase):
         inputs,executor = self.make()
         boundaries = {date(2000,1,1),date(2030,1,1)}
         for row in inputs.report_rows:
-            for anchor in (row['known'],row['fiscal']+s.financial_books.run.MAX_AGE):
+            for anchor in (row['known'],row['fiscal']+rules.MAX_AGE):
                 boundaries.update(anchor+timedelta(days=offset) for offset in (-1,0,1))
         days = sorted(boundaries)
         broad,legacy = executor.select_reports(np.array([day.toordinal() for day in days],dtype=np.int32))
         for index,day in enumerate(days):
-            expected,ranks = s.financial_books.candidates(inputs.books,day)
+            expected,ranks = financial_books.candidates(inputs.books,day)
             for pool,selected in (('cached',broad),('legacy',legacy)):
                 actual = {symbol:inputs.report_rows[int(selected[index,symbol_id])]
                           for symbol_id,symbol in enumerate(inputs.symbols) if selected[index,symbol_id]>=0}
@@ -112,12 +121,12 @@ class CandidateTests(unittest.TestCase):
                 for symbol,row in actual.items():self.assertIs(row,expected[pool][symbol])
 
     def test_buffer_ties_precede_price_coverage_and_keep_null_cached_rank(self):
-        for number in reversed(range(s.financial_books.run.BUFFER+5)):
+        for number in reversed(range(rules.BUFFER+5)):
             symbol = f'T{number:03}'
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
             self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',
                 (symbol,'2014-06-30','2014-09-28',150e6,180e6,60e6,1/3))
-            if number!=s.financial_books.run.BUFFER+4:
+            if number!=rules.BUFFER+4:
                 self.db.executemany('INSERT INTO prices VALUES(?,?,?,?)',
                     [(symbol,'2014-06-30',10.,10.),(symbol,'2015-01-02',10.,10.),
                      (symbol,'2016-01-04',11.,11.)])
@@ -127,7 +136,7 @@ class CandidateTests(unittest.TestCase):
         actual = executor.evaluate(batch,self.all_fields())
         for book,result in zip(batch,actual,strict=True):
             self.assertTrue(baseline.compare(self.reference(inputs,book),result)['exact'])
-        source_reports,source_ranks = s.financial_books.candidates(inputs.books,date(2015,1,2))
+        source_reports,source_ranks = financial_books.candidates(inputs.books,date(2015,1,2))
         for index,book in enumerate(batch):
             expected = {symbol:source_ranks.get(symbol) for symbol in inputs.symbols}
             observed = executor.trace['ranks'][index]
@@ -135,7 +144,7 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(any(row[1] is None for row in actual[1]['snapshots']))
 
     def test_short_period_adjusted_entry_early_stop_and_bankruptcy(self):
-        with patch.object(s.r.revalue,'BANKRUPT',{(2016,'STOP')}):
+        with patch.object(rules,'BANKRUPT',{(2016,'STOP')}):
             inputs,executor = self.make()
             books = [('2015-01-02','2015-01-05','legacy'),
                      ('2016-02-29','2016-03-07','cached'),
@@ -219,15 +228,15 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(first.policy.signature,second.policy.signature)
 
     def test_policy_is_source_bound_and_rejects_unknown_catalog(self):
-        policy = core.PolicyProgram(s)
+        policy = core.PolicyProgram()
         self.assertIn('snapshot',policy._snapshot.__name__)
-        self.assertTrue({'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','scripts/schedules.py','scripts/run.py','scripts/revalue.py','scripts/research.py'}<=set(policy.source_hashes))
+        self.assertTrue({'backtest/financial/books.py','backtest/financial/metrics.py','backtest/financial/rules.py','backtest/screening.py','backtest/engines/original/schedules.py','backtest/engines/reference/legacy.py','backtest/engines/reference/revalue.py','backtest/inputs/research.py'}<=set(policy.source_hashes))
         self.assertEqual(len(policy.signature),64)
         self.assertTrue(all(node[0]!='var' for name in policy.output_names
                             for node in self.walk(policy.expanded(name))))
-        with patch.dict(s.metrics.METRICS,{'unsupported':dict(label='unknown')}):
+        with patch.dict(metrics.METRICS,{'unsupported':dict(label='unknown')}):
             with self.assertRaisesRegex(ValueError,'Unsupported ranking catalog'):
-                core.PolicyProgram(s)
+                core.PolicyProgram()
 
     @staticmethod
     def walk(node):
@@ -237,7 +246,7 @@ class CandidateTests(unittest.TestCase):
 
     def test_empty_inputs_and_bad_prices_fail_without_scalar_substitution(self):
         empty = sqlite3.connect(':memory:');empty.row_factory=sqlite3.Row
-        self.addCleanup(empty.close);empty.executescript(s.SCHEMA)
+        self.addCleanup(empty.close);empty.executescript(daily.SCHEMA)
         inputs = core.NumericInputs(empty,s);self.addCleanup(inputs.close)
         executor = self.factory(inputs);self.addCleanup(executor.close)
         self.assertEqual(executor.evaluate([],{'filters':[]}),[])

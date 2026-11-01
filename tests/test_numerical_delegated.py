@@ -11,7 +11,10 @@ import unittest
 from unittest.mock import patch
 
 import test_numerical_generation as fixtures
-import numerical_generation as ng
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.numerical import generation as ng
 import numpy as np
 
 
@@ -28,7 +31,7 @@ class DelegatedTests(unittest.TestCase):
         return parent, reference
 
     def delegated(self, reference, checkpoint=lambda: None):
-        inputs = ng.open_delegated(reference, self.s, checkpoint=checkpoint)
+        inputs = ng.open_delegated(reference, checkpoint=checkpoint)
         self.addCleanup(inputs.close)
         return inputs
 
@@ -115,7 +118,7 @@ class DelegatedTests(unittest.TestCase):
                 with self.assertRaises(ValueError): self.delegated(dict(reference, **fields))
                 self.unpinned(parent.signature)
         with self.assertRaises(ValueError): self.delegated({})
-        with self.assertRaises(ValueError): ng.open_delegated(reference, self.s, checkpoint=None)
+        with self.assertRaises(ValueError): ng.open_delegated(reference, checkpoint=None)
         gate = self.store.path / 'gates' / (parent.signature + '.lock')
         gate.unlink()
         with self.assertRaises(FileNotFoundError): self.delegated(reference)

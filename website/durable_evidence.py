@@ -14,8 +14,8 @@ import shutil
 import tempfile
 from threading import RLock
 
-import backtest_control
-import result_evidence
+from backtest.runtime import backtest_control as backtest_control
+from backtest import result_evidence as result_evidence
 
 MAGIC = b'CBDSNAPSHOT\x00\x03'
 CHUNK_BYTES = 65536

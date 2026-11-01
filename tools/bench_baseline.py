@@ -5,6 +5,9 @@ admission are qualified. The retained freeze/run/verify protocol describes
 historical measurements. Source-only bootstrap remains available for synthetic
 imports under source ownership; it does not admit benchmark execution.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 import argparse
 import atexit
 from contextlib import ExitStack, closing
@@ -86,24 +89,31 @@ def load(path):
 
 def bootstrap(runtime):
     """Own committed runtime source before importing any financial application code."""
-    global s, batch, robust, coordinator, _original_initialize
+    global s, batch, robust, coordinator, _original_initialize, daily, research, metrics, screening
     runtime = Path(runtime).resolve()
     if s is not None:
-        if Path(s.r.ROOT).resolve() != runtime:
+        if Path(research.ROOT).resolve() != runtime:
             raise ValueError('A process cannot attach two source runtimes.')
         return
-    sys.path[:0] = [str(runtime / 'website'), str(runtime / 'scripts')]
+    sys.path[:0] = [str(runtime), str(runtime / 'website'), str(runtime / 'scripts')]
     import runtime_access
     _runtime_stack.enter_context(runtime_access.ownership(runtime))
-    import schedules
-    import book_batch
-    import robustness
-    import cache_access
+    from backtest.inputs import daily, research
+    from backtest.financial import metrics
+    from backtest import screening
+    from backtest.engines.original import schedules as schedules
+    from backtest.engines.original import book_batch as book_batch
+    from backtest.engines.original import robustness as robustness
+    from backtest.runtime import cache_access as cache_access
     s, batch, robust, coordinator = schedules, book_batch, robustness, cache_access
     _original_initialize = batch.initialize_worker
-    for module in (s, batch, robust, s.r, s.metrics):
+    for module in (s, batch, robust, daily, research, metrics, screening, cache_access):
         if not Path(module.__file__).resolve().is_relative_to(runtime):
             raise ValueError('Financial imports must come from the selected runtime.')
+    for name, module in tuple(sys.modules.items()):
+        if name == 'backtest' or name.startswith('backtest.'):
+            if not Path(module.__file__).resolve().is_relative_to(runtime):
+                raise ValueError('Financial imports must come from the selected runtime.')
 
 
 # Native spawned children import this entry point before unpickling application
@@ -117,7 +127,7 @@ def observed_initialize(path, expected):
     """Measure real spawned-worker startup without changing worker calculations."""
     assert_tool(os.environ.get('BACKTEST_BASELINE_TOOL_SHA256'))
     source_seconds = 0.
-    signature = s.r.signature
+    signature = research.signature
     def observed_signature():
         nonlocal source_seconds
         began = time.perf_counter()
@@ -126,7 +136,7 @@ def observed_initialize(path, expected):
         finally:
             source_seconds += time.perf_counter() - began
     began = time.perf_counter()
-    with patch.object(s.r, 'signature', observed_signature):
+    with patch.object(research, 'signature', observed_signature):
         _original_initialize(path, expected)
     destination = Path(os.environ['BACKTEST_BASELINE_TELEMETRY']) / (str(os.getpid()) + '.json')
     publish(destination, dict(pid=os.getpid(), initialization_seconds=time.perf_counter()-began,
@@ -434,7 +444,7 @@ def request(database, manifest, case, telemetry, *, require_fresh=True):
     os.environ['BACKTEST_BASELINE_TELEMETRY'] = str(attempt)
     holdings = []
     stages = dict(signature_seconds=0., selection_seconds=0.)
-    signature, select, summarize = s.r.signature, s.screening.select, robust.summarize
+    signature, select, summarize = research.signature, screening.select, robust.summarize
     def observed_signature():
         began = time.perf_counter()
         try:
@@ -461,11 +471,11 @@ def request(database, manifest, case, telemetry, *, require_fresh=True):
     began = time.perf_counter()
     db = None
     try:
-        with patch.object(s.r, 'signature', observed_signature), patch.object(s.screening, 'select', observed_select), \
+        with patch.object(research, 'signature', observed_signature), patch.object(screening, 'select', observed_select), \
                 patch.object(robust, 'summarize', observed_summary), \
                 patch.object(batch, 'initialize_worker', observed_initialize):
             validation = time.perf_counter()
-            db = s.connect(database)
+            db = daily.connect(database)
             db.execute('PRAGMA cache_size=-131072')
             initial = {table: db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0] for table in DERIVED}
             if require_fresh and any(initial.values()):
@@ -559,8 +569,8 @@ def runner(args):
         # Full preparation readiness, including report binding and raw prices,
         # runs before capturing the immutable baseline identity. Never prepare
         # silently here: preparation can publish a new canonical report.
-        reference = s.r.connect(full_prices=True);reference.close()
-        production = s.connect()
+        reference = research.connect(full_prices=True);reference.close()
+        production = daily.connect()
         try:
             manifest = freeze(production) if args.command == 'freeze' else load(args.manifest)
             validate_manifest(manifest, production)
@@ -635,7 +645,7 @@ def runner(args):
                 raise ValueError('Production inputs changed before verification completed.')
             assert_tool()
             report = dict(protocol=PROTOCOL, workload_sha256=manifest['sha256'], binding=binding, input_identity=before,
-                          methodology=dict(boundary='schedules.connect through NDJSON socket receipt and database closure',
+                          methodology=dict(boundary='daily.connect through NDJSON socket receipt and database closure',
                                            production_http=False, base_dataset_loaded=False, fresh_books=True,
                                            automatic_workers=True, raw_invariance='All raw file paths, sizes and mtimes; not raw content hashes',
                                            prepared_invariance='Content hashes of research/daily DBs and sidecars, report, source; derived row counts',

@@ -19,17 +19,20 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tests'),str(ROOT/'tools')]
-import backtest_control
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control as backtest_control
 from backtest import calendar_requests as numerical_calendar
-import numerical_random
+from backtest.engines.numerical import random as numerical_random
 from backtest import portfolio_results as portfolio_results
-import result_evidence
-import trial_checkpoints
-import robustness
+from backtest import result_evidence as result_evidence
+from backtest.engines.numerical import checkpoints as trial_checkpoints
+from backtest.engines.original import robustness as robustness
 import test_numerical_trials as trials
 import test_result_evidence as codec
 import test_trial_checkpoints as fixtures
-from numerical_portfolio import compare_results
+from backtest.engines.numerical.portfolio import compare_results
 
 LIMIT=32*1024**2
 
@@ -199,11 +202,12 @@ class StreamCheckpointTests(unittest.TestCase):
     def test_process_exit_before_during_after_stream_commit(self):
         code='''import sys,os,json,io
 from pathlib import Path
-root=Path(sys.argv[1]);sys.path[:0]=[str(root/'scripts'),str(root/'tests'),str(root/'website')]
+root=Path(sys.argv[1]);sys.path[:0]=[str(root/'website'),str(root/'tests')]
 import runtime_access
 with runtime_access.ownership(root):
- import trial_checkpoints as t
- import result_evidence as e
+ sys.path.insert(0,str(root))
+ from backtest.engines.numerical import checkpoints as t
+ from backtest import result_evidence as e
  path=Path(sys.argv[2]);stage=sys.argv[3];store=t.Store(path)
  exp=store.open(json.loads(sys.argv[4]));result=json.loads(sys.argv[5]);stream=io.BytesIO()
  writer=e.Writer(stream,trials=1,metadata={},max_bytes=1048576);writer.start_trial(1)
@@ -268,7 +272,7 @@ class BoundedNumericalTests(unittest.TestCase):
                         maximum_relative=max(maximum_relative,agreement['maximum_relative'])
                     with patch.object(provider,'begin',side_effect=AssertionError('No replay provider')), \
                          patch.object(provider,'evaluate',side_effect=AssertionError('No replay provider')), \
-                         patch('numerical_portfolio.stage_book',side_effect=AssertionError('No replay staging')), \
+                         patch('backtest.engines.numerical.portfolio.stage_book',side_effect=AssertionError('No replay staging')), \
                          patch.object(experiment,'load',side_effect=AssertionError('No collecting replay')):
                         replay,recovered=self.run_stream(portfolio,config,experiment)
                     self.assertEqual(replay['result']['trials'],actual['result']['trials'])
@@ -287,8 +291,8 @@ class BoundedNumericalTests(unittest.TestCase):
         captures=[];numerical_random.run(portfolio,config,exp,capture=lambda n,r:captures.append(r))
         self.assertEqual(captures,collected(stream))
         import test_numerical_generation as generations
-        from numerical_numba import NumbaExecutor
-        from numerical_portfolio import NumericalPortfolio
+        from backtest.engines.numerical.numba import NumbaExecutor
+        from backtest.engines.numerical.portfolio import NumericalPortfolio
         fixture=generations.GenerationTests('test_export_values_order_missingness_and_mutable_books_reuse')
         fixture.setUp();self.addCleanup(fixture.doCleanups);fixture.prepare();attached=fixture.attach()
         self.addCleanup(attached.close)

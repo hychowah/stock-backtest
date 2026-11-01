@@ -4,6 +4,10 @@ Coordinated observations require the participating cache-access source. This
 module offers no runtime discovery, admission flag or real execution command.
 Blocking OS calls remain outside the cooperative handoff guarantee.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import research as research_inputs
 from contextlib import ExitStack
 from pathlib import Path
 import sqlite3
@@ -28,10 +32,10 @@ class CurrentObservation:
         self.cancel, self.seconds = cancel, seconds
 
     def _coordinator(self):
-        import cache_access
+        from backtest.runtime import cache_access as cache_access
         import runtime_access
         # Bind actual code, not an attribute/marker asserted by the target root.
-        for module, name in ((cache_access, 'scripts/cache_access.py'),
+        for module, name in ((cache_access, 'backtest/runtime/cache_access.py'),
                              (runtime_access, 'website/runtime_access.py')):
             expected = self.request['sources'].get(name)
             if (not expected or file_hash(module.__file__) != expected
@@ -85,11 +89,11 @@ class CurrentObservation:
             for journal in ('deployment.pending.json', 'research.sqlite.publication.json'):
                 if (root / 'data' / journal).exists(): raise ComparisonError('stale')
         journals()
-        names = ('baseline', 'metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening')
-        modules = {name: SimpleNamespace(__file__=str(root / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py'))) for name in names}
-        modules['baseline'].cutoff = self.s.r.baseline.cutoff
+        names = ('baseline', 'metrics', 'books', 'cache_assets', 'market', 'legacy', 'revalue', 'financial_inputs', 'rules', 'screening')
+        modules = {name: SimpleNamespace(__file__=str(root / {'metrics': 'backtest/financial/metrics.py', 'books': 'backtest/financial/books.py', 'rules': 'backtest/financial/rules.py', 'screening': 'backtest/screening.py', 'baseline': 'backtest/inputs/baseline.py', 'cache_assets': 'backtest/inputs/cache_assets.py', 'market': 'backtest/inputs/market.py', 'legacy': 'backtest/engines/reference/legacy.py', 'revalue': 'backtest/engines/reference/revalue.py', 'financial_inputs': 'backtest/inputs/financial_inputs.py'}[name])) for name in names}
+        modules['baseline'].cutoff = research_inputs.baseline.cutoff
         observed = signature(SimpleNamespace(ROOT=root, RAW=root / 'raw', RESULTS=root / 'results',
-            __file__=str(root / 'scripts/research.py'), **modules), checkpoint)
+            __file__=str(root / 'backtest/inputs/research.py'), **modules), checkpoint)
         for relative, expected in request['sources'].items():
             checkpoint()
             path = (root / relative).resolve()
@@ -99,7 +103,7 @@ class CurrentObservation:
         research = metadata(root / 'data/research.sqlite', checkpoint)
         daily = metadata(root / 'data/schedules.sqlite', checkpoint)
         engine = {}
-        for name in ('scripts/schedules.py', 'scripts/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'):
+        for name in ('backtest/inputs/daily.py', 'backtest/engines/original/schedules.py', 'backtest/engines/original/book_batch.py', 'backtest/calendar.py', 'backtest/portfolio_results.py'):
             checkpoint(); info = (root / name).stat()
             engine[name] = [info.st_size, info.st_mtime_ns]
         report = file_hash(root / 'results/summary-exits.txt', checkpoint)

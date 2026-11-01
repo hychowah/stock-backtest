@@ -118,7 +118,7 @@ the existing baseline helpers. Dated holdings gain no invented price fields.
 
 ## Offline numerical adapter
 
-`scripts/numerical_portfolio.py` supplies `NumericalPortfolio(inputs, provider)`.
+`backtest/engines/numerical/portfolio.py` supplies `NumericalPortfolio(inputs, provider)`.
 Inputs and the accepted complete-book provider are explicit borrowed objects.
 The caller owns source before imports and cache ownership before attachment.
 An attached input's existing `validate()` runs before requests. The adapter
@@ -132,7 +132,7 @@ the versioned diagnostic envelope. Explicit periods need no nominal interval.
 The adapter owns one private in-memory SQL workspace. It requests one complete
 eligible book at a time, checks count and identity, stages snapshots, ranking
 pairs and requested thresholds, and calls unchanged `screening.select`.
-`scripts/numerical_workspace.py` retains the existing staging operation for both
+`backtest/engines/numerical/workspace.py` retains the existing staging operation for both
 the diagnostic adapter and historical runner. Every staging replaces derived
 rows, including empty books and alternating pools. No price history or annual
 statement cache is copied into this workspace.
@@ -167,7 +167,7 @@ admission stays closed.
 
 ## Completed random trials
 
-CB-10 adds `scripts/numerical_random.py`. It borrows this portfolio and an explicit
+CB-10 adds `backtest/engines/numerical/random.py`. It borrows this portfolio and an explicit
 checkpoint experiment. Its `checkpoint_binding(portfolio, configuration)`
 validates current inputs, the full recorded date plan and screening options.
 `run(portfolio, configuration, experiment, progress=None, capture=None)` returns

@@ -21,7 +21,6 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'tests'), str(ROOT / 'tools')]
 from bench_service_fixture import SyntheticService, _pending_services
-from bench_candidates_process import ProcessLimits
 
 MIB = 1024**2
 ALLOWANCES = dict(raw=64*MIB, database=128*MIB, website=64*MIB,
@@ -247,6 +246,7 @@ class SourceService(SyntheticService):
             str(ROOT/'tests'), str(ROOT/'tools'), str(path)]
 
     def limits(self):
+        from backtest.runtime.process_owner import ProcessLimits
         return ProcessLimits(2*1024**3, 16, 25, user_cpu_seconds=180., close_seconds=5.)
 
     def restart(self):
@@ -347,43 +347,45 @@ def child(request_path):
             time.sleep(.005)
     with runtime_access.ownership(source,timeout=0):
         emit('source_acquired')
-        import run
-        run.KEY_PATH=source.parent/'missing-fixture-key'
+        from backtest.financial import rules
+        from backtest.inputs import market, fmp_download, cache_assets, daily, research
+        from backtest.engines.reference import legacy
+        fmp_download.KEY_PATH=source.parent/'missing-fixture-key'
         import serve_app as app
-        import robustness
+        from backtest.engines.original import robustness as robustness
         from backtest import screening
         assert_package_source(source)
         if request['scenario'].get('fail_start'):raise RuntimeError('Fictional startup failure.')
         # Barriers observe actual operations. Results and ownership are unchanged.
-        import cache_access
+        from backtest.runtime import cache_access as cache_access
         if request['scenario'].get('hold_prepare'):
-            original=app.schedules.r.prepare
+            original=research.prepare
             def preparing(*args,**kwargs):
                 barrier('preparation_held')
                 return original(*args,**kwargs)
-            app.schedules.r.prepare=preparing
+            research.prepare=preparing
         app.ensure_ready()
-        for module in (app,app.schedules,robustness,app.data_manager,cache_access,run,runtime_access,app.schedules.r):
+        for module in (app,app.schedules,robustness,app.data_manager,cache_access,market,runtime_access,research):
             assert Path(module.__file__).resolve().is_relative_to(source)
         assert_package_source(source)
         assert app.current_build()
-        with cache_access.access(),closing(app.schedules.r.connect(full_prices=True)) as db:
-            baseline=app.schedules.r.verify_reference(db)
+        with cache_access.access(),closing(research.connect(full_prices=True)) as db:
+            baseline=research.verify_reference(db)
             latest=screening.latest(db)
             historical=screening.historical(db,first=2015,last=2016,rank_to=4)
             browser_latest=screening.latest(db,pool='cached',metric='ev_ebitda_3y',rank_to=7,
                 filters=[dict(field='pe',op='lt',value=20.)])
             browser_historical=screening.historical(db,first=2015,last=2016,pool='cached',rank_from=2,rank_to=4)
             metadata={row[0]:json.loads(row[1]) for row in db.execute('SELECT * FROM metadata')}
-        with cache_access.access(),closing(app.schedules.connect()) as db:
+        with cache_access.access(),closing(daily.connect()) as db:
             daily_metadata={row[0]:json.loads(row[1]) for row in db.execute('SELECT * FROM metadata')}
         write(control/'expected.json',dict(baseline=baseline,latest=latest,historical=historical,
             browser_latest=browser_latest,browser_historical=browser_historical,
-            metadata=metadata,daily_metadata=daily_metadata,signature=app.schedules.r.signature()))
+            metadata=metadata,daily_metadata=daily_metadata,signature=research.signature()))
         if request['scenario'].get('oracle'):
             oracle=control/'oracle.sqlite'
-            shutil.copy2(app.schedules.DATABASE,oracle)
-            with cache_access.access(),closing(app.schedules.connect(oracle)) as db:
+            shutil.copy2(daily.DATABASE,oracle)
+            with cache_access.access(),closing(daily.connect(oracle)) as db:
                 options=dict(start='2015-01-01',end='2016-12-30',months=12,pool='cached',rank_to=4)
                 config=robustness.plan(db,**options,trials=5,seed=42)
                 fixed=app.schedules.backtest(db,**options)
@@ -397,11 +399,11 @@ def child(request_path):
             # The oracle is disposable. Its selected books never warm the service.
             oracle.unlink()
         if request['scenario'].get('hold_rebuild'):
-            original_prepare=app.schedules.r.prepare
+            original_prepare=research.prepare
             def rebuild_prepare(*args,**kwargs):
                 barrier('rebuild_held')
                 return original_prepare(*args,**kwargs)
-            app.schedules.r.prepare=rebuild_prepare
+            research.prepare=rebuild_prepare
         from original_calculations import Original
         financial=Original._financial
         from contextlib import contextmanager

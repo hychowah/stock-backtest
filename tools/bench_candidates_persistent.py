@@ -5,6 +5,10 @@ Children attach immutable inputs once, run the common Python candidate executor,
 and never acquire the parent's cache lock or publish a result. Request tokens
 clear child request state before the first job of every fresh request.
 """
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import research
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FutureTimeout
 from contextlib import suppress
 from dataclasses import dataclass
@@ -83,7 +87,7 @@ def export_inputs(inputs, folder):
         pickle.dump(state, handle, protocol=5)
     manifest = dict(format=FORMAT, state='state.pickle', state_sha256=_hash(metadata),
                     arrays=arrays, policy_sha256=_policy_identity(inputs.policy),
-                    runtime=str(Path(inputs.s.r.ROOT).resolve()))
+                    runtime=str(Path(research.ROOT).resolve()))
     path = folder / 'manifest.json'
     path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     return path
@@ -136,7 +140,7 @@ def open_inputs(manifest_path, schedules):
         result = NumericInputs.__new__(NumericInputs)
         result.__dict__.update(thaw(state))
         result.s = schedules
-        result.policy = PolicyProgram(schedules, bankrupt=result.bankrupt)
+        result.policy = PolicyProgram(bankrupt=result.bankrupt)
         if _policy_identity(result.policy) != manifest['policy_sha256']:
             raise ValueError('Mapped candidate policy differs from current source.')
         result._persistent_mappings = tuple(opened.values())
@@ -234,7 +238,7 @@ class PersistentExecutor:
                           coverage='Persistent loaded Python candidate executors over read-only mapped inputs.')
         workdir = self.limits.get('workdir')
         if workdir is None:
-            workdir = Path(inputs.s.r.ROOT) / 'tmp/cb02-candidates/persistent'
+            workdir = Path(research.ROOT) / 'tmp/cb02-candidates/persistent'
         workdir = Path(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
         self._directory = Path(tempfile.mkdtemp(prefix='workers-', dir=workdir))
@@ -247,7 +251,7 @@ class PersistentExecutor:
             child_limits['workers'] = child_limits['threads'] = 1
             self._pool = ProcessPoolExecutor(max_workers=self.workers, mp_context=context,
                 initializer=_worker_initialize,
-                initargs=(str(manifest), str(inputs.s.r.ROOT), child_limits, self._ready))
+                initargs=(str(manifest), str(research.ROOT), child_limits, self._ready))
             pings = [self._pool.submit(_worker_ping) for unused in range(self.workers)]
             setup_budget = float(self.limits.get('setup_seconds', 600.))
             deadline = began + setup_budget

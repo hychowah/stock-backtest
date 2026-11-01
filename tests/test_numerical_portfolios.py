@@ -1,4 +1,14 @@
 """Offline numerical/ordinary full-result parity on fictional owned inputs."""
+import sys as _owner_sys
+from pathlib import Path as _OwnerPath
+_owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
+from backtest.financial import rules
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.inputs import research
+from backtest.financial import metrics
+from backtest.runtime import backtest_control
 from copy import deepcopy
 from datetime import date
 import json
@@ -14,7 +24,7 @@ import test_bench_methods as shared
 import test_numerical_generation as generations
 from bench_candidates import NumericInputs, PythonExecutor
 from bench_candidates_numba import NumbaExecutor
-from numerical_portfolios import NumericalPortfolio, compare_results
+from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
 
 s=shared.s
 
@@ -36,7 +46,7 @@ class NumericalPortfolioTests(unittest.TestCase):
         for factory,limits in ((PythonExecutor,{}),(NumbaExecutor,{'candidate_assembly':'compiled'})):
             inputs,provider,adapter=self.evaluator(factory,**limits)
             for pool in ('legacy','cached'):
-                for metric in s.metrics.METRICS:
+                for metric in metrics.METRICS:
                     for rank_from,rank_to in ((1,50),(1,100),(51,100),(2,3)):
                         for filters in ([],[dict(field='pe',op='lt',value=20.)],
                                         [dict(field='return_1y',op='gt',value=0.)]):
@@ -99,7 +109,7 @@ class NumericalPortfolioTests(unittest.TestCase):
         inputs,provider,adapter=self.evaluator(candidate_assembly='source')
         cases=[];maximum_absolute=maximum_relative=0.
         for pool in ('legacy','cached'):
-            for metric in s.metrics.METRICS:
+            for metric in metrics.METRICS:
                 for ranks in ((1,50),(1,100),(2,3),(51,100)):
                     for label,filters in [('trailing',trailing),('mixed',mixed)]:
                         for months in (1,3,6,12,24):
@@ -145,7 +155,7 @@ class NumericalPortfolioTests(unittest.TestCase):
             maximum_relative=maximum_relative,tolerance=1e-12)),flush=True)
 
     def test_bankruptcy_stopped_exits_final_mark_and_empty_following_full(self):
-        with patch.object(s.r.revalue,'BANKRUPT',{(2016,'STOP')}):
+        with patch.object(rules,'BANKRUPT',{(2016,'STOP')}):
             inputs,provider,adapter=self.evaluator(candidate_assembly='compiled')
             request=dict(start='2016-01-04',end='2016-12-30',rank_to=50)
             expected=s.backtest(self.db,**request)
@@ -182,12 +192,12 @@ class NumericalPortfolioTests(unittest.TestCase):
                 with self.assertRaises(ValueError):adapter.backtest(**request,**options)
         with patch.object(provider,'evaluate',side_effect=AssertionError('invalid periods must precede provider')):
             with self.assertRaises(ValueError):adapter.backtest_periods([])
-        with patch.object(s.backtest_control,'checkpoint',side_effect=RuntimeError('fictional cancel')):
+        with patch.object(backtest_control,'checkpoint',side_effect=RuntimeError('fictional cancel')):
             with self.assertRaises(RuntimeError):adapter.backtest(**request)
         self.assertFalse(adapter.db.in_transaction)
         before=[tuple(row) for row in adapter.db.execute('SELECT * FROM snapshots')]
         staged=0
-        import numerical_portfolios
+        from backtest.engines.numerical import portfolio as numerical_portfolios
         original_stage=numerical_portfolios.stage_book
         def stage(*args,**kwargs):
             nonlocal staged
@@ -195,8 +205,8 @@ class NumericalPortfolioTests(unittest.TestCase):
             return result
         def cancel_between_books():
             if staged:raise RuntimeError('fictional between-book cancel')
-        with patch.object(s.backtest_control,'checkpoint',side_effect=cancel_between_books), \
-                patch('numerical_portfolios.stage_book',side_effect=stage), \
+        with patch.object(backtest_control,'checkpoint',side_effect=cancel_between_books), \
+                patch('backtest.engines.numerical.portfolio.stage_book',side_effect=stage), \
                 patch.object(provider,'evaluate',wraps=original) as called:
             with self.assertRaisesRegex(RuntimeError,'between-book'):
                 adapter.backtest_periods([(date(2015,1,2),date(2016,1,4)),

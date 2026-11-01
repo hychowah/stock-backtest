@@ -114,6 +114,7 @@ class AdmissionTests(unittest.TestCase):
     def test_source_only_attachment_and_spawn_import_do_not_admit_execution(self):
         fixture = self.root / 'source-only'
         (fixture / 'scripts').mkdir(parents=True)
+        shutil.copytree(ROOT / 'backtest', fixture / 'backtest', ignore=shutil.ignore_patterns('__pycache__'))
         (fixture / 'website').mkdir()
         for source in (ROOT / 'scripts').glob('*.py'):
             shutil.copy2(source, fixture / 'scripts' / source.name)

@@ -16,14 +16,16 @@ def main():
     sys.path[:0]=[str(source),str(source/'scripts'),str(source/'website')]
     import runtime_access
     with runtime_access.ownership(source),ExitStack() as context:
-        import run
-        run.KEY_PATH=source.parent/'nonexistent-offline-key'
-        import numerical_preparation
+        from backtest.financial import rules
+        from backtest.inputs import market, fmp_download, cache_assets
+        from backtest.engines.reference import legacy
+        fmp_download.KEY_PATH=source.parent/'nonexistent-offline-key'
+        from backtest.application import preparation as numerical_preparation
         if scenario=='dependencies':
             context.enter_context(patch.object(numerical_preparation,'dependencies',
                 side_effect=numerical_preparation.PreparationError('dependencies unavailable')))
         elif scenario=='build':
-            context.enter_context(patch.object(numerical_preparation.subprocess,'run',
+            context.enter_context(patch('subprocess.run',
                 side_effect=OSError('fictional build failure')))
         if scenario.startswith('ordinary'):
             class WithoutNative:
@@ -36,7 +38,7 @@ def main():
             # the strict runtime protocol or retaining exception messages.
             import json,re
             from contextlib import suppress
-            import numerical_runtime
+            from backtest.engines.numerical import runtime as numerical_runtime
             original_process=numerical_runtime.RuntimeProcess
             class ObservedProcess(original_process):
                 def _read(self):
@@ -62,7 +64,7 @@ def main():
                     try:return super()._read()
                     finally:
                         with suppress(Exception):
-                            from cache_assets import write_json
+                            from backtest.inputs.cache_assets import write_json
                             write_json(source/'data'/('_fixture-transport-'+str(self.process.pid)+'.json'),
                                 dict(pid=self.process.pid,failure=self.failure,returncode=self.process.poll(),
                                      eof=self.eof,output_bytes=self.output_bytes,observations=observed))
@@ -70,7 +72,7 @@ def main():
                     try:return super().close()
                     finally:
                         with suppress(Exception):
-                            from cache_assets import write_json
+                            from backtest.inputs.cache_assets import write_json
                             path=source/'data'/('_fixture-transport-'+str(self.process.pid)+'.json')
                             record=json.loads(path.read_bytes())
                             record.update(final_returncode=self.process.returncode,closed=self.closed)
@@ -101,7 +103,7 @@ def main():
             def stop():
                 # A blocked Windows CRT reader can stall a later NumPy import.
                 # Optional normal-app preparation imports after serving starts.
-                from numerical_runtime_child import _stdin_lines
+                from backtest.engines.numerical.runtime_child import _stdin_lines
                 if next(_stdin_lines(),None)=='close\n':value.shutdown()
             Thread(target=stop,name='fixture-stop',daemon=True).start()
             return value

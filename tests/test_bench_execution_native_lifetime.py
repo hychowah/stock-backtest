@@ -152,7 +152,7 @@ with patch.object(w.admission,'require_execution'),patch.object(s._ApplicationSu
             return owner.run()
 
     def test_actual_reference_both_numba_variants_share_native_lifetime(self):
-        import cache_access,runtime_access
+        from backtest.runtime import cache_access as cache_access; import runtime_access
         f=self.base.fixture.fixture
         with runtime_access.ownership(f.source,timeout=0):
             with cache_access.WorkspaceAccess(f.source/'data/website-data-0.lock').observe():pass

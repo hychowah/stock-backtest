@@ -25,7 +25,10 @@ from threading import Event
 
 SOURCE = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(SOURCE/'website'), str(SOURCE/'scripts')]
-import cache_access
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import cache_access as cache_access
 import runtime_access
 
 FILES = ('raw/universe.json', 'raw/metrics.jsonl', 'raw/spy-div.json',

@@ -37,7 +37,7 @@ class CaptureTests(unittest.TestCase):
         shutil.copy2(ROOT / 'website/runtime_access.py', self.root / 'website/runtime_access.py')
         # This retained offline protocol supports schema 7 only. Keep its
         # disposable source fixture at that declaration; do not widen admission.
-        source=self.root/'scripts/research.py'
+        source=self.root/'backtest/inputs/research.py'
         source.write_text(source.read_text().replace('SCHEMA_VERSION = 8','SCHEMA_VERSION = 7'))
         for name in ('universe.json', 'metrics.jsonl', 'spy-div.json', 'treasury.json'):
             (self.root / 'raw' / name).write_text('[]')
@@ -53,7 +53,8 @@ class CaptureTests(unittest.TestCase):
             daily.commit()
         self.manifest = self.root / 'data/deployment.json'
         sources = {p.relative_to(self.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                   for directory in ('scripts', 'website', 'backtest') for p in (self.root / directory).rglob('*.py')}
+                   for directory in ('scripts', 'website', 'backtest') for p in (self.root / directory).rglob('*')
+                   if p.is_file() and (p.suffix=='.py' or p.relative_to(self.root).as_posix() in capture.artifacts.SOURCE_ASSETS)}
         self.manifest.write_text(json.dumps(dict(commit='a' * 40, files=sources)))
         self.destination = self.root / 'tmp/experiment'
 
@@ -244,16 +245,17 @@ class CaptureTests(unittest.TestCase):
 
     def test_explicit_root_freshness_matches_authoritative_functions(self):
         def isolated(module, name, namespace):
-            tree = ast.parse((self.root / 'scripts' / (module + '.py')).read_text())
+            relative = {'schedules':'backtest/inputs/daily.py'}.get(module, 'backtest/inputs/'+module+'.py')
+            tree = ast.parse((self.root / relative).read_text())
             function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name)
             exec(compile(ast.Module(body=[function], type_ignores=[]), '<isolated fixture function>', 'exec'), namespace)
             return namespace[name]
-        baseline_namespace = dict(re=re, date=date, run=SimpleNamespace(ASOF=capture.constant(self.root, 'run', 'ASOF')))
+        baseline_namespace = dict(re=re, date=date, rules=SimpleNamespace(ASOF=capture.constant(self.root, 'run', 'ASOF')))
         cutoff = isolated('baseline', 'cutoff', baseline_namespace)
         namespace = dict(os=__import__('os'), stat=__import__('stat'), ROOT=self.root, RAW=self.root / 'raw', RESULTS=self.root / 'results', Path=Path,
-                         __file__=str(self.root / 'scripts/research.py'), baseline=SimpleNamespace(cutoff=cutoff, __file__=str(self.root / 'scripts/baseline.py')))
-        for name in ('metrics', 'books', 'cache_assets', 'run', 'revalue', 'financial_inputs', 'rules', 'screening'):
-            namespace[name] = SimpleNamespace(__file__=str(self.root / {'metrics':'backtest/financial/metrics.py','books':'backtest/financial/books.py','rules':'backtest/financial/rules.py','screening':'backtest/screening.py'}.get(name,'scripts/'+name+'.py')))
+                         __file__=str(self.root / 'backtest/inputs/research.py'), baseline=SimpleNamespace(cutoff=cutoff, __file__=str(self.root / 'backtest/inputs/baseline.py')))
+        for name in ('metrics', 'books', 'cache_assets', 'market', 'legacy', 'revalue', 'financial_inputs', 'rules', 'screening'):
+            namespace[name] = SimpleNamespace(__file__=str(self.root / {'metrics': 'backtest/financial/metrics.py', 'books': 'backtest/financial/books.py', 'rules': 'backtest/financial/rules.py', 'screening': 'backtest/screening.py', 'baseline': 'backtest/inputs/baseline.py', 'cache_assets': 'backtest/inputs/cache_assets.py', 'market': 'backtest/inputs/market.py', 'legacy': 'backtest/engines/reference/legacy.py', 'revalue': 'backtest/engines/reference/revalue.py', 'financial_inputs': 'backtest/inputs/financial_inputs.py'}[name]))
         isolated('research', '_metadata_entries', namespace)
         signature = isolated('research', 'signature', namespace)
         prices = isolated('research', 'price_sources', namespace)
@@ -261,7 +263,7 @@ class CaptureTests(unittest.TestCase):
             DATABASE=self.root/'data/research.sqlite', Path=Path, closing=closing,
             json=json, hashlib=hashlib, connect=lambda path:sqlite3.connect(path)))
         fingerprint = isolated('schedules', 'fingerprint', dict(Path=Path, VERSION=3,
-            __file__=str(self.root / 'scripts/schedules.py'), r=SimpleNamespace(ROOT=self.root,signature=signature,
+            __file__=str(self.root / 'backtest/inputs/daily.py'), r=SimpleNamespace(ROOT=self.root,signature=signature,
                 DATABASE=self.root/'data/research.sqlite',prepared_price_binding=binding),
             schedule_calendar=SimpleNamespace(__file__=str(self.root / 'backtest/calendar.py')),
             portfolio_results=SimpleNamespace(__file__=str(self.root / 'backtest/portfolio_results.py'))))

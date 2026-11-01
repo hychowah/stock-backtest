@@ -22,15 +22,39 @@ from bench_comparison import ComparisonError
 from bench_methods import clean
 from bench_execution_observation import CurrentObservation
 import bench_execution_observation as observation
-import cache_access
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import cache_access as cache_access
 import runtime_access
-import schedules
+from backtest.engines.original import schedules as schedules
 
 
 class SourceServiceTests(unittest.TestCase):
     def setUp(self):
         self.workspace=FictionalWorkspace()
         self.addCleanup(self.workspace.close)
+
+    def test_current_schema8_capture_rejects_without_mutation(self):
+        # Ordinary current preparation remains schema8. The retained capture
+        # adapter admits only its historical protocol7 and cannot relabel it.
+        service=self.service()
+        self.assertEqual(self.expected(service)['metadata']['version'],8)
+        service.close()
+        def unchanged_inputs():
+            paths=[p for p in (self.workspace.source/'raw').rglob('*') if p.is_file()]
+            paths+=list((self.workspace.source/'data').glob('*.sqlite'))
+            paths+=[self.workspace.source/'results/summary-exits.txt']
+            paths+=[self.workspace.source/name for name in self.workspace.sources]
+            return {p.relative_to(self.workspace.source).as_posix():sha(p) for p in paths}
+        before=unchanged_inputs()
+        from bench_capture_offline import OfflineCaptureError
+        with self.assertRaises(OfflineCaptureError) as error:
+            self.workspace.capture_prepared()
+        self.assertEqual(error.exception.reason,'unsupported')
+        self.assertEqual(unchanged_inputs(),before)
+        self.assertFalse((self.workspace.source/'tmp/combined-capture').exists())
+        self.workspace.inventory()
 
     def service(self,**scenario):
         service=SourceService(self.workspace,**scenario)

@@ -21,7 +21,7 @@ from collections import deque
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPTURE = '920453aba4fe10efb9dc6b81e189bf50ed711d6eb9d71e8b199a0610510cf819'
-FOLDERS = ('scripts', 'website', 'tools', 'tests')
+FOLDERS = ('scripts', 'website', 'tools', 'tests', 'backtest')
 SUFFIXES = {'.py', '.js', '.cjs', '.mjs', '.html', '.css', '.json', '.txt', '.csv', '.rs', '.cmd'}
 EXCLUDED = {'local', 'dist', '__pycache__', 'node_modules'}
 SCHEMA = 1
@@ -85,7 +85,7 @@ def validate_declaration(value):
 
 def observe(root):
     sys.path.insert(0, str(ROOT/'scripts'))
-    from numerical_execution import observe_resources
+    from backtest.engines.numerical.execution import observe_resources
     result = observe_resources()
     result['disk'] = dict(zip(('total_bytes','used_bytes','free_bytes'), shutil.disk_usage(root)))
     result['platform'] = sys.platform; result['python'] = sys.version; result['interpreter'] = sys.executable
@@ -300,7 +300,7 @@ def compare(observations, *, historical=False):
     # Reuse the current complete financial validator, without entering any
     # historical benchmark bootstrap/admission route.
     sys.path.insert(0,str(ROOT/'scripts'))
-    from numerical_portfolio import compare_results
+    from backtest.engines.numerical.portfolio import compare_results
     first=observations[0]; evidence=financial_payload(read(first['result_path']))
     bindings={digest(row['binding']) for row in observations}
     if len(bindings)!=1: raise ValueError('Comparison financial/source binding differs.')

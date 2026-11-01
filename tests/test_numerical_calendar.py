@@ -14,9 +14,13 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts')]
 import test_numerical_trials as trial_tests
-from numerical_portfolio import compare_results
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.engines.original import schedules
+from backtest.engines.numerical.portfolio import compare_results
 from backtest import calendar_requests as calendar
-import numerical_random
+from backtest.engines.numerical import random as numerical_random
 from backtest import portfolio_results as portfolio_results
 
 
@@ -31,7 +35,7 @@ class CalendarTests(unittest.TestCase):
                 request=dict(calendar=dict(version=1,start='2015-01-02',end='2016-12-30',interval=dict(unit=unit,count=count)),
                              pool=pool,rank_to=3,min_cap=0.,min_ev=0.)
                 pairs,first,selection,metadata=calendar.periods(portfolio._calendar().sessions,request)
-                expected=self.s.backtest_periods(self.db,pairs,months=12,**selection) if hasattr(self,'s') else inputs.s.backtest_periods(self.db,pairs,months=12,**selection)
+                expected=schedules.backtest_periods(self.db,pairs,months=12,**selection)
                 expected.pop('months');expected.update(metadata)
                 actual=portfolio.backtest_calendar(**request)['result']
                 self.assertTrue(compare_results(expected,actual)['exact'])
@@ -46,7 +50,7 @@ class CalendarTests(unittest.TestCase):
             self.assertEqual(result['completed'],24);self.assertEqual(len(captured),24)
             for dates,actual in zip(planned['samples'],captured):
                 config=planned['calendar']
-                expected=inputs.s.backtest_dates(self.db,dates=dates,start=config['start'],end=config['end'],months=12,**planned['options'])
+                expected=schedules.backtest_dates(self.db,dates=dates,start=config['start'],end=config['end'],months=12,**planned['options'])
                 expected.pop('months');expected['calendar']=config
                 self.assertTrue(compare_results(expected,actual)['exact'])
                 portfolio_results.validate_completed(actual)
@@ -91,7 +95,7 @@ class CalendarTests(unittest.TestCase):
                     self.assertEqual((result['completed'],result['valid']),(3,0 if empty else 3))
                     maximum_absolute=maximum_relative=0.
                     for dates,actual in zip(plan['samples'],captured,strict=True):
-                        expected=inputs.s.backtest_dates(self.db,dates=dates,start=plan['calendar']['start'],
+                        expected=schedules.backtest_dates(self.db,dates=dates,start=plan['calendar']['start'],
                             end=plan['calendar']['end'],months=12,**plan['options'])
                         expected.pop('months');expected['calendar']=plan['calendar']
                         agreement=compare_results(expected,actual);self.assertTrue(agreement['exact'],agreement)
@@ -107,7 +111,7 @@ class CalendarTests(unittest.TestCase):
         # capacity gate: these promised workloads cannot currently be admitted.
         from types import SimpleNamespace
         from unittest.mock import Mock
-        from numerical_session import Session
+        from backtest.engines.numerical.session import Session
         sessions=[];day=date(1997,1,1)
         while day<=date(2025,12,31):
             if day.weekday()<5:sessions.append(day)

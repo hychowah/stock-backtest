@@ -23,7 +23,10 @@ import durable_evidence
 import evidence_views
 import job_evidence
 import result_exports
-import result_evidence
+import sys as _root_sys
+from pathlib import Path as _RootPath
+_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest import result_evidence as result_evidence
 import saved_backtests
 import serve_app
 from test_durable_evidence import source,submission

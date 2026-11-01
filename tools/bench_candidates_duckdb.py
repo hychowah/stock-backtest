@@ -13,6 +13,7 @@ import time
 import numpy as np
 
 from bench_candidates import PythonExecutor
+from backtest.financial import rules
 from bench_candidates_analytical import (
     begin_stats, matrix_columns, price_columns, price_queries, quote,
     report_columns, report_queries, sql_expression, stage_stats, work_root,
@@ -104,7 +105,7 @@ class Executor(PythonExecutor):
         shape = books, len(self._inputs.symbols)
         if not len(queries['query_id']):
             return np.empty(shape, dtype=np.int32), np.empty(shape, dtype=np.int32)
-        age = int(self._inputs.s.financial_books.run.MAX_AGE.days)
+        age = int(rules.MAX_AGE.days)
         answers = []
         self._db.register('report_queries', queries)
         try:
