@@ -89,7 +89,7 @@ class SelectionTests(unittest.TestCase):
         with patch.object(owner,'status',return_value=dict(state='unavailable')):
             claimed=store.claim(owner.queue_engines())
             self.assertEqual(claimed['id'],second['id'])
-            consumer=backtest_queue.Queue(store,calculations=owner);consumer._run(claimed)
+            consumer=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')));consumer._run(claimed)
             self.assertEqual(store.get(second['id'])['snapshot']['result']['producer']['engine'],'original')
             self.assertEqual(store.get(first['id'])['state'],'queued')
         with patch.object(owner,'status',return_value=dict(state='current')):
@@ -102,7 +102,7 @@ class SelectionTests(unittest.TestCase):
         owner=self.selectable();owner.status=lambda:dict(state='current')
         owner.experimental.calculate=Mock(return_value=dict(periods=[],options={}))
         store=backtest_queue.Store(self.root/'retry-queue.sqlite');store.pause(True)
-        consumer=backtest_queue.Queue(store,calculations=owner)
+        consumer=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
         with patch.object(serve_app.backtest_queue,'Queue',return_value=consumer):
             server=serve_app.Server(('127.0.0.1',0),serve_app.Handler)
         server.calculations=owner;server.backtest_jobs.calculations=owner
@@ -211,7 +211,7 @@ class RuntimeSelectionTests(unittest.TestCase):
                     item=store.enqueue(request(mode='random',options=dict(options,engine='experimental')))
                     store.claim();store.progress(item['id'],'configuration',plans[0])
                     store.recover()
-                    consumer=backtest_queue.Queue(backtest_queue.Store(store.path),calculations=owner)
+                    consumer=backtest_queue.Queue(backtest_queue.Store(store.path),calculations=owner,library=backtest_queue.saved_backtests.Store((backtest_queue.Store(store.path)).path.with_name('saved-library.sqlite')))
                     consumer._run(consumer.store.claim())
                     completed=consumer.store.get(item['id'])
                     self.assertEqual(completed['state'],'complete')

@@ -266,12 +266,25 @@ tests. Different test types and date windows can differ. Missing values stay las
 The queue and library lists scroll inside their sections. Their controls remain
 outside the scrolling list. Keyboard users can focus each list and scroll it.
 
+Completed queue tests move into this library automatically. The server saves a
+complete independent result before removing it from the visible queue. This also
+runs while the execution queue is paused or its engine is unavailable. A full
+library shows **Completed — waiting for saved slot** in the queue. Other save
+failures retain the result and show a retry notice. Free a saved slot to let the
+server retry without recalculation. Failed and stopped tests stay in the queue.
+Deletion during an active transfer asks you to refresh and retry. A transferred
+record appears once, even after interruption. Later rename or deletion is kept
+when transfer recovery retries. Original queued submission receipts remain valid
+but never restart or redisplay archived tests. Active result readers keep their
+original bytes when duplicate queue evidence is released.
+
 The maximum is 100 records. When full, delete a chosen record before saving
 another. Deletion asks for confirmation and removes only that record. It does
 not remove the result currently displayed in the page.
 
 Check with `python3 tests/test_saved_backtests.py`,
-`node tests/check-saved-backtests.cjs`, and the ordinary range controls check.
+`node tests/check-saved-backtests.cjs`, `python3 tests/test_queue_transfer.py`,
+and the ordinary queue and range controls checks.
 Run the persistence checks with native Windows Python too.
 
 Random-date saves include every trial's exact trade dates, stock rows and period

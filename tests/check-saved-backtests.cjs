@@ -116,6 +116,28 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  // Read the advertised capacity, including an older server's smaller limit.
  const oldFetch=ctx.fetch;ctx.fetch=async(...args)=>{const response=await oldFetch(...args);return {...response,json:async()=>({...await response.json(),limit:4})}};
  await node('refresh-backtests').handlers.click();assert.equal(node('saved-count').textContent,'4 / 4');assert(node('save-backtest').disabled);ctx.fetch=oldFetch;
+ // Queue notification during an active library operation must get its own
+ // reconciliation after that operation; the older list omits the new record.
+ holdNextList=true;const refreshing=node('refresh-backtests').handlers.click();await settle();
+ records.push({...first,id:'e'.repeat(32),name:'Transferred externally'});
+ call('SavedBacktests.changed()');releaseList();await refreshing;await settle();
+ assert(node('saved-list').innerHTML.includes('Transferred externally'));
+ // Queue completion cannot rebuild a rename input or interrupt its focus.
+ const renameTarget=records[0].id;
+ for(const finish of ['cancel','escape','save']){
+  node('saved-list').handlers.click({target:{dataset:{rename:renameTarget}}});
+  node('saved-list').handlers.input({target:{dataset:{renameInput:renameTarget},value:'Typing '+finish}});
+  const focused={id:'saved-rename-'+renameTarget};ctx.document.activeElement=focused;
+  const beforeNotification=requests.length,beforeMarkup=node('saved-list').innerHTML;
+  call('SavedBacktests.changed()');await settle();
+  assert.equal(requests.length,beforeNotification);assert.equal(node('saved-list').innerHTML,beforeMarkup);
+  assert.strictEqual(ctx.document.activeElement,focused);
+  if(finish==='cancel')node('saved-list').handlers.click({target:{dataset:{cancelName:renameTarget}}});
+  else if(finish==='escape')await key({renameInput:renameTarget},'Escape');
+  else await node('saved-list').handlers.click({target:{dataset:{saveName:renameTarget}}});
+  await settle();assert(requests.length>beforeNotification);assert(!node('saved-list').innerHTML.includes('data-rename-input'));
+  if(finish==='save')assert.equal(records.find(record=>record.id===renameTarget).name,'Typing save');
+ }
  view='latest';call('SavedBacktests.update()');assert(node('save-backtest').disabled);
  console.log('Passed: complete snapshot saving/opening, 100-record cap, explicit deletion, acknowledged save/delete despite refresh failure, stale-read exclusion and preserved displayed results.');
 })().catch(error=>{console.error(error);process.exitCode=1});

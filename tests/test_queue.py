@@ -30,6 +30,14 @@ def request(name='Test',**values):
     value.update(values);return value
 
 
+def completed_result(store,library,identifier):
+    """Read a finished calculation from its current durable owner."""
+    record=store.get(identifier)
+    if record['state']=='archived':
+        return dict(record,state='complete',snapshot=library.get(record['transfer']['saved_id'])['snapshot'])
+    return record
+
+
 def wait_for(test,predicate):
     deadline=time.monotonic()+10
     while time.monotonic()<deadline:
@@ -218,13 +226,13 @@ class ConsumerTests(unittest.TestCase):
             while not self.release.wait(.01):backtest_control.checkpoint()
             return original(*args,**kwargs)
         self.context.enter_context(patch.object(schedules,'compute_period',side_effect=compute))
-        self.store=queue.Store(self.folder/'queue.sqlite');self.consumer=queue.Queue(self.store)
+        self.store=queue.Store(self.folder/'queue.sqlite');self.consumer=queue.Queue(self.store,library=queue.saved_backtests.Store((self.store).path.with_name('saved-library.sqlite')))
         self.addCleanup(self.finish)
 
     def finish(self):self.release.set();self.consumer.close()
 
     def terminal(self,identifier):
-        return wait_for(self,lambda:(record if (record:=self.store.get(identifier))['state'] in ('complete','failed','cancelled') else None))
+        return wait_for(self,lambda:(record if (record:=completed_result(self.store,self.consumer.library,identifier))['state'] in ('complete','failed','cancelled') else None))
 
     def test_sequential_execution_pause_hold_delete_failure_and_open_results(self):
         self.store.pause(True)
@@ -245,13 +253,13 @@ class ConsumerTests(unittest.TestCase):
         self.assertNotIn('snapshot',self.store.listing()['records'][1],'Lists must not load full results.')
         self.consumer.close()
         reopened=queue.Store(self.store.path)
-        self.assertEqual(reopened.get(first['id'])['snapshot'],done['snapshot'])
+        self.assertEqual(completed_result(reopened,self.consumer.library,first['id'])['snapshot'],done['snapshot'])
         self.assertTrue(reopened.listing()['paused'])
 
     def test_two_consumers_never_recover_or_run_the_active_owner(self):
         item=self.store.enqueue(request())
         self.consumer.start();self.assertTrue(self.entered.wait(5))
-        other=queue.Queue(queue.Store(self.store.path));other.start()
+        other=queue.Queue(queue.Store(self.store.path),library=queue.saved_backtests.Store((queue.Store(self.store.path)).path.with_name('saved-library.sqlite')));other.start()
         try:
             time.sleep(.3)
             self.assertEqual(len(self.closed),0)
@@ -313,7 +321,7 @@ class ConsumerTests(unittest.TestCase):
         self.assertEqual(self.store.get(item['id'])['state'],'queued')
         self.assertEqual(self.closed,[True])
         self.context.enter_context(patch.object(queue.backtest_jobs.robustness,'plan',side_effect=AssertionError('Recovery must reuse the recorded dates.')))
-        self.release.set();self.consumer=queue.Queue(self.store);self.consumer.start()
+        self.release.set();self.consumer=queue.Queue(self.store,library=queue.saved_backtests.Store((self.store).path.with_name('saved-library.sqlite')));self.consumer.start()
         complete=self.terminal(item['id'])
         self.assertEqual(complete['configuration']['seed'],first_config['seed'])
         self.assertEqual(complete['snapshot']['result']['configuration']['samples'],first_plan['samples'])
@@ -325,7 +333,7 @@ class ConsumerTests(unittest.TestCase):
         for explicit_stop in (False,True):
             with self.subTest(explicit_stop=explicit_stop):
                 store=queue.Store(self.folder/('shutdown-'+str(explicit_stop)+'.sqlite'))
-                consumer=queue.Queue(store)
+                consumer=queue.Queue(store,library=queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
                 item=store.enqueue(request(mode='random',options=dict(request()['options'],trials=2,seed=42)))
                 server=serve.Server(('127.0.0.1',0),serve.Handler)
                 server.calculations=consumer.calculations
@@ -347,12 +355,12 @@ class ConsumerTests(unittest.TestCase):
                     server.server_close()
                     # A fresh server owner can recover queued work. It must not
                     # resurrect an explicitly stopped record.
-                    recovered=queue.Queue(queue.Store(store.path));recovered.start()
+                    recovered=queue.Queue(queue.Store(store.path),library=queue.saved_backtests.Store((queue.Store(store.path)).path.with_name('saved-library.sqlite')));recovered.start()
                     try:
                         if explicit_stop:
                             self.assertEqual(store.get(item['id'])['state'],'cancelled')
                         else:
-                            result=wait_for(self,lambda:(row if (row:=store.get(item['id']))['state'] in ('complete','failed') else None))
+                            result=wait_for(self,lambda:(row if (row:=completed_result(store,recovered.library,item['id']))['state'] in ('complete','failed') else None))
                             self.assertEqual(result['state'],'complete');self.assertEqual(result['configuration']['seed'],42)
                             self.assertEqual(len(result['snapshot']['result']['trial_results']),2)
                     finally:recovered.close()
@@ -382,9 +390,12 @@ class ConsumerTests(unittest.TestCase):
             self.assertEqual(http('POST','/'+item['id']+'/release',{'revision':held['revision']})[0],200)
             self.assertEqual(http('POST',payload=request(),headers={'Origin':'http://foreign.test'})[0],403)
             self.release.set();http('POST','/pause',{'paused':False});self.terminal(item['id'])
-            status,result=http('GET','/'+item['id']);self.assertEqual(status,200);self.assertIn('snapshot',result)
-            self.assertNotIn('snapshot',http('GET')[1]['records'][0])
-            self.assertEqual(http('DELETE','/'+item['id'],{'revision':result['revision']})[0],200)
+            wait_for(self,lambda:self.store.get(item['id'])['state']=='archived')
+            status,result=http('GET','/'+item['id']);self.assertEqual(status,200);self.assertEqual(result['state'],'archived')
+            self.assertTrue(self.consumer.library.get(result['transfer']['saved_id'])['snapshot']['result']['periods'])
+            self.assertEqual(http('GET')[1]['records'],[])
+            self.assertEqual(http('POST',payload=submission)[1]['state'],'archived')
+            self.assertEqual(http('DELETE','/'+item['id'],{'revision':result['revision']})[0],409)
         finally:server.shutdown();thread.join(5);server.server_close()
 
 

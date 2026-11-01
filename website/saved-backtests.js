@@ -3,6 +3,7 @@ const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current=()=>null,isRunning=()=>false,openRecord=()=>{};
+  let queueRefresh=false;
   let records=[],limit=100,sorting='newest',renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
   function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
   function defaultName(snapshot){
@@ -56,7 +57,7 @@ const SavedBacktests=(()=>{
     if(busy)return;
     const ticket=++feedback;busy=true;render();
     try{await action(ticket);}catch(error){message(error.message||'Could not reach the local service. Your saved records were kept.',true);}
-    finally{busy=false;render();}
+    finally{busy=false;render();if(queueRefresh)changed();}
   }
   // Reconciliation cannot turn an acknowledged mutation into a failed mutation.
   // Ignore stale reads and feedback if a newer library action has started.
@@ -110,6 +111,13 @@ const SavedBacktests=(()=>{
       void reconcile(success,ticket);
     });
   }
+  function changed(){
+    // Queue completion is an external mutation. Reconcile after an active local
+    // mutation so its stale-read fence cannot discard the only notification.
+    queueRefresh=true;
+    if(busy||renaming||!available)return;
+    queueRefresh=false;void perform(refresh);
+  }
   function init(access){
     current=access.current;isRunning=access.isRunning;openRecord=access.open;
     node('save-backtest').addEventListener('click',save);
@@ -121,14 +129,14 @@ const SavedBacktests=(()=>{
     node('saved-list').addEventListener('keydown',event=>{
       if(!renaming||renaming.id!==event.target.dataset.renameInput)return;
       if(event.key==='Enter'){event.preventDefault();return rename(renaming.id);}
-      if(event.key==='Escape'){event.preventDefault();renaming=null;render();}
+      if(event.key==='Escape'){event.preventDefault();renaming=null;render();if(queueRefresh)changed();}
     });
     node('saved-list').addEventListener('click',event=>{
       if(busy)return;
       const data=event.target.dataset;
       if(data.saveName)return rename(data.saveName);
       if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
-      if(data.cancelName){renaming=null;render();return;}
+      if(data.cancelName){renaming=null;render();if(queueRefresh)changed();return;}
       if(data.open)return open(data.open);
       if(data.confirm)return remove(data.confirm);
       if(data.delete){pendingDelete=data.delete;render();}
@@ -139,5 +147,5 @@ const SavedBacktests=(()=>{
     else message('Saved backtests use the local website service opened by backtest-web.cmd.');
     update();
   }
-  return {init,update};
+  return {init,update,changed};
 })();

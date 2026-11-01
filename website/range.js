@@ -433,7 +433,7 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
 SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest});
-BacktestQueue.init({beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
+BacktestQueue.init({libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
   prepare:()=>{autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
   configure:()=>{
     screeningMode='backtest';document.getElementById('schedule-kind').value='custom';

@@ -22,7 +22,7 @@ class CalendarRecoveryTests(unittest.TestCase):
     def test_busy_queue_submission_is_advisory_but_unavailable_is_rejected(self):
         owner=self.candidate();self.service=owner
         store=backtest_queue.Store(self.root/'busy-queue.sqlite')
-        queue=backtest_queue.Queue(store,calculations=owner)
+        queue=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
         handler=calculation_tests.CalculationTests.handler(self,'/api/backtest-queue',request(options=self.options()))
         handler.server.candidate_preparation=owner.preparation;handler.server.backtest_queue=queue;handler.command='POST'
         owner.operation.acquire()
@@ -44,7 +44,7 @@ class CalendarRecoveryTests(unittest.TestCase):
         options=dict(calendar=dict(version=1,start='2015-01-02',end='2015-02-27',interval=dict(unit='week',count=1)),trials=24,seed=42,rank_to=3)
         store=backtest_queue.Store(self.root/'canonical-queue.sqlite')
         item=store.enqueue(request(mode='random',options=options))
-        queue=backtest_queue.Queue(store,calculations=owner);planned=Event();release=Event();original=store.progress;plans=[]
+        queue=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')));planned=Event();release=Event();original=store.progress;plans=[]
         def progress(identifier,field,value):
             original(identifier,field,value)
             if field=='configuration':
@@ -55,7 +55,7 @@ class CalendarRecoveryTests(unittest.TestCase):
             queue.request_stop();owner.close();release.set();thread.join(30)
             self.assertFalse(thread.is_alive())
         self.assertEqual(store.get(item['id'])['state'],'queued')
-        owner.retire();replacement=self.candidate();queue=backtest_queue.Queue(store,calculations=replacement)
+        owner.retire();replacement=self.candidate();queue=backtest_queue.Queue(store,calculations=replacement,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
         job=store.claim();self.assertEqual(json.loads(job['plan']),plans[0]);queue._run(job)
         record=store.get(item['id']);self.assertEqual(record['state'],'complete')
         result=record['snapshot']['result']

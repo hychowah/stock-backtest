@@ -350,5 +350,9 @@ two-result comparison. Main owns these existing adapters and their additive
 library APIs. Preserve calculation, request/result, engine, worker and financial
 ownership contracts. The first slice raises the library to 100 slots, exposes
 existing UUIDs, adds metadata-only rename and stored-performance sorting, and
-bounds queue/library scrolling. Existing unrelated snapshot and market-scope
+bounds queue/library scrolling. The second slice adds recoverable completion
+transfer between the existing durable stores. Queue reservations fence deletion.
+The saved store commits its import receipt and complete copy before archival
+releases duplicate queue evidence. Engine and financial ownership stay unchanged.
+Existing unrelated snapshot and market-scope
 files stay outside these commits. See the [master plan](plans/backtest-library/master-plan.md).

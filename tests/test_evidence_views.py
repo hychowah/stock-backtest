@@ -244,7 +244,7 @@ class ViewTests(unittest.TestCase):
 process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{
 const result=JSON.parse(input),nodes=new Map(),out=[];let csv='';
 const node=id=>{if(!nodes.has(id))nodes.set(id,{handlers:{},addEventListener(k,f){this.handlers[k]=f;}});return nodes.get(id);};
-const context=vm.createContext({ResultArtifacts:{forView:()=>({version:2,kind:'custom',result})},CalendarSettings:{init(){}},RobustnessView:{init(){}},document:{getElementById:node,createElement:()=>({click(){out.push({name:this.download,csv});}})},Blob:class{constructor(parts){this.parts=parts;}},URL:{createObjectURL(blob){csv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}}});
+const context=vm.createContext({ResultArtifacts:{forView:()=>({version:2,kind:'custom',result})},CalendarSettings:{init(){}},EngineControls:{init(){}},RobustnessView:{init(){}},document:{getElementById:node,createElement:()=>({click(){out.push({name:this.download,csv});}})},Blob:class{constructor(parts){this.parts=parts;}},URL:{createObjectURL(blob){csv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}}});
 vm.runInContext(fs.readFileSync(process.argv[1],'utf8')+';ScheduleView.init()',context);
 for(const kind of ['holdings','returns'])node('schedule-download-'+kind).handlers.click();
 process.stdout.write(JSON.stringify(out));});"""
@@ -262,7 +262,7 @@ process.stdout.write(JSON.stringify(out));});"""
             def calculation_ready(self):raise AssertionError('Reading must not check readiness')
         server=serve_app.Server(('127.0.0.1',0),Handler)
         server.backtest_jobs=self.jobs
-        server.backtest_queue=backtest_queue.Queue(backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget))
+        server.backtest_queue=backtest_queue.Queue(backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget),library=backtest_queue.saved_backtests.Store((backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget)).path.with_name('saved-library.sqlite')))
         thread=Thread(target=server.serve_forever);thread.start()
         def close():server.shutdown();thread.join(5);server.server_close()
         self.addCleanup(close)

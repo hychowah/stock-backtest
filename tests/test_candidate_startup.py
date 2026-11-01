@@ -184,7 +184,7 @@ class MutationAndHttpTests(unittest.TestCase):
             root=Path(temporary);capability=Mock();jobs=data_manager.Jobs(preparation=capability)
             context.enter_context(patch.object(serve,'DATA_JOBS',jobs))
             context.enter_context(patch.object(data_manager,'inspect',return_value={'warnings':[]}))
-            consumer=backtest_queue.Queue(backtest_queue.Store(root/'queue.sqlite'))
+            consumer=backtest_queue.Queue(backtest_queue.Store(root/'queue.sqlite'),library=backtest_queue.saved_backtests.Store((backtest_queue.Store(root/'queue.sqlite')).path.with_name('saved-library.sqlite')))
             context.enter_context(patch.object(serve.backtest_queue,'Queue',return_value=consumer))
             entered=Event();joining=Event();source_released=Event();handled=Event();errors=[];responses=[]
             original_request=serve.Handler.data_request
@@ -242,7 +242,7 @@ class MutationAndHttpTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);owner=cache_access.WorkspaceAccess(root/'financial.lock')
             store=backtest_queue.Store(root/'queue.sqlite');record=store.enqueue(request())
-            consumer=backtest_queue.Queue(store)
+            consumer=backtest_queue.Queue(store,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
             def ready():
                 self.assertTrue(getattr(owner.state,'held',False));return False
             consumer.ready=ready
@@ -266,7 +266,7 @@ class MutationAndHttpTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);owner=cache_access.WorkspaceAccess(root/'financial.lock')
             store=backtest_queue.Store(root/'queue.sqlite');record=store.enqueue(request())
-            consumer=backtest_queue.Queue(store);claimed=store.claim()
+            consumer=backtest_queue.Queue(store,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')));claimed=store.claim()
             def ready():
                 current=store.get(record['id'])
                 store.change(record['id'],'stop',dict(revision=current['revision']))
@@ -310,7 +310,7 @@ class MutationAndHttpTests(unittest.TestCase):
             complete_snapshot=snapshot('custom');complete_snapshot['version']=2
             complete_snapshot['presentation']={};complete_snapshot.pop('context')
             store.finish(running['id'],'complete',snapshot=complete_snapshot)
-            consumer=backtest_queue.Queue(store);context.enter_context(patch.object(serve.backtest_queue,'Queue',return_value=consumer))
+            consumer=backtest_queue.Queue(store,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')));context.enter_context(patch.object(serve.backtest_queue,'Queue',return_value=consumer))
             context.enter_context(patch.object(serve,'SAVED_BACKTESTS',library))
             capability=Mock();capability.status.return_value=dict(state='failed')
             context.enter_context(patch.object(serve,'DATA_JOBS',data_manager.Jobs(preparation=capability)))

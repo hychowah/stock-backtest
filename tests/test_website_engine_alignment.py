@@ -77,7 +77,7 @@ class WebsiteAlignmentTests(unittest.TestCase):
                 store=backtest_queue.Store(self.root/(engine+'-alignment.sqlite'))
                 item=store.enqueue(request(mode='random',options=dict(options,engine=engine)))
                 store.claim();store.progress(item['id'],'configuration',plans[0]);store.recover()
-                queue=backtest_queue.Queue(backtest_queue.Store(store.path),calculations=owner)
+                queue=backtest_queue.Queue(backtest_queue.Store(store.path),calculations=owner,library=backtest_queue.saved_backtests.Store((backtest_queue.Store(store.path)).path.with_name('saved-library.sqlite')))
                 queue._run(queue.store.claim());record=queue.store.get(item['id'])
                 self.assertEqual(record['state'],'complete');self.assertEqual(record['snapshot']['result']['producer']['engine'],engine)
                 self.assertEqual(record['snapshot']['result']['configuration'],before)

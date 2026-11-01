@@ -72,7 +72,7 @@ class CalculationTests(unittest.TestCase):
             self.assertEqual(jobs.snapshot('a'*32)['state'],'complete');jobs.close()
             store=backtest_queue.Store(self.root/'queue.sqlite')
             item=store.enqueue(request(options=self.options))
-            queue=backtest_queue.Queue(store,calculations=self.service)
+            queue=backtest_queue.Queue(store,calculations=self.service,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
             queue._run(store.claim());self.assertEqual(store.get(item['id'])['state'],'complete')
             fixed=self.handler('/api/schedule',self.options);fixed.do_POST()
             random=self.handler('/api/robustness',dict(self.options,trials=2,seed=42));random.do_POST()

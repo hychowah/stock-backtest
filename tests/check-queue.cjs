@@ -3,7 +3,7 @@ const nodes=new Map();
 function node(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,disabled:false,handlers:{},addEventListener(type,fn){this.handlers[type]=fn},scrollIntoView(){}});return nodes.get(id)}
 const CalendarSettings=require('../website/calendar-settings.js');
 const copy=value=>JSON.parse(JSON.stringify(value));
-let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,preparations=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false;
+let records=[],paused=false,requests=[],loaded=null,opened=null,failList=false,loseAcknowledgement=false,holdList=false,releaseList,preparations=0,endedEdits=0,loseEditAcknowledgement=null,rejectEditOnce=false,libraryChanges=0;
 const editReceipts=new Map();
 let settings={selection_order:'rank_first',mode:'custom',start:'2015-01-01',end:'2016-12-30',months:3,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,filters:[{field:'market_cap',op:'gt',value:100}]};
 const snapshot={version:2,kind:'custom',settings:copy(settings),catalog:{metrics:{},filters:{}},presentation:{},result:{periods:[]}};
@@ -13,7 +13,7 @@ const context=vm.createContext({CalendarSettings,console,crypto:require('node:cr
   let value,status=200;const body=options.body?JSON.parse(options.body):{};
   if(method==='GET'&&!id){
     if(failList)throw Error('List disconnected');
-    value={records:copy(records),paused,limit:100};
+    value={records:copy(records.filter(record=>record.state!=='archived')),paused,limit:100,library_revision:records.filter(record=>record.state==='archived').length};
     if(holdList){holdList=false;await new Promise(resolve=>releaseList=resolve);}
   }else if(method==='POST'&&!id){
     let record=records.find(item=>item.id===body.id);
@@ -63,7 +63,7 @@ context.ResultArtifacts={opening:()=>()=>true,release:()=>{}};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/engine-controls.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
-context.config={beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
+context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
 (async()=>{
   call('BacktestQueue.init(config)');await settle();assert(!node('queue-add').disabled);
   node('queue-name').value='<First & strategy>';await call('BacktestQueue.add()');
@@ -176,5 +176,32 @@ context.config={beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=c
     await call('BacktestQueue.refresh()');
     assert(!call('BacktestQueue.isEditing()'));assert.equal(endedEdits,before+1);assert.equal(settings.rank_to,88);
   }
+  // Full and failed publication remain complete, with clear retry labels.
+  records=[{id:'c'.repeat(32),name:'Waiting for slot',mode:'custom',options:copy(settings),state:'complete',position:1,revision:1,cagr:.1,transfer:{state:'pending',error:'full'}}];
+  await call('BacktestQueue.refresh()');
+  assert(node('queue-list').innerHTML.includes('Completed — waiting for saved slot'));
+  assert(node('queue-list').innerHTML.includes('Open result'));
+  records[0].transfer.error='retry';await call('BacktestQueue.refresh()');
+  assert(node('queue-list').innerHTML.includes('Saving failed. Results are kept here'));
+  records[0].transfer.state='reserved';await call('BacktestQueue.refresh()');
+  assert(node('queue-list').innerHTML.includes('Moving to Saved backtests'));
+  assert(!node('queue-list').innerHTML.includes('data-action="delete"'));
+  // A stale Open click explains that transfer finished and refreshes the library.
+  records[0].state='archived';records[0].transfer={state:'archived',saved_id:'d'.repeat(32)};
+  const beforeMoved=libraryChanges;
+  await call('BacktestQueue.action("open","'+records[0].id+'")');
+  assert(node('queue-status').textContent.includes('moved to Saved backtests'));
+  assert(libraryChanges>beforeMoved);assert(!node('queue-list').innerHTML.includes('Waiting for slot'));
+  // A lost enqueue acknowledgement retries the same archived receipt without
+  // placing it back in the list, even when list reconciliation fails.
+  settings={...settings,mode:'custom'};loseAcknowledgement=true;
+  await call('BacktestQueue.add()');
+  const submission=JSON.parse(storage.get('backtest-queue-submission'));
+  const accepted=records.find(record=>record.id===submission.id);accepted.state='archived';
+  accepted.transfer={state:'archived',saved_id:'e'.repeat(32)};failList=true;
+  const beforeRetry=libraryChanges;await call('BacktestQueue.add()');
+  assert(!storage.has('backtest-queue-submission'));assert(libraryChanges>beforeRetry);
+  assert(!node('queue-list').innerHTML.includes(accepted.id));assert(node('queue-status').textContent.includes('already moved'));
+  failList=false;
   console.log('Passed: snapshots, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

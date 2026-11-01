@@ -266,17 +266,17 @@ class DurableTests(unittest.TestCase):
         self.budget.collect();self.assertEqual(self.budget.measurements()['reserved_bytes'],0)
 
     def test_library_cap_atomic_across_store_instances_no_eviction(self):
-        for _ in range(18):self.library.save('legacy',legacy_snapshot())
+        for _ in range(98):self.library.save('legacy',legacy_snapshot())
         def save(n):
             reader,meta,_=source()
             try:return saved.Store(self.library.path,evidence_budget=self.budget).save_evidence(str(n),meta,reader)
             except saved.Full:return None
         with ThreadPoolExecutor(max_workers=4) as pool:records=list(pool.map(save,range(5)))
-        self.assertEqual(sum(r is not None for r in records),2);self.assertEqual(len(self.library.list()),20)
+        self.assertEqual(sum(r is not None for r in records),2);self.assertEqual(len(self.library.list()),100)
         chosen=next(r for r in records if r)
-        self.library.delete(chosen['id']);self.assertEqual(len(self.library.list()),19)
+        self.library.delete(chosen['id']);self.assertEqual(len(self.library.list()),99)
         reader,meta,_=source();self.library.save_evidence('replacement',meta,reader)
-        self.assertEqual(len(self.library.list()),20)
+        self.assertEqual(len(self.library.list()),100)
 
     def test_queue_exact_retry_state_stop_plan_and_mutation_contracts(self):
         reader,meta,_=source('random');req=submission(meta);self.queue.enqueue(req);self.queue.claim()
@@ -410,7 +410,7 @@ class DurableTests(unittest.TestCase):
                     self.assertEqual(opened.reader.metadata['generation'],inputs.signature)
 
     def test_independent_process_copies_respect_atomic_cap_without_eviction(self):
-        for _ in range(18):self.library.save('legacy',legacy_snapshot())
+        for _ in range(98):self.library.save('legacy',legacy_snapshot())
         reader,meta,_=source();path=self.root/'source';path.write_bytes(reader.stream.getvalue())
         metadata=self.root/'metadata';metadata.write_text(json.dumps(meta))
         code="""import sys,json
@@ -433,7 +433,7 @@ with open(sys.argv[3],'rb') as stream:
         finally:
             for proc in processes:
                 if proc.poll() is None:proc.kill();proc.communicate(timeout=10)
-        self.assertEqual(sorted(codes),[0,0,11]);self.assertEqual(len(self.library.list()),20)
+        self.assertEqual(sorted(codes),[0,0,11]);self.assertEqual(len(self.library.list()),100)
         self.assertEqual(self.sql(self.library.path,'SELECT COUNT(DISTINCT record_id) FROM evidence_chunks')[0][0],2)
 
     def test_oversized_metadata_rejected_without_whole_json_encoding(self):

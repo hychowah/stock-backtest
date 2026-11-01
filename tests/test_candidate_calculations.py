@@ -195,7 +195,7 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(jobs.snapshot('a'*32)['state'],'complete');jobs.close()
         store=backtest_queue.Store(self.root/'queue.sqlite')
         record=store.enqueue(request(options=options))
-        queue=backtest_queue.Queue(store,calculations=owner)
+        queue=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
         queue._run(store.claim())
         self.assertEqual(store.get(record['id'])['state'],'complete')
         for details in (False,True):
@@ -267,7 +267,7 @@ class CandidateTests(unittest.TestCase):
         runtime=owner.preparation._runtime();owner.runtime=runtime;runtime.start()
         store=backtest_queue.Store(self.root/'shutdown-queue.sqlite')
         item=store.enqueue(request(options=self.options()))
-        queue=backtest_queue.Queue(store,calculations=owner)
+        queue=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
         def interrupted(*args,**kw):
             queue.request_stop()
             raise ClosureError(runtime,backtest_control.Cancelled())

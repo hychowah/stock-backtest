@@ -41,7 +41,7 @@ class Server(ThreadingHTTPServer):
         from engine_selection import Selectable
         self.calculations=Selectable(Preparation(ROOT.parent))
         self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
-        self.backtest_queue=backtest_queue.Queue(calculations=self.calculations)
+        self.backtest_queue=backtest_queue.Queue(calculations=self.calculations,library=SAVED_BACKTESTS)
         super().__init__(*args,**kwargs)
 
     def shutdown(self):
@@ -221,7 +221,7 @@ class Handler(SimpleHTTPRequestHandler):
         collection=self.path=='/api/backtest-queue'
         path=[] if collection else self.path.removeprefix('/api/backtest-queue/').split('/')
         try:
-            if (collection or self.command!='GET') and self.calculation_ready() and (not getattr(self.server,'data_recovery',False) or DATA_JOBS.rebuilt):queue.start()
+            if (collection or self.command!='GET') and (not getattr(self.server,'data_recovery',False) or DATA_JOBS.rebuilt):queue.start()
             if self.command=='GET':
                 if not collection and len(path)!=1:
                     self.reply(404,dict(error='Unknown queue action.'));return

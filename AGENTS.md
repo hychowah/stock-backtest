@@ -436,9 +436,19 @@ Ignore list responses that precede a newer acknowledged mutation. Check
 `website/backtest_queue.py` owns durable fixed/random test records in
 `data/backtest-queue.sqlite`. Preserve this file during rebuilds, cleanup and
 deployment. It is separate from financial caches and the 100-slot saved library.
-Keep up to 100 visible records without automatic eviction. Only explicit
-deletion removes a selected test and its result. Retain a small deleted-ID
-receipt so retrying an unacknowledged submission cannot recreate it.
+Keep up to 100 visible records without automatic eviction. Complete results move
+to the saved library after its independent copy commits. Full or failed imports
+keep the completed result visible for retry, without recalculation. Failed and
+stopped tests remain in the queue. Archived queue rows retain submission and
+completion receipts but release duplicate evidence and visible capacity. Retain
+small deleted-ID receipts so an unacknowledged submission cannot recreate a
+deleted test. Library import receipts survive saved-record deletion. Retries
+must preserve later renames and explicit deletion. Reserve the completed source
+before copy; deletion wins before reservation and conflicts during publication.
+End the queue read transaction before library publication. Reconcile under the
+existing consumer before readiness and pause checks. Never route a transfer
+failure through calculation-failure handling. Test `tests/test_queue_transfer.py`
+on WSL and native Windows alongside the queue/library/evidence checks.
 
 `data/backtest-queue.lock` elects one consumer across local server instances.
 Only the consumer holding this OS lock may recover interrupted running rows.

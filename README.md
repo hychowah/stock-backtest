@@ -46,15 +46,18 @@ or delete waiting tests. Pause the queue to let the active test finish without
 starting another. Stop cancels only the selected active test. Auto-run is
 suspended while the queue has waiting or running work. Adding, copying or
 editing a queue item also turns Auto-run off for continued batch setup.
-Open completed results from the queue without calculating again.
+Completed queue results move to Saved backtests automatically. Open them there
+without calculating again. A full library or failed save keeps the complete
+result in the queue while the server retries. No result is evicted.
 Save or cancel an active edit before opening or copying another result. This
 keeps the held test's draft parameters intact.
 Reordering does not invalidate an edit. If a response is lost, the queue checks
 the saved edit receipt or offers a retry of the same request. If another browser
 ends the hold, your form becomes available and keeps its current settings.
 
-The queue holds up to 100 records, including completed results. It persists in
-`data/backtest-queue.sqlite` until you delete individual records. It is separate
+The queue holds up to 100 visible records. Archived completions free queue space.
+It persists in `data/backtest-queue.sqlite`. Keep this durable file and the saved
+library during rebuilds and deployment. The queue is separate
 from temporary manual runs and the 100-slot saved library. Server restart resumes
 interrupted work with its recorded random dates; held edits stay held. Keep the
 server computer awake and its terminal open overnight.

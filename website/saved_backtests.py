@@ -86,6 +86,7 @@ class Store:
         db.row_factory=sqlite3.Row
         try:
             db.execute(SCHEMA)
+            db.execute("CREATE TABLE IF NOT EXISTS queue_imports (source_id TEXT PRIMARY KEY, saved_id TEXT NOT NULL)")
             durable_evidence.install(db)
             return db
         except BaseException:
@@ -139,6 +140,54 @@ class Store:
                     backtest_control.checkpoint();db.commit()
             return record
         finally:db.close()
+
+    def accept_queue_result(self,source_id,name,open_source):
+        """Admit one completed queue source exactly once, without financial access.
+
+        Open the independent source lazily, only when no receipt exists and a
+        slot is available. Close the short preflight before opening the source.
+        Publication rechecks both conditions atomically. Receipts survive
+        deletion; retries keep the first ID and later rename or deletion.
+        """
+        self.check_id(source_id)
+        def admission(db):
+            previous=db.execute('SELECT saved_id FROM queue_imports WHERE source_id=?',(source_id,)).fetchone()
+            if previous:
+                row=db.execute('SELECT id,name,created_at,info FROM records WHERE id=?',(previous['saved_id'],)).fetchone()
+                return dict(saved_id=previous['saved_id'],deleted=row is None,record=self.metadata(row) if row else None)
+            if db.execute('SELECT COUNT(*) FROM records').fetchone()[0]>=LIMIT:
+                raise Full(f'All {LIMIT} saved slots are used. Delete a saved backtest before saving another.')
+        db=self.connect()
+        try:previous=admission(db)
+        finally:db.close()
+        if previous is not None:return previous
+        with open_source() as source:
+            db=self.connect()
+            try:
+                with db:
+                    db.execute('BEGIN IMMEDIATE')
+                    previous=admission(db)
+                    if previous is not None:return previous
+                    if not isinstance(name,str) or not 1<=len(name.strip())<=120:
+                        raise ValueError('Use a backtest name with 1–120 characters.')
+                    metadata=source if isinstance(source,dict) else source.metadata
+                    info=information(metadata)
+                    record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
+                    def insert(packed):
+                        db.execute('INSERT INTO records VALUES(?,?,?,?,?)',
+                            (record['id'],record['name'],record['created_at'],json.dumps(info,allow_nan=False),packed))
+                        db.execute('INSERT INTO queue_imports VALUES(?,?)',(source_id,record['id']))
+                    if isinstance(source,dict):
+                        validate(source)
+                        packed=json.dumps(source,allow_nan=False,separators=(',',':')).encode('utf-8')
+                        if len(packed)>MAX_BYTES:raise ValueError('This backtest is too large to save as one record.')
+                        insert(zlib.compress(packed,3))
+                    else:
+                        with source.open_reader() as reader:
+                            with durable_evidence.publication(db,record['id'],metadata,reader,budget=self.evidence_budget) as packed:
+                                insert(packed);backtest_control.checkpoint();db.commit()
+                    return dict(saved_id=record['id'],deleted=False,record=record)
+            finally:db.close()
 
     @contextmanager
     def open_evidence(self,identifier):

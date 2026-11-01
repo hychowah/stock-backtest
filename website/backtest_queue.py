@@ -4,7 +4,8 @@ One consumer owns the queue file lock across server instances. Queue database
 transactions end before financial ownership is requested. The consumer retains
 both queue ownership and server lifetime ownership through engine cleanup.
 Only waiting items can change settings or order. Held items are excluded from
-execution while a user edits them. Results remain until explicit deletion.
+execution while a user edits them. Complete results transfer to the library
+before duplicate queue evidence is released. Failed transfers keep their source.
 """
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -36,6 +37,9 @@ CREATE TABLE IF NOT EXISTS jobs (
  position INTEGER NOT NULL, revision INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL,
  created_at TEXT NOT NULL, started TEXT, finished TEXT, seed INTEGER,
  progress TEXT, configuration TEXT, error TEXT, cagr REAL, snapshot BLOB, plan TEXT
+);
+CREATE TABLE IF NOT EXISTS transfers (
+ job_id TEXT PRIMARY KEY, state TEXT NOT NULL, saved_id TEXT, error TEXT, completion TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS edits (
  job_id TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
@@ -82,7 +86,8 @@ class Store:
         spec=json.loads(row['spec'])
         result={key:row[key] for key in ('id','name','position','revision','state','created_at','started','finished','error','cagr')}
         edit=db.execute('SELECT id,revision,state FROM edits WHERE job_id=?',(row['id'],)).fetchone()
-        return dict(**result,mode=spec['mode'],options=spec['options'],
+        transfer=db.execute('SELECT state,saved_id,error FROM transfers WHERE job_id=?',(row['id'],)).fetchone()
+        return dict(**result,mode=spec['mode'],options=spec['options'],transfer=dict(transfer) if transfer else None,
                     edit=dict(edit) if edit else None,
                     progress=json.loads(row['progress']) if row['progress'] else None,
                     configuration=json.loads(row['configuration']) if row['configuration'] else None)
@@ -123,7 +128,7 @@ class Store:
                 if previous['state']=='deleted':raise Conflict('This test was deleted. Add it again as a new test.')
                 if previous['original_hash']!=identity:raise Conflict('This queue ID already belongs to a different submission.')
                 return self.metadata(db,previous)
-            if db.execute("SELECT COUNT(*) FROM jobs WHERE state!='deleted'").fetchone()[0]>=LIMIT:
+            if db.execute("SELECT COUNT(*) FROM jobs WHERE state NOT IN ('deleted','archived')").fetchone()[0]>=LIMIT:
                 raise Conflict('The queue has 100 records. Delete a chosen record before adding another.')
             position=db.execute('SELECT COALESCE(MAX(position),0)+1 FROM jobs').fetchone()[0]
             db.execute('INSERT INTO jobs(id,name,spec,original_hash,position,state,created_at,seed) VALUES(?,?,?,?,?,?,?,?)',
@@ -139,7 +144,8 @@ class Store:
     def listing(self):
         with self.database() as db:
             return dict(limit=LIMIT,paused=bool(db.execute('SELECT paused FROM control').fetchone()[0]),
-                        records=[self.metadata(db,row) for row in db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state!='deleted' ORDER BY position,id")])
+                        library_revision=db.execute("SELECT COUNT(*) FROM jobs WHERE state='archived'").fetchone()[0],
+                        records=[self.metadata(db,row) for row in db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state NOT IN ('deleted','archived') ORDER BY position,id")])
 
     def get(self,identifier):
         with self.database() as db:
@@ -184,12 +190,16 @@ class Store:
                 raise Conflict('This test changed in another browser. Refresh the queue.')
             state=row['state']
             if action=='delete':
+                transfer=db.execute('SELECT state FROM transfers WHERE job_id=?',(identifier,)).fetchone()
+                if transfer and transfer['state']=='reserved':raise Conflict('This completed result is moving to Saved backtests. Refresh and retry after the transfer finishes.')
+                if state=='archived':raise Conflict('This result moved to Saved backtests. Delete it from the saved library.')
                 if state in ('running','stopping'):raise Conflict('Stop the running test before deleting it.')
                 # Keep only the submission receipt, so a lost-ack retry cannot
                 # resurrect an explicitly deleted test or its holdings.
                 db.execute("UPDATE jobs SET state='deleted',name='',spec='{}',snapshot=NULL,progress=NULL,configuration=NULL,plan=NULL,seed=NULL,error=NULL,cagr=NULL,revision=revision+1 WHERE id=?",(identifier,))
                 durable_evidence.delete(db,identifier)
                 db.execute('DELETE FROM edits WHERE job_id=?',(identifier,))
+                db.execute('DELETE FROM transfers WHERE job_id=?',(identifier,))
                 return dict(id=identifier,deleted=True)
             if action=='stop':
                 target='stopping' if state in ('running','stopping') else 'cancelled' if state in ('queued','held') else state
@@ -230,6 +240,7 @@ class Store:
     def recover(self):
         """Only the exclusive consumer may recover an interrupted predecessor."""
         with self.database() as db:
+            db.execute("UPDATE transfers SET state='pending' WHERE state='reserved'")
             db.execute("UPDATE jobs SET state='queued',started=NULL,progress=NULL,error=NULL,revision=revision+1 WHERE state='running'")
             db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE state='stopping'",(now(),))
 
@@ -253,6 +264,67 @@ class Store:
                 db.execute('UPDATE jobs SET configuration=?,plan=? WHERE id=?',(encode(summary),encode(value),identifier))
             else:db.execute('UPDATE jobs SET progress=? WHERE id=?',(encode(value),identifier))
 
+    @staticmethod
+    def completion_identity(metadata,reader=None,*,evidence=None):
+        """Bind exact completed meaning and bytes, including after archival."""
+        if reader is not None:
+            size=reader.stream.seek(0,2)
+            evidence=dict(bytes=size,sha256=durable_evidence._digest(reader.stream,size),
+                piece_bytes=reader.piece_bytes,record_bytes=reader.record_bytes,manifest=reader.manifest)
+        if evidence is not None:
+            evidence={key:evidence[key] for key in ('bytes','sha256','piece_bytes','record_bytes','manifest')}
+        return hashlib.sha256(encode(dict(metadata=metadata,evidence=evidence)).encode()).hexdigest()
+
+    def completed(self):
+        """Small identities only; never load holdings while enumerating work."""
+        with self.database() as db:
+            return [row[0] for row in db.execute("SELECT id FROM jobs WHERE state='complete' ORDER BY position,id")]
+
+    def reserve_completed(self,identifier):
+        """Fence explicit deletion before detaching a transfer's immutable source."""
+        with self.database() as db:
+            row=self.row(db,identifier,include_snapshot=True)
+            if row['state']!='complete':raise Conflict('Only a completed result can move to Saved backtests.')
+            transfer=db.execute('SELECT * FROM transfers WHERE job_id=?',(identifier,)).fetchone()
+            if transfer is None:
+                if durable_evidence.is_evidence(row['snapshot']):
+                    metadata,evidence=durable_evidence._unpack(row['snapshot'],identifier,durable_evidence.MAX_EVIDENCE_BYTES)
+                    identity=self.completion_identity(metadata,evidence=evidence)
+                else:identity=self.completion_identity(json.loads(zlib.decompress(row['snapshot'])))
+                db.execute("INSERT INTO transfers(job_id,state,completion) VALUES(?,'reserved',?)",(identifier,identity))
+            else:db.execute("UPDATE transfers SET state='reserved',error=NULL WHERE job_id=?",(identifier,))
+            return self.metadata(db,row)
+
+    @contextmanager
+    def completed_source(self,identifier):
+        """Yield an independent source after closing the queue read transaction."""
+        with self.database() as db:
+            row=self.row(db,identifier,include_snapshot=True)
+            transfer=db.execute('SELECT state FROM transfers WHERE job_id=?',(identifier,)).fetchone()
+            if row['state']!='complete' or not transfer or transfer['state']!='reserved':
+                raise Conflict('Completed result transfer is not reserved.')
+            packed=row['snapshot']
+        if durable_evidence.is_evidence(packed):
+            with self.open_evidence(identifier) as source:yield source
+        else:yield json.loads(zlib.decompress(packed))
+
+    def transfer_failed(self,identifier,reason):
+        with self.database() as db:
+            db.execute("UPDATE transfers SET state='pending',error=? WHERE job_id=? AND state='reserved'",(reason,identifier))
+
+    def archive_completed(self,identifier,saved_id):
+        """A durable library receipt precedes releasing duplicate result bytes."""
+        saved_backtests.Store.check_id(saved_id)
+        with self.database() as db:
+            row=self.row(db,identifier)
+            previous=db.execute('SELECT * FROM transfers WHERE job_id=?',(identifier,)).fetchone()
+            if row['state']=='archived' and previous and previous['saved_id']==saved_id:return
+            if row['state']!='complete' or not previous or previous['state']!='reserved':
+                raise Conflict('Completed result transfer is not reserved.')
+            db.execute("UPDATE transfers SET state='archived',saved_id=?,error=NULL WHERE job_id=?",(saved_id,identifier))
+            db.execute("UPDATE jobs SET state='archived',snapshot=NULL,progress=NULL,plan=NULL,revision=revision+1 WHERE id=?",(identifier,))
+            durable_evidence.delete(db,identifier)
+
     def finish_evidence(self,identifier,metadata,reader):
         """Explicit dormant completion. Queue intent owns publication precedence.
 
@@ -261,6 +333,11 @@ class Store:
         """
         with self.database() as db:
             row=self.row(db,identifier,include_snapshot=True,include_plan=True)
+            if row['state']=='archived':
+                receipt=db.execute('SELECT completion FROM transfers WHERE job_id=?',(identifier,)).fetchone()
+                if receipt and receipt['completion']==self.completion_identity(metadata,reader):
+                    return dict(id=identifier,state='archived')
+                raise Conflict('Completed evidence differs from the original snapshot.')
             if row['state']=='stopping':
                 db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE id=?",(now(),identifier))
                 return dict(id=identifier,state='cancelled')
@@ -306,6 +383,10 @@ class Store:
         cagr=saved_backtests.information(snapshot)['cagr'] if snapshot else None
         with self.database() as db:
             current=self.row(db,identifier)['state']
+            transfer=db.execute('SELECT * FROM transfers WHERE job_id=?',(identifier,)).fetchone()
+            if current=='archived' or transfer and transfer['state']=='reserved':
+                if state=='complete' and snapshot is not None and transfer['completion']==self.completion_identity(snapshot):return
+                raise Conflict('Completed result differs from the original snapshot.')
             if current=='stopping':state='cancelled';packed=None;cagr=None
             db.execute('UPDATE jobs SET state=?,snapshot=?,cagr=?,error=?,finished=?,revision=revision+1 WHERE id=?',
                        (state,packed,cagr,error,now() if state!='queued' else None,identifier))
@@ -313,8 +394,8 @@ class Store:
 
 class Queue:
     """One durable consumer; UI mutations remain available during calculation."""
-    def __init__(self,store=None,*,calculations=None):
-        self.store=store or Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
+    def __init__(self,store=None,*,calculations=None,library=None):
+        self.store=store or Store();self.library=library if library is not None else saved_backtests.Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
         self.owner=cache_access.WorkspaceAccess(self.store.path.with_suffix('.lock'))
         self.calculations=calculations if calculations is not None else backtest_jobs.Calculations()
 
@@ -336,6 +417,7 @@ class Queue:
                 with self.owner.hold(timeout=.1):
                     self.store.recover()
                     while not self.stopping.is_set():
+                        self.reconcile_completed()
                         if not self.ready():self.wake.wait(.5);self.wake.clear();continue
                         engines=self.calculations.queue_engines() if hasattr(self.calculations,'queue_engines') else None
                         job=self.store.claim(engines)
@@ -346,6 +428,22 @@ class Queue:
             except Exception as error:
                 diagnostics.failure('queue.worker_failed',error)
                 self.stopping.wait(1)
+
+    def reconcile_completed(self):
+        """Retry storage independently of calculation readiness, pause and errors."""
+        for identifier in self.store.completed():
+            if self.stopping.is_set():break
+            try:
+                job=self.store.reserve_completed(identifier)
+                receipt=self.library.accept_queue_result(identifier,job['name'],lambda:self.store.completed_source(identifier))
+                self.store.archive_completed(identifier,receipt['saved_id'])
+            except Missing:
+                continue  # An explicit deletion won before reservation.
+            except saved_backtests.Full:
+                self.store.transfer_failed(identifier,'full')
+            except Exception as error:
+                diagnostics.failure('queue.transfer_failed',error)
+                self.store.transfer_failed(identifier,'retry')
 
     def _run(self,job):
         identifier=job['id'];last_check=last_progress=0.;cancelled=False

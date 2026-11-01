@@ -2,7 +2,7 @@
 const BacktestQueue=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let callbacks={},records=[],paused=false,limit=100,available=false,busy=false,editing=null,pendingDelete=null;
+  let callbacks={},records=[],paused=false,limit=100,available=false,busy=false,editing=null,pendingDelete=null,libraryRevision=null;
   let mutation=0,refreshNumber=0,pending=null;
   const rendered=new Map();
   const storageKey='backtest-queue-submission';
@@ -104,13 +104,13 @@ const BacktestQueue=(()=>{
       if(['running','stopping'].includes(record.state))actions+=button('stop','Stop test',record.state==='stopping');
       if(record.state==='complete')actions+=button('open','Open result');
       actions+=button('copy','Copy settings');
-      if(!['running','stopping'].includes(record.state))actions+=pendingDelete===record.id?'<span>Delete this test and its result?</span>'+button('confirm','Delete test')+button('keep','Keep'):button('delete','Delete');
+      if(!['running','stopping'].includes(record.state)&&record.transfer?.state!=='reserved')actions+=pendingDelete===record.id?'<span>Delete this test and its result?</span>'+button('confirm','Delete test')+button('keep','Keep'):button('delete','Delete');
       const event=record.progress;
       const progress=record.state==='running'&&event?(event.type==='waiting'?event.message:`${event.completed}/${event.total} trials complete`+(event.total_new_books>0?` · ${event.calculated_books}/${event.total_new_books} new books prepared`:'')):'';
-      const result=record.state==='complete'?(record.mode==='random'?'Mean trial CAGR: ':'CAGR: ')+(Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'unavailable'):record.error||progress;
+      const result=(record.state==='complete'&&record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry. ':'')+(record.state==='complete'?(record.mode==='random'?'Mean trial CAGR: ':'CAGR: ')+(Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'unavailable'):record.error||progress);
       const detail=[`Requested engine: ${EngineControls.label(o.engine??'original')}`,`Minimum market cap: $${(o.min_cap??100e6)/1e6} million`,`Maximum market cap: ${o.max_cap==null?'no limit':'$'+o.max_cap/1e6+' million'}`,`Minimum EV: $${(o.min_ev??50e6)/1e6} million`,`Minimum yield: ${(o.min_yield??0)*100}%`,`Maximum multiple: ${o.max_multiple??'no limit'}`,`Sector: ${o.sector||'all'}`,`Exchange: ${o.exchange||'all'}`,...(o.filters||[]).map(condition=>callbacks.filterLabel(condition.field)+' '+(condition.op==='lt'?'<':'>')+' '+condition.value)];
       if(record.mode==='random')detail.push('Random date set: '+(o.seed??record.configuration?.seed??'fresh seed stored on the server'));
-      const html=`<li data-queue-id="${id}"><div><div class="queue-title"><strong>${escape(record.name)}</strong><span class="queue-state">${states[record.state]||escape(record.state)}</span></div><span class="queue-summary">${escape(parameters(record))}</span><span class="queue-progress">${escape(result)}</span><details><summary>All parameters</summary>${detail.map(text=>'<p>'+escape(text)+'</p>').join('')}</details></div><div class="queue-actions">${actions}</div></li>`;
+      const html=`<li data-queue-id="${id}"><div><div class="queue-title"><strong>${escape(record.name)}</strong><span class="queue-state">${record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Saved backtests':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state)}</span></div><span class="queue-summary">${escape(parameters(record))}</span><span class="queue-progress">${escape(result)}</span><details><summary>All parameters</summary>${detail.map(text=>'<p>'+escape(text)+'</p>').join('')}</details></div><div class="queue-actions">${actions}</div></li>`;
       return {id:record.id,html,progress:result,signature:JSON.stringify({record:{...record,progress:null},edges:waiting(record)?[index===0,index===waitingIds.length-1]:[],busy,deleting:pendingDelete===record.id})};
     });
     renderRows(rows);
@@ -126,6 +126,7 @@ const BacktestQueue=(()=>{
     const number=++refreshNumber,revision=mutation,value=await request();
     if(number!==refreshNumber||revision!==mutation)return;
     if(!Array.isArray(value.records))throw Error('The queue response is invalid.');
+    if(Number.isInteger(value.library_revision)&&value.library_revision!==libraryRevision){libraryRevision=value.library_revision;callbacks.libraryChanged?.();}
     if(available&&JSON.stringify({records,paused,limit})===JSON.stringify({records:value.records,paused:value.paused,limit:value.limit}))return;
     records=value.records;paused=value.paused;limit=value.limit;available=true;reconcileEdit();render();
   }
@@ -133,7 +134,8 @@ const BacktestQueue=(()=>{
     mutation++;
     const value=await request(path,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     mutation++;
-    if(value.deleted)records=records.filter(record=>record.id!==value.id);
+    if(value.state==='archived'){records=records.filter(record=>record.id!==value.id);callbacks.libraryChanged?.();success='This test already moved to Saved backtests.';}
+    else if(value.deleted)records=records.filter(record=>record.id!==value.id);
     else if(value.id)records=[...records.filter(record=>record.id!==value.id),value];
     else if(typeof value.paused==='boolean')paused=value.paused;
     message(success);render();return value;
@@ -191,6 +193,7 @@ const BacktestQueue=(()=>{
         const isCurrent=ResultArtifacts.opening();let value;
         try{value=await request('/'+id);}
         catch(error){if(!error.requires_reader)throw error;value={snapshot:await ResultArtifacts.acquire({kind:'queue',id})};}
+        if(value.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it from the saved list.');return;}
         if(!value.snapshot)throw Error('This result is not ready yet.');
         if(!isCurrent()){ResultArtifacts.release(value.snapshot);return;}
         try{callbacks.open(value.snapshot);}catch(error){ResultArtifacts.release(value.snapshot);throw error;}

@@ -40,7 +40,7 @@ Each slice updates the architecture guide, runs focused synthetic Python/browser
 ## Phase record
 
 - Phase 1: complete after independent smart-commit audit and focused verification.
-- Phase 2: pending.
+- Phase 2: complete after independent smart-commit audit and focused verification. See [phase-02.md](phase-02.md).
 - Phase 3: pending.
 
 The work is committed on `ui/backtest-library`. An existing automatic publication
