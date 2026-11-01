@@ -3,7 +3,7 @@ const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let current=()=>null,isRunning=()=>false,openRecord=()=>{};
-  let records=[],busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
+  let records=[],limit=100,sorting='newest',renaming=null,busy=false,available=false,pendingDelete=null,operation=0,mutation=0,refreshNumber=0,feedback=0;
   function message(text,error=false){node('saved-message').textContent=text;node('saved-message').className=error?'backtest-failed':'hint';}
   function defaultName(snapshot){
     if(snapshot.kind==='january')return 'January '+snapshot.settings.first+'–'+snapshot.settings.last;
@@ -12,20 +12,32 @@ const SavedBacktests=(()=>{
   function complete(snapshot){return snapshot && snapshot.kind!=='latest' && (snapshot.version===3 || snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
   function update(){
     const snapshot=current();
-    node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=20;
-    node('saved-count').textContent=records.length+' / 20';
+    node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=limit;
+    node('saved-count').textContent=records.length+' / '+limit;
     node('refresh-backtests').disabled=busy||!available;
-    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=20?'All 20 slots are used. Delete a saved backtest to make room.':'Saves the displayed result and the settings used to run it. Pending setting changes are not included.';
+    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest to make room.':'Saves the displayed result and the settings used to run it. Pending setting changes are not included.';
+  }
+  // List order uses stored summary values only. Missing performance stays last.
+  function ordered(){
+    const tie=(a,b)=>String(b.created_at).localeCompare(String(a.created_at))||a.id.localeCompare(b.id);
+    return [...records].sort((a,b)=>{
+      if(sorting==='newest')return tie(a,b);
+      const knownA=Number.isFinite(a.cagr),knownB=Number.isFinite(b.cagr);
+      if(knownA!==knownB)return knownA?-1:1;
+      return (knownA?(a.cagr-b.cagr)*(sorting==='performance-asc'?1:-1):0)||tie(a,b);
+    });
   }
   function render(){
-    node('saved-list').innerHTML=records.map(record=>{
+    const focused=document.activeElement,focusId=focused?.id,start=focused?.selectionStart,end=focused?.selectionEnd;
+    node('saved-list').innerHTML=ordered().map(record=>{
       const kind={january:'January',custom:'Fixed dates',random:'Random dates'}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const description=kind+' · '+record.start+' → '+record.end+' · '+(record.kind==='random'?'Mean trial CAGR ':'CAGR ')+cagr;
-      const actions=pendingDelete===record.id?'<span>Delete this saved backtest?</span> <button type="button" data-confirm="'+escape(record.id)+'">Delete record</button> <button type="button" data-keep="'+escape(record.id)+'">Keep</button>':'<button type="button" data-open="'+escape(record.id)+'">Open</button> <button type="button" data-delete="'+escape(record.id)+'">Delete</button>';
-      return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small></div><div class="saved-actions">'+actions+'</div></li>';
+      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+escape(record.id)+'" data-rename-input="'+escape(record.id)+'" value="'+escape(renaming.name)+'" maxlength="120"></label><button type="button" data-save-name="'+escape(record.id)+'">Save name</button><button type="button" data-cancel-name="'+escape(record.id)+'">Cancel</button>':pendingDelete===record.id?'<span>Delete this saved backtest?</span> <button type="button" data-confirm="'+escape(record.id)+'">Delete record</button> <button type="button" data-keep="'+escape(record.id)+'">Keep</button>':'<button type="button" data-open="'+escape(record.id)+'">Open</button> <button type="button" data-rename="'+escape(record.id)+'">Rename</button> <button type="button" data-delete="'+escape(record.id)+'">Delete</button>';
+      return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small><small class="saved-id">ID: '+escape(record.id)+'</small></div><div class="saved-actions">'+actions+'</div></li>';
     }).join('')||'<li>No saved backtests yet.</li>';
-    node('saved-list').querySelectorAll('button').forEach(button=>button.disabled=busy);
+    node('saved-list').querySelectorAll('button,input').forEach(control=>control.disabled=busy);
+    if(focusId&&!busy){const restored=node(focusId);restored?.focus?.({preventScroll:true});if(start!==null&&start!==undefined)restored?.setSelectionRange?.(start,end);}
     update();
   }
   async function request(path='',options={}){
@@ -38,7 +50,7 @@ const SavedBacktests=(()=>{
     const number=++refreshNumber,revision=mutation;
     const value=await request();
     if(!Array.isArray(value.records))throw Error('The saved-list response is invalid.');
-    if(number===refreshNumber&&revision===mutation){records=value.records;render();}
+    if(number===refreshNumber&&revision===mutation){records=value.records;if(Number.isInteger(value.limit)&&value.limit>0)limit=value.limit;render();}
   }
   async function perform(action){
     if(busy)return;
@@ -87,12 +99,36 @@ const SavedBacktests=(()=>{
       void reconcile(success,ticket);
     });
   }
+  async function rename(id){
+    if(renaming?.id!==id)return;
+    const name=renaming.name.trim();
+    if(!name||name.length>120){message('Use a backtest name with 1–120 characters.',true);return;}
+    await perform(async ticket=>{
+      const record=await request('/'+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+      mutation++;records=records.map(item=>item.id===id?record:item);renaming=null;render();
+      const success='Renamed to “'+record.name+'”. Its ID and stored results are unchanged.';message(success);
+      void reconcile(success,ticket);
+    });
+  }
   function init(access){
     current=access.current;isRunning=access.isRunning;openRecord=access.open;
     node('save-backtest').addEventListener('click',save);
     node('refresh-backtests').addEventListener('click',()=>perform(async()=>{await refresh();message('Saved list refreshed.');}));
+    node('saved-sort').addEventListener('change',()=>{sorting=node('saved-sort').value;render();});
+    node('saved-list').addEventListener('input',event=>{
+      if(renaming?.id===event.target.dataset.renameInput)renaming.name=event.target.value;
+    });
+    node('saved-list').addEventListener('keydown',event=>{
+      if(!renaming||renaming.id!==event.target.dataset.renameInput)return;
+      if(event.key==='Enter'){event.preventDefault();return rename(renaming.id);}
+      if(event.key==='Escape'){event.preventDefault();renaming=null;render();}
+    });
     node('saved-list').addEventListener('click',event=>{
+      if(busy)return;
       const data=event.target.dataset;
+      if(data.saveName)return rename(data.saveName);
+      if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
+      if(data.cancelName){renaming=null;render();return;}
       if(data.open)return open(data.open);
       if(data.confirm)return remove(data.confirm);
       if(data.delete){pendingDelete=data.delete;render();}

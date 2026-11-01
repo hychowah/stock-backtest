@@ -2,7 +2,8 @@
 .queue-add label{flex:1 1 260px;font-size:13px}
 .queue-add input{display:block;width:100%;margin-top:7px}
 #queue-count{font:14px system-ui,sans-serif;color:#617172;white-space:nowrap}
-#queue-list{list-style:none;padding:0}
+#queue-list{list-style:none;padding:0;max-height:min(560px,65vh);overflow:auto;scrollbar-gutter:stable}
+#queue-list:focus-visible{outline:3px solid #20775e;outline-offset:3px}
 #queue-list>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:20px 0;border-top:1px solid #dce3da}
 .queue-title{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
 .queue-title strong{font-size:17px;overflow-wrap:anywhere}

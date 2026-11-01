@@ -61,13 +61,13 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT snapshot FROM records WHERE id=?',(legacy['id'],)).fetchone()[0],original)
 
     def test_limit_never_evicts_and_deleting_one_frees_one_slot(self):
-        records=[self.store.save('Book '+str(i),snapshot()) for i in range(20)]
+        records=[self.store.save('Book '+str(i),snapshot()) for i in range(100)]
         with self.assertRaises(saved.Full):self.store.save('Overflow',snapshot())
         self.assertEqual({r['id'] for r in self.store.list()},{r['id'] for r in records})
         self.store.delete(records[7]['id'])
         with self.assertRaises(saved.Missing):self.store.get(records[7]['id'])
         added=self.store.save('Replacement',snapshot())
-        self.assertEqual(len(self.store.list()),20)
+        self.assertEqual(len(self.store.list()),100)
         self.assertEqual(self.store.get(records[0]['id'])['name'],'Book 0')
         self.assertEqual(self.store.get(added['id'])['name'],'Replacement')
 
@@ -76,9 +76,50 @@ class StoreTests(unittest.TestCase):
         def save(i):
             try:return saved.Store(self.path).save(str(i),snapshot())['id']
             except saved.Full:return None
-        with ThreadPoolExecutor(max_workers=8) as workers:identifiers=list(workers.map(save,range(28)))
-        self.assertEqual(sum(identifier is not None for identifier in identifiers),19)
-        self.assertEqual(len(self.store.list()),20)
+        with ThreadPoolExecutor(max_workers=8) as workers:identifiers=list(workers.map(save,range(108)))
+        self.assertEqual(sum(identifier is not None for identifier in identifiers),99)
+        self.assertEqual(len(self.store.list()),100)
+
+    def test_rename_preserves_identity_evidence_and_created_time(self):
+        for kind in ('january','custom','random'):
+            original=self.store.save('Original',snapshot(kind))
+            with closing(sqlite3.connect(self.path)) as db:
+                before=db.execute('SELECT * FROM records WHERE id=?',(original['id'],)).fetchone()
+            renamed=self.store.rename(original['id'],'  New <name>  ')
+            self.assertEqual(renamed,dict(original,name='New <name>'))
+            with closing(sqlite3.connect(self.path)) as db:
+                after=db.execute('SELECT * FROM records WHERE id=?',(original['id'],)).fetchone()
+            self.assertEqual(before[:1]+before[2:],after[:1]+after[2:])
+            self.assertEqual(saved.Store(self.path).get(original['id'])['name'],'New <name>')
+            for name in ('',' ',None,'a'*121):
+                with self.assertRaises(ValueError):self.store.rename(original['id'],name)
+            self.assertEqual(self.store.get(original['id'])['snapshot'],snapshot(kind))
+        with self.assertRaises(saved.Missing):self.store.rename('f'*32,'Missing')
+
+    def test_rename_keeps_version_three_evidence_chunks_verbatim(self):
+        from test_durable_evidence import source
+        reader,metadata,_=source('random')
+        original=self.store.save_evidence('Evidence',metadata,reader)
+        def stored_bytes():
+            with closing(sqlite3.connect(self.path)) as db:
+                return (db.execute('SELECT id,created_at,info,snapshot FROM records WHERE id=?',(original['id'],)).fetchone(),
+                        db.execute('SELECT * FROM evidence_chunks ORDER BY record_id,ordinal').fetchall())
+        before=stored_bytes()
+        renamed=self.store.rename(original['id'],'Evidence renamed')
+        self.assertEqual(renamed,dict(original,name='Evidence renamed'))
+        self.assertEqual(stored_bytes(),before)
+
+    def test_http_rename_changes_metadata_without_financial_access(self):
+        original=self.store.save('Original',snapshot())
+        target='/api/backtests/'+original['id']
+        status,record=self.request('POST',target,body=dict(name='Renamed'))
+        self.assertEqual(status,200);self.assertEqual(record,dict(original,name='Renamed'))
+        self.assertEqual(self.request('GET',target)[1]['snapshot'],snapshot())
+        for value in ({},dict(name=' '),dict(name='a'*121),[]):
+            self.assertEqual(self.request('POST',target,body=value)[0],400)
+        self.assertEqual(self.request('POST',target,length=5000)[0],400)
+        self.assertEqual(self.request('POST',target,body=dict(name='Foreign'),origin='http://foreign.example')[0],403)
+        self.assertEqual(self.request('POST','/api/backtests/'+'f'*32,body=dict(name='Missing'))[0],404)
 
     def test_failed_publication_keeps_all_existing_records(self):
         record=self.store.save('Original',snapshot())
@@ -126,7 +167,7 @@ class StoreTests(unittest.TestCase):
     def test_http_save_list_get_delete_and_foreign_origin(self):
         status,record=self.request('POST',body=dict(name='My strategy',snapshot=snapshot()))
         self.assertEqual(status,201)
-        status,index=self.request('GET');self.assertEqual(status,200);self.assertEqual(index['limit'],20)
+        status,index=self.request('GET');self.assertEqual(status,200);self.assertEqual(index['limit'],100)
         self.assertEqual(index['records'][0]['id'],record['id'])
         target='/api/backtests/'+record['id']
         self.assertEqual(self.request('GET',target)[1]['snapshot'],snapshot())
@@ -137,9 +178,9 @@ class StoreTests(unittest.TestCase):
     def test_http_full_oversize_and_invalid_requests(self):
         self.assertEqual(self.request('POST',length=saved.MAX_BYTES+1)[0],413)
         self.assertEqual(self.request('POST',body={})[0],400)
-        for i in range(20):self.store.save(str(i),snapshot())
+        for i in range(100):self.store.save(str(i),snapshot())
         self.assertEqual(self.request('POST',body=dict(name='Overflow',snapshot=snapshot()))[0],409)
-        self.assertEqual(len(self.store.list()),20)
+        self.assertEqual(len(self.store.list()),100)
 
 
 if __name__=='__main__':unittest.main()

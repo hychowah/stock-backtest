@@ -196,7 +196,7 @@ The browser can inspect these stocks without another calculation. The engine bra
 integrate this observer deliberately; no engine implementation is copied here.
 
 The independent library uses `data/saved-backtests.sqlite`. It stores complete
-user snapshots, capped atomically at 20 records. This durable file stays outside
+user snapshots, capped atomically at 100 records. This durable file stays outside
 financial-cache freshness and rebuilds. Source deployment preserves it.
 
 ## Agreed exception: operating-yield spread filter (29 October 2026)
@@ -341,3 +341,14 @@ replacement is part of CB-19. Check for an automatic publication supervisor
 immediately before every main commit; do not assume an earlier absent process
 stays absent. Preserve unrelated portable-snapshot and market-qualification
 files. Custom-variable work remains on hold.
+
+## Saved-library usability follow-up — 1 November 2026
+
+The user assigns main the saved-library and queue presentation improvements.
+The three slices cover library management, recoverable completion transfer, and
+two-result comparison. Main owns these existing adapters and their additive
+library APIs. Preserve calculation, request/result, engine, worker and financial
+ownership contracts. The first slice raises the library to 100 slots, exposes
+existing UUIDs, adds metadata-only rename and stored-performance sorting, and
+bounds queue/library scrolling. Existing unrelated snapshot and market-scope
+files stay outside these commits. See the [master plan](plans/backtest-library/master-plan.md).

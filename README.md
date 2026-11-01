@@ -55,7 +55,7 @@ ends the hold, your form becomes available and keeps its current settings.
 
 The queue holds up to 100 records, including completed results. It persists in
 `data/backtest-queue.sqlite` until you delete individual records. It is separate
-from temporary manual runs and the 20-slot saved library. Server restart resumes
+from temporary manual runs and the 100-slot saved library. Server restart resumes
 interrupted work with its recorded random dates; held edits stay held. Keep the
 server computer awake and its terminal open overnight.
 

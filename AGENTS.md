@@ -405,8 +405,12 @@ ignored. Real benchmark admission stays closed.
 preparation, cleanup and source deployment. `website/saved-backtests.js` saves the
 last completed result and its submitted settings, even when controls have pending
 edits. Opening a record restores stored stock rows, returns, labels and downloads
-without calculation. Cap the library at 20 records atomically across instances.
-Never evict an existing record automatically. Delete only the record selected by
+without calculation. Cap the library at 100 records atomically across instances.
+Records expose their existing UUID primary key. Rename updates only the name;
+preserve all result bytes, creation dates and identifiers. Performance sorting uses
+stored CAGR or mean trial CAGR, with missing values last. Queue and library lists
+have keyboard-accessible bounded scrolling. Never evict an existing record
+automatically. Delete only the record selected by
 the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
 `node tests/check-saved-backtests.cjs` and the existing range/control checks.
 
@@ -431,7 +435,7 @@ Ignore list responses that precede a newer acknowledged mutation. Check
 
 `website/backtest_queue.py` owns durable fixed/random test records in
 `data/backtest-queue.sqlite`. Preserve this file during rebuilds, cleanup and
-deployment. It is separate from financial caches and the 20-slot saved library.
+deployment. It is separate from financial caches and the 100-slot saved library.
 Keep up to 100 visible records without automatic eviction. Only explicit
 deletion removes a selected test and its result. Retain a small deleted-ID
 receipt so retrying an unacknowledged submission cannot recreate it.

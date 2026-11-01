@@ -4,6 +4,6 @@
   <div class="queue-add"><label>Test name (optional)<input id="queue-name" type="text" maxlength="120" placeholder="For example: Monthly top 25, 50 random trials"></label><button id="queue-add-next" type="button" class="primary" disabled>Add to queue</button></div>
   <p id="queue-edit-note" class="hint" hidden>The selected test is held while you edit the strategy controls above. Auto-run is suspended during this edit. Save changes to return it to the queue, or cancel to keep its previous settings.</p>
   <p id="queue-status" class="hint" role="status" aria-live="polite">Connecting to the server queue…</p>
-  <p class="hint">Pause prevents the next test from starting. The active test can finish. Completed results stay here until you delete them, separately from the 20-slot saved library. An interrupted test retries with the same random date set after server restart. Held edits stay held.</p>
-  <ol id="queue-list"><li>No queued tests yet.</li></ol>
+  <p class="hint">Pause prevents the next test from starting. The active test can finish. Completed results stay here until you delete them, separately from the 100-slot saved library. An interrupted test retries with the same random date set after server restart. Held edits stay held.</p>
+  <ol id="queue-list" tabindex="0" aria-label="Backtest queue list"><li>No queued tests yet.</li></ol>
 </section>

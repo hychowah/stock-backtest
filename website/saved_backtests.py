@@ -12,7 +12,7 @@ import backtest_control
 import durable_evidence
 
 DATABASE = Path(__file__).resolve().parents[1]/'data'/'saved-backtests.sqlite'
-LIMIT = 20
+LIMIT = 100
 MAX_BYTES = 512*1024*1024
 SCHEMA = '''CREATE TABLE IF NOT EXISTS records (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -115,7 +115,7 @@ class Store:
             with db:
                 db.execute('BEGIN IMMEDIATE')
                 if db.execute('SELECT COUNT(*) FROM records').fetchone()[0]>=LIMIT:
-                    raise Full('All 20 saved slots are used. Delete a saved backtest before saving another.')
+                    raise Full(f'All {LIMIT} saved slots are used. Delete a saved backtest before saving another.')
                 db.execute('INSERT INTO records VALUES(?,?,?,?,?)',
                            (record['id'],record['name'],record['created_at'],json.dumps(info,allow_nan=False),compressed))
             return record
@@ -132,7 +132,7 @@ class Store:
             with db:
                 db.execute('BEGIN IMMEDIATE')
                 if db.execute('SELECT COUNT(*) FROM records').fetchone()[0]>=LIMIT:
-                    raise Full('All 20 saved slots are used. Delete a saved backtest before saving another.')
+                    raise Full(f'All {LIMIT} saved slots are used. Delete a saved backtest before saving another.')
                 with durable_evidence.publication(db,record['id'],metadata,reader,budget=self.evidence_budget) as packed:
                     db.execute('INSERT INTO records VALUES(?,?,?,?,?)',
                         (record['id'],record['name'],record['created_at'],json.dumps(info,allow_nan=False),packed))
@@ -174,6 +174,21 @@ class Store:
             except (ValueError,TypeError,zlib.error) as error:
                 raise ValueError('This saved backtest cannot be read. Its stored record was kept.') from error
             return dict(**self.metadata(row),snapshot=snapshot)
+        finally:db.close()
+
+    def rename(self,identifier,name):
+        """Change the display name only; preserve identity and complete evidence."""
+        self.check_id(identifier)
+        if not isinstance(name,str) or not 1<=len(name.strip())<=120:
+            raise ValueError('Use a backtest name with 1–120 characters.')
+        if not self.path.exists():raise Missing('Saved backtest not found.')
+        db=self.connect()
+        try:
+            with db:
+                if db.execute('UPDATE records SET name=? WHERE id=?',(name.strip(),identifier)).rowcount!=1:
+                    raise Missing('Saved backtest not found.')
+                row=db.execute('SELECT id,name,created_at,info FROM records WHERE id=?',(identifier,)).fetchone()
+            return self.metadata(row)
         finally:db.close()
 
     def delete(self,identifier):

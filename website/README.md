@@ -251,14 +251,22 @@ The save keeps the settings used for the displayed result, all traded stocks,
 and all stock and period returns. Pending control edits are not included.
 A stopped or failed run does not replace the last completed result.
 
-Open **Open or delete saved backtests** to reopen a record. Opening restores its
+Open **Manage saved backtests** to reopen a record. Opening restores its
 settings, charts, stock tables and downloads without rerunning a calculation.
 Records stay available after browser and server restarts. They are stored on the
 server computer in `data/saved-backtests.sqlite`, outside the rebuildable caches.
 The library is shared by browser sessions using that runtime. A saved HTML file
 needs the local service to use the library.
 
-The maximum is 20 records. When full, delete a chosen record before saving
+Each row shows its stable UUID database ID. Select **Rename**, edit the name,
+then **Save name** or **Cancel**. Renaming changes no settings or stored results.
+Use **Sort saved backtests** for newest saved or performance in either direction.
+Performance means CAGR for January/fixed tests and mean trial CAGR for random
+tests. Different test types and date windows can differ. Missing values stay last.
+The queue and library lists scroll inside their sections. Their controls remain
+outside the scrolling list. Keyboard users can focus each list and scroll it.
+
+The maximum is 100 records. When full, delete a chosen record before saving
 another. Deletion asks for confirmation and removes only that record. It does
 not remove the result currently displayed in the page.
 

@@ -355,6 +355,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self.reply(200,dict(limit=saved_backtests.LIMIT,records=SAVED_BACKTESTS.list()) if collection else SAVED_BACKTESTS.get(identifier))
             elif self.command=='DELETE' and not collection:
                 SAVED_BACKTESTS.delete(identifier);self.reply(200,dict(deleted=True,id=identifier))
+            elif self.command=='POST' and not collection:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=4096:raise ValueError('Expected a backtest name with 1–120 characters.')
+                request=json.loads(self.rfile.read(length))
+                if not isinstance(request,dict):raise ValueError('Expected a backtest name.')
+                self.reply(200,SAVED_BACKTESTS.rename(identifier,request.get('name')))
             elif self.command=='POST' and collection:
                 length=int(self.headers.get('Content-Length','0'))
                 if length>saved_backtests.MAX_BYTES:
