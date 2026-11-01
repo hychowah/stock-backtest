@@ -216,8 +216,8 @@ lock. Retirement can then reclaim its abandoned lease.
 
 Current source can delegate an immutable generation to a trusted worker. This
 capability does not start processes or change application routing. Original
-remains the default. CB-19C must supply worker containment, parent monitoring
-and shutdown. CB-19A does not guarantee that an arbitrary worker stops when
+remains the default. CB-19C supplies worker containment, parent monitoring
+and shutdown through the explicit pool described below. CB-19A alone does not guarantee that an arbitrary worker stops when
 its parent dies.
 
 The coordinator keeps source and financial ownership and calls
@@ -458,9 +458,13 @@ code. The old tool modules remain compatibility imports. Complete eligible
 books still precede the existing SQL selector. No selected-only return path or
 ordinary `book_batch` workers run inside the runtime. `numerical_matrix.py`
 prewarms the accepted writable contiguous float64 signature without fast math
-or a disk compiler cache. Numba alone supplies parallel work. The default is
-`min(4, CPU count)` native threads. Serial qualification uses one thread.
-There is no process pool or trial parallel layer.
+or a disk compiler cache. The current random adapter still runs trials in order.
+CB-19C adds an explicit persistent trial pool. CB-19D owns application dispatch.
+`numerical_execution.py` resolves threads from effective observed CPUs and
+internal settings. Four threads remain an initial comparison default. They are
+not a hardware ceiling. A selected larger layout needs no source edit. Numba's
+initialization environment must permit the selected count before native imports.
+An already initialized smaller team rejects a larger request without truncation.
 
 Reuse has distinct accounting. Defaults are:
 
@@ -633,6 +637,96 @@ Streams and immutable-byte lifetime belong to the caller. No path is accepted.
 An artifact is calculated evidence. It is not a committed checkpoint, completion
 event, application result or independently authenticated worker. CB-19C owns
 worker readiness, task-owned scratch, containment and total resource admission.
-CB-19D owns concurrent commitment and presentation. This slice creates no pool
+CB-19D owns concurrent commitment and presentation. CB-19B creates no pool
 or application route. Transitive calculation-source identity includes the new
 module and codec. Old checkpoint rows are preserved with their original bindings.
+
+## Persistent trial workers (CB-19C)
+
+Current source provides an explicit pool. The existing random adapter does not
+use it yet. Original stays the application default. CB-19D owns random dispatch,
+checkpoint recovery/publication, committed progress and recorded-order output.
+
+`Session.pool()` creates its pool lazily. It retains the coordinator's existing
+provider and private SQL workspace. The session closes workers before checkpoints,
+portfolio, provider and input mappings. Financial and source ownership remain
+with the existing runtime. Its Windows Job or POSIX process session contains
+ordinary worker descendants. The pool creates no separate ownership domain.
+
+`numerical_execution.ExecutionPolicy` owns internal settings. Its stable identity
+records configured worker capacity, threads per worker, numerical-lane budget,
+live-provider count, divided provider limits, task slots and artifact limits.
+`TrialPool.execution_identity` adds the selected backend and compiler signature.
+These fields are available before workers start. D can bind checkpoints, discover
+missing trials, then start only the needed workers. Actual starts, free RAM,
+timestamps, lifecycle allowances and memory-admission samples are diagnostics.
+They do not change otherwise identical checkpoint identity. Fewer missing trials
+do not redistribute spare numerical threads.
+
+The initial default is one worker and up to four numerical threads, bounded by
+observed effective CPU entitlement. Four is an initial comparison point, not a
+ceiling. Explicit internal settings can select larger layouts. Validate
+`workers * threads_per_worker <= numerical_lane_budget`. Effective observations
+include affinity, applicable cgroup CPU quota or current native Job CPU rate,
+memory/commit availability and relevant constraints. Unknown restrictions stay
+unknown. CPU entitlement is a throughput observation, not a ban on thread creation.
+
+Managed totals cover every declared provider, including the retained coordinator.
+By default, resolve each complete-book/matrix check to the existing 64 MiB
+per-provider allowance and each matrix cache to 16 MiB per provider. Record the
+aggregate before division. The complete-book and matrix checks are separate
+conservative estimates; their accounting is not a disjoint physical-memory sum.
+Explicit totals can change these allowances. Legacy top-level Session workspace
+and cache options keep their per-provider units; the internal `execution` section
+uses aggregate units. A tiny configured total can still reject a complete book.
+Nothing truncates or silently replaces it.
+
+Start the first worker as a cold-cost probe. Readiness reports attachment and
+initialization times, compiler identity, thread count, private-memory samples,
+mapped/provider/SQL instance tokens and managed high-water counters. Check the
+sampled cost of additional workers against observed available memory, commit or
+container headroom and any explicit internal experiment allowance. This admission
+estimate is not a future RSS guarantee. Compiler memory, Python objects and shared
+mapped pages remain separate. Summed working sets do not prove unique physical
+memory. CB-19F selects the final measured operating layout.
+
+The fixed stdlib-only worker bootstrap starts an actual parent-lifetime observer
+before application imports. POSIX uses an inherited pipe. Windows uses a duplicated
+synchronization handle for the actual parent process. It then owns source, disables
+credential access, verifies source identity, opens A's delegated generation and
+constructs its private Numba provider and portfolio. Readiness must match the
+expected generation, source, backend, compiler and numerical threads. Native stdout
+and stderr go to the null device; a separate descriptor carries bounded JSON.
+The worker acquires no financial lock and opens no checkpoint, queue or library.
+
+Use the pool through one active batch:
+
+```python
+with session.pool().batch(recorded_specifications) as batch:
+    for completion in batch.completed():
+        # D owns checkpoint publication through completion.artifact.view.
+        completion.release()
+```
+
+The pool returns validated artifacts in observed completion order. Each submitted
+or completed-but-unreleased trial reserves one fixed pool-owned slot and its full
+maximum encoded-byte allowance. Default slots equal declared worker capacity;
+default evidence allows 64 MiB per slot. These are program budgets, not disk quotas.
+Filesystem free space is sampled before admission. Writes still enforce the
+artifact's byte bound. Worker messages cannot choose artifact paths. Release closes
+the read stream and removes task-owned files before freeing its reservation.
+If every slot is held by unreleased completions, requesting more work fails
+explicitly. Context exit releases remaining completed artifacts. Abandoning a
+running batch or an observer failure poisons and closes the pool. No task is retried
+silently and no backend fallback occurs.
+
+Cancellation stops admission and reaches delegated attachment, initialization and
+trial checkpoints. Parent death requests the same stop. A configurable finite
+orphan/close allowance exists for ownership cleanup. The existing 120-second cold
+startup and 30-second cleanup defaults are lifecycle allowances; C removes their
+former arbitrary maximum values. There is no calculation-duration watchdog.
+Stuck owned workers can be terminated inside the runtime's existing containment.
+Close verifies child exit, EOF, reader termination, stream closure and native
+handle release before removing reservations. Unconfirmed cleanup retains a strong
+owner and raises the existing retryable `ClosureError`. Cleanup success is required
+before cancellation is a completed outcome.

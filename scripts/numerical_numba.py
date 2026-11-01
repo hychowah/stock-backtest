@@ -3,9 +3,10 @@ from datetime import date
 import os
 import sys
 import time
+from numerical_execution import effective_lanes, observe_resources, numba_threads
 
 if 'numba' not in sys.modules:
-    os.environ.setdefault('NUMBA_NUM_THREADS','4')
+    os.environ.setdefault('NUMBA_NUM_THREADS',str(effective_lanes(observe_resources())))
 import numba
 import numpy as np
 from numba import njit, prange
@@ -31,7 +32,7 @@ class NumbaExecutor(PythonExecutor):
     def _initialize(self, inputs):
         self.temporal = TemporalEvaluator(inputs)
         began = time.perf_counter()
-        numba.set_num_threads(min(int(self.limits.get('threads',4)),4,numba.config.NUMBA_NUM_THREADS))
+        numba.set_num_threads(numba_threads(self.limits.get('threads'),numba.config.NUMBA_NUM_THREADS))
         width = len(self.policy.output_names)
         decisions = self.policy.decisions if self.candidate_assembly == 'compiled' else None
         self.compiler = compiler_identity(inputs,int(numba.get_num_threads()),decisions=decisions)

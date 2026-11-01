@@ -18,6 +18,7 @@ import trial_checkpoints
 import result_evidence
 from process_owner import process_metrics
 from collections import OrderedDict
+from numerical_execution import ExecutionPolicy
 
 
 from calendar_requests import validate_submitted as _validate_submitted
@@ -27,6 +28,18 @@ class Session:
     def __init__(self, configuration):
         self.configuration = configuration
         self.inputs = self.provider = self.portfolio = self.checkpoints = None
+        self.trial_pool = None
+        execution = deepcopy(configuration.get('execution', {}))
+        execution.setdefault('threads_per_worker', configuration['threads'])
+        for key in ('workspace_bytes','matrix_cache_bytes','chunk_rows'):
+            if key in configuration:
+                # Legacy Session options describe one provider. The new
+                # internal execution section declares aggregate allowances.
+                providers = execution.get('workers',1)+1
+                value = configuration[key] if key == 'chunk_rows' else configuration[key]*providers
+                execution.setdefault(key, value)
+        execution.setdefault('close_seconds', configuration.get('close_seconds',30.))
+        self.execution_policy = ExecutionPolicy(execution)
         self.loaded_source = numerical_random.source_identity()
         self.results = OrderedDict()
         self.result_bytes = configuration.get('result_cache_bytes',16*1024**2)
@@ -50,6 +63,9 @@ class Session:
 
     def _close_attachment(self):
         # Borrowers must drop their views before mappings and generation lease.
+        if self.trial_pool is not None:
+            self.trial_pool.close()
+            self.trial_pool = None
         for name in ('portfolio','provider','inputs'):
             value = getattr(self,name)
             if value is not None:
@@ -70,15 +86,22 @@ class Session:
             raise ValueError('Numerical generation changed. Close this runtime and start a new process.')
         if self.inputs is None:
             self.inputs = self.store.open_current()
-            self.provider = NumbaExecutor(self.inputs, limits=dict(
-                threads=self.configuration['threads'],request_plan=True,candidate_assembly='source',
-                matrix_cache_bytes=self.configuration.get('matrix_cache_bytes',16*1024**2),
-                workspace_bytes=self.configuration.get('workspace_bytes',64*1024**2),
-                chunk_rows=self.configuration.get('chunk_rows',1024)))
+            self.provider = NumbaExecutor(self.inputs, limits=self.execution_policy.provider_limits)
             self.portfolio = NumericalPortfolio(self.inputs,self.provider,result_workspace_bytes=self.result_workspace_bytes)
             self.stats['attached_generations'] = 1
         self.inputs.validate()
         backtest_control.checkpoint()
+
+    def pool(self):
+        """Lazily own trial workers; random orchestration remains with CB-19D."""
+        self.validate()
+        if self.trial_pool is None:
+            from numerical_trial_pool import TrialPool
+            self.trial_pool = TrialPool(source_root=self.configuration['source_root'],
+                scratch=self.configuration['scratch']+'/trial-pool',
+                reference=self.inputs.worker_reference(), source_identity=self.loaded_source,
+                compiler_identity=self.provider.compiler, policy=self.execution_policy)
+        return self.trial_pool
 
     def plan(self, options):
         # The private SQL workspace contains immutable sessions. Use the ordinary
@@ -175,10 +198,14 @@ class Session:
         return dict(**self.stats,**process_metrics(),generation=self.inputs.signature,
             compiler_identity=deepcopy(self.provider.compiler),
             matrix=deepcopy(self.provider._calculate.stats),
-            provider=deepcopy(self.provider.stats),checkpoints=self.checkpoints.measurements())
+            provider=deepcopy(self.provider.stats),checkpoints=self.checkpoints.measurements(),
+            execution_policy=self.execution_policy.diagnostics(),
+            trial_pool=self.trial_pool.measurements() if self.trial_pool is not None else None)
 
     def close(self):
         if self.closed: return
+        if self.trial_pool is not None:
+            self.trial_pool.close(); self.trial_pool = None
         if self.checkpoints is not None:
             self.checkpoints.close(); self.checkpoints = None
         self._close_attachment()

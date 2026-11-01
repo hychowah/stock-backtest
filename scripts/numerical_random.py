@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOTS = ('scripts/numerical_random.py','scripts/numerical_portfolio.py',
                 'scripts/numerical_numba.py','scripts/numerical_runtime.py',
                 'scripts/numerical_runtime_child.py','scripts/numerical_session.py',
+                'scripts/numerical_execution.py','scripts/numerical_trial_pool.py',
+                'scripts/numerical_trial_worker.py',
                 'scripts/trial_checkpoints.py','scripts/robustness.py')
 COMPATIBILITY_ROOTS = ('tools/numerical_trials.py','tools/numerical_portfolios.py',
                 'tools/bench_candidates_numba.py','tools/portfolio_workspace.py')

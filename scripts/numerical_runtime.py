@@ -7,6 +7,7 @@ Never dispatch while the calling thread already owns the financial coordinator.
 from contextlib import suppress
 from copy import deepcopy
 import json
+import math
 import os
 from pathlib import Path
 from queue import Full, Queue
@@ -14,6 +15,7 @@ from threading import Event, Lock, RLock
 import sys
 import time
 import numerical_transfer
+from numerical_execution import ExecutionPolicy
 
 from process_owner import OwnedProcess
 
@@ -112,11 +114,10 @@ class NumericalRuntime:
                  threads=None, python=None, preparation_status=False, session_factory='numerical_session:Session',
                  session_options=None, coordinator=None, start_seconds=120., close_seconds=30.):
         self.root, self.scratch = Path(source_root).absolute(), Path(scratch).absolute()
-        cap = min(4,os.cpu_count() or 1)
-        threads = cap if threads is None else threads
-        if type(threads) is not int or not 1 <= threads <= cap:
-            raise ValueError('Numerical threads must be between one and min(4, CPU count).')
-        if not 0 < start_seconds <= 300 or not 0 < close_seconds <= 30:
+        settings = {} if threads is None else dict(threads_per_worker=threads)
+        threads = ExecutionPolicy(settings).provider_limits['threads']
+        if any(type(value) not in (int,float) or not math.isfinite(value) or value <= 0
+               for value in (start_seconds,close_seconds)):
             raise ValueError('Invalid numerical lifecycle timeout.')
         self.coordinator = coordinator
         self.configuration = dict(source_root=str(self.root),scratch=str(self.scratch),threads=threads,
