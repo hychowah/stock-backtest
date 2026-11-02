@@ -11,6 +11,10 @@ integration qualification. This is a documentation-only task on
 advance, engine-worktree edit, deployment, restart, download or live data change.
 At implementation resumption, record the phase's narrow financial, preparation,
 provider, application and numerical ownership before editing affected contracts.
+Follow the continuation's canonical
+[phase session workflow](plans/custom-variables/parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
+for each resumed phase. Its saved Phase 8 prompt needs an explicit user invocation;
+the workflow adds no implementation or cross-worktree authorization here.
 Recheck branch state and the automatic main supervisor before any later merge.
 
 The website can continue to develop while a separate worktree finishes the new

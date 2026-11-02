@@ -46,6 +46,13 @@ default change is authorized.
 
 The current next step is Phase 8 in the
 [parameter expansion and integration plan](parameter-expansion-plan-2026-11-03.md).
+Its [phase session workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
+is the canonical procedure for resumed implementation: one named phase goal,
+a few justified slices, independent planning, separate implementation and
+smart-commit audit, then orchestrator review, verification and commit. The
+[next-session prompt](parameter-expansion-plan-2026-11-03.md#next-session-entry)
+resumes Phase 8 only when the user issues it. Evidence may change implementation
+details in this plan while core requirements and completion evidence stay intact.
 The 3 November planning instruction does not extend the earlier four-parameter
 implementation authorization. Before protected implementation, record the resumed
 phase and its narrow ownership in this feature worktree. Preserve the completed
