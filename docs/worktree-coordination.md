@@ -505,3 +505,9 @@ Original remains default. Phases 6–7 stay held.
 Use private synthetic WSL and Windows fixtures only. No merge, push, deployment,
 server restart, market-data request or live-runtime/cache/durable-store mutation.
 Native-cache coverage remains unknown. Main and engine worktrees stay untouched.
+
+Phase 5 Slice 2 starts from audited `5892a55`. Its narrow library-owner change
+captures a complete checked program and presentation in one existing read
+transaction. It adds no durable schema, application request/result, financial,
+source/cache ownership or attachment-lifetime change. Formula integration with
+jobs, queue, StrategyDraft and saved results remains Phase 6 work on hold.

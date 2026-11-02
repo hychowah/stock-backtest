@@ -10,6 +10,7 @@ receipts; every immutable authored revision is retained for exact references.
 An absent, unreadable or unsupported store is never rebuilt from financial data.
 """
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -25,6 +26,7 @@ DATABASE = ROOT / 'data' / 'variable-library.sqlite'
 SCHEMA_VERSION = 1
 APPLICATION_ID = 0x43564C31
 WAIT_SECONDS = 2
+CAPTURE_BYTES = 3 * 1024 * 1024
 _MAX_VERSION = 2 ** 63 - 1
 _ID = re.compile(r'var:[0-9a-f]{32}\Z')
 _REVISION = re.compile(r'sha256:[0-9a-f]{64}\Z')
@@ -96,6 +98,125 @@ def _storage_error(error):
                 sqlite3.SQLITE_ERROR, sqlite3.SQLITE_CONSTRAINT):
         return InvalidStore('The variable library is damaged or unsupported. Its data was kept.')
     return Unavailable('The variable library is unavailable. Retry the operation.')
+
+
+def _capture_error(code, path, message):
+    raise definitions.FormulaError(code, path, message)
+
+
+def _capture_shape(value, fields, path):
+    if type(value) is not dict or set(value) != set(fields):
+        _capture_error('INVALID_SHAPE', path, 'Fields do not match the variable capture shape.')
+
+
+def _capture_bound(value):
+    if type(value) is not int or not 1 <= value <= CAPTURE_BYTES:
+        _capture_error('CAPTURE_LIMIT', '/limits/bytes', 'Capture byte limit must lower the fixed ceiling.')
+    return value
+
+
+def _capture_encode(value, bound, checkpoint):
+    """Bound complete canonical ASCII content while encoding; never truncate."""
+    parts, size = [], 0
+    encoder = json.JSONEncoder(sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False)
+    for part in encoder.iterencode(value):
+        checkpoint()
+        size += len(part)
+        if size > bound:
+            _capture_error('CAPTURE_LIMIT', '', 'Complete variable capture exceeds its byte bound.')
+        parts.append(part)
+    checkpoint()
+    return ''.join(parts)
+
+
+@dataclass(frozen=True)
+class VariableCapture:
+    """Detached program and presentation bytes, restored without a library.
+
+    A library name describes its capture-time metadata, including deleted
+    archives. It does not name an original revision authoring event. Favourite
+    state is not calculation presentation. Use require_capture before consuming
+    restored bytes; the program accessor performs that check automatically.
+    """
+    document: str
+
+    def to_dict(self):
+        return json.loads(self.document)
+
+    def to_json(self):
+        return self.document
+
+    @property
+    def program(self):
+        checked = require_capture(self)
+        return definitions.FormulaProgram(definitions.canonical(checked['program']))
+
+
+def require_capture(capture, *, checkpoint=backtest_control.checkpoint):
+    """Check complete detached capture bytes, including the embedded program.
+
+    The program's existing restore boundary owns all language, hash, unit and
+    graph checks. Provenance describes the captured source; it grants no claim
+    about current library state. No storage or financial operation occurs here.
+    """
+    checkpoint()
+    if type(capture) is not VariableCapture or type(capture.document) is not str:
+        _capture_error('INVALID_SHAPE', '', 'An immutable variable capture is required.')
+    if len(capture.document) > CAPTURE_BYTES:
+        _capture_error('CAPTURE_LIMIT', '', 'Serialized variable capture exceeds its byte bound.')
+    try:
+        value = capture.to_dict()
+    except (TypeError, ValueError, RecursionError):
+        _capture_error('INVALID_SHAPE', '', 'Variable capture is malformed.')
+    _capture_shape(value, ('format', 'version', 'program', 'presentation', 'limits'), '')
+    if value['format'] != 'variable-capture' or type(value['version']) is not int or value['version'] != 1:
+        _capture_error('UNKNOWN_VERSION', '', 'Unsupported variable capture version.')
+    _capture_shape(value['limits'], ('bytes',), '/limits')
+    bound = _capture_bound(value['limits']['bytes'])
+    if len(capture.document) > bound:
+        _capture_error('CAPTURE_LIMIT', '', 'Serialized variable capture exceeds its recorded byte bound.')
+    checkpoint()
+    try:
+        program = definitions.FormulaProgram(definitions.canonical(value['program']))
+    except (TypeError, ValueError, RecursionError):
+        _capture_error('INVALID_SHAPE', '/program', 'Captured formula program is malformed.')
+    checked = definitions.require_program(program)
+    checkpoint()
+    entries = checked['bundle']['definitions']
+    presentation = value['presentation']
+    if type(presentation) is not list or len(presentation) != len(entries):
+        _capture_error('INVALID_SHAPE', '/presentation', 'Every captured definition needs one presentation entry.')
+    for index, (item, entry) in enumerate(zip(presentation, entries)):
+        checkpoint()
+        path = '/presentation/' + str(index)
+        _capture_shape(item, ('variable_id', 'revision', 'name', 'provenance'), path)
+        if any(item[key] != entry[key] for key in ('variable_id', 'revision')):
+            _capture_error('INVALID_SHAPE', path, 'Presentation order must match exact program identities.')
+        provenance = item['provenance']
+        if type(provenance) is not dict:
+            _capture_error('INVALID_SHAPE', path + '/provenance', 'Captured provenance is required.')
+        if provenance.get('source') == 'submitted':
+            _capture_shape(provenance, ('source',), path + '/provenance')
+        elif provenance.get('source') == 'library':
+            _capture_shape(provenance, ('source', 'version', 'deleted'), path + '/provenance')
+            if (not _ID.fullmatch(item['variable_id']) or type(provenance['version']) is not int or
+                    not 1 <= provenance['version'] <= _MAX_VERSION or type(provenance['deleted']) is not bool):
+                _capture_error('INVALID_SHAPE', path + '/provenance', 'Library provenance is invalid.')
+        else:
+            _capture_error('INVALID_SHAPE', path + '/provenance', 'Unknown captured provenance.')
+        # A submission-local fallback preserves the complete language ID, whose
+        # bound is 128 characters. User-supplied names retain the 120 limit.
+        if not (provenance['source'] == 'submitted' and item['name'] == item['variable_id']):
+            try:
+                if _name(item['name']) != item['name']:
+                    raise ValueError()
+            except (TypeError, ValueError):
+                _capture_error('INVALID_SHAPE', path + '/name', 'Captured names must contain 1–120 trimmed characters.')
+    document = _capture_encode(value, bound, checkpoint)
+    if document != capture.document:
+        _capture_error('INVALID_SHAPE', '', 'Variable capture must use its canonical checked representation.')
+    checkpoint()
+    return value
 
 
 class Store:
@@ -313,3 +434,72 @@ class Store:
         with self._transaction(checkpoint=checkpoint) as db:
             return definitions.resolve(roots, lambda *identity: self._lookup(db, *identity),
                                        submitted=submitted, limits=limits, checkpoint=checkpoint)
+
+    def capture(self, roots, *, submitted=None, labels=None, limits=None,
+                checkpoint=backtest_control.checkpoint):
+        """Capture exact programs and labels atomically from one read snapshot.
+
+        All definitions use the existing resolver. labels is an optional list
+        of {variable_id, revision, name} for submitted identities only; omitted
+        labels use the submitted ID. Archive identities use the snapshot's name,
+        entry version and deletion status, even when the requested revision is
+        old. Favourites are omitted. Submitted content is never persisted.
+
+        limits accepts the existing lowerable definition keys plus
+        capture_bytes (default 3 MiB). The returned canonical value retains no
+        database handle. Later edits, deletion or file removal cannot affect it.
+        Reads require an existing recognized store, including local-only calls.
+        """
+        if limits is not None and type(limits) is not dict:
+            _capture_error('INVALID_SHAPE', '/limits', 'Capture limits must be an object.')
+        formula_limits = dict(limits or {})
+        bound = _capture_bound(formula_limits.pop('capture_bytes', CAPTURE_BYTES))
+        with self._transaction(checkpoint=checkpoint) as db:
+            archived = set()
+            def lookup(variable_id, revision):
+                archived.add((variable_id, revision))
+                return self._lookup(db, variable_id, revision)
+            program = definitions.resolve(roots, lookup, submitted=submitted,
+                                          limits=formula_limits, checkpoint=checkpoint)
+            checked = definitions.require_program(program)
+            entries = checked['bundle']['definitions']
+            local = {(entry['variable_id'], entry['revision']) for entry in entries} - archived
+            labels = [] if labels is None else labels
+            if type(labels) is not list or len(labels) > len(local):
+                _capture_error('INVALID_SHAPE', '/labels', 'Labels must name unique submitted definitions only.')
+            names = {}
+            for index, label in enumerate(labels):
+                checkpoint()
+                path = '/labels/' + str(index)
+                _capture_shape(label, ('variable_id', 'revision', 'name'), path)
+                if type(label['variable_id']) is not str or type(label['revision']) is not str:
+                    _capture_error('INVALID_SHAPE', path, 'A submitted exact identity is required.')
+                identity = label['variable_id'], label['revision']
+                if identity not in local or identity in names:
+                    _capture_error('INVALID_SHAPE', path, 'Labels must name unique submitted definitions only.')
+                try:
+                    names[identity] = _name(label['name'])
+                except (TypeError, ValueError):
+                    _capture_error('INVALID_SHAPE', path + '/name', 'Use a submitted name with 1–120 characters.')
+            presentation = []
+            for entry in entries:
+                checkpoint()
+                identity = entry['variable_id'], entry['revision']
+                if identity in archived:
+                    row = db.execute('SELECT * FROM entries WHERE variable_id=?', (identity[0],)).fetchone()
+                    if row is None:
+                        raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
+                    metadata = self._metadata(row)
+                    name = metadata['name']
+                    provenance = dict(source='library', version=metadata['version'], deleted=metadata['deleted'])
+                else:
+                    name = names.get(identity, identity[0])
+                    provenance = dict(source='submitted')
+                presentation.append(dict(variable_id=identity[0], revision=identity[1],
+                                         name=name, provenance=provenance))
+            value = dict(format='variable-capture', version=1, program=checked,
+                         presentation=presentation, limits=dict(bytes=bound))
+            captured = VariableCapture(_capture_encode(value, bound, checkpoint))
+            require_capture(captured, checkpoint=checkpoint)
+            checkpoint()
+            return captured

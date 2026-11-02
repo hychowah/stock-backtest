@@ -36,7 +36,9 @@ It adds no ordinary strategy/UI or saved-result format. Phase 5 resumes from
 `f893bd4` under the user’s 2 November authorization. Its
 [execution plan](docs/plans/custom-variables/phases/phase-05/execution-plan-2026-11-02.md)
 owns the separate durable variable library and narrow definition-owner resolution.
-Mutable entry versions are separate from immutable formula revisions. Phases 6–7
+Mutable entry versions are separate from immutable formula revisions. Atomic
+captures retain complete programs and presentation from one read snapshot.
+Their checked restore uses no later library state. Phases 6–7
 remain held. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains

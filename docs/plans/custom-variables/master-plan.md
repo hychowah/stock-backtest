@@ -6,7 +6,7 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 5 authorized and in progress on `feature/custom-variables`.**
+Status: **Phase 5 complete in source on `feature/custom-variables`; both slices independently audited.**
 Phases 1–4 are complete in source. The user’s 2 November instruction resumes
 durable variable storage and exact revision resolution from `f893bd4`. The
 [current execution plan](phases/phase-05/execution-plan-2026-11-02.md) uses two
@@ -20,6 +20,10 @@ The latest 2 November instruction authorizes Phase 5 persistence and resolution
 on this feature branch. It supersedes the library hold below. The library reuses
 the completed definition owner without changing financial/provider/selection,
 ordinary application requests, queues, saved results or immutable evidence.
+Slice 1 is audited and committed as `5892a55`. Slice 2 adds atomic detached
+program/presentation capture. Final verification and independent audits are
+recorded in the [current record](phases/phase-05/README.md). These callable values
+allocate no application artifact version. Phases 6–7 remain held.
 The [Phase 4 handoff](phases/phase-04/handoffs/phase-05.md) remains the entry
 record; its Phase 5 hold is superseded only by this authorization. The editor,
 strategy integration and numerical formula execution stay held.
@@ -271,7 +275,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
 | **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
 | **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
-| **5. Durable variable library** | **Authorized; in progress.** Immutable revisions, independent names/favourites and detached resolution | [Execution plan](phases/phase-05/execution-plan-2026-11-02.md). Use private persistence and native fixtures. Existing requests, queue and saved results stay unchanged. |
+| **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
 | **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
 | **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
 

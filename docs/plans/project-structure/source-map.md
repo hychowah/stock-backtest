@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 5 Slice 1. This map describes source after the structure refactor.
+Updated for Phase 5 Slice 2. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -80,6 +80,10 @@ in `data/variable-library.sqlite`. It stores authored immutable revisions and
 independent entry metadata versions. Its exact-reference resolver delegates to
 `definitions.resolve()`. The definition owner keeps all language/graph/identity
 policy. Old and deleted revisions remain retained. Complete detached programs
-need no later store state. The next slice adds checked presentation capture.
+need no later store state. `Store.capture()` also captures presentation in the
+same read snapshot. `VariableCapture` and `require_capture()` own complete
+detached capture/restore. The checked program accessor uses the existing
+definition restore boundary. Captured presentation does not affect formula
+or bundle identity. No durable schema or application result format changes.
 Ordinary strategy/UI integration and numerical formulas remain held work.
 See the [Phase 5 execution plan](../custom-variables/phases/phase-05/execution-plan-2026-11-02.md).

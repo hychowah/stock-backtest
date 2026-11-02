@@ -102,10 +102,11 @@ decisions that need the user's judgment.
 Custom-variable Phases 1–4 are complete in source on `feature/custom-variables`.
 They provide the definition contract, trusted annual evidence, four-parameter
 point-in-time provider, reference evaluator and scalar selection.
-[Phase 5](docs/plans/custom-variables/phases/phase-05/README.md) is in progress
-under the user's 2 November 2026 authorization. Its first slice adds a separate
-durable variable library and exact revision resolution. Atomic detached capture
-remains the second slice. Phases 6–7 remain held. The website continues using its
+[Phase 5](docs/plans/custom-variables/phases/phase-05/README.md) adds a separate
+durable variable library, exact revision resolution and atomic detached capture.
+Both source slices are complete under the user's 2 November authorization.
+Their independent audits and final WSL/private native checks are recorded in
+the phase record. Phases 6–7 remain held. The website continues using its
 existing built-ins.
 
 

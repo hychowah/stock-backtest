@@ -121,3 +121,9 @@ SQLite commit publishes a change. Restart retains committed data. Unsupported or
 damaged files are reported and preserved, never replaced with a financial-cache
 rebuild. Construction and imports do not create the file. Private test stores
 cover persistence; the installed store is not a test fixture.
+
+Atomic capture reads complete exact programs and presentation from one snapshot.
+The returned `VariableCapture` needs no later database state. Its checked restore
+remains usable after entry deletion or removal of the file. Capturing local
+definitions does not save them. Capture adds no application result format or
+formula integration with the existing queue and saved-backtest library.

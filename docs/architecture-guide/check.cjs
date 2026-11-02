@@ -45,6 +45,7 @@ assert(html.includes('Both engines support <code>operating_yield_spread_3y</code
 
 assert(html.includes('backtest/application/evidence_views.py') && html.includes('backtest/application/result_exports.py') && html.includes('16 displays and 32 active requests') && html.includes('Changing the table page cannot change attribution.') && html.includes('Automatic calculation submission and queue execution remain eager.'), 'Explain acquired evidence readers, complete attribution, attachments and unchanged producers');
 assert(html.includes('id="variable-library"') && html.includes('data/variable-library.sqlite') && html.includes('expected entry version') && html.includes('All immutable revisions and its last metadata remain retained.') && html.includes('There is no dynamic latest reference.'), 'Explain durable variable identity, concurrency, deletion retention and exact resolution');
+assert(html.includes('aria-label="Atomic variable capture"') && html.includes('require_capture()') && html.includes('one database snapshot') && html.includes('3 MiB of encoded content') && html.includes('removal of the library file'), 'Explain atomic complete detached captures, bounds and deletion independence');
 
 
 class Element {
