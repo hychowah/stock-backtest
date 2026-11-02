@@ -12,7 +12,7 @@ const SavedBacktests=(()=>{
     if(snapshot.kind==='january')return 'January '+snapshot.settings.first+'–'+snapshot.settings.last;
     return (snapshot.kind==='random'?'Random dates':'Fixed dates')+' '+(snapshot.settings.calendar?.start??snapshot.settings.start)+' → '+(snapshot.settings.calendar?.end??snapshot.settings.end);
   }
-  function complete(snapshot){return snapshot && snapshot.kind!=='latest' && (snapshot.version===3 || snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
+  function complete(snapshot){return snapshot && snapshot.kind!=='latest' && ([3,4].includes(snapshot.version) || snapshot.kind!=='random' || snapshot.result.trial_results?.length===snapshot.result.completed);}
   function update(){
     const snapshot=current();
     node('save-backtest').disabled=busy||!available||isRunning()||!complete(snapshot)||records.length>=limit;
@@ -145,7 +145,7 @@ const SavedBacktests=(()=>{
     if(!complete(snapshot)||isRunning())return;
     const name=node('saved-name').value.trim()||defaultName(snapshot);
     // Serialize before awaiting: a new run or changed settings cannot change this save.
-    const body=JSON.stringify(snapshot.version===3?{name,reader:snapshot.evidence.id}:{name,snapshot});
+    const body=JSON.stringify([3,4].includes(snapshot.version)?{name,reader:snapshot.evidence.id}:{name,snapshot});
     await perform(async ticket=>{
       message('Saving complete backtest results…');
       const record=await request('',{method:'POST',headers:{'Content-Type':'application/json'},body});

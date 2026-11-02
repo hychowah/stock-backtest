@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 6 Slice 1. This map describes source after the structure refactor.
+Updated for Phase 6 Slice 2. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -91,7 +91,18 @@ It combines exact formula sources with captured stored-pair/filter descriptors,
 canonical thresholds and separate submission/calculation comparisons. Checked
 restore uses no current library or display catalog. Admission checks capability
 separately. `library.capture_submitted()` reuses the existing envelope policy
-without opening a durable file. No route, ordinary job/queue or result format
-changes in this slice. The shared editor and execution/evidence integration
-remain outstanding. Numerical formulas stay held in Phase 7. See the
+without opening a durable file. Slice 1 changed no ordinary route, job/queue or
+result format. Slice 2 adds the execution/evidence integration described below.
+The shared editor remains Slice 3. Numerical formulas stay held in Phase 7. See the
 [Phase 6 execution plan](../custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
+
+
+Phase 6 Slice 2 adds `backtest/inputs/sqlite_observations.py` for a borrowed
+SQLite-backed observation view, sharing `daily.prepared_report()` decoding and
+existing financial pool policy. `backtest/application/scalar_execution.py` owns
+complete prepared scopes, reference chunk planning and one global scalar select.
+`scalar_runs.py` uses existing Original schedule/batch/portfolio owners through
+a selected-book seam. `backtest/scalar_result_evidence.py` owns codec 2 on the
+existing bounded framing. Application artifact 4 dispatches explicitly through
+temporary/durable evidence, acquired readers, pages and complete exports. Stored
+artifact 1/2/3 and codec 1 retain their meanings. The shared editor is Slice 3.

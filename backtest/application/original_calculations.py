@@ -51,6 +51,10 @@ class Original(Control):
         waits cancellably through contention. Neither policy retries an engine
         error. Configuration is published before random work, under ownership.
         """
+        if 'strategy' in options:
+            from backtest.application import strategy_requests
+            strategy_requests.check_options(options)
+            raise ValueError('Captured scalar strategies require the bounded result reader.')
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')
         with self.lock:
             if self.closed.is_set():raise Busy('The server is stopping. Restart it before running a backtest.')
@@ -80,3 +84,89 @@ class Original(Control):
                 backtest_control.checkpoint()
             finally:db.close()
         return result
+
+    def preflight(self, options, *, planned=None):
+        from backtest.application import strategy_requests
+        strategy_requests.check_options(options)
+        if planned is not None:strategy_requests.validate_recorded(options,planned)
+        return 'original'
+
+    def ready_for(self, options, *, advisory=False):
+        self.preflight(options)
+        return self.ready()
+
+    def preview(self, capture, roots, *, admission='interactive'):
+        """Explicit bounded preview under the ordinary Original input lifetime."""
+        from backtest.application import scalar_execution, strategy_requests
+        from backtest.inputs import sqlite_observations
+        options={'strategy':capture}
+        strategy_requests.check_options(options)
+        plans=scalar_execution.plan_preview(strategy_requests.CapturedStrategy(
+            strategy_requests._encode(capture,strategy_requests.STRATEGY_BYTES)),roots)
+        with self._financial(admission,None):
+            if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
+            db=daily.connect()
+            try:
+                accepted=daily.fingerprint()
+                def fresh():
+                    self._checkpoint()
+                    if daily.fingerprint()!=accepted:raise ValueError('Scalar inputs changed during execution.')
+                with sqlite_observations.prepared_view(db,fresh,checkpoint=self._checkpoint) as view:
+                    value=scalar_execution.evaluate_preview(plans,roots,view,checkpoint=self._checkpoint)
+                    fresh()
+            finally:db.close()
+        return value
+
+    def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
+                       admission='interactive', max_bytes=256*1024**2, piece_bytes=1024*1024, record_bytes=8*1024*1024):
+        """Stream scalar codec 2; publish only after the ordinary financial owner closes."""
+        import hashlib
+        from backtest import scalar_result_evidence
+        from backtest.inputs import research, sqlite_observations
+        from backtest.application import strategy_requests, scalar_runs
+        checked=strategy_requests.check_options(options)
+        if checked is None:raise ValueError('Bounded Original execution requires a captured scalar strategy.')
+        if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')
+        if not 0<max_bytes<=256*1024**2:raise ValueError('Invalid scalar evidence byte ceiling.')
+        if mode not in ('latest','january','custom','random'):raise ValueError('Unsupported scalar mode.')
+        allowed={'strategy','engine'}|({'first','last'} if mode=='january' else set() if mode=='latest' else {'start','end','months','calendar','dates'} if mode=='custom' else {'start','end','months','calendar','trials','seed'})
+        if set(options)-allowed:raise ValueError('Unknown option for the scalar execution mode.')
+        if planned is not None:strategy_requests.validate_recorded({key:value for key,value in options.items() if key!='engine'},planned)
+        financial={key:value for key,value in options.items() if key!='engine'}
+        trials=0 if mode=='latest' else (planned['requested'] if planned is not None else options.get('trials',24)) if mode=='random' else 1
+        writer=None
+        with self._financial(admission,progress):
+            if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
+            db=daily.connect();source=None
+            try:
+                accepted=daily.fingerprint()
+                def fresh():
+                    self._checkpoint()
+                    if daily.fingerprint()!=accepted:raise ValueError('Scalar inputs changed during execution.')
+                if mode in ('latest','january'):source=research.connect()
+                with sqlite_observations.prepared_view(db,fresh,checkpoint=self._checkpoint) as view:
+                    metadata=dict(mode=mode,options=options,configuration=planned,input=view.identity,
+                        projection=view.projection,producer=dict(engine='original',label='Original'))
+                    def configured(value):
+                        metadata['configuration']=value
+                        if configuration:configuration(value)
+                    # Random plan must be known before the immutable header.
+                    if mode=='random' and planned is None:
+                        sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+                        planned=calendar_requests.plan(sessions,financial,checkpoint=self._checkpoint)
+                        metadata['configuration']=planned
+                    writer=scalar_result_evidence.Writer(destination,trials=trials,metadata=metadata,max_bytes=max_bytes,
+                        piece_bytes=piece_bytes,record_bytes=record_bytes,checkpoint=self._checkpoint)
+                    summary=scalar_runs.execute(db,source,mode,financial,writer,view,configured,planned=planned,
+                        progress=progress,checkpoint=self._checkpoint)
+                    view.validate();fresh()
+            finally:
+                if source is not None:source.close()
+                db.close()
+        # Sealing runs after financial handles and ownership have closed.
+        manifest=writer.finish(summary)
+        destination.flush();destination.seek(0)
+        digest=hashlib.sha256();size=0
+        for part in iter(lambda:destination.read(65536),b''):
+            self._checkpoint();digest.update(part);size+=len(part)
+        return dict(manifest=manifest,transfer=dict(bytes=size,sha256=digest.hexdigest()))

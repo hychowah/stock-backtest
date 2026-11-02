@@ -55,7 +55,8 @@ def distribution(values):
 
 def summarize(result, number, dates, *, period_counts=None):
     """Use the same arithmetic for collected trials and streamed period counts."""
-    requested=result['options'].get('rank_to',50)-result['options'].get('rank_from',1)+1
+    selection=result['options'].get('strategy',{}).get('selection',result['options'])
+    requested=selection.get('rank_to',50)-selection.get('rank_from',1)+1
     if period_counts is None:
         periods=result['periods']
         period_counts=(len(periods),sum(p['names']==0 for p in periods),sum(p['names']<requested for p in periods))

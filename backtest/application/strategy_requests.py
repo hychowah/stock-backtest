@@ -16,7 +16,7 @@ import json
 import math
 import re
 
-from backtest import selection
+from backtest import observations, selection
 from backtest.financial import metrics
 from backtest.runtime import backtest_control
 from backtest.variables import definitions, library
@@ -34,6 +34,21 @@ _OVERLAP = _SELECTION_FIELDS | set(_BOUND_DEFAULTS) | {
 
 def _fail(code, path, message):
     raise definitions.FormulaError(code, path, message)
+
+
+def failure_details(error):
+    """Detach ordered safe scalar diagnostics without changing legacy errors.
+
+    Admission responses and asynchronous status retain the same code/path/issues.
+    Ordinary exceptions keep their existing text-only error contract.
+    """
+    if isinstance(error, definitions.FormulaError):
+        issues = error.to_dict()['errors']
+    elif isinstance(error, observations.ObservationError):
+        issues = [dict(code=error.code, path=error.path, message=str(error))]
+    else:
+        return None
+    return dict(code=error.code, path=error.path, errors=issues)
 
 
 def _shape(value, required, optional=(), path=''):
@@ -340,6 +355,8 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         return None
     if options.get('engine', 'original') != 'original':
         _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Custom scalar strategies require Original. Experimental formula execution is not supported.')
+    if set(options)-{'strategy','engine','start','end','months','calendar','dates','trials','seed','first','last'}:
+        _fail('INVALID_STRATEGY','','Unknown custom calculation option.')
     if _OVERLAP.intersection(options):
         _fail('INVALID_STRATEGY', '', 'Use one captured strategy without duplicate selection settings.')
     captured = CapturedStrategy(_encode(options['strategy'], STRATEGY_BYTES, checkpoint))
@@ -391,3 +408,26 @@ def calculation_projection(capture):
 
 def calculation_equal(left, right):
     return definitions.canonical(calculation_projection(left)) == definitions.canonical(calculation_projection(right))
+
+
+def options_calculation_equal(left, right):
+    """Waiting-plan equality; keep complete submitted payload equality separate."""
+    a, b = dict(left), dict(right)
+    if 'strategy' in a or 'strategy' in b:
+        if 'strategy' not in a or 'strategy' not in b or not calculation_equal(
+                CapturedStrategy(_encode(a.pop('strategy'),STRATEGY_BYTES)),
+                CapturedStrategy(_encode(b.pop('strategy'),STRATEGY_BYTES))):return False
+    return {'engine':'original','selection_order':'filter_first',**a} == {'engine':'original','selection_order':'filter_first',**b}
+
+
+def validate_recorded(options, planned):
+    """Compare detached meaning while preserving the original recorded plan bytes."""
+    from backtest import calendar_requests
+    submitted = {key:value for key,value in options.items() if key!='engine'}
+    if 'strategy' in submitted:
+        old = planned.get('options',{}).get('strategy') if type(planned) is dict else None
+        if old is None or not calculation_equal(CapturedStrategy(_encode(submitted['strategy'],STRATEGY_BYTES)),
+                CapturedStrategy(_encode(old,STRATEGY_BYTES))):
+            _fail('INVALID_STRATEGY','/planned','Captured strategy differs from the recorded plan.')
+        submitted['strategy'] = old
+    calendar_requests.validate_submitted(submitted,planned)

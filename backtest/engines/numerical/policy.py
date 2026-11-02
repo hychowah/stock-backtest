@@ -36,7 +36,7 @@ def require_supported(options):
     Presence is intent even for an empty/null payload. This guard defines no
     accepted custom application format and never substitutes a built-in metric.
     """
-    formula_fields={'strategy_version','variables','ranking','conditions',
+    formula_fields={'strategy','strategy_version','variables','ranking','conditions',
                     'selection','scalar_selection','selection_plan','program',
                     'definition','formula','bundle'}
     formula_formats={'scalar-selection-plan','scalar-selection','formula-program',

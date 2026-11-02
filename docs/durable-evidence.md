@@ -153,3 +153,14 @@ Jobs, codec, runtime and candidate checks. They use private fictional assets on
 WSL and native Windows. The shared store remains independent of browser and HTTP transport.
 `tests/test_evidence_views.py` covers acquired lifetimes and HTTP attachments. G03/G06 remain failed. CB-14
 is incomplete and CB-15 remains blocked. Operational gates are not waived.
+
+## Scalar application metadata dispatch
+
+Phase 6 Slice 2 reuses this version-3 durable container and chunk storage for
+explicit application artifact 4 / evidence codec 2. Artifact 3 / codec 1 retains
+its existing meaning. Metadata validation rejects mismatched application/codec
+pairs. The container version does not determine either version. No durable rows
+are migrated or rewritten. Existing reservations, publication/transfer receipts,
+acquired-reader lifetimes and deletion precedence remain the same. Latest
+artifact-4 screens are readable temporary results but cannot enter the historical
+saved-backtest library. See the [Phase 6 compatibility record](plans/custom-variables/phases/phase-06/compatibility.md).

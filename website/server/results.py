@@ -30,7 +30,7 @@ def evidence_request(self,identifier,path):
                 chunks=export.chunks()
                 first=next(chunks,b'')
                 self.connection.settimeout(30)
-                self.send_response(200);self.send_header('Content-Type','text/csv; charset=utf-8')
+                self.send_response(200);self.send_header('Content-Type',export.content_type)
                 self.send_header('Content-Length',str(length))
                 self.send_header('Content-Disposition','attachment; filename="'+name+'"')
                 self.send_header('Cache-Control','no-store');self.end_headers()

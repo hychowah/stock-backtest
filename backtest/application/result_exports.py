@@ -6,6 +6,7 @@ no current input generation, candidate readiness or financial calculation.
 """
 import math
 import re
+import json
 from backtest.application import evidence_views as evidence_views
 CHUNK_BYTES=65536
 HOLDINGS=['period_start','period_end','rank','symbol','name','exchange','sector',
@@ -48,6 +49,9 @@ def string(value):
 
 
 def _selection(reader,kind,trial):
+    if reader.format_version==2 and kind in ('evidence','screen'):
+        return ('scalar-complete.evidence' if kind=='evidence' else 'scalar-screen.csv'),None
+    if reader.format_version==2 and reader.metadata['mode']=='latest':raise ValueError('Latest screen has no historical export.')
     if kind=='random':
         configuration=reader.manifest['summary'].get('configuration')
         if not configuration:raise ValueError('This result has no random-trial summary.')
@@ -65,6 +69,19 @@ def rows(reader,kind,trial):
 
 
 def _rows(reader,kind,trial,metric):
+    if reader.format_version==2 and kind in ('holdings','screen'):
+        keys=['rank','symbol','name','exchange','sector','ranking_value','ranking_unit','ranking_display','ranking_direction','market_cap','enterprise_value','fiscal','scalar_evidence']
+        if kind=='holdings':keys+=['period_start','period_end','entry','exit','return_value','weight','contribution_pp','status']
+        yield keys
+        source=reader.verified_records() if kind=='screen' else evidence_views.records(reader,trial)
+        for record in source:
+            if record['type']=='period':period=record['value']
+            elif record['type']==('screen' if kind=='screen' else 'holding'):
+                row=dict(record['value'])
+                if kind=='holdings':row.update(period_start=period['entry'],period_end=period['exit'])
+                row['scalar_evidence']=json.dumps(row['scalar_evidence'],sort_keys=True,separators=(',',':'))
+                yield [row.get(k) for k in keys]
+        return
     if kind=='random':
         summary=reader.manifest['summary'];configuration=summary.get('configuration')
         if not configuration:raise ValueError('This result has no random-trial summary.')
@@ -104,8 +121,23 @@ class Prepared:
         self.filename,self.metric=_selection(reader,kind,trial)
         self.content_length=sum(len(chunk) for chunk in self.chunks())
 
+    @property
+    def content_type(self):
+        return 'application/octet-stream' if self.kind=='evidence' else 'text/csv; charset=utf-8'
+
     def chunks(self):
+        if self.kind=='evidence':return self._evidence()
         return _csv(_rows(self.reader,self.kind,self.trial,self.metric))
+
+    def _evidence(self):
+        # Validate every record before exposing bytes, then stream the original
+        # framed file. Header capture plus complete records resolve all links.
+        for record in self.reader.verified_records():pass
+        self.reader.stream.seek(0)
+        while True:
+            chunk=self.reader.stream.read(CHUNK_BYTES)
+            if not chunk:return
+            yield chunk
 
 
 def prepare(reader,kind,trial=1):

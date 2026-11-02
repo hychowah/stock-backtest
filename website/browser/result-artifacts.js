@@ -16,9 +16,9 @@ const ResultArtifacts=(()=>{
     return {coverage:notes.get('screen-coverage')||'',notice:{text:notes.get('screen-status')||'',severity:(context.notes||[]).find(row=>row[0]==='screen-status')?.[2]?.includes('warning')?'warning':'info'},rangeNote:notes.get('range-note')||'',periodLabel:context.pill||''};
   }
   function decode(snapshot){
-    if(!snapshot||![1,2,3].includes(snapshot.version)||!['latest','january','custom','random'].includes(snapshot.kind)||!snapshot.settings||!snapshot.result)throw Error('Unsupported saved backtest format.');
-    if(snapshot.version===3){
-      if(!['custom','random'].includes(snapshot.kind)||!/^([a-f0-9]{32})$/.test(snapshot.evidence?.id)||snapshot.evidence.format_version!==1||!Number.isInteger(snapshot.evidence.trials)||snapshot.evidence.trials<1||!Number.isInteger(snapshot.evidence.periods)||!Number.isInteger(snapshot.evidence.holdings))throw Error('Unsupported saved backtest format.');
+    if(!snapshot||![1,2,3,4].includes(snapshot.version)||!['latest','january','custom','random'].includes(snapshot.kind)||!snapshot.settings||!snapshot.result)throw Error('Unsupported saved backtest format.');
+    if(snapshot.version===3||snapshot.version===4){
+      if((snapshot.version===3&&!['custom','random'].includes(snapshot.kind))||!/^([a-f0-9]{32})$/.test(snapshot.evidence?.id)||snapshot.evidence.format_version!==(snapshot.version===4?2:1)||!Number.isInteger(snapshot.evidence.trials)||(snapshot.kind==='latest'?snapshot.evidence.trials!==0:snapshot.evidence.trials<1)||!Number.isInteger(snapshot.evidence.periods)||!Number.isInteger(snapshot.evidence.holdings))throw Error('Unsupported saved backtest format.');
       return freeze({...snapshot});
     }
     return freeze({version:2,kind:snapshot.kind,settings:snapshot.settings,result:snapshot.result,
@@ -88,7 +88,7 @@ const ResultArtifacts=(()=>{
   }
   function release(artifact){releaseId(identity(artifact));}
   function reader(artifact){
-    if(artifact.version!==3){
+    if(![3,4].includes(artifact.version)){
       const trial=number=>artifact.kind==='random'?artifact.result.trial_results?.[number-1]:number===1?artifact.result:null;
       const requireTrial=number=>{const value=trial(number);if(!value)throw Error('Complete stored trial details are unavailable.');return value;};
       const page=(rows,cursor)=>({rows:rows.slice(cursor,cursor+64),cursor,next:cursor+64<rows.length?cursor+64:null,total:rows.length});
@@ -110,6 +110,9 @@ const ResultArtifacts=(()=>{
       }finally{state.requests.delete(controller);}
     }
     state.api={
+      scopes:(cursor=0)=>request('scopes/1/'+cursor),
+      explanations:(cursor=0)=>request('explanations/1/'+cursor),
+      screen:(cursor=0)=>request('screen/1/'+cursor),
       trial:number=>request('trial/'+number+'/0'),
       periods:(number,cursor=0)=>request('periods/'+number+'/'+cursor),
       holdings:(number,period,cursor=0)=>request('holdings/'+number+'/'+period+'/'+cursor),
@@ -134,6 +137,12 @@ const ResultArtifacts=(()=>{
     const defaults=['custom','random'].includes(artifact.kind)?{engine:'original',selection_order:'filter_first'}:{selection_order:'filter_first'};
     return signature({...defaults,...submitted})===signature({...defaults,...settings});
   }
-  return {create,decode,publish,matches,reader,use,release,opening,current,forView:key=>views.get(key)};
+  function scalarValue(row){
+    const value=row.ranking_value;if(!Number.isFinite(value))return 'Unavailable';
+    const display=row.ranking_display,scaled=display==='percent'||display==='percentage_points'?value*100:display==='usd_million'?value/1e6:value;
+    const suffix=display==='percent'?'%':display==='percentage_points'?' pp':display==='usd_million'?' USD million':display==='usd'?' USD':display==='multiple'?'×':'';
+    return Number(scaled.toPrecision(8)).toString()+suffix;
+  }
+  return {create,decode,publish,matches,reader,use,release,opening,current,scalarValue,forView:key=>views.get(key)};
 })();
 if(typeof module!=='undefined')module.exports=ResultArtifacts;

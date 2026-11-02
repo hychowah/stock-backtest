@@ -2,7 +2,7 @@
 
 Financial result contract version 1 describes complete fixed and explicit-date
 results. It is separate from calendar, database, numerical artifact and browser
-ResultArtifacts versions. Existing application results have no new version key.
+ResultArtifacts versions. Legacy application results have no new version key.
 The offline diagnostic envelope is `{"contract_version": 1, "result": result}`.
 It does not rewrite jobs, queued tests or saved results.
 
@@ -266,3 +266,19 @@ The repair uses each result's existing comparator boundary and changes no
 original input, type or tolerance. This financial component pass does not qualify
 the browser workflow: its session expires after 47 fresh periods and five CSVs.
 Saving and ordinary reopening are not reached.
+
+
+## Explicit scalar selected-book contract 2
+
+Phase 6 Slice 2 adds `contract=2` to `evaluate` and `evaluate_into`. Omission
+retains contract 1 and all legacy arithmetic. Contract 2 uses the same reducer,
+period validation, survivor weights, compounding and CAGR calculation. Only the
+selected-holding schema differs. It replaces required `metric_yield` and
+`metric_multiple` fields with finite `ranking_value`, `ranking_unit`,
+`ranking_display`, `ranking_direction` and qualified `scalar_evidence`. Actual
+prepared financial fields remain. No reciprocal metric is invented.
+
+This contract number is independent of application artifact 4 and bounded
+evidence codec 2. The [Phase 6 compatibility record](plans/custom-variables/phases/phase-06/compatibility.md)
+describes their explicit dispatch. Legacy diagnostic and numerical callers keep
+contract 1. No saved record or financial result is rewritten on reading.

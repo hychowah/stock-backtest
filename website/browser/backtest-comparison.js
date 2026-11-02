@@ -18,7 +18,7 @@ const BacktestComparison=(()=>{
     return [...new Map((value||[]).map(condition=>[stable(condition),condition])).entries()].sort(([a],[b])=>a.localeCompare(b)).map(([,condition])=>condition);
   }
   function describe(artifact){
-    if(!artifact||![1,2,3].includes(artifact.version)||!labels[artifact.kind]||!artifact.settings||!artifact.result)throw Error('This saved test cannot be compared. Its record was kept.');
+    if(!artifact||![1,2,3,4].includes(artifact.version)||!labels[artifact.kind]||!artifact.settings||!artifact.result)throw Error('This saved test cannot be compared. Its record was kept.');
     const kind=artifact.kind,s=artifact.settings,r=artifact.result,catalog=artifact.catalog||{},parameters=[],performance=[],handled=new Set(['mode']);
     const add=(key,label,value,display)=>parameters.push(entry(key,label,value,display));
     add('mode','Test type',kind,labels[kind]);
@@ -37,7 +37,11 @@ const BacktestComparison=(()=>{
       handled.add('engine');const engine=own(s,'engine')?s.engine:'original';
       add('engine','Requested engine',engine,engine==='original'?'Original':engine==='experimental'?'New engine — experimental':text(engine));
     }
-    for(const [key,fallback] of Object.entries(defaults)){
+    if(s.strategy){
+      handled.add('strategy');const c=s.strategy;
+      add('strategy','Captured scalar strategy',c,stable(c));
+    }
+    for(const [key,fallback] of Object.entries(s.strategy?{}:defaults)){
       handled.add(key);const value=own(s,key)?s[key]:fallback;
       let display=text(value);
       if(key==='metric')display=catalogLabel(catalog.metrics,value)+' ('+text(value)+')';

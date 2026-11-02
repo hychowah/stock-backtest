@@ -81,6 +81,7 @@ class Store:
         """Atomically save a complete pinned source; never evict another record."""
         if not isinstance(name,str) or not 1<=len(name.strip())<=120:
             raise ValueError('Use a backtest name with 1–120 characters.')
+        if metadata.get('kind')=='latest':raise ValueError('Run a historical backtest before saving it.')
         info=artifacts.information(metadata)
         record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
         db=self.connect()

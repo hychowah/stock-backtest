@@ -42,8 +42,9 @@ Their checked restore uses no later library state. Phase 6 resumes from
 `f877c0c` under the user's 2 November authorization. Its
 [execution plan](docs/plans/custom-variables/phases/phase-06/execution-plan-2026-11-02.md)
 owns narrow application, UI and persistence integration on this feature branch.
-Slice 1 adds callable complete captured strategy intent. No ordinary route or
-editor is active yet. Phase 7 remains held. Follow the
+Slice 1 adds callable complete captured strategy intent. Slice 2 implements
+Original scalar execution, bounded explicit preview and immutable artifact-4
+evidence. The shared editor remains Slice 3. Phase 7 remains held. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.

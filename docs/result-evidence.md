@@ -234,3 +234,19 @@ detaches a charged temporary reader before releasing it to the caller. Deleting
 the source cannot invalidate that reader. ResultArtifacts readers and streamed
 exports remain increment 5. Application routing stays eager until those consumers
 preserve complete evidence.
+
+## Additive scalar codec 2
+
+Custom-variable Phase 6 Slice 2 adds `backtest/scalar_result_evidence.py` on the
+same bounded physical framing. `result_evidence.Reader` keeps format-1 meaning.
+`open_reader()` dispatches the explicit header to codec 1 or 2. Codec 2 binds
+scalar contract 2 and application artifact 4 through its application owner.
+These versions are independently allocated; no formula namespace assigns them.
+
+Codec 2 retains complete captured strategy/input identities, complete scope
+receipts, ordered evaluation chunks, admission/built-in lanes, selection receipts
+and selected screen or portfolio rows. References qualify scope and chunk. A
+selected row cannot precede its complete scope and selection receipts. Latest
+is screen-only, with zero trials/periods and no future-return fields. Old codec-1
+trial/checkpoint readers are unchanged. See [current compatibility](plans/custom-variables/phases/phase-06/compatibility.md)
+for record/work bounds, closure, pages and complete offline evidence export.

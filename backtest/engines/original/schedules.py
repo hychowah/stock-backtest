@@ -58,13 +58,13 @@ def prepare_period(db,entry,exit_day,books,cached,pool='legacy'):
     if completed is not None:return completed
     return daily.store_period(db,compute_period(db,entry,exit_day,books,cached,pool))
 
-def backtest(db, *, start, end, months=12, **options):
+def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Regular schedules and random-date batches share one book evaluator."""
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     periods=schedule(start,end,months,sessions)
-    return backtest_periods(db,periods,months=months,**options)
+    return backtest_periods(db,periods,months=months,book_selection=book_selection,emit_period=emit_period,**options)
 
-def backtest_calendar(db, **request):
+def backtest_calendar(db, *, book_selection=None, emit_period=None, **request):
     """Evaluate a version-1 calendar with the ordinary complete-book policy.
 
     Requested calendar metadata remains separate from resolved trading sessions.
@@ -74,7 +74,7 @@ def backtest_calendar(db, **request):
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     periods,first,options,metadata=calendar_requests.periods(
         sessions,request,checkpoint=backtest_control.checkpoint)
-    return _backtest_periods(db,periods,common_start=first,frequency=metadata,**options)
+    return _backtest_periods(db,periods,common_start=first,frequency=metadata,book_selection=book_selection,emit_period=emit_period,**options)
 
 def dated_periods(dates,start,end,months,sessions):
     """Keep legacy month validation; explicit trades need no nominal schedule."""
@@ -82,34 +82,41 @@ def dated_periods(dates,start,end,months,sessions):
     return schedule_calendar.SessionCalendar(sessions).explicit(
         dates,start,end,checkpoint=backtest_control.checkpoint)
 
-def backtest_dates(db, *, dates, start, end, months=12, **options):
+def backtest_dates(db, *, dates, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Evaluate explicit trades, holding cash before the first trade for both sides."""
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     first,final,periods=dated_periods(dates,start,end,months,sessions)
-    return _backtest_periods(db,periods,months=months,common_start=first,**options)
+    return _backtest_periods(db,periods,months=months,common_start=first,book_selection=book_selection,emit_period=emit_period,**options)
 
-def backtest_periods(db, periods, *, months, **options):
-    return _backtest_periods(db,periods,months=months,**options)
+def backtest_periods(db, periods, *, months, book_selection=None, emit_period=None, **options):
+    return _backtest_periods(db,periods,months=months,book_selection=book_selection,emit_period=emit_period,**options)
 
-def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=None, **options):
+def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=None, book_selection=None, emit_period=None, **options):
     """Prepare missing books atomically and apply the shared SQL screener."""
     backtest_control.checkpoint()
     started=time.perf_counter()
     periods=portfolio_results.validate_periods(periods,common_start)
     allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters','selection_order'}
-    if set(options)-allowed:raise ValueError('Unknown screening option.')
-    screening.validate_selection(**options)
-    pool=options.get('pool','legacy')
+    if book_selection is None:
+        if set(options)-allowed:raise ValueError('Unknown screening option.')
+        screening.validate_selection(**options)
+    pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
     missing=any(daily.prepared_period(db,a,b,pool) is None for a,b in periods)
     books=daily.histories(db) if missing else None
     cached=daily.cached_symbols(db) if missing else set()
     def select_period(entry,exit_day):
         period_id=prepare_period(db,entry,exit_day,books,cached,pool)
-        stocks=screening.select(db,period=(period_id,period_id),**options)
+        stocks=(screening.select(db,period=(period_id,period_id),**options) if book_selection is None
+                else book_selection.select(db,period_id,entry,exit_day))
         spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
         return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:
-        result=portfolio_results.evaluate(periods,select_period,common_start=common_start,
-                                          checkpoint=backtest_control.checkpoint)
+        contract = book_selection.contract if book_selection is not None else 1
+        if emit_period is None:
+            result=portfolio_results.evaluate(periods,select_period,common_start=common_start,
+                checkpoint=backtest_control.checkpoint,contract=contract)
+        else:
+            result=portfolio_results.evaluate_into(periods,select_period,emit_period,common_start=common_start,
+                checkpoint=backtest_control.checkpoint,contract=contract)
     result.update(frequency if frequency is not None else dict(months=months),options=options,seconds=time.perf_counter()-started)
     return result

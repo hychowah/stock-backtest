@@ -44,7 +44,7 @@ const ScheduleView=(()=>{
   }
   function csv(kind){
     const artifact=ResultArtifacts.forView('custom');
-    if(artifact?.version===3){ResultArtifacts.reader(artifact).download(kind,artifact.kind==='random'?inspectedTrial+1:1);return;}
+    if([3,4].includes(artifact?.version)){ResultArtifacts.reader(artifact).download(kind,artifact.kind==='random'?inspectedTrial+1:1);return;}
     const result=displayedResult();
     if(!result)return;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
@@ -113,8 +113,8 @@ const ScheduleView=(()=>{
       const page=await (firstPage??state.reader.holdings(state.trial,period,cursor));
       if(!valid(state)||state.period!==period||state.holdingSequence!==sequence)return;
       state.holdingCursor=page.cursor;state.holdingNext=page.next;
-      const metric=metricLabel(state.info.summary.options.metric??'ev_ebitda');node('schedule-multiple-head').textContent=metric+' (×)';
-      node('schedule-stock-body').innerHTML=page.rows.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
+      const scalar=state.artifact.version===4,metric=metricLabel(state.info.summary.options.metric??'ev_ebitda');node('schedule-multiple-head').textContent=scalar?'Ranking value · '+(page.rows[0]?.ranking_unit??'')+' · '+(page.rows[0]?.ranking_direction??''):metric+' (×)';
+      node('schedule-stock-body').innerHTML=page.rows.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,(state.artifact.version===4?ResultArtifacts.scalarValue(h):h.metric_multiple.toFixed(2)),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
       navigation('schedule-holdings',page.cursor,page.next,page.total,'Stocks '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
     }catch(error){if(state.period===period&&state.holdingSequence===sequence)readError(state,error);}
   }
@@ -165,7 +165,7 @@ const ScheduleView=(()=>{
     try{
       state.info=await state.reader.trial(trial);if(!valid(state))return;
       const r=state.info.summary;
-      node('schedule-dates').textContent=r.start+' → '+r.end+' · '+CalendarSettings.label(r);
+      node('schedule-dates').textContent=r.start+' → '+r.end+' · '+(artifact.kind==='january'?'January books':CalendarSettings.label(r));
       node('schedule-cagr').textContent=format(r.cagr);node('schedule-spy-cagr').textContent=format(r.spy_cagr);
       node('schedule-growth').textContent=r.growth===null?'—':'$'+r.growth.toFixed(2);
       node('schedule-coverage').textContent=r.coverage+' '+state.info.short+' short periods; '+state.info.empty+' empty periods. '+(state.info.empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+r.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(r.cash_days?' Both strategy and paired SPY hold cash until '+r.first_trade+' ('+r.cash_days+' days); CAGR uses the common window.':'');
@@ -248,7 +248,7 @@ const ScheduleView=(()=>{
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
-    RobustnessView.init((trial,configuration,stored,index)=>stored||ResultArtifacts.forView('custom')?.version===3?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
+    RobustnessView.init((trial,configuration,stored,index)=>stored||[3,4].includes(ResultArtifacts.forView('custom')?.version)?inspect(index):run(configuration.options,{dates:trial.dates,...CalendarSettings.fields(configuration)}),configuration=>run(configuration.options,null,configuration),()=>{const artifact=ResultArtifacts.forView('custom');return artifact?.kind==='random'?artifact.result:null;});
     node('schedule-period').addEventListener('change',stocks);
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
@@ -271,7 +271,7 @@ const ScheduleView=(()=>{
     catch(error){node('screen-error').textContent=error.message;return;}
     return follow(run);
   }
-  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if(artifact?.version===3)void storedRender(artifact,index+1);else render();}
+  function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if([3,4].includes(artifact?.version))void storedRender(artifact,index+1);else render();}
   function show(artifact){
     const producer=node('result-producer');
     if(producer)producer.textContent=artifact.result.producer?'Calculated by '+artifact.result.producer.label+'.':'Producer not recorded in this result.';
@@ -279,7 +279,7 @@ const ScheduleView=(()=>{
     if(artifact.kind==='random'){
       RobustnessView.render(artifact.result,artifact.settings.engine);node('schedule-results').hidden=true;
     }else{
-      if(artifact.version===3)void storedRender(artifact,1);else render();node('robustness-results').hidden=true;
+      if([3,4].includes(artifact.version))void storedRender(artifact,1);else render();node('robustness-results').hidden=true;
     }
     node('schedule-message').textContent='Backtest results ready.';node('schedule-message').className='';
   }

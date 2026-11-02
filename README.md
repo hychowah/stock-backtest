@@ -108,9 +108,10 @@ Both source slices are complete under the user's 2 November authorization.
 Their independent audits and final WSL/private native checks are recorded in
 the phase record. [Phase 6](docs/plans/custom-variables/phases/phase-06/README.md)
 is now authorized. Its first slice adds callable captured strategy intent and
-library-free unsaved captures. Ordinary custom routes and the editor remain
-outstanding. Phase 7 stays held. The website continues using its
-existing built-ins.
+library-free unsaved captures. Slice 2 implements bounded Original execution,
+explicit previews and immutable artifact-4 scalar results in source, pending
+its independent audit. The shared editor and picker remain Slice 3. Phase 7
+stays held. Ordinary website controls continue using their existing built-ins.
 
 
 ## Run from the saved data

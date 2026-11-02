@@ -150,13 +150,19 @@ def price(db,symbol,day,column,forward=False,slack=None):
     result=(date.fromisoformat(row[0]),row[1])
     return result if slack is None or abs((result[0]-day).days)<=slack else None
 
+def prepared_report(record):
+    """Decode one prepared annual row; financial eligibility stays with books."""
+    row=dict(record);symbol=row.pop('symbol')
+    row.update(fiscal=date.fromisoformat(row['fiscal']),known=date.fromisoformat(row['known']),enterprise=row['enterprise_value'])
+    row['yield']=row['ebitda_yield']
+    return symbol,row
+
+
 def histories(db):
     broad,legacy={},{}
     for record in db.execute('SELECT * FROM statements ORDER BY rowid'):
         backtest_control.checkpoint()
-        row=dict(record);symbol=row.pop('symbol')
-        row.update(fiscal=date.fromisoformat(row['fiscal']),known=date.fromisoformat(row['known']),enterprise=row['enterprise_value'])
-        row['yield']=row['ebitda_yield']
+        symbol,row=prepared_report(record)
         broad.setdefault(symbol,[]).append(row)
     for rows in broad.values():rows.sort(key=lambda s:s['fiscal'])
     return financial_books.pools(broad)

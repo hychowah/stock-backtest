@@ -536,3 +536,15 @@ files, indexes and history. The feature worktree is not a deployment source.
 Only private synthetic WSL/browser/Windows fixtures are authorized. No merge,
 push, deployment, server restart, market-data request or live-runtime/cache/
 durable-store mutation is permitted. Native-cache coverage remains unknown.
+
+## Custom-variable Phase 6 Slice 2 integration — 2 November 2026
+
+Phase 6 Slice 2 starts from independently audited `de14704`. The fresh design
+assigns this feature branch the narrow Original selected-book seams, borrowed
+SQLite observation adapter, scalar executor, additive contract/codec dispatch and
+application job/queue/result integration. `daily.prepared_report()` extracts the
+existing decoder for lazy observation reads; financial pool policy is unchanged.
+The [current compatibility record](plans/custom-variables/phases/phase-06/compatibility.md)
+describes application artifact 4 / codec 2 and old-reader preservation. No worker,
+financial rule, provider capability, schema, ownership or resource policy changes.
+The shared editor is Slice 3. Phase 7 numerical formulas remain held.

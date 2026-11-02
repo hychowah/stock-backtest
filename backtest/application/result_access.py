@@ -70,7 +70,7 @@ class ResultAccess:
             with self.condition:entry.update(owner=context,opened=opened)
             metadata=deepcopy(opened.metadata)
             reader=opened.reader
-            artifact=dict(metadata,evidence=dict(id=identifier,format_version=result_evidence.FORMAT_VERSION,
+            artifact=dict(metadata,evidence=dict(id=identifier,format_version=reader.format_version,
                 trials=reader.manifest['trials'],periods=reader.manifest['periods'],
                 holdings=reader.manifest['holdings'],sha256=reader.manifest['sha256']))
             with self.condition:

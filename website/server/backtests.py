@@ -4,7 +4,7 @@ import sqlite3
 from backtest.runtime import diagnostics, backtest_control
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
-from backtest.application import durable_evidence
+from backtest.application import durable_evidence, strategy_requests
 from backtest.application.calculation_contract import Busy, Unavailable
 
 def calculation_ready(self,options=None):
@@ -51,6 +51,7 @@ def queue_request(self,data_jobs):
         def invalid(value):raise ValueError('Queue values must be finite.')
         request=json.loads(self.rfile.read(length),parse_constant=invalid)
         if not isinstance(request,dict):raise ValueError('Expected queue options.')
+        if not (self.command=='POST' and collection and store.accepted(request.get('id'))):strategy_requests.check_request(request)
         if self.command=='POST' and collection:
             if not store.accepted(request.get('id')) and not require_calculation(self,request.get('options')):return
             result=store.enqueue(request)
@@ -67,7 +68,8 @@ def queue_request(self,data_jobs):
     except backtest_queue.Missing as error:self.reply(404,dict(error=str(error)))
     except backtest_queue.Conflict as error:self.reply(409,dict(error=str(error)))
     except durable_evidence.RequiresReader as error:self.reply(409,dict(error=str(error),requires_reader=True))
-    except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+    except (ValueError,TypeError,UnicodeError) as error:
+        self.reply(400,dict(error=str(error),**(strategy_requests.failure_details(error) or {})))
     except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
     except (OSError,sqlite3.Error) as error:
         diagnostics.failure('queue.request_failed',error)
@@ -93,12 +95,14 @@ def backtest_run_request(self):
             def invalid(value):raise ValueError('Backtest values must be finite.')
             request=json.loads(self.rfile.read(length),parse_constant=invalid)
             if not isinstance(request,dict):raise ValueError('Expected backtest options.')
+            if not jobs.accepted(identifier):strategy_requests.check_request(request)
             if not jobs.accepted(identifier) and not require_calculation(self,request.get('options'),planned=request.get('planned')):return
             self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options'),planned=request.get('planned')))
         else:self.reply(404,dict(error='Unknown run action.'))
     except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))
     except Busy as error:self.reply(409,dict(error=str(error)))
-    except (ValueError,TypeError,UnicodeError) as error:self.reply(400,dict(error=str(error)))
+    except (ValueError,TypeError,UnicodeError) as error:
+        self.reply(400,dict(error=str(error),**(strategy_requests.failure_details(error) or {})))
     except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
 
 def stream_batch(self,options,*,planned=None):
@@ -161,10 +165,26 @@ def schedule_request(self):
         return
     except (ValueError,TypeError,sqlite3.Error) as error:
         diagnostics.failure('schedule.failed',error,mode='robustness' if self.path=='/api/robustness' else 'schedule')
-        self.reply(400,dict(error=str(error)))
+        self.reply(400,dict(error=str(error),**(strategy_requests.failure_details(error) or {})))
 
 def dispatch(handler,data_jobs):
     path=handler.path
+    if path=='/api/variable-preview' and handler.command=='POST':
+        origin=handler.headers.get('Origin')
+        if origin and origin!='http://'+handler.headers.get('Host',''):
+            handler.reply(403,dict(error='Open the website to preview variables.'));return True
+        try:
+            length=int(handler.headers.get('Content-Length','0'))
+            if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid preview request size.')
+            request=durable_evidence.decode(handler.rfile.read(length))
+            if type(request) is not dict or set(request)!={'strategy','roots'}:raise ValueError('Expected a captured strategy and explicit preview roots.')
+            with backtest_control.cancel_when(handler.disconnect_check()):
+                value=handler.server.calculations.preview(request['strategy'],request['roots'])
+            handler.reply(200,value)
+        except (ValueError,TypeError) as error:
+            details=strategy_requests.failure_details(error) or dict(code=None,path=None)
+            handler.reply(400,dict(error=str(error),**details))
+        return True
     if path=='/api/backtest-capabilities' and handler.command=='GET':
         owner=handler.server.calculations
         handler.reply(200,owner.capabilities() if hasattr(owner,'capabilities') else dict(calendar=owner.calendar_version))

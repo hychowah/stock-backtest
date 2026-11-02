@@ -16,8 +16,9 @@ plus scalar encoder temporaries. The reducer retains its current book separately
 The caller declares a total byte ceiling and controls publication and cleanup.
 A failed writer is unusable; its incomplete output must never be published.
 
-Numerical diagnostics and derived checkpoints use this codec. Application
-protocols, snapshots, routing and eager admission limits remain unchanged.
+Numerical diagnostics and derived checkpoints use this codec. The legacy codec-1 writer/reader and eager admission retain their meaning.
+open_reader() also dispatches the separate scalar codec 2; its application
+artifact version and durable container belong to their application owners.
 """
 
 from copy import deepcopy
@@ -373,7 +374,7 @@ class Reader:
         """
         if stream is self.stream:raise ValueError('An independent evidence stream is required.')
         self._verify_stream(stream)
-        reader=object.__new__(Reader)
+        reader=object.__new__(type(self))
         reader.stream,reader.max_bytes=stream,self.max_bytes
         reader.piece_bytes,reader.record_bytes=self.piece_bytes,self.record_bytes
         reader.checkpoint=self.checkpoint
@@ -410,6 +411,9 @@ class Reader:
                 observe=self._observe,validate_values=False):
             self.bytes_read=end
             yield record
+
+    @property
+    def format_version(self): return self._header['format_version']
 
     @property
     def metadata(self): return deepcopy(self._header['metadata'])
@@ -563,3 +567,16 @@ class TrialView:
     def copy_into(self,emit_period):
         for period in self.periods():emit_period(period)
         return self.summary
+
+
+def open_reader(stream, *, max_bytes, piece_bytes=MAX_PIECE_BYTES, record_bytes=MAX_RECORD_BYTES, checkpoint=None):
+    """Dispatch explicit codec versions; old Reader always retains codec-1 meaning."""
+    first = next(_physical_records(stream,0,max_bytes,piece_bytes,record_bytes,checkpoint),None)
+    if first is None:raise ValueError('Evidence header is missing.')
+    version = first[0].get('format_version') if type(first[0]) is dict else None
+    if type(version) is not int:raise ValueError('Unsupported evidence format.')
+    if version == 1:owner = Reader
+    elif version == 2:
+        from backtest.scalar_result_evidence import Reader as owner
+    else:raise ValueError('Unsupported evidence format.')
+    return owner(stream,max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes,checkpoint=checkpoint)

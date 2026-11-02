@@ -26,8 +26,10 @@ class Selectable:
     def preflight(self,options,*,planned=None):
         """Validate the pinned engine's policy without changing financial settings."""
         engine=calculation_contract.engine_id(options)
+        from backtest.application import strategy_requests
+        strategy_requests.check_options(options)
         if planned is not None:
-            calendar_requests.validate_submitted({key:value for key,value in options.items() if key!='engine'},planned)
+            strategy_requests.validate_recorded({key:value for key,value in options.items() if key!='engine'},planned)
         if engine=='experimental':
             from backtest.engines.numerical.policy import require_supported
             require_supported(options)
@@ -79,3 +81,17 @@ class Selectable:
         self.original.close();self.experimental.close()
 
     def retire(self):self.experimental.retire()
+
+    def calculate_into(self,mode,options,destination,progress,configuration,*,planned=None,admission='interactive',**limits):
+        self.preflight(options,planned=planned)
+        if self.closed.is_set():raise calculation_contract.Busy('The server is stopping.')
+        financial={key:value for key,value in options.items() if key!='engine'}
+        with self.experimental.parent_operation(admission=admission):
+            return self.original.calculate_into(mode,options,destination,progress,configuration,
+                planned=planned,admission=admission,**limits)
+
+    def preview(self,capture,roots):
+        from backtest.application import strategy_requests
+        strategy_requests.check_options({'strategy':capture})
+        with self.experimental.parent_operation():
+            return self.original.preview(capture,roots)

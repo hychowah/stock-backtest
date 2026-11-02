@@ -22,7 +22,7 @@ import zlib
 from backtest.runtime import backtest_control as backtest_control
 from backtest.application.calculation_contract import Busy, Unavailable, engine_id
 from backtest.application.original_calculations import Original
-from backtest.application import artifacts
+from backtest.application import artifacts, strategy_requests, temporary_evidence
 from backtest.paths import ROOT
 from backtest.runtime import cache_access as cache_access
 from backtest.runtime import diagnostics as diagnostics
@@ -30,6 +30,7 @@ from backtest.application import durable_evidence as durable_evidence
 from backtest.application import library as saved_backtests
 DATABASE=ROOT/'data'/'backtest-queue.sqlite'
 LIMIT=100
+SCALAR_FAILURE='scalar-failure/1\n'
 COLUMNS='id,name,spec,original_hash,position,revision,state,created_at,started,finished,seed,progress,configuration,error,cagr'
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS control (id INTEGER PRIMARY KEY CHECK(id=1), paused INTEGER NOT NULL);
@@ -87,6 +88,10 @@ class Store:
     def metadata(db,row):
         spec=json.loads(row['spec'])
         result={key:row[key] for key in ('id','name','position','revision','state','created_at','started','finished','error','cagr')}
+        if ('strategy' in spec['options'] and isinstance(result['error'],str)
+                and result['error'].startswith(SCALAR_FAILURE)):
+            failure=json.loads(result['error'][len(SCALAR_FAILURE):])
+            result.update((key,failure[key]) for key in ('error','code','path','errors'))
         edit=db.execute('SELECT id,revision,state FROM edits WHERE job_id=?',(row['id'],)).fetchone()
         transfer=db.execute('SELECT state,saved_id,error FROM transfers WHERE job_id=?',(row['id'],)).fetchone()
         return dict(**result,mode=spec['mode'],options=spec['options'],transfer=dict(transfer) if transfer else None,
@@ -95,7 +100,7 @@ class Store:
                     configuration=json.loads(row['configuration']) if row['configuration'] else None)
 
     @staticmethod
-    def specification(request):
+    def specification(request, *, admit=True):
         if not isinstance(request,dict):raise ValueError('Expected a queued test.')
         name=request.get('name','').strip() if isinstance(request.get('name',''),str) else ''
         if not 1<=len(name)<=120:raise ValueError('Use a test name with 1–120 characters.')
@@ -105,6 +110,9 @@ class Store:
             if not isinstance(request.get(key),dict):raise ValueError('The test display labels are required.')
         if any(not isinstance(request['catalog'].get(key),dict) for key in ('metrics','filters')):
             raise ValueError('The test metric and filter labels are required.')
+        if admit:strategy_requests.check_request(request)
+        elif 'strategy' in request.get('options',{}):
+            strategy_requests._encode(request,strategy_requests.REQUEST_BYTES)
         options=request['options']
         engine_id(options)
         dates=options.get('calendar',options)
@@ -122,7 +130,7 @@ class Store:
     def enqueue(self,request):
         identifier=request.get('id') if isinstance(request,dict) else None
         if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{32}',identifier):raise ValueError('Invalid queue item ID.')
-        name,spec,seed=self.specification(request)
+        name,spec,seed=self.specification(request,admit=not self.accepted(identifier))
         identity=hashlib.sha256((name+'\n'+spec).encode()).hexdigest()
         with self.database() as db:
             previous=db.execute(f'SELECT {COLUMNS} FROM jobs WHERE id=?',(identifier,)).fetchone()
@@ -221,7 +229,7 @@ class Store:
                     old,new=json.loads(row['spec']),json.loads(spec)
                     # A legacy omission means filter-first. Exposing that
                     # default during a name-only edit must retain recorded dates.
-                    same=old['mode']==new['mode'] and {'engine':'original','selection_order':'filter_first',**old['options']}=={'engine':'original','selection_order':'filter_first',**new['options']}
+                    same=old['mode']==new['mode'] and strategy_requests.options_calculation_equal(old['options'],new['options'])
                     if same:seed=row['seed']
                     db.execute("UPDATE jobs SET name=?,spec=?,seed=?,state='queued',progress=NULL,configuration=CASE WHEN ? THEN configuration ELSE NULL END,plan=CASE WHEN ? THEN plan ELSE NULL END,error=NULL,started=NULL,finished=NULL,revision=revision+1 WHERE id=?",
                                (name,spec,seed,same,same,identifier))
@@ -380,7 +388,12 @@ class Store:
         try:yield opened
         finally:opened.close()
 
-    def finish(self,identifier,state,*,snapshot=None,error=None):
+    def finish(self,identifier,state,*,snapshot=None,error=None,diagnostic=None):
+        """Retain new scalar failure details in the existing error column.
+
+        Metadata exposes the original text plus additive diagnostics. Old error
+        strings and records are neither migrated nor rewritten.
+        """
         packed=zlib.compress(encode(snapshot).encode(),3) if snapshot is not None else None
         cagr=artifacts.information(snapshot)['cagr'] if snapshot else None
         with self.database() as db:
@@ -390,8 +403,9 @@ class Store:
                 if state=='complete' and snapshot is not None and transfer['completion']==self.completion_identity(snapshot):return
                 raise Conflict('Completed result differs from the original snapshot.')
             if current=='stopping':state='cancelled';packed=None;cagr=None
+            stored_error=SCALAR_FAILURE+encode(dict(error=error,**diagnostic)) if state=='failed' and diagnostic else error
             db.execute('UPDATE jobs SET state=?,snapshot=?,cagr=?,error=?,finished=?,revision=revision+1 WHERE id=?',
-                       (state,packed,cagr,error,now() if state!='queued' else None,identifier))
+                       (state,packed,cagr,stored_error,now() if state!='queued' else None,identifier))
 
 
 class Queue:
@@ -400,6 +414,7 @@ class Queue:
         self.store=store or Store();self.library=library if library is not None else saved_backtests.Store();self.stopping=Event();self.wake=Event();self.lock=Lock();self.thread=None
         self.owner=cache_access.WorkspaceAccess(self.store.path.with_suffix('.lock'))
         self.calculations=calculations if calculations is not None else Original()
+        self.evidence=temporary_evidence.Workspace()
 
     @property
     def ready(self):return self.calculations.ready
@@ -463,7 +478,23 @@ class Queue:
             stamp=time.monotonic()
             if event is None or event.get('type')=='waiting' or stamp-last_progress>.3:
                 self.store.progress(identifier,'progress',event);last_progress=stamp
+        entry=None
         try:
+            if 'strategy' in options:
+                limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
+                entry=self.evidence.reserve(planned=json.loads(job['plan']) if job['plan'] else None,**limits)
+                with backtest_control.cancel_when(stopped):
+                    with self.evidence.destination(entry) as destination:
+                        completion=self.calculations.calculate_into(spec['mode'],options,destination,progress,
+                            lambda value:self.store.progress(identifier,'configuration',value),
+                            planned=self.evidence.plan(entry),admission='queue',**limits)
+                    backtest_control.checkpoint()
+                    self.evidence.publish(entry,completion)
+                    with self.evidence.reader(entry) as reader:
+                        snapshot=dict(version=4,kind=spec['mode'],settings=dict(mode=spec['mode'],**spec['options']),
+                            result=reader.manifest['summary'],catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
+                        self.store.finish_evidence(identifier,snapshot,reader)
+                return
             with backtest_control.cancel_when(stopped):
                 result=self.calculations.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
                                                planned=json.loads(job['plan']) if job['plan'] else None,
@@ -480,7 +511,10 @@ class Queue:
         except Exception as error:
             diagnostics.failure('queue.test_failed',error)
             message=str(error) if isinstance(error,(ValueError,TypeError)) else 'Test failed. Check the server development log.'
-            self.store.finish(identifier,'failed',error=message)
+            diagnostic=strategy_requests.failure_details(error) if 'strategy' in options else None
+            self.store.finish(identifier,'failed',error=message,**({'diagnostic':diagnostic} if diagnostic else {}))
+        finally:
+            if entry is not None:self.evidence.discard(entry)
 
     def request_stop(self):
         """Publish shutdown intent before shared admission can wake a waiter."""
@@ -489,3 +523,4 @@ class Queue:
     def close(self):
         self.request_stop()
         if self.thread:self.thread.join()
+        self.evidence.close()

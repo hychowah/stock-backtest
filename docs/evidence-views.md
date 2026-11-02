@@ -229,3 +229,18 @@ admission then closes. The server joins the queue, drains acquired readers, join
 jobs and retires their temporary workspace, joins HTTP requests, and retires any
 calculation child. This order keeps job bytes alive through acquired request pins.
 The native bootstrap holds source ownership through the entire sequence.
+
+## Scalar artifact 4
+
+The same acquired-result owner dispatches codec 2 without current library,
+catalog or financial access. New `scopes`, `explanations` and `screen` operations
+use the existing bounded cursor pages. Trial/period/holding operations retain
+their shape for historical scalar results. Scope/chunk-qualified links identify
+the complete original explanation records. Latest has screen rows and no trial.
+
+The complete `evidence` attachment streams the original checksummed framed file,
+including its captured strategy and every explanation. Scalar `holdings`/`screen`
+CSV includes original values, units, direction and qualified links; retain its
+companion evidence file for full offline explanation. Counted attachment lengths
+and existing independent request pins remain unchanged. Old codec-1 exports
+retain their original bytes. See [Phase 6 compatibility](plans/custom-variables/phases/phase-06/compatibility.md).

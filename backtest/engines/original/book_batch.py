@@ -36,13 +36,13 @@ def generation(db):
     return row[0] if row else None
 
 
-def plan(db,configuration):
+def plan(db,configuration,book_selection=None):
     """Deduplicate all required books, retaining first-use order by trial."""
     options=configuration['options']
-    screening.validate_selection(**options)
+    if book_selection is None:screening.validate_selection(**options)
     if len(configuration['samples'])!=configuration['requested']:
         raise ValueError('The number of sampled schedules must match the requested trials.')
-    pool=options.get('pool','legacy')
+    pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
     available={(row[0],row[1],pool) for row in db.execute('''
         SELECT p.entry,p.exit FROM periods p JOIN period_pools b ON b.period_id=p.year
         WHERE b.pool=?''',(pool,))}
@@ -165,9 +165,9 @@ def calculations(db,jobs,workers,on_wait):
         executor.shutdown(wait=True,cancel_futures=True)
 
 
-def evaluate_trials(db,configuration,progress=None,workers=None):
+def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection=None,trial_sink=None):
     """Yield ordinary backtest results after each trial's missing books commit."""
-    planned=plan(db,configuration)
+    planned=plan(db,configuration,book_selection)
     count=worker_count(db,planned['jobs'],workers)
     stats=dict(workers=count,unique_books=planned['unique_books'],missing_books=len(planned['jobs']),
                reused_books=planned['reused_books'],saved_books=0,calculation_wait_seconds=0.,write_seconds=0.)
@@ -209,11 +209,13 @@ def evaluate_trials(db,configuration,progress=None,workers=None):
                         backtest_control.checkpoint()
                     stats['write_seconds']+=time.perf_counter()-writing
                     stats['saved_books']+=len(missing)
+            if trial_sink is not None:trial_sink.start_trial(number)
+            selection_args = dict(book_selection=book_selection, emit_period=trial_sink.period if trial_sink is not None else None) if book_selection is not None or trial_sink is not None else {}
             if 'calendar' in configuration:
-                result=schedules.backtest_calendar(db,calendar=configuration['calendar'],dates=dates,**configuration['options'])
+                result=schedules.backtest_calendar(db,calendar=configuration['calendar'],dates=dates,**selection_args,**configuration['options'])
             else:
                 result=schedules.backtest_dates(db,dates=dates,start=configuration['start'],end=configuration['end'],
-                                       months=configuration['months'],**configuration['options'])
+                                       months=configuration['months'],**selection_args,**configuration['options'])
             result['seconds']=time.perf_counter()-started
             completed+=1;event('progress')
             yield number,result,stats

@@ -16,6 +16,7 @@ from backtest.runtime import diagnostics as diagnostics
 from backtest.application import temporary_evidence as job_evidence
 from backtest.engines.numerical import transfer as numerical_transfer
 from backtest.application import durable_evidence as durable_evidence
+from backtest.application import strategy_requests
 class Missing(ValueError):
     pass
 
@@ -61,9 +62,15 @@ class Jobs:
     def _start(self,identifier,mode,options,*,planned=None,limits=None):
         if not re.fullmatch(r'[a-f0-9]{32}',identifier):
             raise ValueError('Invalid backtest run ID.')
-        if mode not in ('custom','random') or not isinstance(options,dict):
+        scalar=isinstance(options,dict) and 'strategy' in options
+        accepted=scalar and self.accepted(identifier)
+        if not accepted:strategy_requests.check_request(dict(id=identifier,mode=mode,options=options,planned=planned))
+        if scalar and limits is None:
+            if not callable(getattr(self.calculations,'calculate_into',None)):raise ValueError('Scalar execution is unavailable.')
+            limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
+        if mode not in (('latest','january','custom','random') if scalar else ('custom','random')) or not isinstance(options,dict):
             raise ValueError('Expected backtest mode and options.')
-        if hasattr(self.calculations,'preflight'):self.calculations.preflight(options,planned=planned)
+        if not accepted and hasattr(self.calculations,'preflight'):self.calculations.preflight(options,planned=planned)
         json.dumps(options,allow_nan=False)
         if limits is None:json.dumps(planned,allow_nan=False)
         if planned is not None and (mode!='random' or not isinstance(planned,dict)):
@@ -133,9 +140,10 @@ class Jobs:
             entry=run['_evidence'];pin=self.evidence.pin(entry);stream=pin.__enter__()
         try:
             reader=self.evidence.read(entry,stream)
-            metadata=dict(version=3,kind=run['mode'],settings=dict(mode=run['mode'],**deepcopy(run['options'])),
-                result=reader.manifest['summary'],catalog=display.get('catalog'),
-                presentation=display.get('presentation'),captured_at=display.get('captured_at'))
+            scalar=reader.format_version==2
+            metadata=dict(version=4 if scalar else 3,kind=run['mode'],settings=dict(mode=run['mode'],**deepcopy(run['options'])),
+                result=reader.manifest['summary'],catalog=dict(metrics={},filters={}) if scalar else display.get('catalog'),
+                presentation=dict(kind='scalar') if scalar else display.get('presentation'),captured_at=display.get('captured_at'))
             durable_evidence.encode(metadata,durable_evidence.MAX_METADATA_BYTES)
             durable_evidence.validate_metadata(metadata,reader)
             class Opened:
@@ -185,6 +193,8 @@ class Jobs:
             with self.lock:
                 run['state']='failed'
                 run['error']=str(error) if isinstance(error,(ValueError,TypeError)) else 'Backtest failed. Check the server development log.'
+                if 'strategy' in run['options']:
+                    run.update(strategy_requests.failure_details(error) or {})
         finally:
             if run.get('_evidence') is not None and run['state']!='complete':self.evidence.discard(run['_evidence'])
             with self.lock:run['finished']=time.time()

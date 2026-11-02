@@ -57,14 +57,14 @@ class Workspace:
             path=entry['path']/'receiving.evidence'
             with path.open('rb') as stream:
                 self._verify(stream,completion)
-                receiver=result_evidence.Reader(stream,**entry['limits'])
+                receiver=result_evidence.open_reader(stream,**entry['limits'])
                 if receiver.manifest!=completion['manifest']:raise ValueError('Completed evidence manifest differs.')
             if path.stat().st_size!=completion['transfer']['bytes']:raise ValueError('Completed evidence size differs.')
             path.replace(entry['path']/'completed.evidence')
             entry.update(staging=False,bytes=completion['transfer']['bytes'],completion=completion)
             self._release_input(entry)
             entry['charge']=entry['bytes']+self._input_bytes(entry)
-            return dict(format_version=result_evidence.FORMAT_VERSION,bytes=entry['bytes'],
+            return dict(format_version=receiver.format_version,bytes=entry['bytes'],
                         sha256=completion['transfer']['sha256'],manifest=completion['manifest'])
 
     def _verify(self,stream,completion):
@@ -116,7 +116,7 @@ class Workspace:
 
     def read(self, entry, stream):
         self._verify(stream,entry['completion'])
-        return result_evidence.Reader(stream,**entry['limits'])
+        return result_evidence.open_reader(stream,**entry['limits'])
 
     @contextmanager
     def fork_pinned(self,entry,reader):

@@ -47,7 +47,8 @@ def trial(reader,number):
     # The original trial summary owns its requested rank slice.
     for record in records(reader,number):
         if record['type']=='end_trial':summary=record['summary']
-    requested=summary['options'].get('rank_to',50)-summary['options'].get('rank_from',1)+1
+    selected=summary['options'].get('strategy',{}).get('selection',summary['options'])
+    requested=selected.get('rank_to',50)-selected.get('rank_from',1)+1
     for record in records(reader,number):
         if record['type']=='period':
             names=record['value']['names'];count+=1;empty+=names==0;short+=names<requested
@@ -86,6 +87,10 @@ def page(rows,cursor=0):
 
 def read(reader,selection):
     operation=selection.get('operation');number=selection.get('trial',1)
+    if operation in ('scopes','explanations','screen'):
+        if reader.format_version!=2:raise ValueError('This result has no scalar evidence.')
+        types={'scopes':{'scope'},'explanations':{'evaluation','admission','lanes','selection'},'screen':{'screen'}}[operation]
+        return page((record['value'] for record in reader.verified_records() if record['type'] in types),selection.get('cursor',0))
     if operation=='trial':return trial(reader,number)
     if operation=='periods':return page(periods(reader,number),selection.get('cursor',0))
     if operation=='holdings':return page(holdings(reader,number,selection.get('period')),selection.get('cursor',0))

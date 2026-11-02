@@ -75,8 +75,8 @@ def same(left,right):
 
 def validate_metadata(metadata,reader):
     """Bind submitted display meaning to the original complete result."""
-    if (type(metadata) is not dict or type(metadata.get('version')) is not int or metadata['version']!=3
-            or metadata.get('kind') not in ('custom','random')
+    if (type(metadata) is not dict or type(metadata.get('version')) is not int or metadata['version'] not in (3,4)
+            or metadata.get('kind') not in (('custom','random') if metadata.get('version')==3 else ('latest','january','custom','random'))
             or type(metadata.get('settings')) is not dict
             or metadata['settings'].get('mode')!=metadata['kind']
             or type(metadata.get('catalog')) is not dict
@@ -84,6 +84,8 @@ def validate_metadata(metadata,reader):
             or type(metadata.get('presentation')) is not dict
             or not same(metadata.get('result'),reader.manifest['summary'])):
         raise ValueError('Version-3 snapshot metadata or result summary differs.')
+    if reader.format_version != (1 if metadata['version']==3 else 2):
+        raise ValueError('Application artifact and evidence codec differ.')
     header=reader.metadata
     if header.get('mode')!=metadata['kind'] or type(header.get('options')) is not dict:
         raise ValueError('Snapshot mode differs from original evidence.')
@@ -230,7 +232,7 @@ def _digest(stream,size):
 
 def _reader(stream,metadata,evidence):
     if _digest(stream,evidence['bytes'])!=evidence['sha256']:raise ValueError('Durable evidence content differs.')
-    reader=result_evidence.Reader(stream,max_bytes=evidence['bytes'],piece_bytes=evidence['piece_bytes'],
+    reader=result_evidence.open_reader(stream,max_bytes=evidence['bytes'],piece_bytes=evidence['piece_bytes'],
         record_bytes=evidence['record_bytes'],checkpoint=backtest_control.checkpoint)
     if not same(reader.manifest,evidence['manifest']):raise ValueError('Durable evidence manifest differs.')
     validate_metadata(metadata,reader)

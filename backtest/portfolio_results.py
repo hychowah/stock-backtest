@@ -1,10 +1,11 @@
-"""Financial result contract 1: ordered selected books to detached results.
+"""Financial result contracts: ordered selected books to detached results.
 
 evaluate consumes contiguous (datetime.date entry, exit) pairs. select_period
 returns {entry: ISO date, exit: ISO date, holdings: ordered SQL row dictionaries,
 spy: fractional total return}. It owns book acquisition, not aggregation.
 
-See docs/portfolio-results.md for complete fields, units and nullability. The
+Contract 1 remains the default. Explicit contract 2 admits scalar selected rows
+through the same reducer. See docs/portfolio-results.md for fields and units. The
 version belongs to the diagnostic envelope, never existing application payloads.
 This standard-library module opens no resources and takes no ownership.
 """
@@ -53,7 +54,23 @@ def _finite(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
-def _holdings(book, entry, exit_day):
+SCALAR_HOLDING_FIELDS = (HOLDING_FIELDS - {'metric_yield', 'metric_multiple'}) | {
+    'ranking_value','ranking_unit','ranking_display','ranking_direction','scalar_evidence'}
+
+
+def validate_scalar_row(row):
+    """Check generic scalar presentation without current catalog or evaluation."""
+    if (type(row) is not dict or not _finite(row.get('ranking_value'))
+            or row.get('ranking_unit') not in ('scalar','USD','USD/share','shares')
+            or type(row.get('ranking_display')) is not str
+            or row.get('ranking_direction') not in ('highest','lowest')
+            or type(row.get('scalar_evidence')) is not dict
+            or type(row.get('symbol')) is not str or type(row.get('rank')) is not int):
+        raise ValueError('Malformed scalar selected row.')
+    return row
+
+
+def _holdings(book, entry, exit_day, contract=1):
     if (not isinstance(book, dict) or book.get('entry') != str(entry)
             or book.get('exit') != str(exit_day) or not _finite(book.get('spy'))
             or book['spy'] < -1 or not isinstance(book.get('holdings'), list)):
@@ -62,9 +79,10 @@ def _holdings(book, entry, exit_day):
     symbols = set()
     previous_rank = 0
     for original in book['holdings']:
-        if not isinstance(original, dict) or not HOLDING_FIELDS.issubset(original):
+        if not isinstance(original, dict) or not (HOLDING_FIELDS if contract == 1 else SCALAR_HOLDING_FIELDS).issubset(original):
             raise ValueError('Selected holding is missing required fields.')
-        if any(not _finite(original[key]) for key in NUMERIC_FIELDS):
+        if contract == 2: validate_scalar_row(original)
+        if any(not _finite(original[key]) for key in NUMERIC_FIELDS if contract == 1 or key not in ('metric_yield','metric_multiple')):
             raise ValueError('Selected holding has an unavailable financial value.')
         if (not isinstance(original['symbol'], str) or not original['symbol']
                 or original['symbol'] in symbols or type(original['rank']) is not int
@@ -95,15 +113,15 @@ def _holdings(book, entry, exit_day):
     return stocks
 
 
-def evaluate(periods, select_period, *, common_start=None, checkpoint=None):
+def evaluate(periods, select_period, *, common_start=None, checkpoint=None, contract=1):
     """Collect the incremental reduction into the existing detached contract."""
     results = []
     summary = evaluate_into(periods, select_period, results.append,
-        common_start=common_start, checkpoint=checkpoint)
+        common_start=common_start, checkpoint=checkpoint, contract=contract)
     return dict(periods=results, **summary)
 
 
-def evaluate_into(periods, select_period, emit_period, *, common_start=None, checkpoint=None):
+def evaluate_into(periods, select_period, emit_period, *, common_start=None, checkpoint=None, contract=1):
     """Emit each complete holding period in order.
 
     Retain only aggregation state and the current period. The collecting adapter
@@ -115,12 +133,13 @@ def evaluate_into(periods, select_period, emit_period, *, common_start=None, che
     common start adds the established explicit-date cash fields. Cash has zero
     return for both sides. Cancellation and provider errors propagate unchanged.
     """
+    if type(contract) is not int or contract not in (1,2):raise ValueError('Unsupported selected-book contract.')
     periods = validate_periods(periods, common_start)
     growth=spy_growth=1.
     for entry, exit_day in periods:
         if checkpoint is not None: checkpoint()
         book = select_period(entry, exit_day)
-        stocks = _holdings(book, entry, exit_day)
+        stocks = _holdings(book, entry, exit_day, contract)
         period = dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
             names=len(stocks), portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,
             spy=book['spy'], is_final_period=exit_day==periods[-1][1])
