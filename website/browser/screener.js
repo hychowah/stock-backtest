@@ -23,25 +23,48 @@
     const a=values.slice().sort((a,b)=>a-b),i=Math.floor(a.length/2);
     return a.length%2?a[i]:(a[i-1]+a[i])/2;
   }
+  // Scalar lanes have no formula, unit conversion, return or reciprocal logic.
+  // Source adapters validate their inputs. Legacy populations have no callable
+  // formula candidate ceiling; all user conditions move together as one stage.
+  function selectValues(candidates,specification) {
+    const {ranking,rank_from,rank_to,selection_order,conditions}=specification;
+    if(!['highest','lowest'].includes(ranking.direction))throw Error('Choose highest or lowest.');
+    const passes=row=>conditions.every(c=>{
+      const value=row.values[c.lane];
+      if(!['lt','gt','le','ge','eq'].includes(c.op))throw Error('Choose a valid scalar comparison.');
+      if(c.op==='eq')return value===c.value;
+      if(!Number.isFinite(value))return false;
+      return c.op==='lt'?value<c.value:c.op==='gt'?value>c.value:c.op==='le'?value<=c.value:value>=c.value;
+    });
+    let matches=candidates.map((row,index)=>({row,index,value:row.values[ranking.lane]})).filter(item=>Number.isFinite(item.value));
+    if(selection_order==='filter_first')matches=matches.filter(item=>passes(item.row));
+    const compare=(a,b)=>a<b?-1:a>b?1:0;
+    matches.sort((a,b)=>{
+      const value=compare(a.value,b.value)*(ranking.direction==='highest'?-1:1);
+      const ar=a.row.candidate_rank,br=b.row.candidate_rank;
+      return value || (ar===null||ar===undefined?br===null||br===undefined?0:-1:br===null||br===undefined?1:compare(ar,br)) || compare(a.row.symbol,b.row.symbol);
+    });
+    let selected=matches.slice(rank_from-1,rank_to).map((item,index)=>({index:item.index,rank:rank_from+index,value:item.value}));
+    if(selection_order==='rank_first')selected=selected.filter(item=>passes(candidates[item.index]));
+    return {selected,matches:selection_order==='rank_first'?selected.length:matches.length};
+  }
+  function legacySpecification(o) {
+    const conditions=[{lane:'market_cap',op:'ge',value:o.min_cap},{lane:'enterprise_value',op:'ge',value:o.min_ev},{lane:'metric_yield',op:'ge',value:o.min_yield}];
+    for(const [lane,op,value] of [['market_cap','le',o.max_cap],['metric_multiple','le',o.max_multiple],['sector','eq',o.sector],['exchange','eq',o.exchange]])if(value!==null)conditions.push({lane,op,value});
+    for(const c of o.filters??[])conditions.push({lane:'filter.'+c.field,op:c.op,value:c.value});
+    return {ranking:{lane:'metric_yield',direction:'highest'},rank_from:o.rank_from,rank_to:o.rank_to,selection_order:o.selection_order,conditions};
+  }
   function select(observations,o,dataset,mode) {
     if(!Object.hasOwn(dataset.metrics,o.metric))throw Error('Choose a valid ranking metric.');
     for(const c of o.filters??[])if(!dataset.filter_catalog?.[c.field]?.available)throw Error('Choose an available filter metric.');
-    const passes=h=>{
-      const values=dataset.filter_values?.[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]??{};
-      return h.market_cap>=o.min_cap && h.enterprise_value>=o.min_ev && h.metric_yield>=o.min_yield && (o.max_cap===null || h.market_cap<=o.max_cap) && (o.max_multiple===null || h.metric_multiple<=o.max_multiple) && (o.sector===null || h.sector===o.sector) && (o.exchange===null || h.exchange===o.exchange) &&
-        (o.filters??[]).every(c=>Number.isFinite(values[c.field]) && (c.op==='lt'?values[c.field]<c.value:values[c.field]>c.value));
-    };
     observations=observations.map(h=>{
       const value=dataset.metric_values[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]?.[o.metric];
       return value?{...h,metric_multiple:value[0],metric_yield:value[1]}:null;
     }).filter(h=>h!==null);
-    const matches=o.selection_order==='filter_first'?observations.filter(passes):observations;
-    matches.sort((a,b)=>b.metric_yield-a.metric_yield || (a.candidate_rank??-Infinity)-(b.candidate_rank??-Infinity) || (a.symbol<b.symbol?-1:a.symbol>b.symbol?1:0));
-    // Rank the chosen scope once. Later filters retain those ranks and cannot
-    // pull replacements from outside the requested range.
-    let stocks=matches.slice(o.rank_from-1,o.rank_to).map((h,i)=>({...h,rank:o.rank_from+i}));
-    if(o.selection_order==='rank_first')stocks=stocks.filter(passes);
-    return {stocks,matches:o.selection_order==='rank_first'?stocks.length:matches.length};
+    const candidates=observations.map(h=>({symbol:h.symbol,candidate_rank:h.candidate_rank,values:{...h,
+      ...Object.fromEntries(Object.entries(dataset.filter_values?.[mode+':'+o.pool+':'+(h.year??0)+':'+h.symbol]??{}).map(([field,value])=>['filter.'+field,value]))}}));
+    const result=selectValues(candidates,legacySpecification(o));
+    return {stocks:result.selected.map(item=>({...observations[item.index],rank:item.rank})),matches:result.matches};
   }
   function screen(dataset, options) {
     const o=validate(options), groups={};
@@ -80,7 +103,7 @@
     const ranks=`Ranks ${options.rank_from??defaults.rank_from}–${options.rank_to??defaults.rank_to}`;
     return options.selection_order==='rank_first'?ranks+' selected before filters. No replacements; original ranks retained. Equal weight across passing stocks.':ranks+' after filtering, equal weight.';
   }
-  const api={defaults,validate,median,screen,latestScreen,selectionDescription};
+  const api={defaults,validate,median,screen,latestScreen,selectionDescription,selectValues};
   if(typeof module==='object' && module.exports)module.exports=api;
   root.StockScreener=api;
 })(globalThis);

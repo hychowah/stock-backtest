@@ -5,7 +5,7 @@ NumPy is loaded only by matrix evaluation and financial specialization.
 """
 from backtest.financial import rules, books as financial_books, metrics
 from backtest.inputs import research
-from backtest import screening
+from backtest import screening, selection
 import ast
 import copy
 from datetime import date
@@ -31,7 +31,20 @@ UNSUPPORTED_THRESHOLDS = frozenset()
 
 
 def require_supported(options):
-    """Reject unsupported experimental conditions without changing settings."""
+    """Reject formula intent before readiness, inputs or numerical execution.
+
+    Presence is intent even for an empty/null payload. This guard defines no
+    accepted custom application format and never substitutes a built-in metric.
+    """
+    formula_fields={'strategy_version','variables','ranking','conditions',
+                    'selection','scalar_selection','selection_plan','program',
+                    'definition','formula','bundle'}
+    formula_formats={'scalar-selection-plan','scalar-selection','formula-program',
+                     'variable-definition','variable-bundle','formula-evaluation'}
+    if (formula_fields.intersection(options) or isinstance(options.get('format'),str) and options['format'] in formula_formats
+            or any(isinstance(item,dict) and 'variable_id' in item
+                   for item in options.get('filters',[]) or [])):
+        raise ValueError('UNSUPPORTED_CAPABILITY: New engine — experimental does not support custom formula selection.')
     for condition in options.get('filters', []) or []:
         if isinstance(condition, dict) and condition.get('field') in UNSUPPORTED_THRESHOLDS:
             raise ValueError('New engine — experimental does not support filter '
@@ -362,7 +375,7 @@ class PolicyProgram:
                                          m.current_multiple,m.financial_values,m.operating_yield_spread,
                                          financial_books.entry_valuation,financial_books.benchmark_return,financial_books.yield_spread,m.three_year_multiple)}
         source_files.update(Path(module.__file__).resolve() for module in
-            (rules,research.market,research,research.revalue,research.legacy,screening))
+            (rules,research.market,research,research.revalue,research.legacy,screening,selection))
         source_files.update(ROOT/name for name in ("backtest/engines/original/schedules.py","backtest/engines/original/book_batch.py","backtest/inputs/daily.py"))
         self.source_hashes = {path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix():hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sorted(source_files)}

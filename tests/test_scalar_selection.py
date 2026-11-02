@@ -87,8 +87,8 @@ class ScalarTests(unittest.TestCase):
 
     def test_condition_and_candidate_count_ceilings(self):
         condition=dict(lane='x',op='ge',value=0.)
-        self.assertEqual(len(s.validate(spec(conditions=[condition]*50))['conditions']),50)
-        with self.assertRaises(s.SelectionError):s.validate(spec(conditions=[condition]*51))
+        self.assertEqual(len(s.validate(spec(conditions=[condition]*s.MAX_CONDITIONS))['conditions']),57)
+        with self.assertRaises(s.SelectionError):s.validate(spec(conditions=[condition]*(s.MAX_CONDITIONS+1)))
         with self.assertRaises(s.SelectionError):s.select([candidate(str(i),1.) for i in range(s.MAX_CANDIDATES+1)],spec())
 
 

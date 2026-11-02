@@ -18,7 +18,7 @@ import time
 from backtest.financial import rules
 from backtest.inputs import market, cache_assets
 from backtest.engines.reference import legacy
-from backtest import screening
+from backtest import screening, selection
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
@@ -90,7 +90,7 @@ def signature():
     existing precedence. No inventory or derived prefix survives the call.
     """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
+    paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
     paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py')]
     entries = [(path, path.stat()) for path in paths]
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')

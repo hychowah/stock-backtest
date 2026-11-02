@@ -174,9 +174,9 @@ class PortableFingerprintTests(unittest.TestCase):
             for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(raw/name).write_text('[]')
             (results/'summary-exits.txt').write_text('Through 2026-10-20\n')
             context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw));context.enter_context(patch.object(research,'RESULTS',results))
-            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.screening,'screening.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.market,'market.py'),(research.legacy,'legacy.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
+            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.screening,'screening.py'),(research.selection,'selection.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.observation_inputs,'observation_inputs.py'),(research.market,'market.py'),(research.legacy,'legacy.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py')]:
                 file=root/name;file.write_text('source');context.enter_context(patch.object(module,'__file__',str(file)))
-            for name in ('legacy_downloads.py','fmp_download.py'):(root/name).write_text('source')
+            for name in ('legacy_downloads.py','fmp_download.py','daily.py'):(root/name).write_text('source')
             expected=research.signature();original=Path.stat;directory=raw/'px'
             stamp=directory.stat().st_mtime_ns
             def stat(path,*args,**kwargs):
@@ -186,6 +186,12 @@ class PortableFingerprintTests(unittest.TestCase):
             with patch.object(Path,'stat',stat):self.assertEqual(research.signature(),expected)
             self.assertEqual(expected['raw/px'][0],'directory')
             self.assertTrue(all('\\' not in key for key in expected))
+            policy_source=Path(research.selection.__file__)
+            policy_source.write_text('changed selection policy source')
+            changed=research.signature()
+            self.assertNotEqual(changed['selection.py'],expected['selection.py'])
+            self.assertEqual({key:value for key,value in changed.items() if key!='selection.py'},
+                             {key:value for key,value in expected.items() if key!='selection.py'})
 
 
 if __name__=='__main__':unittest.main()

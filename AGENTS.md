@@ -29,7 +29,10 @@ Final checks and audits are recorded in the phase. Phase 4 resumes from
 [execution plan](docs/plans/custom-variables/phases/phase-04/execution-plan-2026-11-02.md)
 owns general scalar selection and narrow legacy adapters on this feature branch.
 The callable reference selection uses provider admission and detached evaluator
-evidence. It adds no ordinary strategy/UI or saved-result format. Phases 5–7
+evidence. Explicit SQL/browser legacy adapters preserve stored pairs, filter scales
+and accepted settings. Their shared policy source participates in existing
+freshness bindings. Experimental formula intent fails before financial work.
+It adds no ordinary strategy/UI or saved-result format. Phases 5–7
 remain held. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains

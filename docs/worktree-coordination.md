@@ -477,3 +477,10 @@ selection formats are namespaced independently of application artifacts.
 Phases 5–7 remain held. No merge, push, deployment, restart, market-data request
 or live-runtime/cache mutation is authorized. Private synthetic Windows checks
 are permitted. Native-cache coverage remains unknown.
+
+Phase 4 Slice 2 starts from audited `6561a56`. Its narrow overlap also includes
+adding `backtest/selection.py` to existing research and numerical source
+fingerprints. This preserves freshness after selection delegates to that source.
+The numerical policy owner rejects formula-bearing requests explicitly; it adds
+no formula execution, schema or application-artifact change. The current
+execution plan records affected owners before implementation.

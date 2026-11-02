@@ -6,7 +6,7 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 4 implementation resumed on `feature/custom-variables` from `6f39f0e`.**
+Status: **Phase 4 complete in source on `feature/custom-variables`; both slices independently audited.**
 Phase 1 documentation, Phase 2 provider and Phase 3 reference evaluator are
 complete in source. The user's 2 November Phase 4 instruction assigns this
 branch general scalar selection and narrow legacy adapters. The
@@ -23,7 +23,10 @@ commits in this feature worktree. It supersedes the scalar-selection hold below.
 The callable selector consumes the completed provider and reference evaluator.
 It preserves their financial, admission, freshness and lifetime boundaries.
 The first slice implements finite-scalar policy and bounded reference selection.
-The second owns explicit legacy adapters and compatibility closure. The editor,
+The second implements explicit legacy adapters and compatibility closure.
+The [compatibility reconciliation](phases/phase-04/compatibility.md) records stored
+comparison scales and current application boundaries. The
+[Phase 5 handoff](phases/phase-04/handoffs/phase-05.md) keeps later work held. The editor,
 library and numerical formula execution remain held.
 The following Phase 2/3 records and older inspections remain dated context.
 
@@ -272,7 +275,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **1. Variable contract and ownership** | Contract documentation delivered | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), historical [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Current Phase 2 ownership is assigned above. |
 | **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
 | **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
-| **4. General scalar selection** | **Implementation resumed from `6f39f0e`.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Slice 1 handoff](phases/phase-04/handoffs/slice-02.md). Both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity remain required gates. |
+| **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
 | **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
 | **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
 | **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |

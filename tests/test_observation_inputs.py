@@ -169,7 +169,7 @@ class ProjectionTests(unittest.TestCase):
         source_folder = Path(research.__file__).parent
         with ExitStack() as context:
             for module in (research, research.baseline, research.metrics, research.books,
-                           research.rules, research.screening, research.cache_assets,
+                           research.rules, research.screening, research.selection, research.cache_assets,
                            research.market, research.legacy, research.revalue, financial, observed):
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())

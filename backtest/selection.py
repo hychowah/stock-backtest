@@ -15,7 +15,7 @@ import hashlib
 from pathlib import Path
 
 _LANE = re.compile(r'[A-Za-z0-9_.:-]{1,160}\Z')
-MAX_CONDITIONS = 50
+MAX_CONDITIONS = 57
 MAX_CANDIDATES = 8192
 _LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -75,7 +75,7 @@ def validate(specification):
         _fail('/selection_order', 'Choose filter first or rank first.')
     submitted = specification.get('conditions', [])
     if type(submitted) is not list or len(submitted) > MAX_CONDITIONS:
-        _fail('/conditions', 'Choose at most 50 conditions.')
+        _fail('/conditions', 'Choose at most 57 conditions.')
     conditions = []
     for index, item in enumerate(submitted):
         path = '/conditions/' + str(index)

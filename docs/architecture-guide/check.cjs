@@ -149,3 +149,5 @@ assert(!html.includes('Provider-backed scalar evaluation is its next slice.') &&
 
 assert(html.includes('id="scalar-selection"') && html.includes('aria-label="Scalar selection"') && html.includes('backtest/selection.py') && html.includes('backtest/variables/selection.py') && html.includes('No hidden minimum yield applies to custom ranking.') && html.includes('Null candidate ranks come first.'), 'Explain scalar direction, admission and deterministic ties');
 assert(html.includes('Exact decimal conversion precedes binary64 comparison.') && html.includes('24 MiB output') && html.includes('96 MiB retained encoded content') && html.includes('Final encoding is followed by a freshness check.'), 'Explain canonical thresholds, bounded detached selection and lifetime checks');
+
+assert(html.includes('Legacy SQL and browser adapters keep stored ranking pairs') && html.includes('Experimental requests with formula intent fail before readiness or financial execution') && html.includes('Legacy prepared populations do not inherit the callable candidate limit.'), 'Explain explicit legacy adapters, freshness and formula rejection');

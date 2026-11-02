@@ -7,7 +7,7 @@ paths and source hashes. The engine worktree has not been synchronized.
 | Concern | Current owner |
 |---|---|
 | Financial rules, dated entry valuation, holding outcomes and built-in metric calculations | `backtest/financial/` |
-| Validation and SQL selection over prepared built-in pairs | `backtest/screening.py` |
+| Validation, explicit legacy translation and SQL selection over stored built-in pairs/filter values | `backtest/screening.py` |
 | Shared calendar requests and portfolio result reduction | `backtest/calendar.py`, `calendar_requests.py`, `portfolio_results.py` |
 | Full annual responses, fiscal histories, cache receipts and prepared inputs | `backtest/inputs/` |
 | Original dated calculations and retained independent reference | `backtest/engines/original/`, `backtest/engines/reference/` |
@@ -69,7 +69,10 @@ conditions. `backtest/variables/selection.py` owns bounded reference-backed
 selection over explicit scopes and detached complete scalar evidence.
 `definitions.normalize_quantity()` normalizes custom thresholds in canonical
 units while retaining submitted display input. Legacy comparisons keep their
-stored arithmetic scale in explicit adapters; no new observation parameter is
-advertised. See the [Phase 4 handoff](../custom-variables/phases/phase-04/handoffs/slice-02.md).
+stored arithmetic scale in `backtest/screening.py` and the browser screener.
+SQL keeps predicate pushdown. The browser consumes value lanes without formula
+interpretation. Research and numerical source bindings include the delegated
+selection policy. Numerical capability admission explicitly rejects formula
+intent before readiness or execution. No new observation parameter is advertised. See the [Phase 5 handoff](../custom-variables/phases/phase-04/handoffs/phase-05.md).
 Ordinary strategy/UI integration, the variable library and numerical formulas
 remain later held work.
