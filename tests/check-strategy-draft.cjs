@@ -13,7 +13,7 @@ const builtins={pe:{display:'multiple'},operating_yield_spread_3y:{display:'perc
 const workspaceModule={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../website/browser/variable-workspace.js'),'utf8'),{module:workspaceModule});
 const complete=input=>input.original||({format:'strategy-capture',version:1,selection:input.intent.selection,pool:input.intent.pool,bounds:input.intent.bounds,variables:input.submitted?.length?{program:{bundle:{definitions:input.submitted},definitions:input.submitted.map(entry=>({...entry,...entry.definition.output}))},presentation:input.labels}:null,builtins:[],limits:{bytes:196608}});
 const context=vm.createContext({console,data:[],document:{getElementById:node,querySelector:node,querySelectorAll:()=>[]},StockScreener:{defaults},
- CalendarSettings:{read:()=>({start:'2015-01-02',end:'2015-01-05',months:12}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:'original'}),sync(){}},
+ CalendarSettings:{read:()=>({start:'2015-01-02',end:'2015-01-05',months:12}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:node('backtest-engine').value||'original'}),sync(){}},
  ResultArtifacts:{forView:()=>null,matches:()=>false},ScheduleView:{isRunning:()=>false},SavedBacktests:{update(){}},BacktestQueue:{isManaging:()=>false},
  VariableWorkspace:{content:workspaceModule.exports.content,builtin:id=>useWire?wire.builtins.find(item=>item.id===id):builtins[id.slice(7)],request:async(route,input)=>{assert(['/capture','/detached'].includes(route));requests.push(structuredClone(input));if(pause)await new Promise(resolve=>release=resolve);if(useWire){const body=JSON.stringify(input);assert(Buffer.byteLength(body)<=256*1024);const response=await fetch(wireOrigin+'/api/variables'+route,{method:'POST',headers:{'Content-Type':'application/json'},body});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}return route==='/detached'?{authored:input.capture.program.bundle.definitions}:{strategy:complete(input)};}},
  localStorage:{get length(){return storage.size;},key:i=>[...storage.keys()][i],getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
@@ -42,9 +42,10 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  assert(node('strategy-heading').textContent.startsWith('Lowest Original submitted label'));assert(node('strategy-ranking-help').textContent.includes('lowest available selected variable'));
  assert.throws(()=>run(`StrategyDraft.patch({role:'ranking',source,capture:detached,authored},${token})`),/draft changed/);
  // Snapshot is taken before await; later draft changes do not alter submitted intent.
- pause=true;const pending=run('StrategyDraft.prepareSubmission()');await tick();assert.equal(ids.length,0);
- const submitted=copy(requests.at(-1));node('min-cap').value='750';run('StrategyDraft.patch({direction:"highest"},StrategyDraft.read().revision)');
+ node('backtest-engine').value='experimental';pause=true;const pending=run('StrategyDraft.prepareSubmission()');await tick();assert.equal(ids.length,0);
+ const submitted=copy(requests.at(-1));node('backtest-engine').value='original';node('min-cap').value='750';run('StrategyDraft.patch({direction:"highest"},StrategyDraft.read().revision)');
  release();pause=false;const prepared=await pending;
+ assert.equal(prepared.engine,'experimental');assert.equal(run('StrategyDraft.read().settings.engine'),'original');
  assert.equal(prepared.strategy.bounds.min_cap,100e6);assert.equal(prepared.strategy.selection.ranking.direction,'lowest');assert.equal(requests.at(-1).intent.bounds.min_cap,submitted.intent.bounds.min_cap);
  assert.equal(run('StrategyDraft.read().settings.strategy.selection.ranking.direction'),'highest');
  // Capture completes before retry ID allocation; uncertain start uses exact content.
@@ -62,8 +63,8 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  context.settings.strategy.bounds.min_cap=null;context.settings.strategy.bounds.min_ev=null;
  run('StrategyDraft.restore(settings)');assert.equal(node('min-cap').value,'');assert.equal(run('StrategyDraft.read().settings.strategy.bounds.min_cap'),null);
  for(const mode of ['latest','january','custom','random']){
-  context.settings={...context.settings,mode,first:2015,last:2015,trials:1,seed:42};run('StrategyDraft.restore(settings)');
-  const value=await run('StrategyDraft.prepareSubmission()');assert.equal(value.mode,mode);assert.equal(value.strategy.selection.ranking.source.revision,exact.revision);
+  context.settings={...context.settings,mode,engine:'experimental',first:2015,last:2015,trials:1,seed:42};run('StrategyDraft.restore(settings)');
+  const value=await run('StrategyDraft.prepareSubmission()');assert.equal(value.mode,mode);assert.equal(value.engine,'experimental');assert.equal(node('backtest-engine').value,'experimental');assert.equal(value.strategy.selection.ranking.source.revision,exact.revision);
  }
  // Repeated selection retains one complete exact capture, not editing history.
  for(let i=0;i<30;i++)run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');

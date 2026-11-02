@@ -177,9 +177,11 @@ def dispatch(handler,data_jobs):
             length=int(handler.headers.get('Content-Length','0'))
             if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid preview request size.')
             request=durable_evidence.decode(handler.rfile.read(length))
-            if type(request) is not dict or set(request)!={'strategy','roots'}:raise ValueError('Expected a captured strategy and explicit preview roots.')
+            if (type(request) is not dict or not {'strategy','roots'}<=set(request)
+                    or set(request)-{'strategy','roots','engine'}):raise ValueError('Expected a captured strategy and explicit preview roots.')
+            engine=strategy_requests.preview_engine(request.get('engine','original'))
             with backtest_control.cancel_when(handler.disconnect_check()):
-                value=handler.server.calculations.preview(request['strategy'],request['roots'])
+                value=handler.server.calculations.preview(request['strategy'],request['roots'],engine=engine)
             handler.reply(200,value)
         except (ValueError,TypeError) as error:
             details=strategy_requests.failure_details(error) or dict(code=None,path=None)

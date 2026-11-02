@@ -74,11 +74,21 @@ class Candidate(calculation_contract.Control):
 
     def calculate(self, mode, options, progress, configuration, *, planned=None,
                   admission='interactive', details=True):
+        if isinstance(options,dict) and 'strategy' in options:
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode,eager=True)
+        require_supported(options)
         return self._calculate(mode,options,progress,configuration,planned=planned,admission=admission,details=details)
 
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
                        admission='interactive', **limits):
-        """Bounded pinned capability; public scalar admission stays separate."""
+        """Bounded pinned scalar capability; admission precedes input work."""
+        if isinstance(options,dict) and 'strategy' in options:
+            from backtest.application import strategy_requests
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode)
+            require_supported(options)
+            options=strategy_requests.execution_options(mode,options,planned=planned)
         return self._calculate(mode,options,progress,configuration,planned=planned,admission=admission,
                                destination=destination,limits=limits)
 

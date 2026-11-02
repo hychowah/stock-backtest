@@ -6,7 +6,7 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phases 1–6 are complete in source on `feature/custom-variables`.**
+Status: **Phases 1–7 are complete in source on `feature/custom-variables`.**
 Phase 6 resumed from `f877c0c` and completes in three independently audited slices. The user's 2 November instruction authorizes
 variable editor and strategy integration with independently designed, implemented
 and audited slices. The [current execution plan](phases/phase-06/execution-plan-2026-11-02.md)
@@ -19,14 +19,18 @@ follow-up are fixed. Final checks pass 536 WSL tests, 446 private native tests
 and 18 source-bound browser checks. Actual UI, guide and complete export reviews
 pass. The [current record](phases/phase-06/slice-03.md) retains exact source
 bindings, cleanup and superseded attempts.
-Phase 7 is authorized from `5cded92` on this feature branch. Its
+Phase 7 completes from `5cded92` on this feature branch. Its
 [current execution plan](phases/phase-07/execution-plan-2026-11-02.md) records three
 slices. [Slice 1](phases/phase-07/slice-01.md) completes bounded compiled evaluation
 after independent audit and final source-bound checks. [Slice 2](phases/phase-07/slice-02.md)
 implements dormant candidate-owned execution and full trial evidence recovery.
 All six independent audit findings are closed. Final source-bound WSL, guarded
-native and browser checks pass. Public application qualification remains
-outstanding. Public numerical scalar admission stays closed.
+native and browser checks pass. Slice 3 passes the corrected-source private WSL
+and guarded native semantic, lifecycle and representative workload gates. Its
+bounded public numerical integration and shared pinned selector are implemented.
+Actual desktop/mobile browser and guide review, independent audit, final
+source-bound verification and private workload qualification pass. The
+[slice record](phases/phase-07/slice-03.md) retains exact receipts and limits.
 Original remains default. No download, deployment, integration into main or
 default change is authorized.
 
@@ -37,9 +41,9 @@ implementation and qualification on this feature branch. It supersedes the
 numerical hold below. Phase 6 remains complete. The
 [current Phase 7 record](phases/phase-07/README.md) and
 [compatibility reconciliation](phases/phase-07/compatibility.md) describe the
-active work. Three substantial slices receive independent design, implementation
-and smart-commit audits. Later designs use preceding committed source. Public
-experimental scalar admission remains closed in the first two slices. Original
+completed work. All three substantial slices receive independent design,
+implementation and smart-commit audits. Later designs use preceding committed
+source. Public experimental scalar admission remains closed in the first two slices. Original
 remains default, with no cutover authorized. Phase 1 payloads remain illustrative.
 The following Phase 6 and earlier records retain their dated meaning.
 
@@ -301,9 +305,9 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
 | **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
 | **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), [Slice 3](phases/phase-06/slice-03.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md), [compatibility](phases/phase-06/compatibility.md) and [held Phase 7 handoff](phases/phase-06/handoffs/phase-07.md). |
-| **7. Numerical backend qualification** | **Authorized; in progress from `5cded92`.** Bounded compiled evaluation, candidate-owned execution, then qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
+| **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
 
-Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phase 6 is complete. Phase 7 is authorized above. Unrelated website and engine development can continue under the existing worktree boundaries.
+Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.
 
 Do not build automatic strategy search, arbitrary user code, cross-sectional ranking inside formulas, or silent missing-value substitution in the first release. These add separate semantics beyond the requested formula system.
 
@@ -329,4 +333,4 @@ Phase 3 source now consumes four supported observations through an immutable
 validated program and a bounded reference evaluator. It changes no financial,
 prepared-input, selection, application or numerical-engine contract. Current
 verification and independent audit evidence live in its phase record. Phase 4 is
-complete, as are Phases 5 and 6. Phase 7 is now authorized as described above. Source completion authorizes no runtime publication or integration into main.
+complete, as are Phases 5–7 as described above. Source completion authorizes no runtime publication or integration into main.

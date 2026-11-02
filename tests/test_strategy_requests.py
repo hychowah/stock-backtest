@@ -313,11 +313,12 @@ class StrategyTests(unittest.TestCase):
             self.error('UNSUPPORTED_CAPABILITY', s.check_options, options)
         self.assertEqual(s.require_strategy(capture), capture.to_dict())
 
-    def test_custom_discrimination_rejects_overlap_and_experimental_before_input_work(self):
+    def test_custom_discrimination_rejects_overlap_and_malformed_capture_before_input_work(self):
         captured = s.capture_strategy(intent()).to_dict()
         for key in ('metric', 'min_yield', 'filters', 'rank_from', 'pool', 'selection_order', 'variables'):
             self.error('INVALID_STRATEGY', s.check_options, dict(strategy=captured, **{key: None}))
-        self.error('UNSUPPORTED_CAPABILITY', s.check_options, dict(engine='experimental', strategy=None))
+        self.error('INVALID_STRATEGY', s.check_options, dict(engine='experimental', strategy=None))
+        self.assertEqual(s.check_options(dict(engine='experimental',strategy=captured)),captured)
         self.assertEqual(s.check_options(dict(engine='original', calendar={'unchanged': True}, strategy=captured)), captured)
 
     def test_legacy_options_and_requests_are_not_normalized_or_restricted(self):

@@ -110,10 +110,14 @@ the phase record. [Phase 6](docs/plans/custom-variables/phases/phase-06/README.m
 is complete in source after three independently audited slices. It adds complete
 captured strategy intent, bounded Original execution, explicit previews,
 immutable artifact-4 scalar results and the shared variable workspace.
-[Phase 7](docs/plans/custom-variables/phases/phase-07/README.md) is authorized.
-Slice 1 completes callable compiled evaluation after independent audit and final
-source-bound checks. Candidate integration and qualification remain outstanding.
-Public numerical formula admission remains closed.
+[Phase 7](docs/plans/custom-variables/phases/phase-07/README.md) is complete in source.
+Slices 1 and 2 complete compiled evaluation, Candidate integration and detached
+trial recovery after independent audit and source-bound checks. Slice 3 exposes
+supported bounded scalar execution in Latest, January, fixed and random modes.
+Independent audit, final source-bound verification and private workload
+qualification pass.
+Sample preview uses Original reference execution. Eager scalar execution is
+unsupported. See the phase record for qualification scope and limits.
 Original remains default. Standalone built-in controls keep their behavior.
 
 

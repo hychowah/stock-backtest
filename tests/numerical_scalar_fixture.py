@@ -11,7 +11,7 @@ import test_observation_inputs
 
 
 class Inputs:
-    def __init__(self):
+    def __init__(self, *, configure=None):
         self.context=ExitStack()
         self.fixture=test_observation_inputs.ProjectionTests('test_real_preparation_through_immutable_generation_and_pending_guard')
         try:
@@ -28,6 +28,7 @@ class Inputs:
             financial_inputs.publish(raw,'TEST','income-statement',[
                 dict(date=f'{year}-06-30',reportedCurrency='USD',revenue=100e6,operatingIncome=value)
                 for year,value in ((2012,10e6),(2013,-5e6),(2014,20e6))],{},raw/'coverage.json')
+            if configure is not None:configure(self)
             self.fixture.prepare()
             self.owner=cache_access.WorkspaceAccess(self.root/'scalar-fixture.lock')
             ordinary_daily,ordinary_research=daily.connect,research.connect
@@ -51,6 +52,8 @@ class WireSession(__import__('backtest.engines.numerical.session',fromlist=['Ses
         from numerical_runtime_fixture import FixtureStore
         self.fixture_context=ExitStack()
         self.fixture_fault=configuration.get('scalar_fault')
+        self.fixture_probe=configuration.get('scalar_probe')
+        self.probe_state={}
         private=Path(configuration['scalar_fixture']).resolve()
         source=Path(configuration['source_root']).resolve()
         if private==source or source in private.parents:raise ValueError('Use an external private input fixture.')
@@ -68,9 +71,60 @@ class WireSession(__import__('backtest.engines.numerical.session',fromlist=['Ses
         self.fixture_context.enter_context(patch.object(daily,'connect',side_effect=lambda:original_daily(daily_path,path)))
         try:
             with patch.object(session,'GenerationStore',FixtureStore):super().__init__(configuration)
+            if self.fixture_probe is not None:self._install_probe(private)
         except BaseException as error:
             if not getattr(error,'numerical_session',None):self.fixture_context.close()
             raise
+
+    def _install_probe(self,private):
+        """Deterministic test-only cancellation stages; no production bypass."""
+        import os,time
+        from backtest.runtime import backtest_control
+        from backtest.inputs.cache_assets import write_json
+        from backtest.engines.numerical import formulas
+        from backtest import scalar_result_evidence
+        if self.fixture_probe not in ('compile','formula','evidence'):
+            raise ValueError('Unknown private scalar cancellation stage.')
+        def mark(stage):
+            self.probe_state.update(stage=stage,pid=os.getpid(),marked_at=time.perf_counter())
+            write_json(private/('probe-'+stage+'.json'),self.probe_state)
+        def hold(stage):
+            mark(stage)
+            while True:
+                backtest_control.checkpoint();time.sleep(.002)
+        if self.fixture_probe=='compile':
+            ordinary=formulas.njit
+            def observed(*args,**kwargs):
+                decorate=ordinary(*args,**kwargs)
+                def compile(function):
+                    kernel=decorate(function)
+                    state=self.probe_state
+                    class ObservedKernel:
+                        def __getattr__(self,name):return getattr(kernel,name)
+                        def __call__(self,*values):
+                            mark('compile')
+                            result=kernel(*values)
+                            state['kernel_returned']=True
+                            write_json(private/'probe-compile.json',state)
+                            return result
+                    return ObservedKernel()
+                return compile
+            self.fixture_context.enter_context(patch.object(formulas,'njit',observed))
+        elif self.fixture_probe=='formula':
+            ordinary=formulas._Execution.operations
+            def observed(execution,*args,**kwargs):
+                for result in ordinary(execution,*args,**kwargs):
+                    self.probe_state['native_chunks']=execution.owner.stats['native_chunks']
+                    hold('formula')
+                    yield result
+            self.fixture_context.enter_context(patch.object(formulas._Execution,'operations',observed))
+        else:
+            ordinary=scalar_result_evidence.Writer.evidence
+            def observed(writer,record):
+                result=ordinary(writer,record)
+                if record['type']=='evaluation':hold('evidence')
+                return result
+            self.fixture_context.enter_context(patch.object(scalar_result_evidence.Writer,'evidence',observed))
 
     def close(self):
         super().close()

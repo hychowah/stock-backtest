@@ -12,7 +12,7 @@ const summary={start:period.entry,end:period.exit,cagr:.2,spy_cagr:.03,growth:1.
 let screenWait=null,explanationWait=null,explanationFailure=false,release=null,currentId='1'.repeat(32),robust=0;
 const context=vm.createContext({console,document:{getElementById:node,createElement:()=>({click(){downloads.push({href:this.href,download:this.download});}})},
  Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,money:v=>String(v),metricLabel:()=>{throw Error('Scalar presentation must use captured meaning');},
- CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},ReturnContributions:{analyzeStored:async(count,visit)=>{await visit(()=>{});return {count:0};}},contributionPie:()=>'',
+ CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},contributionPie:()=>'',
  RobustnessView:{init(){},render(){robust++;}},VariableEvidence:{records:()=>'<p>Detached selected trace</p>'},
  fetch:async(url)=>{
   urls.push(url);assert(url.startsWith('/api/backtest-runs/'));
@@ -25,12 +25,41 @@ const context=vm.createContext({console,document:{getElementById:node,createElem
   else throw Error('Unexpected result route '+url);
   return {ok:true,headers:{get:()=>null},json:async()=>structuredClone({...value,identity:parts[3]})};
  }});
-for(const file of ['result-artifacts.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
+for(const file of ['screener.js','contributions.js','result-artifacts.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 function artifact(kind='latest',version=4,id=currentId){return {version,kind,settings:{mode:kind,strategy},result:{...summary,producer:{engine:'original',label:'Original'},configuration:{seed:42},trials:[],distribution:{}},catalog:{metrics:{},filters:{}},presentation:{},evidence:{id,format_version:version===4?2:1,trials:kind==='latest'?0:1,periods:kind==='latest'?0:1,holdings:kind==='latest'?70:1}};}
 async function show(value){context.artifact=value;run('{const completed=ResultArtifacts.publish(artifact);EvidenceResults.show(completed)}');await tick();await tick();}
 (async()=>{
- run('ScheduleView.init()');await show(artifact());
+ run('ScheduleView.init()');
+ // Completed producer text belongs to the artifact in every mode. Retain an
+ // actually displayed legacy custom result before showing a numerical January
+ // result through its direct bounded presenter, as ordinary completion does.
+ const prior=artifact('custom',2,'8'.repeat(32));prior.result.options={metric:'ev_ebitda'};prior.result.periods=[{...period,holdings:[holding]}];
+ context.metricLabel=()=> 'Retained EV/EBITDA';context.prior=prior;
+ run('ScheduleView.show(ResultArtifacts.publish(prior))');
+ assert.equal(node('result-producer').textContent,'Calculated by Original.');assert.equal(node('result-producer').hidden,false);
+ context.metricLabel=()=>{throw Error('Scalar presentation must use captured meaning');};
+ const numerical=artifact('january',4,'9'.repeat(32));numerical.settings.engine='experimental';numerical.result.producer={engine:'experimental',label:'New engine — experimental'};
+ node('backtest-engine').value='original';await show(numerical);
+ assert.equal(node('scalar-result-producer').textContent,'Calculated by New engine — experimental.');assert.equal(node('scalar-result-producer').hidden,false);assert.equal(node('scalar-evidence-view').hidden,false);
+ assert.equal(node('result-producer').textContent,'Calculated by New engine — experimental.');assert.equal(node('result-producer').hidden,true);
+ const numericalLatest=artifact('latest',4,'a'.repeat(32));numericalLatest.settings.engine='experimental';numericalLatest.result.producer=structuredClone(numerical.result.producer);await show(numericalLatest);
+ assert.equal(node('scalar-result-producer').textContent,'Calculated by New engine — experimental.');assert.equal(node('custom-view').hidden,true);assert.equal(node('scalar-result-producer').hidden,false);
+ // A saved snapshot is decoded and reopened while the current selector says
+ // Original. The original producer survives both that change and trial views.
+ const reopened=JSON.parse(JSON.stringify(numerical));reopened.evidence.id='b'.repeat(32);node('backtest-engine').value='original';await show(reopened);
+ assert.equal(node('scalar-result-producer').textContent,'Calculated by New engine — experimental.');
+ for(const kind of ['custom','random']){
+  context.recorded={...structuredClone(reopened),kind,evidence:{...reopened.evidence,id:(kind==='custom'?'c':'d').repeat(32)}};
+  run('ScheduleView.show(ResultArtifacts.publish(recorded))');await tick();await tick();
+  assert.equal(node('scalar-result-producer').textContent,'Calculated by New engine — experimental.');assert.equal(node('result-producer').hidden,true);
+ }
+ robust=0;
+ // Requested settings never establish a missing historical producer.
+ const unknown=structuredClone(prior);delete unknown.result.producer;unknown.settings.engine='experimental';context.prior=unknown;context.metricLabel=()=> 'Retained EV/EBITDA';
+ run('ScheduleView.show(ResultArtifacts.publish(prior))');assert.equal(node('result-producer').textContent,'Producer not recorded in this result.');assert.equal(node('result-producer').hidden,false);
+ context.metricLabel=()=>{throw Error('Scalar presentation must use captured meaning');};
+ await show(artifact());
  assert(node('scalar-screen-rows').innerHTML.includes('10%'));assert(node('scalar-evidence-summary').textContent.includes('Submitted original'));assert(node('scalar-screen-page').textContent.includes('of 70'));
  node('scalar-screen-next').handlers.click();await tick();assert(node('scalar-screen-rows').innerHTML.includes('A0064'));assert(node('scalar-screen-next').disabled);
  node('scalar-download-rows').handlers.click();node('scalar-download-evidence').handlers.click();assert(downloads[0].href.includes('/export/screen/'));assert(downloads[1].href.includes('/export/evidence/'));
@@ -65,5 +94,5 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  // The same extracted presenter still accepts codec1/artifact3.
  context.metricLabel=()=> 'Retained EV/EBITDA';await show(artifact('custom',3,'6'.repeat(32)));assert.equal(node('schedule-explanation-head').hidden,true);assert(node('schedule-stock-body').innerHTML.includes('10.00'));assert(!node('schedule-stock-body').innerHTML.includes('data-stored-explain'));
  assert(!urls.some(url=>url.includes('/variables')||url.includes('/catalog')));
- console.log('Passed: bounded scalar latest/January/random presentation, values/original labels, page replacement fencing, selected explanations, complete download capabilities and unchanged artifact3 presentation.');
+ console.log('Passed: bounded scalar latest/January/random presentation, immutable producer labels across legacy replacement/saved reopening/current selector changes, page replacement fencing, selected explanations, complete download capabilities and unchanged artifact3 presentation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

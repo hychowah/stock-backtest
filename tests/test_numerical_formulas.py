@@ -69,11 +69,12 @@ class FormulaTests(unittest.TestCase):
         display = 'usd' if unit == 'USD' else 'number'
         return self.compare_plan(r.plan(program(expression, unit, display), roots or self.roots()), view)
 
-    def test_callable_capability_is_exact_and_application_remains_closed(self):
+    def test_callable_capability_is_exact_and_bounded_application_is_declared(self):
         capability = f.capabilities()
         self.assertEqual(capability['parameter_ids'], [item['id'] for item in observations.catalog()])
         self.assertEqual(set(capability['operations']), {'constant','parameter','annual','ref','at','lookback','neg','add','sub','mul','div'})
-        self.assertFalse(capability['application_admission'])
+        self.assertTrue(capability['application_admission'])
+        self.assertFalse(capability['eager']);self.assertFalse(capability['sample_preview'])
         self.assertEqual(capability['limits'], dict(r.CEILINGS))
         capability['parameter_ids'].clear()
         self.assertEqual(len(f.capabilities()['parameter_ids']), 4)
@@ -219,13 +220,13 @@ class FormulaTests(unittest.TestCase):
         self.assertIsNone(self.evaluator._kernel)
         self.assertEqual(self.evaluator.cache,{})
 
-    def test_unsupported_intent_and_future_context_fail_without_inputs(self):
+    def test_forged_operation_and_future_context_fail_without_inputs(self):
         self.error('FUTURE_DATE',r.plan,program(dict(op='at',date='2015-01-03',arg=language.constant())),self.roots())
         checked=r.plan(program(),self.roots()).to_dict()
         checked['program']['nodes'][0]['op']='calendar'
         view=Mock()
         with patch.object(e,'require_plan',return_value=checked):
-            self.error('UNSUPPORTED_CAPABILITY',self.evaluator.evaluate,r.EvaluationPlan('{}'),view)
+            self.error('INVALID_SHAPE',self.evaluator.evaluate,r.EvaluationPlan('{}'),view)
         self.assertEqual(view.mock_calls,[])
         self.assertIsNone(self.evaluator._kernel)
 
@@ -375,10 +376,11 @@ class FormulaTests(unittest.TestCase):
         self.addCleanup(owner.close);self.addCleanup(owner.retire)
         options=dict(engine='experimental',strategy={})
         for call in [lambda:owner.preflight(options),lambda:owner.calculate_into('latest',options,Mock(),None,None)]:
-            self.error('UNSUPPORTED_CAPABILITY',call)
+            self.error('INVALID_STRATEGY',call)
         preparation.status.assert_not_called();preparation._runtime.assert_not_called()
-        with self.assertRaisesRegex(ValueError,'UNSUPPORTED_CAPABILITY'):
+        with self.assertRaises(d.FormulaError) as caught:
             policy.require_supported(options)
+        self.assertEqual(caught.exception.code,'INVALID_STRATEGY')
 
     def test_original_import_and_real_dated_execution_without_numerical_packages(self):
         code=r'''

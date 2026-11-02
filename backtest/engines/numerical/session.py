@@ -132,6 +132,8 @@ class Session:
     def plan(self, options):
         # The private SQL workspace contains immutable sessions. Use the ordinary
         # planner, including its fresh default seed and exact envelope.
+        from backtest.engines.numerical.policy import require_supported
+        require_supported(options)
         if 'strategy' in options:
             from backtest.application import strategy_requests
             strategy_requests.check_options(options)
@@ -145,6 +147,11 @@ class Session:
         return robustness.plan(self.workspace.db,**deepcopy(options))
 
     def calculate(self, mode, options, progress, configuration, *, planned=None, capture=None):
+        if isinstance(options,dict) and 'strategy' in options:
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode,eager=True)
+        from backtest.engines.numerical.policy import require_supported
+        require_supported(options)
         self.validate()  # Always before result/checkpoint lookup, even a full hit.
         if mode == 'random':
             plan = self.plan(options) if planned is None else numerical_random.validate_configuration(self.workspace,planned)
@@ -201,8 +208,15 @@ class Session:
         """Produce complete evidence without retaining previous periods.
 
         The caller owns output storage and publication. This explicit operation
-        has no complete-trial observer and changes no eager admission guard.
+        has no complete-trial observer. Scalar execution remains bounded-only.
         """
+        from backtest.engines.numerical.policy import require_supported
+        require_supported(options)
+        if isinstance(options,dict) and 'strategy' in options:
+            from backtest.application import strategy_requests
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode)
+            options=strategy_requests.execution_options(mode,options,planned=planned)
         self.validate()
         if 'strategy' in options:
             return self._scalar_into(mode,options,stream,progress,configuration,planned=planned,
@@ -232,9 +246,8 @@ class Session:
         backtest_control.checkpoint()
 
     def _scalar_into(self,mode,options,stream,progress,configuration,*,planned,max_bytes,piece_bytes,record_bytes):
-        """Dormant scalar capability inside the existing candidate lifetime.
+        """Bounded scalar capability inside the existing candidate lifetime.
 
-        Public application/numerical policy guards remain separate and closed.
         Source, cache, workers and attachments stay owned until session closure.
         """
         from backtest import scalar_result_evidence
@@ -282,6 +295,7 @@ class Session:
             measured=resources.measurements()
             self.stats['provider_constructions']+=measured['provider_constructions']
             self.stats['formula_compilations']=self.stats.get('formula_compilations',0)+measured['formula'].get('kernel_compilations',0)
+            self.stats['formula']=measured['formula']
             self.stats['scalar_resources']=measured['scalar_resources']
             resources.close();self.scalar_resources=None
             manifest=writer.finish(summary)

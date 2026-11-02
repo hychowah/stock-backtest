@@ -55,7 +55,7 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  node('variable-name').value='Newer local name';event('variable-name','input');release();validationWait=null;await tick();assert(!node('variable-explanation').textContent.includes(exact.revision));
  node('variable-preview-symbols').value=Array(17).fill('A').join(',');await click('variable-preview');assert.equal(previewCount,0);assert(node('variable-errors').textContent.includes('1–16'));
  node('variable-preview-symbols').value='A0000,A0001,UNKNOWN';node('variable-preview-mode').value='historical';await click('variable-preview');await tick();
- assert.equal(previewCount,1);assert.equal(calls.at(-1).body.roots.length,3);assert.deepEqual(Object.keys(calls.at(-1).body.roots[0]).sort(),['date','mode','pool','symbol']);assert(node('variable-preview-result').innerHTML.includes('not complete-pool coverage'));
+ assert.equal(previewCount,1);assert.equal(calls.at(-1).body.engine,'original');assert.equal(calls.at(-1).body.roots.length,3);assert.deepEqual(Object.keys(calls.at(-1).body.roots[0]).sort(),['date','mode','pool','symbol']);assert(node('variable-preview-result').innerHTML.includes('not complete-pool coverage'));
  // Exact library selection remains explicit. Save conflict preserves raw text.
  const pick={dataset:{library:exact.variable_id,revision:exact.revision},closest(){return this;}};
  event('variable-picker','click',pick);await tick();assert.equal(applied.length,0);assert(node('variable-selected').textContent.includes(exact.revision));

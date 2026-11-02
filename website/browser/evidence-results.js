@@ -139,7 +139,17 @@ const EvidenceResults=(()=>{
     const sequence=++explanationSequence;
     try{const page=await state.reader.explanations(state.explanationNext);if(!valid(state)||sequence!==explanationSequence)return;state.explanationNext=page.next;node('scalar-explanation-content').innerHTML=VariableEvidence.records(page.rows,state.explanationRow,state.artifact.settings.strategy)+(page.next===null?'':'<button type="button" id="scalar-explanation-next">Next explanation page</button>');node('scalar-explanation-next')?.addEventListener('click',()=>void nextExplanation(state));}catch(error){if(sequence===explanationSequence)readError(state,error);}
   }
+  function showProducer(artifact){
+    const producer=artifact.result.producer;
+    const label=typeof producer?.label==='string'&&producer.label?producer.label:typeof producer?.engine==='string'&&producer.engine?producer.engine:null;
+    const text=label?'Calculated by '+label+'.':'Producer not recorded in this result.';
+    const scalar=artifact.version===4;
+    for(const [id,visible] of [['scalar-result-producer',scalar],['result-producer',!scalar]]){
+      const target=node(id);if(target){target.textContent=text;target.hidden=!visible;}
+    }
+  }
   function show(artifact,trial=1){
+    showProducer(artifact);
     explanationSequence++;node('scalar-evidence-view').hidden=artifact.version!==4;node('scalar-explanation').open=false;
     if(artifact.version===4){
       node('scalar-evidence-heading').textContent=artifact.kind==='latest'?'Latest variable screen':artifact.kind==='january'?'January variable backtest':'Variable backtest';
@@ -164,5 +174,5 @@ const EvidenceResults=(()=>{
     node('scalar-explanation')?.addEventListener('toggle',()=>{if(!bounded)return;if(node('scalar-explanation').open){if(!bounded.explanationRequested)void explain();}else{bounded.explanationRequested=false;explanationSequence++;}});
     for(const [id,kind] of [['scalar-download-rows',null],['scalar-download-returns','returns'],['scalar-download-evidence','evidence']])node(id)?.addEventListener('click',()=>{if(bounded)bounded.reader.download(kind||(bounded.artifact.kind==='latest'?'screen':'holdings'),bounded.trial||1);});
   }
-  return {show,init,chart,stocks:()=>{if(!bounded?.page||!valid(bounded))return false;void storedStocks(bounded);return true;},clear:()=>{clearExplanation();bounded=null;if(node('scalar-evidence-view'))node('scalar-evidence-view').hidden=true;},download:(kind,trial)=>{if(!bounded||!valid(bounded))return false;bounded.reader.download(kind,trial??bounded.trial);return true;}};
+  return {show,showProducer,init,chart,stocks:()=>{if(!bounded?.page||!valid(bounded))return false;void storedStocks(bounded);return true;},clear:()=>{clearExplanation();bounded=null;if(node('scalar-evidence-view'))node('scalar-evidence-view').hidden=true;},download:(kind,trial)=>{if(!bounded||!valid(bounded))return false;bounded.reader.download(kind,trial??bounded.trial);return true;}};
 })();

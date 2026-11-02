@@ -162,8 +162,12 @@ Explicit [version-3 durable copies](durable-evidence.md) retain independent code
 evidence inside the same user stores. Their explicit readers need no checkpoints;
 [acquired browser readers](evidence-views.md) are additive in CB-14 capacity
 increment 5. Legacy submissions and queue execution remain eager. Captured scalar
-jobs retain bounded evidence through the same application owner. Public numerical
-scalar admission remains closed pending Phase 7 qualification.
+jobs retain bounded evidence through the same application owner. Phase 7 admits
+supported bounded numerical scalar execution in Latest, January, fixed and
+random modes. Standalone built-in Latest/January views keep their shared prepared
+data. Original remains default. Sample preview uses Original reference execution;
+eager scalar execution is unsupported. The Phase 7 record retains the closed
+independent audit and final source-bound verification receipts.
 
 ## Verification scope
 
@@ -229,9 +233,11 @@ incompatible previous experiments. Durable user snapshots are independent.
 
 ## Scalar complete evidence (Phase 7)
 
-Phase 7 adds dormant scalar trial dispatch to the same checkpoint store. Public
-numerical scalar admission remains closed pending qualification. Original remains
-default. No ordinary request, queued record or saved result is rewritten.
+Phase 7 uses scalar trial dispatch through the same checkpoint store for supported
+bounded numerical random execution. Latest, January and fixed scalar execution
+use the same pinned application boundary. Original remains default. No ordinary
+request, queued record or saved result is rewritten. Sample preview remains
+Original-only, and eager scalar execution is unsupported.
 
 Scalar bindings declare selected-book `result_contract=2`. They retain the exact
 generation, implementation, compiler environment and execution policy. They keep

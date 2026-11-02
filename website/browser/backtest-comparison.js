@@ -39,6 +39,8 @@ const BacktestComparison=(()=>{
         add('interval','Rebalance interval',dates.interval,dates.interval.count+' '+dates.interval.unit+'(s)');
         requestedWindow={start:dates.start,end:dates.end};
       }else requestedWindow={};
+    }
+    if(['custom','random'].includes(kind)||s.strategy){
       handled.add('engine');const engine=own(s,'engine')?s.engine:'original';
       add('engine','Requested engine',engine,engine==='original'?'Original':engine==='experimental'?'New engine — experimental':text(engine));
     }

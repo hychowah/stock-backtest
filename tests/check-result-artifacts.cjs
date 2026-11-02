@@ -36,3 +36,14 @@ const unidentified=Artifacts.decode({...produced,result:{},settings:{mode:'custo
 assert(!('producer' in unidentified.result));
 assert(Artifacts.matches(unidentified,{...unidentified.settings,engine:'original'}));
 console.log('Passed: pinned engine comparison and recorded producer identity without legacy inference.');
+for(const kind of ['latest','january']){
+ const prior={version:4,kind,settings:{mode:kind,strategy:{format:'strategy-capture',version:1}},
+  result:{},catalog:{},presentation:{},evidence:{id:'d'.repeat(32),format_version:2,trials:kind==='latest'?0:1,periods:kind==='latest'?0:1,holdings:1}};
+ const retained=JSON.stringify(prior),decoded=Artifacts.decode(prior);
+ assert(Artifacts.matches(decoded,{...prior.settings,engine:'original'}));
+ assert(!Artifacts.matches(decoded,{...prior.settings,engine:'experimental'}));
+ assert.equal(JSON.stringify(prior),retained);assert(!('producer' in decoded.result));
+ const numerical=Artifacts.decode({...prior,settings:{...prior.settings,engine:'experimental'}});
+ assert(!Artifacts.matches(numerical,{...prior.settings,engine:'original'}));
+}
+console.log('Passed: old scalar latest/January engine omission means Original without rewriting evidence or inferring a producer.');

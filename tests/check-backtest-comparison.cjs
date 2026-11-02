@@ -31,3 +31,11 @@ const changedWindow=artifact({start:'2016-01-01'},{start:'2016-01-04'});assert(c
 assert(compare(a,random).notices.some(text=>text.includes('different test types')));
 assert.throws(()=>describe({}),/cannot be compared/);
 console.log('Passed: stored parameter projection, calendars/defaults, AND filters, exact values, unknown settings, requested engines/recorded producers, seeds, stored distributions and comparability notices.');
+const captured={selection:{ranking:{source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},bounds:{min_cap:null,min_ev:null},pool:'cached',variables:null,builtins:[{id:'metric:ev_ebitda:yield',label:'Captured EBITDA yield'}]};
+const oldScalar=artifact({strategy:captured,first:2015,last:2015},{},'january');
+const explicitScalar=structuredClone(oldScalar);explicitScalar.settings.engine='original';
+assert(!compare(oldScalar,explicitScalar).parameters.find(row=>row.key==='engine').different);
+explicitScalar.settings.engine='experimental';
+assert(compare(oldScalar,explicitScalar).parameters.find(row=>row.key==='engine').different);
+assert(describe(oldScalar).parameters.find(row=>row.key==='producer').display.includes('Unidentified'));
+console.log('Passed: scalar January requested-engine defaults remain distinct from recorded producer evidence.');

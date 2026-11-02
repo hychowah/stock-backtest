@@ -31,12 +31,21 @@ UNSUPPORTED_THRESHOLDS = frozenset()
 
 
 def require_supported(options):
-    """Reject formula intent before readiness, inputs or numerical execution.
+    """Admit one checked capture; reject raw aliases before financial work.
 
-    Presence is intent even for an empty/null payload. This guard defines no
-    accepted custom application format and never substitutes a built-in metric.
+    Capability is separate from dependency/readiness/coverage. A direct
+    numerical caller implies experimental; an explicit different engine fails.
     """
-    formula_fields={'strategy','strategy_version','variables','ranking','conditions',
+    if not isinstance(options,dict):raise ValueError('Expected calculation options.')
+    if 'strategy' in options:
+        from backtest.application import strategy_requests
+        if 'engine' in options and options['engine']!='experimental':
+            from backtest.variables.definitions import FormulaError
+            raise FormulaError('UNSUPPORTED_CAPABILITY','/engine',
+                'The numerical adapter requires its pinned experimental engine.')
+        strategy_requests.check_options(dict(options,engine='experimental'))
+        return
+    formula_fields={'strategy_version','variables','ranking','conditions',
                     'selection','scalar_selection','selection_plan','program',
                     'definition','formula','bundle'}
     formula_formats={'scalar-selection-plan','scalar-selection','formula-program',
@@ -44,7 +53,7 @@ def require_supported(options):
     if (formula_fields.intersection(options) or isinstance(options.get('format'),str) and options['format'] in formula_formats
             or any(isinstance(item,dict) and 'variable_id' in item
                    for item in options.get('filters',[]) or [])):
-        raise ValueError('UNSUPPORTED_CAPABILITY: New engine — experimental does not support custom formula selection.')
+        raise ValueError('UNSUPPORTED_CAPABILITY: Use one complete captured strategy for custom formula selection.')
     for condition in options.get('filters', []) or []:
         if isinstance(condition, dict) and condition.get('field') in UNSUPPORTED_THRESHOLDS:
             raise ValueError('New engine — experimental does not support filter '

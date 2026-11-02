@@ -633,3 +633,40 @@ block even a second read-only connection. Ordinary execution retains Stop polls.
 The existing transactional stopping-row check, atomic completion precedence and
 shutdown requeue retain their owners and behavior. The regression uses private
 synthetic persistence only. No schema or durable-record rewrite is authorized.
+
+## Custom-variable Phase 7 Slice 3 — 3 November 2026
+
+The authorized feature branch starts from audited `719a724`. Its
+[fresh independent design](plans/custom-variables/phases/phase-07/slice-03-design.md)
+owns financial-free scalar capability admission, bounded-only numerical routing,
+the explicit Original reference preview, shared engine controls and all-mode
+draft intent. Existing routes, jobs, queue, runtime and browser restoration are
+the protected callers. Qualification uses their current lifetimes and complete
+evidence; it adds no parallel application route. Numerical execution is opt-in.
+Original remains default. The initial guarded native containment probe precedes
+public admission changes.
+
+Test-only entry translation retains the unchanged native guard. It qualifies
+real private entry logic under translated launch syntax, not literal production
+commands or native HTTP/browser operation. Financial/provider rules, prepared
+schemas, resources, worker/writer ownership, source/cache order and durable
+formats are unchanged. Other worktrees remain read-only. No publication or live
+asset mutation is authorized. Native-cache coverage remains unknown.
+
+Slice 3 qualification demonstrates dense worker cancellation-file polling.
+The [fresh independent amendment](plans/custom-variables/phases/phase-07/slice-03-cancellation-design.md)
+assigns only the worker control observer to this feature branch. The existing
+approximately 50 ms parent wait also observes the terminal marker. Calculation
+checkpoints read latched memory state and surface observer failures. Marker
+cancellation keeps parent-loss terminal protection; observer join remains inside
+source ownership. The pool marker/close protocol, shared checkpoints, financial
+owners, resources, runtime-child controls and native guard remain unchanged.
+The corrected-source gate passes 24 WSL and 17 guarded native cases. Supported
+bounded numerical scalar execution is now exposed in Latest, January, fixed
+and random modes. A financial-free declaration, the shared selector and existing
+StrategyDraft preserve checked intent and the explicit engine choice. Eager
+scalar execution and numerical sample preview remain unsupported. Preview names
+Original explicitly. Independent audit, actual desktop/mobile browser and guide
+review, final source-bound verification and private workload qualification pass.
+Phase 7 is complete in source. Other worktrees remain untouched. Native-cache
+coverage remains unknown.

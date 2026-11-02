@@ -12,9 +12,10 @@ const displayCatalog=()=>currentArtifact()?.catalog||sourceCatalog();
 const metricLabel=id=>displayCatalog().metrics[id]?.label||screeningData.metrics[id]?.label||id;
 function currentSettings(){
   const read=readOptions(),{first,last,...legacy}=read,options=StrategyDraft.selectionSettings(legacy),view=viewKey();
-  if(view==='latest')return {mode:'latest',...options};
-  if(view==='january')return {mode:'january',first,last,...options};
-  const settings={mode:'custom',...options,...CalendarSettings.read(),...EngineControls.fields()};
+  const engine=EngineControls.fields({scalar:StrategyDraft.isScalar()});
+  if(view==='latest')return {mode:'latest',...options,...(StrategyDraft.isScalar()?engine:{})};
+  if(view==='january')return {mode:'january',first,last,...options,...(StrategyDraft.isScalar()?engine:{})};
+  const settings={mode:'custom',...options,...CalendarSettings.read(),...engine};
   if(document.getElementById('date-testing').value==='random'){
     settings.mode='random';settings.trials=+document.getElementById('random-trials').value;
     if(document.getElementById('repeat-random').checked)settings.seed=+document.getElementById('random-seed').value;
@@ -378,6 +379,7 @@ const StrategyDraft=(()=>{
   }
   function renderScalar(){
     const controls=document.getElementById('variable-strategy-controls');if(!controls)return;
+    EngineControls.sync();
     controls.hidden=!scalar;document.getElementById('variable-legacy').hidden=!scalar;
     document.getElementById('variable-strategy-summary').textContent=scalar?sourceName(scalar.intent.selection.ranking.source)+' · exact revisions retained. Run explicitly to calculate.':'Built-in strategies work offline. Reusable variables use the local service.';
     const help=document.getElementById('strategy-ranking-help');
@@ -462,12 +464,14 @@ const StrategyDraft=(()=>{
       set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
     }
     set('rank-from',settings.strategy?.selection.rank_from??settings.rank_from??1);set('rank-to',settings.strategy?.selection.rank_to??settings.rank_to??50);
+    if(document.getElementById('backtest-engine'))set('backtest-engine',settings.engine??'original',
+      EngineControls.label?.(settings.engine??'original')||settings.engine||'Original');
+    EngineControls.sync();
     filterConditions=(settings.filters||[]).map(condition=>({...condition}));
     if(settings.mode==='january'){
       set('from-year',settings.first);set('to-year',settings.last);
     }else if(settings.mode!=='latest'){
-      if(document.getElementById('backtest-engine'))document.getElementById('backtest-engine').value=settings.engine??'original';
-      EngineControls.sync();CalendarSettings.restore(settings);
+      CalendarSettings.restore(settings);
       set('date-testing',settings.mode==='random'?'random':'single');
       if(settings.mode==='random'){
         set('random-trials',settings.trials);set('random-seed',seed??42);
@@ -493,7 +497,7 @@ const StrategyDraft=(()=>{
 const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
-ScheduleView.init();
+ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:StrategyDraft.isScalar()}));
 VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value});
 StrategyDraft.render();
 document.getElementById('variable-conditions').addEventListener('input',event=>{const t=event.target;if(t.dataset.variableField)StrategyDraft.condition(+t.dataset.variableIndex,t.dataset.variableField,t.value);});

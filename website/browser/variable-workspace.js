@@ -162,7 +162,7 @@ const VariableWorkspace=(()=>{
     const prepared=await request('/capture',{intent:{format:'strategy-intent',version:1,selection:{ranking:{source:{kind:'formula',...checked.root},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:callbacks.pool?.()||'legacy',bounds:{}},detached:[checked.capture]});
     if(local!==generation||number!==preview)return;
     const roots=symbols.map((symbol,index)=>({symbol,pool:callbacks.pool?.()||'legacy',mode,date:rootDate}));
-    const response=await fetch('/api/variable-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:prepared.strategy,roots})});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);
+    const response=await fetch('/api/variable-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:prepared.strategy,roots,engine:'original'})});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);
     if(local!==generation||number!==preview)return;
     node('variable-preview-result').innerHTML=VariableEvidence.preview(value);
   }

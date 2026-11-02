@@ -373,5 +373,10 @@ The browser's `engine-controls.js` owns engine choice and capability status.
 Both adapters support fixed/random week/month schedules, both stock pools,
 selection orders and the complete current metric/threshold catalog. Queue rows
 show requested engine identity. Completed views and CSVs use stored producer
-identity. Latest and January remain shared offline prepared-data operations.
-No selector value creates provenance for those views or old saved results.
+identity. Standalone built-in Latest and January views remain shared offline
+prepared-data operations. Captured scalar strategies use the pinned engine for
+bounded Latest, January, fixed and random execution. Original remains default.
+Sample preview uses Original reference execution; eager scalar execution is
+unsupported. No selector value creates provenance for prepared views or old
+saved results. The Phase 7 record retains the closed independent audit, final
+source-bound verification and measured private qualification limits.

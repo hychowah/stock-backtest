@@ -320,6 +320,11 @@ class NumericalRuntime:
         current context. A callback failure cancels/drains the child before it
         propagates. Navigation policy stays with the caller, not this runtime.
         """
+        if isinstance(options,dict) and 'strategy' in options:
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode,eager=True)
+        from backtest.engines.numerical.policy import require_supported
+        require_supported(options)
         return self._calculate(mode,options,progress,configuration,planned=planned,
             capture=capture,cancelled=cancelled)
 
@@ -331,6 +336,13 @@ class NumericalRuntime:
         after success. Eager callers keep their existing request and graph limits.
         """
         from backtest import result_evidence as result_evidence
+        from backtest.engines.numerical.policy import require_supported
+        require_supported(options)
+        if isinstance(options,dict) and 'strategy' in options:
+            from backtest.application import strategy_requests
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode)
+            options=strategy_requests.execution_options(mode,options,planned=planned)
         if destination is None:raise ValueError('Choose an evidence destination.')
         result_evidence._limits(max_bytes,piece_bytes,record_bytes)
         return self._calculate(mode,options,progress,configuration,planned=planned,cancelled=cancelled,

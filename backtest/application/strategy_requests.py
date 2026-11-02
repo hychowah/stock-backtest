@@ -417,8 +417,9 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         _fail('INVALID_STRATEGY', '', 'Calculation options must be an object.')
     if 'strategy' not in options:
         return None
-    if options.get('engine', 'original') != 'original':
-        _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Custom scalar strategies require Original. Experimental formula execution is not supported.')
+    engine=options.get('engine','original')
+    if type(engine) is not str or engine not in ('original','experimental'):
+        _fail('UNSUPPORTED_CAPABILITY','/engine','Choose a supported calculation engine without changing the captured strategy.')
     if set(options)-{'strategy','engine','start','end','months','calendar','dates','trials','seed','first','last'}:
         _fail('INVALID_STRATEGY','','Unknown custom calculation option.')
     if _OVERLAP.intersection(options):
@@ -430,7 +431,18 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         expected = current.get(descriptor['id'])
         if expected is None or any(descriptor[key] != expected[key] for key in ('unit', 'display', 'storage')):
             _fail('UNSUPPORTED_CAPABILITY', '/builtins', 'Captured scalar semantics are unsupported by the current backend.')
+    if engine=='experimental' and checked['variables'] is not None:
+        from backtest.engines.numerical import formula_capabilities
+        formula_capabilities.require_program(library.VariableCapture(
+            definitions.canonical(checked['variables'])).program,checkpoint=checkpoint)
     return checked
+
+
+def preview_engine(engine='original'):
+    """Sample preview explicitly uses Original, independent of run selection."""
+    if engine!='original':
+        _fail('UNSUPPORTED_CAPABILITY','/engine','Sample preview supports Original reference execution only.')
+    return engine
 
 
 def execution_options(mode,options,*,planned=None,checkpoint=backtest_control.checkpoint):

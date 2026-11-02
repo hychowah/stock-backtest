@@ -51,7 +51,10 @@ current slice record retains final verification, cleanup and superseded attempts
 Phase 7 resumes from `5cded92` under the user's 2 November authorization. Its
 [execution plan](docs/plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
 owns bounded compiled formula evaluation, candidate integration and qualification.
-Slices 1 and 2 keep public numerical scalar admission closed. Original remains default.
+Slices 1 and 2 kept public scalar admission closed. Slice 3 exposes supported
+bounded numerical scalar execution after corrected-source private qualification.
+Phase 7 is complete in source after independent audit, final source-bound checks
+and private workload qualification. Original remains default.
 Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
@@ -661,3 +664,19 @@ resource, source/cache, parent-writer and attachment ownership stays authoritati
 Public numerical scalar guards stay closed; no production bypass is authorized.
 The slice record distinguishes focused implementation checks from pending audit,
 final source-bound WSL/private native/browser gates and later measured admission.
+
+Slice 3 starts from audited `719a724` under a fresh independent design. Its
+qualification records retain failed native capacity attempts and a separately
+designed narrow worker-control correction. The existing parent-lifetime observer
+also observes the terminal marker; every calculation checkpoint reads only
+latched memory state. Shared checkpoints, financial policy, resource ceilings,
+runtime-child controls and native guards remain unchanged. Original remains
+default. The corrected-source private gates pass 24 WSL and 17 guarded native
+tests. Supported bounded numerical execution is exposed through the existing
+application boundary in all four scalar modes. Eager scalar execution and
+numerical sample preview remain unsupported. Sample preview explicitly uses
+Original. The shared selector and StrategyDraft preserve the requested engine.
+Independent audit, actual desktop/mobile browser and guide review, and final
+source-bound verification pass. The final 404-file product/test inventory is
+recorded in the slice. Qualification covers private synthetic inputs; native-cache
+coverage remains unknown. No other worktree is changed.

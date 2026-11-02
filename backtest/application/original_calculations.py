@@ -87,6 +87,10 @@ class Original(Control):
 
     def preflight(self, options, *, planned=None):
         from backtest.application import strategy_requests
+        if isinstance(options,dict) and 'strategy' in options and options.get('engine','original')!='original':
+            from backtest.variables.definitions import FormulaError
+            raise FormulaError('UNSUPPORTED_CAPABILITY','/engine',
+                'Original cannot execute a strategy pinned to another engine.')
         strategy_requests.check_options(options)
         if planned is not None:strategy_requests.validate_recorded(options,planned)
         return 'original'
@@ -95,11 +99,12 @@ class Original(Control):
         self.preflight(options)
         return self.ready()
 
-    def preview(self, capture, roots, *, admission='interactive'):
-        """Explicit bounded preview under the ordinary Original input lifetime."""
+    def preview(self, capture, roots, *, admission='interactive', engine='original'):
+        """Explicit Original reference samples under ordinary input lifetime."""
         from backtest.application import scalar_execution, strategy_requests
         from backtest.inputs import sqlite_observations
         options={'strategy':capture}
+        strategy_requests.preview_engine(engine)
         strategy_requests.check_options(options)
         plans=scalar_execution.plan_preview(strategy_requests.from_wire(capture),roots)
         with self._financial(admission,None):
@@ -114,7 +119,7 @@ class Original(Control):
                     value=scalar_execution.evaluate_preview(plans,roots,view,checkpoint=self._checkpoint)
                     fresh()
             finally:db.close()
-        return value
+        return dict(value,producer=dict(engine='original',label='Original reference sample preview'))
 
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
                        admission='interactive', max_bytes=256*1024**2, piece_bytes=1024*1024, record_bytes=8*1024*1024):
@@ -123,6 +128,7 @@ class Original(Control):
         from backtest import scalar_result_evidence
         from backtest.inputs import research, sqlite_observations
         from backtest.application import strategy_requests, scalar_runs
+        self.preflight(options,planned=planned)
         options=strategy_requests.execution_options(mode,options,planned=planned,checkpoint=self._checkpoint)
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')
         if not 0<max_bytes<=256*1024**2:raise ValueError('Invalid scalar evidence byte ceiling.')

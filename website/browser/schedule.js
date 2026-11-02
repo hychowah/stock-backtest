@@ -162,8 +162,8 @@ const ScheduleView=(()=>{
       node('schedule-message').className='backtest-failed';
     }}finally{if(number===requestNumber)stopBusy();}
   }
-  function init(){
-    CalendarSettings.init();void EngineControls.init();
+  function init(readContext){
+    CalendarSettings.init();void EngineControls.init(readContext);
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
     repeat.checked=false;syncSeed();repeat.addEventListener('change',syncSeed);
@@ -189,8 +189,7 @@ const ScheduleView=(()=>{
   }
   function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if([3,4].includes(artifact?.version))EvidenceResults.show(artifact,index+1);else render();}
   function show(artifact){
-    const producer=node('result-producer');
-    if(producer)producer.textContent=artifact.result.producer?'Calculated by '+artifact.result.producer.label+'.':'Producer not recorded in this result.';
+    EvidenceResults.showProducer(artifact);
     inspectedTrial=null;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){
       if(artifact.version===4)EvidenceResults.show(artifact,1);

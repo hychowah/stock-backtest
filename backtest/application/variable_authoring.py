@@ -14,7 +14,7 @@ def catalog():
     return dict(parameters=observations.catalog(), builtins=strategy_requests.builtin_catalog(),
                 displays={'scalar':['number','multiple','percent','percentage_points'],
                           'USD':['usd','usd_million'], 'USD/share':['usd_per_share']},
-                preview_limit=16, strategy_bytes=strategy_requests.STRATEGY_BYTES,
+                preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,
                 request_bytes=strategy_requests.REQUEST_BYTES)
 
 

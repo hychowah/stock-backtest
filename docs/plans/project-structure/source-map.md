@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 7 Slice 2. This map describes source after the structure refactor.
+Updated during Phase 7 Slice 3 qualification. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -60,7 +60,9 @@ Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/pha
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL
 access or financial reconstruction. The definition owner also binds its loaded
-source policy. Phases 4–5 are complete. Phase 6 resumes from `f877c0c`; Phase 7 is authorized; public numerical scalar admission remains closed.
+source policy. Phases 4–6 are complete. Phase 7 adds qualified bounded numerical
+scalar execution through existing application owners. Its final audit and broad
+verification remain pending. Original remains default.
 The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.
@@ -74,8 +76,10 @@ units while retaining submitted display input. Legacy comparisons keep their
 stored arithmetic scale in `backtest/screening.py` and the browser screener.
 SQL keeps predicate pushdown. The browser consumes value lanes without formula
 interpretation. Research and numerical source bindings include the delegated
-selection policy. Numerical capability admission explicitly rejects formula
-intent before readiness or execution. No new observation parameter is advertised. See the [Phase 5 handoff](../custom-variables/phases/phase-04/handoffs/phase-05.md).
+selection policy. Numerical capability admission accepts supported captured
+scalar programs for bounded Latest, January, fixed and random execution. Raw
+formula aliases and unsupported intent fail before readiness or financial work.
+The four observation parameters remain unchanged. See the [Phase 5 handoff](../custom-variables/phases/phase-04/handoffs/phase-05.md).
 `backtest/variables/library.py` now owns the separate durable variable repository
 in `data/variable-library.sqlite`. It stores authored immutable revisions and
 independent entry metadata versions. Its exact-reference resolver delegates to
@@ -94,7 +98,8 @@ restore uses no current library or display catalog. Admission checks capability
 separately. `library.capture_submitted()` reuses the existing envelope policy
 without opening a durable file. Slice 1 changed no ordinary route, job/queue or
 result format. Slice 2 adds the execution/evidence integration described below.
-Slice 3 supplies the shared editor described below. Phase 7 adds callable compiled evaluation; public numerical scalar admission remains closed. See the
+Slice 3 supplies the shared editor described below. Phase 7 adds opt-in bounded
+compiled execution through those owners. See the
 [Phase 6 execution plan](../custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
 
 
@@ -118,7 +123,7 @@ owns held sessions, revision-fenced patches and asynchronous submission capture.
 `evidence-results.js` presents bounded retained results for all modes;
 `variable-evidence.js` explains captured values, dates, reasons and operation traces
 without calculating or reading a current library/catalog. Numerical formula
-application admission remains closed during Phase 7 qualification.
+application admission is explicitly bounded and uses the same captured contract.
 
 The workspace shares opaque authored/label packing with StrategyDraft. The
 language owner supplies exact editable projections. Both authoring paths send
@@ -137,7 +142,7 @@ experimental scalar admission stays closed in Slice 1. The
 supersedes dated Phase 7 hold statements above. Original remains default.
 
 
-Phase 7 Slice 2 keeps public numerical scalar admission closed.
+Phase 7 Slice 2 kept public numerical scalar admission closed.
 `backtest/engines/numerical/scalar.py` owns one bounded compiled arithmetic and
 observation lifetime, genuine complete numerical books and staging for fixed or
 random dates. It injects arithmetic below the existing complete-scope selector.
@@ -151,6 +156,32 @@ explicitly dispatch scalar contract 2 / codec 2 alongside legacy contract 1 /
 codec 1. A scalar single-trial seal retains every original explanation and a
 trial-qualified scope namespace. Checkpoints copy those records unchanged. Full
 hits create no evaluator, book provider or worker. Scalar errors use the existing
-safe projection across child transport. `Selectable.calculate_into()` has dormant
-pinned Candidate routing behind unchanged capability guards; no new application
+safe projection across child transport. `Selectable.calculate_into()` now has
+supported bounded Candidate routing behind checked capability admission; no new application
 route, queue pipeline, durable container or artifact integer is allocated.
+
+The Slice 3 worker-control amendment keeps private cancellation transport in
+`trial_worker.py`. Its existing parent-lifetime observer checks the terminal
+marker at approximately 50 ms intervals. Calculation checkpoints read latched
+memory state and surface observation failures. Parent-loss protection continues
+after marker cancellation. Source remains held through observer join and
+terminal process exit. Shared evaluator checkpoints, financial owners and
+runtime-child controls retain their contracts. Matched private WSL/native
+qualification precedes supported public admission.
+
+`backtest/engines/numerical/formula_capabilities.py` declares the existing
+operation/parameter subset without optional numerical imports or financial work.
+Application intent and direct numerical entries check that same owner before
+readiness or new financial work. Scalar eager execution and numerical sample
+preview fail explicitly. Original remains default and owns reference sample
+preview. One shared EngineControls selector supplies every scalar mode;
+StrategyDraft captures and restores that pin. Result comparison defaults omitted
+old scalar Latest/January engine settings to Original without rewriting evidence
+or inventing producer identity. Independent audit and final broad verification
+remain pending.
+
+EvidenceResults also owns the common completed-producer projection. Its direct
+Latest/January entry and ScheduleView's legacy/custom/random entry show only the
+artifact's recorded producer. Scalar panels have their own visible destination;
+the redundant custom destination is hidden. Missing historical producer content
+retains the unknown label. The current selector supplies no provenance.

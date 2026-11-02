@@ -17,32 +17,73 @@ FRAME_BYTES = 16*1024
 REQUEST_BYTES = 1024*1024
 
 
-def _parent_monitor(kind, value, stopped, finished, seconds):
-    """Observe an inherited pipe or actual process handle, never PID polling."""
-    if kind == 'handle':
-        import ctypes as c
-        from ctypes import wintypes as w
-        kernel = c.WinDLL('kernel32', use_last_error=True)
-        kernel.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
-        kernel.CloseHandle.argtypes = [w.HANDLE]
-        try:
-            while not finished.is_set():
+class _Control:
+    """Translate private control I/O into terminal memory state for checkpoints."""
+    def __init__(self, marker):
+        self.marker = marker
+        self.stopped, self.finished, self.ready = Event(), Event(), Event()
+        self.error = None
+
+    def fail(self, error):
+        if self.error is None: self.error = error
+        self.stopped.set()
+
+    def cancelled(self):
+        if not self.stopped.is_set(): return False
+        if self.error is not None: raise self.error
+        return True
+
+    def _observe_marker(self):
+        if self.stopped.is_set(): return
+        try: self.marker.stat()
+        except FileNotFoundError: pass
+        except BaseException as error: self.fail(error)
+        else: self.stopped.set()
+
+    def observe(self, parent_departed, seconds):
+        self._observe_marker()
+        self.ready.set()
+        while not self.finished.is_set():
+            if parent_departed():
+                self.stopped.set()
+                if not self.finished.wait(seconds): os._exit(72)
+                return
+            # Marker cancellation is terminal, but never removes parent-loss
+            # protection while calculation or owned-resource cleanup continues.
+            self._observe_marker()
+
+
+def _parent_monitor(kind, value, control, seconds):
+    """Own inherited parent lifetime and the existing 50 ms control cadence."""
+    close = None
+    try:
+        if kind == 'handle':
+            import ctypes as c
+            from ctypes import wintypes as w
+            kernel = c.WinDLL('kernel32', use_last_error=True)
+            kernel.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
+            kernel.CloseHandle.argtypes = [w.HANDLE]
+            close = lambda: kernel.CloseHandle(w.HANDLE(value))
+            def departed():
                 state = kernel.WaitForSingleObject(w.HANDLE(value), 50)
-                if state == 0: break
-                if state != 258: break
-            else: return
-            stopped.set()
-            if not finished.wait(seconds): os._exit(72)
-        finally: kernel.CloseHandle(w.HANDLE(value))
-    else:
-        try:
-            while not finished.is_set():
+                if state == 0: return True
+                if state != 258: raise c.WinError(c.get_last_error())
+                return False
+        else:
+            close = lambda: os.close(value)
+            def departed():
                 readable, _, _ = select.select([value], [], [], .05)
-                if readable and not os.read(value, 1): break
-            else: return
-            stopped.set()
-            if not finished.wait(seconds): os._exit(72)
-        finally: os.close(value)
+                return bool(readable and not os.read(value, 1))
+        control.observe(departed, seconds)
+    except BaseException as error:
+        control.fail(error)
+        control.ready.set()
+        # An unobservable parent must retain the existing terminal safeguard.
+        if not control.finished.wait(seconds): os._exit(72)
+    finally:
+        if close is not None:
+            try: close()
+            except BaseException as error: control.fail(error)
 
 
 def _read(path):
@@ -81,10 +122,11 @@ def main():
     if Path(configuration['source_root']).absolute() != ROOT:
         raise ValueError('Trial worker source root differs.')
     scratch = Path(configuration['scratch'])
-    stopped, finished = Event(), Event()
-    watcher = Thread(target=_parent_monitor, args=(sys.argv[2], int(sys.argv[3]), stopped, finished,
+    control = _Control(scratch/'cancel')
+    watcher = Thread(target=_parent_monitor, args=(sys.argv[2], int(sys.argv[3]), control,
         configuration['close_seconds']), name='trial-parent-lifetime', daemon=True)
     watcher.start()
+    control.ready.wait()
     import importlib.util as _bootstrap_imports
     _bootstrap_spec = _bootstrap_imports.spec_from_file_location('_backtest_source_owner', ROOT/'website'/'runtime_access.py')
     runtime_access = _bootstrap_imports.module_from_spec(_bootstrap_spec)
@@ -97,21 +139,20 @@ def main():
         try:
             emit(dict(event='stage', stage='source-owned'))
             sys.path.insert(0,str(ROOT))
-            from backtest.financial import rules
-            from backtest.inputs import market, fmp_download, cache_assets
-            from backtest.engines.reference import legacy
-            fmp_download.KEY_PATH = scratch/'nonexistent-key'
             from backtest.runtime import backtest_control as backtest_control
-            from backtest.engines.numerical import generation as numerical_generation
-            from backtest.engines.numerical import random as numerical_random
-            from backtest.engines.numerical import trial as numerical_trial
-            from backtest.engines.numerical import checkpoints as trial_checkpoints
-            from backtest.engines.numerical.numba import NumbaExecutor
-            from backtest.engines.numerical import matrix as numerical_matrix
-            from backtest.engines.numerical.portfolio import NumericalPortfolio
-            from backtest.engines.numerical.runtime_child import _stdin_lines
-            cancelled = lambda: stopped.is_set() or (scratch/'cancel').exists()
-            with backtest_control.cancel_when(cancelled):
+            with backtest_control.cancel_when(control.cancelled):
+                from backtest.financial import rules
+                from backtest.inputs import market, fmp_download, cache_assets
+                from backtest.engines.reference import legacy
+                fmp_download.KEY_PATH = scratch/'nonexistent-key'
+                from backtest.engines.numerical import generation as numerical_generation
+                from backtest.engines.numerical import random as numerical_random
+                from backtest.engines.numerical import trial as numerical_trial
+                from backtest.engines.numerical import checkpoints as trial_checkpoints
+                from backtest.engines.numerical.numba import NumbaExecutor
+                from backtest.engines.numerical import matrix as numerical_matrix
+                from backtest.engines.numerical.portfolio import NumericalPortfolio
+                from backtest.engines.numerical.runtime_child import _stdin_lines
                 checkpoint = backtest_control.checkpoint
                 source = trial_checkpoints.digest(trial_checkpoints.canonical(numerical_random.source_identity()))
                 if source != configuration['source']: raise ValueError('Trial worker source identity differs.')
@@ -190,7 +231,9 @@ def main():
                     # cleanup. Parent pool retains its failed-closure owner.
                     time.sleep(.05)
                 else: break
-            finished.set(); watcher.join(timeout=configuration['close_seconds'])
+            control.finished.set()
+            while watcher.is_alive():
+                watcher.join(timeout=configuration['close_seconds'])
             emit(dict(event='closed'))
             protocol.close()
             # Source remains held through native-team and process termination.

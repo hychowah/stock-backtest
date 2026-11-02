@@ -1,4 +1,4 @@
-"""Formula capability fails before readiness/financial execution; source binding."""
+"""Unsupported raw formula aliases fail before financial work; source binding."""
 import sys
 from pathlib import Path
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
@@ -14,7 +14,7 @@ from backtest.engines.numerical.policy import PolicyProgram,require_supported
 
 
 class AdmissionTests(unittest.TestCase):
-    def test_formula_intent_including_empty_payloads_is_explicitly_unsupported(self):
+    def test_raw_formula_aliases_including_empty_payloads_are_explicitly_unsupported(self):
         fields=('strategy_version','variables','ranking','conditions','selection',
                 'scalar_selection','selection_plan','program','definition','formula','bundle')
         for field in fields:

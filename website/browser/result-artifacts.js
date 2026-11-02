@@ -134,7 +134,9 @@ const ResultArtifacts=(()=>{
     // without adding fields to, or rewriting, the stored artifact.
     submitted=calendar?calendar.normalize(submitted):submitted;
     settings=calendar?calendar.normalize(settings):settings;
-    const defaults=['custom','random'].includes(artifact.kind)?{engine:'original',selection_order:'filter_first'}:{selection_order:'filter_first'};
+    // Phase 6 scalar latest/January settings omitted engine and mean Original.
+    // This comparison default establishes no historical producer evidence.
+    const defaults=['custom','random'].includes(artifact.kind)||artifact.settings.strategy?{engine:'original',selection_order:'filter_first'}:{selection_order:'filter_first'};
     return signature({...defaults,...submitted})===signature({...defaults,...settings});
   }
   function scalarValue(row){

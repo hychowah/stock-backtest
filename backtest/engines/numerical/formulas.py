@@ -21,31 +21,23 @@ from numba import njit
 
 from backtest import observations
 from backtest.variables import definitions, evaluation
-from backtest.engines.numerical import identity
+from backtest.engines.numerical import identity, formula_capabilities
 
-VERSION = 1
-MAX_CHUNK_STEPS = 256
-MAX_CACHE_BYTES = 16 * 1024 * 1024
+VERSION = formula_capabilities.VERSION
+MAX_CHUNK_STEPS = formula_capabilities.MAX_CHUNK_STEPS
+MAX_CACHE_BYTES = formula_capabilities.MAX_CACHE_BYTES
 _LOADED_FORMULAS = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _OPS = {'constant': 0, 'parameter': 1, 'annual': 1, 'ref': 2, 'at': 2,
         'lookback': 2, 'neg': 3, 'add': 4, 'sub': 5, 'mul': 6, 'div': 7}
-_PARAMETERS = ('annual.revenue', 'annual.operating_income',
-               'annual.operating_margin', 'market.enterprise_value')
+_PARAMETERS = formula_capabilities.PARAMETERS
 # Fold instructions are separate so cancellation can occur between members.
 _SUM, _MIN, _MAX, _MEAN, _FINAL = 8, 9, 10, 11, 12
 _ROOT, _ZERO, _NONFINITE = 1, 2, 3
 
 
 def capabilities():
-    """Callable evaluation support; this does not open application admission."""
-    return dict(format='variable-capabilities', version=1,
-        backend_id='numba-formulas', backend_version=VERSION,
-        definition_versions=[1], catalog_versions=['financial-parameters/1'],
-        temporal_policies=['annual-lag90/1'], parameter_ids=list(_PARAMETERS),
-        operations=list(_OPS), annual_statistics=['mean', 'min', 'max'],
-        root_modes=['historical', 'latest'], limits=dict(evaluation.CEILINGS),
-        max_chunk_steps=MAX_CHUNK_STEPS, max_cache_bytes=MAX_CACHE_BYTES,
-        application_admission=False)
+    """Detached support declaration; package/readiness checks remain separate."""
+    return formula_capabilities.capabilities()
 
 
 
@@ -56,6 +48,7 @@ def policy_fingerprint(*, chunk_steps=MAX_CHUNK_STEPS):
         raise definitions.FormulaError('STALE_INPUT_GENERATION', '', 'Loaded numerical formula source changed.')
     environment = identity.compiler_environment(1)
     return dict(backend='numba-formulas', version=VERSION, formulas=current,
+        capabilities=formula_capabilities.fingerprint(),
         compiler_source=compiler_source, compiler=environment,
         evaluation=evaluation.policy_fingerprint(), definitions=definitions.policy_fingerprint(),
         provider=observations.policy_fingerprint(), arithmetic=dict(evaluation._ARITHMETIC),
@@ -307,6 +300,8 @@ class Evaluator:
     def prepare(self, checked, checkpoint):
         if self.closed:
             raise ValueError('Numerical formula evaluator is closed.')
+        formula_capabilities.require_program(definitions.FormulaProgram(
+            definitions.canonical(checked['program'])),checkpoint=checkpoint)
         fingerprint = self.policy_fingerprint()
         shape = _shape(checked, checkpoint)
         _, _, _, tape_bytes, run_bytes = shape

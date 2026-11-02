@@ -1,16 +1,17 @@
-"""WSL-only actual candidate child and worker scalar protocol qualification.
+"""Actual candidate child and worker scalar protocol qualification.
 
-The unchanged offline native guard intentionally excludes this process suite.
-Every financial fixture/store is external and synthetic. Public admission is
-replaced only inside these private tests; production policy stays closed.
+The native wrapper installs only the narrow guarded entry translator.
+Every financial fixture/store is external and synthetic. Supported paths use
+public admission without private policy overrides.
 """
 import sys
 from pathlib import Path
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
-from contextlib import ExitStack
 from copy import deepcopy
+from threading import Event
 import io
 import json
+import time
 import unittest
 from unittest.mock import Mock,patch
 
@@ -33,6 +34,7 @@ class ScalarPoolTests(unittest.TestCase):
     options=offline.SessionRecoveryTests.options
     session=offline.SessionRecoveryTests.session
     result=offline.SessionRecoveryTests.result
+
 
     def test_failed_or_cancelled_failure_publication_closes_all_owned_slot_files(self):
         from backtest.engines.numerical import runtime
@@ -120,6 +122,43 @@ class ScalarPoolTests(unittest.TestCase):
         self.assertEqual([r for r in second.records() if r['type'] in scalar_result_evidence.EXTRA],original)
 
 
+class WorkerMarkerTests(unittest.TestCase):
+    def test_real_worker_marker_cancels_active_trial_and_closes_without_publication(self):
+        from scalar_qualification import Scenario
+        with Scenario(companies=300,first=2015,last=2016) as scenario:
+            case=offline.SessionRecoveryTests('runTest');case.fixture=scenario.fixture;case.capture=scenario.capture
+            try:
+                value=case.session();options=scenario.options('random',trials=1);plan=value.plan(options)
+                binding=value._binding(plan,scalar_capture=options['strategy'])
+                pool=value.pool(scalar=True);ordinary=pool._event;requested=[];observed=[]
+                def event(*args):
+                    worker,item=ordinary(*args)
+                    if item.get('event')=='stage' and item.get('stage')=='calculating' and not requested:
+                        requested.append(time.perf_counter());(pool.scratch/'cancel').touch()
+                    if item.get('event')=='cancelled':observed.append(time.perf_counter())
+                    return worker,item
+                with patch.object(pool,'_event',side_effect=event),self.assertRaisesRegex(RuntimeError,'Trial worker failed'):
+                    with pool.batch([trial.specification(binding,1)]) as batch:
+                        for completion in batch.completed():self.fail('Cancelled trial was published.')
+                retired=time.perf_counter()
+                self.assertEqual(len(requested),1);self.assertEqual(len(observed),1)
+                self.assertLess(observed[0]-requested[0],10)
+                self.assertTrue(pool.closed);self.assertFalse(pool.scratch.exists())
+                self.assertEqual(pool.stats['completed_trials'],0)
+                closure=pool.closure()
+                self.assertTrue(all(row['eof'] and row['reader_stopped'] and row['streams_closed']
+                    and row['native_handles_released'] for row in closure['workers']))
+                value.close()
+            finally:self.assertTrue(case.doCleanups())
+        print('WORKER_CANCELLATION_RECEIPT '+json.dumps(dict(
+            observation_seconds=observed[0]-requested[0],retirement_seconds=retired-requested[0],
+            observation_scope='Parent marker publication to worker cancelled event; includes checkpoint wait and protocol delivery',
+            stage='active shared-formula scalar trial after warm worker readiness',companies=300,
+            first=2015,last=2016,trials=1,seed=42,closure=closure),sort_keys=True),
+            file=sys.__stdout__,flush=True)
+
+
+
 class ScalarCandidateTests(unittest.TestCase):
     setUp=offline.ActualScopeTests.setUp
     options=offline.SessionRecoveryTests.options
@@ -147,25 +186,13 @@ class ScalarCandidateTests(unittest.TestCase):
         owner=candidate_calculations.Candidate(preparation);self.addCleanup(owner.retire)
         return owner,created
 
-    def admit(self):
-        context=ExitStack();check=strategy_requests.check_options;require=policy.require_supported
-        def private_check(options,**kwargs):
-            return check({k:v for k,v in options.items() if k!='engine'},**kwargs)
-        def private_require(options):
-            if 'strategy' not in options:return require(options)
-            return private_check(options)
-        context.enter_context(patch.object(strategy_requests,'check_options',side_effect=private_check))
-        context.enter_context(patch.object(policy,'require_supported',side_effect=private_require))
-        context.enter_context(patch.object(candidate_calculations,'require_supported',side_effect=private_require))
-        return context
-
     def test_actual_candidate_child_transfers_codec2_all_modes_and_closes_before_result(self):
         owner,created=self.candidate()
         for mode,options in [('custom',self.options()),('latest',dict(strategy=self.capture.to_dict())),
                 ('january',dict(strategy=self.capture.to_dict(),first=2015,last=2015)),
                 ('random',self.options(trials=2,seed=42))]:
             output=io.BytesIO()
-            with self.admit():owner.calculate_into(mode,options,output,None,lambda value:None,**LIMITS)
+            owner.calculate_into(mode,options,output,None,lambda value:None,**LIMITS)
             self.assertIsNone(owner.runtime)
             runtime=created[-1]
             self.assertEqual(runtime.closure()['state'],'closed')
@@ -174,16 +201,17 @@ class ScalarCandidateTests(unittest.TestCase):
             self.assertEqual(reader.metadata['producer']['engine'],'experimental')
             self.assertGreater(reader.manifest['holdings'],0)
 
-    def test_public_scalar_admission_remains_closed_before_preparation_or_runtime(self):
+    def test_unsupported_scalar_mode_is_rejected_before_preparation_or_runtime(self):
         owner,created=self.candidate()
-        with self.assertRaises(ValueError):owner.calculate_into('custom',self.options(),io.BytesIO(),None,None,**LIMITS)
+        with self.assertRaises(ValueError) as caught:owner.calculate_into('unsupported',self.options(),io.BytesIO(),None,None,**LIMITS)
+        self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
         self.assertFalse(created)
         owner.preparation.status.assert_not_called()
 
     def test_child_formula_error_preserves_safe_fields_and_closes_before_failure(self):
         from backtest.variables.definitions import FormulaError
         owner,created=self.candidate(fault='formula')
-        with self.admit(),self.assertRaises(FormulaError) as caught:
+        with self.assertRaises(FormulaError) as caught:
             owner.calculate_into('custom',self.options(),io.BytesIO(),None,None,**LIMITS)
         self.assertEqual(caught.exception.code,'WORK_LIMIT')
         self.assertEqual(caught.exception.path,'/fixture/expression')
@@ -194,6 +222,15 @@ class ScalarCandidateTests(unittest.TestCase):
     def test_pinned_selectable_jobs_queue_retries_and_detached_saved_exports(self):
         from backtest.application import jobs,queue,library as saved,evidence_views,result_exports
         from backtest.inputs import research
+        from backtest.variables import library as variable_library
+        from test_strategy_requests import intent,formula
+        from test_variable_definitions import definition
+        variable_store=variable_library.Store(self.fixture.root/'variables.sqlite')
+        authored=self.capture.to_dict()['variables']['program']['bundle']['definitions'][0]['definition']
+        original_variable=variable_store.create('Original captured revenue',authored)
+        captured_intent=intent(formula(original_variable))
+        captured_intent['pool']='cached'
+        self.capture=strategy_requests.capture_strategy(captured_intent,variable_store)
         owner,created=self.candidate()
         selectable=calculations.Selectable(owner.preparation);selectable.experimental=owner
         self.addCleanup(selectable.close)
@@ -203,8 +240,23 @@ class ScalarCandidateTests(unittest.TestCase):
         store=queue.Store(self.fixture.root/'queue.sqlite');library=saved.Store(self.fixture.root/'saved.sqlite')
         consumer=queue.Queue(store,calculations=selectable,library=library);self.addCleanup(consumer.close)
         request=dict(id='c'*32,name='Pinned scalar',mode='custom',options=deepcopy(options),catalog=dict(metrics={},filters={}),presentation={})
-        with self.admit(),patch.object(selectable.original,'calculate_into',side_effect=AssertionError('Pinned Candidate only')):
-            manager.start('b'*32,'custom',options);manager.runs['b'*32]['thread'].join(90)
+        with patch.object(selectable.original,'calculate_into',side_effect=AssertionError('Pinned Candidate only')):
+            entered,release=Event(),Event();calculate=selectable.calculate_into
+            def held(*args,**kwargs):
+                entered.set()
+                if not release.wait(10):raise AssertionError('Private accepted-job barrier timed out.')
+                return calculate(*args,**kwargs)
+            with patch.object(selectable,'calculate_into',side_effect=held):
+                manager.start('b'*32,'custom',options)
+                try:
+                    self.assertTrue(entered.wait(5))
+                    changed=variable_store.edit(original_variable['variable_id'],original_variable['version'],
+                        definition(dict(op='parameter',id='annual.operating_income'),'USD','usd'))
+                    self.assertNotEqual(changed['revision'],original_variable['revision'])
+                    variable_store.delete(changed['variable_id'],changed['version'])
+                    with self.assertRaises(variable_library.Missing):variable_store.get(changed['variable_id'])
+                finally:release.set()
+                manager.runs['b'*32]['thread'].join(90)
             run=manager.snapshot('b'*32);self.assertEqual(run['state'],'complete',run)
             self.assertEqual(run['engine'],'experimental')
             count=len(created)
@@ -220,6 +272,10 @@ class ScalarCandidateTests(unittest.TestCase):
             consumer.reconcile_completed();record=library.list()[0]
         with (patch.object(selectable,'calculate_into',side_effect=AssertionError('No calculation')),
               patch.object(strategy_requests,'builtin_catalog',side_effect=AssertionError('No live catalog')),
+              patch.object(variable_library.Store,'capture',side_effect=AssertionError('No current variable capture')),
+              patch.object(variable_library.Store,'get',side_effect=AssertionError('No current variable entry')),
+              patch.object(selectable.preparation,'status',side_effect=AssertionError('No preparation lookup')),
+              patch.object(selectable.preparation,'_runtime',side_effect=AssertionError('No runtime')),
               patch.object(research,'connect',side_effect=AssertionError('No input lookup')),
               patch.object(self.fixture.store,'open_current',side_effect=AssertionError('No generation lookup'))):
             with library.open_evidence(record['id']) as opened:
@@ -228,6 +284,8 @@ class ScalarCandidateTests(unittest.TestCase):
                     self.assertEqual(reader.format_version,2)
                     self.assertEqual(reader.metadata['options']['strategy'],self.capture.to_dict())
                     holding=list(evidence_views.holdings(reader,1,1))[0]
+                    self.assertEqual(holding['ranking_value'],100e6)
+                    self.assertEqual(reader.metadata['options']['strategy']['variables']['presentation'][0]['name'],'Original captured revenue')
                     self.assertTrue(holding['scalar_evidence']['scope'].startswith('trial:1:'))
                     complete=result_exports.prepare(reader,'evidence')
                     original=b''.join(complete.chunks())

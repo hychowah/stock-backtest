@@ -54,13 +54,21 @@ class Selectable:
         return {'original','experimental'} if self.ready_for({'engine':'experimental'}) else {'original'}
 
     def capabilities(self):
+        from backtest.engines.numerical import formula_capabilities
         return dict(calendar=None,shared_views=['latest','january'],engines=[dict(id=key,label=label,calendar=1,operations=['custom','random'],
+            scalar=dict(operations=list(formula_capabilities.MODES),execution='bounded-complete-evidence',
+                eager=False,sample_preview=key=='original',
+                **(dict(formulas=formula_capabilities.capabilities()) if key=='experimental' else {})),
             status=self.status() if key=='experimental' else dict(state='current'))
-            for key,label in calculation_contract.ENGINES.items()])
+            for key,label in calculation_contract.ENGINES.items()],
+            sample_preview=dict(engine='original',label='Original reference sample preview'))
 
     def calculate(self,mode,options,progress,configuration,*,planned=None,admission='interactive',details=True):
         if self.closed.is_set():raise calculation_contract.Busy('The server is stopping. Restart it before running a backtest.')
         engine=self.preflight(options,planned=planned)
+        if 'strategy' in options:
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode,eager=True)
         financial={key:value for key,value in options.items() if key!='engine'}
         if engine=='experimental':
             if not self.ready_for(options,advisory=True):
@@ -84,6 +92,11 @@ class Selectable:
 
     def calculate_into(self,mode,options,destination,progress,configuration,*,planned=None,admission='interactive',**limits):
         engine=self.preflight(options,planned=planned)
+        if 'strategy' in options:
+            from backtest.application import strategy_requests
+            from backtest.engines.numerical import formula_capabilities
+            formula_capabilities.require_operation(mode)
+            options=strategy_requests.execution_options(mode,options,planned=planned)
         if self.closed.is_set():raise calculation_contract.Busy('The server is stopping.')
         financial={key:value for key,value in options.items() if key!='engine'}
         if engine=='experimental':
@@ -95,8 +108,9 @@ class Selectable:
             return self.original.calculate_into(mode,options,destination,progress,configuration,
                 planned=planned,admission=admission,**limits)
 
-    def preview(self,capture,roots):
+    def preview(self,capture,roots,*,engine='original'):
         from backtest.application import strategy_requests
+        strategy_requests.preview_engine(engine)
         strategy_requests.check_options({'strategy':capture})
         with self.experimental.parent_operation():
-            return self.original.preview(capture,roots)
+            return self.original.preview(capture,roots,engine=engine)
