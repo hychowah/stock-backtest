@@ -446,3 +446,12 @@ Private source exports and synthetic WSL/native verification are authorized.
 No merge, push, deployment, server restart, market-data request or live-runtime/
 cache mutation is authorized. Native-cache coverage remains unknown. Preserve
 main and the engine worktree, including their files, indexes and histories.
+
+Phase 3 Slice 1 is committed as `d23cfa2`. Slice 2 implements bounded reference
+execution over its public program projection and the unchanged provider.
+The narrow definition-owner addition binds loaded language source. Plans and
+blocks have separate namespaced formats; no strategy, artifact, prepared schema
+or engine interface changes. The [Phase 4 handoff](plans/custom-variables/phases/phase-03/handoffs/phase-04.md)
+records the actual scalar block and leaves selection held. Final Slice 2 native
+verification and independent audit remain in its phase record. This source
+capability does not change the running server or establish native-cache coverage.

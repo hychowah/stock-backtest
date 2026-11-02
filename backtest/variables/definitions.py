@@ -11,6 +11,7 @@ from datetime import date
 import hashlib
 import json
 import math
+from pathlib import Path
 import re
 from types import MappingProxyType
 
@@ -19,6 +20,7 @@ from backtest import observations
 VERSION = 1
 CATALOG = 'financial-parameters/1'
 TEMPORAL_POLICY = 'annual-lag90/1'
+_LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 CEILINGS = MappingProxyType(dict(nodes=256, depth=32, definitions=32,
     dependency_depth=8, bytes=256 * 1024, literal=64, expanded_literal=1024))
 _UNITS = {'scalar': {}, 'USD': {'USD': 1}, 'USD/share': {'USD': 1, 'share': -1}}
@@ -39,6 +41,14 @@ def canonical(value):
     """Canonical JSON for validated content; this function grants no capability."""
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
                       allow_nan=False)
+
+
+def policy_fingerprint():
+    """Identify this loaded language implementation, rejecting later source edits."""
+    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if current != _LOADED_POLICY:
+        _fail('STALE_INPUT_GENERATION', '', 'Loaded formula language no longer matches its source.')
+    return current
 
 
 def _hash(document):

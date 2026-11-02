@@ -54,7 +54,11 @@ The owners relevant to that feature are:
 `backtest/variables/definitions.py` now owns immutable formula validation,
 normalization, identities, unit inference and resolved dependency programs.
 Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/phases/phase-03/README.md).
-Provider-backed execution is the next slice. Phases 4–7 remain held.
+`backtest/variables/reference.py` owns bounded context plans, provider-backed
+binary64 scalar execution, calculation identity and detached operation evidence.
+It consumes the checked program and public observation provider without raw/SQL
+access or financial reconstruction. The definition owner also binds its loaded
+source policy. Phases 4–7 remain held.
 The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.

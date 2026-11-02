@@ -6,12 +6,14 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 3 resumed on 2026-11-02 on `feature/custom-variables`.**
+Status: **Phase 3 complete in source on `feature/custom-variables` in the second audited implementation commit.**
 Phase 1 contract documentation and Phase 2 provider implementation are complete.
 Phase 2 verification and independent audits remain in its [record](phases/phase-02/README.md).
 The user authorizes the reference formula evaluator from `9e5d97d`.
 Its [current execution plan](phases/phase-03/execution-plan-2026-11-02.md) separates
-immutable validated programs from bounded provider-backed execution.
+immutable validated programs from bounded provider-backed execution. Both source
+abstractions are now implemented. The [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md)
+describes the usable scalar evidence boundary without authorizing selection.
 Phases 4–7 remain held, including scalar selection, the editor and library.
 No download, deployment, integration or default change is authorized.
 
@@ -269,7 +271,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 |---|---|---|
 | **1. Variable contract and ownership** | Contract documentation delivered | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), historical [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Current Phase 2 ownership is assigned above. |
 | **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
-| **3. Formula evaluator** | **Resumed; Slice 1 complete in source and independently audited.** Immutable validation and dependency program; planned reference execution follows. | [Current record](phases/phase-03/README.md), [execution plan](phases/phase-03/execution-plan-2026-11-02.md) and [program handoff](phases/phase-03/handoffs/slice-02.md). All 67 post-audit WSL/private native checks pass. Arithmetic, provider integration and execution identity belong to Slice 2. |
+| **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
 | **4. General scalar selection** | **On hold; not started.** Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
 | **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
 | **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
@@ -296,3 +298,9 @@ Phase 2 completes under the scoped 2 November authorization in this second
 audited implementation commit. Both slices change source and synthetic fixtures.
 They do not change installed runtime data or portable snapshots. The current
 phase record contains required verification and independent audit outcomes.
+
+Phase 3 source now consumes four supported observations through an immutable
+validated program and a bounded reference evaluator. It changes no financial,
+prepared-input, selection, application or numerical-engine contract. Current
+verification and independent audit evidence live in its phase record. Phases 4–7
+remain held; source completion authorizes no runtime publication or integration.

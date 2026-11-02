@@ -22,8 +22,9 @@ Phase 3 resumed on 2 November 2026 from `9e5d97d` under explicit user
 authorization in this feature worktree. It owns the reference formula evaluator
 and its tests/docs. The [Phase 3 execution plan](docs/plans/custom-variables/phases/phase-03/execution-plan-2026-11-02.md)
 uses the existing four-parameter provider without changing financial or engine
-contracts. Its first slice adds immutable validated definitions; provider-backed
-execution follows in the second slice. Phases 4–7 remain on hold. Follow the
+contracts. Its first slice adds immutable validated definitions. Its second slice
+adds bounded provider-backed reference execution and detached scalar evidence.
+Final checks and audits are recorded in the phase. Phases 4–7 remain on hold. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.
