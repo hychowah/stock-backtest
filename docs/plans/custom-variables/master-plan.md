@@ -2,6 +2,10 @@
 
 Date: 2026-10-30
 
+Parameter-list revision: 2026-11-02. The user requested a longer list of valuation
+inputs, limited to fields supplied by the existing FMP routes or calculations
+from those fields. This documentation update does not resume implementation.
+
 Status: **On hold by user decision on 2026-10-30 until the new backtest engine
 is finished.** Phase 1 contract documentation is complete. Phase 2 has inspection
 and preliminary design records only; no provider is implemented. Phases 3–7 have
@@ -75,16 +79,42 @@ The current code confirms this boundary: `metrics.py` prepares ranking pairs and
 
 Each parameter needs a stable identifier, description, unit, source requirements, supported time operations, and numerical rules.
 
-Initial groups:
+The target input list is limited to documented fields from the FMP routes the
+project already downloads. The [FMP source map](parameter-catalog.md) gives the
+exact field, unit and preparation status for every admitted input. It also lists
+calculations and exclusions. Endpoint support does not prove company/date
+coverage or mean that the current app exposes a field.
 
-| Group | Examples |
+| Group | Target inputs |
 |---|---|
-| Valuation | P/E, P/S, P/B, EV/EBITDA, FCF yield |
-| Profitability | Operating margin, net profit margin, ROE |
-| Financial strength | Debt/assets, debt/equity, current ratio, interest coverage |
-| Financial amounts | Revenue, operating income, EBITDA, net income, free cash flow |
-| Market values | Market cap, enterprise value, adjusted price |
-| Market history | Trailing returns; supported price statistics |
+| Income and expenses | Revenue, cost of revenue, selling/general/administrative expense, research and development expense, operating income, interest income, interest expense, pretax income, income tax expense, net income |
+| Share counts | Weighted-average basic shares and weighted-average diluted shares |
+| Noncash and operating cash inputs | Combined depreciation and amortization, stock-based compensation, operating cash flow, capital-expenditure cash flow, net acquisition cash flow, cash taxes paid, cash interest paid |
+| Financing cash inputs | Net debt issuance, common dividends paid, preferred dividends paid, common-share repurchase cash flow, common-share issuance cash flow |
+| Cash and investments | Cash and cash equivalents, short-term investments, long-term investments |
+| Operating assets | Net receivables, accounts receivable, inventory, prepaid expenses, total current assets, net property/plant/equipment, goodwill, intangible assets excluding goodwill, total assets |
+| Operating liabilities | Accounts payable, accrued expenses, current deferred revenue, noncurrent deferred revenue, total current liabilities, total liabilities |
+| Debt and ownership claims | FMP short-term debt, FMP long-term debt, FMP lease obligations, book shareholders' equity, book preferred stock, noncontrolling interests |
+| Market observations | Dividend-adjusted close and trading volume |
+| Reference rates | US 3-month and 10-year Treasury yields |
+
+Reported amounts and share counts are the formula ingredients. Familiar
+calculated measures remain reusable built-in variables: gross profit, EBIT,
+EBITDA, free cash flow, net debt, working capital, market cap, enterprise value,
+reported EPS, margins, growth rates, yields and valuation ratios. Keep their
+definitions visible. Preserve the existing calculations and immutable Phase 1
+examples. The source map separates established adapters from proposed formulas.
+
+Use one revenue parameter with a chosen date, lookback or averaging operation.
+Do not create separate input entries for current revenue, prior-year revenue and
+three-year average revenue. Apply the same rule to the other inputs.
+
+Do not add an item merely because a broader accounting category contains it.
+The admitted list uses combined depreciation/amortization, net debt issuance and
+net acquisition cash flow. Separate depreciation/amortization, gross borrowing
+and repayment, gross acquisition spending, restricted cash, separate lease
+types and other unverified splits are excluded. The source map records the full
+exclusion list and the limits of this documentation check.
 
 Avoid ambiguous names such as "debt ratio." Show the actual definition, such as **Total debt / total assets**.
 
@@ -227,7 +257,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | Phase | Abstraction delivered | Completion evidence and handoff |
 |---|---|---|
 | **1. Variable contract and ownership** | Contract documentation delivered; implementation ownership pending | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Financial and prepared-data edits remain blocked until ownership is agreed. |
-| **2. Parameter and history provider** | **On hold; incomplete.** Inspection and preliminary design filed | [Phase record](phases/phase-02/README.md), [proposed scope](phases/phase-02/ownership.md), [preliminary review](phases/phase-02/review.md) and [planned validation](phases/phase-02/validation-plan.md). Resume after the new engine is finished. Implementation, executed checks and final review remain required. |
+| **2. Parameter and history provider** | **On hold; incomplete.** Inspection and preliminary design filed | [Phase record](phases/phase-02/README.md), [proposed scope](phases/phase-02/ownership.md), [preliminary review](phases/phase-02/review.md) and [planned validation](phases/phase-02/validation-plan.md). The [FMP source map](parameter-catalog.md) defines the broader target inventory. The preliminary first provider still covers only revenue, operating income, operating margin and EV. Agree later admission increments after resumption. Implementation, executed checks and final review remain required. |
 | **3. Formula evaluator** | **On hold; not started.** Validation, expression evaluation, dependency resolution, and explanation | Reference tests cover arithmetic, units, nested expressions, saved dependencies, invalid denominators, cycles, and bounded work. Cache identities include definitions, policy, and input generation. |
 | **4. General scalar selection** | **On hold; not started.** Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
 | **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
@@ -246,7 +276,7 @@ Quarterly/TTM support is a later extension of the history provider. It requires 
 |---|---|
 | How much historical data exists for each proposed parameter? | Audit prepared-field coverage and a permitted native cache sample. Produce a parameter/date coverage matrix without downloading. |
 | Does "three-month average" mean daily observed valuations, quarterly accounts, or both? | Show those choices separately in a small editor prototype. Keep their definitions distinct regardless of the preference. |
-| Which additional fields require preparation changes? | Map each catalog entry to validated annual inputs. For example, P/S can reuse revenue, while debt/assets needs a validated assets input. |
+| Which documented FMP fields can preparation expose? | Use the [source map](parameter-catalog.md) to extend validation and evidence on the agreed branch after resumption. Most new fields are preserved in full raw responses but are not prepared. For example, debt/assets needs the documented `totalAssets` field added to validated inputs. Measure coverage before advertising support. |
 | Can custom formulas remain usable in a standalone HTML export? | Measure a representative formula bundle and its required historical input payload. Decide browser support from that evidence. |
 | How will the numerical engine expose variable requirements? | Review the proposed scalar contract against its current policy, factor, generation, and workspace interfaces before either branch implements it. |
 | Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
