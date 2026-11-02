@@ -6,27 +6,33 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 5 complete in source on `feature/custom-variables`; both slices independently audited.**
-Phases 1–4 are complete in source. The user’s 2 November instruction resumes
-durable variable storage and exact revision resolution from `f893bd4`. The
-[current execution plan](phases/phase-05/execution-plan-2026-11-02.md) uses two
-independently designed, implemented and audited slices. Phases 6–7 remain held.
-Original remains default. No download, deployment, integration or default change
-is authorized.
+Status: **Phase 6 in progress on `feature/custom-variables`, resumed from `f877c0c`.**
+Phases 1–5 are complete in source. The user's 2 November instruction authorizes
+variable editor and strategy integration with independently designed, implemented
+and audited slices. The [current execution plan](phases/phase-06/execution-plan-2026-11-02.md)
+records three slices. Slice 1 adds callable captured strategy intent; ordinary
+custom routes and the editor remain outstanding. Phase 7 stays held.
+Original remains default. No download, deployment, integration into main or
+default change is authorized.
 
 ## Hold and resume
 
-The latest 2 November instruction authorizes Phase 5 persistence and resolution
-on this feature branch. It supersedes the library hold below. The library reuses
-the completed definition owner without changing financial/provider/selection,
-ordinary application requests, queues, saved results or immutable evidence.
-Slice 1 is audited and committed as `5892a55`. Slice 2 adds atomic detached
-program/presentation capture. Final verification and independent audits are
-recorded in the [current record](phases/phase-05/README.md). These callable values
-allocate no application artifact version. Phases 6–7 remain held.
-The [Phase 4 handoff](phases/phase-04/handoffs/phase-05.md) remains the entry
-record; its Phase 5 hold is superseded only by this authorization. The editor,
-strategy integration and numerical formula execution stay held.
+The latest 2 November instruction authorizes Phase 6 application/UI/persistence
+integration on this feature branch. It supersedes the editor/integration hold
+below, while Phase 7 numerical execution remains held. The completed Phase 5
+library and atomic capture remain their existing owners. The
+[current record](phases/phase-06/README.md) and
+[compatibility reconciliation](phases/phase-06/compatibility.md) describe current
+source. Phase 1 application payloads remain illustrative proposals.
+
+Slice 1 adds complete immutable scalar strategy intent and library-free unsaved
+captures. It allocates no application result integer and changes no ordinary
+request, job, queue or result reader. Later slices receive fresh independent
+designs against preceding committed source. Financial/provider capabilities,
+source/input freshness, cancellation, ownership ordering, attachment lifetimes
+and execution-resource contracts remain unchanged. The
+[Phase 5 handoff](phases/phase-05/handoffs/phase-06.md) is the entry record; its
+Phase 6 hold is superseded by this explicit user authorization.
 The following Phase 2/3 records and older inspections remain dated context.
 
 The 30 October hold deferred Phases 2–7 until engine completion and an ownership
@@ -276,10 +282,10 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
 | **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
 | **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
-| **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
+| **6. Variable editor and strategy integration** | **In progress.** Callable captured strategy intent is the first slice. Execution/evidence and the shared editor/picker follow fresh designs. | [Current record](phases/phase-06/README.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md) and [compatibility](phases/phase-06/compatibility.md). Test keyboard/narrow layouts, previews, immutable submission and held drafts. |
 | **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
 
-Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable UI work remains on hold. Phase 5 library work is authorized above. Unrelated website and engine development can continue under the existing worktree boundaries.
+Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phase 6 application/UI work is authorized above. Phase 7 remains held. Unrelated website and engine development can continue under the existing worktree boundaries.
 
 Do not build automatic strategy search, arbitrary user code, cross-sectional ranking inside formulas, or silent missing-value substitution in the first release. These add separate semantics beyond the requested formula system.
 
@@ -305,5 +311,5 @@ Phase 3 source now consumes four supported observations through an immutable
 validated program and a bounded reference evaluator. It changes no financial,
 prepared-input, selection, application or numerical-engine contract. Current
 verification and independent audit evidence live in its phase record. Phase 4 is
-complete. Phase 5 is authorized above. Phases 6–7 remain held; source completion authorizes no
-runtime publication or integration.
+complete, as is Phase 5. Phase 6 is authorized and in progress. Phase 7 remains
+held. Source completion authorizes no runtime publication or integration into main.

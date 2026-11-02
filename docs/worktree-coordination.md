@@ -511,3 +511,28 @@ captures a complete checked program and presentation in one existing read
 transaction. It adds no durable schema, application request/result, financial,
 source/cache ownership or attachment-lifetime change. Formula integration with
 jobs, queue, StrategyDraft and saved results remains Phase 6 work on hold.
+
+
+## Custom-variable Phase 6 resumption — 2 November 2026
+
+The user authorizes Phase 6 implementation and independently audited commits
+from `f877c0c` on `feature/custom-variables`. This branch owns the narrow
+application/UI/persistence integration recorded in its
+[execution plan](plans/custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
+Current package owners and Phase 5 handoffs supersede Phase 1 payload proposals.
+
+Slice 1 owns callable captured strategy intent in
+`backtest/application/strategy_requests.py` and a narrow submitted-only capture
+entry in the existing library owner. It changes no ordinary route, job, queue,
+calculation, result format or financial policy. Legacy options remain unchanged.
+Later slices need fresh independent designs against preceding committed source
+before execution/evidence and editor contracts change. This assignment covers
+those narrow application/UI/persistence edges; it does not broaden financial
+rules, provider capabilities, freshness, cancellation, ownership ordering,
+attachment lifetimes or execution resources. Original remains default.
+
+Phase 7 numerical formulas stay held. Main and the engine worktree retain their
+files, indexes and history. The feature worktree is not a deployment source.
+Only private synthetic WSL/browser/Windows fixtures are authorized. No merge,
+push, deployment, server restart, market-data request or live-runtime/cache/
+durable-store mutation is permitted. Native-cache coverage remains unknown.

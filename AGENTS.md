@@ -38,8 +38,12 @@ It adds no ordinary strategy/UI or saved-result format. Phase 5 resumes from
 owns the separate durable variable library and narrow definition-owner resolution.
 Mutable entry versions are separate from immutable formula revisions. Atomic
 captures retain complete programs and presentation from one read snapshot.
-Their checked restore uses no later library state. Phases 6–7
-remain held. Follow the
+Their checked restore uses no later library state. Phase 6 resumes from
+`f877c0c` under the user's 2 November authorization. Its
+[execution plan](docs/plans/custom-variables/phases/phase-06/execution-plan-2026-11-02.md)
+owns narrow application, UI and persistence integration on this feature branch.
+Slice 1 adds callable complete captured strategy intent. No ordinary route or
+editor is active yet. Phase 7 remains held. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.
@@ -582,7 +586,8 @@ queue items stay waiting while ready items retain their relative order.
 CB-15 source alone does not authorize main integration, publication or restart.
 The user subsequently authorized the isolated main integration described in
 `docs/plans/compiled-backtest/phases/CB-15.integration.md`. This does not authorize
-publication, deployment, push or installed restart. Custom variables stay held.
+publication, deployment, push or installed restart. Custom-variable Phase 6 is
+separately authorized on its feature branch; Phase 7 remains held.
 
 ## Website engine alignment
 

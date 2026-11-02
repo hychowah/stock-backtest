@@ -106,7 +106,10 @@ point-in-time provider, reference evaluator and scalar selection.
 durable variable library, exact revision resolution and atomic detached capture.
 Both source slices are complete under the user's 2 November authorization.
 Their independent audits and final WSL/private native checks are recorded in
-the phase record. Phases 6–7 remain held. The website continues using its
+the phase record. [Phase 6](docs/plans/custom-variables/phases/phase-06/README.md)
+is now authorized. Its first slice adds callable captured strategy intent and
+library-free unsaved captures. Ordinary custom routes and the editor remain
+outstanding. Phase 7 stays held. The website continues using its
 existing built-ins.
 
 

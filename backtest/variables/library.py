@@ -219,6 +219,71 @@ def require_capture(capture, *, checkpoint=backtest_control.checkpoint):
     return value
 
 
+def _capture_limits(limits):
+    if limits is not None and type(limits) is not dict:
+        _capture_error('INVALID_SHAPE', '/limits', 'Capture limits must be an object.')
+    formula_limits = dict(limits or {})
+    bound = _capture_bound(formula_limits.pop('capture_bytes', CAPTURE_BYTES))
+    return formula_limits, bound
+
+
+def _finish_capture(program, archived, metadata, labels, bound, checkpoint):
+    """One envelope policy for snapshot-backed and submission-only captures."""
+    checked = definitions.require_program(program)
+    entries = checked['bundle']['definitions']
+    local = {(entry['variable_id'], entry['revision']) for entry in entries} - archived
+    labels = [] if labels is None else labels
+    if type(labels) is not list or len(labels) > len(local):
+        _capture_error('INVALID_SHAPE', '/labels', 'Labels must name unique submitted definitions only.')
+    names = {}
+    for index, label in enumerate(labels):
+        checkpoint()
+        path = '/labels/' + str(index)
+        _capture_shape(label, ('variable_id', 'revision', 'name'), path)
+        if type(label['variable_id']) is not str or type(label['revision']) is not str:
+            _capture_error('INVALID_SHAPE', path, 'A submitted exact identity is required.')
+        identity = label['variable_id'], label['revision']
+        if identity not in local or identity in names:
+            _capture_error('INVALID_SHAPE', path, 'Labels must name unique submitted definitions only.')
+        try:
+            names[identity] = _name(label['name'])
+        except (TypeError, ValueError):
+            _capture_error('INVALID_SHAPE', path + '/name', 'Use a submitted name with 1–120 characters.')
+    presentation = []
+    for entry in entries:
+        checkpoint()
+        identity = entry['variable_id'], entry['revision']
+        if identity in archived:
+            record = metadata(identity)
+            name = record['name']
+            provenance = dict(source='library', version=record['version'], deleted=record['deleted'])
+        else:
+            name = names.get(identity, identity[0])
+            provenance = dict(source='submitted')
+        presentation.append(dict(variable_id=identity[0], revision=identity[1],
+                                 name=name, provenance=provenance))
+    value = dict(format='variable-capture', version=1, program=checked,
+                 presentation=presentation, limits=dict(bytes=bound))
+    captured = VariableCapture(_capture_encode(value, bound, checkpoint))
+    require_capture(captured, checkpoint=checkpoint)
+    checkpoint()
+    return captured
+
+
+def capture_submitted(roots, *, submitted, labels=None, limits=None,
+                      checkpoint=backtest_control.checkpoint):
+    """Capture an unsaved complete program without opening or creating storage.
+
+    Only submitted authored definitions can resolve. Missing dependencies fail
+    through the existing resolver. Labels, limits, provenance and checked restore
+    are identical to Store.capture's submitted content. No library is consulted.
+    """
+    formula_limits, bound = _capture_limits(limits)
+    program = definitions.resolve(roots, lambda *identity: None, submitted=submitted,
+                                  limits=formula_limits, checkpoint=checkpoint)
+    return _finish_capture(program, set(), None, labels, bound, checkpoint)
+
+
 class Store:
     """Short transactional operations over one durable variable library.
 
@@ -450,10 +515,7 @@ class Store:
         database handle. Later edits, deletion or file removal cannot affect it.
         Reads require an existing recognized store, including local-only calls.
         """
-        if limits is not None and type(limits) is not dict:
-            _capture_error('INVALID_SHAPE', '/limits', 'Capture limits must be an object.')
-        formula_limits = dict(limits or {})
-        bound = _capture_bound(formula_limits.pop('capture_bytes', CAPTURE_BYTES))
+        formula_limits, bound = _capture_limits(limits)
         with self._transaction(checkpoint=checkpoint) as db:
             archived = set()
             def lookup(variable_id, revision):
@@ -461,45 +523,9 @@ class Store:
                 return self._lookup(db, variable_id, revision)
             program = definitions.resolve(roots, lookup, submitted=submitted,
                                           limits=formula_limits, checkpoint=checkpoint)
-            checked = definitions.require_program(program)
-            entries = checked['bundle']['definitions']
-            local = {(entry['variable_id'], entry['revision']) for entry in entries} - archived
-            labels = [] if labels is None else labels
-            if type(labels) is not list or len(labels) > len(local):
-                _capture_error('INVALID_SHAPE', '/labels', 'Labels must name unique submitted definitions only.')
-            names = {}
-            for index, label in enumerate(labels):
-                checkpoint()
-                path = '/labels/' + str(index)
-                _capture_shape(label, ('variable_id', 'revision', 'name'), path)
-                if type(label['variable_id']) is not str or type(label['revision']) is not str:
-                    _capture_error('INVALID_SHAPE', path, 'A submitted exact identity is required.')
-                identity = label['variable_id'], label['revision']
-                if identity not in local or identity in names:
-                    _capture_error('INVALID_SHAPE', path, 'Labels must name unique submitted definitions only.')
-                try:
-                    names[identity] = _name(label['name'])
-                except (TypeError, ValueError):
-                    _capture_error('INVALID_SHAPE', path + '/name', 'Use a submitted name with 1–120 characters.')
-            presentation = []
-            for entry in entries:
-                checkpoint()
-                identity = entry['variable_id'], entry['revision']
-                if identity in archived:
-                    row = db.execute('SELECT * FROM entries WHERE variable_id=?', (identity[0],)).fetchone()
-                    if row is None:
-                        raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
-                    metadata = self._metadata(row)
-                    name = metadata['name']
-                    provenance = dict(source='library', version=metadata['version'], deleted=metadata['deleted'])
-                else:
-                    name = names.get(identity, identity[0])
-                    provenance = dict(source='submitted')
-                presentation.append(dict(variable_id=identity[0], revision=identity[1],
-                                         name=name, provenance=provenance))
-            value = dict(format='variable-capture', version=1, program=checked,
-                         presentation=presentation, limits=dict(bytes=bound))
-            captured = VariableCapture(_capture_encode(value, bound, checkpoint))
-            require_capture(captured, checkpoint=checkpoint)
-            checkpoint()
-            return captured
+            def metadata(identity):
+                row = db.execute('SELECT * FROM entries WHERE variable_id=?', (identity[0],)).fetchone()
+                if row is None:
+                    raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
+                return self._metadata(row)
+            return _finish_capture(program, archived, metadata, labels, bound, checkpoint)

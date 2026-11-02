@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 5 Slice 2. This map describes source after the structure refactor.
+Updated for Phase 6 Slice 1. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -47,7 +47,7 @@ The owners relevant to that feature are:
   evidence. Stored-result access does not reconstruct old meaning from current
   catalogs or financial preparation.
 - `website/browser/range.js` for the existing strategy draft and restoration
-  boundary. A future approved editor belongs at that boundary and the ordinary
+  boundary. The authorized Phase 6 editor belongs at that boundary and the ordinary
   application request boundary. It does not need separate queue-edit machinery.
 - `website/rendering/` and `website/browser/` for current built-in labels,
   standalone January/latest views, captured comparison and complete downloads.
@@ -59,7 +59,7 @@ Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/pha
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL
 access or financial reconstruction. The definition owner also binds its loaded
-source policy. Phase 4 is complete. Phase 5 resumes from `f893bd4`; Phases 6–7 remain held.
+source policy. Phases 4–5 are complete. Phase 6 resumes from `f877c0c`; Phase 7 remains held.
 The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.
@@ -85,5 +85,13 @@ same read snapshot. `VariableCapture` and `require_capture()` own complete
 detached capture/restore. The checked program accessor uses the existing
 definition restore boundary. Captured presentation does not affect formula
 or bundle identity. No durable schema or application result format changes.
-Ordinary strategy/UI integration and numerical formulas remain held work.
-See the [Phase 5 execution plan](../custom-variables/phases/phase-05/execution-plan-2026-11-02.md).
+Phase 6 is now authorized. Its first slice adds
+`backtest/application/strategy_requests.py` for complete immutable strategy intent.
+It combines exact formula sources with captured stored-pair/filter descriptors,
+canonical thresholds and separate submission/calculation comparisons. Checked
+restore uses no current library or display catalog. Admission checks capability
+separately. `library.capture_submitted()` reuses the existing envelope policy
+without opening a durable file. No route, ordinary job/queue or result format
+changes in this slice. The shared editor and execution/evidence integration
+remain outstanding. Numerical formulas stay held in Phase 7. See the
+[Phase 6 execution plan](../custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
