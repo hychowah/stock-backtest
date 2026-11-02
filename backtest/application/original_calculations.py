@@ -123,15 +123,9 @@ class Original(Control):
         from backtest import scalar_result_evidence
         from backtest.inputs import research, sqlite_observations
         from backtest.application import strategy_requests, scalar_runs
-        options=strategy_requests.canonical_options(options)
-        checked=strategy_requests.check_options(options)
-        if checked is None:raise ValueError('Bounded Original execution requires a captured scalar strategy.')
+        options=strategy_requests.execution_options(mode,options,planned=planned,checkpoint=self._checkpoint)
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')
         if not 0<max_bytes<=256*1024**2:raise ValueError('Invalid scalar evidence byte ceiling.')
-        if mode not in ('latest','january','custom','random'):raise ValueError('Unsupported scalar mode.')
-        allowed={'strategy','engine'}|({'first','last'} if mode=='january' else set() if mode=='latest' else {'start','end','months','calendar','dates'} if mode=='custom' else {'start','end','months','calendar','trials','seed'})
-        if set(options)-allowed:raise ValueError('Unknown option for the scalar execution mode.')
-        if planned is not None:strategy_requests.validate_recorded({key:value for key,value in options.items() if key!='engine'},planned)
         financial={key:value for key,value in options.items() if key!='engine'}
         trials=0 if mode=='latest' else (planned['requested'] if planned is not None else options.get('trials',24)) if mode=='random' else 1
         writer=None

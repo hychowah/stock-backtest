@@ -1,7 +1,8 @@
 # Completed-trial calculation checkpoints
 
 CB-10 added offline numerical random recovery. Current application requests use
-the calculation owner’s `calculate` method. Original uses ordinary schedules and `book_batch`.
+the calculation owner's `calculate` method for legacy requests. Captured scalar
+requests use its bounded `calculate_into` method. Original uses ordinary schedules and `book_batch`.
 Opt-in experimental random requests use the CB-19D parallel coordinator. The
 existing queue and saved library own user records. Both engines support the
 current week/month calendars. Original remains the default. Source changes do
@@ -43,7 +44,7 @@ These methods retain one complete period and bounded encoded buffers.
 ## Calculation identity
 
 `backtest/engines/numerical/random.py` owns the builder. Callers import this
-owner directly. The builder binds:
+owner directly. For legacy contract-1 calculations, the builder binds:
 
 - Exact numerical generation, source-derived policy and field schema.
 - Financial result contract version 1.
@@ -79,7 +80,7 @@ statuses, options and timing. No candidate rows or borrowed views are persisted.
 Store version 2 retains existing version-1 canonical JSON TEXT rows verbatim.
 New bounded saves store a BLOB in the same `trials.payload` column. The BLOB
 starts with `CBTRIAL`, bytes `00 02`, a four-byte big-endian envelope length,
-and canonical finite JSON. Its envelope contains `format=1` for the sealed codec
+and canonical finite JSON. Its legacy envelope contains `format=1` for the sealed codec
 trial, experiment identity, original trial number, range hash, piece limit and
 record limit. The remaining bytes are the original sealed trial range. No
 second user-result store or staging directory is added.
@@ -160,7 +161,9 @@ checkpoint eviction. Their existing limits and explicit deletion rules remain.
 Explicit [version-3 durable copies](durable-evidence.md) retain independent codec
 evidence inside the same user stores. Their explicit readers need no checkpoints;
 [acquired browser readers](evidence-views.md) are additive in CB-14 capacity
-increment 5. Automatic submission and queue execution remain eager.
+increment 5. Legacy submissions and queue execution remain eager. Captured scalar
+jobs retain bounded evidence through the same application owner. Public numerical
+scalar admission remains closed pending Phase 7 qualification.
 
 ## Verification scope
 
@@ -197,8 +200,8 @@ The explicit bounded runtime operation uses the same checkpoint binding and
 `run_into` path. Its child spool remains readable through sealed-trial retention.
 A later receiver, callback or transfer failure does not erase committed trials.
 Jobs owns a separate complete temporary copy after verified transfer. Checkpoint
-eviction cannot invalidate that copy. This does not route ordinary jobs or queues
-to bounded evidence. See [temporary ownership](result-evidence.md).
+eviction cannot invalidate that copy. This explicit operation does not reroute
+legacy jobs or queues. See [temporary ownership](result-evidence.md).
 
 
 ## Parallel ordered coordination (CB-19D)
@@ -223,3 +226,43 @@ capacity, threads, provider bounds and compiler identity bind reuse. Actual
 started worker counts and sampled resources are diagnostics. Historical TEXT
 and BLOB rows keep their bindings and bytes. The new binding intentionally misses
 incompatible previous experiments. Durable user snapshots are independent.
+
+## Scalar complete evidence (Phase 7)
+
+Phase 7 adds dormant scalar trial dispatch to the same checkpoint store. Public
+numerical scalar admission remains closed pending qualification. Original remains
+default. No ordinary request, queued record or saved result is rewritten.
+
+Scalar bindings declare selected-book `result_contract=2`. They retain the exact
+generation, implementation, compiler environment and execution policy. They keep
+the complete current submitted capture separately from the recorded ordered date
+plan. A presentation-only edit can keep its dates while creating a different
+derived experiment for its captured names and provenance.
+
+The SQLite store version and `CBTRIAL` BLOB prefix remain unchanged. A scalar BLOB
+uses the explicitly checked inner `format=2` envelope. It includes the existing
+identity, trial number, range hash and piece/record limits, plus the original
+scalar metadata. The sealed range uses evidence codec 2. These allocations are
+separate from application artifact 4 and durable container 3. Legacy TEXT rows
+and format-1 BLOBs retain their original dispatch and bytes.
+
+`save_from()` validates complete scalar evidence before and during publication.
+`replay_evidence(number, writer)` validates recorded dates, contract-2 financial
+reduction and the full explanation graph, then copies every original record.
+Trial-qualified scope IDs keep recovered trials linked to their own explanations.
+Reframing does not recalculate or replace observations, operations, selections or
+captured labels. Duplicate comparisons include explanations and financial values.
+The checkpoint read scope and BLOB close before replay returns.
+
+Scalar `load()` and `save()` collecting adapters fail explicitly. Use sealed
+`save_from()` and complete `replay_evidence()` instead. The collecting `read()`
+adapter also cannot collect completed scalar rows. Period-only replay is not
+complete scalar recovery. Missing rows remain misses; corrupt or incomplete
+evidence remains an error. Resource exhaustion publishes no partial completion.
+
+The existing ordered coordinator inspects checkpoints before constructing book
+providers, formula evaluators or workers. A full hit constructs none. A partial
+hit calculates only missing trials. The parent remains the sole checkpoint
+writer and retains source/financial ownership through worker and attachment
+closure. Completed application evidence stays independent of this disposable
+derived store, the current compiler, library and financial inputs.

@@ -90,7 +90,8 @@ def main():
     runtime_access = _bootstrap_imports.module_from_spec(_bootstrap_spec)
     sys.modules[_bootstrap_spec.name] = runtime_access
     _bootstrap_spec.loader.exec_module(runtime_access)
-    inputs = provider = portfolio = None
+    inputs = provider = portfolio = scalar_resources = None
+    active_slot=None
     began = time.perf_counter()
     with runtime_access.ownership(ROOT, timeout=0):
         try:
@@ -120,14 +121,21 @@ def main():
                 attachment_seconds = time.perf_counter()-attached
                 emit(dict(event='stage', stage='initializing'))
                 provider_constructions=1
-                provider = NumbaExecutor(inputs,limits=configuration['provider_limits'])
-                portfolio = NumericalPortfolio(inputs, provider)
+                if configuration.get('workload','legacy')=='scalar':
+                    from backtest.engines.numerical import scalar
+                    scalar_resources=scalar.Resources.__new__(scalar.Resources)
+                    scalar.Resources.__init__(scalar_resources,inputs,configuration['provider_limits'],checkpoint=checkpoint,warm=True)
+                    portfolio=scalar_resources.books();provider=scalar_resources.provider
+                else:
+                    provider = NumbaExecutor(inputs,limits=configuration['provider_limits'])
+                    portfolio = NumericalPortfolio(inputs, provider)
                 checkpoint()
                 def measurements():
                     return dict(**_private_sample(), provider=provider.stats, matrix=provider._calculate.stats,
                         provider_constructions=provider_constructions,
                         factor_kernel_compilation_requests=numerical_matrix.compilation_requests(),
-                        mappings=id(inputs), provider_instance=id(provider), sql_workspace=id(portfolio.db))
+                        mappings=id(inputs), provider_instance=id(provider), sql_workspace=id(portfolio.db),
+                        **({'formula':dict(scalar_resources.evaluator.stats)} if scalar_resources is not None else {}))
                 emit(dict(event='ready', pid=os.getpid(), generation=inputs.signature, source=source,
                     backend=provider.stats['backend'], compiler=provider.compiler['signature'], threads=provider.stats['threads'],
                     initialization_seconds=time.perf_counter()-began, attachment_seconds=attachment_seconds,
@@ -141,9 +149,14 @@ def main():
                     slot = command['slot']
                     if type(slot) is not int or not 0 <= slot < configuration['slots']:
                         raise ValueError('Invalid trial worker task slot.')
+                    active_slot=slot
                     specification = _read(scratch/('slot-'+str(slot)+'.json'))
-                    task = numerical_trial.TrialEvaluator(portfolio,
-                        calculation_identity=specification['calculation_identity'])
+                    if scalar_resources is not None:
+                        task=scalar.TrialEvaluator(scalar_resources,calculation_identity=specification['calculation_identity'])
+                    else:
+                        if specification.get('version')!=1:raise ValueError('Trial kind differs from worker workload.')
+                        task = numerical_trial.TrialEvaluator(portfolio,
+                            calculation_identity=specification['calculation_identity'])
                     emit(dict(event='stage', stage='calculating'))
                     started = time.perf_counter()
                     with (scratch/('slot-'+str(slot)+'.evidence')).open('x+b') as stream:
@@ -154,14 +167,23 @@ def main():
                     emit(dict(event='completed', slot=slot, descriptor=descriptor,
                         work_and_seal_seconds=sealed-started, flush_seconds=time.perf_counter()-sealed,
                         measurements=measurements()))
+                    active_slot=None
         except BaseException as error:
             # Never expose exception text, source lines, credentials or URLs.
+            extra={}
+            if active_slot is not None:
+                from backtest.application.strategy_requests import failure_details
+                details=failure_details(error)
+                if details is not None:
+                    from backtest.engines.numerical.runtime import write_payload
+                    write_payload(scratch/('slot-'+str(active_slot)+'.failure.json'),details,REQUEST_BYTES)
+                    extra=dict(scalar_failure=True,slot=active_slot)
             emit(dict(event='cancelled' if type(error).__name__ == 'Cancelled' else 'error',
-                      error_type=type(error).__name__))
+                      error_type=type(error).__name__,**extra))
         finally:
             while True:
                 try:
-                    for value in (portfolio, provider, inputs):
+                    for value in (scalar_resources, portfolio, provider, inputs):
                         if value is not None: value.close()
                 except BaseException:
                     # Keep source and mappings owned until retry or terminal OS

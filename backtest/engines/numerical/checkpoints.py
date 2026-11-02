@@ -61,7 +61,7 @@ def binding_json(binding):
     if (type(binding) is not dict or set(binding) != BINDING_FIELDS
             or any(type(binding[key]) is not str or not binding[key] for key in ('generation','policy','schema'))
             or type(binding['result_contract']) is not int
-            or binding['result_contract'] != portfolio_results.CONTRACT_VERSION
+            or binding['result_contract'] not in (portfolio_results.CONTRACT_VERSION,2)
             or not isinstance(binding['implementation'],dict) or not binding['implementation']
             or not isinstance(binding['execution'],dict) or not binding['execution']):
         raise ValueError('Incomplete calculation binding.')
@@ -76,7 +76,21 @@ def binding_json(binding):
         raise ValueError('Incomplete recorded random plan.')
     numerical_calendar.metadata(config)
     numerical_calendar.decode_request(numerical_calendar.request_fields(config))
+    if binding['result_contract']==2:
+        from backtest.application import strategy_requests
+        scalar=binding['execution'].get('scalar')
+        if type(scalar) is not dict or 'capture' not in scalar:
+            raise ValueError('Scalar checkpoints require complete submitted capture.')
+        strategy_requests.require_strategy(strategy_requests.CapturedStrategy(
+            strategy_requests._encode(scalar['capture'],strategy_requests.STRATEGY_BYTES)))
     return canonical(binding)
+
+
+def trial_options(binding):
+    """Current capture is separate from the unchanged recorded date plan."""
+    options=deepcopy(binding['configuration']['options'])
+    if binding['result_contract']==2:options['strategy']=deepcopy(binding['execution']['scalar']['capture'])
+    return options
 
 
 def _decode(payload):
@@ -207,6 +221,7 @@ class Experiment:
             raise ValueError('Completed trial differs from its recorded plan.')
 
     def load(self,number):
+        if self.binding['result_contract']==2:raise ValueError('Scalar checkpoints require complete evidence replay.')
         self._number(number);self._verify_binding()
         row=self.store.db.execute('SELECT payload,sha256,bytes FROM trials WHERE experiment=? AND number=?',
                                   (self.identity,number)).fetchone()
@@ -255,6 +270,7 @@ class Experiment:
         return True,evicted
 
     def save(self,number,result):
+        if self.binding['result_contract']==2:raise ValueError('Scalar checkpoints require sealed complete evidence.')
         self.store._writer(self.identity)
         self._number(number);self.store._open();self._result(number,result)
         payload=canonical(result);size=len(payload.encode('utf-8'));db=self.store.db
@@ -300,12 +316,18 @@ class Experiment:
                 raw=blob.read(length)
                 try:header=_decode(raw.decode('utf8'))
                 except UnicodeError:raise ValueError('Invalid checkpoint envelope.') from None
-                if (type(header) is not dict or set(header)!={'format','experiment','number','sha256','piece_bytes','record_bytes'}
-                        or type(header['format']) is not int or header['format']!=1
+                if (type(header) is not dict or set(header)!=({'format','experiment','number','sha256','piece_bytes','record_bytes'} | ({'metadata'} if header.get('format')==2 else set()))
+                        or type(header['format']) is not int or header['format'] not in (1,2)
                         or header['experiment']!=self.identity or type(header['number']) is not int or header['number']!=number):
                     raise ValueError('Checkpoint envelope identity differs.')
-                view=result_evidence.TrialView(blob,start=blob.tell(),end=size,sha256=header['sha256'],number=number,
-                    piece_bytes=header['piece_bytes'],record_bytes=header['record_bytes'],checkpoint=backtest_control.checkpoint)
+                owner=result_evidence.TrialView;extra={}
+                if header['format']==2:
+                    from backtest.scalar_result_evidence import TrialView as owner
+                    extra['metadata']=header['metadata']
+                if header['format']!=self.binding['result_contract']:
+                    raise ValueError('Checkpoint codec differs from its scalar/legacy contract.')
+                view=owner(blob,start=blob.tell(),end=size,sha256=header['sha256'],number=number,
+                    piece_bytes=header['piece_bytes'],record_bytes=header['record_bytes'],checkpoint=backtest_control.checkpoint,**extra)
             else:raise ValueError('Unsupported checkpoint payload type.')
             yield view
         finally:
@@ -316,12 +338,16 @@ class Experiment:
         summary=view.summary;config=self.binding['configuration'];dates=config['samples'][number-1]
         if (summary.get('start')!=config['window_start'] or summary.get('end')!=config['window_end']
                 or numerical_calendar.metadata(summary)!=numerical_calendar.metadata(config)
-                or canonical(summary.get('options'))!=canonical(config['options'])):
+                or canonical(summary.get('options'))!=canonical(trial_options(self.binding))):
             raise ValueError('Completed trial differs from its recorded plan.')
         days=[date.fromisoformat(day) for day in dates]+[date.fromisoformat(config['window_end'])]
         pairs=list(zip(days,days[1:]))
+        if self.binding['result_contract']==2:
+            expected=trial_options(self.binding)
+            if (getattr(view,'codec',1)!=2 or view.metadata.get('options')!=expected):
+                raise ValueError('Scalar checkpoint capture differs.')
         return portfolio_results.validate_completed_into(summary,view.periods(),pairs,emit_period,
-            checkpoint=backtest_control.checkpoint)
+            checkpoint=backtest_control.checkpoint,contract=self.binding['result_contract'])
 
     def replay_into(self,number,emit_period):
         """Validate binding, recorded dates and finances before reporting completion.
@@ -334,14 +360,24 @@ class Experiment:
             self._validate_view(number,view)
             return self._validate_view(number,view,emit_period)
 
+    def replay_evidence(self,number,writer):
+        """Replay complete scalar records under a short checkpoint read scope."""
+        with self._trial(number) as view:
+            if view is None:return None
+            self._validate_view(number,view)
+            if getattr(view,'codec',1)!=2:raise ValueError('Expected scalar checkpoint evidence.')
+            return view.replay_into(writer)
+
     def save_from(self,number,view):
         """Atomically retain a sealed trial; never collect its complete holdings."""
         self.store._writer(self.identity)
         self._number(number);self.store._open()
         if view.number!=number:raise ValueError('Checkpoint trial number differs.')
         self._validate_view(number,view)
-        header=canonical(dict(format=1,experiment=self.identity,number=number,sha256=view.sha256,
-            piece_bytes=view.piece_bytes,record_bytes=view.record_bytes)).encode('utf8')
+        header=dict(format=getattr(view,'codec',1),experiment=self.identity,number=number,sha256=view.sha256,
+            piece_bytes=view.piece_bytes,record_bytes=view.record_bytes)
+        if header['format']==2:header['metadata']=view.metadata
+        header=canonical(header).encode('utf8')
         prefix=STREAM_MAGIC+struct.pack('!I',len(header))+header
         size=len(prefix)+view.end-view.start;db=self.store.db
         backtest_control.checkpoint();db.execute('BEGIN IMMEDIATE')
@@ -381,6 +417,12 @@ class Experiment:
 def _semantic_digest(view):
     """Canonical per-row identity across representations; only root seconds differ."""
     sha=hashlib.sha256();summary=view.summary;summary.pop('seconds')
+    if getattr(view,'codec',1)==2:
+        for record in view.records():
+            if record['type']=='end_trial':record=dict(record,summary={k:v for k,v in record['summary'].items() if k!='seconds'})
+            sha.update(hashlib.sha256(canonical(record).encode('utf8')).digest())
+        sha.update(hashlib.sha256(canonical(view.metadata).encode('utf8')).digest())
+        return sha.hexdigest()
     def add(value):sha.update(hashlib.sha256(canonical(value).encode('utf8')).digest())
     add(summary)
     for period in view.periods():

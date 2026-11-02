@@ -132,48 +132,7 @@ class NumericalPortfolio(RequestWorkspace):
         return dict(contract_version=portfolio_results.CONTRACT_VERSION, result=result)
 
     def _check_book(self, book, requested):
-        if (not isinstance(book, dict) or not {'entry', 'exit', 'pool', 'period',
-                'snapshots', 'metrics', 'filters'}.issubset(book)
-                or (book['entry'], book['exit'], book['pool']) != requested
-                or not isinstance(book['period'], (tuple, list)) or len(book['period']) != 6
-                or tuple(book['period'][:2]) != requested[:2]):
-            raise ValueError('Complete-book provider changed a requested book identity.')
-        if any(not isinstance(book[key], list) for key in ('snapshots', 'metrics', 'filters')):
-            raise ValueError('Complete-book provider returned malformed rows.')
-        if (any(type(value) not in (int, float) or not math.isfinite(value)
-                for value in book['period'][2:4]) or book['period'][2] < -1
-                or any(type(value) is not int or value < 0 for value in book['period'][4:])):
-            raise ValueError('Complete-book provider returned malformed period values.')
-        bound = self.provider.limits.get('max_candidate_rows', 250000)
-        if len(book['snapshots']) > bound:
-            raise ValueError('Complete book exceeds the existing candidate row bound.')
-        for key, width in (('snapshots', 13), ('metrics', 4), ('filters', 3)):
-            if any(not isinstance(row, (tuple, list)) or len(row) != width for row in book[key]):
-                raise ValueError('Complete-book provider changed a row schema.')
-        symbols = {row[0] for row in book['snapshots']}
-        if len(symbols) != len(book['snapshots']):
-            raise ValueError('Complete-book provider returned duplicate holdings.')
-        for row in book['snapshots']:
-            if (not isinstance(row[0], str) or not row[0]
-                    or row[1] is not None and (type(row[1]) is not int or row[1] < 1)
-                    or any(type(value) not in (int, float) or not math.isfinite(value) for value in row[5:12])
-                    or row[11] < -1 or row[12] not in portfolio_results.STATUSES):
-                raise ValueError('Complete-book provider returned malformed snapshot values.')
-            try:
-                fiscal, buy, sell = (date.fromisoformat(value) for value in row[2:5])
-                entry, exit_day = (date.fromisoformat(value) for value in requested[:2])
-            except (ValueError, TypeError):
-                raise ValueError('Complete-book provider returned malformed snapshot dates.') from None
-            if (tuple(map(str, (fiscal, buy, sell))) != tuple(row[2:5])
-                    or not entry <= buy < exit_day or not buy <= sell <= exit_day):
-                raise ValueError('Complete-book provider changed actual entry/exit eligibility.')
-        if any(row[0] not in symbols for key in ('metrics', 'filters') for row in book[key]):
-            raise ValueError('Complete-book provider returned orphan financial rows.')
-        for key in ('metrics', 'filters'):
-            if any(not isinstance(row[1], str) or
-                   any(type(value) not in (int, float) or not math.isfinite(value) for value in row[2:])
-                   for row in book[key]):
-                raise ValueError('Complete-book provider returned malformed financial values.')
+        return validate_book(book, requested, self.provider.limits)
 
     def close(self):
         if not self.closed:
@@ -227,3 +186,49 @@ def compare_results(reference, observed):
     walk(reference, observed, '$')
     return dict(exact=not structural and not numeric, structural=structural, numeric=numeric,
                 maximum_absolute=maximum_absolute, maximum_relative=maximum_relative)
+
+
+def validate_book(book, requested, limits):
+    """Check complete candidate evidence before any selector or SQL staging."""
+    if (not isinstance(book, dict) or not {'entry', 'exit', 'pool', 'period',
+            'snapshots', 'metrics', 'filters'}.issubset(book)
+            or (book['entry'], book['exit'], book['pool']) != requested
+            or not isinstance(book['period'], (tuple, list)) or len(book['period']) != 6
+            or tuple(book['period'][:2]) != requested[:2]):
+        raise ValueError('Complete-book provider changed a requested book identity.')
+    if any(not isinstance(book[key], list) for key in ('snapshots', 'metrics', 'filters')):
+        raise ValueError('Complete-book provider returned malformed rows.')
+    if (any(type(value) not in (int, float) or not math.isfinite(value)
+            for value in book['period'][2:4]) or book['period'][2] < -1
+            or any(type(value) is not int or value < 0 for value in book['period'][4:])):
+        raise ValueError('Complete-book provider returned malformed period values.')
+    bound = limits.get('max_candidate_rows', 250000)
+    if len(book['snapshots']) > bound:
+        raise ValueError('Complete book exceeds the existing candidate row bound.')
+    for key, width in (('snapshots', 13), ('metrics', 4), ('filters', 3)):
+        if any(not isinstance(row, (tuple, list)) or len(row) != width for row in book[key]):
+            raise ValueError('Complete-book provider changed a row schema.')
+    symbols = {row[0] for row in book['snapshots']}
+    if len(symbols) != len(book['snapshots']):
+        raise ValueError('Complete-book provider returned duplicate holdings.')
+    for row in book['snapshots']:
+        if (not isinstance(row[0], str) or not row[0]
+                or row[1] is not None and (type(row[1]) is not int or row[1] < 1)
+                or any(type(value) not in (int, float) or not math.isfinite(value) for value in row[5:12])
+                or row[11] < -1 or row[12] not in portfolio_results.STATUSES):
+            raise ValueError('Complete-book provider returned malformed snapshot values.')
+        try:
+            fiscal, buy, sell = (date.fromisoformat(value) for value in row[2:5])
+            entry, exit_day = (date.fromisoformat(value) for value in requested[:2])
+        except (ValueError, TypeError):
+            raise ValueError('Complete-book provider returned malformed snapshot dates.') from None
+        if (tuple(map(str, (fiscal, buy, sell))) != tuple(row[2:5])
+                or not entry <= buy < exit_day or not buy <= sell <= exit_day):
+            raise ValueError('Complete-book provider changed actual entry/exit eligibility.')
+    if any(row[0] not in symbols for key in ('metrics', 'filters') for row in book[key]):
+        raise ValueError('Complete-book provider returned orphan financial rows.')
+    for key in ('metrics', 'filters'):
+        if any(not isinstance(row[1], str) or
+               any(type(value) not in (int, float) or not math.isfinite(value) for value in row[2:])
+               for row in book[key]):
+            raise ValueError('Complete-book provider returned malformed financial values.')

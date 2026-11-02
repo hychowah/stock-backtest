@@ -31,7 +31,7 @@ class Session:
     def __init__(self, configuration):
         self.configuration = configuration
         self.inputs = self.provider = self.portfolio = self.checkpoints = None
-        self.trial_pool = self.workspace = None
+        self.trial_pool = self.workspace = self.scalar_resources = None
         self.expected_compiler = None
         self.execution_policy = ExecutionPolicy.from_configuration(configuration)
         if configuration.get('preparation_status') and configuration.get('preparation_profile') is None:
@@ -64,7 +64,7 @@ class Session:
         if self.trial_pool is not None:
             self.trial_pool.close()
             self.trial_pool = None
-        for name in ('portfolio','workspace','provider','inputs'):
+        for name in ('scalar_resources','portfolio','workspace','provider','inputs'):
             value = getattr(self,name)
             if value is not None:
                 value.close()
@@ -110,25 +110,32 @@ class Session:
             raise ValueError('Compiled provider preparation is incomplete.')
         return dict(verified=True,profile=profile,rust_required=False,compiler=self.expected_compiler['signature'])
 
-    def _binding(self,plan):
+    def _binding(self,plan,*,scalar_capture=None):
         execution=numerical_random.provider_execution(self.inputs,self.execution_policy.provider_limits,self.expected_compiler)
         execution['trial_pool']=self.execution_policy.execution_identity(self.expected_compiler)
-        return numerical_random.checkpoint_binding(self.workspace,plan,execution=execution)
+        return numerical_random.checkpoint_binding(self.workspace,plan,execution=execution,scalar_capture=scalar_capture)
 
-    def pool(self):
+    def pool(self,*,scalar=False):
         """Lazily own persistent workers after complete checkpoint inspection."""
         self.validate()
+        workload='scalar' if scalar else 'legacy'
+        if self.trial_pool is not None and self.trial_pool.workload!=workload:
+            self.trial_pool.close();self.trial_pool=None
         if self.trial_pool is None:
             from backtest.engines.numerical.trial_pool import TrialPool
             self.trial_pool = TrialPool(source_root=self.configuration['source_root'],
                 scratch=self.configuration['scratch']+'/trial-pool',
                 reference=self.inputs.worker_reference(), source_identity=self.loaded_source,
-                compiler_identity=self.expected_compiler, policy=self.execution_policy)
+                compiler_identity=self.expected_compiler, policy=self.execution_policy,workload=workload)
         return self.trial_pool
 
     def plan(self, options):
         # The private SQL workspace contains immutable sessions. Use the ordinary
         # planner, including its fresh default seed and exact envelope.
+        if 'strategy' in options:
+            from backtest.application import strategy_requests
+            strategy_requests.check_options(options)
+            return numerical_calendar.plan(self.workspace._calendar().sessions,options,checkpoint=backtest_control.checkpoint)
         configuration,selection,_=numerical_calendar.decode_request(options)
         selection.pop('trials',None);selection.pop('seed',None)
         self.workspace.validate_selection(selection)
@@ -197,6 +204,9 @@ class Session:
         has no complete-trial observer and changes no eager admission guard.
         """
         self.validate()
+        if 'strategy' in options:
+            return self._scalar_into(mode,options,stream,progress,configuration,planned=planned,
+                max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes)
         if mode not in ('custom','random'):raise ValueError('Expected backtest mode and options.')
         if planned is not None and mode!='random':raise ValueError('A recorded plan requires random mode.')
         plan=None
@@ -220,6 +230,66 @@ class Session:
             result=self.portfolio.backtest_calendar_into(writer.period,**options)['result']
             writer.end_trial(result);writer.finish(result)
         backtest_control.checkpoint()
+
+    def _scalar_into(self,mode,options,stream,progress,configuration,*,planned,max_bytes,piece_bytes,record_bytes):
+        """Dormant scalar capability inside the existing candidate lifetime.
+
+        Public application/numerical policy guards remain separate and closed.
+        Source, cache, workers and attachments stay owned until session closure.
+        """
+        from backtest import scalar_result_evidence
+        from backtest.application import strategy_requests
+        from backtest.engines.numerical import scalar
+        options=strategy_requests.execution_options(mode,options,planned=planned)
+        if not 0<max_bytes<=256*1024**2:raise ValueError('Invalid scalar evidence byte ceiling.')
+        for name in ('portfolio','provider'):
+            value=getattr(self,name)
+            if value is not None:value.close();setattr(self,name,None)
+        if self.trial_pool is not None and (mode!='random' or self.trial_pool.workload!='scalar'):
+            self.trial_pool.close();self.trial_pool=None
+        plan=None
+        if mode=='random':
+            if planned is None:plan=self.plan(options)
+            else:
+                strategy_requests.validate_recorded(options,planned)
+                plan=numerical_random.validate_configuration(self.workspace,planned)
+            if configuration:configuration(deepcopy(plan))
+        metadata=dict(mode=mode,options=dict(options,engine='experimental'),configuration=plan,
+            generation=self.inputs.signature,input=self.inputs.signature,projection=self.inputs.observation_projection,
+            source=self.loaded_source,producer=deepcopy(scalar.PRODUCER))
+        writer=scalar_result_evidence.Writer(stream,trials=0 if mode=='latest' else plan['requested'] if plan else 1,
+            metadata=metadata,max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes,
+            checkpoint=backtest_control.checkpoint)
+        try:
+            if plan is not None:
+                binding=self._binding(plan,scalar_capture=options['strategy'])
+                experiment=self.checkpoints.open(binding)
+                result=numerical_random.run_into(self.workspace,plan,experiment,writer,progress,
+                    execution=lambda:self.pool(scalar=True),binding=binding,producer=scalar.PRODUCER)
+                self.validate()
+                return result
+            self.scalar_resources=scalar.Resources.__new__(scalar.Resources)
+            scalar.Resources.__init__(self.scalar_resources,self.inputs,self.execution_policy.provider_limits)
+            resources=self.scalar_resources
+            if mode in ('latest','january'):
+                summary=resources.prepared(mode,options,writer)
+            else:
+                writer.start_trial(1)
+                summary=resources.evaluate_periods(options,writer)
+                summary['producer']=deepcopy(scalar.PRODUCER)
+                writer.end_trial(summary)
+            resources.view.validate();self.validate()
+            measured=resources.measurements()
+            self.stats['provider_constructions']+=measured['provider_constructions']
+            self.stats['formula_compilations']=self.stats.get('formula_compilations',0)+measured['formula'].get('kernel_compilations',0)
+            self.stats['scalar_resources']=measured['scalar_resources']
+            resources.close();self.scalar_resources=None
+            manifest=writer.finish(summary)
+            return dict(result=summary,evidence=manifest,contract_version=2)
+        except BaseException:
+            writer.failed=True
+            raise
+
 
     def measurements(self):
         from backtest.application import preparation as numerical_preparation; from backtest.engines.numerical import matrix as numerical_matrix

@@ -182,6 +182,90 @@ class ExecutionTests(unittest.TestCase):
         with library.open_evidence(record['id']) as opened:
             with opened.open_reader() as reader:self.assertEqual(reader.metadata['options']['strategy'],self.capture.to_dict())
         self.assertEqual(consumer.evidence.measurements()['reserved_bytes'],0)
+    def test_queue_due_stop_poll_during_publication_preserves_completion_stop_and_shutdown(self):
+        for scenario,expected in [('complete','complete'),('spill','complete'),('stop','cancelled'),('shutdown','queued')]:
+            with self.subTest(scenario=scenario):
+                store=queue.Store(Path(self.folder.name)/(scenario+'-publication.sqlite'))
+                consumer=queue.Queue(store,calculations=self.calc,library=saved.Store(Path(self.folder.name)/(scenario+'-saved.sqlite')))
+                self.addCleanup(consumer.close)
+                request=dict(id='a'*32,name='Scalar',mode='custom',options=self.options(),catalog=dict(metrics={},filters={}),presentation={})
+                store.enqueue(request);job=store.claim()
+                publication=queue.durable_evidence.publication;stopped=store.stopped;finish=store.finish_evidence
+                connect=sqlite3.connect;connections=[];failures=[]
+                state=dict(publishing=False,polls=0,ordinary_polls=0,ticks=0,checks=0,spilled=False)
+                checkpoint=backtest_control.checkpoint
+                class Connection(sqlite3.Connection):
+                    def close(connection):
+                        super().close();connections.remove(connection)
+                def short_connection(*args,**kwargs):
+                    kwargs['timeout']=.05
+                    tracked='factory' not in kwargs
+                    if tracked:kwargs['factory']=Connection
+                    db=connect(*args,**kwargs)
+                    if tracked:connections.append(db)
+                    return db
+                def tick():
+                    if state['publishing']:state['ticks']+=1
+                    return 1.+state['ticks']
+                def poll(identifier):
+                    if state['publishing']:
+                        state['polls']+=1
+                    else:state['ordinary_polls']+=1
+                    return stopped(identifier)
+                def check():
+                    if state['publishing']:
+                        state['checks']+=1
+                        if scenario=='shutdown' and state['checks']==2:consumer.stopping.set()
+                    return checkpoint()
+                @contextmanager
+                def publishing(db,*args,**kwargs):
+                    self.assertTrue(db.in_transaction)
+                    state['publishing']=True
+                    try:
+                        if scenario in ('spill','shutdown'):
+                            # Exceed the default rollback-journal page cache. Its
+                            # exclusive lock persists after these rows are deleted.
+                            for ordinal in range(16):
+                                db.execute('INSERT INTO evidence_chunks VALUES(?,?,?)',('spill-probe',ordinal,b'x'*1024**2))
+                            db.execute("DELETE FROM evidence_chunks WHERE record_id='spill-probe'")
+                            state['spilled']=True
+                        with publication(db,*args,**kwargs) as packed:yield packed
+                    finally:state['publishing']=False
+                def finishing(identifier,*args,**kwargs):
+                    if scenario=='stop':
+                        row=store.get(identifier)
+                        store.change(identifier,'stop',dict(revision=row['revision']))
+                    return finish(identifier,*args,**kwargs)
+                with patch.object(queue,'time',wraps=time) as clock, \
+                        patch.object(sqlite3,'connect',side_effect=short_connection), \
+                        patch.object(store,'stopped',side_effect=poll), \
+                        patch.object(store,'finish_evidence',side_effect=finishing), \
+                        patch.object(queue.durable_evidence,'publication',side_effect=publishing), \
+                        patch.object(backtest_control,'checkpoint',side_effect=check), \
+                        patch.object(queue.diagnostics.LOGGER,'error',side_effect=lambda value:failures.append(json.loads(value))):
+                    clock.monotonic.side_effect=tick
+                    consumer._run(job)
+                row=store.listing()['records'][0]
+                self.assertEqual(row['state'],expected,dict(state=row['state'],diagnostics=failures))
+                self.assertFalse(failures)
+                self.assertEqual(state['polls'],0)
+                self.assertEqual(state['ordinary_polls'],1)
+                if scenario in ('spill','shutdown'):self.assertTrue(state['spilled'])
+                if scenario=='shutdown':self.assertEqual(state['checks'],2)
+                self.assertEqual(row['options']['strategy'],self.capture.to_dict())
+                self.assertFalse(connections);self.assertFalse(self.opened);self.assertFalse(self.financial)
+                self.assertEqual(consumer.evidence.measurements()['reserved_bytes'],0)
+                with closing(sqlite3.connect(store.path)) as db:
+                    chunks=db.execute('SELECT count(*) FROM evidence_chunks').fetchone()[0]
+                self.assertEqual(chunks>0,expected=='complete')
+        with patch.object(sqlite3,'connect',side_effect=short_connection):
+            with self.assertRaises(queue.Missing):store.stopped('b'*32)
+        self.assertFalse(connections)
+        missing=queue.Store(Path(self.folder.name)/'absent-queue.sqlite')
+        with self.assertRaises(queue.Missing):missing.stopped('a'*32)
+        self.assertFalse(missing.path.exists())
+        with patch.object(sqlite3,'connect',side_effect=sqlite3.OperationalError):
+            with self.assertRaises(sqlite3.OperationalError):store.stopped('a'*32)
     def test_queue_held_name_edit_retains_plan_and_changed_direction_drops_it(self):
         store=queue.Store(Path(self.folder.name)/'held.sqlite')
         request=dict(id='d'*32,name='Scalar',mode='random',options=self.options(trials=1,seed=0),catalog=dict(metrics={},filters={}),presentation={})

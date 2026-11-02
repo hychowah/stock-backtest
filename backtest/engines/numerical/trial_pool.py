@@ -145,6 +145,8 @@ class Batch:
             raise ValueError('Duplicate recorded trial number in a batch.')
         if len({value['calculation_identity'] for value in self.specifications}) != 1:
             raise ValueError('Recorded trials belong to different calculation identities.')
+        if any((value['version']==2)!=(pool.workload=='scalar') for value in self.specifications):
+            raise ValueError('Recorded trial kind differs from its fixed worker workload.')
         self.reservations, self.completions = {}, {}
         self.next_task = self.completed_count = 0
         self.entered = self.iterated = self.finished = False
@@ -186,6 +188,12 @@ class Batch:
                     raise ValueError('Release a completion before requesting more bounded work.')
                 worker, event = self.pool._event()
                 if self.pool._stage(worker,event): continue
+                if event.get('event')=='error' and event.get('scalar_failure') is True:
+                    if event.get('slot')!=worker.slot or worker.slot not in self.reservations:
+                        raise ValueError('Scalar failure belongs to another reserved slot.')
+                    from backtest.application.strategy_requests import restore_failure
+                    from backtest.engines.numerical.runtime import read_payload
+                    raise restore_failure(read_payload(self.pool.scratch/('slot-'+str(worker.slot)+'.failure.json'),REQUEST_BYTES))
                 if event.get('event') != 'completed':
                     raise RuntimeError('Trial worker failed or returned an unexpected response.')
                 if set(event) != {'event', 'slot', 'descriptor', 'work_and_seal_seconds',
@@ -220,8 +228,10 @@ STARTUP_EVENTS_PER_WORKER = 4
 
 class TrialPool:
     def __init__(self, *, source_root, scratch, reference, source_identity, compiler_identity,
-                 policy, checkpoint=backtest_control.checkpoint, python=None):
+                 policy, checkpoint=backtest_control.checkpoint, python=None, workload='legacy'):
         if not isinstance(policy, ExecutionPolicy): raise ValueError('Choose a resolved numerical execution policy.')
+        if workload not in ('legacy','scalar'):raise ValueError('Unknown fixed trial workload.')
+        self.workload=workload
         self.root, self.scratch = Path(source_root).absolute(), Path(scratch).absolute()
         self.reference, self.source_identity = deepcopy(reference), deepcopy(source_identity)
         self.compiler_identity = deepcopy(compiler_identity)
@@ -278,6 +288,9 @@ class TrialPool:
         # Only fixed files created by this pool/worker can be removed.
         self._artifact_path(slot).unlink(missing_ok=True)
         self._spec_path(slot).unlink(missing_ok=True)
+        failure = self.scratch/('slot-'+str(slot)+'.failure.json')
+        failure.unlink(missing_ok=True)
+        failure.with_suffix('.pending').unlink(missing_ok=True)
 
     def start(self, *, required_workers=None):
         self.checkpoint()
@@ -291,6 +304,7 @@ class TrialPool:
             source=trial_checkpoints.digest(trial_checkpoints.canonical(self.source_identity)),
             provider_limits=self.policy.provider_limits, artifact_limits=self.policy.artifact_limits,
             slots=self.policy.identity['pending_slots'], close_seconds=self.policy.close_seconds)
+        if self.workload=='scalar':configuration['workload']='scalar'
         expected = dict(generation=self.reference['identity'], source=configuration['source'], backend='numba',
                         compiler=self.compiler_identity['signature'], threads=self.policy.provider_limits['threads'])
         try:

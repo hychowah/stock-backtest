@@ -265,7 +265,15 @@ class Store:
             return dict(self.row(db,row['id'],include_plan=True))
 
     def stopped(self,identifier):
-        with self.database() as db:return self.row(db,identifier)['state']=='stopping'
+        """Poll committed Stop intent through a short read-only connection.
+
+        Callers must not hold their own publication transaction while polling.
+        """
+        if not self.path.exists():raise Missing('Queued test not found. Refresh the queue.')
+        db=sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True,timeout=10)
+        db.row_factory=sqlite3.Row
+        try:return self.row(db,identifier)['state']=='stopping'
+        finally:db.close()
 
     def progress(self,identifier,field,value):
         if field not in ('progress','configuration'):raise ValueError('Invalid queue progress field.')
@@ -494,7 +502,10 @@ class Queue:
                     with self.evidence.reader(entry) as reader:
                         snapshot=dict(version=4,kind=spec['mode'],settings=dict(mode=spec['mode'],**spec['options']),
                             result=reader.manifest['summary'],catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
-                        self.store.finish_evidence(identifier,snapshot,reader)
+                        # Publication checks committed Stop intent under its own
+                        # writer. A spill can block another reader in this thread.
+                        with backtest_control.cancel_when(self.stopping.is_set):
+                            self.store.finish_evidence(identifier,snapshot,reader)
                 return
             with backtest_control.cancel_when(stopped):
                 result=self.calculations.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),

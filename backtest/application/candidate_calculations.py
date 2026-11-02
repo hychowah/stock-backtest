@@ -78,7 +78,7 @@ class Candidate(calculation_contract.Control):
 
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
                        admission='interactive', **limits):
-        """Explicit bounded capability; no application route selects it yet."""
+        """Bounded pinned capability; public scalar admission stays separate."""
         return self._calculate(mode,options,progress,configuration,planned=planned,admission=admission,
                                destination=destination,limits=limits)
 

@@ -83,9 +83,14 @@ class Selectable:
     def retire(self):self.experimental.retire()
 
     def calculate_into(self,mode,options,destination,progress,configuration,*,planned=None,admission='interactive',**limits):
-        self.preflight(options,planned=planned)
+        engine=self.preflight(options,planned=planned)
         if self.closed.is_set():raise calculation_contract.Busy('The server is stopping.')
         financial={key:value for key,value in options.items() if key!='engine'}
+        if engine=='experimental':
+            if not self.ready_for(options,advisory=True):
+                raise calculation_contract.Unavailable('Experimental preparation is unavailable. Use Prepare experimental engine in Manage backtest data.')
+            return self.experimental.calculate_into(mode,financial,destination,progress,configuration,
+                planned=planned,admission=admission,**limits)
         with self.experimental.parent_operation(admission=admission):
             return self.original.calculate_into(mode,options,destination,progress,configuration,
                 planned=planned,admission=admission,**limits)

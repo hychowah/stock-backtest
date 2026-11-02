@@ -48,6 +48,19 @@ def capabilities():
         application_admission=False)
 
 
+
+def policy_fingerprint(*, chunk_steps=MAX_CHUNK_STEPS):
+    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    compiler_source = hashlib.sha256(Path(identity.__file__).read_bytes()).hexdigest()
+    if current != _LOADED_FORMULAS or compiler_source != identity._LOADED_IDENTITY:
+        raise definitions.FormulaError('STALE_INPUT_GENERATION', '', 'Loaded numerical formula source changed.')
+    environment = identity.compiler_environment(1)
+    return dict(backend='numba-formulas', version=VERSION, formulas=current,
+        compiler_source=compiler_source, compiler=environment,
+        evaluation=evaluation.policy_fingerprint(), definitions=definitions.policy_fingerprint(),
+        provider=observations.policy_fingerprint(), arithmetic=dict(evaluation._ARITHMETIC),
+        native=dict(parallel=False, boundscheck=True, chunk_steps=chunk_steps))
+
 def _execute(tape, constants, admitted, source_reasons, members, values, reasons, first, last):
     """Trusted ordered arithmetic; finite checks occur at each task's final step."""
     for step in range(first, last):
@@ -273,23 +286,23 @@ class Evaluator:
         self._signatures = tuple(kernel.nopython_signatures)
         self.stats['kernel_compilations'] += 1
 
+    def warm(self, checkpoint=lambda: None):
+        """Initialize the trusted kernel without observing any financial input."""
+        if self.closed:raise ValueError('Numerical formula evaluator is closed.')
+        fingerprint=self.policy_fingerprint()
+        self._warm(checkpoint)
+        self._environment=fingerprint['compiler']
+        return dict(self.stats)
+
     def _check_signatures(self):
         if tuple(self._kernel.nopython_signatures) != self._signatures:
             raise RuntimeError('Compiled formula signature changed after warming.')
 
     def policy_fingerprint(self):
-        current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-        compiler_source = hashlib.sha256(Path(identity.__file__).read_bytes()).hexdigest()
-        if current != _LOADED_FORMULAS or compiler_source != identity._LOADED_IDENTITY:
-            raise definitions.FormulaError('STALE_INPUT_GENERATION', '', 'Loaded numerical formula source changed.')
-        environment = identity.compiler_environment(1)
-        if self._environment is not None and environment != self._environment:
-            raise definitions.FormulaError('STALE_INPUT_GENERATION', '', 'Numerical formula compiler environment changed.')
-        return dict(backend='numba-formulas', version=VERSION, formulas=current,
-            compiler_source=compiler_source, compiler=environment,
-            evaluation=evaluation.policy_fingerprint(), definitions=definitions.policy_fingerprint(),
-            provider=observations.policy_fingerprint(), arithmetic=dict(evaluation._ARITHMETIC),
-            native=dict(parallel=False, boundscheck=True, chunk_steps=self.chunk_steps))
+        result=policy_fingerprint(chunk_steps=self.chunk_steps)
+        if self._environment is not None and result['compiler']!=self._environment:
+            raise definitions.FormulaError('STALE_INPUT_GENERATION','','Numerical formula compiler environment changed.')
+        return result
 
     def prepare(self, checked, checkpoint):
         if self.closed:

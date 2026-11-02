@@ -34,11 +34,13 @@ class RequestPlan:
     and requested lookup dependencies once. Mandatory snapshot and exit inputs
     remain present even when no threshold consumes the trailing-price inputs.
     """
-    def __init__(self, request, inputs):
+    def __init__(self, request, inputs, *, required_fields=()):
         self.options = dict(request.get('options', request))
         require_supported(self.options)
-        self.needed = frozenset(condition['field'] for condition in
+        self.needed = frozenset(required_fields) | frozenset(condition['field'] for condition in
                                 self.options.get('filters', []) or [])
+        if not self.needed <= set(inputs.policy.filter_order):
+            raise ValueError('Unsupported required complete-book lane.')
         # Both ranking pairs remain exposed to the unchanged SQL selector. The
         # mandatory slots also support source guards before numeric use.
         outputs = ('cap', 'ev', 'ebitda', 'return_value', 'multiple', 'yield_value',
@@ -90,10 +92,10 @@ class PythonExecutor:
         self.candidate_assembly = assembly
         self.stats = dict(backend='python',candidate_assembly=assembly,batches=0,books=0,candidate_rows=0)
 
-    def begin(self,request):
+    def begin(self,request, *, required_fields=()):
         self.options = dict(request.get('options',request))
         require_supported(self.options)
-        self.request_plan = RequestPlan(request, self.inputs) if self.limits.get('request_plan') else None
+        self.request_plan = RequestPlan(request, self.inputs, required_fields=required_fields) if self.limits.get('request_plan') or required_fields else None
         self.trace = {}
         for key in ('report_seconds','lookup_seconds','planning_seconds',
                     'numeric_seconds','source_guard_seconds','decision_seconds','assembly_seconds','encoding_seconds'):

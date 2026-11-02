@@ -1,7 +1,7 @@
 """Immutable numerical inputs, exported offline from validated prepared tables.
 
 The store owns publication, recovery, mappings and reader leases. An attachment
-borrows no source database handles. Ordinary attachment callers retain cache
+can own a checked prepared-research reader, closed before its mappings. Callers retain cache
 ownership during calculation. Delegated workers retain source ownership and
 their generation pin; their coordinator retains financial ownership. Close
 evaluators before closing the input attachment.
@@ -449,6 +449,28 @@ class AttachedInputs:
             return dict(version=WORKER_REFERENCE_VERSION, store=str(self._store.path.resolve()),
                         identity=self.signature)
 
+    @property
+    def observation_projection(self):
+        """Detached accepted projection identity; reads no company observations."""
+        if self.closed:raise ValueError('Numerical attachment is closed.')
+        expected=self._binding.get('observations')
+        if expected is None:raise ValueError('Generation has no admitted observation inputs.')
+        return json.loads(_json(expected))
+
+    def prepared_scopes(self):
+        """Own a current research reader bound to this coordinator attachment.
+
+        The caller holds source/financial ownership. Close this borrowed-scope
+        source before its attachment. Delegated workers cannot discover it.
+        """
+        if not hasattr(self, '_store'):
+            raise ValueError('Delegated inputs cannot borrow current prepared scopes.')
+        if not hasattr(self, '_prepared_readers'):self._prepared_readers=[]
+        reader=PreparedScopeReader.__new__(PreparedScopeReader)
+        self._prepared_readers.append(reader)
+        PreparedScopeReader.__init__(reader,self)
+        return reader
+
     def observations(self):
         """Borrow trusted observation facts; retain this attachment until closed.
 
@@ -537,6 +559,7 @@ class AttachedInputs:
 
     def close(self):
         if self.closed: return
+        for reader in tuple(getattr(self, '_prepared_readers', ())):reader.close()
         if self._db is not None: self._db.close(); self._db = None
         for name, array in list(self._arrays.items()):
             array._mmap.close()
@@ -553,6 +576,56 @@ class AttachedInputs:
 
     def __enter__(self): return self
     def __exit__(self, *args): self.close()
+
+
+class PreparedScopeReader:
+    """Admitted current January/latest scopes; connection remains caller-scoped.
+
+    No snapshots are reconstructed from observations. A read can use the whole
+    source population only while this object and its exact attachment are live.
+    No read transaction survives a scope query or final validation.
+    """
+    def __init__(self, inputs):
+        self.inputs,self.db=inputs,None
+        try:
+            inputs.validate()
+            self.db=research.connect(full_prices=True)
+            meta={row[0]:json.loads(row[1]) for row in self.db.execute('SELECT key,value FROM metadata')}
+            binding=inputs._binding
+            if (meta.get('inputs')!=binding['daily']['inputs'] or meta.get('prices')!=binding['prices']
+                    or observation_inputs.require(self.db,expected=binding['observations'],verify_content=True)!=binding['observations']
+                    or _sha(research.RESULTS/'summary-exits.txt')!=binding['report']):
+                raise ValueError('Prepared scopes differ from the attached generation.')
+            self.metadata=meta
+            self.version=self.db.execute('PRAGMA data_version').fetchone()[0]
+            self.path=Path(self.db.execute('PRAGMA database_list').fetchone()[2])
+            self.file=self._file()
+            self.validate()
+        except BaseException:
+            # The attachment already adopted us. Failed close keeps the reader
+            # and its connection owned for attachment/session cleanup retry.
+            self.close()
+            raise
+
+    def _file(self):
+        value=self.path.stat()
+        return value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns
+
+    def validate(self):
+        if self.db is None:raise ValueError('Prepared scope reader is closed.')
+        self.inputs.validate()
+        if (self._file()!=self.file or self.db.execute('PRAGMA data_version').fetchone()[0]!=self.version
+                or {row[0]:json.loads(row[1]) for row in self.db.execute('SELECT key,value FROM metadata')}!=self.metadata):
+            raise ValueError('Prepared scopes changed during scalar execution.')
+
+    def close(self):
+        if self.db is not None:
+            self.db.close();self.db=None
+        owners=getattr(self.inputs,'_prepared_readers',[])
+        if self in owners:owners.remove(self)
+
+    def __enter__(self):return self
+    def __exit__(self,*unused):self.close()
 
 
 class DelegatedInputs(AttachedInputs):

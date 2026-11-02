@@ -33,29 +33,8 @@ def execute(db, source, mode, options, writer, view, configuration, *, planned=N
     started = time.perf_counter()
     selection = dict(strategy=options['strategy'])
     producer = dict(engine='original',label='Original')
-    if mode == 'latest':
-        asof = view.bounds['latest_date']
-        stocks = executor.select(source,None,date.fromisoformat(asof),latest=True)
-        for stock in stocks:writer.screen(stock)
-        return dict(asof=asof,requested=requested,names=len(stocks),options=options,producer=producer)
-    if mode == 'january':
-        first,last = options.get('first',1996),options.get('last',2026)
-        if any(type(v) is not int for v in (first,last)) or not 1996 <= first <= last <= 2026:
-            raise ValueError('Choose increasing integer years within 1996–2026.')
-        rows = source.execute('SELECT year,entry,exit,spy FROM periods WHERE year BETWEEN ? AND ? ORDER BY year',(first,last)).fetchall()
-        if not rows or [row[0] for row in rows] != list(range(first,last+1)):
-            raise ValueError('Complete requested January periods are unavailable.')
-        pairs = [(date.fromisoformat(row[1]),date.fromisoformat(row[2])) for row in rows]
-        by_entry = {row[1]:row for row in rows}
-        def select(entry,exit_day):
-            row = by_entry[str(entry)]
-            return dict(entry=str(entry),exit=str(exit_day),spy=row[3],
-                holdings=executor.select(source,row[0],entry,exit_day))
-        sink.start_trial(1)
-        summary = portfolio_results.evaluate_into(pairs,select,sink.period,checkpoint=checkpoint,contract=2)
-        summary.update(options=options,first=first,last=last,seconds=time.perf_counter()-started,producer=producer)
-        writer.end_trial(summary)
-        return summary
+    if mode in ('latest','january'):
+        return prepared(executor,source,mode,options,writer,view,producer=producer,checkpoint=checkpoint)
     if mode == 'random':
         sessions = [date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
         if planned is None:
@@ -84,3 +63,41 @@ def execute(db, source, mode, options, writer, view, configuration, *, planned=N
     summary['producer'] = producer
     writer.end_trial(summary)
     return summary
+
+
+def reduce_periods(pairs,select,emit,options,metadata,*,common_start=None,checkpoint=lambda:None):
+    """One scalar financial reducer; scope production and publication stay outside."""
+    started=time.perf_counter()
+    summary=portfolio_results.evaluate_into(pairs,select,emit,common_start=common_start,
+        checkpoint=checkpoint,contract=2)
+    summary.update(metadata,options=options,seconds=time.perf_counter()-started)
+    return summary
+
+
+def prepared(executor,source,mode,options,writer,view,*,producer,checkpoint=lambda:None):
+    """Read authoritative stored scopes; no dated-book reconstruction occurs."""
+    requested=executor.capture['selection']['rank_to']-executor.capture['selection']['rank_from']+1
+    started=time.perf_counter()
+    if mode == 'latest':
+        asof = view.bounds['latest_date']
+        stocks = executor.select(source,None,date.fromisoformat(asof),latest=True)
+        for stock in stocks:writer.screen(stock)
+        return dict(asof=asof,requested=requested,names=len(stocks),options=options,producer=producer)
+    if mode == 'january':
+        first,last = options.get('first',1996),options.get('last',2026)
+        if any(type(v) is not int for v in (first,last)) or not 1996 <= first <= last <= 2026:
+            raise ValueError('Choose increasing integer years within 1996–2026.')
+        rows = source.execute('SELECT year,entry,exit,spy FROM periods WHERE year BETWEEN ? AND ? ORDER BY year',(first,last)).fetchall()
+        if not rows or [row[0] for row in rows] != list(range(first,last+1)):
+            raise ValueError('Complete requested January periods are unavailable.')
+        pairs = [(date.fromisoformat(row[1]),date.fromisoformat(row[2])) for row in rows]
+        by_entry = {row[1]:row for row in rows}
+        def select(entry,exit_day):
+            row = by_entry[str(entry)]
+            return dict(entry=str(entry),exit=str(exit_day),spy=row[3],
+                holdings=executor.select(source,row[0],entry,exit_day))
+        writer.start_trial(1)
+        summary = reduce_periods(pairs,select,writer.period,options,{},checkpoint=checkpoint)
+        summary.update(options=options,first=first,last=last,seconds=time.perf_counter()-started,producer=producer)
+        writer.end_trial(summary)
+        return summary

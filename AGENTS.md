@@ -51,7 +51,7 @@ current slice record retains final verification, cleanup and superseded attempts
 Phase 7 resumes from `5cded92` under the user's 2 November authorization. Its
 [execution plan](docs/plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
 owns bounded compiled formula evaluation, candidate integration and qualification.
-Slice 1 keeps public numerical scalar admission closed. Original remains default.
+Slices 1 and 2 keep public numerical scalar admission closed. Original remains default.
 Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
@@ -651,3 +651,13 @@ Original stays default. Main and the engine worktree remain untouched. No merge,
 push, deployment, restart, download or live-runtime/cache/durable-store mutation
 is authorized. Private synthetic WSL/browser/native fixtures only. Native-cache
 coverage remains unknown.
+
+
+Phase 7 Slice 2 starts from audited `0c75df8` under a fresh independent design.
+It owns dormant Candidate scalar scopes, generation-owned prepared research
+borrowing, arithmetic injection below shared selection, and typed complete
+codec-2 trial/pool/checkpoint/runtime dispatch. Existing financial/provider,
+resource, source/cache, parent-writer and attachment ownership stays authoritative.
+Public numerical scalar guards stay closed; no production bypass is authorized.
+The slice record distinguishes focused implementation checks from pending audit,
+final source-bound WSL/private native/browser gates and later measured admission.

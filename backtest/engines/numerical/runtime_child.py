@@ -253,7 +253,12 @@ def main():
                         # source-owned validation messages are safe; other types
                         # are reported by category without exception text.
                         message = str(error) if isinstance(error,ValueError) else 'Numerical calculation failed: '+type(error).__name__
-                        emit(dict(event='error',message=message))
+                        from backtest.application.strategy_requests import failure_details
+                        scalar_failure=failure_details(error)
+                        if scalar_failure is not None:
+                            write_payload(scratch/'scalar-failure.json',scalar_failure,MAX_REQUEST_BYTES)
+                            emit(dict(event='error',scalar_failure=True))
+                        else:emit(dict(event='error',message=message))
                         shutdown.set()
             except BaseException as error:
                 session = session or getattr(error,'numerical_session',None)

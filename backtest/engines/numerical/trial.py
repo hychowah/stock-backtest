@@ -35,11 +35,12 @@ def specification(binding, number):
     config=binding['configuration']
     if type(number) is not int or not 1<=number<=config['requested']:
         raise ValueError('Invalid recorded trial number.')
-    value=dict(version=VERSION,number=number,calculation_identity=identity,
+    value=dict(version=2 if binding['result_contract']==2 else VERSION,number=number,calculation_identity=identity,
         request=dict(dates=deepcopy(config['samples'][number-1]),
                      **numerical_calendar.request_fields(config)),
-        options=deepcopy(config['options']),window_start=config['window_start'],
+        options=trial_checkpoints.trial_options(binding),window_start=config['window_start'],
         window_end=config['window_end'])
+    if value['version']==2:value['requested']=config['requested']
     value['sha256']=trial_checkpoints.digest(trial_checkpoints.canonical(value))
     return _specification(value)
 
@@ -56,8 +57,8 @@ def _day(value):
 
 
 def _specification(spec):
-    if (type(spec) is not dict or set(spec)!=_SPEC_FIELDS
-            or type(spec['version']) is not int or spec['version']!=VERSION
+    if (type(spec) is not dict or set(spec)!=(_SPEC_FIELDS | ({'requested'} if spec.get('version')==2 else set()))
+            or type(spec['version']) is not int or spec['version'] not in (VERSION,2)
             or type(spec['number']) is not int or not 1<=spec['number']<=100
             or not _hash(spec['calculation_identity']) or not _hash(spec['sha256'])
             or type(spec['options']) is not dict or type(spec['request']) is not dict):
@@ -66,6 +67,10 @@ def _specification(spec):
     canonical=trial_checkpoints.canonical({k:v for k,v in value.items() if k!='sha256'})
     if trial_checkpoints.digest(canonical)!=value['sha256']:
         raise ValueError('Recorded trial specification digest differs.')
+    if value['version']==2:
+        if type(value['requested']) is not int or not 1<=value['requested']<=100:raise ValueError('Invalid scalar trial reservation.')
+        from backtest.application import strategy_requests
+        strategy_requests.check_options(value['options'])
     request=value['request']
     fields={'dates','calendar'} if 'calendar' in request else {'dates','start','end','months'}
     if set(request)!=fields:raise ValueError('Invalid recorded trial request fields.')
@@ -175,10 +180,16 @@ class TrialArtifact:
 
     def periods(self):return self.view.periods()
 
+    def replay_into(self,writer):
+        if self._spec['version']!=2:raise ValueError('Expected scalar trial evidence.')
+        portfolio_results.validate_completed_into(self.summary,self.view.periods(),_pairs(self._spec),
+            checkpoint=self._checkpoint,contract=2)
+        return self.view.replay_into(writer)
+
     def copy_into(self,emit_period):
         if not callable(emit_period):raise ValueError('Choose a callable period sink.')
         return portfolio_results.validate_completed_into(self.summary,self.view.periods(),_pairs(self._spec),
-            emit_period,checkpoint=self._checkpoint)
+            emit_period,checkpoint=self._checkpoint,contract=self._spec['version'])
 
 
 def open_artifact(stream,descriptor,*,expected_spec,limits,checkpoint):
@@ -189,7 +200,7 @@ def open_artifact(stream,descriptor,*,expected_spec,limits,checkpoint):
     """
     spec=_specification(expected_spec);limits=_limits(limits)
     if (type(descriptor) is not dict or set(descriptor)!=_DESCRIPTOR_FIELDS
-            or type(descriptor['version']) is not int or descriptor['version']!=VERSION
+            or type(descriptor['version']) is not int or descriptor['version']!=spec['version']
             or type(descriptor['number']) is not int or descriptor['number']!=spec['number']
             or descriptor['calculation_identity']!=spec['calculation_identity']
             or descriptor['specification']!=spec['sha256']
@@ -200,9 +211,13 @@ def open_artifact(stream,descriptor,*,expected_spec,limits,checkpoint):
         raise ValueError('Trial artifact descriptor differs from the expected task or limits.')
     if stream.seek(0,2)!=descriptor['end']:
         raise ValueError('Trial artifact byte range differs.')
-    view=result_evidence.TrialView(stream,start=descriptor['start'],end=descriptor['end'],
+    owner=result_evidence.TrialView;extra={}
+    if spec['version']==2:
+        from backtest.scalar_result_evidence import TrialView as owner
+        extra['metadata']=dict(mode='random',options=spec['options'],specification=spec['sha256'])
+    view=owner(stream,start=descriptor['start'],end=descriptor['end'],
         sha256=descriptor['sha256'],number=spec['number'],piece_bytes=limits['piece_bytes'],
-        record_bytes=limits['record_bytes'],checkpoint=checkpoint)
+        record_bytes=limits['record_bytes'],checkpoint=checkpoint,**extra)
     _summary(view.summary,spec)
-    portfolio_results.validate_completed_into(view.summary,view.periods(),_pairs(spec),checkpoint=checkpoint)
+    portfolio_results.validate_completed_into(view.summary,view.periods(),_pairs(spec),checkpoint=checkpoint,contract=spec['version'])
     return TrialArtifact(view,spec,checkpoint)

@@ -17,7 +17,7 @@ _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 from backtest import selection
 from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
-from backtest.variables import definitions, library, reference
+from backtest.variables import definitions, library, reference, evaluation
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
 MAX_METADATA_BYTES = 16 * 1024 * 1024
@@ -32,19 +32,22 @@ def _size(value):
 
 class Budget:
     """Aggregate planned work and scalar metadata; encoded output belongs to sink."""
-    def __init__(self):
+    def __init__(self, *, trials=1, metadata_bytes=None):
+        self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
+        self.trials=trials
         self.tasks = self.scopes = self.rows = 0
     def reserve(self, plans, metadata, inspected_rows):
         tasks = sum(len(plan.to_dict()['tasks']) for plan in plans)
-        if (self.scopes + 1 > MAX_SCOPES or self.tasks + tasks > MAX_TASKS
-                or self.rows + inspected_rows > MAX_INSPECTED_ROWS
-                or 2*_size(metadata) + sum(len(plan.document) for plan in plans) > MAX_METADATA_BYTES):
+        if (self.scopes + 1 > MAX_SCOPES//self.trials or self.tasks + tasks > MAX_TASKS//self.trials
+                or self.rows + inspected_rows > MAX_INSPECTED_ROWS//self.trials
+                or 2*_size(metadata) + sum(len(plan.document) for plan in plans) > self.metadata_bytes):
             raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar execution exceeds its aggregate work or scope bound.')
         self.tasks += tasks; self.scopes += 1; self.rows += inspected_rows
 
 
-def scope_rows(db, *, pool, period=None):
+def scope_rows(db, *, pool, period=None, metadata_bytes=None):
     """Read one complete prepared snapshot scope without metric-availability joins."""
+    maximum=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
     table = 'snapshots' if period is not None else 'latest_snapshots'
     args = [pool]
     where = 's.pool=?'
@@ -59,15 +62,16 @@ def scope_rows(db, *, pool, period=None):
         if len(rows) == MAX_CANDIDATES:
             raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
         detached=dict(zip(names,row));used+=_size(detached)+1
-        if used>MAX_METADATA_BYTES:raise definitions.FormulaError('WORK_LIMIT','/population','Complete pool metadata exceeds its byte ceiling.')
+        if used>maximum:raise definitions.FormulaError('WORK_LIMIT','/population','Complete pool metadata exceeds its byte ceiling.')
         rows.append(detached)
-    if _size(rows) > MAX_METADATA_BYTES:
+    if _size(rows) > maximum:
         raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool metadata exceeds its byte ceiling.')
     return rows
 
 
-def _plans(program, roots, record_bytes, checkpoint):
+def _plans(program, roots, record_bytes, checkpoint, limits=None, metadata_bytes=None):
     """Compile every chunk before reading its observations; adapt temporal contexts."""
+    maximum=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
     plans = [];used=0
     remaining = roots
     while remaining:
@@ -75,15 +79,15 @@ def _plans(program, roots, record_bytes, checkpoint):
         count = min(256, len(remaining))
         while True:
             try:
-                plan = reference.plan(program, remaining[:count],
-                    dict(output_bytes=min(reference.CEILINGS['output_bytes'], record_bytes - 4096)))
+                plan = evaluation.plan(program, remaining[:count],
+                    dict(limits or {}, output_bytes=min(evaluation.CEILINGS['output_bytes'], record_bytes - 4096)))
                 break
             except definitions.FormulaError as error:
                 if error.code != 'WORK_LIMIT' or count == 1:
                     raise
                 count = max(1, count // 2)
         used+=len(plan.document)
-        if used>MAX_METADATA_BYTES:raise definitions.FormulaError('WORK_LIMIT','/execution','Compiled chunks exceed their aggregate encoded bound.')
+        if used>maximum:raise definitions.FormulaError('WORK_LIMIT','/execution','Compiled chunks exceed their aggregate encoded bound.')
         plans.append(plan)
         remaining = remaining[count:]
     return plans
@@ -123,20 +127,30 @@ class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run."""
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
-                 checkpoint=backtest_control.checkpoint):
+                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, aggregate_trials=1, metadata_bytes=None):
+        # The arithmetic callable consumes checked plans; the provider and global
+        # selection keep their meanings. Prefixes qualify independent trial scopes.
+        self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
+        if (type(aggregate_trials) is not int or not 1<=aggregate_trials<=100
+                or type(self.metadata_bytes) is not int or not 0<self.metadata_bytes<=MAX_METADATA_BYTES
+                or type(scope_prefix) is not str or len(scope_prefix)>64):
+            raise definitions.FormulaError('WORK_LIMIT','/execution','Invalid scalar execution reservation.')
+        self.evaluate = evaluate or reference.evaluate
+        self.scope_prefix = scope_prefix
+        self.evaluation_limits = evaluation_limits
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
-        self.budget = Budget(); self.number = 0
+        self.budget = Budget(trials=aggregate_trials,metadata_bytes=self.metadata_bytes); self.number = 0
         self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
     def select(self, db, period, entry, exit_day=None, *, latest=False):
         self.checkpoint()
-        rows = scope_rows(db, pool=self.pool, period=None if latest else period)
-        self.number += 1; identity = 'scope:' + str(self.number)
+        rows = scope_rows(db, pool=self.pool, period=None if latest else period,metadata_bytes=self.metadata_bytes)
+        self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
         roots = [dict(symbol=row['symbol'], pool=self.pool, mode='latest' if latest else 'historical', date=str(entry)) for row in rows]
-        plans = _plans(self.program, roots, self.record_bytes, self.checkpoint) if self.program else []
+        plans = _plans(self.program, roots, self.record_bytes, self.checkpoint, self.evaluation_limits,self.metadata_bytes) if self.program else []
         bounds=self.view.bounds
         inspected=2*len(rows)
         role_sources=[self.capture['selection']['ranking']['source']]+[item['source'] for item in self.capture['selection']['conditions']]
@@ -168,11 +182,11 @@ class Executor:
         def charge(value):
             nonlocal retained
             retained += 2*_size(value)+128
-            if retained>MAX_METADATA_BYTES:raise definitions.FormulaError('WORK_LIMIT','/execution','Retained scalar lanes exceed their byte ceiling.')
+            if retained>self.metadata_bytes:raise definitions.FormulaError('WORK_LIMIT','/execution','Retained scalar lanes exceed their byte ceiling.')
         offset = 0
         for chunk, plan in enumerate(plans):
             self.checkpoint()
-            block = reference.evaluate(plan, self.view, self.checkpoint).to_dict()
+            block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
             block_roots = block['observations']['roots']
             admitted += sum(root['admitted'] for root in block_roots)
             for local,decision in enumerate(block_roots):permitted[offset+local]=decision['admitted']

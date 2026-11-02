@@ -394,7 +394,9 @@ class NumericalRuntime:
                         if kind=='transfer_end':
                             receiver.finish()
                             from backtest import result_evidence as result_evidence
-                            reader=result_evidence.Reader(destination,**limits,checkpoint=lambda:self._check_cancel(cancelled))
+                            reader=result_evidence.open_reader(destination,**limits,checkpoint=lambda:self._check_cancel(cancelled))
+                            if reader.format_version!=(2 if 'strategy' in options else 1):
+                                raise ValueError('Numerical result codec differs from its pinned request.')
                     except BaseException as error:
                         # Caller-owned receiver failures have the same priority
                         # as progress/capture failures, including concurrent Stop.
@@ -410,6 +412,9 @@ class NumericalRuntime:
                         raise backtest_control.Cancelled()
                     if kind == 'error' and event.get('category') == 'unavailable':
                         raise InputsUnavailable('Candidate inputs changed. Rebuild from the data panel.')
+                    if kind=='error' and event.get('scalar_failure') is True:
+                        from backtest.application.strategy_requests import restore_failure
+                        raise restore_failure(read_payload(self.scratch/'scalar-failure.json',MAX_REQUEST_BYTES))
                     if kind == 'error': raise ValueError(event.get('message','Numerical calculation failed.'))
                     if receiver is not None:
                         transfer=receiver.finish()

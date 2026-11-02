@@ -104,11 +104,14 @@ def validate_configuration(portfolio,configuration):
     trial_checkpoints.binding_json(dict(generation='validation',policy='validation',schema='validation',
         result_contract=portfolio_results.CONTRACT_VERSION,implementation={'validation':True},
         execution={'validation':True},configuration=config))
-    portfolio.validate_selection(config['options'])
+    if 'strategy' in config['options']:
+        from backtest.application import strategy_requests
+        strategy_requests.check_options(config['options'])
+    else:portfolio.validate_selection(config['options'])
     return config
 
 
-def checkpoint_binding(portfolio,configuration,*,execution=None):
+def checkpoint_binding(portfolio,configuration,*,execution=None,scalar_capture=None):
     """One source-owned complete calculation signature; diagnostics excluded."""
     config=validate_configuration(portfolio,configuration)
     inputs=portfolio.inputs
@@ -118,8 +121,12 @@ def checkpoint_binding(portfolio,configuration,*,execution=None):
         execution['provider']=type(provider).__module__+'.'+type(provider).__qualname__
         execution['threads']=provider.stats.get('threads',1)
     binding=dict(generation=inputs.signature,policy=inputs.policy.signature,
-        schema=inputs.policy.field_schema,result_contract=portfolio_results.CONTRACT_VERSION,
+        schema=inputs.policy.field_schema,result_contract=2 if scalar_capture is not None else portfolio_results.CONTRACT_VERSION,
         implementation=source_identity(),execution=execution,configuration=config)
+    if scalar_capture is not None:
+        from backtest.engines.numerical import formulas, scalar
+        binding['execution']['scalar']=dict(version=1,capture=deepcopy(scalar_capture),
+            arithmetic=formulas.policy_fingerprint(),resources=scalar.resources(execution['limits']))
     trial_checkpoints.binding_json(binding)
     return binding
 
@@ -147,6 +154,12 @@ class _Source:
             raise ValueError('Expected retained checkpoint disappeared during the active experiment.')
         return summary
 
+    def replay_evidence(self,writer):
+        if self.completion is not None:return self.completion.artifact.replay_into(writer)
+        summary=self.experiment.replay_evidence(self.number,writer)
+        if summary is None:raise ValueError('Expected scalar checkpoint disappeared.')
+        return summary
+
     def release(self):
         if self.completion is not None:self.completion.release()
 
@@ -165,8 +178,15 @@ class _LocalExecution:
 
     @contextmanager
     def batch(self,specifications):
-        evaluator=numerical_trial.TrialEvaluator(self.portfolio,
-            calculation_identity=numerical_trial.calculation_identity(self.binding))
+        scalar_resources=None
+        if self.binding['result_contract']==2:
+            from backtest.engines.numerical import scalar
+            scalar_resources=scalar.Resources.__new__(scalar.Resources)
+            scalar.Resources.__init__(scalar_resources,self.portfolio.inputs,self.binding['execution']['limits'])
+            evaluator=scalar.TrialEvaluator(scalar_resources,calculation_identity=numerical_trial.calculation_identity(self.binding))
+        else:
+            evaluator=numerical_trial.TrialEvaluator(self.portfolio,
+                calculation_identity=numerical_trial.calculation_identity(self.binding))
         limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
         active=[]
         class Batch:
@@ -182,6 +202,7 @@ class _LocalExecution:
         try:yield Batch()
         finally:
             for completion in active:completion.release()
+            if scalar_resources is not None:scalar_resources.close()
 
 
 @contextmanager
@@ -268,7 +289,7 @@ def run(portfolio,configuration,experiment,progress=None,*,capture=None,executio
                 checkpoint_identity=experiment.identity,result=result)
 
 
-def run_into(portfolio,configuration,experiment,writer,progress=None,*,execution=None,binding=None):
+def run_into(portfolio,configuration,experiment,writer,progress=None,*,execution=None,binding=None,producer=None):
     """Replay the same ordered sources into the existing bounded evidence sink."""
     started=time.perf_counter()
     try:
@@ -282,16 +303,29 @@ def run_into(portfolio,configuration,experiment,writer,progress=None,*,execution
         with ordered_sources(portfolio,binding,experiment,progress,execution=execution) as sources:
             for source,stats in sources:
                 writer.start_trial(source.number);counts=[0,0,0]
-                requested=config['options'].get('rank_to',50)-config['options'].get('rank_from',1)+1
+                scalar=binding['result_contract']==2
+                selection=(binding['execution']['scalar']['capture']['selection'] if scalar else config['options'])
+                requested=selection.get('rank_to',50)-selection.get('rank_from',1)+1
                 def emit(period):
                     writer.period(period)
                     counts[0]+=1;counts[1]+=period['names']==0;counts[2]+=period['names']<requested
-                summary=source.replay_into(emit);writer.end_trial(summary)
+                if scalar:
+                    class Destination:
+                        _order=writer._order
+                        def _write(self,record):
+                            writer._write(record)
+                            if record['type']=='period':
+                                count=record['value']['names']
+                                counts[0]+=1;counts[1]+=count==0;counts[2]+=count<requested
+                    summary=source.replay_evidence(Destination())
+                else:summary=source.replay_into(emit)
+                writer.end_trial(summary)
                 rows.append(robustness.summarize(summary,source.number,config['samples'][source.number-1],period_counts=counts))
         result=robustness.summarize_trials(config,rows,started);result['execution']=dict(stats)
+        if producer is not None:result['producer']=deepcopy(producer)
         backtest_control.checkpoint()
         manifest=writer.finish(result)
-        return dict(diagnostic_version=DIAGNOSTIC_VERSION,contract_version=portfolio_results.CONTRACT_VERSION,
+        return dict(diagnostic_version=DIAGNOSTIC_VERSION,contract_version=binding['result_contract'],
                     checkpoint_identity=experiment.identity,result=result,evidence=manifest)
     except BaseException:
         writer.failed=True

@@ -22,9 +22,11 @@ bindings, cleanup and superseded attempts.
 Phase 7 is authorized from `5cded92` on this feature branch. Its
 [current execution plan](phases/phase-07/execution-plan-2026-11-02.md) records three
 slices. [Slice 1](phases/phase-07/slice-01.md) completes bounded compiled evaluation
-after independent audit and final source-bound checks. Candidate integration and
-application qualification remain outstanding. Public numerical scalar admission
-stays closed.
+after independent audit and final source-bound checks. [Slice 2](phases/phase-07/slice-02.md)
+implements dormant candidate-owned execution and full trial evidence recovery.
+All six independent audit findings are closed. Final source-bound WSL, guarded
+native and browser checks pass. Public application qualification remains
+outstanding. Public numerical scalar admission stays closed.
 Original remains default. No download, deployment, integration into main or
 default change is authorized.
 

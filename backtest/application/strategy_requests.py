@@ -51,6 +51,26 @@ def failure_details(error):
     return dict(code=error.code, path=error.path, errors=issues)
 
 
+def restore_failure(value):
+    """Check a trusted child's bounded scalar failure before exposing diagnostics.
+
+    This restores the existing safe issue projection. It accepts no arbitrary
+    exception attributes, provider response, path lookup or executable payload.
+    """
+    if (type(value) is not dict or set(value)!={'code','path','errors'}
+            or type(value['errors']) is not list or not value['errors']):
+        raise ValueError('Malformed numerical scalar failure.')
+    _encode(value,REQUEST_BYTES)
+    for issue in value['errors']:
+        if (type(issue) is not dict or set(issue)!={'code','path','message'}
+                or any(type(issue[k]) is not str for k in ('code','path','message'))
+                or not re.fullmatch(r'[A-Z_]{1,64}',issue['code'])):
+            raise ValueError('Malformed numerical scalar issue.')
+    if (value['code'],value['path'])!=(value['errors'][0]['code'],value['errors'][0]['path']):
+        raise ValueError('Numerical scalar primary issue differs.')
+    return definitions.FormulaError(errors=value['errors'])
+
+
 def _shape(value, required, optional=(), path=''):
     if type(value) is not dict or not set(required) <= set(value) or set(value) - set(required) - set(optional):
         _fail('INVALID_STRATEGY', path, 'Fields do not match the declared strategy shape.')
@@ -411,6 +431,21 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         if expected is None or any(descriptor[key] != expected[key] for key in ('unit', 'display', 'storage')):
             _fail('UNSUPPORTED_CAPABILITY', '/builtins', 'Captured scalar semantics are unsupported by the current backend.')
     return checked
+
+
+def execution_options(mode,options,*,planned=None,checkpoint=backtest_control.checkpoint):
+    """Normalize one scalar mode before opening financial resources."""
+    options=canonical_options(options,checkpoint=checkpoint)
+    if check_options(options,checkpoint=checkpoint) is None:
+        raise ValueError('Bounded scalar execution requires a captured strategy.')
+    if mode not in ('latest','january','custom','random'):raise ValueError('Unsupported scalar mode.')
+    allowed={'strategy','engine'}|({'first','last'} if mode=='january' else set() if mode=='latest' else
+        {'start','end','months','calendar','dates'} if mode=='custom' else {'start','end','months','calendar','trials','seed'})
+    if set(options)-allowed:raise ValueError('Unknown option for the scalar execution mode.')
+    if planned is not None:
+        if mode!='random':raise ValueError('A recorded plan requires random mode.')
+        validate_recorded({key:value for key,value in options.items() if key!='engine'},planned)
+    return options
 
 
 def check_request(request, *, checkpoint=backtest_control.checkpoint):

@@ -594,3 +594,42 @@ This dated assignment supersedes the Phase 7 hold on this branch. Original stays
 default. Main, the engine worktree and installed runtime/cache/stores remain
 untouched. Private synthetic verification grants no merge, push, publication,
 restart, download or live durable mutation. Native-cache coverage is unknown.
+
+## Custom-variable Phase 7 Slice 2 — 2 November 2026
+
+The authorized feature branch starts from audited `0c75df8`. Its fresh independent
+design owns narrow candidate scalar scope/execution integration, typed codec-2
+trial/checkpoint recovery and explicit runtime dispatch. The current Phase 7
+execution and compatibility records identify protected callers before edits.
+Public numerical scalar admission remains closed. Original remains default.
+Financial/provider rules, prepared schemas, worker/writer ownership, bootstrap
+ordering, attachments and resource ceilings remain with their existing owners.
+Main and the engine worktree remain untouched. No publication or live asset change
+is authorized. Private synthetic verification does not establish native-cache
+coverage.
+
+Slice 2 implementation uses generation-owned checked current research borrowing
+for latest/January and genuine numerical complete-book staging for dated scopes.
+Compiled arithmetic sits below shared scalar selection. The existing typed
+trial/pool/worker/checkpoint/runtime pipeline dispatches complete scalar codec 2
+without a second recovery path. Recorded trial numbers qualify explanation IDs.
+A complete checkpoint hit precedes formula/book/worker constructors. Existing
+resource ceilings are split conservatively; financial/provider/schema/default
+contracts stay unchanged. The feature branch owns these narrow source changes.
+Other worktrees remain read-only. All six independent audit findings are closed.
+Final source-bound verification passes 780 WSL tests plus one expected
+Windows-only skip, 590 guarded native tests and 18 browser checks. The
+[slice record](plans/custom-variables/phases/phase-07/slice-02.md) binds receipts
+to the unchanged 394-file product/test inventory and complete private cleanup.
+Public numerical scalar admission remains closed. Native-cache coverage is unknown.
+
+The Slice 2 independent audit also assigns this feature branch a narrow queue
+Stop-poll correction. `Store.stopped()` must read committed intent without
+acquiring a second writer inside complete-evidence publication. Its callers are
+the existing manual queue cancellation callback and publication checkpoint.
+Publication uses the shutdown event as its scoped cancellation predicate. Its
+transaction already owns the checked committed Stop row, and a cache spill can
+block even a second read-only connection. Ordinary execution retains Stop polls.
+The existing transactional stopping-row check, atomic completion precedence and
+shutdown requeue retain their owners and behavior. The regression uses private
+synthetic persistence only. No schema or durable-record rewrite is authorized.

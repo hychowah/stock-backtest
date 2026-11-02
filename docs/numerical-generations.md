@@ -238,7 +238,13 @@ size. These bounds do not claim a hard resident-memory limit or a disk quota.
 Attachment maps arrays read-only. It loads symbol IDs, sessions and Treasury
 rows once. `report_rows[index]`, `histories[symbol]` and `financials[symbol]`
 read records on demand. They retain no history cache. Company rows load only
-when requested. An attachment does not borrow a prepared database connection.
+when requested. An attachment reads these immutable records by default.
+Phase 7 adds optional coordinator-owned prepared readers
+through `inputs.prepared_scopes()`. Each reader borrows the current research
+database under the caller's existing source and financial ownership. It checks
+the accepted input, price, observation and report bindings against that exact
+attachment. Latest and January keep their authoritative prepared populations.
+Delegated workers cannot open these current-research readers.
 
 For library use, construct `GenerationStore(schedules)`, call `prepare()`, then
 use `with store.open_current() as inputs:`. Library callers own source before
@@ -247,7 +253,12 @@ work and final resource closure. Call `inputs.validate()` before each job inside
 that ownership scope. It rechecks current prepared metadata, raw inventory and
 source policy. An old attachment can stay open but cannot validate after its
 inputs change. Close evaluators and all borrowed array views
-before closing the attachment. Borrowed views expire when attachment closes.
+before closing the attachment. Close optional prepared readers before mappings
+and the attachment lease. The attachment adopts each reader before construction;
+failed validation and failed SQLite closure retain that owner for retry.
+Borrowed views expire when attachment closes. Public numerical scalar admission
+remains closed pending Phase 7 qualification. This source capability changes no
+running server or installed data.
 
 Each ordinary attachment holds an OS-locked lease outside its immutable directory.
 An attachment stays inside its caller's financial ownership scope, including

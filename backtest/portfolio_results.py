@@ -177,7 +177,7 @@ def validate_completed(result):
     return result
 
 
-def validate_completed_into(summary, periods, pairs, emit_period=None, *, checkpoint=None):
+def validate_completed_into(summary, periods, pairs, emit_period=None, *, checkpoint=None, contract=1):
     """Validate original evidence through the reducer, one complete period at a time.
 
     Recorded dates belong to the caller. No provider or financial inputs are
@@ -211,7 +211,7 @@ def validate_completed_into(summary, periods, pairs, emit_period=None, *, checkp
                 raise ValueError('Completed period evidence differs.')
             if emit_period is not None:emit_period(original)
             original=None
-        rebuilt=evaluate_into(pairs,select,verify,common_start=date.fromisoformat(result['start']),checkpoint=checkpoint)
+        rebuilt=evaluate_into(pairs,select,verify,common_start=date.fromisoformat(result['start']),checkpoint=checkpoint,contract=contract)
         sentinel=object()
         if next(books,sentinel) is not sentinel:raise ValueError('Completed period count differs.')
         for key,value in rebuilt.items():

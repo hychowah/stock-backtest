@@ -202,7 +202,7 @@ class StreamCheckpointTests(unittest.TestCase):
     def test_process_exit_before_during_after_stream_commit(self):
         code='''import sys,os,json,io
 from pathlib import Path
-root=Path(sys.argv[1]);sys.path[:0]=[str(root/'website'),str(root/'tests')]
+root=Path(sys.argv[1]);sys.path[:0]=[str(root),str(root/'website'),str(root/'tests')]
 from website import runtime_access
 with runtime_access.ownership(root):
  sys.path.insert(0,str(root))
@@ -246,6 +246,7 @@ class BoundedNumericalTests(unittest.TestCase):
     def run_stream(self,portfolio,config,experiment,progress=None):
         stream=io.BytesIO();output=writer(stream,config['requested'])
         envelope=numerical_random.run_into(portfolio,config,experiment,output,progress)
+        self.assertEqual(envelope['contract_version'],1)
         return envelope,stream
 
     def test_complete_eager_streamed_fresh_recovery_matrix_no_collecting_calls(self):

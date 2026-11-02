@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 7 Slice 1. This map describes source after the structure refactor.
+Updated for Phase 7 Slice 2. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -135,3 +135,22 @@ checked program and provider; neither changes financial decisions. Public
 experimental scalar admission stays closed in Slice 1. The
 [current execution plan](../custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
 supersedes dated Phase 7 hold statements above. Original remains default.
+
+
+Phase 7 Slice 2 keeps public numerical scalar admission closed.
+`backtest/engines/numerical/scalar.py` owns one bounded compiled arithmetic and
+observation lifetime, genuine complete numerical books and staging for fixed or
+random dates. It injects arithmetic below the existing complete-scope selector.
+`scalar_runs.py` shares prepared scopes and the calendar/reduction seam with
+Original. Original retains its missing-book batch preparation and imports no
+numerical stack. The numerical generation owns a checked current research reader
+for authoritative latest and January scopes, with explicit SQLite closure.
+
+The existing numerical session, trial, pool, worker, checkpoint and runtime owners
+explicitly dispatch scalar contract 2 / codec 2 alongside legacy contract 1 /
+codec 1. A scalar single-trial seal retains every original explanation and a
+trial-qualified scope namespace. Checkpoints copy those records unchanged. Full
+hits create no evaluator, book provider or worker. Scalar errors use the existing
+safe projection across child transport. `Selectable.calculate_into()` has dormant
+pinned Candidate routing behind unchanged capability guards; no new application
+route, queue pipeline, durable container or artifact integer is allocated.
