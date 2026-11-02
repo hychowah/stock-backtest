@@ -91,7 +91,7 @@ Existing unrelated working-tree edits remain outside each task's commit.
 
 ## Custom-variable plan on hold — 30 October 2026
 
-This dated hold is superseded only for Phases 2 and 3 by their 2 November agreements below.
+This dated hold is superseded for Phases 2–4 by their 2 November agreements below.
 
 The user put the custom-variable plan on hold until the new engine is finished.
 Phase 1 delivered contracts only. Phase 2 has inspection and preliminary design,
@@ -455,3 +455,25 @@ or engine interface changes. The [Phase 4 handoff](plans/custom-variables/phases
 records the actual scalar block and leaves selection held. Final Slice 2 native
 verification and independent audit remain in its phase record. This source
 capability does not change the running server or establish native-cache coverage.
+
+
+## Custom-variable Phase 4 resumption — 2 November 2026
+
+The user authorizes Phase 4 implementation and audited commits on
+`feature/custom-variables`, starting at `6f39f0e`. This branch owns the narrow
+selection and legacy-adapter changes. The [execution plan](plans/custom-variables/phases/phase-04/execution-plan-2026-11-02.md)
+reconciles the Phase 1 proposal with current SQL/browser/application interfaces.
+
+Slice 1 adds `backtest/selection.py` and `backtest/variables/selection.py`, plus a
+public language-owner threshold conversion helper. It consumes public evaluator
+and provider evidence. The provider keeps complete-population admission and
+legacy's top-250 buffer. This slice changes no SQL/browser caller or financial
+policy. Slice 2 owns narrow explicit adapters in current selection boundaries
+and explicit unsupported experimental-formula rejection. Original remains default.
+
+No prepared schema, dates, prices, exits, returns, financial/cache ownership,
+attachment lifetime, durable user record or engine default changes. The callable
+selection formats are namespaced independently of application artifacts.
+Phases 5–7 remain held. No merge, push, deployment, restart, market-data request
+or live-runtime/cache mutation is authorized. Private synthetic Windows checks
+are permitted. Native-cache coverage remains unknown.

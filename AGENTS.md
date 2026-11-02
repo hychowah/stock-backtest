@@ -24,7 +24,13 @@ and its tests/docs. The [Phase 3 execution plan](docs/plans/custom-variables/pha
 uses the existing four-parameter provider without changing financial or engine
 contracts. Its first slice adds immutable validated definitions. Its second slice
 adds bounded provider-backed reference execution and detached scalar evidence.
-Final checks and audits are recorded in the phase. Phases 4–7 remain on hold. Follow the
+Final checks and audits are recorded in the phase. Phase 4 resumes from
+`6f39f0e` under the user’s 2 November authorization. Its
+[execution plan](docs/plans/custom-variables/phases/phase-04/execution-plan-2026-11-02.md)
+owns general scalar selection and narrow legacy adapters on this feature branch.
+The callable reference selection uses provider admission and detached evaluator
+evidence. It adds no ordinary strategy/UI or saved-result format. Phases 5–7
+remain held. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.

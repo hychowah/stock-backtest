@@ -8,6 +8,7 @@ requirements so execution need not repeat language or dependency policy.
 """
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal, localcontext
 import hashlib
 import json
 import math
@@ -125,7 +126,7 @@ def _limits(limits):
     return result
 
 
-def _decimal(value, limits, path, normalized):
+def _decimal(value, limits, path, normalized, *, check_binary64=True):
     maximum = limits['expanded_literal'] if normalized else limits['literal']
     if type(value) is not str or not 1 <= len(value) <= maximum:
         _fail('INVALID_LITERAL', path, 'Decimal literal exceeds its length bound.')
@@ -159,12 +160,46 @@ def _decimal(value, limits, path, normalized):
             result = '0.' + '0' * -point + digits
         if sign == '-':
             result = '-' + result
-    number = float(result)
-    if not math.isfinite(number) or (digits and number == 0):
-        _fail('INVALID_LITERAL', path, 'Decimal must produce finite non-underflowing binary64.')
+    if check_binary64:
+        _decimal_binary64(result, path)
     if normalized and result != value:
         _fail('INVALID_LITERAL', path, 'Expanded program literals must already be canonical.')
     return result
+
+
+def _decimal_binary64(value, path):
+    number = float(value)
+    if not math.isfinite(number) or (value != '0' and number == 0):
+        _fail('INVALID_LITERAL', path, 'Decimal must produce finite non-underflowing binary64.')
+    return number
+
+
+def normalize_quantity(quantity, unit):
+    """Normalize a submitted threshold to canonical units with one binary64 cast.
+
+    The original bounded decimal and display unit remain separate evidence.
+    Conversion is exact decimal scaling, never floating-point multiplication.
+    This helper grants no observation support and changes no legacy comparison.
+    """
+    _shape(quantity, ('value', 'unit'), '/threshold')
+    submitted_unit = quantity['unit']
+    scales = {'scalar': ('scalar', 0), 'number': ('scalar', 0),
+        'multiple': ('scalar', 0), 'percent': ('scalar', -2),
+        'percentage_points': ('scalar', -2), 'USD': ('USD', 0),
+        'usd': ('USD', 0), 'usd_million': ('USD', 6),
+        'USD/share': ('USD/share', 0), 'usd_per_share': ('USD/share', 0)}
+    if type(submitted_unit) is not str or submitted_unit not in scales or scales[submitted_unit][0] != unit:
+        _fail('UNIT_MISMATCH', '/threshold/unit', 'Threshold unit does not match the variable.')
+    normalized = _decimal(quantity['value'], CEILINGS, '/threshold/value', False,
+                          check_binary64=False)
+    with localcontext() as context:
+        context.prec = 2048
+        scaled = format(Decimal(normalized).scaleb(scales[submitted_unit][1]), 'f')
+    limits = dict(CEILINGS, literal=CEILINGS['expanded_literal'])
+    value = _decimal(scaled, limits, '/threshold/value', False, check_binary64=False)
+    return dict(threshold=dict(value=value, unit=unit),
+                submitted_threshold=dict(quantity),
+                comparison_value=_decimal_binary64(value, '/threshold/value'))
 
 
 def _normal_definition(definition, limits, path, normalized=False):

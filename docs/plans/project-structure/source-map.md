@@ -58,7 +58,18 @@ Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/pha
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL
 access or financial reconstruction. The definition owner also binds its loaded
-source policy. Phases 4–7 remain held.
+source policy. Phase 4 resumes from `6f39f0e`; Phases 5–7 remain held.
 The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.
+
+
+`backtest/selection.py` owns pure finite-scalar ranking and numeric/metadata
+conditions. `backtest/variables/selection.py` owns bounded reference-backed
+selection over explicit scopes and detached complete scalar evidence.
+`definitions.normalize_quantity()` normalizes custom thresholds in canonical
+units while retaining submitted display input. Legacy comparisons keep their
+stored arithmetic scale in explicit adapters; no new observation parameter is
+advertised. See the [Phase 4 handoff](../custom-variables/phases/phase-04/handoffs/slice-02.md).
+Ordinary strategy/UI integration, the variable library and numerical formulas
+remain later held work.

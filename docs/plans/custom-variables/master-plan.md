@@ -6,26 +6,26 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 3 complete in source on `feature/custom-variables` in the second audited implementation commit.**
-Phase 1 contract documentation and Phase 2 provider implementation are complete.
-Phase 2 verification and independent audits remain in its [record](phases/phase-02/README.md).
-The user authorizes the reference formula evaluator from `9e5d97d`.
-Its [current execution plan](phases/phase-03/execution-plan-2026-11-02.md) separates
-immutable validated programs from bounded provider-backed execution. Both source
-abstractions are now implemented. The [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md)
-describes the usable scalar evidence boundary without authorizing selection.
-Phases 4–7 remain held, including scalar selection, the editor and library.
-No download, deployment, integration or default change is authorized.
+Status: **Phase 4 implementation resumed on `feature/custom-variables` from `6f39f0e`.**
+Phase 1 documentation, Phase 2 provider and Phase 3 reference evaluator are
+complete in source. The user's 2 November Phase 4 instruction assigns this
+branch general scalar selection and narrow legacy adapters. The
+[current execution plan](phases/phase-04/execution-plan-2026-11-02.md) uses two
+independently designed, implemented and audited slices. See the
+[current Phase 4 record](phases/phase-04/README.md). Phases 5–7 remain held.
+Original remains default. No download, deployment, integration or default change
+is authorized.
 
 ## Hold and resume
 
-The latest 2 November instruction resumes Phase 3 implementation and audited
-commits in this feature worktree. It supersedes the evaluator hold below.
-The evaluator consumes the completed four-parameter provider. It changes no
-financial rule, engine contract, root membership/rank, source/input freshness,
-cancellation or attachment lifetime. Phases 4–7 remain held. See the
-[Phase 3 record](phases/phase-03/README.md) for current source capability.
-The following Phase 2 resumption and older inspections remain dated context.
+The latest 2 November instruction resumes Phase 4 implementation and audited
+commits in this feature worktree. It supersedes the scalar-selection hold below.
+The callable selector consumes the completed provider and reference evaluator.
+It preserves their financial, admission, freshness and lifetime boundaries.
+The first slice implements finite-scalar policy and bounded reference selection.
+The second owns explicit legacy adapters and compatibility closure. The editor,
+library and numerical formula execution remain held.
+The following Phase 2/3 records and older inspections remain dated context.
 
 The 30 October hold deferred Phases 2–7 until engine completion and an ownership
 decision. CB-14 and CB-15 now record complete supported opt-in readiness and
@@ -272,7 +272,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **1. Variable contract and ownership** | Contract documentation delivered | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), historical [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Current Phase 2 ownership is assigned above. |
 | **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
 | **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
-| **4. General scalar selection** | **On hold; not started.** Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
+| **4. General scalar selection** | **Implementation resumed from `6f39f0e`.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Slice 1 handoff](phases/phase-04/handoffs/slice-02.md). Both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity remain required gates. |
 | **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
 | **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
 | **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
@@ -302,5 +302,6 @@ phase record contains required verification and independent audit outcomes.
 Phase 3 source now consumes four supported observations through an immutable
 validated program and a bounded reference evaluator. It changes no financial,
 prepared-input, selection, application or numerical-engine contract. Current
-verification and independent audit evidence live in its phase record. Phases 4–7
-remain held; source completion authorizes no runtime publication or integration.
+verification and independent audit evidence live in its phase record. Phase 4 is
+now authorized above. Phases 5–7 remain held; source completion authorizes no
+runtime publication or integration.
