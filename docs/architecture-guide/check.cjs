@@ -44,6 +44,8 @@ assert(html.includes('Selectable-engine readiness checked 31 October 2026.') && 
 assert(html.includes('Both engines support <code>operating_yield_spread_3y</code>') && html.includes('<code>treasury10</code>') && html.includes('Missing annual inputs or a missing preceding yield omit only this threshold.'), 'Explain source-derived experimental spread and missing inputs');
 
 assert(html.includes('backtest/application/evidence_views.py') && html.includes('backtest/application/result_exports.py') && html.includes('16 displays and 32 active requests') && html.includes('Changing the table page cannot change attribution.') && html.includes('Automatic calculation submission and queue execution remain eager.'), 'Explain acquired evidence readers, complete attribution, attachments and unchanged producers');
+assert(html.includes('id="variable-library"') && html.includes('data/variable-library.sqlite') && html.includes('expected entry version') && html.includes('All immutable revisions and its last metadata remain retained.') && html.includes('There is no dynamic latest reference.'), 'Explain durable variable identity, concurrency, deletion retention and exact resolution');
+
 
 class Element {
   constructor(dataset = {}) { this.dataset = dataset; this.attributes = {}; this.events = {}; this.textContent = ''; this.children = []; this.hidden = false; this.open = false; }
@@ -141,7 +143,7 @@ assert(html.includes("website/rendering/data.py") && html.includes("website/serv
 assert(html.includes("backtest/observations.py") && html.includes("legacy top-250 buffer is formed before checking cached prices") && html.includes("Older annual history members do not inherit that age limit.") && html.includes("It calculates no average or formula.") && html.includes("Returned evidence remains readable after closure."), "Explain bounded admitted observations, temporal history, canonical values and detached evidence");
 assert(html.includes('Its second slice adds the four-parameter point-in-time provider in source.') && !html.includes('The point-in-time provider is still pending.'), 'Keep provider source status consistent throughout the guide');
 
-assert(html.includes('id="formula-program"') && html.includes('backtest/variables/definitions.py') && html.includes('References name exact content revisions.') && html.includes('A submitted decimal has at most 64 characters.') && html.includes('Phases 5–7 stay held.'), 'Explain immutable formula validation, identities, canonical units and fixed limits');
+assert(html.includes('id="formula-program"') && html.includes('backtest/variables/definitions.py') && html.includes('References name exact content revisions.') && html.includes('A submitted decimal has at most 64 characters.') && html.includes('Phases 6–7 stay held.'), 'Explain immutable formula validation, identities, canonical units and fixed limits');
 
 assert(html.includes('backtest/variables/reference.py') && html.includes('aria-label="Reference formula execution"') && html.includes('Even a constant requires admission.') && html.includes('Missing multiplied by zero stays missing.') && html.includes('Freshness is checked after final encoding as well.'), 'Explain admitted reference scalar execution, missing propagation and final freshness');
 assert(html.includes('65,536 tasks') && html.includes('8,192 output slots') && html.includes('Retained encoded content uses at most 64 MiB.') && html.includes('These are content bounds, not a measure of process memory.'), 'Explain fixed evaluator count and encoded-content bounds without RSS claims');

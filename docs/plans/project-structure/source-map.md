@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 4. This map describes source after the structure refactor.
+Updated for Phase 5 Slice 1. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -13,8 +13,9 @@ paths and source hashes. The engine worktree has not been synchronized.
 | Original dated calculations and retained independent reference | `backtest/engines/original/`, `backtest/engines/reference/` |
 | Source-derived numerical calculation and immutable input attachments | `backtest/engines/numerical/` |
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
-| Calculation requests, captured settings, jobs, queue, library and immutable result acquisition | `backtest/application/` |
+| Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
 | Strategy draft, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `result-artifacts.js`, `saved-backtests.js`, `queue.js` |
+| Durable variable revisions, metadata and exact formula resolution | `backtest/variables/library.py`, `backtest/variables/definitions.py` |
 | Plain browser assets and standalone HTML fragments | `website/browser/` |
 | Detached database projections, static rendering, assets, exports and freshness | `website/rendering/` |
 | Server lifetime and grouped calculation, stored-result and data HTTP adapters | `website/server/` |
@@ -58,7 +59,7 @@ Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/pha
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL
 access or financial reconstruction. The definition owner also binds its loaded
-source policy. Phase 4 resumes from `6f39f0e`; Phases 5–7 remain held.
+source policy. Phase 4 is complete. Phase 5 resumes from `f893bd4`; Phases 6–7 remain held.
 The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.
@@ -74,5 +75,11 @@ SQL keeps predicate pushdown. The browser consumes value lanes without formula
 interpretation. Research and numerical source bindings include the delegated
 selection policy. Numerical capability admission explicitly rejects formula
 intent before readiness or execution. No new observation parameter is advertised. See the [Phase 5 handoff](../custom-variables/phases/phase-04/handoffs/phase-05.md).
-Ordinary strategy/UI integration, the variable library and numerical formulas
-remain later held work.
+`backtest/variables/library.py` now owns the separate durable variable repository
+in `data/variable-library.sqlite`. It stores authored immutable revisions and
+independent entry metadata versions. Its exact-reference resolver delegates to
+`definitions.resolve()`. The definition owner keeps all language/graph/identity
+policy. Old and deleted revisions remain retained. Complete detached programs
+need no later store state. The next slice adds checked presentation capture.
+Ordinary strategy/UI integration and numerical formulas remain held work.
+See the [Phase 5 execution plan](../custom-variables/phases/phase-05/execution-plan-2026-11-02.md).

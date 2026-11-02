@@ -6,28 +6,23 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 4 complete in source on `feature/custom-variables`; both slices independently audited.**
-Phase 1 documentation, Phase 2 provider and Phase 3 reference evaluator are
-complete in source. The user's 2 November Phase 4 instruction assigns this
-branch general scalar selection and narrow legacy adapters. The
-[current execution plan](phases/phase-04/execution-plan-2026-11-02.md) uses two
-independently designed, implemented and audited slices. See the
-[current Phase 4 record](phases/phase-04/README.md). Phases 5–7 remain held.
+Status: **Phase 5 authorized and in progress on `feature/custom-variables`.**
+Phases 1–4 are complete in source. The user’s 2 November instruction resumes
+durable variable storage and exact revision resolution from `f893bd4`. The
+[current execution plan](phases/phase-05/execution-plan-2026-11-02.md) uses two
+independently designed, implemented and audited slices. Phases 6–7 remain held.
 Original remains default. No download, deployment, integration or default change
 is authorized.
 
 ## Hold and resume
 
-The latest 2 November instruction resumes Phase 4 implementation and audited
-commits in this feature worktree. It supersedes the scalar-selection hold below.
-The callable selector consumes the completed provider and reference evaluator.
-It preserves their financial, admission, freshness and lifetime boundaries.
-The first slice implements finite-scalar policy and bounded reference selection.
-The second implements explicit legacy adapters and compatibility closure.
-The [compatibility reconciliation](phases/phase-04/compatibility.md) records stored
-comparison scales and current application boundaries. The
-[Phase 5 handoff](phases/phase-04/handoffs/phase-05.md) keeps later work held. The editor,
-library and numerical formula execution remain held.
+The latest 2 November instruction authorizes Phase 5 persistence and resolution
+on this feature branch. It supersedes the library hold below. The library reuses
+the completed definition owner without changing financial/provider/selection,
+ordinary application requests, queues, saved results or immutable evidence.
+The [Phase 4 handoff](phases/phase-04/handoffs/phase-05.md) remains the entry
+record; its Phase 5 hold is superseded only by this authorization. The editor,
+strategy integration and numerical formula execution stay held.
 The following Phase 2/3 records and older inspections remain dated context.
 
 The 30 October hold deferred Phases 2–7 until engine completion and an ownership
@@ -276,11 +271,11 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
 | **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
 | **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
-| **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
+| **5. Durable variable library** | **Authorized; in progress.** Immutable revisions, independent names/favourites and detached resolution | [Execution plan](phases/phase-05/execution-plan-2026-11-02.md). Use private persistence and native fixtures. Existing requests, queue and saved results stay unchanged. |
 | **6. Variable editor and strategy integration** | **On hold; not started.** One editor and picker used by ranking and filters | Test keyboard operation, narrow screens, visual/text round trips, preview explanations, pending edits, and queue-held drafts. Result tables and downloads use original submitted definitions. |
 | **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
 
-Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable UI and library work are also on hold. Unrelated website and engine development can continue under the existing worktree boundaries.
+Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable UI work remains on hold. Phase 5 library work is authorized above. Unrelated website and engine development can continue under the existing worktree boundaries.
 
 Do not build automatic strategy search, arbitrary user code, cross-sectional ranking inside formulas, or silent missing-value substitution in the first release. These add separate semantics beyond the requested formula system.
 
@@ -306,5 +301,5 @@ Phase 3 source now consumes four supported observations through an immutable
 validated program and a bounded reference evaluator. It changes no financial,
 prepared-input, selection, application or numerical-engine contract. Current
 verification and independent audit evidence live in its phase record. Phase 4 is
-now authorized above. Phases 5–7 remain held; source completion authorizes no
+complete. Phase 5 is authorized above. Phases 6–7 remain held; source completion authorizes no
 runtime publication or integration.

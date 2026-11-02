@@ -100,3 +100,24 @@ unfinished work waiting. An abrupt exit releases the OS lock; its successor
 recovers running items only after acquiring that lock. Pending Stop requests
 remain stopped. Deleted items keep only a small submission receipt to prevent
 an acknowledgement retry from recreating them.
+
+
+## Durable variable library
+
+`variable-library.sqlite` contains reusable user variables. It is separate from
+financial caches, `saved-backtests.sqlite` and `backtest-queue.sqlite`. Preserve
+all three durable files during rebuilds, cleanup and source publication.
+`backtest/variables/library.py` owns the callable repository. It is not connected
+to ordinary website strategy submission in Phase 5.
+
+A stable variable ID has immutable authored content revisions. Names and
+favourites use an independent mutable entry version. Formula edits must supply
+the expected entry version. Renaming or changing a favourite does not alter the
+formula revision. Deletion hides the active entry and retains all revisions.
+Exact references can still resolve retained revisions. No automatic eviction or
+garbage collection is implemented.
+
+SQLite commit publishes a change. Restart retains committed data. Unsupported or
+damaged files are reported and preserved, never replaced with a financial-cache
+rebuild. Construction and imports do not create the file. Private test stores
+cover persistence; the installed store is not a test fixture.

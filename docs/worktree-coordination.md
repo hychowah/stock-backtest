@@ -484,3 +484,24 @@ fingerprints. This preserves freshness after selection delegates to that source.
 The numerical policy owner rejects formula-bearing requests explicitly; it adds
 no formula execution, schema or application-artifact change. The current
 execution plan records affected owners before implementation.
+
+
+## Custom-variable Phase 5 resumption — 2 November 2026
+
+The user authorizes implementation and audited commits from `f893bd4` on
+`feature/custom-variables`. This branch owns a separate durable variable library
+in `backtest/variables/library.py`, narrow lookup resolution in the existing
+definition owner, and supporting tests/docs. The
+[execution plan](plans/custom-variables/phases/phase-05/execution-plan-2026-11-02.md)
+records the two independently planned and audited slices.
+
+The new `data/variable-library.sqlite` is durable user data. It is separate from
+financial caches, the queue and saved results. Existing files and records stay
+unchanged. No financial/provider/selection policy, prepared schema, application
+request/result, source/cache ownership, cancellation or attachment contract changes.
+No editor, strategy integration or numerical formula execution is authorized.
+Original remains default. Phases 6–7 stay held.
+
+Use private synthetic WSL and Windows fixtures only. No merge, push, deployment,
+server restart, market-data request or live-runtime/cache/durable-store mutation.
+Native-cache coverage remains unknown. Main and engine worktrees stay untouched.

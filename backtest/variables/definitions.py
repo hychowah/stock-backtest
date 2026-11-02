@@ -459,6 +459,100 @@ def validate(bundle, limits=None):
     return FormulaProgram(canonical(_compile(bundle, _limits(limits))))
 
 
+def resolve(roots, lookup, *, submitted=None, limits=None, checkpoint=lambda: None):
+    """Capture exact revisions through a bounded, caller-owned lookup snapshot.
+
+    lookup(variable_id, revision) returns an authored raw definition or None.
+    It must keep one consistent snapshot for the call. Submitted entries use the
+    ordinary bundle entry shape and take precedence over lookup. All submitted
+    entries are retained and checked, including unused entries. Missing roots or
+    dependencies fail; there is no current/latest resolution. Entries are ordered
+    by submission, then first-use depth-first lookup. Roots retain their order.
+
+    This operation owns reference discovery and calls the existing validator.
+    It accepts only raw authored literals, never canonical expanded submissions.
+    The returned FormulaProgram owns all content and retains no callback.
+    """
+    bound = _limits(limits)
+    if not callable(lookup) or not callable(checkpoint):
+        _fail('INVALID_SHAPE', '', 'Resolution requires lookup and checkpoint callbacks.')
+    if type(roots) is not list or not roots:
+        _fail('INVALID_SHAPE', '/roots', 'At least one ordered exact root is required.')
+    minimum = len(canonical(dict(variable_id='a', revision='sha256:' + '0' * 64)))
+    if len(roots) * minimum > bound['bytes']:
+        _fail('DEFINITION_LIMIT', '/roots', 'Formula roots exceed the submission byte bound.')
+    checked_roots = []
+    for index, root in enumerate(roots):
+        checkpoint()
+        variable_id, content_revision = _identity(root, '/roots/' + str(index))
+        checked_roots.append(dict(variable_id=variable_id, revision=content_revision))
+    if len(canonical(checked_roots)) > bound['bytes']:
+        _fail('DEFINITION_LIMIT', '/roots', 'Formula roots exceed the submission byte bound.')
+    submitted = [] if submitted is None else submitted
+    if type(submitted) is not list:
+        _fail('INVALID_SHAPE', '/definitions', 'Submitted definitions must be an ordered list.')
+    if len(submitted) > bound['definitions']:
+        _fail('DEFINITION_LIMIT', '/definitions', 'Too many submitted definitions.')
+    entries, known, references = [], {}, {}
+    raw_bytes, normalized_bytes, nodes = len(canonical(checked_roots)), len(canonical(checked_roots)), 0
+
+    def retain(entry):
+        nonlocal raw_bytes, normalized_bytes, nodes
+        checkpoint()
+        path = '/definitions/' + str(len(entries))
+        _shape(entry, ('variable_id', 'revision', 'definition'), path)
+        identity = _identity({key: entry[key] for key in ('variable_id', 'revision')}, path)
+        normalized, refs, count = _normal_definition(entry['definition'], bound, path + '/definition')
+        normalized_entry = dict(entry, definition=normalized)
+        if identity in known:
+            if known[identity] != normalized_entry:
+                _fail('REVISION_MISMATCH', path, 'Duplicate immutable identity has different content.')
+            return identity
+        if len(entries) >= bound['definitions'] or nodes + count > bound['nodes']:
+            _fail('DEFINITION_LIMIT', path, 'Resolved bundle exceeds its structural bound.')
+        raw_document, normal_document = canonical(entry), canonical(normalized_entry)
+        raw_bytes += len(raw_document)
+        normalized_bytes += len(normal_document)
+        if max(raw_bytes, normalized_bytes) > bound['bytes']:
+            _fail('DEFINITION_LIMIT', path, 'Resolved bundle exceeds its byte bound.')
+        nodes += count
+        entries.append(json.loads(raw_document))
+        known[identity], references[identity] = normalized_entry, refs
+        return identity
+
+    for entry in submitted:
+        retain(entry)
+    visited = set()
+
+    def discover(identity, path):
+        checkpoint()
+        if identity in visited:
+            return
+        if identity not in known:
+            # Check capacity before asking storage for another definition.
+            if len(entries) >= bound['definitions']:
+                _fail('DEFINITION_LIMIT', path, 'Resolved bundle exceeds its definition bound.')
+            definition = lookup(*identity)
+            checkpoint()
+            if definition is None:
+                _fail('MISSING_REFERENCE', path, 'Immutable referenced definition is absent.')
+            retain(dict(variable_id=identity[0], revision=identity[1], definition=definition))
+        visited.add(identity)
+        for dependency, dependency_path in references[identity]:
+            discover(dependency, dependency_path)
+
+    for index, root in enumerate(checked_roots):
+        discover((root['variable_id'], root['revision']), '/roots/' + str(index))
+    # Unused submitted entries receive the same complete validation as a bundle.
+    for identity in list(known):
+        discover(identity, '/definitions')
+    checkpoint()
+    program = validate(dict(format='variable-bundle', version=VERSION,
+                            definitions=entries, roots=checked_roots), bound)
+    checkpoint()
+    return program
+
+
 def require_program(program):
     """Reconstruct and check a program before execution; return detached content.
 
