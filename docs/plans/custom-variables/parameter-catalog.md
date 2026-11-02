@@ -7,6 +7,13 @@ requested a broader list of valuation ingredients. Include an ingredient only
 when an existing FMP download route supplies it directly, or when an explicit
 calculation can use supplied inputs. Do not add speculative fields.
 
+Planning update, 3 November: the [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
+now sequences implementation of this full inventory and named calculated measures,
+then integration qualification. It is planned, not implemented. Only revenue,
+operating income, operating margin and EV are current formula observations.
+The source check below retains its original date; no new provider check or
+cache inspection was performed for this planning update.
+
 Phase 2 resumed on 2 November with the initial four observations only. The initial
 provider is now implemented; its [phase record](phases/phase-02/README.md) tracks
 verification and audited completion. This

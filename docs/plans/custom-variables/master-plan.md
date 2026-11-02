@@ -6,7 +6,15 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phases 1–7 are complete in source on `feature/custom-variables`.**
+Status, 3 November 2026: **Phases 1–7 are complete in source on
+`feature/custom-variables`; the full requested parameter inventory is unfinished.**
+Only revenue, operating income, operating margin and enterprise value are
+implemented as formula observations. The [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
+plans all 52 direct inputs, reusable calculated measures, authoring/coverage
+completion and integration qualification. These phases are planned, not implemented.
+The user's 3 November instruction authorizes this plan update and documentation
+commit. It does not start implementation, merge, publication or runtime work.
+
 Phase 6 resumed from `f877c0c` and completes in three independently audited slices. The user's 2 November instruction authorizes
 variable editor and strategy integration with independently designed, implemented
 and audited slices. The [current execution plan](phases/phase-06/execution-plan-2026-11-02.md)
@@ -35,6 +43,14 @@ Original remains default. No download, deployment, integration into main or
 default change is authorized.
 
 ## Hold and resume
+
+The current next step is Phase 8 in the
+[parameter expansion and integration plan](parameter-expansion-plan-2026-11-03.md).
+The 3 November planning instruction does not extend the earlier four-parameter
+implementation authorization. Before protected implementation, record the resumed
+phase and its narrow ownership in this feature worktree. Preserve the completed
+phase records as historical evidence. The paragraphs below describe the earlier
+resumptions; they do not mark Phases 8–12 complete or authorize a merge.
 
 The latest 2 November instruction authorizes Phase 7 numerical backend
 implementation and qualification on this feature branch. It supersedes the
@@ -306,6 +322,11 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
 | **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), [Slice 3](phases/phase-06/slice-03.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md), [compatibility](phases/phase-06/compatibility.md) and [held Phase 7 handoff](phases/phase-06/handoffs/phase-07.md). |
 | **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
+| **8. Complete parameter contract** | Planned: one semantic catalog, source meanings, units and compatibility | [Continuation: Phase 8](parameter-expansion-plan-2026-11-03.md#phase-8--complete-parameter-contract). All 52 direct inputs are in scope; only two are already direct observations. |
+| **9. Evidence for all sources** | Planned: endpoint-aware annual facts and dated market/rate observations | [Continuation: Phase 9](parameter-expansion-plan-2026-11-03.md#phase-9--evidence-for-all-sources). Preserve financial policy and generation ownership. |
+| **10. Reusable measure library** | Planned: finite named measures and bounded annual growth | [Continuation: Phase 10](parameter-expansion-plan-2026-11-03.md#phase-10--reusable-measure-library). Preserve exact legacy calculations. |
+| **11. Discoverable, qualified capabilities** | Planned: expanded editor, bounded coverage inspection and both-engine qualification | [Continuation: Phase 11](parameter-expansion-plan-2026-11-03.md#phase-11--discoverable-qualified-capabilities). Support, readiness and data coverage stay distinct. |
+| **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
 
 Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.
 
@@ -321,7 +342,7 @@ Quarterly/TTM support is a later extension of the history provider. It requires 
 | Does "three-month average" mean daily observed valuations, quarterly accounts, or both? | Show those choices separately in a small editor prototype. Keep their definitions distinct regardless of the preference. |
 | Which documented FMP fields can preparation expose? | Use the [source map](parameter-catalog.md) to extend validation and evidence on the agreed branch after resumption. Most new fields are preserved in full raw responses but are not prepared. For example, debt/assets needs the documented `totalAssets` field added to validated inputs. Measure coverage before advertising support. |
 | Can custom formulas remain usable in a standalone HTML export? | Measure a representative formula bundle and its required historical input payload. Decide browser support from that evidence. |
-| How will the numerical engine expose variable requirements? | Review the proposed scalar contract against its current policy, factor, generation, and workspace interfaces before either branch implements it. |
+| How does the numerical engine admit expanded requirements? | Phase 7 already admits four checked parameters. Qualify new catalog versions, units, observations and history operations through the existing capability owner. Adding an entry must not automatically admit it. |
 | Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
 
 Phase 2 completes under the scoped 2 November authorization in this second

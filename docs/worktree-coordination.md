@@ -1,5 +1,18 @@
 # Parallel work on the website and backtest engine
 
+## Custom-variable continuation planning — 3 November 2026
+
+The user requested and authorized committing the
+[parameter expansion and integration plan](plans/custom-variables/parameter-expansion-plan-2026-11-03.md).
+Phases 1–7 are complete only for the initial four-observation scope. Planned
+Phases 8–12 cover the 52 direct inputs, named measures, authoring/coverage and
+integration qualification. This is a documentation-only task on
+`feature/custom-variables`. It authorizes no protected implementation, main
+advance, engine-worktree edit, deployment, restart, download or live data change.
+At implementation resumption, record the phase's narrow financial, preparation,
+provider, application and numerical ownership before editing affected contracts.
+Recheck branch state and the automatic main supervisor before any later merge.
+
 The website can continue to develop while a separate worktree finishes the new
 backtest engine. Keep financial behavior and engine interfaces stable on main.
 Keep frontend and unrelated backend changes small at shared boundaries.

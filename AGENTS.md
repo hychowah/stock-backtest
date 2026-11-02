@@ -57,6 +57,12 @@ Phase 7 is complete in source after independent audit, final source-bound checks
 and private workload qualification. Original remains default.
 Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
+The user's 3 November planning follow-up adds planned Phases 8–12 in the
+[parameter expansion and integration plan](docs/plans/custom-variables/parameter-expansion-plan-2026-11-03.md).
+The broader 52-input inventory remains unfinished. This documentation commit
+does not resume implementation or authorize main integration or deployment.
+Use that continuation at the next phase resumption; earlier four-parameter
+phase completion is not evidence that the full inventory is implemented.
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.
 
