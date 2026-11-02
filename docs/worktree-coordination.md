@@ -91,7 +91,7 @@ Existing unrelated working-tree edits remain outside each task's commit.
 
 ## Custom-variable plan on hold — 30 October 2026
 
-This dated hold is superseded only for Phase 2 by the 2 November agreement below.
+This dated hold is superseded only for Phases 2 and 3 by their 2 November agreements below.
 
 The user put the custom-variable plan on hold until the new engine is finished.
 Phase 1 delivered contracts only. Phase 2 has inspection and preliminary design,
@@ -423,3 +423,26 @@ Phases 3–7 remain held. No branch integration, publication, restart, download,
 installed-cache preparation or durable-store mutation is authorized. Preserve
 main and engine worktree files and indexes. This branch is not a deployment
 source. Its current source and fixture checks do not change the running server.
+
+
+## Custom-variable Phase 3 resumption — 2 November 2026
+
+The user authorizes Phase 3 implementation and audited commits in the linked
+`feature/custom-variables` worktree, starting at `9e5d97d`. Phase 2 is complete.
+This task owns `backtest/variables/`, evaluator tests and affected current records
+and architecture-guide explanations. The [execution plan](plans/custom-variables/phases/phase-03/execution-plan-2026-11-02.md)
+uses two substantial slices: immutable validated formula programs, then bounded
+provider-backed reference execution. Each receives independent design,
+implementation and a separate smart-commit audit. Material adjustments are
+recorded in the phase.
+
+The evaluator consumes the existing four-parameter observation provider. It must
+not read raw assets/SQL or reproduce root admission, report selection, annual
+alignment or enterprise value. Financial rules, root membership/ranks, existing
+engines, freshness, cancellation, attachment lifetime and detached evidence stay
+with their current owners. Original remains default. Phases 4–7 remain held.
+
+Private source exports and synthetic WSL/native verification are authorized.
+No merge, push, deployment, server restart, market-data request or live-runtime/
+cache mutation is authorized. Native-cache coverage remains unknown. Preserve
+main and the engine worktree, including their files, indexes and histories.

@@ -27,7 +27,7 @@ No production backtest library imports website or tools. Website code calls the
 actual application and input owners. Package initializers execute no operations.
 Remaining old executable paths do not serve as library import aliases.
 
-## Custom-variable provider and held later phases
+## Custom-variable provider and reference evaluator
 
 Phase 2 resumed on 2 November in `feature/custom-variables`. The dated structure
 refactor did not implement it. See the [current Phase 2 record](../custom-variables/phases/phase-02/README.md).
@@ -51,6 +51,10 @@ The owners relevant to that feature are:
 - `website/rendering/` and `website/browser/` for current built-in labels,
   standalone January/latest views, captured comparison and complete downloads.
 
-Later evaluator work consumes the implemented observation interface. Reconcile
+`backtest/variables/definitions.py` now owns immutable formula validation,
+normalization, identities, unit inference and resolved dependency programs.
+Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/phases/phase-03/README.md).
+Provider-backed execution is the next slice. Phases 4–7 remain held.
+The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.

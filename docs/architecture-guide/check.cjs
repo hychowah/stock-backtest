@@ -140,3 +140,5 @@ assert(html.includes("website/rendering/data.py") && html.includes("website/serv
 
 assert(html.includes("backtest/observations.py") && html.includes("legacy top-250 buffer is formed before checking cached prices") && html.includes("Older annual history members do not inherit that age limit.") && html.includes("It calculates no average or formula.") && html.includes("Returned evidence remains readable after closure."), "Explain bounded admitted observations, temporal history, canonical values and detached evidence");
 assert(html.includes('Its second slice adds the four-parameter point-in-time provider in source.') && !html.includes('The point-in-time provider is still pending.'), 'Keep provider source status consistent throughout the guide');
+
+assert(html.includes('id="formula-program"') && html.includes('backtest/variables/definitions.py') && html.includes('References name exact content revisions.') && html.includes('A submitted decimal has at most 64 characters.') && html.includes('Phases 4–7 stay held.'), 'Explain immutable formula validation, identities, canonical units and fixed limits');
