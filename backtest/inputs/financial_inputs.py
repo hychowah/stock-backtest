@@ -35,26 +35,44 @@ def normalize(rows, symbol, endpoint):
     return rows
 
 
-def read(raw,symbol,endpoint):
+def _asset(raw, symbol, endpoint):
+    """Read once and identify admitted rows, including damaged saved assets.
+
+    The content hash identifies bytes. Only a valid asset also supplies the
+    completion digest used by read()/completed(); salvaged bytes prove no download.
+    """
     path=asset_path(raw,symbol,endpoint)
+    evidence=dict(endpoint=endpoint, disposition='missing', sha256=None, rows=[])
     try:
-        content=path.read_bytes();record=json.loads(content)
+        content=path.read_bytes()
+    except FileNotFoundError:
+        return [], None, evidence
+    evidence.update(sha256=hashlib.sha256(content).hexdigest(), disposition='unreadable')
+    try:
+        record=json.loads(content)
         if record.get('version') not in (1,2) or record.get('symbol')!=symbol or record.get('endpoint')!=endpoint:raise ValueError()
         rows=record['rows']
         if not isinstance(rows,list):raise ValueError()
-    except (ValueError,TypeError,KeyError,AttributeError,FileNotFoundError):return [],None
+    except (ValueError,TypeError,KeyError,AttributeError):return [],None,evidence
     try:
         normalize(rows,symbol,endpoint)
-        return rows,hashlib.sha256(content).hexdigest()
+        usable=list(enumerate(rows));digest=evidence['sha256'];evidence['disposition']='valid'
     except (ValueError,TypeError):
         # Preserve usable reports during repair; damaged assets prove no completion.
-        usable=[]
-        for row in rows:
+        usable=[];digest=None;evidence['disposition']='salvaged'
+        for index,row in enumerate(rows):
             try:
                 normalize([row],symbol,endpoint)
-                usable.append(row)
+                usable.append((index,row))
             except (ValueError,TypeError):continue
-        return usable,None
+    evidence['rows']=[dict(index=index,sha256=hashlib.sha256(json.dumps(row,sort_keys=True,
+        separators=(',',':'),allow_nan=False).encode()).hexdigest()) for index,row in usable]
+    return [row for _,row in usable],digest,evidence
+
+
+def read(raw,symbol,endpoint):
+    rows,digest,_=_asset(raw,symbol,endpoint)
+    return rows,digest
 
 
 def completed(raw,symbol,endpoint,ledger):
@@ -96,25 +114,44 @@ def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
     cache_assets.publish_bytes(path,content)
 
 
-def history(raw,symbol):
-    """Prepare only unambiguous USD inputs; retain every raw report variant.
+def resolve_history(raw,symbol):
+    """Resolve annual values and independent field evidence in one authority.
 
     Multiple records can describe the same fiscal date. Equal nonmissing input
     values agree. Conflicting values omit that input instead of picking a revision
-    by response order. Nulls do not replace known values. Metadata stays in raw.
+    by response order. Nulls do not replace known values. All admitted fiscal dates
+    survive in evidence, including dates with no usable field. Raw assets stay intact.
     """
-    reports={}
+    reports={};sources={};annual={}
     for endpoint,fields in ENDPOINTS.items():
         if not fields:continue
+        rows,_,source=_asset(raw,symbol,endpoint)
+        sources[endpoint]={key:value for key,value in source.items() if key!='rows'}
         candidates={}
-        for row in read(raw,symbol,endpoint)[0]:
-            if row.get('reportedCurrency')!='USD':continue
+        for row,identity in zip(rows,source['rows']):
             day=str(rules.parse_day(row['date']))
-            candidates.setdefault(day,[]).append(row)
-        for day,rows in candidates.items():
-            values={}
+            candidates.setdefault(day,[]).append((row,identity))
+        annual[endpoint]={}
+        for day,members in candidates.items():
+            values={};states={}
             for field in fields:
-                numbers={rules.num(row[field]) for row in rows if row.get(field) is not None}
-                if len(numbers)==1:values[field]=numbers.pop()
+                inputs=[dict(identity,currency=row.get('reportedCurrency'),
+                             value=rules.num(row.get(field))) for row,identity in members]
+                numbers={item['value'] for item in inputs if item['currency']=='USD' and item['value'] is not None}
+                if len(numbers)==1:
+                    value=next(iter(numbers));values[field]=value;reason=None
+                else:
+                    value=None
+                    reason=('CONFLICTING_INPUT' if len(numbers)>1 else
+                            'NON_USD_INPUT' if any(isinstance(item['currency'],str) and item['currency']
+                                and item['currency']!='USD' and item['value'] is not None for item in inputs)
+                            else 'MISSING_INPUT')
+                states[field]=dict(value=value,valid=reason is None,reason=reason,rows=inputs)
+            annual[endpoint][day]=states
             if values:reports.setdefault(day,{}).update(values)
-    return reports
+    return dict(values=reports,sources=sources,annual=annual)
+
+
+def history(raw,symbol):
+    """Return the unchanged values-only projection of annual USD resolution."""
+    return resolve_history(raw,symbol)['values']

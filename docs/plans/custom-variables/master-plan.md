@@ -6,40 +6,44 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **On hold by user decision on 2026-10-30 until the new backtest engine
-is finished.** Phase 1 contract documentation is complete. Phase 2 has inspection
-and preliminary design records only; no provider is implemented. Phases 3–7 have
-not started. All remaining custom-variable work is on hold, including the editor
-and library. Financial implementation ownership remains proposed, not agreed.
-This document does not authorize changes to engine-owned contracts,
-market-data downloads, benchmark admission, deployment, or production cutover.
-Engine observations below describe the planning session; recheck the owning
-worktree before implementation.
+Status: **Phase 2 resumed by the user on 2026-11-02 on `feature/custom-variables`.**
+Phase 1 contract documentation is complete. Phase 2's first slice adds trusted
+prepared inputs; the point-in-time provider remains the second slice. Phase 2
+is incomplete. Phases 3–7 remain on hold, including the editor and library.
+The [current execution plan](phases/phase-02/execution-plan-2026-11-02.md) records
+two substantial slices. The [Slice 1 handoff](phases/phase-02/slice-01.md) records
+the implemented boundary and checks. Dated engine inspections below remain
+historical evidence. No download, deployment, integration or default change is
+part of this authorization.
 
 ## Hold and resume
 
-Finish the new engine first. Its owning compiled-backtest plan must record
-CB-14 qualification and CB-15 default cutover as complete before this feature
-resumes. Custom variables are not a prerequisite for that engine swap.
+The 30 October hold deferred Phases 2–7 until engine completion and an ownership
+decision. CB-14 and CB-15 now record complete supported opt-in readiness and
+normal-app selection. Their revised scope keeps Original as default. The older
+default-cutover assumption is superseded; it is not a current prerequisite.
 
-The execution framework can be reused. Phase 2 needs coordinated financial-input,
-valuation and generation adapters. The full feature also changes scalar
-evaluation, selection and result evidence. Keep that work separate from the
-engine's unfinished qualification and browser/evidence work.
+On 2 November the user requested Phase 2 planning, implementation and audited
+commits until completion in this feature worktree. That instruction assigns
+the narrow financial-input, prepared-admission, generation and provider scope
+here. The engine worktree is clean at `8850e77`; this branch and main started at
+`9455b6c`. Current package owners and completed CB-19 work were rechecked.
+`books.entry_valuation` and its numerical normalizer already exist and are reused.
 
-Retain the Phase 1 contract and Phase 2 design as proposals for later review.
-After the engine is finished, recheck its HEAD, working tree, interfaces and
-handoffs. Revise the provider design against the finished engine, then agree one
-owning branch and narrow scope before protected edits. The earlier ownership
-question is deferred; it is not a request for approval during this hold.
+Phase 2 covers revenue, operating income, operating margin and enterprise value.
+Later field admission, expression arithmetic, scalar selection, durable variables,
+the editor and numerical formulas remain outside this resumption. The original
+Phase 1 contract and dated Phase 2 proposals remain review records; use the new
+execution plan for current ownership, interfaces and implementation sequence.
 
 The [engine-owner handoff](engine-handoff.md) records what to communicate to
 that worktree. It identifies reusable implementation, later contract changes and
 existing main integration obligations. It adds no engine task or readiness gate.
 Preparing a main-side record does not notify a separate engine session.
 
-The existing website keeps its built-in metrics, filters and engine. No
-custom-variable runtime behavior was enabled by Phase 1 or the Phase 2 records.
+The website keeps its existing built-in metrics and filters. Phase 2 Slice 1
+adds prepared evidence and an admitted read view. It enables no custom strategy
+or formula runtime behavior.
 
 Phase 1 rechecked engine HEAD `a8cbb69` and its active working tree. Persistent
 isolated preview integration is present. CB-13 is recorded complete. CB-14
@@ -256,8 +260,8 @@ Initially, custom formulas can use the local service in every website mode. Exis
 
 | Phase | Abstraction delivered | Completion evidence and handoff |
 |---|---|---|
-| **1. Variable contract and ownership** | Contract documentation delivered; implementation ownership pending | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Financial and prepared-data edits remain blocked until ownership is agreed. |
-| **2. Parameter and history provider** | **On hold; incomplete.** Inspection and preliminary design filed | [Phase record](phases/phase-02/README.md), [proposed scope](phases/phase-02/ownership.md), [preliminary review](phases/phase-02/review.md) and [planned validation](phases/phase-02/validation-plan.md). The [FMP source map](parameter-catalog.md) defines the broader target inventory. The preliminary first provider still covers only revenue, operating income, operating margin and EV. Agree later admission increments after resumption. Implementation, executed checks and final review remain required. |
+| **1. Variable contract and ownership** | Contract documentation delivered | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), historical [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Current Phase 2 ownership is assigned above. |
+| **2. Parameter and history provider** | **In progress; incomplete.** Trusted prepared inputs implemented | [Current execution plan](phases/phase-02/execution-plan-2026-11-02.md) and [Slice 1 handoff](phases/phase-02/slice-01.md). The second slice delivers the provider for revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Native verification, independent audit and both audited commits remain completion gates. |
 | **3. Formula evaluator** | **On hold; not started.** Validation, expression evaluation, dependency resolution, and explanation | Reference tests cover arithmetic, units, nested expressions, saved dependencies, invalid denominators, cycles, and bounded work. Cache identities include definitions, policy, and input generation. |
 | **4. General scalar selection** | **On hold; not started.** Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
 | **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
@@ -281,7 +285,7 @@ Quarterly/TTM support is a later extension of the history provider. It requires 
 | How will the numerical engine expose variable requirements? | Review the proposed scalar contract against its current policy, factor, generation, and workspace interfaces before either branch implements it. |
 | Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
 
-This remains an implementation proposal on hold until the new engine is finished.
-Phase 1 supplies reviewable contracts and handoffs. Phase 2 supplies inspection
-and preliminary design only. These records change no product source, runtime
-data or existing snapshots.
+Phase 2 is active under the scoped 2 November authorization. Its first slice
+changes source and synthetic fixtures. It does not change installed runtime
+data or portable snapshots. Phase 2 remains incomplete until the provider,
+verification and both independent smart-commit passes are complete.

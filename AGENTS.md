@@ -11,10 +11,13 @@ The `main` worktree continues frontend and unrelated backend development. The
 financial/cache contracts. Before choosing files for a task, read
 [docs/worktree-coordination.md](docs/worktree-coordination.md).
 
-Custom-variable work is on hold by user decision until the new backtest engine
-is finished. Phase 1 is documentation only; Phase 2 is not implemented.
-Follow the [hold and resume conditions](docs/plans/custom-variables/master-plan.md#hold-and-resume)
-before continuing any phase of that feature.
+The user resumed custom-variable Phase 2 on 2 November 2026 in the linked
+`feature/custom-variables` worktree. That branch owns the narrow annual-evidence,
+prepared-admission, generation and observation-provider changes in the
+[current execution plan](docs/plans/custom-variables/phases/phase-02/execution-plan-2026-11-02.md).
+Phase 1 remains documentation only. Phase 2 is incomplete; its first slice adds
+trusted prepared inputs. Phases 3–7 remain on hold. Follow the
+[current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.
 
@@ -229,7 +232,10 @@ completion independently of snapshot counts, including empty pools. A pool switc
 fills the missing pool in the same dated period; filters, ranks and metrics reuse
 its prepared rows. Keep completion markers and rows in the same transaction.
 Startup upgrades compatible version-1/2 caches in place, retaining daily prices
-and completed pools. Daily inputs also bind to the price inventory accepted by research
+and completed pools. Research schema 9 also carries version-1 observation evidence.
+Daily inputs bind its accepted content and policy. Caches without that binding
+must rebuild; the version-1/2 upgrade does not invent observation evidence.
+Daily inputs also bind to the price inventory accepted by research
 metadata. After accepted in-place price edits, rebuild daily prices before numeric
 export. Old caches without this binding cannot establish compatibility. Version-1 books mark both pools complete; version-2 books
 retain their individual markers. Changed research inputs still require preparation.

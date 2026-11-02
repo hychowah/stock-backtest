@@ -91,6 +91,8 @@ Existing unrelated working-tree edits remain outside each task's commit.
 
 ## Custom-variable plan on hold — 30 October 2026
 
+This dated hold is superseded only for Phase 2 by the 2 November agreement below.
+
 The user put the custom-variable plan on hold until the new engine is finished.
 Phase 1 delivered contracts only. Phase 2 has inspection and preliminary design,
 with no provider implementation. Phases 2–7 must wait. This feature adds no new
@@ -392,3 +394,24 @@ operations live in `tools/ops/`; retained experiments live in
 `tools/experiments/`. Documented executable paths remain. Read the
 [current source map](plans/project-structure/source-map.md) when interpreting
 historical paths above. No engine-worktree synchronization is authorized.
+
+## Custom-variable Phase 2 resumption — 2 November 2026
+
+The user assigns Phase 2 to the linked `feature/custom-variables` worktree.
+Its protected scope is annual field evidence, prepared latest-root admission,
+the research/daily/immutable-generation adapters, and the initial point-in-time
+provider. The provider covers only revenue, operating income, operating margin
+and enterprise value. The [current execution plan](plans/custom-variables/phases/phase-02/execution-plan-2026-11-02.md)
+supersedes the old proposed engine-branch assignment for this phase.
+
+CB-14/CB-15 now record complete supported opt-in readiness and selection.
+Original remains default. Default replacement is no longer a resumption gate.
+The user requests an independent planner, implementation and independent
+smart-commit for each of two substantial slices. Existing entry valuation and
+its numerical source adapter are reused. Financial rules, ranking pairs,
+selection defaults, saved evidence and ownership ordering remain unchanged.
+
+Phases 3–7 remain held. No branch integration, publication, restart, download,
+installed-cache preparation or durable-store mutation is authorized. Preserve
+main and engine worktree files and indexes. This branch is not a deployment
+source. Its current source and fixture checks do not change the running server.

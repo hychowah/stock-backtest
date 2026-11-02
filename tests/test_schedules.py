@@ -33,7 +33,8 @@ class CalendarTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             source=Path(folder)/'custom-research.sqlite';path=Path(folder)/'daily.sqlite'
             with patch.object(research,'signature',return_value={'fixture':1}),patch.object(research,'prepared_price_binding',
-                    side_effect=lambda selected:'custom' if selected==source else 'default'):
+                    side_effect=lambda selected:'custom' if selected==source else 'default'), \
+                    patch.object(research,'prepared_observation_binding',return_value={'fixture':1}):
                 inputs=daily.fingerprint(source)
                 with closing(sqlite3.connect(path)) as db:
                     db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
@@ -44,7 +45,7 @@ class CalendarTests(unittest.TestCase):
     def test_daily_fingerprint_tracks_portfolio_reducer(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'portfolio_results.py';path.write_text('# first')
-            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(portfolio_results,'__file__',str(path)):
+            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(research,'prepared_observation_binding',return_value={'fixture':1}),patch.object(portfolio_results,'__file__',str(path)):
                 before=daily.fingerprint()
                 path.write_text('# changed portfolio source')
                 after=daily.fingerprint()
@@ -53,7 +54,7 @@ class CalendarTests(unittest.TestCase):
     def test_daily_fingerprint_tracks_calendar_source(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
-            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(schedule_calendar,'__file__',str(path)):
+            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(research,'prepared_observation_binding',return_value={'fixture':1}),patch.object(schedule_calendar,'__file__',str(path)):
                 before=daily.fingerprint()
                 path.write_text('# changed calendar source')
                 after=daily.fingerprint()
@@ -385,6 +386,7 @@ class PreparationTests(unittest.TestCase):
         db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
+        daily.observation_inputs.finish(db,'2015-01-02')
         db.commit();db.close()
         self.context.enter_context(patch.object(research,'RAW',raw))
         self.context.enter_context(patch.object(market,'RAW',raw))

@@ -8,7 +8,7 @@ evaluators before closing the input attachment.
 No application routing, downloads or reference-report writes occur here.
 """
 from backtest.financial import rules, books as financial_books, metrics
-from backtest.inputs import daily, research
+from backtest.inputs import daily, research, observation_inputs
 
 from collections.abc import Mapping, Sequence
 from bisect import bisect_right
@@ -182,6 +182,7 @@ def _export(source, policy, folder, checkpoint):
       CREATE TABLE treasuries(day TEXT PRIMARY KEY,yield_value REAL);
       CREATE TABLE treasury10(day TEXT PRIMARY KEY,yield_percent REAL);
     ''')
+    db.executescript(observation_inputs.SCHEMA)
     arrays = {}
     def allocate(name, shape):
         array = np.lib.format.open_memmap(folder / (name + '.npy'), mode='w+',
@@ -213,6 +214,11 @@ def _export(source, policy, folder, checkpoint):
             if batch:
                 db.executemany('INSERT INTO ' + table + ' VALUES(' + ','.join('?' * len(batch[0])) + ')', batch)
             cursor.close()
+        # Legacy synthetic calculation fixtures have no observation capability.
+        # Real preparation admits this projection in _binding; a missing copy
+        # always fails observations(), rather than fabricating source evidence.
+        if source.execute('SELECT count(*) FROM observation_metadata').fetchone()[0]:
+            observation_inputs.copy(source, db, checkpoint, max_record_bytes=MAX_MANIFEST)
         allocate('symbol_sort', (len(symbols),))[:] = np.argsort(np.asarray(symbols), kind='stable')
         allocate('cached_mask', (len(symbols),))[:] = [s in cached for s in symbols]
         for column, prefix in (('price', 'raw'), ('adjusted', 'adjusted')):
@@ -306,6 +312,7 @@ def _source_binding(policy, checkpoint=lambda: None):
     for name in ('generation.py', 'policy.py', 'decisions.py', 'temporal.py', 'factors.py'):
         source['backtest/engines/numerical/'+name] = _sha(Path(__file__).with_name(name), checkpoint)
     source['backtest/runtime/cache_access.py'] = _sha(Path(cache_access.__file__), checkpoint)
+    source['backtest/inputs/observation_inputs.py'] = _sha(Path(observation_inputs.__file__), checkpoint)
     return source
 
 
@@ -442,6 +449,57 @@ class AttachedInputs:
             return dict(version=WORKER_REFERENCE_VERSION, store=str(self._store.path.resolve()),
                         identity=self.signature)
 
+    def observations(self):
+        """Borrow trusted observation facts; retain this attachment until closed.
+
+        Views own no connections or mappings. Prices use the existing immutable
+        raw/adjusted series, with actual dates and the caller's declared tolerance.
+        """
+        if self.closed:
+            raise ValueError('Numerical attachment is closed.')
+        expected = self._binding.get('observations')
+        if expected is None:
+            raise ValueError('Generation has no admitted observation inputs. Retry offline preparation.')
+
+        def reports(symbol, pool):
+            if self.closed:
+                raise ValueError('Numerical attachment is closed.')
+            sid = self.symbol_ids.get(symbol)
+            if sid is None:
+                return []
+            start, end = map(int, self.pool_offsets[pool][sid:sid+2])
+            if end-start > MAX_HISTORY:
+                raise ValueError('Prepared observation history exceeds its bound.')
+            result = []
+            for index in range(start, end):
+                row = self.report_rows[int(self.pool_report_ids[pool][index])]
+                row.update(fiscal=str(row['fiscal']), known=str(row['known']))
+                result.append(row)
+            return result
+
+        def lookup(symbol, day, column, forward, slack):
+            if self.closed:
+                raise ValueError('Numerical attachment is closed.')
+            sid = self.symbol_ids.get(symbol)
+            if sid is None:
+                return None
+            prefix = 'raw' if column == 'price' else 'adjusted'
+            offsets = getattr(self, prefix+'_offsets')
+            start, end = map(int, offsets[sid:sid+2])
+            days, values = getattr(self, prefix+'_days'), getattr(self, prefix+'_values')
+            ordinal = day.toordinal()
+            index = int(np.searchsorted(days[start:end], ordinal,
+                        side='left' if forward else 'right')) + start - (not forward)
+            if index < start or index >= end:
+                return None
+            actual = date.fromordinal(int(days[index]))
+            if slack is not None and abs((actual-day).days) > slack:
+                return None
+            return actual, float(values[index])
+
+        return observation_inputs.ReadView(self.signature, self._db, self.validate, reports, lookup,
+            expected=expected, max_history=MAX_HISTORY, max_record_bytes=MAX_MANIFEST)
+
     def close(self):
         if self.closed: return
         if self._db is not None: self._db.close(); self._db = None
@@ -535,15 +593,16 @@ class GenerationStore:
         for name in ('deployment.pending.json', 'research.sqlite.publication.json'):
             if (research.ROOT / 'data' / name).exists():
                 raise ValueError('Unfinished publication blocks numerical inputs. Retry preparation.')
-        with closing(research.connect(full_prices=True)):
-            pass
+        with closing(research.connect(full_prices=True)) as db:
+            observations = observation_inputs.require(db, verify_content=True)
         with closing(daily.connect()) as db:
             daily_binding = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
+            observation_inputs.require(db, expected=observations, verify_content=True)
         policy = PolicyProgram(bankrupt=rules.BANKRUPT)
         source = _source_binding(policy)
         return dict(temporal_version=TEMPORAL_VERSION, factor_version=FACTOR_VERSION, field_schema=policy.field_schema,
                     daily=daily_binding, prices=research.price_sources(), report=_sha(research.RESULTS / 'summary-exits.txt'),
-                    policy=policy.signature, sources=source), policy
+                    policy=policy.signature, sources=source, observations=observations), policy
 
     def _ensure_gate(self, identity):
         """Create once under financial ownership; never replace its inode."""

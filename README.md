@@ -99,11 +99,11 @@ Each code phase automatically runs `$strategic-design-plan`, implementation and
 verification, then `$smart-commit`. Agents ask only about critical blockers or
 decisions that need the user's judgment.
 
-The [custom-variable plan](docs/plans/custom-variables/master-plan.md#hold-and-resume)
-is **on hold until the new backtest engine is finished**, by user decision on
-30 October 2026. Phase 1 completed contract documentation only. Phase 2 has
-inspection and preliminary design records; no provider is implemented.
-Phases 2–7 remain on hold. The website continues using its existing built-ins.
+The user resumed [custom-variable Phase 2](docs/plans/custom-variables/master-plan.md#hold-and-resume)
+on 2 November 2026 on `feature/custom-variables`. Its first slice adds trusted
+annual evidence and latest admission to prepared inputs and immutable generations.
+The point-in-time provider is the second slice; Phase 2 remains incomplete.
+Phases 3–7 remain on hold. The website continues using its existing built-ins.
 
 
 ## Run from the saved data

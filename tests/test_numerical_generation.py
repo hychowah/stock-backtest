@@ -246,6 +246,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(sleep.call_count,2)
 
     def test_readiness_checks_full_price_inventory_report_and_pending_journals(self):
+        ng.observation_inputs.finish(self.db,'2016-12-30')
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs','{}')); self.db.commit()
         with patch.object(research,'ROOT',self.root), patch.object(research,'RESULTS',self.root), \
              patch.object(research,'connect',return_value=self.fixture.reader) as ready, \

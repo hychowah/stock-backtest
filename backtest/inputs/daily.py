@@ -12,6 +12,7 @@ from backtest.runtime import backtest_control as backtest_control
 from backtest import calendar as schedule_calendar
 from backtest import portfolio_results as portfolio_results
 from backtest.inputs import market
+from backtest.inputs import observation_inputs
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
@@ -37,7 +38,9 @@ def fingerprint(source=None):
     sources=[Path(__file__),Path(__file__).parents[1]/'engines'/'original'/'schedules.py',
              Path(__file__).parents[1]/'engines'/'original'/'book_batch.py',
              Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
-    return dict(version=VERSION, inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
+    return dict(version=VERSION, observation_version=observation_inputs.VERSION,
+                inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
+                observations=r.prepared_observation_binding(source or r.DATABASE),
                 engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in sources})
 
 def connect(path=DATABASE,source=None):
@@ -68,6 +71,8 @@ def upgrade_daily_cache(path, inputs):
             db.execute('BEGIN IMMEDIATE')
             saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
             if (saved.get('version') not in (1,2) or inputs.get('version')!=VERSION
+                    or saved.get('observation_version')!=inputs.get('observation_version')
+                    or saved.get('observations')!=inputs.get('observations')
                     or saved.get('inputs')!=inputs.get('inputs')
                     or not isinstance(saved.get('prices'),str)
                     or saved['prices']!=inputs.get('prices')):
@@ -110,6 +115,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
             rows=reference.execute('SELECT * FROM '+table).fetchall()
             if rows:
                 db.executemany('INSERT INTO '+table+' VALUES('+','.join('?'*len(rows[0]))+')',rows)
+        observation_inputs.copy(reference,db,backtest_control.checkpoint)
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
         for i,symbol in enumerate(symbols,1):
             payload=json.loads(market.cache_path_for(symbol).read_text())

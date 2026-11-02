@@ -29,8 +29,9 @@ Remaining old executable paths do not serve as library import aliases.
 
 ## Held custom-variable handoff
 
-Custom variables remain on hold. Their historical plan is unchanged. The actual
-owners to inspect when the feature resumes are:
+Phase 2 resumed on 2 November in `feature/custom-variables`. The dated structure
+refactor did not implement it. See the [current Phase 2 record](../custom-variables/phases/phase-02/README.md).
+The owners relevant to that feature are:
 
 - `backtest/financial/books.py` for dated entry observations without an exit.
   `backtest/inputs/` keeps complete saved responses and fiscal histories.

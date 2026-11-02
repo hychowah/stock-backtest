@@ -2,13 +2,13 @@
 
 Checked: 2026-11-02.
 
-This is the target input inventory for the held custom-variable plan. The user
+This is the target input inventory for the custom-variable plan. The user
 requested a broader list of valuation ingredients. Include an ingredient only
 when an existing FMP download route supplies it directly, or when an explicit
 calculation can use supplied inputs. Do not add speculative fields.
 
-The feature remains on hold. This record changes no runtime catalog, schema,
-formula, download control or implementation ownership. It allocates no new
+Phase 2 resumed on 2 November with the initial four observations only. This
+broader inventory changes no runtime catalog, schema, formula or download control. It allocates no new
 parameter IDs. Existing Phase 1 IDs and example meanings remain unchanged.
 
 ## Source check and its limits
@@ -216,11 +216,11 @@ These exclusions mean "not admitted by this check." They do not claim that FMP
 can never supply an item through another endpoint or company-specific filing.
 A later addition needs a separate verified source path and scope agreement.
 
-## Admission after resumption
+## Admission in later increments
 
-Keep the preliminary first provider limited to revenue, operating income,
-operating margin and EV. Recheck it against the finished engine and agree one
-owner before implementation. The broader inventory is a target for explicitly
+Keep the first provider limited to revenue, operating income, operating margin
+and EV. The current Phase 2 execution plan assigns that scope to
+`feature/custom-variables`. The broader inventory is a target for explicitly
 verified later increments, not a claim that Phase 2 already supports it.
 
 For each increment, map the chosen field to validation, prepared evidence,

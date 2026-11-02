@@ -22,13 +22,14 @@ from backtest import screening
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
+from backtest.inputs import observation_inputs
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.reference import revalue as revalue
 from backtest.inputs import baseline as baseline
 from backtest.paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -51,7 +52,7 @@ CREATE TABLE latest_snapshots (
  price_date TEXT, price REAL, market_cap REAL, enterprise_value REAL,
  ebitda_yield REAL, ev_ebitda REAL, spread REAL, PRIMARY KEY(pool,symbol));
 CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
-'''
+''' + observation_inputs.SCHEMA
 
 
 def _metadata_entries(directory, pattern):
@@ -90,7 +91,7 @@ def signature():
     """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
-    paths += [Path(financial_inputs.__file__)]
+    paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py')]
     entries = [(path, path.stat()) for path in paths]
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
     result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}
@@ -134,6 +135,12 @@ def prepared_price_binding(path=DATABASE):
             for name,stamp in inventory.items())):
         raise ValueError('Prepared price inventory is invalid. Run research.py prepare')
     return hashlib.sha256(json.dumps(inventory,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
+
+
+def prepared_observation_binding(path=DATABASE):
+    """Bind downstream storage to the accepted observation projection."""
+    with closing(connect(path)) as db:
+        return observation_inputs.require(db,verify_content=True)
 
 
 def connect(path=DATABASE, check=True, full_prices=False):
@@ -277,6 +284,21 @@ def prepare(path=DATABASE, force=False):
         treasury10_by_day={day:ten_year_yield(db,day) for day in {latest_day}|{p[0] for p in periods.values()}}
         db.executemany('INSERT INTO companies VALUES(?,?,?,?)',[(s,r.get('name') or 'Unavailable',r.get('exchange') or 'Unavailable',r.get('sector') or 'Unavailable') for s,r in universe.items()])
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
+        # Denials are first-class preparation facts. They cannot be mistaken for
+        # an old projection that never established latest-root admission.
+        latest_admission={}
+        for symbol,company in universe.items():
+            for pool in ('cached','legacy'):
+                statement=latest_statements[pool].get(symbol)
+                candidate=latest_ranks.get(symbol)
+                latest_admission[(symbol,pool)]=dict(root_date=str(latest_day),
+                    listed=company.get('listed') is True,candidate_rank=candidate,
+                    candidate=statement is not None and (pool!='legacy' or candidate is not None),
+                    admitted=False,reason='MISSING_PRICE' if statement is not None else 'NO_ELIGIBLE_REPORT',
+                    statement=None if statement is None else {key:str(value) if isinstance(value,date) else value for key,value in statement.items()},
+                    adjusted_price=None,fiscal_price=None,valuation_price=None,valuation=None)
+                if company.get('listed') is not True:
+                    latest_admission[(symbol,pool)]['reason']='NOT_LISTED'
         for year,(entry,end,spy_return,treasury) in periods.items():
             count=sum(rules.latest_statement(rs,entry) is not None for rs in broad.values())
             db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,str(entry),str(end),spy_return,treasury,len(legacy[year]),count))
@@ -324,10 +346,26 @@ def prepare(path=DATABASE, force=False):
                     if statement is None or (pool=='legacy' and candidate is None):
                         continue
                     row=latest_snapshot(statement,latest_day,light,div)
-                    if row is None or (pool=='legacy' and (row[4]<rules.MIN_MARKET_CAP or row[5]<rules.MIN_EV)):
+                    evidence=latest_admission[(symbol,pool)]
+                    adjusted=before(div,latest_day,0)
+                    fiscal_px=before(light or div,statement['fiscal'],7)
+                    current_px=before(light or div,latest_day,0)
+                    evidence.update(adjusted_price=None if adjusted is None else [str(adjusted[0]),adjusted[1]],
+                        fiscal_price=None if fiscal_px is None else [str(fiscal_px[0]),fiscal_px[1]],
+                        valuation_price=None if current_px is None else [str(current_px[0]),current_px[1]])
+                    if row is None:
+                        if adjusted is not None and fiscal_px is not None and current_px is not None:
+                            evidence['reason']='NONPOSITIVE_VALUATION'
                         continue
+                    evidence['valuation']=dict(market_cap=row[4],enterprise_value=row[5],
+                        ebitda=statement['yield']*statement['enterprise'])
+                    if pool=='legacy' and (row[4]<rules.MIN_MARKET_CAP or row[5]<rules.MIN_EV):
+                        evidence['reason']='POOL_INELIGIBLE';continue
+                    evidence.update(admitted=True,reason=None)
                     db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
-            financial_history=financial_inputs.history(RAW,symbol)
+            resolved=financial_inputs.resolve_history(RAW,symbol)
+            financial_history=resolved['values']
+            observation_inputs.store_annual(db,symbol,resolved)
             db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in financial_history.items()])
             history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
             def lookup(day,column,forward,slack):
@@ -343,6 +381,11 @@ def prepare(path=DATABASE, force=False):
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
                 print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} January snapshots',flush=True)
+        for symbol in sorted(set(broad)-set(cached_symbols)):
+            observation_inputs.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
+        for (symbol,pool),evidence in latest_admission.items():
+            observation_inputs.store_latest(db,symbol,pool,evidence)
+        observation_inputs.finish(db,latest_day)
         prepare_metrics(db)
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
