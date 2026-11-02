@@ -2,7 +2,8 @@
 
 Preparation owns these facts. A read view borrows an admitted attachment and
 expires with it; detached company records retain no database or array handles.
-This module chooses no financial report and evaluates no variable or formula.
+Root admission delegates to the existing financial policy. Formula and temporal
+observation semantics belong to the provider, not to this storage boundary.
 """
 from datetime import date
 import hashlib
@@ -123,17 +124,130 @@ class ReadView:
     consumers cannot replace a missing field by choosing another report.
     """
     def __init__(self, identity, db, validate, reports, lookup, *, expected,
-                 max_history, max_record_bytes):
+                 max_history, max_record_bytes, bounds=None, populations=None,
+                 cached=None, session=None):
         self.identity = identity
         self._db, self._validate, self._reports, self._lookup = db, validate, reports, lookup
         self._expected = json.loads(encoded(expected))
         self.max_history, self.max_record_bytes = max_history, max_record_bytes
+        self._bounds = bounds
+        self._populations, self._cached, self._session = populations, cached, session
         self.closed = False
         self.validate()
 
     @property
     def projection(self):
         return json.loads(encoded(self._expected))
+
+    @property
+    def bounds(self):
+        """Detached preflight counts; these reveal no financial observations."""
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        if self._bounds is None:
+            raise ValueError('Generation has no observation admission capability.')
+        return json.loads(encoded(self._bounds))
+
+    def admit(self, roots, budget, checkpoint=lambda: None):
+        """Admit roots against the complete original-order population.
+
+        The legacy buffer precedes cached-price membership. Requested subsets
+        never form their own buffer. Earlier observation contexts reuse these
+        detached decisions; they establish no new root or listing history.
+        """
+        self.validate()
+        bounds = self.bounds
+        dates = {root['date'] for root in roots if root['mode'] == 'historical'}
+        cost = len(dates) * 2 * (bounds['report_rows'] + bounds['population'])
+        if not isinstance(budget, dict) or budget.get('rows', -1) < cost:
+            raise ValueError('Observation admission exceeds its inspected-row bound.')
+        for root in roots:
+            day = date.fromisoformat(root['date'])
+            if root['mode'] == 'historical':
+                if (not isinstance(bounds['historical_through'], str)
+                        or day.year < rules.FIRST_YEAR or str(day) > bounds['historical_through']
+                        or not self._session(day)):
+                    raise ValueError('Historical observation root is outside saved screen dates.')
+            elif root['mode'] != 'latest' or root['date'] != bounds['latest_date']:
+                raise ValueError('Latest observation root does not match prepared admission.')
+        by_day = {}
+        for text in sorted(dates):
+            checkpoint()
+            by_day[text] = books.candidates(self._populations(checkpoint), date.fromisoformat(text))
+        decisions, size = [], 0
+        for root in roots:
+            checkpoint()
+            decision = dict(root=root['id'], symbol=root['symbol'], pool=root['pool'],
+                            mode=root['mode'], date=root['date'], admitted=False,
+                            reason=None, candidate_rank=None, statement=None, valuation=None)
+            symbol, pool = root['symbol'], root['pool']
+            if root['mode'] == 'latest':
+                row = self._db.execute('SELECT evidence_json FROM observation_latest WHERE symbol=? AND pool=?',
+                                       (symbol, pool)).fetchone()
+                if row is None:
+                    if self._db.execute('SELECT 1 FROM companies WHERE symbol=?', (symbol,)).fetchone():
+                        raise ValueError('Prepared latest-root admission is missing.')
+                    decision['reason'] = 'UNKNOWN_COMPANY'
+                else:
+                    evidence = self._json(row[0])
+                    if evidence.get('root_date') != root['date']:
+                        raise ValueError('Prepared latest-root admission is incompatible.')
+                    decision.update(admitted=bool(evidence['admitted']), reason=evidence.get('reason'),
+                                    candidate_rank=evidence.get('candidate_rank'),
+                                    statement=evidence.get('statement'), valuation=evidence.get('valuation'),
+                                    admission_evidence=evidence)
+            else:
+                selected, ranks = by_day[root['date']]
+                statement = selected[pool].get(symbol)
+                rank = ranks.get(symbol)
+                decision['candidate_rank'] = rank
+                decision['statement'] = self._statement(statement) if statement is not None else None
+                if statement is None:
+                    decision['reason'] = 'NO_ELIGIBLE_REPORT'
+                elif pool == 'legacy' and rank is None:
+                    decision['reason'] = 'OUTSIDE_LEGACY_BUFFER'
+                elif not self._cached(symbol):
+                    decision['reason'] = 'MISSING_CACHED_PRICES'
+                else:
+                    valuation, evidence = self.entry(symbol, statement, date.fromisoformat(root['date']))
+                    decision['admission_evidence'] = evidence
+                    if valuation is None:
+                        decision['reason'] = evidence['reason']
+                    elif not books.eligible(pool, valuation['market_cap'], valuation['enterprise_value']):
+                        decision['reason'] = 'INELIGIBLE_VALUATION'
+                    else:
+                        decision.update(admitted=True, valuation=valuation)
+            size += len(encoded(decision).encode('utf-8'))
+            if size > budget.get('bytes', -1):
+                raise ValueError('Observation admission exceeds its byte bound.')
+            decisions.append(decision)
+        self.validate()
+        return decisions
+
+    @staticmethod
+    def _statement(statement):
+        return {key: str(value) if isinstance(value, date) else value for key, value in statement.items()}
+
+    def entry(self, symbol, statement, day):
+        """Observe authoritative entry valuation and its actual lookup evidence."""
+        calls = []
+        def lookup(when, column, forward, slack):
+            result = self.lookup(symbol, when, column, forward, slack)
+            calls.append(dict(requested_date=str(when), column=column, forward=forward, slack=slack,
+                              observation=[str(result[0]), result[1]] if result else None))
+            return result
+        value = books.entry_valuation(statement, day, lookup)
+        evidence = dict(lookup_policy='existing-entry-valuation', lookups=calls,
+                        statement=self._statement(statement),
+                        reason=None if value else ('MISSING_PRICE' if any(c['observation'] is None for c in calls)
+                                                  else 'NONPOSITIVE_VALUATION'))
+        if value is None:
+            return None, evidence
+        fiscal, entry, cap, ev, ebitda = value
+        if not all(math.isfinite(number) for number in (cap, ev, ebitda)):
+            return None, dict(evidence, reason='NONFINITE_RESULT')
+        return dict(market_cap=cap, enterprise_value=ev, ebitda=ebitda,
+                    fiscal_price=[str(fiscal[0]), fiscal[1]], valuation_price=[str(entry[0]), entry[1]]), evidence
 
     def validate(self):
         if self.closed:
@@ -146,7 +260,7 @@ class ReadView:
             raise ValueError('Prepared observation record exceeds its byte bound.')
         return json.loads(text)
 
-    def company(self, symbol, pool):
+    def company(self, symbol, pool, *, budget=None, checkpoint=lambda: None):
         if self.closed:
             raise ValueError('Observation input view is closed.')
         if pool not in ('cached', 'legacy') or not isinstance(symbol, str):
@@ -154,6 +268,16 @@ class ReadView:
         reports = self._reports(symbol, pool)
         if len(reports) > self.max_history:
             raise ValueError('Prepared observation history exceeds its bound.')
+        size = len(encoded(reports).encode('utf-8'))
+        def decode(text):
+            nonlocal size
+            checkpoint()
+            size += len(text.encode('utf-8'))
+            if budget is not None and size > budget['bytes']:
+                raise ValueError('Observation company facts exceed their byte bound.')
+            return self._json(text)
+        if budget is not None and size > budget['bytes']:
+            raise ValueError('Observation company facts exceed their byte bound.')
         annual = {}
         cursor = self._db.execute('SELECT fiscal,evidence_json FROM observation_annual '
                                  'WHERE symbol=? AND endpoint=? ORDER BY fiscal LIMIT ?',
@@ -161,13 +285,13 @@ class ReadView:
         for fiscal, evidence in cursor:
             if len(annual) == self.max_history:
                 raise ValueError('Prepared observation history exceeds its bound.')
-            annual[fiscal] = self._json(evidence)
-        sources = {row[0]: self._json(row[1]) for row in self._db.execute(
+            annual[fiscal] = decode(evidence)
+        sources = {row[0]: decode(row[1]) for row in self._db.execute(
             'SELECT endpoint,evidence_json FROM observation_sources WHERE symbol=? ORDER BY endpoint', (symbol,))}
         latest = self._db.execute('SELECT evidence_json FROM observation_latest WHERE symbol=? AND pool=?',
                                   (symbol, pool)).fetchone()
         return dict(symbol=symbol, pool=pool, reports=reports, annual=annual, sources=sources,
-                    latest=self._json(latest[0]) if latest else None)
+                    latest=decode(latest[0]) if latest else None)
 
     def lookup(self, symbol, day, column, forward=False, slack=None):
         if self.closed:
@@ -184,6 +308,7 @@ class ReadView:
     def close(self):
         self.closed = True
         self._db = self._reports = self._lookup = self._validate = None
+        self._populations = self._cached = self._session = None
 
     def __enter__(self):
         return self

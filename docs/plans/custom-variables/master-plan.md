@@ -6,10 +6,11 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status: **Phase 2 resumed by the user on 2026-11-02 on `feature/custom-variables`.**
-Phase 1 contract documentation is complete. Phase 2's first slice adds trusted
-prepared inputs; the point-in-time provider remains the second slice. Phase 2
-is incomplete. Phases 3–7 remain on hold, including the editor and library.
+Status: **Phase 2 complete in source on 2026-11-02 on `feature/custom-variables`.**
+Phase 1 contract documentation is complete. Phase 2 delivers trusted prepared
+inputs and the initial point-in-time provider. Its verification and independent
+audits are recorded in the [phase record](phases/phase-02/README.md).
+Phases 3–7 remain on hold, including the editor and library.
 The [current execution plan](phases/phase-02/execution-plan-2026-11-02.md) records
 two substantial slices. The [Slice 1 handoff](phases/phase-02/slice-01.md) records
 the implemented boundary and checks. Dated engine inspections below remain
@@ -41,9 +42,9 @@ that worktree. It identifies reusable implementation, later contract changes and
 existing main integration obligations. It adds no engine task or readiness gate.
 Preparing a main-side record does not notify a separate engine session.
 
-The website keeps its existing built-in metrics and filters. Phase 2 Slice 1
-adds prepared evidence and an admitted read view. It enables no custom strategy
-or formula runtime behavior.
+The website keeps its existing built-in metrics and filters. Phase 2 adds
+prepared evidence, admitted roots and four dated parameter observations. It
+enables no custom strategy or formula runtime behavior.
 
 Phase 1 rechecked engine HEAD `a8cbb69` and its active working tree. Persistent
 isolated preview integration is present. CB-13 is recorded complete. CB-14
@@ -261,7 +262,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | Phase | Abstraction delivered | Completion evidence and handoff |
 |---|---|---|
 | **1. Variable contract and ownership** | Contract documentation delivered | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), historical [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Current Phase 2 ownership is assigned above. |
-| **2. Parameter and history provider** | **In progress; incomplete.** Trusted prepared inputs implemented | [Current execution plan](phases/phase-02/execution-plan-2026-11-02.md) and [Slice 1 handoff](phases/phase-02/slice-01.md). The second slice delivers the provider for revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Native verification, independent audit and both audited commits remain completion gates. |
+| **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
 | **3. Formula evaluator** | **On hold; not started.** Validation, expression evaluation, dependency resolution, and explanation | Reference tests cover arithmetic, units, nested expressions, saved dependencies, invalid denominators, cycles, and bounded work. Cache identities include definitions, policy, and input generation. |
 | **4. General scalar selection** | **On hold; not started.** Ranking/filtering over the same variable values, plus legacy request adapters | Preserve baseline selections and returns. Verify both pools, both selection orders, both directions, ties, signed values, and empty periods. Legacy and browser parity remain explicit acceptance gates. |
 | **5. Durable variable library** | **On hold; not started.** Immutable revisions, favourites, and resolved formula bundles | Verify concurrent edits, restart persistence, deletion independence, and queue/result reopening after a variable changes. Preserve existing durable library and queue files. |
@@ -285,7 +286,7 @@ Quarterly/TTM support is a later extension of the history provider. It requires 
 | How will the numerical engine expose variable requirements? | Review the proposed scalar contract against its current policy, factor, generation, and workspace interfaces before either branch implements it. |
 | Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
 
-Phase 2 is active under the scoped 2 November authorization. Its first slice
-changes source and synthetic fixtures. It does not change installed runtime
-data or portable snapshots. Phase 2 remains incomplete until the provider,
-verification and both independent smart-commit passes are complete.
+Phase 2 completes under the scoped 2 November authorization in this second
+audited implementation commit. Both slices change source and synthetic fixtures.
+They do not change installed runtime data or portable snapshots. The current
+phase record contains required verification and independent audit outcomes.

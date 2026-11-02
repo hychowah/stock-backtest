@@ -7,7 +7,9 @@ requested a broader list of valuation ingredients. Include an ingredient only
 when an existing FMP download route supplies it directly, or when an explicit
 calculation can use supplied inputs. Do not add speculative fields.
 
-Phase 2 resumed on 2 November with the initial four observations only. This
+Phase 2 resumed on 2 November with the initial four observations only. The initial
+provider is now implemented; its [phase record](phases/phase-02/README.md) tracks
+verification and audited completion. This
 broader inventory changes no runtime catalog, schema, formula or download control. It allocates no new
 parameter IDs. Existing Phase 1 IDs and example meanings remain unchanged.
 

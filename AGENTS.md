@@ -15,8 +15,10 @@ The user resumed custom-variable Phase 2 on 2 November 2026 in the linked
 `feature/custom-variables` worktree. That branch owns the narrow annual-evidence,
 prepared-admission, generation and observation-provider changes in the
 [current execution plan](docs/plans/custom-variables/phases/phase-02/execution-plan-2026-11-02.md).
-Phase 1 remains documentation only. Phase 2 is incomplete; its first slice adds
-trusted prepared inputs. Phases 3–7 remain on hold. Follow the
+Phase 1 remains documentation only. Phase 2 is complete in source, with trusted
+prepared inputs and the initial four-parameter provider. Its audited record is in
+the [phase record](docs/plans/custom-variables/phases/phase-02/README.md).
+Phases 3–7 remain on hold. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.

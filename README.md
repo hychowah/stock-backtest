@@ -102,8 +102,11 @@ decisions that need the user's judgment.
 The user resumed [custom-variable Phase 2](docs/plans/custom-variables/master-plan.md#hold-and-resume)
 on 2 November 2026 on `feature/custom-variables`. Its first slice adds trusted
 annual evidence and latest admission to prepared inputs and immutable generations.
-The point-in-time provider is the second slice; Phase 2 remains incomplete.
-Phases 3–7 remain on hold. The website continues using its existing built-ins.
+The second slice adds the bounded point-in-time provider for revenue, operating
+income, operating margin and enterprise value. See the
+[phase record](docs/plans/custom-variables/phases/phase-02/README.md) for its
+verification and final audited completion. Phases 3–7 remain on hold. The website
+continues using its existing built-ins.
 
 
 ## Run from the saved data

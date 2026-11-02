@@ -497,8 +497,43 @@ class AttachedInputs:
                 return None
             return actual, float(values[index])
 
+        class Population(Mapping):
+            # This order is the original first-report occurrence, including
+            # uncached symbols. Filtering it to requested companies would alter
+            # tied ranks and the legacy buffer before prices are considered.
+            def __init__(population, pool, checkpoint):
+                population.pool, population.checkpoint = pool, checkpoint
+            def __iter__(population):
+                for sid, symbol in enumerate(self.symbols):
+                    population.checkpoint()
+                    first, last = self.pool_offsets[population.pool][sid:sid+2]
+                    if last > first:
+                        yield symbol
+            def __len__(population):
+                return sum(1 for _ in population)
+            def __getitem__(population, symbol):
+                population.checkpoint()
+                rows = reports(symbol, population.pool)
+                if not rows:
+                    raise KeyError(symbol)
+                for row in rows:
+                    population.checkpoint()
+                    row['fiscal'], row['known'] = map(date.fromisoformat, (row['fiscal'], row['known']))
+                return rows
+
+        def maximum(table):
+            return self._db.execute('SELECT coalesce(max(n),0) FROM '
+                '(SELECT count(*) n FROM '+table+' GROUP BY symbol)').fetchone()[0]
+
+        bounds = dict(historical_through=self._binding.get('daily', {}).get('inputs', {}).get('historical_through'),
+                      latest_date=expected['latest_date'], population=len(self.symbols),
+                      report_rows=len(self.report_fiscal), max_reports=maximum('reports'),
+                      max_annual=maximum('observation_annual'))
+
         return observation_inputs.ReadView(self.signature, self._db, self.validate, reports, lookup,
-            expected=expected, max_history=MAX_HISTORY, max_record_bytes=MAX_MANIFEST)
+            expected=expected, max_history=MAX_HISTORY, max_record_bytes=MAX_MANIFEST,
+            bounds=bounds, populations=lambda checkpoint: (Population('cached', checkpoint), Population('legacy', checkpoint)),
+            cached=lambda symbol: symbol in self.cached, session=lambda day: str(day) in self.sessions)
 
     def close(self):
         if self.closed: return

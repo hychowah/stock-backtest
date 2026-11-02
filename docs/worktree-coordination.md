@@ -411,6 +411,14 @@ smart-commit for each of two substantial slices. Existing entry valuation and
 its numerical source adapter are reused. Financial rules, ranking pairs,
 selection defaults, saved evidence and ownership ordering remain unchanged.
 
+Slice 1 is committed as `cc60a0c`. Slice 2 adds the four-parameter provider and
+source-owned historical root admission. It uses the complete immutable
+population before cached membership. The user also permits implementation-plan
+adjustments while preserving the core function. The current slice record
+explains the bounded company-read adjustment and its tests. This second audited
+implementation commit completes Phase 2 in source. The current phase record
+contains its verification and independent audit outcomes.
+
 Phases 3–7 remain held. No branch integration, publication, restart, download,
 installed-cache preparation or durable-store mutation is authorized. Preserve
 main and engine worktree files and indexes. This branch is not a deployment

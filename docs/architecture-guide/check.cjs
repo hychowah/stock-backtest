@@ -137,3 +137,6 @@ assert(html.includes('Final-source normal application qualification checked 1 No
 assert(html.includes('backtest/application/result_access.py') && html.includes('One browser scope') && html.includes('lost response releases the requested reader identity') && html.includes('drains result readers'), 'Explain application result ownership and acquisition/shutdown lifetimes');
 
 assert(html.includes("website/rendering/data.py") && html.includes("website/server/results.py") && html.includes("tools/ops/") && html.includes("tools/experiments/"), "Explain grouped website and operational source owners");
+
+assert(html.includes("backtest/observations.py") && html.includes("legacy top-250 buffer is formed before checking cached prices") && html.includes("Older annual history members do not inherit that age limit.") && html.includes("It calculates no average or formula.") && html.includes("Returned evidence remains readable after closure."), "Explain bounded admitted observations, temporal history, canonical values and detached evidence");
+assert(html.includes('Its second slice adds the four-parameter point-in-time provider in source.') && !html.includes('The point-in-time provider is still pending.'), 'Keep provider source status consistent throughout the guide');
