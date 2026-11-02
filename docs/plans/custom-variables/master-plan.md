@@ -19,19 +19,27 @@ follow-up are fixed. Final checks pass 536 WSL tests, 446 private native tests
 and 18 source-bound browser checks. Actual UI, guide and complete export reviews
 pass. The [current record](phases/phase-06/slice-03.md) retains exact source
 bindings, cleanup and superseded attempts.
-Phase 7 stays held.
+Phase 7 is authorized from `5cded92` on this feature branch. Its
+[current execution plan](phases/phase-07/execution-plan-2026-11-02.md) records three
+slices. [Slice 1](phases/phase-07/slice-01.md) completes bounded compiled evaluation
+after independent audit and final source-bound checks. Candidate integration and
+application qualification remain outstanding. Public numerical scalar admission
+stays closed.
 Original remains default. No download, deployment, integration into main or
 default change is authorized.
 
 ## Hold and resume
 
-The latest 2 November instruction authorizes Phase 6 application/UI/persistence
-integration on this feature branch. It supersedes the editor/integration hold
-below, while Phase 7 numerical execution remains held. The completed Phase 5
-library and atomic capture remain their existing owners. The
-[current record](phases/phase-06/README.md) and
-[compatibility reconciliation](phases/phase-06/compatibility.md) describe current
-source. Phase 1 application payloads remain illustrative proposals.
+The latest 2 November instruction authorizes Phase 7 numerical backend
+implementation and qualification on this feature branch. It supersedes the
+numerical hold below. Phase 6 remains complete. The
+[current Phase 7 record](phases/phase-07/README.md) and
+[compatibility reconciliation](phases/phase-07/compatibility.md) describe the
+active work. Three substantial slices receive independent design, implementation
+and smart-commit audits. Later designs use preceding committed source. Public
+experimental scalar admission remains closed in the first two slices. Original
+remains default, with no cutover authorized. Phase 1 payloads remain illustrative.
+The following Phase 6 and earlier records retain their dated meaning.
 
 Slice 1 adds complete immutable scalar strategy intent and library-free unsaved
 captures. It allocates no application result integer and changes no ordinary
@@ -291,9 +299,9 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
 | **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
 | **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), [Slice 3](phases/phase-06/slice-03.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md), [compatibility](phases/phase-06/compatibility.md) and [held Phase 7 handoff](phases/phase-06/handoffs/phase-07.md). |
-| **7. Numerical backend qualification** | **On hold; not started.** Compiled execution behind the same variable contract | Compare values, validity, selected rows, ranks, returns, and artifacts against the reference. Measure realistic repeated formulas, long windows, random schedules, memory, and cancellation on WSL and native Windows. |
+| **7. Numerical backend qualification** | **Authorized; in progress from `5cded92`.** Bounded compiled evaluation, candidate-owned execution, then qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
 
-Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phase 6 application/UI work is authorized above. Phase 7 remains held. Unrelated website and engine development can continue under the existing worktree boundaries.
+Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phase 6 is complete. Phase 7 is authorized above. Unrelated website and engine development can continue under the existing worktree boundaries.
 
 Do not build automatic strategy search, arbitrary user code, cross-sectional ranking inside formulas, or silent missing-value substitution in the first release. These add separate semantics beyond the requested formula system.
 
@@ -319,5 +327,4 @@ Phase 3 source now consumes four supported observations through an immutable
 validated program and a bounded reference evaluator. It changes no financial,
 prepared-input, selection, application or numerical-engine contract. Current
 verification and independent audit evidence live in its phase record. Phase 4 is
-complete, as are Phases 5 and 6. Phase 7 remains
-held. Source completion authorizes no runtime publication or integration into main.
+complete, as are Phases 5 and 6. Phase 7 is now authorized as described above. Source completion authorizes no runtime publication or integration into main.

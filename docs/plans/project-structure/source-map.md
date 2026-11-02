@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 6 Slice 3. This map describes source after the structure refactor.
+Updated for Phase 7 Slice 1. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -60,7 +60,7 @@ Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/pha
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL
 access or financial reconstruction. The definition owner also binds its loaded
-source policy. Phases 4–5 are complete. Phase 6 resumes from `f877c0c`; Phase 7 remains held.
+source policy. Phases 4–5 are complete. Phase 6 resumes from `f877c0c`; Phase 7 is authorized; public numerical scalar admission remains closed.
 The evaluator consumes the implemented observation interface. Reconcile
 future scalar selection, editor and artifact contracts against this source. This map allocates no schema, format
 version, formula language or implementation phase.
@@ -94,7 +94,7 @@ restore uses no current library or display catalog. Admission checks capability
 separately. `library.capture_submitted()` reuses the existing envelope policy
 without opening a durable file. Slice 1 changed no ordinary route, job/queue or
 result format. Slice 2 adds the execution/evidence integration described below.
-Slice 3 supplies the shared editor described below. Numerical formulas stay held in Phase 7. See the
+Slice 3 supplies the shared editor described below. Phase 7 adds callable compiled evaluation; public numerical scalar admission remains closed. See the
 [Phase 6 execution plan](../custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
 
 
@@ -118,9 +118,20 @@ owns held sessions, revision-fenced patches and asynchronous submission capture.
 `evidence-results.js` presents bounded retained results for all modes;
 `variable-evidence.js` explains captured values, dates, reasons and operation traces
 without calculating or reading a current library/catalog. Numerical formula
-execution remains held in Phase 7.
+application admission remains closed during Phase 7 qualification.
 
 The workspace shares opaque authored/label packing with StrategyDraft. The
 language owner supplies exact editable projections. Both authoring paths send
 each exact dependency once through the existing submitted/labels contract.
 Checked immutable restoration stays separate from deliberate editing.
+
+
+Phase 7 is authorized from `5cded92` on `feature/custom-variables`. Shared
+`backtest/variables/evaluation.py` owns checked task/context planning, provider
+observation, bounds and detached evidence lifecycle. `reference.py` retains
+independent Python arithmetic. `backtest/engines/numerical/formulas.py` owns
+bounded typed lowering and independent Numba arithmetic. Both use the existing
+checked program and provider; neither changes financial decisions. Public
+experimental scalar admission stays closed in Slice 1. The
+[current execution plan](../custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
+supersedes dated Phase 7 hold statements above. Original remains default.

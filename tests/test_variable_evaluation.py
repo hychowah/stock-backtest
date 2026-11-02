@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from backtest import observations
-from backtest.variables import definitions as d, reference as r
+from backtest.variables import definitions as d, reference as r, evaluation as e
 import test_observations as fixtures
 import test_variable_definitions as language
 
@@ -346,15 +346,15 @@ class EvaluationTests(unittest.TestCase):
         with patch.object(observations, 'observe', side_effect=AssertionError('Input access')):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 r.evaluate(plan, view, cancel)
-        original_encode = r._encode
+        original_encode = e._encode
         def cancel_final(value, maximum, checkpoint=lambda: None):
             if isinstance(value, dict) and value.get('format') == 'formula-evaluation' and value['operations']:
                 return original_encode(value, maximum, cancel)
             return original_encode(value, maximum, checkpoint)
-        with patch.object(r, '_encode', side_effect=cancel_final):
+        with patch.object(e, '_encode', side_effect=cancel_final):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 r.evaluate(plan, view)
-        original_operation, in_operation = r._operation, False
+        original_operation, in_operation = e._operation, False
         def operation(*args, **kwargs):
             nonlocal in_operation
             if isinstance(kwargs.get('value'), float):
@@ -363,7 +363,7 @@ class EvaluationTests(unittest.TestCase):
         def during_operation():
             if in_operation:
                 cancel()
-        with patch.object(r, '_operation', side_effect=operation):
+        with patch.object(e, '_operation', side_effect=operation):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 r.evaluate(plan, view, during_operation)
 
@@ -385,18 +385,18 @@ class EvaluationTests(unittest.TestCase):
             r.evaluate(plan, view)
 
     def test_staleness_introduced_during_final_encoding_is_rechecked(self):
-        original_encode = r._encode
+        original_encode = e._encode
         def changed(value, maximum, checkpoint=lambda: None):
             text = original_encode(value, maximum, checkpoint)
             if isinstance(value, dict) and value.get('format') == 'formula-evaluation' and value['operations']:
                 self.fixture.stale = True
             return text
-        with patch.object(r, '_encode', side_effect=changed):
+        with patch.object(e, '_encode', side_effect=changed):
             with self.assertRaisesRegex(ValueError, 'stale'):
                 self.run_formula()
 
     def test_loaded_definition_reference_and_provider_policies_are_bound(self):
-        for owner, field in ((d, '_LOADED_POLICY'), (r, '_LOADED_REFERENCE'), (observations, '_LOADED_POLICY')):
+        for owner, field in ((d, '_LOADED_POLICY'), (r, '_LOADED_REFERENCE'), (e, '_LOADED_EVALUATION'), (observations, '_LOADED_POLICY')):
             with self.subTest(field=field), patch.object(owner, field, 'changed'):
                 with self.assertRaises((d.FormulaError, observations.ObservationError)):
                     self.run_formula()
@@ -413,13 +413,13 @@ class EvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             private = Path(folder) / 'reference.py'
             private.write_bytes(Path(r.__file__).read_bytes())
-            original_encode = r._encode
+            original_encode = e._encode
             def changed(value, maximum, checkpoint=lambda: None):
                 text = original_encode(value, maximum, checkpoint)
                 if isinstance(value, dict) and value.get('format') == 'formula-evaluation' and value['operations']:
                     private.write_bytes(private.read_bytes() + b'\n# private source changed\n')
                 return text
-            with patch.object(r, '__file__', str(private)), patch.object(r, '_encode', side_effect=changed):
+            with patch.object(r, '__file__', str(private)), patch.object(e, '_encode', side_effect=changed):
                 self.error('STALE_INPUT_GENERATION', self.run_formula)
 
 

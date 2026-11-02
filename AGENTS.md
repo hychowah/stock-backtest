@@ -48,7 +48,11 @@ evidence. Slice 3 adds the shared editor/picker, StrategyDraft capture and detac
 result presentation against audited `9978ea7`. Phase 6 is complete in source.
 All six audit findings, including shared-dependency transport, are fixed. Its
 current slice record retains final verification, cleanup and superseded attempts.
-Phase 7 remains held. Follow the
+Phase 7 resumes from `5cded92` under the user's 2 November authorization. Its
+[execution plan](docs/plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
+owns bounded compiled formula evaluation, candidate integration and qualification.
+Slice 1 keeps public numerical scalar admission closed. Original remains default.
+Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.
@@ -626,3 +630,24 @@ transfers a reader to the view. Preserve StrategyDraft restoration and its held
 queue-edit refusal. Shutdown closes queue, calculation, job and reader admission;
 then joins the queue, drains readers, closes jobs, joins HTTP requests and retires
 the calculation child before bootstrap source ownership ends.
+
+
+## Custom-variable Phase 7 resumption — 2 November 2026
+
+The user authorizes implementation and independently audited commits from
+`5cded9208447c6a6e4a9f61d94cdc0fee598448a` on `feature/custom-variables`. The
+[current execution plan](docs/plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
+assigns this branch narrow numerical formula implementation and integration.
+Slice 1 moves shared evaluator mechanics behind the existing public reference
+interface and adds independent bounded Numba arithmetic. Public experimental
+scalar guards remain closed. Later slices require fresh independent designs
+against preceding committed source. Earlier Phase 7 hold statements are dated
+history, superseded by this authorization.
+
+Keep the four-parameter provider, financial rules, source/input freshness,
+cancellation, worker/writer ownership, attachment lifetime and resource limits.
+Preserve existing captured requests, queue records, artifacts and durable stores.
+Original stays default. Main and the engine worktree remain untouched. No merge,
+push, deployment, restart, download or live-runtime/cache/durable-store mutation
+is authorized. Private synthetic WSL/browser/native fixtures only. Native-cache
+coverage remains unknown.

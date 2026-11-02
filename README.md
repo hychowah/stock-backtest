@@ -107,11 +107,14 @@ durable variable library, exact revision resolution and atomic detached capture.
 Both source slices are complete under the user's 2 November authorization.
 Their independent audits and final WSL/private native checks are recorded in
 the phase record. [Phase 6](docs/plans/custom-variables/phases/phase-06/README.md)
-is now authorized. Its first slice adds callable captured strategy intent and
-library-free unsaved captures. Slice 2 implements bounded Original execution,
-explicit previews and immutable artifact-4 scalar results in source, pending
-its independent audit. The shared editor and picker remain Slice 3. Phase 7
-stays held. Ordinary website controls continue using their existing built-ins.
+is complete in source after three independently audited slices. It adds complete
+captured strategy intent, bounded Original execution, explicit previews,
+immutable artifact-4 scalar results and the shared variable workspace.
+[Phase 7](docs/plans/custom-variables/phases/phase-07/README.md) is authorized.
+Slice 1 completes callable compiled evaluation after independent audit and final
+source-bound checks. Candidate integration and qualification remain outstanding.
+Public numerical formula admission remains closed.
+Original remains default. Standalone built-in controls keep their behavior.
 
 
 ## Run from the saved data

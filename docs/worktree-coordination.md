@@ -570,3 +570,27 @@ not rewritten. Phase 7 numerical formula execution remains held. Main, the engin
 worktree and installed runtime/cache are untouched. This source completion grants
 no merge, push, deployment, restart, download or live durable-store mutation.
 Native-cache coverage remains unknown.
+
+
+## Custom-variable Phase 7 resumption — 2 November 2026
+
+The user assigns `feature/custom-variables` narrow Phase 7 implementation and
+integration from `5cded92`. The engine worktree is read-only and clean at
+`8850e77`; its older scripts layout is not copied. Current feature packages,
+CB-19 execution and Phase 2 observation contracts govern implementation.
+The [execution plan](plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
+records three independently designed, implemented and audited slices.
+
+Slice 1 owns shared evaluator planning/evidence, independent reference arithmetic
+and bounded Numba formula arithmetic. Its narrow overlaps are the existing
+reference public interface and compiler-environment identity. Variable selection,
+scalar application execution/preview and numerical sessions/workers are the
+affected callers. Financial/provider, prepared-schema, application routing,
+worker/lock/attachment, durable-format and default contracts stay fixed. Both
+public numerical scalar guards remain closed until later qualification. Later
+slices need fresh designs against committed source before protected edits.
+
+This dated assignment supersedes the Phase 7 hold on this branch. Original stays
+default. Main, the engine worktree and installed runtime/cache/stores remain
+untouched. Private synthetic verification grants no merge, push, publication,
+restart, download or live durable mutation. Native-cache coverage is unknown.
