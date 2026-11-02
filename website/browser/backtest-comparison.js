@@ -17,6 +17,11 @@ const BacktestComparison=(()=>{
     // change meaning. Keep strict operators and exact recorded numeric values.
     return [...new Map((value||[]).map(condition=>[stable(condition),condition])).entries()].sort(([a],[b])=>a.localeCompare(b)).map(([,condition])=>condition);
   }
+  function scalarRows(capture){
+    const s=capture.selection,labels=new Map((capture.variables?.presentation||[]).map(item=>[item.variable_id+'@'+item.revision,item.name]));
+    const source=value=>value.kind==='builtin'?(capture.builtins.find(item=>item.id===value.id)?.label||value.id)+' ('+value.id+')':(labels.get(value.variable_id+'@'+value.revision)||value.variable_id)+' @ '+value.revision;
+    return [entry('strategy','Captured ranking',s.ranking,source(s.ranking.source)),entry('direction','Ranking direction',s.ranking.direction),entry('rank_from','First rank',s.rank_from),entry('rank_to','Last rank',s.rank_to),entry('selection_order','Selection order',s.selection_order),entry('pool','Stock pool',capture.pool),...Object.entries(capture.bounds).map(([key,value])=>entry('bound.'+key,names[key]||key,value)),...s.conditions.map((condition,index)=>entry('condition.'+index,'Variable condition '+(index+1),condition,source(condition.source)+' '+(condition.op==='lt'?'<':'>')+' '+condition.submitted_threshold.value+' '+condition.submitted_threshold.unit+' (canonical '+condition.threshold.value+' '+condition.threshold.unit+')'))];
+  }
   function describe(artifact){
     if(!artifact||![1,2,3,4].includes(artifact.version)||!labels[artifact.kind]||!artifact.settings||!artifact.result)throw Error('This saved test cannot be compared. Its record was kept.');
     const kind=artifact.kind,s=artifact.settings,r=artifact.result,catalog=artifact.catalog||{},parameters=[],performance=[],handled=new Set(['mode']);
@@ -39,7 +44,7 @@ const BacktestComparison=(()=>{
     }
     if(s.strategy){
       handled.add('strategy');const c=s.strategy;
-      add('strategy','Captured scalar strategy',c,stable(c));
+      parameters.push(...scalarRows(c));
     }
     for(const [key,fallback] of Object.entries(s.strategy?{}:defaults)){
       handled.add(key);const value=own(s,key)?s[key]:fallback;
@@ -109,6 +114,6 @@ const BacktestComparison=(()=>{
     if(stable(left.observationWindow)!==stable(right.observationWindow))notices.push('These tests use different recorded observation windows.');
     return {parameters:align(left.parameters,right.parameters),performance:align(left.performance,right.performance),notices};
   }
-  return {describe,compare};
+  return {describe,compare,scalarRows};
 })();
 if(typeof module!=='undefined')module.exports=BacktestComparison;

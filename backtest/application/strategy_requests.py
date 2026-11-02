@@ -342,12 +342,56 @@ def require_strategy(capture, *, checkpoint=backtest_control.checkpoint):
     return rebuilt
 
 
+def from_wire(value, *, checkpoint=backtest_control.checkpoint):
+    """Restore complete JSON transport content to the strict immutable form.
+
+    JSON has one number type. A browser writes 100000000.0 as 100000000.
+    Only checked floating-point fields accept that equivalent spelling. Integer
+    fields, complete derived evidence, strings, ordering and shapes stay exact.
+    No catalog or library is read. require_strategy still checks canonical bytes.
+    """
+    document = _encode(value, STRATEGY_BYTES, checkpoint)
+    _shape(value, ('format', 'version', 'selection', 'variables', 'builtins', 'pool', 'bounds', 'limits'))
+    if value['format'] != 'strategy-capture' or type(value['version']) is not int or value['version'] != 1:
+        _fail('UNKNOWN_VERSION', '', 'Unsupported strategy capture version.')
+    _shape(value['limits'], ('bytes',), path='/limits')
+    bound = _bound(value['limits']['bytes'])
+    rebuilt = _compile(value['selection'], value['variables'], value['builtins'], value['pool'],
+                       value['bounds'], bound, checkpoint)
+    def equivalent(submitted, checked):
+        checkpoint()
+        if type(checked) is float:
+            return (type(submitted) is int or type(submitted) is float and math.isfinite(submitted)) and submitted == checked
+        if type(submitted) is not type(checked):
+            return False
+        if type(checked) is dict:
+            return submitted.keys() == checked.keys() and all(equivalent(submitted[key], item) for key, item in checked.items())
+        if type(checked) is list:
+            return len(submitted) == len(checked) and all(equivalent(a, b) for a, b in zip(submitted, checked))
+        return submitted == checked
+    if not equivalent(value, rebuilt):
+        _fail('INVALID_STRATEGY', '', 'Strategy transport must retain its complete checked content.')
+    # Check the received and normalized representations against the same limit.
+    if len(document) > bound:
+        _fail('WORK_LIMIT', '', 'Captured strategy exceeds its lowered byte bound.')
+    capture = CapturedStrategy(_encode(rebuilt, bound, checkpoint))
+    require_strategy(capture, checkpoint=checkpoint)
+    return capture
+
+
+def canonical_options(options, *, checkpoint=backtest_control.checkpoint):
+    """Copy accepted scalar transport to one canonical durable representation."""
+    if type(options) is dict and 'strategy' in options:
+        return {**options, 'strategy': from_wire(options['strategy'], checkpoint=checkpoint).to_dict()}
+    return options
+
+
 def check_options(options, *, checkpoint=backtest_control.checkpoint):
     """Admit custom options before readiness/input work; leave legacy options alone.
 
     Custom options carry one strategy projection. Duplicate selection settings are
     rejected rather than guessed. The experimental backend never falls back.
-    This callable is not yet connected to ordinary routes/jobs/queue in Slice 1.
+    Routes, jobs and queue admission use this owner for new scalar submissions.
     """
     if type(options) is not dict:
         _fail('INVALID_STRATEGY', '', 'Calculation options must be an object.')
@@ -359,7 +403,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         _fail('INVALID_STRATEGY','','Unknown custom calculation option.')
     if _OVERLAP.intersection(options):
         _fail('INVALID_STRATEGY', '', 'Use one captured strategy without duplicate selection settings.')
-    captured = CapturedStrategy(_encode(options['strategy'], STRATEGY_BYTES, checkpoint))
+    captured = from_wire(options['strategy'], checkpoint=checkpoint)
     checked = require_strategy(captured, checkpoint=checkpoint)
     current = {item['id']: item for item in builtin_catalog()}
     for descriptor in checked['builtins']:
@@ -415,8 +459,7 @@ def options_calculation_equal(left, right):
     a, b = dict(left), dict(right)
     if 'strategy' in a or 'strategy' in b:
         if 'strategy' not in a or 'strategy' not in b or not calculation_equal(
-                CapturedStrategy(_encode(a.pop('strategy'),STRATEGY_BYTES)),
-                CapturedStrategy(_encode(b.pop('strategy'),STRATEGY_BYTES))):return False
+                from_wire(a.pop('strategy')), from_wire(b.pop('strategy'))):return False
     return {'engine':'original','selection_order':'filter_first',**a} == {'engine':'original','selection_order':'filter_first',**b}
 
 
@@ -426,8 +469,7 @@ def validate_recorded(options, planned):
     submitted = {key:value for key,value in options.items() if key!='engine'}
     if 'strategy' in submitted:
         old = planned.get('options',{}).get('strategy') if type(planned) is dict else None
-        if old is None or not calculation_equal(CapturedStrategy(_encode(submitted['strategy'],STRATEGY_BYTES)),
-                CapturedStrategy(_encode(old,STRATEGY_BYTES))):
+        if old is None or not calculation_equal(from_wire(submitted['strategy']), from_wire(old)):
             _fail('INVALID_STRATEGY','/planned','Captured strategy differs from the recorded plan.')
         submitted['strategy'] = old
     calendar_requests.validate_submitted(submitted,planned)

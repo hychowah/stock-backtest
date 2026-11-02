@@ -113,12 +113,13 @@ class Store:
         if admit:strategy_requests.check_request(request)
         elif 'strategy' in request.get('options',{}):
             strategy_requests._encode(request,strategy_requests.REQUEST_BYTES)
-        options=request['options']
+        options=strategy_requests.canonical_options(request['options'])
         engine_id(options)
         dates=options.get('calendar',options)
         if not isinstance(dates,dict) or not isinstance(dates.get('start'),str) or not isinstance(dates.get('end'),str):
             raise ValueError('Choose start and end dates.')
         spec={key:request[key] for key in ('mode','options','catalog','presentation')}
+        spec['options']=options
         packed=encode(spec)
         if len(packed.encode())>262144:raise ValueError('The test settings are too large.')
         seed=options.get('seed') if request['mode']=='random' else None

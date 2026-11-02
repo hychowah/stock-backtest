@@ -8,7 +8,8 @@ const editReceipts=new Map();
 let settings={selection_order:'rank_first',mode:'custom',start:'2015-01-01',end:'2016-12-30',months:3,rank_from:1,rank_to:50,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,filters:[{field:'market_cap',op:'gt',value:100}]};
 const snapshot={version:2,kind:'custom',settings:copy(settings),catalog:{metrics:{},filters:{}},presentation:{},result:{periods:[]}};
 const storage=new Map();
-const context=vm.createContext({CalendarSettings,console,crypto:require('node:crypto').webcrypto,Uint8Array,Date,location:{protocol:'http:'},document:{getElementById:node},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){},async fetch(url,options={}){
+let allocated=0;
+const context=vm.createContext({CalendarSettings,console,crypto:{getRandomValues(bytes){allocated++;return require('node:crypto').webcrypto.getRandomValues(bytes);}},Uint8Array,Date,location:{protocol:'http:'},document:{getElementById:node},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(){},async fetch(url,options={}){
   requests.push({url,...options});const method=options.method||'GET',parts=url.split('/').slice(3),id=parts[0],action=parts[1];
   let value,status=200;const body=options.body?JSON.parse(options.body):{};
   if(method==='GET'&&!id){
@@ -61,6 +62,7 @@ const context=vm.createContext({CalendarSettings,console,crypto:require('node:cr
 }});
 context.ResultArtifacts={opening:()=>()=>true,release:()=>{},async use(source,consume){const response=await context.fetch((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+source.id);const record=await response.json();if(record.state==='archived')return {consumed:false,record};if(!record.snapshot)throw Error('This result is not ready yet.');return {consumed:true,value:consume(record.snapshot),record};}};
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/engine-controls.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-comparison.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
 context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
@@ -203,5 +205,25 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   assert(!storage.has('backtest-queue-submission'));assert(libraryChanges>beforeRetry);
   assert(!node('queue-list').innerHTML.includes(accepted.id));assert(node('queue-status').textContent.includes('already moved'));
   failList=false;
+  // Scalar preparation snapshots before awaiting, and finishes before identity.
+  const scalar={format:'strategy-capture',version:1,pool:'legacy',bounds:{min_cap:100e6,max_cap:null,min_ev:50e6,sector:null,exchange:null},selection:{ranking:{source:{kind:'builtin',id:'filter:pe'},direction:'lowest'},rank_from:2,rank_to:8,selection_order:'rank_first',conditions:[]},builtins:[{id:'filter:pe',label:'Original P/E'}],variables:null};
+  settings={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,strategy:scalar};
+  let releaseCapture,captures=0;
+  context.config.prepareSubmission=async()=>{const submitted=copy(settings);captures++;await new Promise(resolve=>releaseCapture=resolve);return submitted;};
+  node('queue-name').value='Captured name';const idsBefore=allocated,requestsBefore=requests.filter(r=>r.method==='POST'&&r.url==='/api/backtest-queue').length;
+  const adding=call('BacktestQueue.add()');await settle();assert.equal(allocated,idsBefore);assert.equal(requests.filter(r=>r.method==='POST'&&r.url==='/api/backtest-queue').length,requestsBefore);
+  settings.strategy.selection.rank_to=99;node('queue-name').value='Later name';loseAcknowledgement=true;releaseCapture();await adding;
+  const scalarPending=JSON.parse(storage.get('backtest-queue-submission'));assert.equal(scalarPending.options.strategy.selection.rank_to,8);assert.equal(scalarPending.name,'Captured name');
+  settings.strategy.selection.rank_to=77;await call('BacktestQueue.add()');assert.equal(captures,1);assert(!storage.has('backtest-queue-submission'));
+  const scalarRecord=records.find(record=>record.id===scalarPending.id);assert.equal(scalarRecord.options.strategy.selection.rank_to,8);assert(node('queue-list').innerHTML.includes('Original P/E'));
+  context.scalarId=scalarRecord.id;await call('BacktestQueue.action("edit",scalarId)');settings.strategy.selection.rank_to=6;
+  const saving=call('BacktestQueue.add()');await settle();settings.strategy.selection.rank_to=31;
+  loseEditAcknowledgement={action:'update',disconnectList:true};releaseCapture();await saving;
+  const captureCount=captures;failList=false;await call('BacktestQueue.add()');assert.equal(captures,captureCount);assert.equal(scalarRecord.options.strategy.selection.rank_to,6);assert.equal(settings.strategy.selection.rank_to,31);
+  await call('BacktestQueue.action("edit",scalarId)');settings.strategy.selection.rank_to=4;
+  const updatesBefore=requests.filter(request=>request.url.endsWith('/update')).length,endedBefore=endedEdits;
+  const abandoned=call('BacktestQueue.add()');await settle();
+  scalarRecord.state='running';scalarRecord.edit.state='cancelled';await call('BacktestQueue.refresh()');assert.equal(endedEdits,endedBefore+1);
+  releaseCapture();await abandoned;assert.equal(requests.filter(request=>request.url.endsWith('/update')).length,updatesBefore);assert.equal(settings.strategy.selection.rank_to,4);
   console.log('Passed: snapshots, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

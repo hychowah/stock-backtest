@@ -244,13 +244,15 @@ class ViewTests(unittest.TestCase):
         for period in original['periods']:writer.period(period)
         summary={k:v for k,v in original.items() if k!='periods'};writer.end_trial(summary);writer.finish(summary)
         reader=result_evidence.Reader(stream,max_bytes=4*1024**2)
-        # Invoke schedule.js itself, with only DOM/download transport replaced.
-        code=r"""const fs=require('fs'),vm=require('vm');let input='';
+        # Invoke the actual exporter and its presenter dependency. Only the
+        # DOM/download transport is replaced; every CSV byte is still compared.
+        code=r"""const fs=require('fs'),vm=require('vm'),path=require('path');let input='';
 process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{
 const result=JSON.parse(input),nodes=new Map(),out=[];let csv='';
 const node=id=>{if(!nodes.has(id))nodes.set(id,{handlers:{},addEventListener(k,f){this.handlers[k]=f;}});return nodes.get(id);};
 const context=vm.createContext({ResultArtifacts:{forView:()=>({version:2,kind:'custom',result})},CalendarSettings:{init(){}},EngineControls:{init(){}},RobustnessView:{init(){}},document:{getElementById:node,createElement:()=>({click(){out.push({name:this.download,csv});}})},Blob:class{constructor(parts){this.parts=parts;}},URL:{createObjectURL(blob){csv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}}});
-vm.runInContext(fs.readFileSync(process.argv[1],'utf8')+';ScheduleView.init()',context);
+for(const name of ['evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(path.dirname(process.argv[1]),name),'utf8'),context);
+vm.runInContext('ScheduleView.init()',context);
 for(const kind of ['holdings','returns'])node('schedule-download-'+kind).handlers.click();
 process.stdout.write(JSON.stringify(out));});"""
         expected=json.loads(subprocess.run([node,'-e',code,str(ROOT/'website/browser/schedule.js')],input=json.dumps(original),encoding='utf-8',capture_output=True,check=True).stdout)

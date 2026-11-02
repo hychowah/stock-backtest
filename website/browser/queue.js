@@ -45,7 +45,7 @@ const BacktestQueue=(()=>{
     if(!editing)return;
     const session=editing;
     if(session.pending&&session.pending.action!==action)throw Error('Retry the pending Save or Cancel before changing this edit.');
-    session.pending??={action,body:{...(action==='update'?JSON.parse(JSON.stringify(specification())):{}),edit_id:session.token,edit_revision:session.revision}};
+    if(!session.pending){const spec=action==='update'?await specification():{};if(editing!==session)throw Error('This queued edit ended while its strategy was being prepared.');session.pending={action,body:{...JSON.parse(JSON.stringify(spec)),edit_id:session.token,edit_revision:session.revision}};}
     try{
       await mutate('/'+session.id+'/'+action,session.pending.body,
         {success:action==='update'?'Queued test updated. It can run with the new settings.':'Edit cancelled. Its previous settings are kept.'});
@@ -55,9 +55,10 @@ const BacktestQueue=(()=>{
     }
     if(editing===session)endEdit(true);
   }
-  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+settings.rank_from+'–'+settings.rank_to;}
+  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+(settings.strategy?.selection.rank_from??settings.rank_from)+'–'+(settings.strategy?.selection.rank_to??settings.rank_to);}
   function parameters(record){
     const o=record.options;
+    if(o.strategy)return `${record.mode==='random'?'Random dates':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · `+BacktestComparison.scalarRows(o.strategy).map(row=>row.label+': '+row.display).join(' · ');
     return `${record.mode==='random'?'Random dates · '+(o.trials??24)+' trials':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · ${CalendarSettings.label(o)} · ranks ${o.rank_from??1}–${o.rank_to??50} · ${callbacks.metricLabel(o.metric??'ev_ebitda')} · ${o.pool==='cached'?'All cached stocks':'Original candidate set'} · ${EngineControls.label(o.engine??'original')}`;
   }
   function renderRows(rows){
@@ -109,6 +110,7 @@ const BacktestQueue=(()=>{
       const progress=record.state==='running'&&event?(event.type==='waiting'?event.message:`${event.completed}/${event.total} trials complete`+(event.total_new_books>0?` · ${event.calculated_books}/${event.total_new_books} new books prepared`:'')):'';
       const result=(record.state==='complete'&&record.transfer?.error==='retry'?'Saving failed. Results are kept here; the server will retry. ':'')+(record.state==='complete'?(record.mode==='random'?'Mean trial CAGR: ':'CAGR: ')+(Number.isFinite(record.cagr)?(record.cagr*100).toFixed(2)+'%':'unavailable'):record.error||progress);
       const detail=[`Requested engine: ${EngineControls.label(o.engine??'original')}`,`Minimum market cap: $${(o.min_cap??100e6)/1e6} million`,`Maximum market cap: ${o.max_cap==null?'no limit':'$'+o.max_cap/1e6+' million'}`,`Minimum EV: $${(o.min_ev??50e6)/1e6} million`,`Minimum yield: ${(o.min_yield??0)*100}%`,`Maximum multiple: ${o.max_multiple??'no limit'}`,`Sector: ${o.sector||'all'}`,`Exchange: ${o.exchange||'all'}`,...(o.filters||[]).map(condition=>callbacks.filterLabel(condition.field)+' '+(condition.op==='lt'?'<':'>')+' '+condition.value)];
+      if(o.strategy)detail.splice(0,detail.length,...BacktestComparison.scalarRows(o.strategy).map(row=>row.label+': '+row.display));
       if(record.mode==='random')detail.push('Random date set: '+(o.seed??record.configuration?.seed??'fresh seed stored on the server'));
       const html=`<li data-queue-id="${id}"><div><div class="queue-title"><strong>${escape(record.name)}</strong><span class="queue-state">${record.state==='complete'?(record.transfer?.state==='reserved'?'Moving to Saved backtests':record.transfer?.error==='full'?'Completed — waiting for saved slot':'Completed — waiting to save'):states[record.state]||escape(record.state)}</span></div><span class="queue-summary">${escape(parameters(record))}</span><span class="queue-progress">${escape(result)}</span><details><summary>All parameters</summary>${detail.map(text=>'<p>'+escape(text)+'</p>').join('')}</details></div><div class="queue-actions">${actions}</div></li>`;
       return {id:record.id,html,progress:result,signature:JSON.stringify({record:{...record,progress:null},edges:waiting(record)?[index===0,index===waitingIds.length-1]:[],busy,deleting:pendingDelete===record.id})};
@@ -119,7 +121,7 @@ const BacktestQueue=(()=>{
     const response=await fetch('/api/backtest-queue'+path,{cache:'no-store',...options});
     let value;
     try{value=await response.json();}catch(_){const error=Error('The queue service is unavailable. Start the updated website and reload this page.');error.status=response.status;throw error;}
-    if(!response.ok){const error=Error(value.error||'Could not access the queue.');error.status=response.status;error.requires_reader=value.requires_reader;throw error;}
+    if(!response.ok){const error=Object.assign(Error(value.error||'Could not access the queue.'),{status:response.status,requires_reader:value.requires_reader,code:value.code,path:value.path,errors:value.errors});throw error;}
     return value;
   }
   async function refresh(){
@@ -158,12 +160,13 @@ const BacktestQueue=(()=>{
     }
     finally{busy=false;render();}
   }
-  function specification(){
+  async function specification(){
     if(node('strategy-form').reportValidity&&!node('strategy-form').reportValidity())throw Error('Complete the highlighted strategy settings before adding this test.');
-    const settings=callbacks.settings();
+    const submittedName=node('queue-name').value.trim();
+    const settings=callbacks.prepareSubmission?await callbacks.prepareSubmission():callbacks.settings();
     if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest → Custom trade date and frequency to queue a fixed or random-date test.');
     const {mode,...options}=settings;
-    return {mode,options,catalog:callbacks.catalog(),presentation:callbacks.presentation(settings),name:node('queue-name').value.trim()||title(settings).slice(0,120)};
+    return {mode,options,catalog:callbacks.catalog(),presentation:callbacks.presentation(settings),name:submittedName||title(settings).slice(0,120)};
   }
   async function add(){
     await perform(async()=>{
@@ -176,7 +179,7 @@ const BacktestQueue=(()=>{
         if(editing.loading)await acquireEdit();else await finishEdit('update');
         return;
       }
-      if(!pending)remember({id:identifier(),...specification()});
+      if(!pending){const spec=await specification();remember({id:identifier(),...spec});}
       try{
         await mutate('',pending,{success:'Test added to the queue. You can change the settings and add another.'});
         callbacks.prepare?.();

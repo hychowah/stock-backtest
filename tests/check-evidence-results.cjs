@@ -1,0 +1,69 @@
+'use strict';
+// Real bounded presenter and acquisition owner; pages arrive through controlled
+// result transport. Rendering never consults a current library or catalog.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const nodes=new Map(),urls=[],downloads=[];
+const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',hidden:false,open:false,handlers:{},addEventListener(k,f){this.handlers[k]=f;},setAttribute(){}});return nodes.get(id);};
+const exact={variable_id:'variable:old',revision:'sha256:'+'a'.repeat(64)};
+const strategy={selection:{ranking:{source:{kind:'formula',...exact},direction:'highest'},rank_from:1,rank_to:70,selection_order:'rank_first',conditions:[]},pool:'legacy',bounds:{},variables:{presentation:[{...exact,name:'Submitted original'}]},builtins:[]};
+const holding={rank:1,symbol:'A0000',name:'Company',exchange:'NYSE',sector:'Sector',ranking_value:.1,ranking_unit:'scalar',ranking_display:'percent',ranking_direction:'highest',market_cap:150e6,enterprise_value:180e6,fiscal:'2014-06-30',entry:'2015-01-02',exit:'2015-01-05',return_value:.1,contribution_pp:10,status:'Scheduled exit',metric_multiple:10,scalar_evidence:{scope:'s0',lanes:{}}};
+const period={entry:'2015-01-02',exit:'2015-01-05',names:1,portfolio:.1,spy:.02};
+const summary={start:period.entry,end:period.exit,cagr:.2,spy_cagr:.03,growth:1.1,seconds:0,coverage:'Complete',options:{strategy}};
+let screenWait=null,explanationWait=null,explanationFailure=false,release=null,currentId='1'.repeat(32),robust=0;
+const context=vm.createContext({console,document:{getElementById:node,createElement:()=>({click(){downloads.push({href:this.href,download:this.download});}})},
+ Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,money:v=>String(v),metricLabel:()=>{throw Error('Scalar presentation must use captured meaning');},
+ CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},ReturnContributions:{analyzeStored:async(count,visit)=>{await visit(()=>{});return {count:0};}},contributionPie:()=>'',
+ RobustnessView:{init(){},render(){robust++;}},VariableEvidence:{records:()=>'<p>Detached selected trace</p>'},
+ fetch:async(url)=>{
+  urls.push(url);assert(url.startsWith('/api/backtest-runs/'));
+  const parts=url.split('/'),operation=parts[6],cursor=+parts.at(-1);let value;
+  if(operation==='screen'){if(screenWait){const pause=screenWait;screenWait=null;await pause();}value={rows:[{...holding,symbol:cursor?'A0064':'A0000'}],cursor,next:cursor?null:64,total:70};}
+  else if(operation==='trial')value={summary,short:0,empty:0};
+  else if(operation==='periods')value={rows:[{number:1,value:period},{number:2,value:{...period,entry:'2016-01-04',exit:'2016-01-05'}}],cursor:0,next:null,total:2};
+  else if(operation==='holdings')value={rows:[{...holding,symbol:parts[8]==='2'?'SECOND':'FIRST'}],cursor:0,next:null,total:1};
+  else if(operation==='explanations'){if(explanationWait){const pause=explanationWait;explanationWait=null;await pause();}if(explanationFailure){explanationFailure=false;throw Error('Replaced explanation failure');}value={rows:[{scope:'s0',block:{results:[]}}],cursor,next:cursor?null:64,total:65};}
+  else throw Error('Unexpected result route '+url);
+  return {ok:true,headers:{get:()=>null},json:async()=>structuredClone({...value,identity:parts[3]})};
+ }});
+for(const file of ['result-artifacts.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
+const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
+function artifact(kind='latest',version=4,id=currentId){return {version,kind,settings:{mode:kind,strategy},result:{...summary,producer:{engine:'original',label:'Original'},configuration:{seed:42},trials:[],distribution:{}},catalog:{metrics:{},filters:{}},presentation:{},evidence:{id,format_version:version===4?2:1,trials:kind==='latest'?0:1,periods:kind==='latest'?0:1,holdings:kind==='latest'?70:1}};}
+async function show(value){context.artifact=value;run('{const completed=ResultArtifacts.publish(artifact);EvidenceResults.show(completed)}');await tick();await tick();}
+(async()=>{
+ run('ScheduleView.init()');await show(artifact());
+ assert(node('scalar-screen-rows').innerHTML.includes('10%'));assert(node('scalar-evidence-summary').textContent.includes('Submitted original'));assert(node('scalar-screen-page').textContent.includes('of 70'));
+ node('scalar-screen-next').handlers.click();await tick();assert(node('scalar-screen-rows').innerHTML.includes('A0064'));assert(node('scalar-screen-next').disabled);
+ node('scalar-download-rows').handlers.click();node('scalar-download-evidence').handlers.click();assert(downloads[0].href.includes('/export/screen/'));assert(downloads[1].href.includes('/export/evidence/'));
+ node('scalar-screen-rows').handlers.click({target:{dataset:{scalarExplain:'0'}}});await tick();assert(node('scalar-explanation-content').innerHTML.includes('Submitted original'));
+ // A selected-company reply cannot survive navigation within the same screen.
+ for(const failed of [false,true]){
+  explanationFailure=failed;explanationWait=()=>new Promise(resolve=>release=resolve);node('scalar-screen-rows').handlers.click({target:{dataset:{scalarExplain:'0'}}});await tick();
+  node(node('scalar-screen-back').disabled?'scalar-screen-next':'scalar-screen-back').handlers.click();await tick();release();await tick();assert.equal(node('scalar-explanation').open,false);assert.equal(node('scalar-explanation-content').innerHTML,'');assert(!node('screen-error').textContent.includes('Replaced explanation failure'));
+ }
+ // A late rejection from Next explanation page is fenced in the same way.
+ node('scalar-screen-rows').handlers.click({target:{dataset:{scalarExplain:'0'}}});await tick();
+ explanationFailure=true;explanationWait=()=>new Promise(resolve=>release=resolve);node('scalar-explanation-next').handlers.click();await tick();
+ node('scalar-screen-back').handlers.click();await tick();release();await tick();assert.equal(node('scalar-explanation-content').innerHTML,'');assert(!node('screen-error').textContent.includes('Replaced explanation failure'));
+ // A slow page from a replaced artifact never overwrites the new screen.
+ screenWait=()=>new Promise(resolve=>release=resolve);context.artifact=artifact('latest',4,'2'.repeat(32));run('EvidenceResults.show(ResultArtifacts.publish(artifact))');await tick();
+ await show(artifact('latest',4,'3'.repeat(32)));const current=node('scalar-screen-rows').innerHTML;release();await tick();assert.equal(node('scalar-screen-rows').innerHTML,current);
+ // Fire the real schedule handlers with no custom result, then with retained
+ // eager and bounded custom results. January controls always use January.
+ for(const retained of [null,2,3]){
+  if(retained){const old=artifact('custom',retained,'7'.repeat(32));old.result={...summary,options:{metric:'ev_ebitda'},periods:[{...period,holdings:[holding]}]};context.old=old;run('ResultArtifacts.publish(old)');}
+  await show(artifact('january',4,'4'.repeat(32)));assert(node('backtest-view').hidden);assert.equal(node('custom-view').hidden,false);assert(node('schedule-stock-body').innerHTML.includes('10%'));assert.equal(node('schedule-explanation-head').hidden,false);assert(node('schedule-dates').textContent.includes('January books'));
+  node('schedule-period').value='2';node('schedule-period').handlers.change();await tick();await tick();assert(node('schedule-stock-body').innerHTML.includes('SECOND'));assert(!node('schedule-stock-body').innerHTML.includes('FIRST'));
+  for(const kind of ['holdings','returns']){node('schedule-download-'+kind).handlers.click();assert.equal(downloads.at(-1).href,'/api/backtest-runs/'+'4'.repeat(32)+'/reader/export/'+kind+'/1');}
+ }
+ // Period navigation invalidates a delayed selected-company explanation.
+ for(const failed of [false,true]){
+  const symbol=node('schedule-stock-body').innerHTML.includes('SECOND')?'SECOND':'FIRST';explanationFailure=failed;explanationWait=()=>new Promise(resolve=>release=resolve);node('schedule-stock-body').onclick({target:{dataset:{storedExplain:symbol}}});await tick();
+  node('schedule-period').value=node('schedule-period').value==='1'?'2':'1';node('schedule-period').handlers.change();await tick();release();await tick();assert.equal(node('scalar-explanation').open,false);assert.equal(node('scalar-explanation-content').innerHTML,'');assert(!node('screen-error').textContent.includes('Replaced explanation failure'));
+ }
+ // Random results retain the existing distribution and bounded trial inspection.
+ context.artifact=artifact('random',4,'5'.repeat(32));run('ScheduleView.show(ResultArtifacts.publish(artifact))');await tick();assert.equal(robust,1);assert(node('schedule-results').hidden);
+ // The same extracted presenter still accepts codec1/artifact3.
+ context.metricLabel=()=> 'Retained EV/EBITDA';await show(artifact('custom',3,'6'.repeat(32)));assert.equal(node('schedule-explanation-head').hidden,true);assert(node('schedule-stock-body').innerHTML.includes('10.00'));assert(!node('schedule-stock-body').innerHTML.includes('data-stored-explain'));
+ assert(!urls.some(url=>url.includes('/variables')||url.includes('/catalog')));
+ console.log('Passed: bounded scalar latest/January/random presentation, values/original labels, page replacement fencing, selected explanations, complete download capabilities and unchanged artifact3 presentation.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

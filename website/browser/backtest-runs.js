@@ -47,7 +47,7 @@ const BacktestRuns=(()=>{
   }
   function create(mode,options,planned=null){
     const bytes=crypto.getRandomValues(new Uint8Array(16));
-    const run={id:Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''),mode,options,...(planned?{planned}:{}),submitted:Date.now(),phase:'submitting',stop:false};
+    const run={id:Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join(''),mode,options:JSON.parse(JSON.stringify(options)),...(planned?{planned:JSON.parse(JSON.stringify(planned))}:{}),submitted:Date.now(),phase:'submitting',stop:false};
     save(run);return run;
   }
   async function request(run,action){
@@ -69,7 +69,7 @@ const BacktestRuns=(()=>{
         const message=action==='start'&&response.status===404?'This tab is connected to an older server. Run start.cmd again and use the new browser tab it opens. Refreshing this tab alone does not update the server.':payload.error||'Could not access this backtest run.';
         const error=Error(message);
         error.terminal=response.status>=400&&response.status<500;
-        error.status=response.status;
+        error.status=response.status;error.code=payload.code;error.path=payload.path;error.errors=payload.errors;
         throw error;
       }
       return payload;

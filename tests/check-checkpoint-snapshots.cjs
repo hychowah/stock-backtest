@@ -22,7 +22,7 @@ function inspect(snapshot){
     money:value=>String(value),contributionPie:()=>'',completeResult:fail,restoreBacktestSettings:fail,
     currentCatalog:{metrics:{ev_ebitda:{label:'Replacement runtime metric'}}}});
   const execute=code=>vm.runInContext(code,context);
-  for(const file of ['engine-controls.js','screener.js','calendar-settings.js','result-artifacts.js','contributions.js','robustness.js','schedule.js'])
+  for(const file of ['engine-controls.js','screener.js','calendar-settings.js','result-artifacts.js','contributions.js','robustness.js','evidence-results.js','schedule.js'])
     execute(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'));
   execute("const metricLabel=id=>ResultArtifacts.forView('custom').catalog.metrics[id].label;");
   context.snapshot=snapshot;

@@ -5,8 +5,8 @@ from pathlib import Path
 BROWSER=Path(__file__).resolve().parents[1]/'browser'
 SCRIPT_NAMES=('engine-controls.js','calendar-settings.js','result-artifacts.js',
     'backtest-comparison.js','saved-backtests.js','screener.js','contributions.js',
-    'robustness.js','backtest-runs.js','schedule.js','queue.js','range.js','responsive.js')
-STYLE_NAMES=('contributions.css','responsive.css','queue.css')
+    'robustness.js','backtest-runs.js','variable-evidence.js','evidence-results.js','variable-workspace.js','schedule.js','queue.js','range.js','responsive.js')
+STYLE_NAMES=('contributions.css','responsive.css','queue.css','variable-workspace.css')
 
 
 def read(name):
@@ -19,6 +19,14 @@ def template():
 
 def queue_fragment():
     return read('queue.html')
+
+
+def variable_controls():
+    return read('variable-workspace.html').split('<dialog',1)[0]
+
+
+def variable_fragment():
+    return '<dialog'+read('variable-workspace.html').split('<dialog',1)[1]
 
 
 def styles():

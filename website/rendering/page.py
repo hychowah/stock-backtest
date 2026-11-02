@@ -87,6 +87,8 @@ def render(page_data):
     <div class="latest-table"><table class="stock-table"><thead><tr>{''.join('<th'+(' data-metric-multiple' if h=='EV/EBITDA' else ' data-metric-yield' if h=='EBITDA/EV' else '')+'>'+h+'</th>' for h in latest_heads)}</tr></thead><tbody id="latest-body">{''.join(latest_rows) if latest_rows else '<tr><td colspan="13">No stocks match these filters.</td></tr>'}</tbody></table></div><p class="hint">Market cap and EV are estimates at the displayed date using dividend-adjusted prices and report net debt. “Available from” is the assumed fiscal year-end plus 90 days, not a verified publication date. No holding return or contribution exists yet for these picks.</p></section>'''
     page = page.replace('__LATEST_PANEL__', latest_panel)
     page = page.replace('__BACKTEST_QUEUE__',assets.queue_fragment())
+    page = page.replace('<div class="filter-grid">',assets.variable_controls()+'<div class="filter-grid">',1)
+    page = page.replace('</main>',assets.variable_fragment()+'</main>')
     scripts=assets.scripts(screening_data,holdings)
     page=page.replace('</head>', '<style>'+assets.styles()+'</style></head>')
     # Keep scroll instructions and keyboard access in the static fallback too.

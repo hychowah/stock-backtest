@@ -465,6 +465,24 @@ class Store:
                            (revision, timestamp, variable_id))
             return self._active(db, variable_id)
 
+    def save(self, variable_id, expected_version, name, definition, *, checkpoint=backtest_control.checkpoint):
+        """Publish editor name and content together under one optimistic version.
+
+        This shares existing immutable admission and transaction rules. Failure
+        publishes neither field; archived dependencies are never imported.
+        """
+        _identifier(variable_id); _version(expected_version); name = _name(name)
+        with self._transaction(write=True, checkpoint=checkpoint) as db:
+            record = self._active(db, variable_id, expected_version)
+            revision, authored = self._admit(db, variable_id, definition, checkpoint)
+            if revision != record['revision'] or name != record['name']:
+                timestamp = _now()
+                db.execute('INSERT OR IGNORE INTO revisions VALUES(?,?,?,?)',
+                           (variable_id, revision, authored, timestamp))
+                db.execute('UPDATE entries SET name=?,revision=?,version=version+1,updated_at=? WHERE variable_id=?',
+                           (name, revision, timestamp, variable_id))
+            return self._active(db, variable_id)
+
     def _change_metadata(self, variable_id, expected_version, *, name=None, favourite=None,
                          delete=False, checkpoint=backtest_control.checkpoint):
         _identifier(variable_id)
@@ -515,17 +533,44 @@ class Store:
         database handle. Later edits, deletion or file removal cannot affect it.
         Reads require an existing recognized store, including local-only calls.
         """
-        formula_limits, bound = _capture_limits(limits)
         with self._transaction(checkpoint=checkpoint) as db:
-            archived = set()
-            def lookup(variable_id, revision):
-                archived.add((variable_id, revision))
-                return self._lookup(db, variable_id, revision)
-            program = definitions.resolve(roots, lookup, submitted=submitted,
-                                          limits=formula_limits, checkpoint=checkpoint)
-            def metadata(identity):
-                row = db.execute('SELECT * FROM entries WHERE variable_id=?', (identity[0],)).fetchone()
-                if row is None:
-                    raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
-                return self._metadata(row)
-            return _finish_capture(program, archived, metadata, labels, bound, checkpoint)
+            return self._capture_snapshot(db, roots, submitted, labels, limits, checkpoint)
+
+    def _capture_snapshot(self, db, roots, submitted, labels, limits, checkpoint):
+        formula_limits, bound = _capture_limits(limits)
+        archived = set()
+        def lookup(variable_id, revision):
+            archived.add((variable_id, revision))
+            return self._lookup(db, variable_id, revision)
+        program = definitions.resolve(roots, lookup, submitted=submitted,
+                                      limits=formula_limits, checkpoint=checkpoint)
+        def metadata(identity):
+            row = db.execute('SELECT * FROM entries WHERE variable_id=?', (identity[0],)).fetchone()
+            if row is None:
+                raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
+            return self._metadata(row)
+        return _finish_capture(program, archived, metadata, labels, bound, checkpoint)
+
+    def authoring_snapshot(self, exact, *, checkpoint=backtest_control.checkpoint):
+        """Read an exact raw closure, capture and entry from one read snapshot.
+
+        The selected revision is separate from entry.revision's current pointer.
+        Old and deleted revisions remain readable. Returned content owns no
+        connection; callers never reconstruct this operation from public reads.
+        """
+        if type(exact) is not dict or set(exact) != {'variable_id', 'revision'}:
+            raise ValueError('An exact variable revision is required.')
+        _identifier(exact['variable_id'])
+        with self._transaction(checkpoint=checkpoint) as db:
+            captured = self._capture_snapshot(db, [exact], None, None, None, checkpoint)
+            entries = captured.to_dict()['program']['bundle']['definitions']
+            authored = []
+            for item in entries:
+                checkpoint()
+                definition = self._lookup(db, item['variable_id'], item['revision'])
+                authored.append(dict(variable_id=item['variable_id'], revision=item['revision'], definition=definition))
+            row = db.execute('SELECT * FROM entries WHERE variable_id=?', (exact['variable_id'],)).fetchone()
+            if row is None:
+                raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
+            return dict(entry=self._metadata(row), selected=dict(exact), authored=authored,
+                        capture=captured.to_dict())

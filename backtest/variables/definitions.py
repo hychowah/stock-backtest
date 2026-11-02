@@ -576,3 +576,70 @@ def require_program(program):
     if canonical(rebuilt) != program.document:
         _fail('INVALID_SHAPE', '', 'Formula program is not its canonical validated projection.')
     return rebuilt
+
+
+def authored_bundle(program, roots=None):
+    """Return an exact raw editable closure from a checked detached program.
+
+    Restoration itself never needs this conversion. Expanded decimals are
+    compacted with string arithmetic, then normal language validation proves
+    every recorded revision. No binary64 round trip or raw-limit exception is
+    permitted. Explicit roots retain order and repeated exact identities.
+    """
+    checked = require_program(program)
+    entries = checked['bundle']['definitions']
+    roots = checked['bundle']['roots'] if roots is None else roots
+    if type(roots) is not list or not roots:
+        _fail('INVALID_SHAPE', '/roots', 'Editable content needs exact roots.')
+    by_identity = {(item['variable_id'], item['revision']): index for index, item in enumerate(entries)}
+    selected = set()
+    def retain(index):
+        if index in selected:
+            return
+        selected.add(index)
+        for dependency in checked['definitions'][index]['dependencies']:
+            retain(dependency)
+    for index, root in enumerate(roots):
+        identity = _identity(root, '/roots/' + str(index))
+        if identity not in by_identity:
+            _fail('MISSING_REFERENCE', '/roots/' + str(index), 'Editable root is absent from the captured program.')
+        retain(by_identity[identity])
+    def editable(node):
+        result = dict(node)
+        if node['op'] == 'constant':
+            value = node['value']
+            if len(value) > CEILINGS['literal']:
+                sign = '-' if value.startswith('-') else ''
+                unsigned = value.lstrip('-')
+                whole, _, fraction = unsigned.partition('.')
+                digits = (whole + fraction).lstrip('0')
+                power = -len(fraction)
+                trailing = len(digits) - len(digits.rstrip('0'))
+                digits = digits.rstrip('0'); power += trailing
+                exponent = power + len(digits) - 1
+                compact = sign + digits[0] + ('.' + digits[1:] if len(digits) > 1 else '') + 'e' + str(exponent)
+                if len(compact) > CEILINGS['literal']:
+                    _fail('INVALID_LITERAL', '/expression', 'This exact captured literal has no bounded editable spelling.')
+                result['value'] = compact
+        for key in ('left', 'right', 'arg'):
+            if key in result:
+                result[key] = editable(result[key])
+        return result
+    authored = []
+    for index, entry in enumerate(entries):
+        if index not in selected:
+            continue
+        definition = dict(entry['definition'], expression=editable(entry['definition']['expression']))
+        if revision(definition) != entry['revision']:
+            _fail('REVISION_MISMATCH', '/definitions', 'Editable conversion changed immutable formula meaning.')
+        authored.append(dict(variable_id=entry['variable_id'], revision=entry['revision'], definition=definition))
+    bundle = dict(format='variable-bundle', version=VERSION, definitions=authored,
+                  roots=json.loads(canonical(roots)))
+    validate(bundle)
+    return bundle
+
+
+def references(definition):
+    """Return exact authored dependency identities using the language parser."""
+    _, refs, _ = _normal_definition(definition, _limits(None), '')
+    return [dict(variable_id=identity[0], revision=identity[1]) for identity, _ in refs]

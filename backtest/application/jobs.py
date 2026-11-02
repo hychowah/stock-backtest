@@ -63,6 +63,7 @@ class Jobs:
         if not re.fullmatch(r'[a-f0-9]{32}',identifier):
             raise ValueError('Invalid backtest run ID.')
         scalar=isinstance(options,dict) and 'strategy' in options
+        options=strategy_requests.canonical_options(options)
         accepted=scalar and self.accepted(identifier)
         if not accepted:strategy_requests.check_request(dict(id=identifier,mode=mode,options=options,planned=planned))
         if scalar and limits is None:

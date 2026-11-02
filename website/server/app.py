@@ -12,7 +12,7 @@ import time
 import sys
 import subprocess
 import webbrowser
-from website.server import launcher, backtests, results, data
+from website.server import launcher, backtests, results, data, variables
 
 ROOT=Path(__file__).resolve().parents[1]
 from backtest.inputs import daily, cache_assets
@@ -106,6 +106,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def dispatch(self):
         if self.command in ('GET','POST') and self.launcher_request():return True
+        if variables.dispatch(self):return True
         if results.dispatch(self,SAVED_BACKTESTS):return True
         if backtests.dispatch(self,DATA_JOBS):return True
         return data.dispatch(self,DATA_JOBS)

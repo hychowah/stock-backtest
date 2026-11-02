@@ -548,3 +548,25 @@ The [current compatibility record](plans/custom-variables/phases/phase-06/compat
 describes application artifact 4 / codec 2 and old-reader preservation. No worker,
 financial rule, provider capability, schema, ownership or resource policy changes.
 The shared editor is Slice 3. Phase 7 numerical formulas remain held.
+
+
+## Custom-variable Phase 6 completion — 2 November 2026
+
+Phase 6 completes in source on `feature/custom-variables` in three independently
+planned, implemented and audited slices. Slice 3 starts from audited `9978ea7`.
+It adds the shared editor/picker, exact authoring snapshots, StrategyDraft capture
+and bounded detached presentation. The definition owner supplies editable raw
+projections. Editor and draft share exact authored/label packing; canonical
+restoration remains checked through its existing owners. All six audit findings
+and the shared-dependency follow-up are fixed. The
+[current phase record](plans/custom-variables/phases/phase-06/README.md) retains
+536 WSL tests, 446 private native tests, 18 source-bound browser checks, actual
+keyboard/mobile/held-draft/export review and complete cleanup receipts.
+
+No financial/provider, prepared-schema, freshness, cancellation, worker,
+ownership-ordering, attachment-lifetime or execution-resource contract changes.
+Original remains default. Existing requests, queue records and saved results are
+not rewritten. Phase 7 numerical formula execution remains held. Main, the engine
+worktree and installed runtime/cache are untouched. This source completion grants
+no merge, push, deployment, restart, download or live durable-store mutation.
+Native-cache coverage remains unknown.

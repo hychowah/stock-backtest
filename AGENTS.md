@@ -44,7 +44,11 @@ Their checked restore uses no later library state. Phase 6 resumes from
 owns narrow application, UI and persistence integration on this feature branch.
 Slice 1 adds callable complete captured strategy intent. Slice 2 implements
 Original scalar execution, bounded explicit preview and immutable artifact-4
-evidence. The shared editor remains Slice 3. Phase 7 remains held. Follow the
+evidence. Slice 3 adds the shared editor/picker, StrategyDraft capture and detached
+result presentation against audited `9978ea7`. Phase 6 is complete in source.
+All six audit findings, including shared-dependency transport, are fixed. Its
+current slice record retains final verification, cleanup and superseded attempts.
+Phase 7 remains held. Follow the
 [current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.

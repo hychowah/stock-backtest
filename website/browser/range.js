@@ -11,7 +11,7 @@ const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.fi
 const displayCatalog=()=>currentArtifact()?.catalog||sourceCatalog();
 const metricLabel=id=>displayCatalog().metrics[id]?.label||screeningData.metrics[id]?.label||id;
 function currentSettings(){
-  const {first,last,...options}=readOptions(),view=viewKey();
+  const read=readOptions(),{first,last,...legacy}=read,options=StrategyDraft.selectionSettings(legacy),view=viewKey();
   if(view==='latest')return {mode:'latest',...options};
   if(view==='january')return {mode:'january',first,last,...options};
   const settings={mode:'custom',...options,...CalendarSettings.read(),...EngineControls.fields()};
@@ -31,6 +31,8 @@ function applyPresentation(presentation={}){
 }
 function publishResult(artifact){
   const completed=ResultArtifacts.publish(artifact);
+  if(completed.version===4){if((completed.kind==='random'?'custom':completed.kind)!==viewKey()){updateResultsState();return;}applyPresentation(completed.presentation);if(['custom','random'].includes(completed.kind))ScheduleView.show(completed);else EvidenceResults.show(completed);document.getElementById('screen-error').textContent='';updateResultsState();return;}
+  EvidenceResults.clear();
   if((completed.kind==='random'?'custom':completed.kind)!==viewKey()){
     if(['custom','random'].includes(completed.kind))ScheduleView.show(completed);
     updateResultsState();return;
@@ -47,6 +49,7 @@ function completeResult(settings,result){
   publishResult(ResultArtifacts.create(settings,result,sourceCatalog(),presentation));
 }
 function scheduledPresentation(settings){
+  if(settings.strategy)return {coverage:'Complete prepared scopes use captured scalar variables. Prepared universe and cached price coverage still apply.',notice:{text:'Results retain the exact submitted variables, values and original explanations.',severity:'info'},rangeNote:'Scalar strategies require explicit calculation. Downloads use completed immutable evidence.',periodLabel:settings.mode==='latest'?'Latest cached close':settings.mode==='january'?settings.first+' — '+settings.last:CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
   return {
     coverage:'Custom dates use the local daily-cache service. Original candidate-set restrictions and cached-price coverage still apply.',
     notice:{text:'Results use the submitted stock filters and trade dates.',severity:'info'},
@@ -69,7 +72,8 @@ function settingsChanged(changed,run=true){
     if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
   }
   updateResultsState();
-  if(run && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
+  StrategyDraft.touch();
+  if(run && !StrategyDraft.isScalar() && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
 }
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -117,7 +121,7 @@ function readOptions(){
     const text=document.getElementById(id).value.trim();
     if(['selection_order','metric','pool','sector','exchange'].includes(key))o[key]=text||null;
     else{
-      if(!text && ['min_cap','min_ev','min_yield'].includes(key))throw Error('Fill in each minimum, or enter 0.');
+      if(!text && ['min_cap','min_ev','min_yield'].includes(key)&&!(StrategyDraft.isScalar()&&['min_cap','min_ev'].includes(key)))throw Error('Fill in each minimum, or enter 0.');
       o[key]=text===''?null:Number(text)*(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1);
     }
   }
@@ -210,7 +214,8 @@ function setModeVisibility(){
   if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
   const artifact=currentArtifact();
   applyPresentation(artifact?.presentation);syncCatalogControls();renderConditions();
-  if(artifact)updateMetricLabels(artifact.settings);
+  if(artifact?.version===4){if(['custom','random'].includes(artifact.kind))ScheduleView.show(artifact);else EvidenceResults.show(artifact);}else{EvidenceResults.clear();if(artifact)updateMetricLabels(artifact.settings);}
+  StrategyDraft.render();
 }
 function switchMode(mode){
   screeningMode=mode;setModeVisibility();settingsChanged();
@@ -244,6 +249,7 @@ function latestPresentation(r){
   return {coverage,notice:{text,severity},rangeNote,periodLabel:r.asof};
 }
 function applyRange(changed){
+  if(StrategyDraft.isScalar()){void StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings)).catch(error=>{document.getElementById('screen-error').textContent=error.message;});return;}
   updateResultsState();
   if(+fromYear.value>+toYear.value){if(changed==='from')toYear.value=fromYear.value;else fromYear.value=toYear.value;}
   if(+rankFrom.value>+rankTo.value && ['rank-from','rank-to'].includes(changed)){
@@ -294,6 +300,7 @@ function renderJanuary(result){
   document.getElementById('detail').textContent='Hover over or focus a bar to see its return.';
 }
 function downloadLatest(){
+  const artifact=ResultArtifacts.forView('latest');if(artifact?.version===4){ResultArtifacts.reader(artifact).download('screen');return;}
   const currentLatest=ResultArtifacts.forView('latest')?.result;
   if(!currentLatest)return;
   const keys=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','metric','metric_yield','metric_multiple','fiscal','known','price_date'];
@@ -303,6 +310,7 @@ function downloadLatest(){
   const a=document.createElement('a');a.href=url;a.download='latest-picks-'+currentLatest.asof+'.csv';a.click();URL.revokeObjectURL(url);
 }
 function downloadSelection(kind){
+  const artifact=ResultArtifacts.forView('january');if(artifact?.version===4){ResultArtifacts.reader(artifact).download(kind);return;}
   const result=ResultArtifacts.forView('january')?.result;
   if(!result)return;
   let rows;
@@ -329,10 +337,117 @@ function restoreSavedBacktest(snapshot){
 // The form owns its draft. Restoration sources cannot replace a queued edit;
 // only its session may load settings until a confirmed save/cancel ends it.
 const StrategyDraft=(()=>{
-  let active=null;
+  let active=null,revision=0,scalar=null;
+  const copy=value=>JSON.parse(JSON.stringify(value));
+  const exactKey=value=>JSON.stringify([value.variable_id,value.revision]);
+  function sameContent(left,right){
+    const ordered=value=>Array.isArray(value)?value.map(ordered):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,ordered(value[key])])):value;
+    return JSON.stringify(ordered(left))===JSON.stringify(ordered(right));
+  }
+  function compactDetached(captures,selection){
+    const sources=[selection.ranking.source,...selection.conditions.map(item=>item.source)];
+    const needed=new Set(sources.filter(source=>source.kind==='formula').map(exactKey)),kept=[];
+    // Every capture already contains its complete dependency closure. Choose
+    // existing captures by exact identity; the server alone handles graph policy.
+    for(const capture of [...captures].reverse()){
+      const identities=capture.program.definitions.map(exactKey);
+      if(!identities.some(identity=>needed.has(identity)))continue;
+      kept.push(capture);identities.forEach(identity=>needed.delete(identity));
+    }
+    return kept.reverse();
+  }
+  function touch(){revision++;}
+  function selectionSettings(legacy){
+    if(!scalar)return legacy;
+    const intent=readIntent(legacy),capture=scalar.original?copy(scalar.original):{format:'strategy-draft',version:1};
+    Object.assign(capture,{selection:intent.selection,pool:intent.pool,bounds:intent.bounds});
+    return {strategy:capture};
+  }
+  function readIntent(legacy=readOptions()){
+    const intent=copy(scalar.intent);
+    intent.selection.rank_from=+rankFrom.value;intent.selection.rank_to=+rankTo.value;
+    intent.selection.selection_order=document.getElementById('selection-order').value;
+    intent.pool=document.getElementById('stock-pool').value;
+    intent.bounds=Object.fromEntries(['min_cap','max_cap','min_ev','sector','exchange'].map(key=>[key,legacy[key]]));
+    return intent;
+  }
+  function sourceName(source){
+    if(source.kind==='builtin')return scalar.original?.builtins.find(item=>item.id===source.id)?.label||source.id;
+    for(const capture of scalar?.detached||[]){const found=capture.presentation.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);if(found)return found.name+' @ '+source.revision;}
+    return source.variable_id+' @ '+source.revision;
+  }
+  function renderScalar(){
+    const controls=document.getElementById('variable-strategy-controls');if(!controls)return;
+    controls.hidden=!scalar;document.getElementById('variable-legacy').hidden=!scalar;
+    document.getElementById('variable-strategy-summary').textContent=scalar?sourceName(scalar.intent.selection.ranking.source)+' · exact revisions retained. Run explicitly to calculate.':'Built-in strategies work offline. Reusable variables use the local service.';
+    const help=document.getElementById('strategy-ranking-help');
+    help.textContent=scalar?'Rank 1 has the '+(scalar.intent.selection.ranking.direction==='highest'?'highest':'lowest')+' available selected variable value. Missing ranking values are excluded. Conditions apply at the chosen selection stage; survivors have equal weight.':'Choose whether filters apply before ranking or after the requested ranks are selected. Rank 1 has the lowest selected valuation multiple. Latest mode ranks at the latest cached close. The saved January view rebalances equally each January; custom calendars rebalance on the selected fixed or random schedule.';
+    document.getElementById('strategy-heading').textContent=scalar?(scalar.intent.selection.ranking.direction==='highest'?'Highest ':'Lowest ')+sourceName(scalar.intent.selection.ranking.source).split(' @ ')[0]:'Lowest '+metricLabel(document.getElementById('ranking-metric').value);
+    for(const id of ['legacy-ranking-control','legacy-yield-control','legacy-multiple-control','legacy-extra-filters','legacy-metric-help'])document.getElementById(id).hidden=!!scalar;
+    for(const id of ['min-cap','min-ev'])document.getElementById(id).required=!scalar;
+    document.getElementById('auto-run').disabled=!!scalar;
+    document.getElementById('auto-run-note').textContent=scalar?'Auto-run is suspended for variable strategies. Apply and preview keep the draft. Select Screen latest or Run backtest explicitly.':'Turn off to change several settings, then select Run backtest. You can edit settings during a run.';
+    for(const id of ['ranking-metric','min-yield','max-multiple','add-filter'])document.getElementById(id).disabled=!!scalar;
+    document.getElementById('filter-conditions').hidden=!!scalar;
+    if(!scalar){document.getElementById('variable-conditions').innerHTML='';return;}
+    document.getElementById('variable-direction').value=scalar.intent.selection.ranking.direction;
+    document.getElementById('variable-conditions').innerHTML=scalar.intent.selection.conditions.map((item,index)=>`<div class="variable-condition-row"><button type="button" data-variable-pick="${index}">${safe(sourceName(item.source))}</button><label>Comparison<select data-variable-index="${index}" data-variable-field="op"><option value="gt" ${item.op==='gt'?'selected':''}>More than (&gt;)</option><option value="lt" ${item.op==='lt'?'selected':''}>Less than (&lt;)</option></select></label><label>Exact threshold<input inputmode="decimal" data-variable-index="${index}" data-variable-field="value" value="${safe((item.submitted_threshold||item.threshold).value)}"></label><label>Display unit<select data-variable-index="${index}" data-variable-field="unit">${['number','multiple','percent','percentage_points','usd','usd_million','usd_per_share'].map(unit=>`<option value="${unit}" ${(item.submitted_threshold||item.threshold).unit===unit?'selected':''}>${unit}</option>`).join('')}</select></label><button type="button" data-variable-remove="${index}">Remove filter</button></div>`).join('');
+  }
+  function transition(){
+    const legacy=readOptions();
+    if(legacy.min_yield!==0||legacy.max_multiple!==null)throw Error('Variable strategies cannot approximate inclusive minimum yield or maximum multiple. Set minimum yield to 0 and clear maximum multiple explicitly before choosing a variable. Your draft was kept.');
+    const unit=field=>{const descriptor=VariableWorkspace.builtin('filter:'+field);if(!descriptor)throw Error('Open the variable picker to load the supported filter units. Your draft was kept.');return descriptor.display;};
+    scalar={intent:{format:'strategy-intent',version:1,pool:legacy.pool,bounds:{},selection:{ranking:{source:{kind:'builtin',id:'metric:'+legacy.metric+':yield'},direction:'highest'},rank_from:legacy.rank_from,rank_to:legacy.rank_to,selection_order:legacy.selection_order,conditions:legacy.filters.map(item=>({source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value),unit:unit(item.field)}}))}},detached:[],projections:{},original:null};
+  }
+  function patch(change,expected){
+    if(expected!==revision)throw Error('The strategy draft changed. Open the picker again before applying.');
+    if(change.legacy){scalar=null;touch();renderScalar();updateResultsState();return;}
+    if(!scalar)transition();
+    if(change.direction)scalar.intent.selection.ranking.direction=change.direction;
+    if(change.role!==undefined){
+      if(change.role==='ranking')scalar.intent.selection.ranking.source=copy(change.source);
+      else if(typeof change.role==='number')scalar.intent.selection.conditions[change.role].source=copy(change.source);
+      else scalar.intent.selection.conditions.push({source:copy(change.source),op:'gt',threshold:{value:'0',unit:change.capture?.program.definitions.find(item=>item.variable_id===change.source.variable_id&&item.revision===change.source.revision)?.display||'number'}});
+      if(change.capture)scalar.detached.push(copy(change.capture));
+      if(change.authored)scalar.projections[exactKey(change.source)]={submitted:copy(change.authored),labels:copy(change.capture.presentation)};
+      scalar.detached=compactDetached(scalar.detached,scalar.intent.selection);
+      const selected=new Set([scalar.intent.selection.ranking.source,...scalar.intent.selection.conditions.map(item=>item.source)].filter(source=>source.kind==='formula').map(exactKey));
+      scalar.projections=Object.fromEntries(Object.entries(scalar.projections).filter(([key])=>selected.has(key)));
+    }
+    touch();renderScalar();updateResultsState();
+  }
+  async function prepareSubmission(){
+    const settings=copy(currentSettings());if(!scalar)return settings;
+    const submittedRevision=revision;
+    const intent=readIntent(),detached=copy(compactDetached(scalar.detached,intent.selection)),projections=copy(scalar.projections),original=scalar.original?copy(scalar.original):null,originalIntent=original?{format:'strategy-intent',version:1,selection:original.selection,pool:original.pool,bounds:original.bounds}:null;
+    const unchanged=sameContent(intent,originalIntent)&&sameContent(detached,scalar.original?.variables?[scalar.original.variables]:[]);
+    let snapshot;
+    if(unchanged)snapshot={intent,original};
+    else{
+      const sources=[intent.selection.ranking.source,...intent.selection.conditions.map(item=>item.source)].filter(source=>source.kind==='formula');
+      for(const source of sources){
+        const key=exactKey(source);if(projections[key])continue;
+        const capture=[...detached].reverse().find(item=>item.program.definitions.some(entry=>exactKey(entry)===key));
+        if(!capture)throw Error('The exact selected variable content is unavailable. Open the picker again. Your draft was kept.');
+        const projected=await VariableWorkspace.request('/detached',{root:{variable_id:source.variable_id,revision:source.revision},capture});
+        projections[key]={submitted:projected.authored,labels:capture.presentation};
+      }
+      snapshot={intent,...VariableWorkspace.content(...sources.map(source=>projections[exactKey(source)]),{labels:detached.flatMap(capture=>capture.presentation)})};
+    }
+    const prepared=await VariableWorkspace.request('/capture',snapshot);
+    if(submittedRevision===revision){
+      scalar.original=copy(prepared.strategy);
+      scalar.intent={format:'strategy-intent',version:1,selection:copy(prepared.strategy.selection),pool:prepared.strategy.pool,bounds:copy(prepared.strategy.bounds)};
+      scalar.detached=prepared.strategy.variables?[copy(prepared.strategy.variables)]:[];
+      scalar.projections=projections;
+    }
+    return {...settings,strategy:prepared.strategy};
+  }
   const refusal=()=>Error('Save or cancel the queued edit before replacing the strategy settings.');
   function apply(settings,catalog=sourceCatalog(),seed=settings.seed){
-    screeningMode='backtest';
+    touch();
+    scalar=settings.strategy?{intent:{format:'strategy-intent',version:1,selection:copy(settings.strategy.selection),pool:settings.strategy.pool,bounds:copy(settings.strategy.bounds)},detached:settings.strategy.variables?[copy(settings.strategy.variables)]:[],projections:{},original:copy(settings.strategy)}:null;
+    screeningMode=settings.mode==='latest'?'latest':'backtest';
     document.getElementById('schedule-kind').value=settings.mode==='january'?'january':'custom';
     setModeVisibility();
 
@@ -342,14 +457,15 @@ const StrategyDraft=(()=>{
       control.value=text;
     };
     for(const [key,id] of Object.entries(fields)){
-      const value=key==='selection_order'?(settings[key]??StockScreener.defaults.selection_order):settings[key];
+      const scalarValue=scalar?(key==='selection_order'?settings.strategy.selection.selection_order:key==='pool'?settings.strategy.pool:Object.hasOwn(settings.strategy.bounds,key)?settings.strategy.bounds[key]:StockScreener.defaults[key]):settings[key];
+      const value=key==='selection_order'?(scalarValue??StockScreener.defaults.selection_order):scalarValue;
       set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
     }
-    set('rank-from',settings.rank_from??1);set('rank-to',settings.rank_to??50);
+    set('rank-from',settings.strategy?.selection.rank_from??settings.rank_from??1);set('rank-to',settings.strategy?.selection.rank_to??settings.rank_to??50);
     filterConditions=(settings.filters||[]).map(condition=>({...condition}));
     if(settings.mode==='january'){
       set('from-year',settings.first);set('to-year',settings.last);
-    }else{
+    }else if(settings.mode!=='latest'){
       if(document.getElementById('backtest-engine'))document.getElementById('backtest-engine').value=settings.engine??'original';
       EngineControls.sync();CalendarSettings.restore(settings);
       set('date-testing',settings.mode==='random'?'random':'single');
@@ -358,7 +474,7 @@ const StrategyDraft=(()=>{
         document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
       }
     }
-    renderConditions();
+    renderConditions();renderScalar();
   }
   function restore(...args){
     if(active)throw refusal();
@@ -368,16 +484,21 @@ const StrategyDraft=(()=>{
     if(active)throw refusal();
     const session={id,
       restore(...args){if(active!==session)throw Error('This strategy edit is no longer active.');return apply(...args);},
-      end(){if(active===session)active=null;}
+      end(){if(active===session){active=null;touch();}}
     };
-    active=session;return session;
+    active=session;touch();return session;
   }
-  return {restore,beginQueuedEdit};
+  return {restore,beginQueuedEdit,read:()=>({revision,settings:copy(currentSettings()),detached:scalar?copy(scalar.detached):[]}),patch,prepareSubmission,selectionSettings,touch,isScalar:()=>!!scalar,render:renderScalar,condition:(index,key,value)=>{const item=scalar.intent.selection.conditions[index];if(key==='op')item.op=value;else{item.threshold=copy(item.submitted_threshold||item.threshold);item.threshold[key]=value;delete item.submitted_threshold;delete item.comparison_value;delete item.storage_comparison_value;}touch();updateResultsState();},remove:index=>{scalar.intent.selection.conditions.splice(index,1);touch();renderScalar();updateResultsState();}};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
 ScheduleView.init();
+VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value});
+StrategyDraft.render();
+document.getElementById('variable-conditions').addEventListener('input',event=>{const t=event.target;if(t.dataset.variableField)StrategyDraft.condition(+t.dataset.variableIndex,t.dataset.variableField,t.value);});
+document.getElementById('variable-conditions').addEventListener('change',event=>{const t=event.target;if(t.dataset.variableField)StrategyDraft.condition(+t.dataset.variableIndex,t.dataset.variableField,t.value);});
+document.getElementById('variable-conditions').addEventListener('click',event=>{const t=event.target;if(t.dataset.variablePick!==undefined)void VariableWorkspace.open(+t.dataset.variablePick);if(t.dataset.variableRemove!==undefined)StrategyDraft.remove(+t.dataset.variableRemove);});
 document.getElementById('schedule-kind').addEventListener('change',()=>{setModeVisibility();settingsChanged();});
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
@@ -391,7 +512,7 @@ document.getElementById('strategy-form').addEventListener('submit',e=>{e.prevent
 document.getElementById('reset-range').addEventListener('click',()=>{fromYear.value='1996';toYear.value='2025';settingsChanged();});
 document.getElementById('reset-ranks').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='50';settingsChanged();});
 document.getElementById('top100').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='100';settingsChanged();});
-document.getElementById('reset-strategy').addEventListener('click',()=>{resetFilters();rankFrom.value='1';rankTo.value='50';settingsChanged();});
+document.getElementById('reset-strategy').addEventListener('click',()=>{if(StrategyDraft.isScalar())StrategyDraft.patch({legacy:true},StrategyDraft.read().revision);resetFilters();rankFrom.value='1';rankTo.value='50';settingsChanged();});
 document.getElementById('holding-year').addEventListener('change',showHoldingYear);
 document.querySelectorAll('.holding-years details').forEach(el=>el.addEventListener('toggle',()=>{if(el.open)renderStockTable(+el.id.replace('holdings-',''));}));
 document.getElementById('download-returns').addEventListener('click',e=>{e.preventDefault();downloadSelection('returns');});
@@ -433,7 +554,7 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
 SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest});
-BacktestQueue.init({libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
+BacktestQueue.init({libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
   prepare:()=>{autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
   configure:()=>{
     screeningMode='backtest';document.getElementById('schedule-kind').value='custom';

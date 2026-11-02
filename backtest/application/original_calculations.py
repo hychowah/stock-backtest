@@ -101,8 +101,7 @@ class Original(Control):
         from backtest.inputs import sqlite_observations
         options={'strategy':capture}
         strategy_requests.check_options(options)
-        plans=scalar_execution.plan_preview(strategy_requests.CapturedStrategy(
-            strategy_requests._encode(capture,strategy_requests.STRATEGY_BYTES)),roots)
+        plans=scalar_execution.plan_preview(strategy_requests.from_wire(capture),roots)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             db=daily.connect()
@@ -124,6 +123,7 @@ class Original(Control):
         from backtest import scalar_result_evidence
         from backtest.inputs import research, sqlite_observations
         from backtest.application import strategy_requests, scalar_runs
+        options=strategy_requests.canonical_options(options)
         checked=strategy_requests.check_options(options)
         if checked is None:raise ValueError('Bounded Original execution requires a captured scalar strategy.')
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')

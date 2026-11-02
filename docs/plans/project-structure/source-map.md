@@ -1,6 +1,6 @@
 # Current source owners
 
-Updated for Phase 6 Slice 2. This map describes source after the structure refactor.
+Updated for Phase 6 Slice 3. This map describes source after the structure refactor.
 Historical designs, measurements and captured artifacts retain their original
 paths and source hashes. The engine worktree has not been synchronized.
 
@@ -14,7 +14,8 @@ paths and source hashes. The engine worktree has not been synchronized.
 | Source-derived numerical calculation and immutable input attachments | `backtest/engines/numerical/` |
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
 | Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
-| Strategy draft, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `result-artifacts.js`, `saved-backtests.js`, `queue.js` |
+| Strategy draft, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
+| Shared variable editor/picker, detached readable traces and financial-free authoring | `website/browser/variable-workspace.js`, `variable-evidence.js`, `backtest/application/variable_authoring.py`, `website/server/variables.py` |
 | Durable variable revisions, metadata and exact formula resolution | `backtest/variables/library.py`, `backtest/variables/definitions.py` |
 | Plain browser assets and standalone HTML fragments | `website/browser/` |
 | Detached database projections, static rendering, assets, exports and freshness | `website/rendering/` |
@@ -93,7 +94,7 @@ restore uses no current library or display catalog. Admission checks capability
 separately. `library.capture_submitted()` reuses the existing envelope policy
 without opening a durable file. Slice 1 changed no ordinary route, job/queue or
 result format. Slice 2 adds the execution/evidence integration described below.
-The shared editor remains Slice 3. Numerical formulas stay held in Phase 7. See the
+Slice 3 supplies the shared editor described below. Numerical formulas stay held in Phase 7. See the
 [Phase 6 execution plan](../custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
 
 
@@ -105,4 +106,21 @@ complete prepared scopes, reference chunk planning and one global scalar select.
 a selected-book seam. `backtest/scalar_result_evidence.py` owns codec 2 on the
 existing bounded framing. Application artifact 4 dispatches explicitly through
 temporary/durable evidence, acquired readers, pages and complete exports. Stored
-artifact 1/2/3 and codec 1 retain their meanings. The shared editor is Slice 3.
+artifact 1/2/3 and codec 1 retain their meanings.
+
+Phase 6 Slice 3 keeps exact raw authoring snapshots in the existing library owner.
+The definition owner converts checked detached programs back to bounded raw edits
+with exact decimal compaction and revision verification. `variable_authoring.py`
+combines these operations without financial work. `website/server/variables.py`
+adapts the grouped same-origin routes. The browser workspace shares one tree and
+one picker across ranking, conditions and exact saved references. StrategyDraft
+owns held sessions, revision-fenced patches and asynchronous submission capture.
+`evidence-results.js` presents bounded retained results for all modes;
+`variable-evidence.js` explains captured values, dates, reasons and operation traces
+without calculating or reading a current library/catalog. Numerical formula
+execution remains held in Phase 7.
+
+The workspace shares opaque authored/label packing with StrategyDraft. The
+language owner supplies exact editable projections. Both authoring paths send
+each exact dependency once through the existing submitted/labels contract.
+Checked immutable restoration stays separate from deliberate editing.
