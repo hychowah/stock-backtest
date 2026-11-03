@@ -218,6 +218,26 @@ def require_plan(selection_plan, checkpoint=lambda: None):
     return submitted
 
 
+def require_program(program, *, checkpoint=lambda: None):
+    """Admit the complete qualified /1 capture before any financial access.
+
+    A semantic /2 restore or direct-reference capability grants no application
+    qualification, including unused definitions and constant-only captures.
+    """
+    checkpoint()
+    checked = definitions.require_program(program)
+    if any(item['definition']['parameter_catalog'] != 'financial-parameters/1'
+           for item in checked['bundle']['definitions']):
+        _fail('UNSUPPORTED_CAPABILITY', '/variables', 'Unsupported Original formula namespace.')
+    supported = {'annual.revenue', 'annual.operating_income',
+                 'annual.operating_margin', 'market.enterprise_value'}
+    for node in checked['nodes']:
+        checkpoint()
+        if node['op'] in ('parameter', 'annual') and node['parameter'] not in supported:
+            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original observation parameter.')
+    return checked
+
+
 def evaluate(selection_plan, inputs, checkpoint=lambda: None):
     """Return complete detached evidence or propagate cancellation/staleness/faults.
 
@@ -226,7 +246,7 @@ def evaluate(selection_plan, inputs, checkpoint=lambda: None):
     """
     checked = require_plan(selection_plan, checkpoint)
     checkpoint()
-    reference.require_program(definitions.FormulaProgram(
+    require_program(definitions.FormulaProgram(
         definitions.canonical(checked['reference']['program'])), checkpoint=checkpoint)
     current_policy = policy_fingerprint()
     inputs.validate()

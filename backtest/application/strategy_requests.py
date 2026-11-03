@@ -435,7 +435,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         if engine == 'experimental':
             from backtest.engines.numerical import formula_capabilities as admission
         else:
-            from backtest.variables import reference as admission
+            from backtest.variables import selection as admission
         admission.require_program(library.VariableCapture(
             definitions.canonical(checked['variables'])).program, checkpoint=checkpoint)
     return checked

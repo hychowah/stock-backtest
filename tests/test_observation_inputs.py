@@ -170,7 +170,7 @@ class ProjectionTests(unittest.TestCase):
         with ExitStack() as context:
             for module in (research, research.baseline, research.metrics, research.books,
                            research.rules, research.screening, research.selection, research.cache_assets,
-                           research.market, research.legacy, research.revalue, financial, observed, financial.parameters):
+                           research.market, research.legacy, research.revalue, financial, observed, financial.parameters, research.dated_observation_inputs):
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module, '__file__', str(path)))

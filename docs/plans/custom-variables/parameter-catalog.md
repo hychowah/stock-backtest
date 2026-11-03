@@ -2,6 +2,15 @@
 
 Checked: 2026-11-02.
 
+Phase 9 source update, 3 November: all 52 direct inputs now have prepared
+observation and callable reference implementation. [Final Phase 9 audit and
+verification](phases/phase-09/README.md) complete in its audited closure commit. Observation projection 3,
+research schema 10 and daily version 4 bind annual and dated evidence. The
+ordinary picker retains four inputs; qualified scalar selection, preview,
+application and numerical `/2` execution remain closed. This source work
+establishes no native/live-cache coverage. Earlier source checks and phase updates
+below keep their original dated scope; stable field mappings remain unchanged.
+
 This is the target input inventory for the custom-variable plan. The user
 requested a broader list of valuation ingredients. Include an ingredient only
 when an existing FMP download route supplies it directly, or when an explicit

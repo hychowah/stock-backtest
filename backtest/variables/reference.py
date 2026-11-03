@@ -27,24 +27,19 @@ def policy_fingerprint():
 
 
 def require_program(program, *, checkpoint=lambda: None):
-    """Admit Original's implemented /1 subset without inputs or readiness.
+    """Admit implemented direct-reference semantics before touching inputs.
 
-    Restoration belongs to definitions. Recognition under /2 does not grant
-    execution, including constants, old parameters and unused definitions.
-    This check covers the complete capture, not only its reachable roots.
+    Application and scalar selection qualification belongs to selection.
+    Semantic restoration remains independent of both execution policies.
     """
     checkpoint()
     checked = definitions.require_program(program)
-    if any(item['definition']['parameter_catalog'] != 'financial-parameters/1'
-           for item in checked['bundle']['definitions']):
-        raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', '/variables',
-            'Unsupported Original formula namespace.')
     supported = {item['id'] for item in observations.catalog()}
     for node in checked['nodes']:
         checkpoint()
         if node['op'] in ('parameter', 'annual') and node['parameter'] not in supported:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'],
-                'Unsupported Original observation parameter.')
+                'Unsupported direct-reference observation parameter.')
     return checked
 
 

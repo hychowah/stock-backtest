@@ -180,7 +180,7 @@ filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
-Daily cache version 3 tracks this in `period_pools`. Compatible version-1/2 caches
+Daily cache version 4 tracks this in `period_pools`. Compatible version-1/2 caches
 upgrade automatically at startup without reparsing prices or discarding books
 when their complete prerequisite binding agrees. Daily inputs now include a digest
 of the price inventory accepted by committed research metadata. The digest covers
@@ -751,18 +751,42 @@ when a selected-period fact is missing. The strict 90-day availability rule and
 800-day current-anchor limit remain in force. Earlier history members keep the
 existing calendar-year buckets and can be older than 800 days.
 
-Observation evidence version 2 uses the existing endpoint-keyed SQL relation.
-Research schema 9 and daily cache version 3 stay unchanged. The semantic source,
-preparation policy and complete content identity bind reuse. Version-1 evidence
-and stale generations require offline preparation. Daily and immutable numerical
-storage copy accepted evidence unchanged. Borrowed views bound each endpoint's
-history, individual records and complete retained company facts. Provider row
-admission counts all endpoints together. Existing ceilings stay unchanged.
+Observation evidence version 3 adds separate `observation_dated` and
+`observation_sessions` relations. Research schema 10 and daily cache version 4
+require offline rebuilding of older observation projections. Their complete
+content identity, preparation policy and semantic source bind reuse. The new
+read-only `dated_observation_inputs.py` resolver also participates in freshness.
+Optional `raw/download-coverage.json` presence and metadata participate too.
+A matching current or previous SeriesAsset receipt identifies exact saved bytes.
+Missing or unbound receipts do not erase usable facts or prove a download.
+Daily and immutable numerical storage copy the complete projection unchanged.
+Numerical temporal version 1, arrays and worker references keep their formats.
 
-The direct provider supports 48 annual inputs plus operating margin and existing
-dated EV. The authoring picker retains its original four usable inputs and
-presentation. Catalog `/2` formula, application and numerical execution stays
-closed in this slice. Dated market/rate observations and callable reference
-formula execution remain Phase 9 work. Synthetic tests establish implementation
-support, not historical or native-cache coverage. No data download or running
-server update is implied.
+Price and volume use the saved SPY session on or before the context, within seven
+calendar days. Each needs the stock's own field on that exact session. Price is
+finite and positive. Volume is finite and nonnegative; zero and fractional saved
+volume remain valid independently of price. Price uses USD/share in an admitted
+USD company context when route currency is absent. Explicit foreign currency
+makes that price unavailable. No FX conversion occurs. Treasury uses the latest
+saved source date on or before the context. It resolves month3 and year10 at that
+one date and divides provider percent by 100. Signed and zero rates are valid.
+Null, invalid or conflicting latest fields do not borrow older field values.
+Dated inputs require no earlier annual anchor after root admission. Legacy
+financial valid-series and as-of behavior keep their existing meanings.
+
+Borrowed session, exact-row, as-of-row and source reads use indexed bounded
+queries. Their facts are detached. Individual records and endpoint histories
+keep the existing ceilings. Provider preflight charges source, calendar and
+row reads. Retained evidence counts against its byte limit. Company and dated
+reads check view lifetime; they do not rescan the whole generation. Admission
+and observation boundaries retain their authoritative freshness checks.
+
+The direct provider and callable reference evaluator support all 52 direct inputs
+plus operating margin and existing dated EV. The ordinary authoring picker keeps
+four inputs. `variables.selection.require_program()` owns the separate qualified
+/1 scalar-selection gate. Original application, preview, chunk planning and
+callable selection reject every /2 capture before financial access. Numerical
+/2 execution stays closed. Semantic restoration is independent of those gates.
+Old definitions, captures, artifacts and durable records retain their bytes.
+Private synthetic tests establish source correctness, not native/live-cache
+coverage. No download, publication to main or running-server update is implied.

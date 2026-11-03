@@ -190,7 +190,7 @@ class AnnualProviderTests(unittest.TestCase):
             else: self.extra[endpoint] = {fiscal: fields}
         ids = [identity for fields in ORACLE.values() for identity in fields.values()]
         results = self.observe([self.request(identity) for identity in ids])['results']
-        self.assertEqual(len(provider.catalog()), 50)
+        self.assertEqual(len(provider.catalog()), 54)
         self.assertEqual(len(results), 48)
         for result, (endpoint, field) in zip(results, [(e,f) for e,fs in ORACLE.items() for f in fs]):
             self.assertTrue(result['valid'], result['parameter'])
@@ -324,7 +324,7 @@ class AnnualTransportTests(unittest.TestCase):
                  closing(ordinary_daily(self.fixture.path,self.fixture.source)) as copied, \
                  store.open_current() as attachment:
                 with sqlite_observations.prepared_view(copied,lambda:None) as sqlview, attachment.observations() as numview:
-                    self.assertEqual(source.require(original,verify_content=True)['version'],2)
+                    self.assertEqual(source.require(original,verify_content=True)['version'],3)
                     self.assertEqual(sqlview.company('TEST','cached'),numview.company('TEST','cached'))
                     facts = numview.company('TEST','cached')
                     for endpoint, fields in ORACLE.items():
@@ -389,7 +389,7 @@ class AnnualTransportTests(unittest.TestCase):
         with ExitStack() as context:
             modules = (research, research.baseline, research.metrics, research.books, research.rules,
                 research.screening, research.selection, research.cache_assets, research.market,
-                research.legacy,research.revalue,financial,source,parameters)
+                research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs)
             source_folder = Path(research.__file__).parent
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name

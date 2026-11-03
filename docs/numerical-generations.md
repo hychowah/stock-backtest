@@ -166,21 +166,24 @@ Factors and complete books consume the same numerical output. They do not
 implement a second financial formula.
 
 The generation includes `treasury10(day, yield_percent)` in `records.sqlite`.
-Phase 9 Slice 1 carries version-2 annual observation evidence unchanged through
-the existing temporal SQLite sidecar. Endpoint-qualified income, balance-sheet
-and cash-flow facts keep their exact fiscal dates and source/row receipts. The
-semantic parameter source participates in preparation freshness and the accepted
-projection identity. Old version-1 projections and stale generations require
-offline preparation. Research schema 9, daily version 3 and numerical temporal
-and array versions keep their existing numbers. No immutable saved result changes.
+Phase 9 carries observation version 3 through the existing temporal SQLite
+sidecar. Annual endpoint evidence is joined by separate dated source rows and
+saved calendar sessions. Research schema 10 and daily version 4 copy the complete
+accepted projection. Old observation versions and incomplete dated tables require
+offline rebuilding. Source policy, semantic meaning, complete content, accepted
+projection and the immutable manifest bind reuse. The read-only dated resolver is
+included in the generation's source binding. Numerical temporal version 1, arrays
+and worker references keep their existing formats. No saved result changes.
 
-Borrowed observation views enforce the existing record and history ceilings for
-every endpoint. Provider row preflight counts the full endpoint aggregate and
-retained company facts count against its byte allowance. Direct provider support
-now covers 48 annual inputs and the two existing adapters. This transport grants
-no catalog `/2` formula or numerical execution. The authoring picker still exposes
-four inputs. Dated market/rate observations and callable reference execution
-remain Phase 9 work. Private synthetic checks establish no native-cache coverage.
+Borrowed views retain record/history ceilings and bounded indexed queries for
+session, exact row, as-of row and source evidence. They check view lifetime.
+Whole-generation validation stays at admission and operation boundaries, not at
+each company or dated read. Provider row and retained-byte accounting covers the
+new evidence. Direct provider/reference execution supports 52 inputs plus the
+existing two adapters. The authoring picker and qualified scalar application
+keep four inputs. Callable scalar selection and numerical /2 execution stay
+closed. No arithmetic kernel or compiled-admission policy changes. Private
+synthetic checks establish no native/live-cache coverage.
 
 `DatedYields` returns the latest saved observation on or before entry. An empty
 series or no preceding observation returns no value. Zero and negative yields

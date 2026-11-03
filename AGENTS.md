@@ -12,6 +12,20 @@ push, deployment, restart, download and live runtime/cache/durable-store mutatio
 remain unauthorized. Earlier dated Phase 9 holds below are superseded only for
 this narrow phase.
 
+Phase 9 completes in source in the independently audited commit containing its
+[phase record](docs/plans/custom-variables/phases/phase-09/README.md). Slice 1 is
+`307a2c1`; Slice 2 supplies all 52 direct observations and callable reference
+`/1` and `/2` evaluation under its filed design. Final verification passes 482
+WSL tests with five expected skips and 485 private native tests with one
+environment skip. The phase record retains the unavailable junction check and
+pre-existing benchmark harness errors. Observation
+projection 3, research schema 10 and daily cache 4 require incompatible caches
+to rebuild. Durable records keep their formats. The ordinary picker retains
+four inputs. Qualified scalar selection, preview, application and numerical
+`/2` execution remain closed. The single qualified scalar gate belongs to
+`backtest/variables/selection.py`; broad reference admission grants no application
+qualification. Preserve operation-boundary freshness checks and bounded leaf reads.
+
 Phase 8 completes in source on 3 November 2026 from `3dccd88` under explicit
 user authorization on `feature/custom-variables`. Its independently audited
 completion includes 393 passing WSL tests and the
@@ -301,14 +315,16 @@ charts show dated period returns; don't label monthly/quarterly books as annual
 returns. Keep canonical January reports untouched. Verify with
 `python3 tests/test_schedules.py` and existing research/website checks.
 
-Daily cache version 3 prepares only the requested pool. `period_pools` records
+Daily cache version 4 prepares only the requested pool. `period_pools` records
 completion independently of snapshot counts, including empty pools. A pool switch
 fills the missing pool in the same dated period; filters, ranks and metrics reuse
 its prepared rows. Keep completion markers and rows in the same transaction.
 Startup upgrades compatible version-1/2 caches in place, retaining daily prices
-and completed pools. Research schema 9 also carries version-1 observation evidence.
-Daily inputs bind its accepted content and policy. Caches without that binding
-must rebuild; the version-1/2 upgrade does not invent observation evidence.
+and completed pools only when their accepted bindings remain compatible.
+Research schema 10 carries version-3 annual, dated and session observation
+evidence. Daily inputs bind its accepted content and policy. Older observation
+projections and version-3 daily caches must rebuild for the new relations.
+The version-1/2 upgrade cannot invent observation evidence.
 Daily inputs also bind to the price inventory accepted by research
 metadata. After accepted in-place price edits, rebuild daily prices before numeric
 export. Old caches without this binding cannot establish compatibility. Version-1 books mark both pools complete; version-2 books

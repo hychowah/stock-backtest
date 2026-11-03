@@ -13,11 +13,11 @@ from pathlib import Path
 import sqlite3
 
 from backtest.financial import books, rules
-from backtest.inputs import financial_inputs
+from backtest.inputs import financial_inputs, dated_observation_inputs
 from backtest.variables import parameters
 
-VERSION = 2
-TABLES = ('observation_sources', 'observation_annual', 'observation_latest', 'observation_metadata')
+VERSION = 3
+TABLES = ('observation_sources', 'observation_annual', 'observation_latest', 'observation_dated', 'observation_sessions', 'observation_metadata')
 SCHEMA = '''
 CREATE TABLE observation_sources(symbol TEXT,endpoint TEXT,evidence_json TEXT NOT NULL,
  PRIMARY KEY(symbol,endpoint)) WITHOUT ROWID;
@@ -25,6 +25,9 @@ CREATE TABLE observation_annual(symbol TEXT,endpoint TEXT,fiscal TEXT,evidence_j
  PRIMARY KEY(symbol,endpoint,fiscal)) WITHOUT ROWID;
 CREATE TABLE observation_latest(symbol TEXT,pool TEXT,admitted INTEGER NOT NULL,
  evidence_json TEXT NOT NULL,PRIMARY KEY(symbol,pool)) WITHOUT ROWID;
+CREATE TABLE observation_dated(symbol TEXT,endpoint TEXT,day TEXT,evidence_json TEXT NOT NULL,
+ PRIMARY KEY(symbol,endpoint,day)) WITHOUT ROWID;
+CREATE TABLE observation_sessions(day TEXT PRIMARY KEY,evidence_json TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE observation_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL) WITHOUT ROWID;
 '''
 
@@ -33,11 +36,22 @@ def encoded(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
+def record_bytes(row):
+    """Charge every retained SQL value, including keys, identically in all copies."""
+    return sum(len(value.encode('utf-8')) if isinstance(value, str) else 8 for value in row)
+
+
+def _prepared_record(row):
+    if record_bytes(row) > dated_observation_inputs.MAX_RECORD_BYTES:
+        raise ValueError('Prepared observation record exceeds its byte bound.')
+    return row
+
+
 def policy_binding():
     """Bind the preparation and financial source that establishes these facts."""
     paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__),
              Path(rules.__file__), Path(__file__).with_name('research.py'),
-             Path(__file__).with_name('daily.py'), Path(parameters.__file__))
+             Path(__file__).with_name('daily.py'), Path(parameters.__file__), Path(dated_observation_inputs.__file__))
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
@@ -48,10 +62,25 @@ def store_annual(db, symbol, resolution):
     chosen income fiscal spine exactly, never select a replacement endpoint date.
     """
     db.executemany('INSERT INTO observation_sources VALUES(?,?,?)',
-        ((symbol, endpoint, encoded(source)) for endpoint, source in resolution['sources'].items()))
+        (_prepared_record((symbol, endpoint, encoded(source)))
+         for endpoint, source in resolution['sources'].items()))
     db.executemany('INSERT INTO observation_annual VALUES(?,?,?,?)',
-        ((symbol, endpoint, fiscal, encoded(states))
+        (_prepared_record((symbol, endpoint, fiscal, encoded(states)))
          for endpoint, dates in resolution['annual'].items() for fiscal, states in dates.items()))
+
+
+def store_dated(db, symbol, endpoint, resolution, checkpoint=lambda: None):
+    db.execute('INSERT INTO observation_sources VALUES(?,?,?)',
+               _prepared_record((symbol, endpoint, encoded(resolution['source']))))
+    for day, states in resolution['dated'].items():
+        checkpoint()
+        if endpoint == dated_observation_inputs.CALENDAR:
+            if states['adjClose']['valid']:
+                db.execute('INSERT INTO observation_sessions VALUES(?,?)',
+                           _prepared_record((day, encoded(states))))
+        else:
+            db.execute('INSERT INTO observation_dated VALUES(?,?,?,?)',
+                       _prepared_record((symbol, endpoint, day, encoded(states))))
 
 
 def store_latest(db, symbol, pool, evidence):
@@ -61,14 +90,16 @@ def store_latest(db, symbol, pool, evidence):
     latest-SPY-session adjusted price. Earlier contexts cannot change this root.
     """
     db.execute('INSERT INTO observation_latest VALUES(?,?,?,?)',
-               (symbol, pool, int(evidence['admitted']), encoded(evidence)))
+               _prepared_record((symbol, pool, int(evidence['admitted']), encoded(evidence))))
 
 
 def content_identity(db, checkpoint=lambda: None):
     digest = hashlib.sha256()
     for table, order in (('observation_sources', 'symbol,endpoint'),
                          ('observation_annual', 'symbol,endpoint,fiscal'),
-                         ('observation_latest', 'symbol,pool')):
+                         ('observation_latest', 'symbol,pool'),
+                         ('observation_dated', 'symbol,endpoint,day'),
+                         ('observation_sessions', 'day')):
         digest.update((table + '\n').encode())
         for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
             checkpoint()
@@ -108,12 +139,17 @@ def require(db, *, expected=None, verify_content=False, checkpoint=lambda: None)
 def copy(source, destination, checkpoint=lambda: None, *, max_record_bytes=None):
     """Copy facts unchanged inside the caller's existing publication transaction."""
     metadata = require(source, verify_content=True, checkpoint=checkpoint)
+    for table, groups in (('observation_annual', 'symbol,endpoint'), ('observation_dated', 'symbol,endpoint')):
+        for row in source.execute('SELECT count(*) FROM '+table+' GROUP BY '+groups):
+            checkpoint()
+            if row[0] > dated_observation_inputs.MAX_HISTORY:
+                raise ValueError('Prepared observation history exceeds its bound.')
+    if source.execute('SELECT count(*) FROM observation_sessions').fetchone()[0] > dated_observation_inputs.MAX_HISTORY:
+        raise ValueError('Prepared observation history exceeds its bound.')
     for table in TABLES:
         for row in source.execute('SELECT * FROM ' + table):
             checkpoint()
-            if max_record_bytes is not None and sum(
-                    len(value.encode('utf-8')) if isinstance(value, str) else 8
-                    for value in row) > max_record_bytes:
+            if max_record_bytes is not None and record_bytes(row) > max_record_bytes:
                 raise ValueError('Prepared observation record exceeds its byte bound.')
             destination.execute('INSERT INTO ' + table + ' VALUES(' + ','.join('?' * len(row)) + ')', tuple(row))
     require(destination, expected=metadata, verify_content=True, checkpoint=checkpoint)
@@ -297,7 +333,8 @@ class ReadView:
             annual[endpoint][fiscal] = decode(evidence)
         sources = {}
         for endpoint, evidence in self._db.execute('SELECT endpoint,evidence_json FROM observation_sources '
-                'WHERE symbol=? ORDER BY endpoint LIMIT ?', (symbol, len(endpoints) + 1)):
+                'WHERE symbol=? AND endpoint IN (' + ','.join('?' for _ in endpoints) + ') ORDER BY endpoint LIMIT ?',
+                (symbol, *endpoints, len(endpoints) + 1)):
             if endpoint not in endpoints:
                 raise ValueError('Prepared observation source endpoint is incompatible.')
             sources[endpoint] = decode(evidence)
@@ -308,6 +345,37 @@ class ReadView:
         if budget is not None and len(encoded(result).encode('utf-8')) > budget['bytes']:
             raise ValueError('Observation company facts exceed their byte bound.')
         return result
+
+    def _one(self, sql, arguments, checkpoint):
+        # Operation boundaries own freshness. A bounded row read never rescans
+        # the generation; it checks only the borrowed view lifetime.
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        checkpoint()
+        row = self._db.execute(sql, arguments).fetchone()
+        if row is None:
+            return None
+        checkpoint()
+        return dict(day=row[0], evidence=self._json(row[1]))
+
+    def session_backward(self, day, slack, checkpoint=lambda: None):
+        if not isinstance(day, date) or type(slack) is not int or slack < 0:
+            raise ValueError('Invalid observation session lookup.')
+        row = self._one('SELECT day,evidence_json FROM observation_sessions WHERE day<=? ORDER BY day DESC LIMIT 1',
+                        (str(day),), checkpoint)
+        return row if row is not None and (day - date.fromisoformat(row['day'])).days <= slack else None
+
+    def dated(self, symbol, endpoint, day, *, asof=False, checkpoint=lambda: None):
+        if endpoint not in (dated_observation_inputs.STOCK, dated_observation_inputs.TREASURY) or not isinstance(day, date):
+            raise ValueError('Invalid dated observation lookup.')
+        return self._one('SELECT day,evidence_json FROM observation_dated WHERE symbol=? AND endpoint=? AND day'
+                         + ('<=?' if asof else '=?') + ' ORDER BY day DESC LIMIT 1',
+                         (symbol, endpoint, str(day)), checkpoint)
+
+    def source(self, symbol, endpoint, checkpoint=lambda: None):
+        row = self._one('SELECT endpoint,evidence_json FROM observation_sources WHERE symbol=? AND endpoint=?',
+                        (symbol, endpoint), checkpoint)
+        return row['evidence'] if row else None
 
     def lookup(self, symbol, day, column, forward=False, slack=None):
         if self.closed:

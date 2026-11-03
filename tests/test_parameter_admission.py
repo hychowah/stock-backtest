@@ -48,7 +48,8 @@ class AdmissionTests(unittest.TestCase):
                 self.assertEqual(library.require_capture(variable),variable.to_dict())
                 program=variable.program
                 self.assertEqual(d.require_program(program),program.to_dict())
-                for gate in (reference.require_program,formula_capabilities.require_program):
+                reference.require_program(program)
+                for gate in (selection.require_program,formula_capabilities.require_program):
                     self.error(lambda:gate(program))
                 for engine in ('original','experimental'):
                     self.error(lambda:s.check_options(dict(strategy=captured.to_dict(),engine=engine)))
@@ -80,15 +81,19 @@ class AdmissionTests(unittest.TestCase):
                 self.error(lambda:scalar_execution.plan_preview(captured,ROOTS))
                 self.error(lambda:scalar_execution._plans(program,ROOTS,8*1024**2,lambda:None))
 
-    def test_reference_prepare_rejects_before_inputs_validate_even_without_observations(self):
-        # These can construct a provider plan, so arithmetic admission must guard
-        # direct execution independently of application preflight and requests.
+    def test_reference_accepts_constants_old_inputs_and_unused_v2_definitions(self):
+        # Direct reference admission must reach input validation. Qualified
+        # selection still refuses each complete /2 capture before inputs.
         for entries in (list(expanded_cases())[0],list(expanded_cases())[1],list(expanded_cases())[-1]):
             program=d.validate(bundle(*entries,roots=[root(entries[0])]))
             plan=reference.plan(program,ROOTS)
-            inputs=Mock();inputs.validate.side_effect=AssertionError('No inputs.validate')
-            self.error(lambda:reference.evaluate(plan,inputs))
+            inputs=Mock();inputs.validate.side_effect=AssertionError('Direct reference reached inputs')
+            reference.require_program(program)
+            self.error(lambda:selection.require_program(program))
             inputs.validate.assert_not_called()
+            with self.assertRaisesRegex(AssertionError,'Direct reference reached inputs'):
+                reference.evaluate(plan,inputs)
+            inputs.validate.assert_called_once()
 
     def test_callable_selection_rejects_before_input_validation_or_properties(self):
         class Untouched:
@@ -144,7 +149,7 @@ class AdmissionTests(unittest.TestCase):
 
     def test_ordinary_picker_stays_four_while_direct_provider_expands(self):
         expected=['annual.revenue','annual.operating_income','annual.operating_margin','market.enterprise_value']
-        self.assertEqual(len(observations.catalog()),50)
+        self.assertEqual(len(observations.catalog()),54)
         self.assertEqual([item['id'] for item in observations.catalog()][:4],expected)
         value=variable_authoring.catalog()
         self.assertEqual([item['id'] for item in value['parameters']],expected)
@@ -181,11 +186,12 @@ class Block(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0,Block())
 from test_parameter_admission import expanded_cases,capture
 from backtest.application import strategy_requests as s
-from backtest.variables import library,definitions as d,reference
+from backtest.variables import library,definitions as d,reference,selection
 for entries in expanded_cases():
  c=capture(entries);s.require_strategy(c)
  program=library.VariableCapture(d.canonical(c.to_dict()['variables'])).program
- try:reference.require_program(program)
+ reference.require_program(program)
+ try:selection.require_program(program)
  except d.FormulaError as e:assert e.code=='UNSUPPORTED_CAPABILITY'
  else:raise AssertionError('expanded execution admitted')
 '''

@@ -18,6 +18,7 @@ from types import MappingProxyType
 from backtest.variables import parameters
 from backtest.financial import rules
 from backtest.inputs.observation_inputs import encoded
+from backtest.inputs import dated_observation_inputs as dated_inputs
 
 VERSION = 1
 CEILINGS = MappingProxyType(dict(contexts=256, requests=1024, members=10240,
@@ -33,7 +34,9 @@ _CATALOG = {
 }
 _ANNUAL = {key: item['source'] for key, item in _MEANINGS.items()
            if item['kind'] == 'direct' and key.startswith('annual.')}
-for _key in _ANNUAL:
+_DATED = {key: item['source'] for key, item in _MEANINGS.items()
+          if item['kind'] == 'direct' and not key.startswith('annual.')}
+for _key in (*_ANNUAL, *_DATED):
     _CATALOG.setdefault(_key, (_MEANINGS[_key]['unit'], _MEANINGS[_key]['description']))
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
 _SYMBOL = re.compile(r'[A-Za-z0-9^._-]{1,64}\Z')
@@ -69,7 +72,7 @@ class ObservationBlock:
 
 
 def catalog():
-    """48 annual fields and two adapters; support does not prove coverage."""
+    """52 direct fields and two adapters; support does not prove coverage."""
     return [dict(id=key, unit=value[0], description=value[1],
                  counts=dict(minimum=1, maximum=10 if key.startswith('annual.') else 1),
                  contexts=['root', 'at', 'lookback']) for key, value in _CATALOG.items()]
@@ -290,6 +293,29 @@ def _annual(parameter, facts, periods, checkpoint):
     return members
 
 
+def _dated(parameter, inputs, symbol, day, checkpoint):
+    source_spec = _DATED[parameter]
+    endpoint, field = source_spec['endpoint'], source_spec['field']
+    treasury = endpoint == dated_inputs.TREASURY
+    session = None if treasury else inputs.session_backward(day, 7, checkpoint)
+    selected = day if treasury else date.fromisoformat(session['day']) if session else None
+    row = inputs.dated('' if treasury else symbol, endpoint, selected,
+                       asof=treasury, checkpoint=checkpoint) if selected is not None else None
+    source = inputs.source('' if treasury else symbol, endpoint, checkpoint)
+    calendar_source = None if treasury else inputs.source('', dated_inputs.CALENDAR, checkpoint)
+    state = row['evidence'].get(field) if row else None
+    reason = (state['reason'] if state else 'MISSING_INPUT' if treasury or session else 'MISSING_SESSION')
+    value = state['value'] if state and state['valid'] else None
+    if value is not None and treasury:
+        value /= 100
+    return dict(value=value, valid=reason is None, reason=reason,
+        fiscal_date=None, fiscal_year=None, observation_date=row['day'] if row else session['day'] if session else None,
+        evidence=dict(source=source, calendar_source=calendar_source, session=session,
+            field=field, state=state, lookup_policy='latest-source-date' if treasury else 'exact-own-stock-at-backward-spy-session-within-seven-days',
+            currency_basis=None if treasury or field=='volume' else 'USD/share in admitted USD-company context; absent route currency assumes this basis',
+            conversion='provider-percent-divided-by-100' if treasury else 'identity'))
+
+
 def observe(observation_plan, inputs, checkpoint=lambda: None):
     """Return complete detached observations, or fail without a partial block.
 
@@ -319,6 +345,8 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                  for item in submitted['requests']}
     inspected = len(dates) * 2 * (bounds['report_rows'] + bounds['population']) + len(roots)
     companies = {(symbol, pool) for symbol, pool, _ in fact_keys}
+    inspected += sum(3 if item['parameter'].startswith('treasury.') else 4
+                     for item in submitted['requests'] if item['parameter'] in _DATED)
     inspected += len(companies) * (bounds['max_reports'] + bounds['max_annual'] + 6)
     inspected += len(fact_keys) * bounds['max_reports']
     inspected += sum(item['count'] * (bounds['max_annual'] + 1)
@@ -346,7 +374,13 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
             item['reason'] = 'ROOT_NOT_ADMITTED'
         else:
             is_root = context['id'] == context['root']
-            if request['parameter'] == 'market.enterprise_value' and is_root:
+            if request['parameter'] in _DATED:
+                member = _dated(request['parameter'], inputs, root['symbol'], day, checkpoint)
+                facts_bytes += len(encoded(member['evidence']).encode('utf-8'))
+                if facts_bytes > limits['bytes']:
+                    _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts exceed their byte bound.')
+                item['members'] = [member]
+            elif request['parameter'] == 'market.enterprise_value' and is_root:
                 anchor = _report(root['statement'])
                 valuation, evidence = root['valuation'], root.get('admission_evidence')
                 item['anchor'] = str(anchor['fiscal'])

@@ -18,6 +18,7 @@ from backtest import selection
 from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
 from backtest.variables import definitions, library, reference, evaluation
+from backtest.variables import selection as scalar_selection
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
 MAX_METADATA_BYTES = 16 * 1024 * 1024
@@ -71,7 +72,7 @@ def scope_rows(db, *, pool, period=None, metadata_bytes=None):
 
 def _plans(program, roots, record_bytes, checkpoint, limits=None, metadata_bytes=None):
     """Compile every chunk before reading its observations; adapt temporal contexts."""
-    reference.require_program(program, checkpoint=checkpoint)
+    scalar_selection.require_program(program, checkpoint=checkpoint)
     maximum=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
     plans = [];used=0
     remaining = roots
@@ -149,7 +150,7 @@ class Executor:
     def select(self, db, period, entry, exit_day=None, *, latest=False):
         self.checkpoint()
         if self.program is not None:
-            reference.require_program(self.program, checkpoint=self.checkpoint)
+            scalar_selection.require_program(self.program, checkpoint=self.checkpoint)
         rows = scope_rows(db, pool=self.pool, period=None if latest else period,metadata_bytes=self.metadata_bytes)
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
         roots = [dict(symbol=row['symbol'], pool=self.pool, mode='latest' if latest else 'historical', date=str(entry)) for row in rows]

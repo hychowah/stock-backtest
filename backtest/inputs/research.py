@@ -22,14 +22,15 @@ from backtest import screening, selection
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
-from backtest.inputs import observation_inputs
+from backtest.inputs import observation_inputs, dated_observation_inputs
+from backtest.runtime import backtest_control
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.reference import revalue as revalue
 from backtest.inputs import baseline as baseline
 from backtest.paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -92,8 +93,11 @@ def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
     paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py'),
-              Path(financial_inputs.parameters.__file__)]
+              Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__)]
     entries = [(path, path.stat()) for path in paths]
+    ledger_path = RAW/'download-coverage.json'
+    if ledger_path.exists():
+        entries.append((ledger_path, ledger_path.stat()))
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
     result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}
     prefixes = {}
@@ -232,6 +236,11 @@ def prepare(path=DATABASE, force=False):
             print(f'Database already current ({time.perf_counter()-started:.2f}s); no JSON prices parsed.')
             return
     inputs, sources=signature(),price_sources()
+    try:
+        ledger=cache_assets.read_json(RAW/'download-coverage.json',{})
+    except (ValueError, UnicodeDecodeError):
+        ledger={}
+    if not isinstance(ledger,dict):ledger={}
     universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
     # Reuse the current selection semantics, including the 250-name pre-price buffer.
     book={}
@@ -386,7 +395,13 @@ def prepare(path=DATABASE, force=False):
             observation_inputs.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
         for (symbol,pool),evidence in latest_admission.items():
             observation_inputs.store_latest(db,symbol,pool,evidence)
-        observation_inputs.finish(db,latest_day)
+        for symbol in sorted(broad):
+            backtest_control.checkpoint()
+            observation_inputs.store_dated(db,symbol,dated_observation_inputs.STOCK,
+                dated_observation_inputs.stock(RAW,symbol,ledger,backtest_control.checkpoint),backtest_control.checkpoint)
+        for endpoint,resolution in dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint).items():
+            observation_inputs.store_dated(db,'',endpoint,resolution,backtest_control.checkpoint)
+        observation_inputs.finish(db,latest_day,backtest_control.checkpoint)
         prepare_metrics(db)
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))

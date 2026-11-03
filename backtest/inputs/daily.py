@@ -16,7 +16,7 @@ from backtest.inputs import observation_inputs
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 3
+VERSION = 4
 POOL_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
@@ -115,7 +115,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
             rows=reference.execute('SELECT * FROM '+table).fetchall()
             if rows:
                 db.executemany('INSERT INTO '+table+' VALUES('+','.join('?'*len(rows[0]))+')',rows)
-        observation_inputs.copy(reference,db,backtest_control.checkpoint)
+        observation_inputs.copy(reference,db,backtest_control.checkpoint, max_record_bytes=4*1024*1024)
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
         for i,symbol in enumerate(symbols,1):
             payload=json.loads(market.cache_path_for(symbol).read_text())

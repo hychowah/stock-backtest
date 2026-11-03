@@ -4,8 +4,9 @@ Date: 2026-10-30
 
 Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
 `start next phase $finish-phase` instruction. Its [execution plan](phases/phase-09/execution-plan-2026-11-03.md)
-records narrow ownership, required evidence and independent slices. It is in
-progress. This supersedes earlier Phase 9 holds only for the authorized phase.
+records narrow ownership, required evidence and independent slices. Phase 9 is
+complete in source in the audited commit containing its phase record. This
+supersedes earlier Phase 9 holds only for the authorized phase.
 Main/engine integration, publication, live data and Phases 10–12 remain held.
 
 Parameter-list revision: 2026-11-02. The user requested a longer list of valuation
@@ -18,13 +19,13 @@ The [Phase 8 record](phases/phase-08/README.md) retains independent audit,
 recognizes all 52 direct inputs and two existing adapters. Catalog /1 preserves
 the initial four observations; /2 adds the complete vocabulary and share units.
 At the Phase 8 boundary, only revenue, operating income, operating margin and EV
-were usable provider and picker observations. Phase 9 Slice 1 expands direct
-provider observations to 48 annual fields plus the two existing adapters.
-Its independently audited Slice 1 completes in the commit containing its record.
-Corrected-source verification runs 366 WSL and 365 guarded native tests, with
-documented skips and native-junction exclusion. The ordinary picker
-retains the four original inputs. All /2 formula execution stays closed. The full usable inventory,
-named measures and integration qualification remain unfinished.
+were usable provider and picker observations. Phase 9 Slice 1 is audited
+`307a2c1`. Slice 2 now implements all 52 direct observations and the two existing
+adapters for callable reference `/1` and `/2` execution. Final independent audit
+corrections and source-bound WSL/private native verification are complete. The ordinary picker retains the
+four original inputs. Qualified scalar selection, preview, application and
+numerical `/2` execution remain closed. Named measures, broader authoring/backend
+qualification and integration remain assigned to Phases 10–12.
 
 The earlier 3 November resumption authorized Phase 8 implementation, independently
 audited commits and its handoff on `feature/custom-variables`. The later
@@ -69,8 +70,10 @@ ownership and one independently designed coherent slice. The
 [phase session workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
 remains canonical. The semantic contract, compatibility evidence, independent
 audit corrections, final verification and handoff are complete in the commit
-containing the phase record. Phase 9 is now resumed under the later instruction
+containing the phase record. Phase 9 also completes under the later instruction
 and [current execution plan](phases/phase-09/execution-plan-2026-11-03.md).
+Its two audited slices supply all direct observations and reference execution.
+[Phase 10](phases/phase-09/handoffs/phase-10.md) remains held.
 Preserve completed phase records as history. Earlier saved next-session prompts
 and dated holds do not resume a later phase or authorize main integration.
 
@@ -345,7 +348,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), [Slice 3](phases/phase-06/slice-03.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md), [compatibility](phases/phase-06/compatibility.md) and [held Phase 7 handoff](phases/phase-06/handoffs/phase-07.md). |
 | **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
 | **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and [Phase 9 handoff](phases/phase-08/handoffs/phase-09.md). All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
-| **9. Evidence for all sources** | **In progress:** endpoint-aware annual facts and dated market/rate observations | [Phase record](phases/phase-09/README.md) and [execution plan](phases/phase-09/execution-plan-2026-11-03.md). Preserve financial policy and generation ownership. |
+| **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and [execution plan](phases/phase-09/execution-plan-2026-11-03.md). Preserve financial policy and generation ownership. |
 | **10. Reusable measure library** | Planned: finite named measures and bounded annual growth | [Continuation: Phase 10](parameter-expansion-plan-2026-11-03.md#phase-10--reusable-measure-library). Preserve exact legacy calculations. |
 | **11. Discoverable, qualified capabilities** | Planned: expanded editor, bounded coverage inspection and both-engine qualification | [Continuation: Phase 11](parameter-expansion-plan-2026-11-03.md#phase-11--discoverable-qualified-capabilities). Support, readiness and data coverage stay distinct. |
 | **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |

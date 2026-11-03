@@ -23,6 +23,26 @@ Raw response acceptance/publication and legacy values remain unchanged.
 No formula admission, numerical execution, worker, lock or resource change is
 assigned. Other worktrees require no action.
 
+Slice 1 is audited commit `307a2c1`. The [Slice 2 independent design](plans/custom-variables/phases/phase-09/slice-02-design.md)
+now assigns its exact 11 production seams to this branch before edits. These
+add a separate dated evidence resolver/projection, deliberate rebuildable-cache
+versions, checked transport and bounded queries, all four market/rate inputs,
+and direct reference `/2` execution. The single qualified scalar-selection `/1`
+gate moves to `variables.selection`; its four callable/application seams retain
+early `/2` rejection. Ordinary authoring and numerical `/2` remain closed.
+Raw acceptance/publication, legacy financial readers/calculations, immutable
+formats, workers, source/cache ordering and ceilings remain protected.
+Main and engine worktrees require no edit or task.
+
+Phase 9 completes in source in the audited commit containing its
+[completion record](plans/custom-variables/phases/phase-09/README.md). Both slices
+are independently planned, implemented and audited. Final checks bind the same
+424-file source inventory: 482 WSL tests pass with five expected skips; 485
+private native tests pass with one environment skip. The record retains the
+unavailable junction case and benchmark setup failures. Main matches entry;
+the engine branch ref is unchanged, but its recorded worktree path is absent
+at final check. No restoration or edit is attempted. Phases 10–12 remain held.
+
 ## Custom-variable Phase 8 resumption — 3 November 2026
 
 The user authorizes completing Phase 8 from `3dccd88` on

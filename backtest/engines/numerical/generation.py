@@ -8,7 +8,7 @@ evaluators before closing the input attachment.
 No application routing, downloads or reference-report writes occur here.
 """
 from backtest.financial import rules, books as financial_books, metrics
-from backtest.inputs import daily, research, observation_inputs
+from backtest.inputs import daily, research, observation_inputs, dated_observation_inputs
 
 from collections.abc import Mapping, Sequence
 from bisect import bisect_right
@@ -312,6 +312,7 @@ def _source_binding(policy, checkpoint=lambda: None):
     for name in ('generation.py', 'policy.py', 'decisions.py', 'temporal.py', 'factors.py'):
         source['backtest/engines/numerical/'+name] = _sha(Path(__file__).with_name(name), checkpoint)
     source['backtest/runtime/cache_access.py'] = _sha(Path(cache_access.__file__), checkpoint)
+    source['backtest/inputs/dated_observation_inputs.py'] = _sha(Path(dated_observation_inputs.__file__), checkpoint)
     source['backtest/inputs/observation_inputs.py'] = _sha(Path(observation_inputs.__file__), checkpoint)
     return source
 
