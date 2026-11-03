@@ -1,5 +1,18 @@
 # EBITDA/EV January book
 
+Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
+`work on phase 10` clarification to `$finish-phase` on `feature/custom-variables`.
+The [execution plan](docs/plans/custom-variables/phases/phase-10/execution-plan-2026-11-03.md)
+records the finite reusable-measure and bounded annual-growth scope. Each slice
+has an independent design, separate writer and independent audit before commit.
+Its filed design assigns precise production seams before edits. This supersedes
+earlier Phase 10 holds only. Preserve financial calculations, immutable bytes,
+limits, bounded leaf reads, operation-boundary freshness and Original as default.
+Expanded authoring and application/scalar/numerical qualification remain closed.
+Main and engine worktrees remain read-only. Phases 11–12, merge, push, deployment,
+restart, download and live runtime/cache/durable-store access or mutation remain
+unauthorized. Use private synthetic verification only.
+
 Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
 `start next phase $finish-phase` instruction on `feature/custom-variables`.
 The [Phase 9 execution plan](docs/plans/custom-variables/phases/phase-09/execution-plan-2026-11-03.md)

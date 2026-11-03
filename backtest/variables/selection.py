@@ -226,13 +226,19 @@ def require_program(program, *, checkpoint=lambda: None):
     """
     checkpoint()
     checked = definitions.require_program(program)
-    if any(item['definition']['parameter_catalog'] != 'financial-parameters/1'
+    if any(item['definition']['version'] != 1 or
+           item['definition']['parameter_catalog'] != 'financial-parameters/1'
            for item in checked['bundle']['definitions']):
         _fail('UNSUPPORTED_CAPABILITY', '/variables', 'Unsupported Original formula namespace.')
     supported = {'annual.revenue', 'annual.operating_income',
                  'annual.operating_margin', 'market.enterprise_value'}
+    operations = {'constant', 'parameter', 'annual', 'ref', 'at', 'lookback',
+                  'neg', 'add', 'sub', 'mul', 'div'}
     for node in checked['nodes']:
         checkpoint()
+        if node['op'] not in operations or (node['op'] == 'annual' and
+                node['stat'] not in ('mean', 'min', 'max')):
+            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original formula operation.')
         if node['op'] in ('parameter', 'annual') and node['parameter'] not in supported:
             _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original observation parameter.')
     return checked

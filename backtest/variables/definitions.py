@@ -5,6 +5,9 @@ expansion may be longer. require_program() is the sole checked restore boundary
 for that expanded representation; it reconstructs every derived field. The
 program projection exposes resolved node edges, dimensions and observation
 requirements so execution need not repeat language or dependency policy.
+Definition version 2 adds annual growth and CAGR; the bundle and program
+envelopes remain version 1. Counts are consecutive observations, so there are
+count-1 annual intervals. Growth results use canonical scalar fractions.
 """
 from dataclasses import dataclass
 from datetime import date
@@ -18,7 +21,8 @@ from types import MappingProxyType
 
 from backtest.variables import parameters
 
-VERSION = 1
+VERSION = 1  # Bundle and program envelope; definition versions evolve separately.
+DEFINITION_VERSIONS = (1, 2)
 CATALOG = 'financial-parameters/1'
 TEMPORAL_POLICY = 'annual-lag90/1'
 _LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -207,7 +211,7 @@ def normalize_quantity(quantity, unit):
 def _normal_definition(definition, limits, path, normalized=False):
     _shape(definition, ('format', 'version', 'parameter_catalog', 'temporal_policy', 'expression', 'output'), path)
     if (definition['format'] != 'variable-definition' or type(definition['version']) is not int
-            or definition['version'] != VERSION
+            or definition['version'] not in DEFINITION_VERSIONS
             or definition['temporal_policy'] != TEMPORAL_POLICY):
         _fail('UNKNOWN_VERSION', path, 'Unsupported definition format, catalog or temporal policy.')
     try:
@@ -249,9 +253,13 @@ def _normal_definition(definition, limits, path, normalized=False):
                 if op == 'annual':
                     if not parameter.startswith('annual.'):
                         _fail('UNSUPPORTED_OPERATION', node_path, 'Annual statistics require an annual parameter.')
-                    if node['stat'] not in ('mean', 'min', 'max'):
+                    statistics = ('mean', 'min', 'max')
+                    if definition['version'] == 2:
+                        statistics += ('growth', 'cagr')
+                    if node['stat'] not in statistics:
                         _fail('UNSUPPORTED_OPERATION', node_path + '/stat', 'Unsupported annual statistic.')
-                    _integer(node['count'], 1, catalog[parameter]['counts']['maximum'], node_path + '/count')
+                    minimum = 2 if node['stat'] in ('growth', 'cagr') else 1
+                    _integer(node['count'], minimum, catalog[parameter]['counts']['maximum'], node_path + '/count')
             elif op == 'constant':
                 if type(node['unit']) is not str or node['unit'] not in units:
                     _fail('UNIT_MISMATCH', node_path + '/unit', 'A canonical constant unit is required.')
@@ -416,7 +424,10 @@ def _compile(bundle, limits, normalized=False):
         item = node_by_id[identity]
         op, depth = item['op'], 1
         if op in ('parameter', 'annual'):
-            unit = catalogs[item['definition']][item['parameter']]['unit']
+            # Growth is a fraction over count-1 annual intervals, regardless of
+            # the underlying annual parameter's dimension or catalog version.
+            unit = ('scalar' if op == 'annual' and item['stat'] in ('growth', 'cagr')
+                    else catalogs[item['definition']][item['parameter']]['unit'])
             dimensions = dict(unit_vocabularies[item['definition']][unit]['dimensions'])
         elif op == 'constant':
             dimensions = dict(unit_vocabularies[item['definition']][item['unit']]['dimensions'])

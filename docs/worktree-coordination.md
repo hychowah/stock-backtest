@@ -1,5 +1,21 @@
 # Parallel work on the website and backtest engine
 
+## Custom-variable Phase 10 resumption — 3 November 2026
+
+The user's `work on phase 10` clarification to `$finish-phase` authorizes Phase 10
+implementation, required verification and independently audited commits from
+`7b59835` on `feature/custom-variables`. The [execution plan](plans/custom-variables/phases/phase-10/execution-plan-2026-11-03.md)
+records the finite measure library and bounded annual growth/CAGR outcome.
+The [Slice 1 independent design](plans/custom-variables/phases/phase-10/slice-01-design.md)
+assigns only definition versioning, reference arithmetic, optional evidence
+reservation and explicit scalar/numerical admission seams to this branch.
+Financial owners, provider alignment, cache schemas, durable formats, worker/
+source/cache ordering and resource ceilings retain their contracts. Original
+remains default. Main and the engine worktree remain read-only. Expanded
+authoring and application/numerical qualification belong to Phase 11. Phases
+11–12 and all merge/push/deploy/restart/download/live-store actions remain held.
+Earlier Phase 10 holds are dated history, superseded only for this narrow phase.
+
 ## Custom-variable Phase 9 resumption — 3 November 2026
 
 The user's `start next phase $finish-phase` instruction authorizes Phase 9 from

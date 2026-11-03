@@ -56,6 +56,8 @@ def require_program(program, *, checkpoint=lambda: None):
         checkpoint()
         if node['op'] not in OPERATIONS:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported numerical formula operation.')
+        if node['op'] == 'annual' and node['stat'] not in ('mean', 'min', 'max'):
+            raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported numerical annual statistic.')
         if node['op'] in ('parameter', 'annual') and node['parameter'] not in PARAMETERS:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported numerical observation parameter.')
     fingerprint()

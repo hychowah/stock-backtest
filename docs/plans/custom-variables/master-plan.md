@@ -2,12 +2,19 @@
 
 Date: 2026-10-30
 
+Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
+`work on phase 10` clarification to `$finish-phase`. Its [execution plan](phases/phase-10/execution-plan-2026-11-03.md)
+records the finite reusable-measure and annual-growth scope, exact ownership,
+independent slices and required evidence. This supersedes earlier Phase 10 holds
+only. Phases 11–12, main integration and live-runtime actions remain held.
+
 Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
 `start next phase $finish-phase` instruction. Its [execution plan](phases/phase-09/execution-plan-2026-11-03.md)
 records narrow ownership, required evidence and independent slices. Phase 9 is
 complete in source in the audited commit containing its phase record. This
 supersedes earlier Phase 9 holds only for the authorized phase.
-Main/engine integration, publication, live data and Phases 10–12 remain held.
+Main/engine integration, publication, live data and Phases 11–12 remain held.
+The later instruction above separately resumes Phase 10.
 
 Parameter-list revision: 2026-11-02. The user requested a longer list of valuation
 inputs, limited to fields supplied by the existing FMP routes or calculations
@@ -73,7 +80,8 @@ audit corrections, final verification and handoff are complete in the commit
 containing the phase record. Phase 9 also completes under the later instruction
 and [current execution plan](phases/phase-09/execution-plan-2026-11-03.md).
 Its two audited slices supply all direct observations and reference execution.
-[Phase 10](phases/phase-09/handoffs/phase-10.md) remains held.
+[Phase 10](phases/phase-10/execution-plan-2026-11-03.md) now resumes under the
+later explicit instruction above; its earlier handoff remains historical.
 Preserve completed phase records as history. Earlier saved next-session prompts
 and dated holds do not resume a later phase or authorize main integration.
 
@@ -349,7 +357,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
 | **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and [Phase 9 handoff](phases/phase-08/handoffs/phase-09.md). All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
 | **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and [execution plan](phases/phase-09/execution-plan-2026-11-03.md). Preserve financial policy and generation ownership. |
-| **10. Reusable measure library** | Planned: finite named measures and bounded annual growth | [Continuation: Phase 10](parameter-expansion-plan-2026-11-03.md#phase-10--reusable-measure-library). Preserve exact legacy calculations. |
+| **10. Reusable measure library** | In progress: finite named measures and bounded annual growth | [Execution plan](phases/phase-10/execution-plan-2026-11-03.md) and [continuation](parameter-expansion-plan-2026-11-03.md#phase-10--reusable-measure-library). Preserve exact legacy calculations. |
 | **11. Discoverable, qualified capabilities** | Planned: expanded editor, bounded coverage inspection and both-engine qualification | [Continuation: Phase 11](parameter-expansion-plan-2026-11-03.md#phase-11--discoverable-qualified-capabilities). Support, readiness and data coverage stay distinct. |
 | **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
 

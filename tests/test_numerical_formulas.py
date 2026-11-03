@@ -71,7 +71,9 @@ class FormulaTests(unittest.TestCase):
 
     def test_callable_capability_is_exact_and_bounded_application_is_declared(self):
         capability = f.capabilities()
-        self.assertEqual(capability['parameter_ids'], [item['id'] for item in observations.catalog()])
+        # Direct reference observations have expanded; numerical admission has not.
+        self.assertEqual(capability['parameter_ids'], ['annual.revenue', 'annual.operating_income',
+            'annual.operating_margin', 'market.enterprise_value'])
         self.assertEqual(set(capability['operations']), {'constant','parameter','annual','ref','at','lookback','neg','add','sub','mul','div'})
         self.assertTrue(capability['application_admission'])
         self.assertFalse(capability['eager']);self.assertFalse(capability['sample_preview'])

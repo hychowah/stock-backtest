@@ -3,7 +3,11 @@
 Public plans and detached blocks retain their existing interface. Shared mechanics
 own context planning, provider access, limits and evidence. This independent
 interpreter owns binary64 tree order, oldest-first annual folds, signed division
-and first-unavailable-operand precedence. It imports no numerical packages.
+and first-unavailable-operand precedence. Growth and CAGR require every member,
+then a positive first value (NONPOSITIVE_DENOMINATOR). CAGR also requires a
+positive last value (NONPOSITIVE_ENDPOINT). Nonfinite arithmetic is unavailable
+as NONFINITE_RESULT. These version 2 operations are reference-only; scalar and
+application admission are separate. It imports no numerical packages.
 """
 import hashlib
 import math
@@ -35,8 +39,14 @@ def require_program(program, *, checkpoint=lambda: None):
     checkpoint()
     checked = definitions.require_program(program)
     supported = {item['id'] for item in observations.catalog()}
+    operations = {'constant', 'parameter', 'annual', 'ref', 'at', 'lookback',
+                  'neg', 'add', 'sub', 'mul', 'div'}
     for node in checked['nodes']:
         checkpoint()
+        if node['op'] not in operations or (node['op'] == 'annual' and
+                node['stat'] not in ('mean', 'min', 'max', 'growth', 'cagr')):
+            raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'],
+                'Unsupported direct-reference operation.')
         if node['op'] in ('parameter', 'annual') and node['parameter'] not in supported:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'],
                 'Unsupported direct-reference observation parameter.')
@@ -80,17 +90,29 @@ class _Arithmetic:
                 if observation['valid']:
                     value = values[0]
                     if op == 'annual':
-                        for member in values[1:]:
-                            checkpoint()
-                            if node['stat'] == 'mean':
-                                value = value + member
-                            elif node['stat'] == 'min':
-                                if member < value:
+                        if node['stat'] in ('growth', 'cagr'):
+                            # Provider validity covers every consecutive member before
+                            # endpoint rules. Results are canonical scalar fractions.
+                            if values[0] <= 0:
+                                value, reason = None, 'NONPOSITIVE_DENOMINATOR'
+                            elif node['stat'] == 'cagr' and values[-1] <= 0:
+                                value, reason = None, 'NONPOSITIVE_ENDPOINT'
+                            else:
+                                ratio = values[-1] / values[0]
+                                value = (ratio if node['stat'] == 'growth' else
+                                         ratio ** (1 / (len(values) - 1))) - 1
+                        else:
+                            for member in values[1:]:
+                                checkpoint()
+                                if node['stat'] == 'mean':
+                                    value = value + member
+                                elif node['stat'] == 'min':
+                                    if member < value:
+                                        value = member
+                                elif member > value:
                                     value = member
-                            elif member > value:
-                                value = member
-                        if node['stat'] == 'mean':
-                            value = value / len(values)
+                            if node['stat'] == 'mean':
+                                value = value / len(values)
             elif reason is None:
                 if op == 'constant':
                     value = float(node['value'])
