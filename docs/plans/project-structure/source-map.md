@@ -95,7 +95,7 @@ interpretation. Research and numerical source bindings include the delegated
 selection policy. Numerical capability admission accepts supported captured
 scalar programs for bounded Latest, January, fixed and random execution. Raw
 formula aliases and unsupported intent fail before readiness or financial work.
-The four observation parameters remain unchanged. See the [Phase 5 handoff](../custom-variables/phases/phase-04/handoffs/phase-05.md).
+The four observation parameters remain unchanged. See the Phase 5 handoff.
 `backtest/variables/library.py` now owns the separate durable variable repository
 in `data/variable-library.sqlite`. It stores authored immutable revisions and
 independent entry metadata versions. Its exact-reference resolver delegates to
@@ -116,7 +116,7 @@ without opening a durable file. Slice 1 changed no ordinary route, job/queue or
 result format. Slice 2 adds the execution/evidence integration described below.
 Slice 3 supplies the shared editor described below. Phase 7 adds opt-in bounded
 compiled execution through those owners. See the
-[Phase 6 execution plan](../custom-variables/phases/phase-06/execution-plan-2026-11-02.md).
+Phase 6 execution plan.
 
 
 Phase 6 Slice 2 adds `backtest/inputs/sqlite_observations.py` for a borrowed
@@ -154,7 +154,7 @@ independent Python arithmetic. `backtest/engines/numerical/formulas.py` owns
 bounded typed lowering and independent Numba arithmetic. Both use the existing
 checked program and provider; neither changes financial decisions. Public
 experimental scalar admission stays closed in Slice 1. The
-[current execution plan](../custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
+current execution plan
 supersedes dated Phase 7 hold statements above. Original remains default.
 
 

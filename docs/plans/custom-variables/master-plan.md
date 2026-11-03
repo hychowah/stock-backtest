@@ -11,7 +11,7 @@ phase. Main/engine integration and every live-runtime action remain held.
 Date: 2026-10-30
 
 Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
-`work on phase 10` clarification to `$finish-phase`. Its [execution plan](phases/phase-10/execution-plan-2026-11-03.md)
+`work on phase 10` clarification to `$finish-phase`. Its execution plan
 records the finite reusable-measure and annual-growth scope, exact ownership,
 independent slices and required evidence. This supersedes earlier Phase 10 holds
 only. Phases 11–12, main integration and live-runtime actions remain held.
@@ -20,10 +20,10 @@ Phase 10 completes in source in the independently audited commit containing its
 provides all 33 reusable reference measures. Final checks pass 592 WSL tests with
 five expected skips and 595 private native tests with one environment skip.
 Reference support does not qualify expanded authoring/application/numerical use.
-The [Phase 11 handoff](phases/phase-10/handoffs/phase-11.md) remains held.
+The Phase 11 handoff remains held.
 
 Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
-`start next phase $finish-phase` instruction. Its [execution plan](phases/phase-09/execution-plan-2026-11-03.md)
+`start next phase $finish-phase` instruction. Its execution plan
 records narrow ownership, required evidence and independent slices. Phase 9 is
 complete in source in the audited commit containing its phase record. This
 supersedes earlier Phase 9 holds only for the authorized phase.
@@ -58,7 +58,7 @@ retain their original dated meaning.
 
 Phase 6 resumed from `f877c0c` and completes in three independently audited slices. The user's 2 November instruction authorizes
 variable editor and strategy integration with independently designed, implemented
-and audited slices. The [current execution plan](phases/phase-06/execution-plan-2026-11-02.md)
+and audited slices. The current execution plan
 records three slices. Slice 1 is committed as `de14704`. Slice 2 implements
 Original scalar execution and immutable evidence. Its independent audit fixes
 and final source-bound checks are complete.
@@ -66,12 +66,12 @@ Slice 3 implements the shared editor, draft capture and detached presentation
 against audited `9978ea7`. All six audit findings and the shared-dependency
 follow-up are fixed. Final checks pass 536 WSL tests, 446 private native tests
 and 18 source-bound browser checks. Actual UI, guide and complete export reviews
-pass. The [current record](phases/phase-06/slice-03.md) retains exact source
+pass. The current record retains exact source
 bindings, cleanup and superseded attempts.
 Phase 7 completes from `5cded92` on this feature branch. Its
-[current execution plan](phases/phase-07/execution-plan-2026-11-02.md) records three
-slices. [Slice 1](phases/phase-07/slice-01.md) completes bounded compiled evaluation
-after independent audit and final source-bound checks. [Slice 2](phases/phase-07/slice-02.md)
+current execution plan records three
+slices. Slice 1 completes bounded compiled evaluation
+after independent audit and final source-bound checks. Slice 2
 implements dormant candidate-owned execution and full trial evidence recovery.
 All six independent audit findings are closed. Final source-bound WSL, guarded
 native and browser checks pass. Slice 3 passes the corrected-source private WSL
@@ -79,22 +79,22 @@ and guarded native semantic, lifecycle and representative workload gates. Its
 bounded public numerical integration and shared pinned selector are implemented.
 Actual desktop/mobile browser and guide review, independent audit, final
 source-bound verification and private workload qualification pass. The
-[slice record](phases/phase-07/slice-03.md) retains exact receipts and limits.
+slice record retains exact receipts and limits.
 Original remains default. No download, deployment, integration into main or
 default change is authorized.
 
 ## Hold and resume
 
 Phase 8 completes from `3dccd88` under explicit 3 November authorization.
-Its [execution plan](phases/phase-08/execution-plan-2026-11-03.md) records narrow
+Its execution plan records narrow
 ownership and one independently designed coherent slice. The
 [phase session workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
 remains canonical. The semantic contract, compatibility evidence, independent
 audit corrections, final verification and handoff are complete in the commit
 containing the phase record. Phase 9 also completes under the later instruction
-and [current execution plan](phases/phase-09/execution-plan-2026-11-03.md).
+and current execution plan.
 Its two audited slices supply all direct observations and reference execution.
-[Phase 10](phases/phase-10/execution-plan-2026-11-03.md) now resumes under the
+Phase 10 now resumes under the
 later explicit instruction above; its earlier handoff remains historical.
 Preserve completed phase records as history. Earlier saved next-session prompts
 and dated holds do not resume a later phase or authorize main integration.
@@ -116,7 +116,7 @@ request, job, queue or result reader. Later slices receive fresh independent
 designs against preceding committed source. Financial/provider capabilities,
 source/input freshness, cancellation, ownership ordering, attachment lifetimes
 and execution-resource contracts remain unchanged. The
-[Phase 5 handoff](phases/phase-05/handoffs/phase-06.md) is the entry record; its
+Phase 5 handoff is the entry record; its
 Phase 6 hold is superseded by this explicit user authorization.
 The following Phase 2/3 records and older inspections remain dated context.
 
@@ -152,16 +152,16 @@ isolated preview integration is present. CB-13 is recorded complete. CB-14
 capacity increments 1–4 are committed; increment 5 is partial, uncommitted and
 not verified for use. CB-15 remains blocked. The fixed policy catalog and
 pair-valued factor interface still require an explicit scalar-variable change.
-See [ownership and inspected interfaces](phases/phase-01/ownership.md) for source
+See ownership and inspected interfaces for source
 evidence and the distinction between existing agreements and proposed ownership.
 
 Phase 2 rechecked engine HEAD `3856d02`. That commit adds a hardware decision
 and stopped-session handoff; capacity5 source remains uncommitted. The engine
 working tree is actively changing. The earlier fixture failure is historical:
 the current source supplies its missing metadata, but this phase has not tested
-the repair. See the [current inspection](phases/phase-02/inspection.md) and
-[provider design and ownership scope](phases/phase-02/ownership.md), and
-[provider validation plan](phases/phase-02/validation-plan.md). No provider or
+the repair. See the current inspection and
+provider design and ownership scope, and
+provider validation plan. No provider or
 custom-variable capability is implemented by these records.
 
 ## Design
@@ -362,16 +362,16 @@ Initially, custom formulas can use the local service in every website mode. Exis
 
 | Phase | Abstraction delivered | Completion evidence and handoff |
 |---|---|---|
-| **1. Variable contract and ownership** | Contract documentation delivered | [Versioned contract and examples](phases/phase-01/design.md), [compatibility](phases/phase-01/compatibility.md), historical [ownership map](phases/phase-01/ownership.md), and [Phase 2 handoff](phases/phase-01/handoffs/phase-02.md). Current Phase 2 ownership is assigned above. |
-| **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), [Slice 1](phases/phase-02/slice-01.md) and [Slice 2](phases/phase-02/slice-02.md). The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
-| **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), [Slice 1](phases/phase-03/slice-01.md), [Slice 2](phases/phase-03/slice-02.md) and [Phase 4 handoff](phases/phase-03/handoffs/phase-04.md). Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
-| **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), [execution plan](phases/phase-04/execution-plan-2026-11-02.md) and [Phase 5 handoff](phases/phase-04/handoffs/phase-05.md). Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
-| **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
-| **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), [Slice 3](phases/phase-06/slice-03.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md), [compatibility](phases/phase-06/compatibility.md) and [held Phase 7 handoff](phases/phase-06/handoffs/phase-07.md). |
-| **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
-| **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and [Phase 9 handoff](phases/phase-08/handoffs/phase-09.md). All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
-| **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and [execution plan](phases/phase-09/execution-plan-2026-11-03.md). Preserve financial policy and generation ownership. |
-| **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), [execution plan](phases/phase-10/execution-plan-2026-11-03.md) and [held Phase 11 handoff](phases/phase-10/handoffs/phase-11.md). |
+| **1. Variable contract and ownership** | Contract documentation delivered | Versioned contract and examples, [compatibility](phases/phase-01/compatibility.md), historical ownership map, and Phase 2 handoff. Current Phase 2 ownership is assigned above. |
+| **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), Slice 1 and Slice 2. The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
+| **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), Slice 1, Slice 2 and Phase 4 handoff. Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
+| **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), execution plan and Phase 5 handoff. Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
+| **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), execution plan and Phase 6 handoff. Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
+| **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), Slice 3, execution plan, [compatibility](phases/phase-06/compatibility.md) and held Phase 7 handoff. |
+| **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), execution plan and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
+| **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and Phase 9 handoff. All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
+| **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and execution plan. Preserve financial policy and generation ownership. |
+| **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), execution plan and held Phase 11 handoff. |
 | **11. Discoverable, qualified capabilities** | Stop after audited Slice 1 commit: expanded captured execution qualified; editor and bounded coverage inspection remain | [Phase record](phases/phase-11/README.md) and [Slice 2 handoff](phases/phase-11/handoffs/slice-02.md). Exact policy activated after independent preactivation audit; Slice 1 completes in the independently audited commit containing its phase record. The user must resume remaining Phase 11 work. |
 | **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
 

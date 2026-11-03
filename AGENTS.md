@@ -1,107 +1,71 @@
 # EBITDA/EV January book
 
-## Phase 11 resumption — 3 November 2026
+## Custom-variable work: current state
 
-The user explicitly resumes Phase 11 from `72457bc` on
-`feature/custom-variables`, including implementation, required private synthetic
-verification and independently audited commits. The [execution plan](docs/plans/custom-variables/phases/phase-11/execution-plan-2026-11-03.md)
-records all exits and independent assignments. Each filed slice design assigns
-its narrow protected seams before edits. This supersedes earlier Phase 11 holds
-only. Preserve Phase 10 owner contexts, financial policy, stored rounding,
-immutable bytes, bounded reads, freshness, cancellation and existing ceilings.
-Original remains default; unsupported numerical work fails without fallback.
-Main and the engine worktree remain read-only. Phase 12, integration, merge,
-push, deployment, live restart, download and access or mutation of live runtime,
-cache or durable-store assets remain unauthorized. Use private fixtures only.
+Updated 3 November 2026. This section is the single current statement of scope
+for `feature/custom-variables`. Dated phase text elsewhere is history, and each
+phase README is that phase's record. When the state changes, replace this
+section. Do not append another resumption paragraph.
 
-Phase 11 Slice 1 has passed independent preactivation audit. Its exact qualified
-policy is active in this feature source. All 77 provider/backend IDs, 52 direct
-inputs and 33 reusable definitions have private qualification through the
-existing Original and bounded numerical owners. Final public-source WSL checks
-pass 726 tests with five expected platform skips. Native offline core checks
-pass 686 tests with one environment skip; separate application, inventory,
-resource and arithmetic-boundary checks pass. Retain the exact per-run source
-correspondence, concurrent timings and unavailable cases in the [phase record](docs/plans/custom-variables/phases/phase-11/README.md).
-Slice 1 completes in the independently audited commit containing its phase record. The ordinary editor retains
-four inputs; expanded authoring and coverage remain Slice 2 work. Phase 11 is
-not complete. This source work establishes no installed readiness or live data
-coverage. All integration and Phase 12 holds remain.
+**Where the work is.** Phases 1–10 are complete in source, each in an
+independently audited commit containing its phase record. Phase 11 is paused
+after Slice 1, committed as `3231c6c`. Slice 1 supplies the execution
+foundation: qualified application execution of all 52 direct inputs and 33
+reusable measures through Original and the bounded numerical engine, over Latest,
+January, fixed and random schedules. Slice 2 is not started. It owns the shared
+editor (categories, search, descriptions, units, time choices), bounded coverage
+inspection, desktop, mobile and keyboard checks, exports and detached replay. Do
+not begin it, call Phase 11 complete or start Phase 12 until the user resumes
+work. The [Slice 2 handoff](docs/plans/custom-variables/phases/phase-11/handoffs/slice-02.md)
+records the recovery point and the [Phase 11 record](docs/plans/custom-variables/phases/phase-11/README.md)
+has the exits and verification limits.
 
-The user's later instruction is to stop after this Slice 1 is committed.
-Finish its final verification, independent audit and commit, then pause the
-Phase 11 goal. Do not begin Slice 2 without resumption. The [Slice 2 handoff](docs/plans/custom-variables/phases/phase-11/handoffs/slice-02.md)
-retains the remaining editor, coverage and workflow exits. Do not call Phase 11
-complete or start Phase 12.
+**Authorization.** A user resumption names a phase or slice. It supersedes holds
+for that scope only. Without a new explicit instruction, these stay unauthorized:
+Phase 12, integration, merge, push, deployment, installed-runtime restart,
+download, and access to or mutation of live runtime, cache or durable-store
+assets. The `main` worktree and the engine worktree are read-only from this
+branch. Verify with private synthetic fixtures only. Native-cache coverage and
+installed readiness are not established by any source work here.
 
+**Standing rules.** Original is the default engine. Unsupported numerical work
+fails explicitly, with no fallback. Preserve financial calculations and policy,
+stored rounding, old immutable bytes, captured requests, queue records,
+artifacts and durable store formats. Preserve operation-boundary freshness,
+bounded leaf reads, cancellation, worker/writer and lock ownership, attachment
+lifetime and existing resource ceilings, including the 32-definition closure
+ceiling. A root in a recorded January or latest scope reads that scope's stored
+owner lanes. Derived `at` and `lookback` contexts use dated owner policy, even at
+an equal date. A missing prepared company or lane never falls back to another
+calculation.
 
-Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
-`work on phase 10` clarification to `$finish-phase` on `feature/custom-variables`.
-The [execution plan](docs/plans/custom-variables/phases/phase-10/execution-plan-2026-11-03.md)
-records the finite reusable-measure and bounded annual-growth scope. Each slice
-has an independent design, separate writer and independent audit before commit.
-Its filed design assigns precise production seams before edits. This supersedes
-earlier Phase 10 holds only. Preserve financial calculations, immutable bytes,
-limits, bounded leaf reads, operation-boundary freshness and Original as default.
-Expanded authoring and `/2`/`/3` application/scalar/numerical qualification remain
-closed. Existing qualified version-1 four-input execution retains its behavior.
-Main and engine worktrees remain read-only. Phases 11–12, merge, push, deployment,
-restart, download and live runtime/cache/durable-store access or mutation remain
-unauthorized. Use private synthetic verification only.
+**What is usable.** Reference (Python) evaluation covers definition versions 1–3
+and catalogs `/1`–`/3`, including annual mean, min, max, growth and CAGR. The
+ordinary editor and picker still offer the original four inputs. Sample preview
+uses Original. Eager scalar execution and numerical sample preview are
+unsupported. The single qualified scalar gate belongs to
+`backtest/variables/selection.py`. Reference or provider support alone grants no
+application qualification. Observation projection 4, research schema 11 and
+daily cache 5 require older derived caches to rebuild.
 
-Phase 10 completes in source in the independently audited commit containing its
-[phase record](docs/plans/custom-variables/phases/phase-10/README.md). Slice 1 is
-`206e50c`. The final slice supplies all 33 immutable named measures, reference
-positive division, catalog `/3`, exact prepared owner contexts and bounded
-annual adapters. All three product/test audit findings are fixed and confirmed.
-Final source-bound checks pass 592 WSL tests with five expected skips and 595
-private native tests with one environment skip. The reviewed native driver keeps
-the original guard and uses an exact private launcher and stdout sink for one
-existing worker test. The phase record retains all failed attempts, benchmark
-harness and unavailable-junction limits. Projection 4, research schema 11 and
-daily cache 5 require incompatible derived caches to rebuild. Durable formats,
-old immutable bytes, financial arithmetic and Original as default are preserved.
-Source reference support does not qualify expanded application, ordinary picker
-or numerical execution. Phases 11–12 and all integration/live-runtime actions
-remain held. No deployment or live-cache coverage is established.
+**Records.** [Master plan](docs/plans/custom-variables/master-plan.md#hold-and-resume),
+[parameter expansion plan](docs/plans/custom-variables/parameter-expansion-plan-2026-11-03.md)
+and its canonical [phase session workflow](docs/plans/custom-variables/parameter-expansion-plan-2026-11-03.md#phase-session-workflow),
+and `docs/plans/custom-variables/phases/phase-NN/README.md` for each phase.
+Verification counts, failed attempts and exact source bindings live in those
+records, not here.
 
-Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
-`start next phase $finish-phase` instruction on `feature/custom-variables`.
-The [Phase 9 execution plan](docs/plans/custom-variables/phases/phase-09/execution-plan-2026-11-03.md)
-records its scope, ownership and independently planned slices. This authorization
-covers evidence preparation, direct reference observation execution, required
-verification and independently audited commits for Phase 9 only. Preserve
-financial calculations, old immutable bytes, ownership ordering and Original as
-default. Main and the engine worktree remain read-only. Phases 10–12, merge,
-push, deployment, restart, download and live runtime/cache/durable-store mutation
-remain unauthorized. Earlier dated Phase 9 holds below are superseded only for
-this narrow phase.
+## Project records
 
-Phase 9 completes in source in the independently audited commit containing its
-[phase record](docs/plans/custom-variables/phases/phase-09/README.md). Slice 1 is
-`307a2c1`; Slice 2 supplies all 52 direct observations and callable reference
-`/1` and `/2` evaluation under its filed design. Final verification passes 482
-WSL tests with five expected skips and 485 private native tests with one
-environment skip. The phase record retains the unavailable junction check and
-pre-existing benchmark harness errors. Observation
-projection 3, research schema 10 and daily cache 4 require incompatible caches
-to rebuild. Durable records keep their formats. The ordinary picker retains
-four inputs. Qualified scalar selection, preview, application and numerical
-`/2` execution remain closed. The single qualified scalar gate belongs to
-`backtest/variables/selection.py`; broad reference admission grants no application
-qualification. Preserve operation-boundary freshness checks and bounded leaf reads.
+Follow [docs/records-policy.md](docs/records-policy.md). A phase directory holds
+a README and decision records only. Put design decisions in decision records.
+Put writer reports, audit findings and their dispositions in the commit message.
+Put a handoff in the README **Next** section. Do not file them as separate
+documents. Before every commit, run `python3 tests/check_records.py` in the WSL
+source checkout. Do not commit if it fails. After changing the check, run
+`python3 tests/test_records_check.py`.
 
-Phase 8 completes in source on 3 November 2026 from `3dccd88` under explicit
-user authorization on `feature/custom-variables`. Its independently audited
-completion includes 393 passing WSL tests and the
-[phase record and handoff](docs/plans/custom-variables/phases/phase-08/README.md).
-Follow its
-[execution plan](docs/plans/custom-variables/phases/phase-08/execution-plan-2026-11-03.md)
-and independent slice design. This phase owns the complete semantic parameter
-contract, versioned units, compatibility evidence and narrow admission guards.
-The provider and authoring picker keep four usable observations. Catalog `/2`
-execution stays closed. Phase 9 and all integration/runtime/data actions remain
-unauthorized. Preserve main and engine worktrees. Earlier dated holds and
-planning-only descriptions below are superseded only for Phase 8's narrow scope.
+## This folder
 
 This folder is a standalone US stock backtest. It is not a a different research session. Do not open the parent harness, do not invent a fair value, and do not edit product code from here.
 
@@ -114,62 +78,8 @@ The `main` worktree continues frontend and unrelated backend development. The
 financial/cache contracts. Before choosing files for a task, read
 [docs/worktree-coordination.md](docs/worktree-coordination.md).
 
-The user resumed custom-variable Phase 2 on 2 November 2026 in the linked
-`feature/custom-variables` worktree. That branch owns the narrow annual-evidence,
-prepared-admission, generation and observation-provider changes in the
-[current execution plan](docs/plans/custom-variables/phases/phase-02/execution-plan-2026-11-02.md).
-Phase 1 remains documentation only. Phase 2 is complete in source, with trusted
-prepared inputs and the initial four-parameter provider. Its audited record is in
-the [phase record](docs/plans/custom-variables/phases/phase-02/README.md).
-Phase 3 resumed on 2 November 2026 from `9e5d97d` under explicit user
-authorization in this feature worktree. It owns the reference formula evaluator
-and its tests/docs. The [Phase 3 execution plan](docs/plans/custom-variables/phases/phase-03/execution-plan-2026-11-02.md)
-uses the existing four-parameter provider without changing financial or engine
-contracts. Its first slice adds immutable validated definitions. Its second slice
-adds bounded provider-backed reference execution and detached scalar evidence.
-Final checks and audits are recorded in the phase. Phase 4 resumes from
-`6f39f0e` under the user’s 2 November authorization. Its
-[execution plan](docs/plans/custom-variables/phases/phase-04/execution-plan-2026-11-02.md)
-owns general scalar selection and narrow legacy adapters on this feature branch.
-The callable reference selection uses provider admission and detached evaluator
-evidence. Explicit SQL/browser legacy adapters preserve stored pairs, filter scales
-and accepted settings. Their shared policy source participates in existing
-freshness bindings. Experimental formula intent fails before financial work.
-It adds no ordinary strategy/UI or saved-result format. Phase 5 resumes from
-`f893bd4` under the user’s 2 November authorization. Its
-[execution plan](docs/plans/custom-variables/phases/phase-05/execution-plan-2026-11-02.md)
-owns the separate durable variable library and narrow definition-owner resolution.
-Mutable entry versions are separate from immutable formula revisions. Atomic
-captures retain complete programs and presentation from one read snapshot.
-Their checked restore uses no later library state. Phase 6 resumes from
-`f877c0c` under the user's 2 November authorization. Its
-[execution plan](docs/plans/custom-variables/phases/phase-06/execution-plan-2026-11-02.md)
-owns narrow application, UI and persistence integration on this feature branch.
-Slice 1 adds callable complete captured strategy intent. Slice 2 implements
-Original scalar execution, bounded explicit preview and immutable artifact-4
-evidence. Slice 3 adds the shared editor/picker, StrategyDraft capture and detached
-result presentation against audited `9978ea7`. Phase 6 is complete in source.
-All six audit findings, including shared-dependency transport, are fixed. Its
-current slice record retains final verification, cleanup and superseded attempts.
-Phase 7 resumes from `5cded92` under the user's 2 November authorization. Its
-[execution plan](docs/plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
-owns bounded compiled formula evaluation, candidate integration and qualification.
-Slices 1 and 2 kept public scalar admission closed. Slice 3 exposes supported
-bounded numerical scalar execution after corrected-source private qualification.
-Phase 7 is complete in source after independent audit, final source-bound checks
-and private workload qualification. Original remains default.
-Follow the
-[current scope](docs/plans/custom-variables/master-plan.md#hold-and-resume).
-The user's 3 November planning follow-up adds planned Phases 8–12 in the
-[parameter expansion and integration plan](docs/plans/custom-variables/parameter-expansion-plan-2026-11-03.md).
-The broader 52-input inventory remains unfinished. This documentation commit
-does not resume implementation or authorize main integration or deployment.
-Use that continuation at the next phase resumption, including its canonical
-[phase session workflow](docs/plans/custom-variables/parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
-and reusable Phase 8 prompt. Each resumed phase uses a phase-completion goal and
-independently planned, implemented and audited slices under a main orchestrator.
-Earlier four-parameter phase completion is not evidence that the full inventory
-is implemented.
+The linked `feature/custom-variables` worktree owns the custom-variable work.
+Its scope and status are in [Custom-variable work: current state](#custom-variable-work-current-state).
 The [engine-owner handoff](docs/plans/custom-variables/engine-handoff.md) explains
 the notice needed at the next coordination point. It requests no engine change.
 
@@ -715,8 +625,8 @@ queue items stay waiting while ready items retain their relative order.
 CB-15 source alone does not authorize main integration, publication or restart.
 The user subsequently authorized the isolated main integration described in
 `docs/plans/compiled-backtest/phases/CB-15.integration.md`. This does not authorize
-publication, deployment, push or installed restart. Custom-variable Phase 6 is
-separately authorized on its feature branch; Phase 7 remains held.
+publication, deployment, push or installed restart. Custom-variable scope is in
+[current state](#custom-variable-work-current-state).
 
 ## Website engine alignment
 
@@ -750,50 +660,3 @@ transfers a reader to the view. Preserve StrategyDraft restoration and its held
 queue-edit refusal. Shutdown closes queue, calculation, job and reader admission;
 then joins the queue, drains readers, closes jobs, joins HTTP requests and retires
 the calculation child before bootstrap source ownership ends.
-
-
-## Custom-variable Phase 7 resumption — 2 November 2026
-
-The user authorizes implementation and independently audited commits from
-`5cded9208447c6a6e4a9f61d94cdc0fee598448a` on `feature/custom-variables`. The
-[current execution plan](docs/plans/custom-variables/phases/phase-07/execution-plan-2026-11-02.md)
-assigns this branch narrow numerical formula implementation and integration.
-Slice 1 moves shared evaluator mechanics behind the existing public reference
-interface and adds independent bounded Numba arithmetic. Public experimental
-scalar guards remain closed. Later slices require fresh independent designs
-against preceding committed source. Earlier Phase 7 hold statements are dated
-history, superseded by this authorization.
-
-Keep the four-parameter provider, financial rules, source/input freshness,
-cancellation, worker/writer ownership, attachment lifetime and resource limits.
-Preserve existing captured requests, queue records, artifacts and durable stores.
-Original stays default. Main and the engine worktree remain untouched. No merge,
-push, deployment, restart, download or live-runtime/cache/durable-store mutation
-is authorized. Private synthetic WSL/browser/native fixtures only. Native-cache
-coverage remains unknown.
-
-
-Phase 7 Slice 2 starts from audited `0c75df8` under a fresh independent design.
-It owns dormant Candidate scalar scopes, generation-owned prepared research
-borrowing, arithmetic injection below shared selection, and typed complete
-codec-2 trial/pool/checkpoint/runtime dispatch. Existing financial/provider,
-resource, source/cache, parent-writer and attachment ownership stays authoritative.
-Public numerical scalar guards stay closed; no production bypass is authorized.
-The slice record distinguishes focused implementation checks from pending audit,
-final source-bound WSL/private native/browser gates and later measured admission.
-
-Slice 3 starts from audited `719a724` under a fresh independent design. Its
-qualification records retain failed native capacity attempts and a separately
-designed narrow worker-control correction. The existing parent-lifetime observer
-also observes the terminal marker; every calculation checkpoint reads only
-latched memory state. Shared checkpoints, financial policy, resource ceilings,
-runtime-child controls and native guards remain unchanged. Original remains
-default. The corrected-source private gates pass 24 WSL and 17 guarded native
-tests. Supported bounded numerical execution is exposed through the existing
-application boundary in all four scalar modes. Eager scalar execution and
-numerical sample preview remain unsupported. Sample preview explicitly uses
-Original. The shared selector and StrategyDraft preserve the requested engine.
-Independent audit, actual desktop/mobile browser and guide review, and final
-source-bound verification pass. The final 404-file product/test inventory is
-recorded in the slice. Qualification covers private synthetic inputs; native-cache
-coverage remains unknown. No other worktree is changed.
