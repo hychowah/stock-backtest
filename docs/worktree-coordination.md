@@ -6,11 +6,13 @@ Keep frontend and unrelated backend changes small at shared boundaries.
 
 ## Custom-variable branch
 
-The linked `feature/custom-variables` worktree owns the custom-variable work. Its
-scope, authorization and status are in `AGENTS.md`, section "Custom-variable work:
-current state". The [engine-owner handoff](plans/custom-variables/engine-handoff.md)
-states the notice needed at the next coordination point. It requests no engine
-change.
+The completed `feature/custom-variables` source is integrated into main by the
+user's authorized fast-forward. Its scope, authorization and status are in
+`AGENTS.md`, section "Custom-variable work: current state". The feature worktree
+retains the audited history. The [engine-owner handoff](plans/custom-variables/engine-handoff.md)
+is included in main. It requests no engine change or branch synchronization.
+Main's unrelated portable-snapshot and market-scope files stay intact. Publication,
+restart, downloads and live-asset access remain outside source integration.
 
 To list every shared file this branch changes, run
 `git diff --stat main...feature/custom-variables`. Treat each file that already

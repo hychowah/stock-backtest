@@ -8,20 +8,20 @@ phase README is that phase's record. When the state changes, replace this
 section. Do not append another resumption paragraph.
 
 **Where the work is.** Phases 1–12 are complete for their source scope in
-independently audited commits. The [Phase 12 record](docs/plans/custom-variables/phases/phase-12/README.md)
+independently audited commits and integrated into `main`. The [Phase 12 record](docs/plans/custom-variables/phases/phase-12/README.md)
 owns final compatibility evidence and the integration handoff. The shared editor
 exposes the expanded vocabulary and exact measures. Coverage inspects complete
 bounded recorded January/latest scopes. Private synthetic checks cover both
-engines, durable historical content, exports and detached replay. Integration
-remains held. Source readiness does not establish installed readiness.
+engines, durable historical content, exports and detached replay. Source
+integration does not establish installed readiness or change running code.
 
-**Authorization.** A user resumption names a phase or slice. It supersedes holds
-for that scope only. Without a new explicit instruction, these stay unauthorized:
-integration, merge, push, deployment, installed-runtime restart,
-download, and access to or mutation of live runtime, cache or durable-store
-assets. The `main` worktree and the engine worktree are read-only from this
-branch. Verify with private synthetic fixtures only. Native-cache coverage and
-installed readiness are not established by any source work here.
+**Authorization.** The user authorized source integration into the existing
+`main` worktree. Preserve its unrelated files and verify that no publication
+supervisor is active before advancing it. Push, deployment, installed-runtime
+restart, download and live runtime/cache/durable-store access remain unauthorized.
+Read-only process metadata may establish publication safety. The engine worktree
+and branch remain unchanged. Verify with private synthetic fixtures only.
+Native-cache coverage and installed readiness are not established by source work.
 
 **Standing rules.** Original is the default engine. Unsupported numerical work
 fails explicitly, with no fallback. Preserve financial calculations and policy,

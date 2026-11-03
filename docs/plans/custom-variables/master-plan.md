@@ -4,17 +4,19 @@ Current scope: Phases 1–12 are complete for their source scope. The independen
 audited commit containing the [Phase 12 record](phases/phase-12/README.md) completes
 expanded-capability reconciliation and source compatibility checks. The shared
 editor, exact measures, bounded recorded-scope coverage, exports and detached
-replay retain their Phase 11 contracts. Integration remains held.
+replay retain their Phase 11 contracts. The user authorized their source
+integration into the existing main worktree; the integration commit carries the
+current handoff. Publication and installed qualification remain separate.
 The [phase workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
 requires independent planning, a separate writer, independent audit and commits.
 
 ## Hold and resume
 
-The latest user request authorizes Phase 12 source readiness, private synthetic
-verification and an audited commit. Integration, merge, push, deployment,
-installed restart, downloads and
-live runtime/cache/store access remain held. Main and engine worktrees remain
-read-only. A completed phase grants no authorization for the next phase.
+The latest user request authorizes integration and merge into the existing main
+worktree. Main's unrelated files must remain intact, and its advance must not
+trigger publication. Push, deployment, installed restart, downloads and live
+runtime/cache/store access remain held. Read-only process metadata supports the
+publication check. The engine branch remains unchanged.
 
 Earlier phase records and git history retain their dated scope and evidence.
 Current authorization and standing contracts live in `AGENTS.md`. Installed
@@ -229,7 +231,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and execution plan. Preserve financial policy and generation ownership. |
 | **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), execution plan and held Phase 11 handoff. |
 | **11. Discoverable, qualified capabilities** | **Complete in source; both slices independently planned, implemented and audited.** Expanded execution, discoverable authoring, exact measure Save/reopen and bounded recorded-scope coverage | [Phase record](phases/phase-11/README.md) maps all exits to WSL/native/browser evidence, complete exports and detached replay. |
-| **12. Integration candidate** | **Complete for source readiness; independently planned, implemented and audited.** Expanded-capability reconciliation, historical durable-content checks and final candidate verification | [Phase record](phases/phase-12/README.md). Integration, main advancement and runtime qualification remain separately gated. |
+| **12. Integration candidate** | **Complete for source readiness; independently planned, implemented and audited.** Expanded-capability reconciliation, historical durable-content checks and final candidate verification | [Phase record](phases/phase-12/README.md). The subsequent authorized fast-forward integrates this source into main. Publication and runtime qualification remain held. |
 
 Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.
 
