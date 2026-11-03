@@ -7,6 +7,19 @@ requested a broader list of valuation ingredients. Include an ingredient only
 when an existing FMP download route supplies it directly, or when an explicit
 calculation can use supplied inputs. Do not add speculative fields.
 
+Phase 8 implementation update, 3 November: the separate financial-free semantic
+catalog now recognizes these 52 direct fields plus the two existing adapters.
+The [field-by-field contract](phases/phase-08/parameter-contract.md) allocates
+stable IDs, units, signs, sampling and history guarantees. Catalog /1 remains
+frozen. Catalog /2 adds share units and the full vocabulary. All /2 execution is
+closed. The provider and ordinary picker still expose only revenue, operating
+income, operating margin and EV. The [phase record](phases/phase-08/README.md)
+records completed independent audit, final source-bound checks and handoff in
+its completion commit. Historical source and
+coverage statements below keep their original dates; no new provider or cache
+inspection was performed. The earlier planning-only and no-ID statements below
+are superseded solely for this Phase 8 semantic contract.
+
 Planning update, 3 November: the [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
 now sequences implementation of this full inventory and named calculated measures,
 then integration qualification. It is planned, not implemented. Only revenue,

@@ -405,8 +405,9 @@ class EvaluationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             private = Path(folder) / 'definitions.py'
             private.write_bytes(Path(d.__file__).read_bytes())
+            original_policy = d.policy_fingerprint()
             with patch.object(d, '__file__', str(private)):
-                self.assertEqual(d.policy_fingerprint(), d._LOADED_POLICY)
+                self.assertEqual(d.policy_fingerprint(), original_policy)
                 private.write_bytes(private.read_bytes() + b'\n# changed private language\n')
                 self.error('STALE_INPUT_GENERATION', d.policy_fingerprint)
                 self.error('STALE_INPUT_GENERATION', r.policy_fingerprint)

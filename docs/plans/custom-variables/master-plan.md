@@ -6,14 +6,21 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status, 3 November 2026: **Phases 1–7 are complete in source on
-`feature/custom-variables`; the full requested parameter inventory is unfinished.**
-Only revenue, operating income, operating margin and enterprise value are
-implemented as formula observations. The [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
-plans all 52 direct inputs, reusable calculated measures, authoring/coverage
-completion and integration qualification. These phases are planned, not implemented.
-The user's 3 November instruction authorizes this plan update and documentation
-commit. It does not start implementation, merge, publication or runtime work.
+Status, 3 November 2026: **Phases 1–8 are complete in source.**
+The [Phase 8 record](phases/phase-08/README.md) retains independent audit,
+393 passing source-bound WSL tests and its handoff. The separate semantic catalog
+recognizes all 52 direct inputs and two existing adapters. Catalog /1 preserves
+the initial four observations; /2 adds the complete vocabulary and share units.
+Only revenue, operating income, operating margin and EV remain usable provider
+and picker observations. All /2 execution stays closed. The full usable inventory,
+named measures and integration qualification remain unfinished.
+
+The user's 3 November resumption authorizes Phase 8 implementation, independently
+audited commits and its handoff on `feature/custom-variables`. It authorizes no
+Phase 9, main integration, merge, push, publication, restart, download or live-data
+work. The [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
+retains the later work and its phase workflow. Earlier planning-only descriptions
+retain their original dated meaning.
 
 Phase 6 resumed from `f877c0c` and completes in three independently audited slices. The user's 2 November instruction authorizes
 variable editor and strategy integration with independently designed, implemented
@@ -44,20 +51,15 @@ default change is authorized.
 
 ## Hold and resume
 
-The current next step is Phase 8 in the
-[parameter expansion and integration plan](parameter-expansion-plan-2026-11-03.md).
-Its [phase session workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
-is the canonical procedure for resumed implementation: one named phase goal,
-a few justified slices, independent planning, separate implementation and
-smart-commit audit, then orchestrator review, verification and commit. The
-[next-session prompt](parameter-expansion-plan-2026-11-03.md#next-session-entry)
-resumes Phase 8 only when the user issues it. Evidence may change implementation
-details in this plan while core requirements and completion evidence stay intact.
-The 3 November planning instruction does not extend the earlier four-parameter
-implementation authorization. Before protected implementation, record the resumed
-phase and its narrow ownership in this feature worktree. Preserve the completed
-phase records as historical evidence. The paragraphs below describe the earlier
-resumptions; they do not mark Phases 8–12 complete or authorize a merge.
+Phase 8 completes from `3dccd88` under explicit 3 November authorization.
+Its [execution plan](phases/phase-08/execution-plan-2026-11-03.md) records narrow
+ownership and one independently designed coherent slice. The
+[phase session workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
+remains canonical. The semantic contract, compatibility evidence, independent
+audit corrections, final verification and handoff are complete in the commit
+containing the phase record. Phase 9 is the next phase and remains held.
+Preserve completed phase records as history. Earlier saved next-session prompts
+and dated holds do not resume a later phase or authorize main integration.
 
 The latest 2 November instruction authorizes Phase 7 numerical backend
 implementation and qualification on this feature branch. It supersedes the
@@ -329,7 +331,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), [execution plan](phases/phase-05/execution-plan-2026-11-02.md) and [Phase 6 handoff](phases/phase-05/handoffs/phase-06.md). Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
 | **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), [Slice 3](phases/phase-06/slice-03.md), [execution plan](phases/phase-06/execution-plan-2026-11-02.md), [compatibility](phases/phase-06/compatibility.md) and [held Phase 7 handoff](phases/phase-06/handoffs/phase-07.md). |
 | **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
-| **8. Complete parameter contract** | Planned: one semantic catalog, source meanings, units and compatibility | [Continuation: Phase 8](parameter-expansion-plan-2026-11-03.md#phase-8--complete-parameter-contract). All 52 direct inputs are in scope; only two are already direct observations. |
+| **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and [Phase 9 handoff](phases/phase-08/handoffs/phase-09.md). All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
 | **9. Evidence for all sources** | Planned: endpoint-aware annual facts and dated market/rate observations | [Continuation: Phase 9](parameter-expansion-plan-2026-11-03.md#phase-9--evidence-for-all-sources). Preserve financial policy and generation ownership. |
 | **10. Reusable measure library** | Planned: finite named measures and bounded annual growth | [Continuation: Phase 10](parameter-expansion-plan-2026-11-03.md#phase-10--reusable-measure-library). Preserve exact legacy calculations. |
 | **11. Discoverable, qualified capabilities** | Planned: expanded editor, bounded coverage inspection and both-engine qualification | [Continuation: Phase 11](parameter-expansion-plan-2026-11-03.md#phase-11--discoverable-qualified-capabilities). Support, readiness and data coverage stay distinct. |

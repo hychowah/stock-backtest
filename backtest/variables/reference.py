@@ -26,12 +26,35 @@ def policy_fingerprint():
                 provider=observations.policy_fingerprint(), arithmetic=dict(evaluation._ARITHMETIC))
 
 
+def require_program(program, *, checkpoint=lambda: None):
+    """Admit Original's implemented /1 subset without inputs or readiness.
+
+    Restoration belongs to definitions. Recognition under /2 does not grant
+    execution, including constants, old parameters and unused definitions.
+    This check covers the complete capture, not only its reachable roots.
+    """
+    checkpoint()
+    checked = definitions.require_program(program)
+    if any(item['definition']['parameter_catalog'] != 'financial-parameters/1'
+           for item in checked['bundle']['definitions']):
+        raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', '/variables',
+            'Unsupported Original formula namespace.')
+    supported = {item['id'] for item in observations.catalog()}
+    for node in checked['nodes']:
+        checkpoint()
+        if node['op'] in ('parameter', 'annual') and node['parameter'] not in supported:
+            raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'],
+                'Unsupported Original observation parameter.')
+    return checked
+
+
 class _Arithmetic:
     workspace_bytes = 0
     policy_fingerprint = staticmethod(policy_fingerprint)
 
     def prepare(self, checked, checkpoint):
-        checkpoint()
+        require_program(definitions.FormulaProgram(definitions.canonical(checked['program'])),
+                        checkpoint=checkpoint)
         return self
 
     def close(self):

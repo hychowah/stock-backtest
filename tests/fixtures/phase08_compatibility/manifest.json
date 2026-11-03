@@ -1,0 +1,38 @@
+{
+  "entry_commit": "3dccd88a0697c0e05054707ab1c1a5f897797805",
+  "provenance": "Generated with untouched entry production source before Phase 8 implementation; synthetic in-memory financial fixture only.",
+  "files": {
+    "authored.json": {
+      "bytes": 4954,
+      "sha256": "e06b05dd7d9a3b73177df014b069507869bfe921dd2dd2c55c32a4d11171fc18"
+    },
+    "queued-request.json": {
+      "bytes": 10780,
+      "sha256": "74a5295feeb6e978537beb6d6de03155029693d27bfd7c2520e0172698f88afa"
+    },
+    "completed-scalar.bin": {
+      "bytes": 35785,
+      "sha256": "8ba88164f3fd0c3be347a030dab382ae0e28db23f0e9d92fb399241bb89d314d"
+    },
+    "variable-capture.json": {
+      "bytes": 9234,
+      "sha256": "6b5b177ff9118841a61c731732d829049289f049528593187b2b9e1b42bcf55e"
+    },
+    "program.json": {
+      "bytes": 7742,
+      "sha256": "801635edffffa5975f5e47e71539327eda1f2c83b6c88f67494205724cd1511a"
+    },
+    "completed-manifest.json": {
+      "bytes": 2605,
+      "sha256": "689604724f66a509b41bd3658810d230d552dd78a6247f043b72537c7ec5221f"
+    },
+    "recorded-plan.json": {
+      "bytes": 10930,
+      "sha256": "076457a1f596b3ecc44da936072b50c332182583c625c376e8c6b7acd7db76f3"
+    },
+    "strategy-capture.json": {
+      "bytes": 10666,
+      "sha256": "0982314dc798ed6b8200ee1c5c20fa5b98f71c7f38ef8ea8f236dd5978b09927"
+    }
+  }
+}

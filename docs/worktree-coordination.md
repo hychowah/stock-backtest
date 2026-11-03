@@ -1,5 +1,32 @@
 # Parallel work on the website and backtest engine
 
+## Custom-variable Phase 8 resumption — 3 November 2026
+
+The user authorizes completing Phase 8 from `3dccd88` on
+`feature/custom-variables`, including verified independently audited commits and
+handoff. The [execution plan](plans/custom-variables/phases/phase-08/execution-plan-2026-11-03.md)
+assigns this branch the financial-free 52-input semantic contract, versioned units,
+immutable compatibility tests and narrow current-runtime admission guards.
+The separate semantic catalog does not expand the four implemented observations.
+All catalog `/2` execution stays closed. No financial calculation, prepared schema,
+worker/lock ownership, resource ceiling or durable format changes are assigned.
+The implementation probe also assigns only the admission call at
+`scalar_execution._plans()`, shared by preview and Executor chunk planning, to
+this feature slice. It rejects unsupported programs before shared planning.
+The independent audit additionally assigns only the callable admission seams in
+`variables/selection.evaluate()` before input validation and in
+`scalar_execution.Executor.select()` before prepared-scope reads. These close
+the same early-rejection contract. Selection and financial behavior stay fixed.
+Main and engine files/indexes remain read-only. Original stays default.
+Phase 9, merge, push, deployment, restart, download and live data changes are not
+authorized. Earlier planning-only statements below retain their dated meaning.
+
+Phase 8 completes in the commit containing its phase record. All three independent
+audit findings are fixed and confirmed. Final source-bound verification passes
+393 WSL tests without skips, plus browser-script and guide checks/review. This
+completes semantic recognition only; provider/picker execution remains four
+observations. The Phase 9 and engine-owner handoffs grant no additional work.
+
 ## Custom-variable continuation planning — 3 November 2026
 
 The user requested and authorized committing the

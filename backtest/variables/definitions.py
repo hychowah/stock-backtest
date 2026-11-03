@@ -16,7 +16,7 @@ from pathlib import Path
 import re
 from types import MappingProxyType
 
-from backtest import observations
+from backtest.variables import parameters
 
 VERSION = 1
 CATALOG = 'financial-parameters/1'
@@ -24,9 +24,6 @@ TEMPORAL_POLICY = 'annual-lag90/1'
 _LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 CEILINGS = MappingProxyType(dict(nodes=256, depth=32, definitions=32,
     dependency_depth=8, bytes=256 * 1024, literal=64, expanded_literal=1024))
-_UNITS = {'scalar': {}, 'USD': {'USD': 1}, 'USD/share': {'USD': 1, 'share': -1}}
-_DISPLAYS = {'scalar': ('number', 'multiple', 'percent', 'percentage_points'),
-             'USD': ('usd', 'usd_million'), 'USD/share': ('usd_per_share',)}
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
 _REVISION = re.compile(r'sha256:[0-9a-f]{64}\Z')
 _DECIMAL = re.compile(r'([+-]?)(?:([0-9]+)(?:\.([0-9]*))?|\.([0-9]+))(?:[eE]([+-]?[0-9]+))?\Z')
@@ -49,7 +46,11 @@ def policy_fingerprint():
     current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     if current != _LOADED_POLICY:
         _fail('STALE_INPUT_GENERATION', '', 'Loaded formula language no longer matches its source.')
-    return current
+    try:
+        semantic = parameters.policy_fingerprint()
+    except ValueError:
+        _fail('STALE_INPUT_GENERATION', '', 'Loaded parameter semantics no longer match their source.')
+    return hashlib.sha256(canonical(dict(definitions=current, parameters=semantic)).encode()).hexdigest()
 
 
 def _hash(document):
@@ -187,7 +188,8 @@ def normalize_quantity(quantity, unit):
         'multiple': ('scalar', 0), 'percent': ('scalar', -2),
         'percentage_points': ('scalar', -2), 'USD': ('USD', 0),
         'usd': ('USD', 0), 'usd_million': ('USD', 6),
-        'USD/share': ('USD/share', 0), 'usd_per_share': ('USD/share', 0)}
+        'USD/share': ('USD/share', 0), 'usd_per_share': ('USD/share', 0),
+        'share': ('share', 0), 'shares': ('share', 0)}
     if type(submitted_unit) is not str or submitted_unit not in scales or scales[submitted_unit][0] != unit:
         _fail('UNIT_MISMATCH', '/threshold/unit', 'Threshold unit does not match the variable.')
     normalized = _decimal(quantity['value'], CEILINGS, '/threshold/value', False,
@@ -205,10 +207,14 @@ def normalize_quantity(quantity, unit):
 def _normal_definition(definition, limits, path, normalized=False):
     _shape(definition, ('format', 'version', 'parameter_catalog', 'temporal_policy', 'expression', 'output'), path)
     if (definition['format'] != 'variable-definition' or type(definition['version']) is not int
-            or definition['version'] != VERSION or definition['parameter_catalog'] != CATALOG
+            or definition['version'] != VERSION
             or definition['temporal_policy'] != TEMPORAL_POLICY):
         _fail('UNKNOWN_VERSION', path, 'Unsupported definition format, catalog or temporal policy.')
-    catalog = {item['id']: item for item in observations.catalog()}
+    try:
+        catalog = {item['id']: item for item in parameters.catalog(definition['parameter_catalog'])}
+        units = parameters.units(definition['parameter_catalog'])
+    except ValueError:
+        _fail('UNKNOWN_VERSION', path, 'Unsupported definition format, catalog or temporal policy.')
     issues, refs, count = [], [], [0]
     def visit(node, node_path, depth):
         count[0] += 1
@@ -247,7 +253,7 @@ def _normal_definition(definition, limits, path, normalized=False):
                         _fail('UNSUPPORTED_OPERATION', node_path + '/stat', 'Unsupported annual statistic.')
                     _integer(node['count'], 1, catalog[parameter]['counts']['maximum'], node_path + '/count')
             elif op == 'constant':
-                if type(node['unit']) is not str or node['unit'] not in _UNITS:
+                if type(node['unit']) is not str or node['unit'] not in units:
                     _fail('UNIT_MISMATCH', node_path + '/unit', 'A canonical constant unit is required.')
                 result['value'] = _decimal(node['value'], limits, node_path + '/value', normalized)
             else:
@@ -263,9 +269,9 @@ def _normal_definition(definition, limits, path, normalized=False):
     try:
         _shape(definition['output'], ('unit', 'display'), path + '/output')
         output = dict(definition['output'])
-        if type(output['unit']) is not str or output['unit'] not in _UNITS:
+        if type(output['unit']) is not str or output['unit'] not in units:
             _fail('UNSUPPORTED_OUTPUT_UNIT', path + '/output/unit', 'Unsupported output unit.')
-        if type(output['display']) is not str or output['display'] not in _DISPLAYS[output['unit']]:
+        if type(output['display']) is not str or output['display'] not in units[output['unit']]['displays']:
             _fail('UNIT_MISMATCH', path + '/output/display', 'Display does not match the canonical output unit.')
     except FormulaError as error:
         issues.extend(dict(issue) for issue in error.errors)
@@ -278,8 +284,9 @@ def revision(definition):
     """Hash normalized definition content without authorizing its references.
 
     Use this helper to build submitted immutable bundles. Only validate() resolves
-    dependencies, infers units and establishes executable language support.
-    No durable variable library is consulted or changed.
+    dependencies, infers units and establishes checked semantic validity.
+    Backend admission separately determines execution support. No durable
+    variable library is consulted or changed.
     """
     normalized, _, _ = _normal_definition(definition, dict(CEILINGS), '')
     return _hash(canonical(normalized))
@@ -362,7 +369,9 @@ def _compile(bundle, limits, normalized=False):
     for value in (bundle, normalized_bundle):
         if len(canonical(value).encode('utf-8')) > limits['bytes']:
             _fail('DEFINITION_LIMIT', '', 'Formula bundle exceeds its byte bound.')
-    catalog = {item['id']: item for item in observations.catalog()}
+    catalogs = [{item['id']: item for item in parameters.catalog(entry['definition']['parameter_catalog'])}
+                for entry in entries]
+    unit_vocabularies = [parameters.units(entry['definition']['parameter_catalog']) for entry in entries]
     nodes, definition_roots, requirements = [], {}, []
     def lower(node, path, definition_index):
         identity = 'n' + str(len(nodes))
@@ -407,9 +416,10 @@ def _compile(bundle, limits, normalized=False):
         item = node_by_id[identity]
         op, depth = item['op'], 1
         if op in ('parameter', 'annual'):
-            dimensions = dict(_UNITS[catalog[item['parameter']]['unit']])
+            unit = catalogs[item['definition']][item['parameter']]['unit']
+            dimensions = dict(unit_vocabularies[item['definition']][unit]['dimensions'])
         elif op == 'constant':
-            dimensions = dict(_UNITS[item['unit']])
+            dimensions = dict(unit_vocabularies[item['definition']][item['unit']]['dimensions'])
         elif op in ('neg', 'at', 'lookback', 'ref'):
             target = item['target'] if op == 'ref' else item['arg']
             dimensions = dict(infer(target))
@@ -435,7 +445,8 @@ def _compile(bundle, limits, normalized=False):
     for index, entry in enumerate(entries):
         root = definition_roots[index]
         dimensions = infer(root)
-        unit = next((name for name, value in _UNITS.items() if value == dimensions), None)
+        unit = next((name for name, value in unit_vocabularies[index].items()
+                     if value['dimensions'] == dimensions), None)
         if unit is None:
             _fail('UNSUPPORTED_OUTPUT_UNIT', '/definitions/' + str(source_indexes[index]) + '/definition/output', 'Formula output has unsupported dimensions.')
         if unit != entry['definition']['output']['unit']:

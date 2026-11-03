@@ -226,6 +226,8 @@ def evaluate(selection_plan, inputs, checkpoint=lambda: None):
     """
     checked = require_plan(selection_plan, checkpoint)
     checkpoint()
+    reference.require_program(definitions.FormulaProgram(
+        definitions.canonical(checked['reference']['program'])), checkpoint=checkpoint)
     current_policy = policy_fingerprint()
     inputs.validate()
     generation, projection = inputs.identity, inputs.projection

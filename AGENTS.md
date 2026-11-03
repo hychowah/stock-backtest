@@ -1,5 +1,18 @@
 # EBITDA/EV January book
 
+Phase 8 completes in source on 3 November 2026 from `3dccd88` under explicit
+user authorization on `feature/custom-variables`. Its independently audited
+completion includes 393 passing WSL tests and the
+[phase record and handoff](docs/plans/custom-variables/phases/phase-08/README.md).
+Follow its
+[execution plan](docs/plans/custom-variables/phases/phase-08/execution-plan-2026-11-03.md)
+and independent slice design. This phase owns the complete semantic parameter
+contract, versioned units, compatibility evidence and narrow admission guards.
+The provider and authoring picker keep four usable observations. Catalog `/2`
+execution stays closed. Phase 9 and all integration/runtime/data actions remain
+unauthorized. Preserve main and engine worktrees. Earlier dated holds and
+planning-only descriptions below are superseded only for Phase 8's narrow scope.
+
 This folder is a standalone US stock backtest. It is not a a different research session. Do not open the parent harness, do not invent a fair value, and do not edit product code from here.
 
 The folder can move. Scripts resolve paths from their own file. Keep `raw/` with the Windows runtime code. The WSL source checkout does not hold a second full cache. The FMP key stays at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.

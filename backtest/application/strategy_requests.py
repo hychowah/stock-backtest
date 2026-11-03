@@ -431,10 +431,13 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         expected = current.get(descriptor['id'])
         if expected is None or any(descriptor[key] != expected[key] for key in ('unit', 'display', 'storage')):
             _fail('UNSUPPORTED_CAPABILITY', '/builtins', 'Captured scalar semantics are unsupported by the current backend.')
-    if engine=='experimental' and checked['variables'] is not None:
-        from backtest.engines.numerical import formula_capabilities
-        formula_capabilities.require_program(library.VariableCapture(
-            definitions.canonical(checked['variables'])).program,checkpoint=checkpoint)
+    if checked['variables'] is not None:
+        if engine == 'experimental':
+            from backtest.engines.numerical import formula_capabilities as admission
+        else:
+            from backtest.variables import reference as admission
+        admission.require_program(library.VariableCapture(
+            definitions.canonical(checked['variables'])).program, checkpoint=checkpoint)
     return checked
 
 

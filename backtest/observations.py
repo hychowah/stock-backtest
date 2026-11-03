@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 from types import MappingProxyType
 
+from backtest.variables import parameters
 from backtest.financial import rules
 from backtest.inputs.observation_inputs import encoded
 
@@ -180,6 +181,9 @@ def _compile(requests, contexts, limits):
             _fail('INVALID_SHAPE', path, 'Duplicate observation request.')
         identifiers.add(item['id'])
         if not isinstance(item['parameter'], str) or item['parameter'] not in _CATALOG:
+            if type(item['parameter']) is str and any(value['id'] == item['parameter']
+                    for value in parameters.catalog(parameters.V2)):
+                _fail('UNSUPPORTED_CAPABILITY', path + '/parameter', 'Recognized parameter has no implemented observation.')
             _fail('UNKNOWN_PARAMETER', path + '/parameter', 'Unsupported observation parameter.')
         _identifier(item['context'], path + '/context')
         if item['context'] not in resolved:
@@ -204,7 +208,11 @@ def policy_fingerprint():
     current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     if current != _LOADED_POLICY:
         _fail('STALE_INPUT_GENERATION', '/', 'Loaded observation policy no longer matches its source.')
-    return current
+    try:
+        semantic = parameters.policy_fingerprint()
+    except ValueError:
+        _fail('STALE_INPUT_GENERATION', '/', 'Loaded parameter semantics no longer match their source.')
+    return hashlib.sha256(encoded(dict(observations=current, parameters=semantic)).encode()).hexdigest()
 
 
 def _report(row):
