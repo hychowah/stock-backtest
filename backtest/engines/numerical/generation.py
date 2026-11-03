@@ -314,6 +314,7 @@ def _source_binding(policy, checkpoint=lambda: None):
     source['backtest/runtime/cache_access.py'] = _sha(Path(cache_access.__file__), checkpoint)
     source['backtest/inputs/dated_observation_inputs.py'] = _sha(Path(dated_observation_inputs.__file__), checkpoint)
     source['backtest/inputs/observation_inputs.py'] = _sha(Path(observation_inputs.__file__), checkpoint)
+    source['backtest/measure_observations.py'] = _sha(Path(observation_inputs.measure_observations.__file__), checkpoint)
     return source
 
 
@@ -553,7 +554,7 @@ class AttachedInputs:
         bounds = dict(historical_through=self._binding.get('daily', {}).get('inputs', {}).get('historical_through'),
                       latest_date=expected['latest_date'], population=len(self.symbols),
                       report_rows=len(self.report_fiscal), max_reports=maximum('reports'),
-                      max_annual=maximum('observation_annual'))
+                      max_annual=maximum('observation_annual'), max_financial=maximum('financial_inputs'))
 
         return observation_inputs.ReadView(self.signature, self._db, self.validate, reports, lookup,
             expected=expected, max_history=MAX_HISTORY, max_record_bytes=MAX_MANIFEST,

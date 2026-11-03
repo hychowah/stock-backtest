@@ -92,7 +92,7 @@ class GrowthTests(unittest.TestCase):
         self.assertEqual(len(block['observations']['results'][0]['members']), 3)
 
     def test_version_count_dimensions_and_catalog_are_independent(self):
-        for definition in (make(version=1), make(count=1), make(count=11), make(version=3)):
+        for definition in (make(version=1), make(count=1), make(count=11), make(version=4)):
             with self.assertRaises(d.FormulaError): compile_def(definition)
         for catalog in ('financial-parameters/1', 'financial-parameters/2'):
             for count in (2, 10):

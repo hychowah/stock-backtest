@@ -16,6 +16,7 @@ import re
 from types import MappingProxyType
 
 from backtest.variables import parameters
+from backtest import measure_observations
 from backtest.financial import rules
 from backtest.inputs.observation_inputs import encoded
 from backtest.inputs import dated_observation_inputs as dated_inputs
@@ -23,7 +24,7 @@ from backtest.inputs import dated_observation_inputs as dated_inputs
 VERSION = 1
 CEILINGS = MappingProxyType(dict(contexts=256, requests=1024, members=10240,
                                  rows=2000000, bytes=16 * 1024 * 1024))
-_MEANINGS = {item['id']: item for item in parameters.catalog(parameters.V2)}
+_MEANINGS = {item['id']: item for item in parameters.catalog(parameters.V3)}
 # Preserve /1 presentation and order while deriving every direct annual source
 # from the versioned semantic owner. Capability is separate from authoring.
 _CATALOG = {
@@ -36,6 +37,10 @@ _ANNUAL = {key: item['source'] for key, item in _MEANINGS.items()
            if item['kind'] == 'direct' and key.startswith('annual.')}
 _DATED = {key: item['source'] for key, item in _MEANINGS.items()
           if item['kind'] == 'direct' and not key.startswith('annual.')}
+_CATALOG['annual.report_ebitda'] = ('USD', 'Accepted report-derived EBITDA')
+for _key, _item in _MEANINGS.items():
+    if _key.startswith('owner.'):
+        _CATALOG[_key] = (_item['unit'], _item['description'])
 for _key in (*_ANNUAL, *_DATED):
     _CATALOG.setdefault(_key, (_MEANINGS[_key]['unit'], _MEANINGS[_key]['description']))
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
@@ -222,7 +227,11 @@ def policy_fingerprint():
         semantic = parameters.policy_fingerprint()
     except ValueError:
         _fail('STALE_INPUT_GENERATION', '/', 'Loaded parameter semantics no longer match their source.')
-    return hashlib.sha256(encoded(dict(observations=current, parameters=semantic)).encode()).hexdigest()
+    try:
+        bridge = measure_observations.policy_fingerprint()
+    except ValueError:
+        _fail('STALE_INPUT_GENERATION', '/', 'Loaded measure observation policy no longer matches its source.')
+    return hashlib.sha256(encoded(dict(observations=current, parameters=semantic, bridge=bridge)).encode()).hexdigest()
 
 
 def _report(row):
@@ -293,6 +302,30 @@ def _annual(parameter, facts, periods, checkpoint):
     return members
 
 
+def _report_ebitda(reports, anchor, count, checkpoint):
+    # The anchor remains the pool-selected report. Earlier values come from the
+    # broad accepted report spine, without requiring statement endpoint rows.
+    by_year = {}
+    for row in reports:
+        checkpoint()
+        fiscal = date.fromisoformat(row['fiscal'])
+        if fiscal <= anchor['fiscal']:
+            by_year[fiscal.year] = row
+    by_year[anchor['fiscal'].year] = anchor
+    result = []
+    for year in range(anchor['fiscal'].year - count + 1, anchor['fiscal'].year + 1):
+        checkpoint()
+        row = by_year.get(year)
+        value = row.get('ebitda') if row else None
+        reason = 'MISSING_FISCAL_YEAR' if row is None else 'MISSING_INPUT' if value is None else None
+        if value is not None and not math.isfinite(value):
+            value, reason = None, 'NONFINITE_RESULT'
+        result.append(dict(value=value, valid=reason is None, reason=reason,
+            fiscal_date=str(row['fiscal']) if row else None, fiscal_year=year,
+            evidence=dict(policy='accepted-report-ebitda', report={key:str(v) if isinstance(v,date) else v for key,v in row.items()} if row else None)))
+    return result
+
+
 def _dated(parameter, inputs, symbol, day, checkpoint):
     source_spec = _DATED[parameter]
     endpoint, field = source_spec['endpoint'], source_spec['field']
@@ -348,9 +381,18 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
     inspected += sum(3 if item['parameter'].startswith('treasury.') else 4
                      for item in submitted['requests'] if item['parameter'] in _DATED)
     inspected += len(companies) * (bounds['max_reports'] + bounds['max_annual'] + 6)
+    inspected += len({root_nodes[resolved[item['context']]['root']]['symbol'] for item in submitted['requests'] if item['parameter'] == 'annual.report_ebitda'}) * bounds['max_reports']
+    # Fetching the cached broad history and scanning it for each requested
+    # report-EBITDA selection are separate work, even without income rows.
+    inspected += sum(bounds['max_reports'] for item in submitted['requests']
+                     if item['parameter'] == 'annual.report_ebitda')
     inspected += len(fact_keys) * bounds['max_reports']
     inspected += sum(item['count'] * (bounds['max_annual'] + 1)
                      for item in submitted['requests'] if item['parameter'].startswith('annual.'))
+    owner_contexts = {item['context'] for item in submitted['requests'] if item['parameter'].startswith('owner.')}
+    inspected += len(owner_contexts) * (3 * bounds['max_reports'] + 4 * bounds.get('max_financial', bounds['max_annual']) + 10)
+    inspected += sum(bounds['max_reports'] + bounds.get('max_financial', bounds['max_annual']) + 1
+                     for item in submitted['requests'] if item['parameter'].startswith('owner.'))
     if inspected > limits['rows']:
         _fail('WORK_LIMIT', '/limits/rows', 'Observation request exceeds its inspected-row bound.')
     decisions = inputs.admit(roots, dict(rows=limits['rows'], bytes=limits['bytes']), checkpoint)
@@ -359,7 +401,7 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                   projection=inputs.projection['content'], provider_policy=policy,
                   roots=decisions, contexts=list(resolved.values()), results=[])
     used_bytes = len(encoded(result).encode('utf-8'))
-    facts_cache, anchor_cache, period_cache = {}, {}, {}
+    facts_cache, anchor_cache, period_cache, broad_cache, owner_cache = {}, {}, {}, {}, {}
     facts_bytes = 0
     for request in submitted['requests']:
         checkpoint()
@@ -379,6 +421,16 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                 facts_bytes += len(encoded(member['evidence']).encode('utf-8'))
                 if facts_bytes > limits['bytes']:
                     _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts exceed their byte bound.')
+                item['members'] = [member]
+            elif request['parameter'].startswith('owner.') and measure_observations.prepared_scope(inputs.projection, root, context):
+                owner_key = context['id']
+                if owner_key not in owner_cache:
+                    owner_cache[owner_key] = measure_observations.prepared(inputs, root, context, checkpoint)
+                    facts_bytes += len(encoded(owner_cache[owner_key]).encode('utf-8'))
+                    if facts_bytes > limits['bytes']:
+                        _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts exceed their byte bound.')
+                member = measure_observations.lane(owner_cache[owner_key], request['parameter'].split('.', 1)[1], checkpoint)
+                member.update(fiscal_date=None, fiscal_year=None)
                 item['members'] = [member]
             elif request['parameter'] == 'market.enterprise_value' and is_root:
                 anchor = _report(root['statement'])
@@ -405,7 +457,25 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                 if anchor is not None:
                     item['anchor'] = str(anchor['fiscal'])
                     item['anchor_report'] = {key: str(value) if isinstance(value, date) else value for key, value in anchor.items()}
-                    if request['parameter'].startswith('annual.'):
+                    if request['parameter'] == 'annual.report_ebitda':
+                        symbol = root['symbol']
+                        if symbol not in broad_cache:
+                            broad_cache[symbol] = inputs.broad_reports(symbol, checkpoint, budget=limits['bytes'] - facts_bytes)
+                            facts_bytes += len(encoded(broad_cache[symbol]).encode('utf-8'))
+                            if facts_bytes > limits['bytes']:
+                                _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts exceed their byte bound.')
+                        item['members'] = _report_ebitda(broad_cache[symbol], anchor, request['count'], checkpoint)
+                    elif request['parameter'].startswith('owner.'):
+                        owner_key = context['id']
+                        if owner_key not in owner_cache:
+                            owner_cache[owner_key] = measure_observations.dated(inputs, root, context, anchor, checkpoint, budget=limits['bytes'] - facts_bytes)
+                            facts_bytes += len(encoded(owner_cache[owner_key]).encode('utf-8'))
+                            if facts_bytes > limits['bytes']:
+                                _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts exceed their byte bound.')
+                        member = measure_observations.lane(owner_cache[owner_key], request['parameter'].split('.', 1)[1], checkpoint)
+                        member.update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year)
+                        item['members'] = [member]
+                    elif request['parameter'].startswith('annual.'):
                         period_key = (*context_key, request['count'])
                         if period_key not in period_cache:
                             period_cache[period_key] = _periods(facts, anchor, day, request['count'], checkpoint)
@@ -421,8 +491,8 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
             item['valid'] = all(member['valid'] for member in item['members'])
             item['reason'] = next((member['reason'] for member in item['members'] if not member['valid']), None)
         used_bytes += len(encoded(item).encode('utf-8')) + int(bool(result['results']))
-        if used_bytes > limits['bytes']:
-            _fail('WORK_LIMIT', '/limits/bytes', 'Observation result exceeds its byte bound.')
+        if used_bytes + facts_bytes > limits['bytes']:
+            _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts and result exceed their byte bound.')
         result['results'].append(item)
     checkpoint()
     inputs.validate()

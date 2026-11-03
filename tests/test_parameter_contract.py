@@ -135,7 +135,7 @@ class ParameterTests(unittest.TestCase):
             'market.unadjusted_price', 'annual.common_net_income'):
             with self.assertRaises(ValueError):p.parameter(p.V2, identity)
         with self.assertRaises(ValueError):p.parameter(p.V1, 'annual.net_income')
-        for version in ('financial-parameters/3', None, [], 2):
+        for version in ('financial-parameters/4', None, [], 2):
             with self.assertRaises(ValueError):p.catalog(version)
             self.error('UNKNOWN_VERSION', d.revision, dict(definition(), parameter_catalog=version))
         first=p.catalog(p.V2);first[0]['source']['field']='forged'

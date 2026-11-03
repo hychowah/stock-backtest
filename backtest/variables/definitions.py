@@ -22,7 +22,7 @@ from types import MappingProxyType
 from backtest.variables import parameters
 
 VERSION = 1  # Bundle and program envelope; definition versions evolve separately.
-DEFINITION_VERSIONS = (1, 2)
+DEFINITION_VERSIONS = (1, 2, 3)
 CATALOG = 'financial-parameters/1'
 TEMPORAL_POLICY = 'annual-lag90/1'
 _LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -35,7 +35,7 @@ _SHAPES = {'parameter': ('op', 'id'), 'constant': ('op', 'value', 'unit'),
     'neg': ('op', 'arg'), 'ref': ('op', 'variable_id', 'revision'),
     'at': ('op', 'date', 'arg'), 'lookback': ('op', 'months', 'arg'),
     'annual': ('op', 'stat', 'count', 'parameter')}
-for _op in ('add', 'sub', 'mul', 'div'):
+for _op in ('add', 'sub', 'mul', 'div', 'positive_div'):
     _SHAPES[_op] = ('op', 'left', 'right')
 
 
@@ -229,8 +229,10 @@ def _normal_definition(definition, limits, path, normalized=False):
             if type(op) is not str or op not in _SHAPES:
                 _fail('UNSUPPORTED_OPERATION', node_path, 'Unsupported formula operation.')
             _shape(node, _SHAPES[op], node_path)
+            if op == 'positive_div' and definition['version'] < 3:
+                _fail('UNSUPPORTED_OPERATION', node_path, 'Positive division requires definition version 3.')
             result = dict(node)
-            if op in ('add', 'sub', 'mul', 'div'):
+            if op in ('add', 'sub', 'mul', 'div', 'positive_div'):
                 result['left'] = visit(node['left'], node_path + '/left', depth + 1)
                 result['right'] = visit(node['right'], node_path + '/right', depth + 1)
             elif op in ('neg', 'at', 'lookback'):
@@ -254,7 +256,7 @@ def _normal_definition(definition, limits, path, normalized=False):
                     if not parameter.startswith('annual.'):
                         _fail('UNSUPPORTED_OPERATION', node_path, 'Annual statistics require an annual parameter.')
                     statistics = ('mean', 'min', 'max')
-                    if definition['version'] == 2:
+                    if definition['version'] >= 2:
                         statistics += ('growth', 'cagr')
                     if node['stat'] not in statistics:
                         _fail('UNSUPPORTED_OPERATION', node_path + '/stat', 'Unsupported annual statistic.')
@@ -386,7 +388,7 @@ def _compile(bundle, limits, normalized=False):
         item = dict(id=identity, op=node['op'], path=path, definition=definition_index)
         nodes.append(item)
         op = node['op']
-        if op in ('add', 'sub', 'mul', 'div'):
+        if op in ('add', 'sub', 'mul', 'div', 'positive_div'):
             for field in ('left', 'right'):
                 item[field] = lower(node[field], path + '/' + field, definition_index)
         elif op in ('neg', 'at', 'lookback'):

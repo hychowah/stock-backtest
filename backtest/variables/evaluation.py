@@ -106,6 +106,8 @@ def _operation(task, node, *, value=None, reason=None, inputs=None):
         item['observation'] = task['observation']
     if node['op'] == 'div':
         item['denominator_rule'] = 'signed nonzero'
+    elif node['op'] == 'positive_div':
+        item['denominator_rule'] = 'positive'
     return item
 
 
@@ -166,7 +168,7 @@ def _compile(program, roots, limits, checkpoint):
         node, operands = nodes[identity], []
         op = node['op']
         observation = None
-        if op in ('add', 'sub', 'mul', 'div'):
+        if op in ('add', 'sub', 'mul', 'div', 'positive_div'):
             operands = [expand(node[field], context) for field in ('left', 'right')]
         elif op in ('neg', 'ref'):
             operands = [expand(node['target'] if op == 'ref' else node['arg'], context)]

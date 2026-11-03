@@ -180,7 +180,7 @@ filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
-Daily cache version 4 tracks this in `period_pools`. Compatible version-1/2 caches
+Daily cache version 5 tracks this in `period_pools`. Compatible version-1/2 caches
 upgrade automatically at startup without reparsing prices or discarding books
 when their complete prerequisite binding agrees. Daily inputs now include a digest
 of the price inventory accepted by committed research metadata. The digest covers
@@ -751,8 +751,8 @@ when a selected-period fact is missing. The strict 90-day availability rule and
 800-day current-anchor limit remain in force. Earlier history members keep the
 existing calendar-year buckets and can be older than 800 days.
 
-Observation evidence version 3 adds separate `observation_dated` and
-`observation_sessions` relations. Research schema 10 and daily cache version 4
+Observation evidence version 4 retains `observation_dated` and
+`observation_sessions` and adds prepared measure contexts and explicit scope identities. Research schema 11 and daily cache version 5
 require offline rebuilding of older observation projections. Their complete
 content identity, preparation policy and semantic source bind reuse. The new
 read-only `dated_observation_inputs.py` resolver also participates in freshness.
@@ -782,11 +782,19 @@ reads check view lifetime; they do not rescan the whole generation. Admission
 and observation boundaries retain their authoritative freshness checks.
 
 The direct provider and callable reference evaluator support all 52 direct inputs
-plus operating margin and existing dated EV. The ordinary authoring picker keeps
+plus operating margin, existing dated EV and Phase 10 reusable measure adapters.
+The 33 named measures use immutable ordinary definitions and exact references.
+A prepared January or latest root consumes its stored owner lanes. A derived
+context uses dated owner policy, even at the root date. Missing prepared lanes
+never fall back to recalculation. Report EBITDA uses broad accepted report
+history. Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact
+endpoint dates. Only those named annual adapters support annual history.
+Projection 4, research schema 11 and daily cache 5 require incompatible caches
+to rebuild; durable records keep their formats. The ordinary authoring picker keeps
 four inputs. `variables.selection.require_program()` owns the separate qualified
 /1 scalar-selection gate. Original application, preview, chunk planning and
-callable selection reject every /2 capture before financial access. Numerical
-/2 execution stays closed. Semantic restoration is independent of those gates.
+callable selection reject /2 and /3 captures before financial access. Numerical
+/2 and /3 execution stays closed. Semantic restoration is independent of those gates.
 Old definitions, captures, artifacts and durable records retain their bytes.
 Private synthetic tests establish source correctness, not native/live-cache
 coverage. No download, publication to main or running-server update is implied.

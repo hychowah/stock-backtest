@@ -26,6 +26,60 @@ class OwnershipTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         return getattr(module,function.__name__)
 
+    def test_pair_normalization_is_exact_predecessor(self):
+        import textwrap
+        predecessor = inspect.getsource(books.snapshot).replace(
+            '*ebitda_yield_and_multiple(ebitda,ev)', 'ebitda/ev,ev/ebitda')
+        old = ast.parse(textwrap.dedent(predecessor)).body[0]
+        helper = ast.parse(textwrap.dedent(inspect.getsource(books.entry_valuation))).body[0]
+        def body(tree):
+            return tree.body[1:] if isinstance(tree.body[0], ast.Expr) and isinstance(tree.body[0].value, ast.Constant) else tree.body
+        old.body = copy.deepcopy(body(helper)[:-1] + body(old)[3:])
+        self.assertEqual(ast.dump(_normalized_snapshot()), ast.dump(old))
+        self.assertEqual(books.ebitda_yield_and_multiple(1., 49.), (1. / 49., 49. / 1.))
+        self.assertIn(Path(inspect.getsourcefile(books.ebitda_yield_and_multiple)), PolicyProgram().source_paths)
+
+    def test_pair_helper_and_call_mutations_are_rejected(self):
+        pair = books.ebitda_yield_and_multiple
+        wrapper = books.snapshot
+        cases = [
+            (pair, 'ebitda, enterprise_value', 'ebitda, enterprise_value, extra=None'),
+            (pair, 'def ebitda_yield_and_multiple', 'async def ebitda_yield_and_multiple'),
+            (pair, 'def ebitda_yield_and_multiple', '@staticmethod\ndef ebitda_yield_and_multiple'),
+            (pair, 'ebitda, enterprise_value', 'ebitda: float, enterprise_value'),
+            (pair, 'return ebitda / enterprise_value, enterprise_value / ebitda', 'return enterprise_value / ebitda, ebitda / enterprise_value'),
+            (pair, 'return ebitda / enterprise_value, enterprise_value / ebitda', 'return ebitda / enterprise_value, 1 / (ebitda / enterprise_value)'),
+            (pair, 'return ebitda / enterprise_value, enterprise_value / ebitda', 'pass\n    return ebitda / enterprise_value, enterprise_value / ebitda'),
+            (wrapper, '*ebitda_yield_and_multiple(ebitda,ev)', '*ebitda_yield_and_multiple(ev,ebitda)'),
+            (wrapper, '*ebitda_yield_and_multiple(ebitda,ev)', '*ebitda_yield_and_multiple(ebitda=ebitda,enterprise_value=ev)'),
+            (wrapper, '*ebitda_yield_and_multiple(ebitda,ev)', '*ebitda_yield_and_multiple(ebitda,ev), *ebitda_yield_and_multiple(ebitda,ev)'),
+            (wrapper, 'ebitda,*ebitda_yield_and_multiple(ebitda,ev)', '*ebitda_yield_and_multiple(ebitda,ev),ebitda'),
+        ]
+        for function, before, after in cases:
+            with self.subTest(after=after):
+                changed = self.changed(function, before, after)
+                if isinstance(changed, staticmethod): changed = changed.__func__
+                changed.__globals__['entry_valuation'] = books.entry_valuation
+                changed.__globals__['ebitda_yield_and_multiple'] = books.ebitda_yield_and_multiple
+                with patch.object(books, function.__name__, changed), self.assertRaisesRegex(ValueError, 'Unsupported'):
+                    PolicyProgram()
+        changed = self.changed(wrapper, 'if bankruptcy:', 'if bankruptcy:')
+        changed.__globals__['entry_valuation'] = books.entry_valuation
+        changed.__globals__['ebitda_yield_and_multiple'] = lambda *args: (0, 0)
+        with patch.object(books, 'snapshot', changed), self.assertRaisesRegex(ValueError, 'Unsupported'):
+            PolicyProgram()
+
+    def test_supported_status_mutation_still_changes_decision_identity(self):
+        before = PolicyProgram()
+        changed = self.changed(books.snapshot, "status='Last available price'", "status='Stopped'" )
+        changed.__globals__['entry_valuation'] = books.entry_valuation
+        changed.__globals__['ebitda_yield_and_multiple'] = books.ebitda_yield_and_multiple
+        with patch.object(books, 'snapshot', changed):
+            after = PolicyProgram()
+            self.assertNotEqual(before.signature, after.signature)
+            self.assertNotEqual(before.decisions.signature, after.decisions.signature)
+            self.assertIn('Stopped', ast.unparse(after.snapshot_tree))
+
     def test_entry_valuation_needs_no_holding_or_exit_prices(self):
         statement=dict(fiscal=date(2014,6,30),market_cap=100e6,enterprise=150e6,**{'yield':.2})
         calls=[]

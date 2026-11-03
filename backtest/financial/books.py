@@ -43,6 +43,11 @@ def eligible(pool, cap, ev):
     return cap>0 and ev>0 and (pool!='legacy' or (cap>=run.MIN_MARKET_CAP and ev>=run.MIN_EV))
 
 
+def ebitda_yield_and_multiple(ebitda, enterprise_value):
+    """Return yield then multiple from entry valuation, with independent rounding."""
+    return ebitda / enterprise_value, enterprise_value / ebitda
+
+
 def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
     """Rescale report equity at entry and retain stopped holdings at last price."""
     valuation=entry_valuation(statement,entry_day,lookup)
@@ -63,7 +68,7 @@ def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
     ret=-1. if bankruptcy else end[1]/start[1]-1
     if bankruptcy:
         status='Bankruptcy'
-    return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,ebitda/ev,ev/ebitda,ret,status]
+    return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,*ebitda_yield_and_multiple(ebitda,ev),ret,status]
 
 
 

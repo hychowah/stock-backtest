@@ -22,8 +22,11 @@ from backtest.inputs import daily, research, sqlite_observations
 from backtest.engines.numerical import generation
 from backtest.variables import parameters
 from test_parameter_contract import ORACLE as DIRECT_ORACLE
-ORACLE = {endpoint: fields for endpoint, fields in DIRECT_ORACLE.items()
+ORACLE = {endpoint: dict(fields) for endpoint, fields in DIRECT_ORACLE.items()
           if all(identity.startswith('annual.') for identity in fields.values())}
+ORACLE['income-statement'].update(ebit='annual.ebit', eps='annual.basic_eps', epsDiluted='annual.diluted_eps')
+ORACLE['balance-sheet-statement']['totalDebt'] = 'annual.total_debt'
+ORACLE['cash-flow-statement']['freeCashFlow'] = 'annual.free_cash_flow'
 import test_observations as provider_fixtures
 import test_observation_inputs as input_fixtures
 
@@ -58,7 +61,7 @@ class AnnualResolutionTests(unittest.TestCase):
         resolved = self.publish(rows)
         expected = {identity: (endpoint, field) for endpoint, fields in ORACLE.items()
                     for field, identity in fields.items()}
-        self.assertEqual(len(expected), 48)
+        self.assertEqual(len(expected), 53)
         self.assertEqual(financial.observation_fields(), {endpoint: tuple(fields) for endpoint, fields in ORACLE.items()})
         for identity, (endpoint, field) in expected.items():
             state = resolved['annual'][endpoint]['2014-06-30'][field]
@@ -190,12 +193,12 @@ class AnnualProviderTests(unittest.TestCase):
             else: self.extra[endpoint] = {fiscal: fields}
         ids = [identity for fields in ORACLE.values() for identity in fields.values()]
         results = self.observe([self.request(identity) for identity in ids])['results']
-        self.assertEqual(len(provider.catalog()), 54)
-        self.assertEqual(len(results), 48)
+        self.assertEqual(len(provider.catalog()), 77)
+        self.assertEqual(len(results), 53)
         for result, (endpoint, field) in zip(results, [(e,f) for e,fs in ORACLE.items() for f in fs]):
             self.assertTrue(result['valid'], result['parameter'])
             self.assertEqual(result['members'][0]['value'], rows[endpoint][0][field])
-            self.assertEqual(result['unit'], 'share' if field in ('weightedAverageShsOut','weightedAverageShsOutDil') else 'USD')
+            self.assertEqual(result['unit'], 'share' if field in ('weightedAverageShsOut','weightedAverageShsOutDil') else 'USD/share' if field in ('eps', 'epsDiluted') else 'USD')
             self.assertEqual(result['members'][0]['fiscal_date'], fiscal)
             self.assertEqual(result['members'][0]['evidence']['fields'][field]['rows'][0]['index'], 0)
         self.assertEqual(variable_authoring.catalog()['parameters'], provider.catalog()[:4])
@@ -324,7 +327,7 @@ class AnnualTransportTests(unittest.TestCase):
                  closing(ordinary_daily(self.fixture.path,self.fixture.source)) as copied, \
                  store.open_current() as attachment:
                 with sqlite_observations.prepared_view(copied,lambda:None) as sqlview, attachment.observations() as numview:
-                    self.assertEqual(source.require(original,verify_content=True)['version'],3)
+                    self.assertEqual(source.require(original,verify_content=True)['version'],4)
                     self.assertEqual(sqlview.company('TEST','cached'),numview.company('TEST','cached'))
                     facts = numview.company('TEST','cached')
                     for endpoint, fields in ORACLE.items():
@@ -343,6 +346,15 @@ class AnnualTransportTests(unittest.TestCase):
                     self.assertEqual(sqlresults['results'],numresults['results'])
                     self.assertTrue(all(result['valid'] for result in numresults['results']))
                     self.assertEqual(numview.identity,receipt['identity'])
+                    from backtest.variables import definitions, measures, reference
+                    program = definitions.validate(measures.bundle(['ev_ebitda','ebitda_yield']))
+                    root = dict(symbol='TEST',pool='cached',mode='historical',date='2015-01-02')
+                    plan = reference.plan(program, [root])
+                    sqlresult = reference.evaluate(plan, sqlview).to_dict()['results']
+                    numresult = reference.evaluate(plan, numview).to_dict()['results']
+                    self.assertEqual(sqlresult, numresult)
+                    stored = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='historical' AND pool='cached' AND year=2015 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
+                    self.assertEqual([item['value'] for item in sqlresult], list(stored))
                     detached = source.encoded(facts)
                 attachment.close()
                 with self.assertRaisesRegex(ValueError,'closed'): numview.company('TEST','cached')
@@ -389,7 +401,7 @@ class AnnualTransportTests(unittest.TestCase):
         with ExitStack() as context:
             modules = (research, research.baseline, research.metrics, research.books, research.rules,
                 research.screening, research.selection, research.cache_assets, research.market,
-                research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs)
+                research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs,source.measure_observations)
             source_folder = Path(research.__file__).parent
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name

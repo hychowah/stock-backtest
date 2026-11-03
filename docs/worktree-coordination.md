@@ -16,6 +16,52 @@ authoring and application/numerical qualification belong to Phase 11. Phases
 11–12 and all merge/push/deploy/restart/download/live-store actions remain held.
 Earlier Phase 10 holds are dated history, superseded only for this narrow phase.
 
+Slice 1 completes in audited `206e50c`. The fresh [Slice 2 independent design](plans/custom-variables/phases/phase-10/slice-02-design.md)
+assigns its precise 13 production seams to this branch before edits. These add
+immutable named definitions, language version 3 positive division, catalog `/3`,
+a bounded owner-policy observation bridge and exact prepared-scope evidence.
+Only semantic field enumeration changes in `financial_inputs.py`; raw admission,
+normalization and legacy values remain unchanged. Observation projection 4,
+research schema 11 and daily cache 5 require incompatible caches to rebuild.
+The new projection travels unchanged through numerical generation; numerical
+arithmetic, arrays and workers retain their contracts and closed admission.
+The design explicitly distinguishes stored January/latest roots from derived
+and other dated owner contexts. Missing prepared companies or lanes never select
+another calculation path. Financial owners, application/picker/library code,
+durable formats, locks, resource ceilings and other worktrees remain protected.
+
+The writer's concrete dated-pair probe identifies one missing financial-owner
+API. The independent [Slice 2 addendum](plans/custom-variables/phases/phase-10/slice-02-design-addendum.md)
+assigns this feature branch only the extraction of the two existing divisions
+from `financial/books.py:snapshot()` into `ebitda_yield_and_multiple()`, with a
+call at the original return-expression position. Entry valuation, exit checks,
+lookup ordering, arithmetic, rounding and exception timing stay unchanged.
+Predecessor comparison and financial/book regressions are required. This adds
+no financial policy, engine interface or other-worktree change. The original
+Slice 2 prohibition on financial-owner edits is superseded only for this seam.
+
+The exact helper extraction also requires the numerical policy's existing
+source normalizer to recognize its shape. The independent [normalization
+addendum](plans/custom-variables/phases/phase-10/slice-02-normalization-addendum.md)
+assigns only `numerical/policy.py:_normalized_snapshot()` exact validation and
+expansion, plus the existing source-function inventory. The semantic normalized
+tree and generated arithmetic must match the predecessor. Helper shape, binding,
+arguments, position and independent division order remain checked. Unknown
+calls stay rejected. Source-bound identities change normally; arrays, workers,
+decision translation and numerical formula qualification do not change.
+
+Phase 10 completes in source in the audited commit containing its [phase
+record](plans/custom-variables/phases/phase-10/README.md). Slice 1 is `206e50c`.
+The final slice supplies all 33 measures and passes final source-bound checks:
+592 WSL tests with five expected skips, 595 private native tests with one
+environment skip, browser-script/guide checks and actual guide layout review.
+All audit corrections are independently confirmed. Private exports/fixtures are
+deleted with zero private processes. Main state and engine ref match entry; the
+engine path remains absent. No live asset or other worktree is modified.
+The phase record retains unavailable checks and all failed attempts. Original,
+financial arithmetic, old immutable records, limits and qualified `/1` behavior
+are preserved. Phases 11–12 and integration/live actions remain held.
+
 ## Custom-variable Phase 9 resumption — 3 November 2026
 
 The user's `start next phase $finish-phase` instruction authorizes Phase 9 from

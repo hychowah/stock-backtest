@@ -13,11 +13,12 @@ from pathlib import Path
 import sqlite3
 
 from backtest.financial import books, rules
+from backtest import measure_observations
 from backtest.inputs import financial_inputs, dated_observation_inputs
 from backtest.variables import parameters
 
-VERSION = 3
-TABLES = ('observation_sources', 'observation_annual', 'observation_latest', 'observation_dated', 'observation_sessions', 'observation_metadata')
+VERSION = 4
+TABLES = ('observation_sources', 'observation_annual', 'observation_latest', 'observation_dated', 'observation_sessions', 'observation_measure_contexts', 'observation_metadata')
 SCHEMA = '''
 CREATE TABLE observation_sources(symbol TEXT,endpoint TEXT,evidence_json TEXT NOT NULL,
  PRIMARY KEY(symbol,endpoint)) WITHOUT ROWID;
@@ -28,6 +29,8 @@ CREATE TABLE observation_latest(symbol TEXT,pool TEXT,admitted INTEGER NOT NULL,
 CREATE TABLE observation_dated(symbol TEXT,endpoint TEXT,day TEXT,evidence_json TEXT NOT NULL,
  PRIMARY KEY(symbol,endpoint,day)) WITHOUT ROWID;
 CREATE TABLE observation_sessions(day TEXT PRIMARY KEY,evidence_json TEXT NOT NULL) WITHOUT ROWID;
+CREATE TABLE observation_measure_contexts(mode TEXT,pool TEXT,context_date TEXT,symbol TEXT,evidence_json TEXT NOT NULL,
+ PRIMARY KEY(mode,pool,context_date,symbol)) WITHOUT ROWID;
 CREATE TABLE observation_metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL) WITHOUT ROWID;
 '''
 
@@ -50,7 +53,7 @@ def _prepared_record(row):
 def policy_binding():
     """Bind the preparation and financial source that establishes these facts."""
     paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__),
-             Path(rules.__file__), Path(__file__).with_name('research.py'),
+             Path(rules.__file__), Path(measure_observations.__file__), Path(__file__).with_name('research.py'),
              Path(__file__).with_name('daily.py'), Path(parameters.__file__), Path(dated_observation_inputs.__file__))
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
@@ -93,13 +96,15 @@ def store_latest(db, symbol, pool, evidence):
                _prepared_record((symbol, pool, int(evidence['admitted']), encoded(evidence))))
 
 
-def content_identity(db, checkpoint=lambda: None):
+def content_identity(db, checkpoint=lambda: None, *, scopes=None):
     digest = hashlib.sha256()
+    digest.update(('scopes\n' + encoded([] if scopes is None else scopes) + '\n').encode())
     for table, order in (('observation_sources', 'symbol,endpoint'),
                          ('observation_annual', 'symbol,endpoint,fiscal'),
                          ('observation_latest', 'symbol,pool'),
                          ('observation_dated', 'symbol,endpoint,day'),
-                         ('observation_sessions', 'day')):
+                         ('observation_sessions', 'day'),
+                         ('observation_measure_contexts', 'mode,pool,context_date,symbol')):
         digest.update((table + '\n').encode())
         for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
             checkpoint()
@@ -107,11 +112,18 @@ def content_identity(db, checkpoint=lambda: None):
     return digest.hexdigest()
 
 
-def finish(db, latest_date, checkpoint=lambda: None):
-    metadata = dict(version=VERSION, latest_date=str(latest_date),
-                    policy=policy_binding(), content=content_identity(db, checkpoint))
+def finish(db, latest_date, checkpoint=lambda: None, *, scopes=None):
+    scopes = [] if scopes is None else list(scopes)
+    present = {(scope.get('mode'), scope.get('pool'), scope.get('context_date'))
+               for scope in scopes if isinstance(scope, dict)}
+    for pool in ('legacy', 'cached'):
+        if ('latest', pool, str(latest_date)) not in present:
+            scopes.append(dict(mode='latest', pool=pool, context_date=str(latest_date), book=0))
+    metadata = dict(version=VERSION, latest_date=str(latest_date), scopes=scopes,
+                    policy=policy_binding(), content=content_identity(db, checkpoint, scopes=scopes))
     db.executemany('INSERT INTO observation_metadata VALUES(?,?)',
                    ((key, encoded(value)) for key, value in metadata.items()))
+    require(db, expected=metadata)
     return metadata
 
 
@@ -121,15 +133,31 @@ def require(db, *, expected=None, verify_content=False, checkpoint=lambda: None)
         metadata = {row[0]: json.loads(row[1]) for row in db.execute('SELECT * FROM observation_metadata')}
         for table in TABLES[:-1]:
             db.execute(f'SELECT * FROM {table} LIMIT 0').close()
-        if (set(metadata) != {'version', 'latest_date', 'policy', 'content'}
+        if (set(metadata) != {'version', 'latest_date', 'scopes', 'policy', 'content'}
                 or type(metadata['version']) is not int or metadata['version'] != VERSION
                 or str(date.fromisoformat(metadata['latest_date'])) != metadata['latest_date']
+                or not isinstance(metadata['scopes'], list)
                 or metadata['policy'] != policy_binding()
                 or not isinstance(metadata['content'], str) or len(metadata['content']) != 64
                 or any(c not in '0123456789abcdef' for c in metadata['content'])
                 or expected is not None and metadata != expected):
             raise ValueError()
-        if verify_content and content_identity(db, checkpoint) != metadata['content']:
+        scope_keys = set()
+        for scope in metadata['scopes']:
+            if (type(scope) is not dict or set(scope) != {'mode','pool','context_date','book'}
+                    or scope['mode'] not in ('historical','latest') or scope['pool'] not in ('legacy','cached')
+                    or type(scope['book']) is not int
+                    or str(date.fromisoformat(scope['context_date'])) != scope['context_date']):
+                raise ValueError()
+            key = scope['mode'], scope['pool'], scope['context_date']
+            if key in scope_keys:
+                raise ValueError()
+            scope_keys.add(key)
+            if scope['mode'] == 'latest' and (scope['context_date'] != metadata['latest_date'] or scope['book'] != 0):
+                raise ValueError()
+        if any(('latest', pool, metadata['latest_date']) not in scope_keys for pool in ('legacy', 'cached')):
+            raise ValueError()
+        if verify_content and content_identity(db, checkpoint, scopes=metadata['scopes']) != metadata['content']:
             raise ValueError()
     except (sqlite3.Error, ValueError, TypeError, KeyError):
         raise ValueError('Observation inputs are missing, incompatible or stale. Retry offline preparation.') from None
@@ -357,6 +385,61 @@ class ReadView:
             return None
         checkpoint()
         return dict(day=row[0], evidence=self._json(row[1]))
+
+    def measure_context(self, mode, pool, day, symbol, checkpoint=lambda: None):
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        checkpoint()
+        row = self._db.execute('SELECT evidence_json FROM observation_measure_contexts '
+            'WHERE mode=? AND pool=? AND context_date=? AND symbol=?',
+            (mode, pool, str(day), symbol)).fetchone()
+        if row is not None and record_bytes((mode, pool, str(day), symbol, row[0])) > self.max_record_bytes:
+            raise ValueError('Prepared observation record exceeds its byte bound.')
+        return self._json(row[0]) if row else None
+
+    def broad_reports(self, symbol, checkpoint=lambda: None, *, budget=None):
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        checkpoint()
+        reports = self._reports(symbol, 'cached')
+        if len(reports) > self.max_history:
+            raise ValueError('Prepared observation history exceeds its bound.')
+        size = 0
+        for row in reports:
+            checkpoint()
+            size += len(encoded(row).encode('utf-8'))
+            if budget is not None and size > budget:
+                raise ValueError('Observation report history exceeds its byte bound.')
+            if len(encoded(row).encode('utf-8')) > self.max_record_bytes:
+                raise ValueError('Prepared observation record exceeds its byte bound.')
+        return reports
+
+    def legacy_financial_history(self, symbol, checkpoint=lambda: None, *, budget=None):
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        result, size = {}, 0
+        for fiscal, value in self._db.execute('SELECT fiscal,values_json FROM financial_inputs '
+                'WHERE symbol=? ORDER BY fiscal LIMIT ?', (symbol, self.max_history + 1)):
+            checkpoint()
+            if len(result) >= self.max_history:
+                raise ValueError('Prepared observation history exceeds its bound.')
+            size += record_bytes((symbol, fiscal, value))
+            if budget is not None and size > budget:
+                raise ValueError('Observation financial history exceeds its byte bound.')
+            if record_bytes((symbol, fiscal, value)) > self.max_record_bytes:
+                raise ValueError('Prepared observation record exceeds its byte bound.')
+            result[fiscal] = self._json(value)
+        return result
+
+    def legacy_treasury(self, day, checkpoint=lambda: None):
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        checkpoint()
+        row = self._db.execute('SELECT day,yield_percent FROM treasury10 WHERE day<=? '
+                               'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
+        if row is not None and record_bytes(row) > self.max_record_bytes:
+            raise ValueError('Prepared observation record exceeds its byte bound.')
+        return dict(day=row[0], value=row[1]) if row else None
 
     def session_backward(self, day, slack, checkpoint=lambda: None):
         if not isinstance(day, date) or type(slack) is not int or slack < 0:

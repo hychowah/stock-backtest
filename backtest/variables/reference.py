@@ -40,7 +40,7 @@ def require_program(program, *, checkpoint=lambda: None):
     checked = definitions.require_program(program)
     supported = {item['id'] for item in observations.catalog()}
     operations = {'constant', 'parameter', 'annual', 'ref', 'at', 'lookback',
-                  'neg', 'add', 'sub', 'mul', 'div'}
+                  'neg', 'add', 'sub', 'mul', 'div', 'positive_div'}
     for node in checked['nodes']:
         checkpoint()
         if node['op'] not in operations or (node['op'] == 'annual' and
@@ -126,6 +126,8 @@ class _Arithmetic:
                     value = values[0] - values[1]
                 elif op == 'mul':
                     value = values[0] * values[1]
+                elif op == 'positive_div' and values[1] <= 0:
+                    reason = 'NONPOSITIVE_DENOMINATOR'
                 elif values[1] == 0:
                     reason = 'ZERO_DENOMINATOR'
                 else:

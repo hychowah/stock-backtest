@@ -3,14 +3,16 @@
 Catalog recognition never grants execution or company/date availability. Annual
 facts use one selected fiscal period, strict fiscal-plus-90 availability before
 the context date and an 800-day anchor limit. Complete consecutive annual
-histories permit mean/min/max over 1–10 periods. Missing selected-period fields
+histories permit mean/min/max over 1–10 periods. Catalogs /1 and /2 retain their
+existing descriptors. Catalog /3 also describes annual growth and CAGR over
+2–10 complete consecutive observations. Missing selected-period fields
 cannot be filled from newer reports, another endpoint or a different aggregate.
 
 Market/rate contexts have dated lookup evidence, not annual reporting timing.
 Session volume requires its own saved session value; a saved price supplies no
 volume. Null, conflicting, nonfinite or unavailable values stay unavailable with
-reasons, never zero. No calendar statistics, growth, quarterly or TTM operations
-are introduced here. All public projections are detached JSON-compatible values.
+reasons, never zero. Calendar statistics, quarterly and TTM operations remain
+excluded. All public projections are detached JSON-compatible values.
 """
 import copy
 import hashlib
@@ -18,6 +20,7 @@ from pathlib import Path
 
 V1 = 'financial-parameters/1'
 V2 = 'financial-parameters/2'
+V3 = 'financial-parameters/3'
 _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _UNITS = {
     'scalar': dict(dimensions={}, displays=['number', 'multiple', 'percent', 'percentage_points']),
@@ -129,11 +132,41 @@ def _build():
 
 
 _ALL = _build()
+# Version 3 names distinct reported fields and existing owner-policy lanes.
+# These descriptors grant semantic recognition, not backend qualification.
+_V3_EXTRA = {}
+for _identity, _field, _description, _endpoint, _unit in (
+    ('ebit', 'ebit', 'Reported EBIT', 'income-statement', 'USD'),
+    ('basic_eps', 'eps', 'Reported basic EPS', 'income-statement', 'USD/share'),
+    ('diluted_eps', 'epsDiluted', 'Reported diluted EPS', 'income-statement', 'USD/share'),
+    ('total_debt', 'totalDebt', 'Reported total debt', 'balance-sheet-statement', 'USD'),
+    ('free_cash_flow', 'freeCashFlow', 'Reported free cash flow', 'cash-flow-statement', 'USD'),
+    ('report_ebitda', None, 'Accepted report-derived EBITDA', None, 'USD')):
+    _value = _annual(_identity, _field, _description, _endpoint)
+    _value['unit'] = _unit
+    if _field is None:
+        _value.update(kind='adapter', source=None, adapter='accepted-report-ebitda')
+    _V3_EXTRA[_value['id']] = _value
+for _name, _unit in (
+    ('market_cap', 'USD'), ('profit_margin', 'scalar'), ('pe', 'scalar'),
+    ('pb', 'scalar'), ('fcf_yield', 'scalar'), ('price_fcf', 'scalar'),
+    ('peg', 'scalar'), ('roe', 'scalar'), ('current_ratio', 'scalar'),
+    ('interest_coverage', 'scalar'), ('debt_equity', 'scalar'),
+    ('return_1y', 'scalar'), ('return_3y', 'scalar'),
+    ('ev_ebitda', 'scalar'), ('ev_ebitda_3y', 'scalar'),
+    ('ebitda_yield', 'scalar'), ('operating_yield_spread_3y', 'scalar')):
+    _value = _annual(_name, None, 'Existing owner-policy ' + _name, None)
+    _value.update(id='owner.' + _name, kind='adapter', unit=_unit, source=None,
+        adapter='existing-owner-' + _name, sampling='existing-dated-owner-policy',
+        counts=dict(minimum=1, maximum=1),
+        history=dict(statistics=[], consecutive=False, complete=False),
+        timing=dict(availability='existing-dated-owner-policy', anchor_max_days=800))
+    _V3_EXTRA[_value['id']] = _value
 _V1_IDS = ('annual.revenue', 'annual.operating_income', 'annual.operating_margin', 'market.enterprise_value')
 
 
 def _version(identity):
-    if type(identity) is not str or identity not in (V1, V2):
+    if type(identity) is not str or identity not in (V1, V2, V3):
         raise ValueError('Unknown semantic parameter catalog.')
     return identity
 
@@ -141,21 +174,29 @@ def _version(identity):
 def catalog(identity):
     """Return recognized meanings, never current provider/backend capabilities."""
     _version(identity)
-    return copy.deepcopy([_ALL[key] for key in (_V1_IDS if identity == V1 else _ALL)])
+    values = [_ALL[key] for key in (_V1_IDS if identity == V1 else _ALL)]
+    if identity == V3:
+        values = copy.deepcopy(values + list(_V3_EXTRA.values()))
+        for item in values:
+            if item['id'].startswith('annual.'):
+                item['history']['statistics'] = ['mean', 'min', 'max', 'growth', 'cagr']
+        return values
+    return copy.deepcopy(values)
 
 
 def parameter(identity, parameter_id):
     """Look up one meaning under its recorded namespace; unknown IDs fail."""
     _version(identity)
-    if type(parameter_id) is not str or parameter_id not in _ALL or (identity == V1 and parameter_id not in _V1_IDS):
+    available = {item['id']: item for item in catalog(identity)}
+    if type(parameter_id) is not str or parameter_id not in available:
         raise ValueError('Unknown semantic parameter.')
-    return copy.deepcopy(_ALL[parameter_id])
+    return available[parameter_id]
 
 
 def units(identity):
     """Return only the canonical unit vocabulary admitted by this catalog."""
     _version(identity)
-    return copy.deepcopy({key: value for key, value in _UNITS.items() if identity == V2 or key != 'share'})
+    return copy.deepcopy({key: value for key, value in _UNITS.items() if identity in (V2, V3) or key != 'share'})
 
 
 def unit(identity, name):

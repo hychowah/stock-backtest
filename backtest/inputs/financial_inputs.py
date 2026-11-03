@@ -24,10 +24,12 @@ def observation_fields():
     """
     parameters.policy_fingerprint()
     fields = {}
-    for item in parameters.catalog(parameters.V2):
+    for item in parameters.catalog(parameters.V3):
         if item['kind'] == 'direct' and item['id'].startswith('annual.'):
             source = item['source']
-            fields.setdefault(source['endpoint'], []).append(source['field'])
+            names = fields.setdefault(source['endpoint'], [])
+            if source['field'] not in names:
+                names.append(source['field'])
     return {endpoint: tuple(names) for endpoint, names in fields.items()}
 
 

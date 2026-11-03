@@ -27,7 +27,7 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
     so the provider retains its original legacy-buffer admission policy.
     """
     freshness()
-    for table in ('observation_annual','observation_sources','observation_latest','observation_dated','observation_sessions'):
+    for table in ('observation_annual','observation_sources','observation_latest','observation_dated','observation_sessions','observation_measure_contexts'):
         largest=db.execute('SELECT coalesce(max(length(CAST(evidence_json AS BLOB))),0) FROM '+table).fetchone()[0]
         if largest>MAX_RECORD_BYTES:raise ValueError('Prepared observation record exceeds its byte bound.')
     expected = observation_inputs.require(db, verify_content=True, checkpoint=checkpoint)
@@ -65,7 +65,8 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
     bounds = dict(historical_through=binding.get('inputs', {}).get('historical_through'),
         latest_date=expected['latest_date'], population=len(populations[0]),
         report_rows=db.execute('SELECT count(*) FROM statements').fetchone()[0],
-        max_reports=maximum('statements'), max_annual=maximum('observation_annual'))
+        max_reports=maximum('statements'), max_annual=maximum('observation_annual'),
+        max_financial=maximum('financial_inputs'))
     def validate():
         checkpoint(); freshness()
         if hashlib.sha256(Path(__file__).read_bytes()).hexdigest()!=_LOADED:

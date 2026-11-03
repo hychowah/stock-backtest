@@ -89,6 +89,27 @@ def _normalized_snapshot():
     wrapper=_tree(financial_books.snapshot)
     _signature(helper,['statement','entry_day','lookup'])
     _signature(wrapper,['statement','entry_day','exit_day','lookup','bankruptcy'])
+    pair_helper = _tree(financial_books.ebitda_yield_and_multiple)
+    _signature(pair_helper, ['ebitda', 'enterprise_value'])
+    expected_pair = ast.parse('return ebitda / enterprise_value, enterprise_value / ebitda').body
+    if ([ast.dump(node) for node in _body(pair_helper)] != [ast.dump(node) for node in expected_pair]
+            or financial_books.snapshot.__globals__.get('ebitda_yield_and_multiple') is not financial_books.ebitda_yield_and_multiple):
+        raise ValueError('Unsupported source EBITDA pair helper.')
+    expected_return = ast.parse("return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,*ebitda_yield_and_multiple(ebitda,ev),ret,status]").body[0]
+    returns = [node for node in ast.walk(wrapper) if isinstance(node, ast.Return)
+               and isinstance(node.value, ast.List)]
+    if len(returns) != 1 or ast.dump(returns[0]) != ast.dump(expected_return) or returns[0] is not _body(wrapper)[-1]:
+        raise ValueError('Unsupported source EBITDA pair position.')
+    class RenameEnterprise(ast.NodeTransformer):
+        def visit_Name(self, node):
+            if node.id == 'enterprise_value':
+                return ast.copy_location(ast.Name(id='ev', ctx=ast.Load()), node)
+            return node
+    pair = [RenameEnterprise().visit(copy.deepcopy(node)) for node in _body(pair_helper)[0].value.elts]
+    returns[0].value.elts[6:7] = pair
+    if any(isinstance(node, ast.Starred) or isinstance(node, ast.Name) and node.id == 'ebitda_yield_and_multiple'
+           for node in ast.walk(wrapper)):
+        raise ValueError('Unsupported source EBITDA pair reference.')
     body=_body(helper); wrapped=_body(wrapper)
     expected=ast.parse("valuation=entry_valuation(statement,entry_day,lookup)\nif valuation is None:\n    return None\nfiscal_px,entry_px,cap,ev,ebitda=valuation").body
     if (len(wrapped)<4 or [ast.dump(n) for n in wrapped[:3]]!=[ast.dump(n) for n in expected]
@@ -382,7 +403,7 @@ class PolicyProgram:
         source_files = {Path(function.__code__.co_filename).resolve()
                         for function in (financial_books.snapshot,financial_books.eligible,
                                          m.current_multiple,m.financial_values,m.operating_yield_spread,
-                                         financial_books.entry_valuation,financial_books.benchmark_return,financial_books.yield_spread,m.three_year_multiple)}
+                                         financial_books.entry_valuation,financial_books.ebitda_yield_and_multiple,financial_books.benchmark_return,financial_books.yield_spread,m.three_year_multiple)}
         source_files.update(Path(module.__file__).resolve() for module in
             (rules,research.market,research,research.revalue,research.legacy,screening,selection))
         source_files.update(ROOT/name for name in ("backtest/engines/original/schedules.py","backtest/engines/original/book_batch.py","backtest/inputs/daily.py"))

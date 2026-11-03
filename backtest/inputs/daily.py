@@ -16,7 +16,7 @@ from backtest.inputs import observation_inputs
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 4
+VERSION = 5
 POOL_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),

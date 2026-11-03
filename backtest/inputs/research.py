@@ -30,7 +30,7 @@ from backtest.inputs import baseline as baseline
 from backtest.paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -93,7 +93,7 @@ def signature():
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
     paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py'),
-              Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__)]
+              Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__)]
     entries = [(path, path.stat()) for path in paths]
     ledger_path = RAW/'download-coverage.json'
     if ledger_path.exists():
@@ -196,10 +196,14 @@ def ten_year_yield(db, day):
     return row[0] if row else None
 
 
-def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
+def snapshot(statement, entry_day, exit_day, light, div, bankruptcy, lookup_evidence=None):
     def lookup(day,column,forward,slack):
         series=(light or div) if column=='price' else div
-        return (after if forward else before)(series,day,slack)
+        result=(after if forward else before)(series,day,slack)
+        if lookup_evidence is not None:
+            lookup_evidence.append(dict(requested_date=str(day),column=column,forward=forward,slack=slack,
+                observation=[str(result[0]),result[1]] if result else None))
+        return result
     return books.snapshot(statement,entry_day,exit_day,lookup,bankruptcy)
 
 
@@ -317,6 +321,7 @@ def prepare(path=DATABASE, force=False):
         cached_symbols=sorted(s for s in broad if market.cache_path_for(s).name in sources)
         total=0
         for number,symbol in enumerate(cached_symbols,1):
+            valuation_evidence={}
             payload=json.loads(market.cache_path_for(symbol).read_text())
             light=[]
             for r in payload.get('light') or []:
@@ -333,13 +338,15 @@ def prepare(path=DATABASE, force=False):
                     statement=rules.latest_statement(statements,entry)
                     if statement is None:
                         continue
-                    row=snapshot(statement,entry,end,light,div,(year,symbol) in rules.BANKRUPT)
+                    valuation_lookups=[]
+                    row=snapshot(statement,entry,end,light,div,(year,symbol) in rules.BANKRUPT,valuation_lookups)
                     if row is None:
                         continue
                     fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,ret,status=row
                     # Original rescale rejects buy-date caps before ranking.
                     if not books.eligible(pool,cap,ev):
                         continue
+                    valuation_evidence[('historical',pool,str(entry),symbol)]=dict(lookups=valuation_lookups, statement={key:str(value) if isinstance(value,date) else value for key,value in statement.items()})
                     inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
                     if pool=='legacy':
                         fiscal_px=before(light or div,statement['fiscal'],7)
@@ -372,21 +379,31 @@ def prepare(path=DATABASE, force=False):
                     if pool=='legacy' and (row[4]<rules.MIN_MARKET_CAP or row[5]<rules.MIN_EV):
                         evidence['reason']='POOL_INELIGIBLE';continue
                     evidence.update(admitted=True,reason=None)
+                    valuation_evidence[('latest',pool,str(latest_day),symbol)]=dict(lookups=[dict(requested_date=str(statement['fiscal']),column='price',forward=False,slack=7,observation=evidence['fiscal_price']),dict(requested_date=str(latest_day),column='price',forward=False,slack=0,observation=evidence['valuation_price']),dict(requested_date=str(latest_day),column='adjusted',forward=False,slack=0,observation=evidence['adjusted_price'])],statement=evidence['statement'])
                     db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
             resolved=financial_inputs.resolve_history(RAW,symbol)
             financial_history=resolved['values']
             observation_inputs.store_annual(db,symbol,resolved)
             db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in financial_history.items()])
             history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
+            lookup_calls=[]
             def lookup(day,column,forward,slack):
-                return (after if forward else before)(div,day,slack)
+                result=(after if forward else before)(div,day,slack)
+                lookup_calls.append(dict(requested_date=str(day),column=column,forward=forward,slack=slack,observation=[str(result[0]),result[1]] if result else None))
+                return result
             for mode,table,day_key in [('historical','snapshots','entry'),('latest','latest_snapshots','price_date')]:
                 for saved in db.execute('SELECT * FROM '+table+' WHERE symbol=?',(symbol,)).fetchall():
                     observation=dict(saved)
                     pairs=metrics.evaluate(observation,history)
                     screen_day=date.fromisoformat(saved[day_key])
                     treasury_day=periods[saved['year']][0] if mode=='historical' else latest_day
+                    lookup_calls.clear()
                     values=metrics.filter_values(observation,pairs,screen_day,lookup,financial_history,treasury10_by_day[treasury_day])
+                    scope_day=str(periods[saved['year']][0]) if mode=='historical' else str(latest_day)
+                    treasury_row=db.execute('SELECT day,yield_percent FROM treasury10 WHERE day<=? ORDER BY day DESC LIMIT 1',(str(treasury_day),)).fetchone()
+                    measure_evidence=dict(screen_date=str(screen_day), treasury_requested_date=str(treasury_day), treasury_selected=[treasury_row[0],treasury_row[1]] if treasury_row else None, lookups=list(lookup_calls), valuation=valuation_evidence[(mode,saved['pool'],scope_day,symbol)])
+                    db.execute('INSERT INTO observation_measure_contexts VALUES(?,?,?,?,?)',
+                        observation_inputs._prepared_record((mode,saved['pool'],scope_day,symbol,observation_inputs.encoded(observation_inputs.measure_observations.detached(measure_evidence)))))
                     db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
@@ -401,8 +418,27 @@ def prepare(path=DATABASE, force=False):
                 dated_observation_inputs.stock(RAW,symbol,ledger,backtest_control.checkpoint),backtest_control.checkpoint)
         for endpoint,resolution in dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint).items():
             observation_inputs.store_dated(db,'',endpoint,resolution,backtest_control.checkpoint)
-        observation_inputs.finish(db,latest_day,backtest_control.checkpoint)
         prepare_metrics(db)
+        scopes=[dict(mode='historical',pool=pool,context_date=str(period[0]),book=year)
+                for year,period in periods.items() for pool in ('legacy','cached')]
+        scopes += [dict(mode='latest',pool=pool,context_date=str(latest_day),book=0)
+                   for pool in ('legacy','cached')]
+        for mode,pool,scope_day,symbol,document in db.execute('SELECT * FROM observation_measure_contexts'):
+            backtest_control.checkpoint()
+            evidence=json.loads(document)
+            year=next(scope['book'] for scope in scopes if scope['mode']==mode and scope['pool']==pool and scope['context_date']==scope_day)
+            table='snapshots' if mode=='historical' else 'latest_snapshots'
+            saved=db.execute('SELECT * FROM '+table+' WHERE pool=? AND symbol=?'+(' AND year=?' if mode=='historical' else ''),
+                (pool,symbol,year) if mode=='historical' else (pool,symbol)).fetchone()
+            evidence['snapshot']=dict(saved)
+            evidence['metrics']={row['metric']:[row['multiple'],row['yield_value']] for row in db.execute(
+                'SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?',(mode,pool,year,symbol))}
+            evidence['filters']={row['field']:row['value'] for row in db.execute(
+                'SELECT field,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND symbol=?',(mode,pool,year,symbol))}
+            record=observation_inputs._prepared_record((mode,pool,scope_day,symbol,observation_inputs.encoded(observation_inputs.measure_observations.detached(evidence))))
+            db.execute('UPDATE observation_measure_contexts SET evidence_json=? WHERE mode=? AND pool=? AND context_date=? AND symbol=?',
+                (record[4],mode,pool,scope_day,symbol))
+        observation_inputs.finish(db,latest_day,backtest_control.checkpoint,scopes=scopes)
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.

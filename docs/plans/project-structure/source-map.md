@@ -37,11 +37,11 @@ The owners relevant to that feature are:
 
 - `backtest/observations.py` owns the direct observation capabilities, immutable
   plans, temporal observations and detached evidence. Phase 9 supports
-  52 direct inputs plus the existing margin and EV adapters. One income fiscal
+  52 direct inputs, existing margin and EV adapters, and Phase 10 measure adapters. One income fiscal
   spine selects periods before exact endpoint joins. It imports no compiler.
 - `backtest/inputs/observation_inputs.py` owns prepared evidence and root
   admission. The generation owner supplies complete ordered lazy populations
-  and borrowed prices. Version-3 evidence keeps every endpoint, admitted fiscal date,
+  and borrowed prices. Version-4 evidence keeps prepared owner scopes and lanes as well as every endpoint, admitted fiscal date,
   dated source row and saved session. Indexed borrowed reads return detached facts. Semantic source, policy and content bindings reject stale reuse.
   `backtest/financial/books.py` remains the valuation and
   candidate-policy authority. `backtest/inputs/` keeps saved fiscal histories.
@@ -49,7 +49,9 @@ The owners relevant to that feature are:
   and SPY calendar evidence without repair or download. It retains field states,
   duplicate row identities and exact-content receipts separately from financial
   normalization. Shared sources use the empty symbol.
-- `backtest/variables/reference.py` executes the complete direct /1 and /2
+- `backtest/measure_observations.py` bridges bounded stored or dated financial-owner evidence.
+  `backtest/variables/measures.py` exports exact-reference measure bundles.
+- `backtest/variables/reference.py` executes direct /1, /2 and supported /3
   observation vocabulary. `backtest/variables/selection.py` owns the qualified
   /1 four-input gate used before application and callable selection execution.
   Semantic restore and planning remain independent of execution qualification.

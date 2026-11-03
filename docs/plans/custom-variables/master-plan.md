@@ -7,6 +7,12 @@ Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
 records the finite reusable-measure and annual-growth scope, exact ownership,
 independent slices and required evidence. This supersedes earlier Phase 10 holds
 only. Phases 11–12, main integration and live-runtime actions remain held.
+Phase 10 completes in source in the independently audited commit containing its
+[phase record](phases/phase-10/README.md). Slice 1 is `206e50c`; the final slice
+provides all 33 reusable reference measures. Final checks pass 592 WSL tests with
+five expected skips and 595 private native tests with one environment skip.
+Reference support does not qualify expanded authoring/application/numerical use.
+The [Phase 11 handoff](phases/phase-10/handoffs/phase-11.md) remains held.
 
 Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
 `start next phase $finish-phase` instruction. Its [execution plan](phases/phase-09/execution-plan-2026-11-03.md)
@@ -20,7 +26,7 @@ Parameter-list revision: 2026-11-02. The user requested a longer list of valuati
 inputs, limited to fields supplied by the existing FMP routes or calculations
 from those fields. This documentation update does not resume implementation.
 
-Status, 3 November 2026: **Phases 1–8 are complete in source.**
+Status, 3 November 2026: **Phases 1–10 are complete in source.**
 The [Phase 8 record](phases/phase-08/README.md) retains independent audit,
 393 passing source-bound WSL tests and its handoff. The separate semantic catalog
 recognizes all 52 direct inputs and two existing adapters. Catalog /1 preserves
@@ -357,7 +363,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), [execution plan](phases/phase-07/execution-plan-2026-11-02.md) and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
 | **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and [Phase 9 handoff](phases/phase-08/handoffs/phase-09.md). All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
 | **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and [execution plan](phases/phase-09/execution-plan-2026-11-03.md). Preserve financial policy and generation ownership. |
-| **10. Reusable measure library** | In progress: finite named measures and bounded annual growth | [Execution plan](phases/phase-10/execution-plan-2026-11-03.md) and [continuation](parameter-expansion-plan-2026-11-03.md#phase-10--reusable-measure-library). Preserve exact legacy calculations. |
+| **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), [execution plan](phases/phase-10/execution-plan-2026-11-03.md) and [held Phase 11 handoff](phases/phase-10/handoffs/phase-11.md). |
 | **11. Discoverable, qualified capabilities** | Planned: expanded editor, bounded coverage inspection and both-engine qualification | [Continuation: Phase 11](parameter-expansion-plan-2026-11-03.md#phase-11--discoverable-qualified-capabilities). Support, readiness and data coverage stay distinct. |
 | **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
 

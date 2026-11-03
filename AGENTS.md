@@ -8,10 +8,27 @@ has an independent design, separate writer and independent audit before commit.
 Its filed design assigns precise production seams before edits. This supersedes
 earlier Phase 10 holds only. Preserve financial calculations, immutable bytes,
 limits, bounded leaf reads, operation-boundary freshness and Original as default.
-Expanded authoring and application/scalar/numerical qualification remain closed.
+Expanded authoring and `/2`/`/3` application/scalar/numerical qualification remain
+closed. Existing qualified version-1 four-input execution retains its behavior.
 Main and engine worktrees remain read-only. Phases 11–12, merge, push, deployment,
 restart, download and live runtime/cache/durable-store access or mutation remain
 unauthorized. Use private synthetic verification only.
+
+Phase 10 completes in source in the independently audited commit containing its
+[phase record](docs/plans/custom-variables/phases/phase-10/README.md). Slice 1 is
+`206e50c`. The final slice supplies all 33 immutable named measures, reference
+positive division, catalog `/3`, exact prepared owner contexts and bounded
+annual adapters. All three product/test audit findings are fixed and confirmed.
+Final source-bound checks pass 592 WSL tests with five expected skips and 595
+private native tests with one environment skip. The reviewed native driver keeps
+the original guard and uses an exact private launcher and stdout sink for one
+existing worker test. The phase record retains all failed attempts, benchmark
+harness and unavailable-junction limits. Projection 4, research schema 11 and
+daily cache 5 require incompatible derived caches to rebuild. Durable formats,
+old immutable bytes, financial arithmetic and Original as default are preserved.
+Source reference support does not qualify expanded application, ordinary picker
+or numerical execution. Phases 11–12 and all integration/live-runtime actions
+remain held. No deployment or live-cache coverage is established.
 
 Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
 `start next phase $finish-phase` instruction on `feature/custom-variables`.
@@ -328,16 +345,18 @@ charts show dated period returns; don't label monthly/quarterly books as annual
 returns. Keep canonical January reports untouched. Verify with
 `python3 tests/test_schedules.py` and existing research/website checks.
 
-Daily cache version 4 prepares only the requested pool. `period_pools` records
+Daily cache version 5 prepares only the requested pool. `period_pools` records
 completion independently of snapshot counts, including empty pools. A pool switch
 fills the missing pool in the same dated period; filters, ranks and metrics reuse
 its prepared rows. Keep completion markers and rows in the same transaction.
 Startup upgrades compatible version-1/2 caches in place, retaining daily prices
 and completed pools only when their accepted bindings remain compatible.
-Research schema 10 carries version-3 annual, dated and session observation
-evidence. Daily inputs bind its accepted content and policy. Older observation
-projections and version-3 daily caches must rebuild for the new relations.
-The version-1/2 upgrade cannot invent observation evidence.
+Research schema 11 carries version-4 annual, dated, session and measure-context
+observation evidence. Both latest scope identities remain present even for empty
+pools. Known prepared roots retain stored owner lanes; absent companies or lanes
+do not fall back to dated calculations. Daily inputs bind accepted content and
+policy. Older observation projections and version-3/4 daily caches must rebuild.
+The version-1/2 upgrade cannot invent observation or measure-context evidence.
 Daily inputs also bind to the price inventory accepted by research
 metadata. After accepted in-place price edits, rebuild daily prices before numeric
 export. Old caches without this binding cannot establish compatibility. Version-1 books mark both pools complete; version-2 books
