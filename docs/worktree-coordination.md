@@ -1,5 +1,28 @@
 # Parallel work on the website and backtest engine
 
+## Custom-variable Phase 9 resumption — 3 November 2026
+
+The user's `start next phase $finish-phase` instruction authorizes Phase 9 from
+`30ff79d` on `feature/custom-variables`, including required verification and
+independently audited commits. The [execution plan](plans/custom-variables/phases/phase-09/execution-plan-2026-11-03.md)
+tracks endpoint-aware annual evidence, dated market/rate observations and
+accepted research/daily/numerical projection compatibility. Each filed independent
+slice design assigns its precise preparation/provider seams here before edits.
+Existing financial calculations, old immutable records, source-before-cache
+ownership, publication recovery, workers and resource limits keep their contracts.
+Original remains default. Main and engine worktrees remain read-only.
+Phases 10–12, merge, push, deployment, restart, downloads and live runtime/cache/
+durable-store mutation remain unauthorized. Earlier Phase 9 holds are dated history.
+
+Slice 1 assigns the precise seams in its [independent design](plans/custom-variables/phases/phase-09/slice-01-design.md)
+to this feature branch: annual evidence resolution in `financial_inputs.py`,
+endpoint-qualified version-2 transport in `observation_inputs.py`, necessary
+research/daily source binding and checked copies, bounded SQLite/numerical
+borrowing, annual provider execution and the four-input authoring projection.
+Raw response acceptance/publication and legacy values remain unchanged.
+No formula admission, numerical execution, worker, lock or resource change is
+assigned. Other worktrees require no action.
+
 ## Custom-variable Phase 8 resumption — 3 November 2026
 
 The user authorizes completing Phase 8 from `3dccd88` on

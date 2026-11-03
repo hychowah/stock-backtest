@@ -35,11 +35,15 @@ Phase 2 resumed on 2 November in `feature/custom-variables`. The dated structure
 refactor did not implement it. See the [current Phase 2 record](../custom-variables/phases/phase-02/README.md).
 The owners relevant to that feature are:
 
-- `backtest/observations.py` owns the four-parameter catalog, immutable plans,
-  temporal observations and detached evidence. It imports no numerical compiler.
+- `backtest/observations.py` owns the direct observation capabilities, immutable
+  plans, temporal observations and detached evidence. Phase 9 Slice 1 supports
+  48 annual inputs plus the existing margin and EV adapters. One income fiscal
+  spine selects periods before exact endpoint joins. It imports no compiler.
 - `backtest/inputs/observation_inputs.py` owns prepared evidence and root
   admission. The generation owner supplies complete ordered lazy populations
-  and borrowed prices. `backtest/financial/books.py` remains the valuation and
+  and borrowed prices. Version-2 evidence keeps every endpoint and admitted
+  fiscal date. Semantic source, policy and content bindings reject stale reuse.
+  `backtest/financial/books.py` remains the valuation and
   candidate-policy authority. `backtest/inputs/` keeps saved fiscal histories.
 - `backtest/financial/metrics.py` and `backtest/screening.py` for today's built-in
   pair and display-unit threshold contracts. These are not a general scalar

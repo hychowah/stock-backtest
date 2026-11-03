@@ -544,6 +544,8 @@ class AttachedInputs:
                 return rows
 
         def maximum(table):
+            # Annual admission counts the complete endpoint aggregate. The
+            # borrowed view separately enforces each endpoint's history bound.
             return self._db.execute('SELECT coalesce(max(n),0) FROM '
                 '(SELECT count(*) n FROM '+table+' GROUP BY symbol)').fetchone()[0]
 

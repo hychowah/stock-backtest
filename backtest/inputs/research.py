@@ -91,7 +91,8 @@ def signature():
     """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
-    paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py')]
+    paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py'),
+              Path(financial_inputs.parameters.__file__)]
     entries = [(path, path.stat()) for path in paths]
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
     result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}

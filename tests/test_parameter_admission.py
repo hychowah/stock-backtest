@@ -142,9 +142,10 @@ class AdmissionTests(unittest.TestCase):
             observations.plan([dict(id='o',parameter='annual.unknown',context='r',count=1)],contexts)
         self.assertEqual(caught.exception.code,'UNKNOWN_PARAMETER')
 
-    def test_ordinary_picker_and_provider_remain_exactly_four(self):
+    def test_ordinary_picker_stays_four_while_direct_provider_expands(self):
         expected=['annual.revenue','annual.operating_income','annual.operating_margin','market.enterprise_value']
-        self.assertEqual([item['id'] for item in observations.catalog()],expected)
+        self.assertEqual(len(observations.catalog()),50)
+        self.assertEqual([item['id'] for item in observations.catalog()][:4],expected)
         value=variable_authoring.catalog()
         self.assertEqual([item['id'] for item in value['parameters']],expected)
         self.assertNotIn('share',value['displays'])

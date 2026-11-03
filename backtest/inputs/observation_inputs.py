@@ -14,9 +14,9 @@ import sqlite3
 
 from backtest.financial import books, rules
 from backtest.inputs import financial_inputs
+from backtest.variables import parameters
 
-VERSION = 1
-FIELDS = ('revenue', 'operatingIncome')
+VERSION = 2
 TABLES = ('observation_sources', 'observation_annual', 'observation_latest', 'observation_metadata')
 SCHEMA = '''
 CREATE TABLE observation_sources(symbol TEXT,endpoint TEXT,evidence_json TEXT NOT NULL,
@@ -37,17 +37,21 @@ def policy_binding():
     """Bind the preparation and financial source that establishes these facts."""
     paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__),
              Path(rules.__file__), Path(__file__).with_name('research.py'),
-             Path(__file__).with_name('daily.py'))
+             Path(__file__).with_name('daily.py'), Path(parameters.__file__))
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
 def store_annual(db, symbol, resolution):
-    """Keep all income dates; an unavailable newer member must remain visible."""
+    """Keep every admitted endpoint/date, including entirely unavailable fields.
+
+    Source and row receipts retain endpoint identity. A consumer must join the
+    chosen income fiscal spine exactly, never select a replacement endpoint date.
+    """
     db.executemany('INSERT INTO observation_sources VALUES(?,?,?)',
         ((symbol, endpoint, encoded(source)) for endpoint, source in resolution['sources'].items()))
     db.executemany('INSERT INTO observation_annual VALUES(?,?,?,?)',
-        ((symbol, 'income-statement', fiscal, encoded({field: states[field] for field in FIELDS}))
-         for fiscal, states in resolution['annual'].get('income-statement', {}).items()))
+        ((symbol, endpoint, fiscal, encoded(states))
+         for endpoint, dates in resolution['annual'].items() for fiscal, states in dates.items()))
 
 
 def store_latest(db, symbol, pool, evidence):
@@ -261,6 +265,8 @@ class ReadView:
         return json.loads(text)
 
     def company(self, symbol, pool, *, budget=None, checkpoint=lambda: None):
+        # The observation operation owns whole-generation admission and its
+        # final freshness check. A company read inspects only its bounded facts.
         if self.closed:
             raise ValueError('Observation input view is closed.')
         if pool not in ('cached', 'legacy') or not isinstance(symbol, str):
@@ -278,20 +284,30 @@ class ReadView:
             return self._json(text)
         if budget is not None and size > budget['bytes']:
             raise ValueError('Observation company facts exceed their byte bound.')
-        annual = {}
-        cursor = self._db.execute('SELECT fiscal,evidence_json FROM observation_annual '
-                                 'WHERE symbol=? AND endpoint=? ORDER BY fiscal LIMIT ?',
-                                 (symbol, 'income-statement', self.max_history + 1))
-        for fiscal, evidence in cursor:
-            if len(annual) == self.max_history:
+        endpoints = financial_inputs.observation_fields()
+        annual = {endpoint: {} for endpoint in endpoints}
+        # Bound total retained rows and each endpoint's full history separately.
+        # The provider's max_annual preflight counts all endpoints together.
+        cursor = self._db.execute('SELECT endpoint,fiscal,evidence_json FROM observation_annual '
+                                 'WHERE symbol=? ORDER BY endpoint,fiscal LIMIT ?',
+                                 (symbol, len(endpoints) * self.max_history + 1))
+        for endpoint, fiscal, evidence in cursor:
+            if endpoint not in annual or len(annual[endpoint]) == self.max_history:
                 raise ValueError('Prepared observation history exceeds its bound.')
-            annual[fiscal] = decode(evidence)
-        sources = {row[0]: decode(row[1]) for row in self._db.execute(
-            'SELECT endpoint,evidence_json FROM observation_sources WHERE symbol=? ORDER BY endpoint', (symbol,))}
+            annual[endpoint][fiscal] = decode(evidence)
+        sources = {}
+        for endpoint, evidence in self._db.execute('SELECT endpoint,evidence_json FROM observation_sources '
+                'WHERE symbol=? ORDER BY endpoint LIMIT ?', (symbol, len(endpoints) + 1)):
+            if endpoint not in endpoints:
+                raise ValueError('Prepared observation source endpoint is incompatible.')
+            sources[endpoint] = decode(evidence)
         latest = self._db.execute('SELECT evidence_json FROM observation_latest WHERE symbol=? AND pool=?',
                                   (symbol, pool)).fetchone()
-        return dict(symbol=symbol, pool=pool, reports=reports, annual=annual, sources=sources,
-                    latest=decode(latest[0]) if latest else None)
+        result = dict(symbol=symbol, pool=pool, reports=reports, annual=annual, sources=sources,
+                      latest=decode(latest[0]) if latest else None)
+        if budget is not None and len(encoded(result).encode('utf-8')) > budget['bytes']:
+            raise ValueError('Observation company facts exceed their byte bound.')
+        return result
 
     def lookup(self, symbol, day, column, forward=False, slack=None):
         if self.closed:

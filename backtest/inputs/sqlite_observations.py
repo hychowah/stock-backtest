@@ -59,6 +59,8 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
     def reports(symbol, pool):
         return [dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in populations[0 if pool=='cached' else 1].get(symbol,[])]
     def maximum(table):
+        # Annual rows count all endpoints per company. Provider preflight pays
+        # for their aggregate, while ReadView bounds each endpoint's history.
         return db.execute('SELECT coalesce(max(n),0) FROM (SELECT count(*) n FROM ' + table + ' GROUP BY symbol)').fetchone()[0]
     bounds = dict(historical_through=binding.get('inputs', {}).get('historical_through'),
         latest_date=expected['latest_date'], population=len(populations[0]),

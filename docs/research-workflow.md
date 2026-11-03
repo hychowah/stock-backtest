@@ -732,3 +732,37 @@ Run `python3 tests/test_financial_inputs.py`, research and schedule checks, then
 build and run browser parity checks. These checks use offline fixtures.
 
 Annual responses can contain repeated fiscal dates. Keep every returned row, including identical rows. A repair also retains distinct saved variants. Preparation uses a numerical input only when all nonmissing USD values for that endpoint and fiscal date agree. Conflicting inputs stay absent. Nulls do not replace known values. Response order does not select a revision.
+
+### Annual observation evidence on the feature branch
+
+Phase 9 Slice 1 prepares all 48 direct annual inputs from the semantic catalog.
+Income, balance-sheet and cash-flow evidence retain their endpoint, exact fiscal
+date, saved asset hash and contributing row identities. All admitted dates stay
+visible, even when every requested field is unavailable. Boolean, malformed and
+nonfinite field values are unavailable. Finite signed amounts and zero stay valid.
+This evidence does not widen raw-response acceptance or the legacy financial
+values projection. Existing calculations and selections keep their inputs.
+
+The direct observation provider selects one income fiscal spine per dated
+context and history depth. The current period is the existing financial-policy
+report. Each earlier year uses its latest eligible income fiscal date. Balance
+sheets and cash flows join those exact dates. They cannot choose another date
+when a selected-period fact is missing. The strict 90-day availability rule and
+800-day current-anchor limit remain in force. Earlier history members keep the
+existing calendar-year buckets and can be older than 800 days.
+
+Observation evidence version 2 uses the existing endpoint-keyed SQL relation.
+Research schema 9 and daily cache version 3 stay unchanged. The semantic source,
+preparation policy and complete content identity bind reuse. Version-1 evidence
+and stale generations require offline preparation. Daily and immutable numerical
+storage copy accepted evidence unchanged. Borrowed views bound each endpoint's
+history, individual records and complete retained company facts. Provider row
+admission counts all endpoints together. Existing ceilings stay unchanged.
+
+The direct provider supports 48 annual inputs plus operating margin and existing
+dated EV. The authoring picker retains its original four usable inputs and
+presentation. Catalog `/2` formula, application and numerical execution stays
+closed in this slice. Dated market/rate observations and callable reference
+formula execution remain Phase 9 work. Synthetic tests establish implementation
+support, not historical or native-cache coverage. No data download or running
+server update is implied.

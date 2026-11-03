@@ -6,12 +6,16 @@ catalog read. No operation starts a calculation or owns financial resources.
 """
 from backtest import observations
 from backtest.runtime import backtest_control
-from backtest.variables import definitions, library
+from backtest.variables import definitions, library, parameters
 from backtest.application import strategy_requests
 
 
 def catalog():
-    return dict(parameters=observations.catalog(), builtins=strategy_requests.builtin_catalog(),
+    # Provider capability is broader than the qualified application surface.
+    # Preserve the /1 picker order, descriptions and displays until qualification.
+    available = {item['id']: item for item in observations.catalog()}
+    admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
+    return dict(parameters=admitted, builtins=strategy_requests.builtin_catalog(),
                 displays={'scalar':['number','multiple','percent','percentage_points'],
                           'USD':['usd','usd_million'], 'USD/share':['usd_per_share']},
                 preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,

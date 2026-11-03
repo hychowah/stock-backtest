@@ -1,0 +1,69 @@
+{
+  "MISSING": {
+    "income-statement": [
+      {
+        "costOfRevenue": true,
+        "date": "2013-12-31",
+        "reportedCurrency": "EUR",
+        "revenue": 10
+      }
+    ]
+  },
+  "TEST": {
+    "balance-sheet-statement": [
+      {
+        "cashAndCashEquivalents": false,
+        "date": "2014-06-30",
+        "inventory": "malformed",
+        "period": "FY",
+        "reportedCurrency": "USD",
+        "revenue": 999000000.0,
+        "symbol": "TEST",
+        "totalCurrentAssets": 80000000.0,
+        "totalCurrentLiabilities": 40000000.0,
+        "totalDebt": 10000000.0,
+        "totalStockholdersEquity": 50000000.0
+      }
+    ],
+    "cash-flow-statement": [
+      {
+        "capitalExpenditure": "malformed",
+        "date": "2014-06-30",
+        "depreciationAndAmortization": -12,
+        "freeCashFlow": -5000000.0,
+        "netIncome": 888000000.0,
+        "period": "FY",
+        "reportedCurrency": "USD",
+        "symbol": "TEST"
+      }
+    ],
+    "income-statement": [
+      {
+        "costOfRevenue": true,
+        "date": "2014-06-30",
+        "depreciationAndAmortization": 999,
+        "ebit": 10000000.0,
+        "epsDiluted": 2,
+        "interestExpense": 2000000.0,
+        "netIncome": 20000000.0,
+        "operatingIncome": -5000000.0,
+        "period": "FY",
+        "reportedCurrency": "USD",
+        "revenue": 100000000.0,
+        "symbol": "TEST",
+        "weightedAverageShsOut": "malformed"
+      },
+      {
+        "costOfRevenue": null,
+        "date": "2014-06-30",
+        "epsDiluted": 2,
+        "netIncome": 20000000.0,
+        "operatingIncome": -5000000.0,
+        "period": "FY",
+        "reportedCurrency": "USD",
+        "revenue": 100000000.0,
+        "symbol": "TEST"
+      }
+    ]
+  }
+}

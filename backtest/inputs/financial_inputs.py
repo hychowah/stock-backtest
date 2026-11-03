@@ -5,6 +5,7 @@ import json
 from backtest.inputs import cache_assets as cache_assets
 from backtest.financial import rules
 from backtest.inputs import market
+from backtest.variables import parameters
 
 ENDPOINTS = {
     'income-statement': ('revenue','operatingIncome','netIncome','epsDiluted','ebit','interestExpense'),
@@ -13,6 +14,30 @@ ENDPOINTS = {
     'key-metrics': (),
     'ratios': (),
 }
+
+
+def observation_fields():
+    """Derive endpoint-qualified annual meaning without widening raw admission.
+
+    ENDPOINTS remains the legacy validation/values contract. Semantic additions
+    are inspected only after that unchanged asset admission has succeeded.
+    """
+    parameters.policy_fingerprint()
+    fields = {}
+    for item in parameters.catalog(parameters.V2):
+        if item['kind'] == 'direct' and item['id'].startswith('annual.'):
+            source = item['source']
+            fields.setdefault(source['endpoint'], []).append(source['field'])
+    return {endpoint: tuple(names) for endpoint, names in fields.items()}
+
+
+def _observation_number(value):
+    # bool is numeric to Python, but never an admitted financial observation.
+    if isinstance(value, bool): return None
+    try:
+        return rules.num(value)
+    except OverflowError:
+        return None
 
 
 def asset_path(raw, symbol, endpoint):
@@ -123,7 +148,9 @@ def resolve_history(raw,symbol):
     survive in evidence, including dates with no usable field. Raw assets stay intact.
     """
     reports={};sources={};annual={}
-    for endpoint,fields in ENDPOINTS.items():
+    semantic = observation_fields()
+    for endpoint,legacy_fields in ENDPOINTS.items():
+        fields = tuple(dict.fromkeys((*legacy_fields, *semantic.get(endpoint, ()))))
         if not fields:continue
         rows,_,source=_asset(raw,symbol,endpoint)
         sources[endpoint]={key:value for key,value in source.items() if key!='rows'}
@@ -136,7 +163,7 @@ def resolve_history(raw,symbol):
             values={};states={}
             for field in fields:
                 inputs=[dict(identity,currency=row.get('reportedCurrency'),
-                             value=rules.num(row.get(field))) for row,identity in members]
+                             value=_observation_number(row.get(field))) for row,identity in members]
                 numbers={item['value'] for item in inputs if item['currency']=='USD' and item['value'] is not None}
                 if len(numbers)==1:
                     value=next(iter(numbers));values[field]=value;reason=None
@@ -145,10 +172,15 @@ def resolve_history(raw,symbol):
                     reason=('CONFLICTING_INPUT' if len(numbers)>1 else
                             'NON_USD_INPUT' if any(isinstance(item['currency'],str) and item['currency']
                                 and item['currency']!='USD' and item['value'] is not None for item in inputs)
-                            else 'MISSING_INPUT')
+                            else 'INVALID_INPUT' if any(row.get(field) is not None
+                                and row.get(field) != '' and _observation_number(row.get(field)) is None
+                                for row, _ in members) else 'MISSING_INPUT')
                 states[field]=dict(value=value,valid=reason is None,reason=reason,rows=inputs)
             annual[endpoint][day]=states
-            if values:reports.setdefault(day,{}).update(values)
+            # Endpoint order and the values-only field list are immutable legacy
+            # policy. New observations cannot leak into financial calculations.
+            legacy = {field: values[field] for field in legacy_fields if field in values}
+            if legacy:reports.setdefault(day,{}).update(legacy)
     return dict(values=reports,sources=sources,annual=annual)
 
 

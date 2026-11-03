@@ -1,5 +1,17 @@
 # EBITDA/EV January book
 
+Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
+`start next phase $finish-phase` instruction on `feature/custom-variables`.
+The [Phase 9 execution plan](docs/plans/custom-variables/phases/phase-09/execution-plan-2026-11-03.md)
+records its scope, ownership and independently planned slices. This authorization
+covers evidence preparation, direct reference observation execution, required
+verification and independently audited commits for Phase 9 only. Preserve
+financial calculations, old immutable bytes, ownership ordering and Original as
+default. Main and the engine worktree remain read-only. Phases 10–12, merge,
+push, deployment, restart, download and live runtime/cache/durable-store mutation
+remain unauthorized. Earlier dated Phase 9 holds below are superseded only for
+this narrow phase.
+
 Phase 8 completes in source on 3 November 2026 from `3dccd88` under explicit
 user authorization on `feature/custom-variables`. Its independently audited
 completion includes 393 passing WSL tests and the

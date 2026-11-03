@@ -22,12 +22,19 @@ from backtest.inputs.observation_inputs import encoded
 VERSION = 1
 CEILINGS = MappingProxyType(dict(contexts=256, requests=1024, members=10240,
                                  rows=2000000, bytes=16 * 1024 * 1024))
+_MEANINGS = {item['id']: item for item in parameters.catalog(parameters.V2)}
+# Preserve /1 presentation and order while deriving every direct annual source
+# from the versioned semantic owner. Capability is separate from authoring.
 _CATALOG = {
-    'annual.revenue': ('USD', 'Selected annual revenue', 'revenue'),
-    'annual.operating_income': ('USD', 'Selected annual operating income', 'operatingIncome'),
-    'annual.operating_margin': ('scalar', 'Operating income / positive revenue', None),
-    'market.enterprise_value': ('USD', 'Existing dated enterprise value', None),
+    'annual.revenue': ('USD', 'Selected annual revenue'),
+    'annual.operating_income': ('USD', 'Selected annual operating income'),
+    'annual.operating_margin': ('scalar', 'Operating income / positive revenue'),
+    'market.enterprise_value': ('USD', 'Existing dated enterprise value'),
 }
+_ANNUAL = {key: item['source'] for key, item in _MEANINGS.items()
+           if item['kind'] == 'direct' and key.startswith('annual.')}
+for _key in _ANNUAL:
+    _CATALOG.setdefault(_key, (_MEANINGS[_key]['unit'], _MEANINGS[_key]['description']))
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
 _SYMBOL = re.compile(r'[A-Za-z0-9^._-]{1,64}\Z')
 _LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -62,7 +69,7 @@ class ObservationBlock:
 
 
 def catalog():
-    """Exactly the four admitted capabilities; support does not prove coverage."""
+    """48 annual fields and two adapters; support does not prove coverage."""
     return [dict(id=key, unit=value[0], description=value[1],
                  counts=dict(minimum=1, maximum=10 if key.startswith('annual.') else 1),
                  contexts=['root', 'at', 'lookback']) for key, value in _CATALOG.items()]
@@ -227,23 +234,40 @@ def _anchor(facts, day):
     return anchor, reason
 
 
-def _annual(parameter, facts, anchor, day, count, checkpoint):
-    members = []
+def _periods(facts, anchor, day, count, checkpoint):
+    """Select the income fiscal spine once, independently of requested fields.
+
+    The current period is the financial-policy anchor. Earlier periods preserve
+    the latest eligible income date in each year, even if its fields are absent.
+    Other endpoints join these exact dates and cannot supply replacement periods.
+    """
+    periods = []
+    income = facts['annual'].get('income-statement', {})
     for year in range(anchor['fiscal'].year - count + 1, anchor['fiscal'].year + 1):
         checkpoint()
         if year == anchor['fiscal'].year:
             fiscal = str(anchor['fiscal'])
         else:
-            choices = [text for text in facts['annual'] if date.fromisoformat(text).year == year
+            choices = [text for text in income if date.fromisoformat(text).year == year
                        and date.fromisoformat(text) <= anchor['fiscal']
                        and date.fromisoformat(text) + rules.LAG < day]
             fiscal = max(choices, default=None)
-        row = facts['annual'].get(fiscal) if fiscal else None
-        evidence = dict(source=facts['sources'].get('income-statement'), fields={},
+        periods.append((year, fiscal))
+    return periods
+
+
+def _annual(parameter, facts, periods, checkpoint):
+    members = []
+    source = _ANNUAL.get(parameter)
+    endpoint = source['endpoint'] if source else 'income-statement'
+    fields = (source['field'],) if source else ('operatingIncome', 'revenue')
+    for year, fiscal in periods:
+        checkpoint()
+        row = facts['annual'].get(endpoint, {}).get(fiscal) if fiscal else None
+        evidence = dict(source=facts['sources'].get(endpoint), fields={},
                         known_date=str(date.fromisoformat(fiscal) + rules.LAG) if fiscal else None,
                         availability_model='fiscal-plus-90-strict; saved statements are not filing vintages')
         reason, value = None, None
-        fields = ('operatingIncome', 'revenue') if parameter == 'annual.operating_margin' else (_CATALOG[parameter][2],)
         for field in fields:
             state = row.get(field) if row else None
             evidence['fields'][field] = state
@@ -307,7 +331,7 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                   projection=inputs.projection['content'], provider_policy=policy,
                   roots=decisions, contexts=list(resolved.values()), results=[])
     used_bytes = len(encoded(result).encode('utf-8'))
-    facts_cache, anchor_cache = {}, {}
+    facts_cache, anchor_cache, period_cache = {}, {}, {}
     facts_bytes = 0
     for request in submitted['requests']:
         checkpoint()
@@ -348,7 +372,10 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                     item['anchor'] = str(anchor['fiscal'])
                     item['anchor_report'] = {key: str(value) if isinstance(value, date) else value for key, value in anchor.items()}
                     if request['parameter'].startswith('annual.'):
-                        item['members'] = _annual(request['parameter'], facts, anchor, day, request['count'], checkpoint)
+                        period_key = (*context_key, request['count'])
+                        if period_key not in period_cache:
+                            period_cache[period_key] = _periods(facts, anchor, day, request['count'], checkpoint)
+                        item['members'] = _annual(request['parameter'], facts, period_cache[period_key], checkpoint)
                     else:
                         valuation, evidence = inputs.entry(root['symbol'], anchor, day)
                         reason = evidence['reason']

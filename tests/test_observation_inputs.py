@@ -143,7 +143,7 @@ class ProjectionTests(unittest.TestCase):
                     self.assertEqual(view.identity, receipt['identity'])
                     facts = view.company('TEST', 'legacy')
                     self.assertTrue(facts['latest']['admitted'])
-                    self.assertEqual(facts['annual']['2013-06-30']['operatingIncome']['value'], -5e6)
+                    self.assertEqual(facts['annual']['income-statement']['2013-06-30']['operatingIncome']['value'], -5e6)
                     self.assertEqual(view.lookup('TEST', date(2015, 10, 20), 'adjusted', False, 0),
                                      (date(2015, 10, 20), 22))
             marker = self.source.parent/'research.sqlite.publication.json'
@@ -170,7 +170,7 @@ class ProjectionTests(unittest.TestCase):
         with ExitStack() as context:
             for module in (research, research.baseline, research.metrics, research.books,
                            research.rules, research.screening, research.selection, research.cache_assets,
-                           research.market, research.legacy, research.revalue, financial, observed):
+                           research.market, research.legacy, research.revalue, financial, observed, financial.parameters):
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module, '__file__', str(path)))
@@ -237,8 +237,8 @@ class AttachmentTests(unittest.TestCase):
         view = attached.observations()
         self.addCleanup(view.close)
         company = view.company('A', 'legacy')
-        self.assertEqual(company['annual']['2014-06-30']['operatingIncome']['value'], -5)
-        self.assertIn('2013-06-30', company['annual'])
+        self.assertEqual(company['annual']['income-statement']['2014-06-30']['operatingIncome']['value'], -5)
+        self.assertIn('2013-06-30', company['annual']['income-statement'])
         for table in observed.TABLES:
             self.assertEqual([tuple(row) for row in self.db.execute('SELECT * FROM '+table)],
                              [tuple(row) for row in attached._db.execute('SELECT * FROM '+table)])
@@ -292,7 +292,7 @@ class AttachmentTests(unittest.TestCase):
         first = self.fixture.prepare()
         with self.fixture.store.open_current() as attached:
             with attached.observations() as view:
-                self.assertEqual(view.company('A', 'legacy')['annual']['2014-06-30'], json.loads(row[-1]))
+                self.assertEqual(view.company('A', 'legacy')['annual']['income-statement']['2014-06-30'], json.loads(row[-1]))
         pointer = self.fixture.store._pointer()
         replace(boundary + ' ')
         with self.assertRaisesRegex(ValueError, 'observation record exceeds its byte bound'):
