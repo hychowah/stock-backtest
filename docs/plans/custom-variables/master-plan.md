@@ -1,17 +1,18 @@
 # Custom ranking and filtering variables
 
-Current scope: Phases 1–11 are complete in source. Phase 11 Slice 1 is `3231c6c`;
-Slice 2 completes in the independently audited commit containing its
-[phase record](phases/phase-11/README.md). It adds discoverable shared authoring,
-exact measure Save/reopen, bounded recorded-scope coverage, actual browser checks,
-complete exports and detached replay. The [phase workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
+Current scope: Phases 1–12 are complete for their source scope. The independently
+audited commit containing the [Phase 12 record](phases/phase-12/README.md) completes
+expanded-capability reconciliation and source compatibility checks. The shared
+editor, exact measures, bounded recorded-scope coverage, exports and detached
+replay retain their Phase 11 contracts. Integration remains held.
+The [phase workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
 requires independent planning, a separate writer, independent audit and commits.
 
 ## Hold and resume
 
-The latest user request authorizes Phase 11 source implementation, private
-synthetic verification and audited commits. It supersedes the stop after Slice 1.
-Phase 12, integration, merge, push, deployment, installed restart, downloads and
+The latest user request authorizes Phase 12 source readiness, private synthetic
+verification and an audited commit. Integration, merge, push, deployment,
+installed restart, downloads and
 live runtime/cache/store access remain held. Main and engine worktrees remain
 read-only. A completed phase grants no authorization for the next phase.
 
@@ -227,8 +228,8 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and Phase 9 handoff. All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
 | **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and execution plan. Preserve financial policy and generation ownership. |
 | **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), execution plan and held Phase 11 handoff. |
-| **11. Discoverable, qualified capabilities** | **Complete in source; both slices independently planned, implemented and audited.** Expanded execution, discoverable authoring, exact measure Save/reopen and bounded recorded-scope coverage | [Phase record](phases/phase-11/README.md) maps all exits to WSL/native/browser evidence, complete exports and detached replay. Phase 12 remains held. |
-| **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
+| **11. Discoverable, qualified capabilities** | **Complete in source; both slices independently planned, implemented and audited.** Expanded execution, discoverable authoring, exact measure Save/reopen and bounded recorded-scope coverage | [Phase record](phases/phase-11/README.md) maps all exits to WSL/native/browser evidence, complete exports and detached replay. |
+| **12. Integration candidate** | **Complete for source readiness; independently planned, implemented and audited.** Expanded-capability reconciliation, historical durable-content checks and final candidate verification | [Phase record](phases/phase-12/README.md). Integration, main advancement and runtime qualification remain separately gated. |
 
 Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.
 

@@ -7,17 +7,17 @@ for `feature/custom-variables`. Dated phase text elsewhere is history, and each
 phase README is that phase's record. When the state changes, replace this
 section. Do not append another resumption paragraph.
 
-**Where the work is.** Phases 1–11 are complete in source in independently
-audited commits. Phase 11 Slice 1 is `3231c6c`; its final slice is the audited
-commit containing the [Phase 11 record](docs/plans/custom-variables/phases/phase-11/README.md).
-The shared editor exposes the expanded vocabulary and exact measures. Coverage
-inspects complete bounded recorded January/latest scopes. Desktop/mobile/keyboard,
-exports and detached replay checks pass on private synthetic fixtures. Phase 12
-and integration remain held. The phase record owns evidence and the next handoff.
+**Where the work is.** Phases 1–12 are complete for their source scope in
+independently audited commits. The [Phase 12 record](docs/plans/custom-variables/phases/phase-12/README.md)
+owns final compatibility evidence and the integration handoff. The shared editor
+exposes the expanded vocabulary and exact measures. Coverage inspects complete
+bounded recorded January/latest scopes. Private synthetic checks cover both
+engines, durable historical content, exports and detached replay. Integration
+remains held. Source readiness does not establish installed readiness.
 
 **Authorization.** A user resumption names a phase or slice. It supersedes holds
 for that scope only. Without a new explicit instruction, these stay unauthorized:
-Phase 12, integration, merge, push, deployment, installed-runtime restart,
+integration, merge, push, deployment, installed-runtime restart,
 download, and access to or mutation of live runtime, cache or durable-store
 assets. The `main` worktree and the engine worktree are read-only from this
 branch. Verify with private synthetic fixtures only. Native-cache coverage and
