@@ -2,6 +2,17 @@
 
 Checked: 2026-11-02.
 
+Phase 11 Slice 1 source update, 3 November: supported captured programs now have
+qualified Original and bounded numerical execution for all 52 direct inputs
+and the adapters used by 33 reusable measures. The fixed backend inventory has
+77 IDs. Its exact policy opens only after private qualification and independent
+preactivation audit. The [phase record](phases/phase-11/README.md) retains source
+correspondence, finite workload timings and native limits. The ordinary editor
+still has four inputs; categories, expanded insertion and coverage inspection
+remain Slice 2. Numerical sample preview and eager scalar execution remain
+unsupported. No installed readiness or live-cache coverage is established.
+Earlier dated phase statements below keep their historical scope.
+
 Phase 9 source update, 3 November: all 52 direct inputs now have prepared
 observation and callable reference implementation. [Final Phase 9 audit and
 verification](phases/phase-09/README.md) complete in its audited closure commit. Observation projection 3,

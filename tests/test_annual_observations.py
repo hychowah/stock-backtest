@@ -258,7 +258,7 @@ class AnnualProviderTests(unittest.TestCase):
         view = self.view()
         self.assertEqual(view.bounds['max_annual'], 9)
         bounds = view.bounds
-        exact = 2*(bounds['report_rows']+bounds['population'])+1+2*bounds['max_reports']+2*bounds['max_annual']+7
+        exact = 2*(bounds['report_rows']+bounds['population'])+1+2*bounds['max_reports']+3*bounds['max_annual']+10
         request = self.request('annual.inventory')
         self.assertTrue(provider.observe(provider.plan([request],self.fixture.contexts(),{'rows':exact}),view).to_dict()['results'][0]['valid'])
         with patch.object(view,'company',side_effect=AssertionError('No company read')):
@@ -278,16 +278,19 @@ class AnnualProviderTests(unittest.TestCase):
         view.max_record_bytes = 10
         with self.assertRaisesRegex(ValueError,'record exceeds'): view.company('A','legacy')
 
-    def test_unrequested_cash_flow_history_counts_toward_bytes_before_decode(self):
+    def test_unrequested_cash_flow_history_is_not_decoded(self):
         self.extra = {'cash-flow-statement': {'2012-06-30': {'capitalExpenditure':
             dict(provider_fixtures.state(-1), rows=[dict(index=index,sha256='d'*64) for index in range(1000)])}}}
         view = self.view()
         with patch.object(view,'_json',wraps=view._json) as decoded:
-            with self.assertRaisesRegex(ValueError,'company facts exceed'):
-                provider.observe(provider.plan([self.request('annual.revenue')],self.fixture.contexts(),{'bytes':10000}),view)
-            # Income/balance order is irrelevant: the large cash-flow record
-            # itself must fail the aggregate allowance before JSON decoding.
+            result = provider.observe(provider.plan([self.request('annual.revenue')],self.fixture.contexts(),{'bytes':10000}),view)
+            self.assertTrue(result.to_dict()['results'][0]['valid'])
             self.assertFalse(any(len(call.args[0]) > 10000 for call in decoded.call_args_list))
+        # The projected byte budget excludes this field, but the independent
+        # original-record ceiling still applies to its complete source row.
+        view.max_record_bytes = 10000
+        with self.assertRaisesRegex(ValueError, 'history exceeds'):
+            provider.observe(provider.plan([self.request('annual.revenue')],self.fixture.contexts()), view)
 
     def test_unknown_endpoint_and_cancellation_fail_the_complete_company(self):
         self.extra = {'unrecognized-endpoint': {'2014-06-30': {}}}

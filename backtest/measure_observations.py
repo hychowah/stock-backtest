@@ -38,6 +38,9 @@ def detached(value, checkpoint=lambda: None):
 def prepared_scope(projection, root, context):
     if context['id'] != context['root']:
         return False
+    owner = root.get('owner_scope')
+    if owner is not None:
+        return owner['kind'] == 'prepared'
     return any(scope['mode'] == root['mode'] and scope['pool'] == root['pool']
                and scope['context_date'] == context['date'] for scope in projection['scopes'])
 

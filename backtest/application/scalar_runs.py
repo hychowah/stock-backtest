@@ -80,7 +80,7 @@ def prepared(executor,source,mode,options,writer,view,*,producer,checkpoint=lamb
     started=time.perf_counter()
     if mode == 'latest':
         asof = view.bounds['latest_date']
-        stocks = executor.select(source,None,date.fromisoformat(asof),latest=True)
+        stocks = executor.select(source,None,date.fromisoformat(asof),latest=True,owner_scope=dict(kind='prepared',book=0))
         for stock in stocks:writer.screen(stock)
         return dict(asof=asof,requested=requested,names=len(stocks),options=options,producer=producer)
     if mode == 'january':
@@ -95,7 +95,7 @@ def prepared(executor,source,mode,options,writer,view,*,producer,checkpoint=lamb
         def select(entry,exit_day):
             row = by_entry[str(entry)]
             return dict(entry=str(entry),exit=str(exit_day),spy=row[3],
-                holdings=executor.select(source,row[0],entry,exit_day))
+                holdings=executor.select(source,row[0],entry,exit_day,owner_scope=dict(kind='prepared',book=row[0])))
         writer.start_trial(1)
         summary = reduce_periods(pairs,select,writer.period,options,{},checkpoint=checkpoint)
         summary.update(options=options,first=first,last=last,seconds=time.perf_counter()-started,producer=producer)

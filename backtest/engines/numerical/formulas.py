@@ -28,11 +28,13 @@ MAX_CHUNK_STEPS = formula_capabilities.MAX_CHUNK_STEPS
 MAX_CACHE_BYTES = formula_capabilities.MAX_CACHE_BYTES
 _LOADED_FORMULAS = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _OPS = {'constant': 0, 'parameter': 1, 'annual': 1, 'ref': 2, 'at': 2,
-        'lookback': 2, 'neg': 3, 'add': 4, 'sub': 5, 'mul': 6, 'div': 7}
-_PARAMETERS = formula_capabilities.PARAMETERS
+        'lookback': 2, 'neg': 3, 'add': 4, 'sub': 5, 'mul': 6, 'div': 7,
+        'positive_div': 13}
+_PARAMETERS = formula_capabilities.IMPLEMENTED_PARAMETERS
 # Fold instructions are separate so cancellation can occur between members.
 _SUM, _MIN, _MAX, _MEAN, _FINAL = 8, 9, 10, 11, 12
-_ROOT, _ZERO, _NONFINITE = 1, 2, 3
+_POSITIVE_DIV, _GROWTH, _CAGR = 13, 14, 15
+_ROOT, _ZERO, _NONFINITE, _NONPOSITIVE, _ENDPOINT = 1, 2, 3, 4, 5
 
 
 def capabilities():
@@ -81,7 +83,16 @@ def _execute(tape, constants, admitted, source_reasons, members, values, reasons
                         values[target] = members[member]
                 elif code == _MEAN:
                     values[target] = values[target] / right
-        elif code >= 2 and code <= 7:
+        elif code == _GROWTH or code == _CAGR:
+            if reasons[target] == 0:
+                if values[target] <= 0.0:
+                    reasons[target] = _NONPOSITIVE
+                elif code == _CAGR and members[member] <= 0.0:
+                    reasons[target] = _ENDPOINT
+                else:
+                    ratio = members[member] / values[target]
+                    values[target] = (ratio if code == _GROWTH else ratio ** (1.0 / (right - 1))) - 1.0
+        elif code >= 2 and code <= 7 or code == _POSITIVE_DIV:
             reason = reasons[left]
             if reason == 0 and right >= 0:
                 reason = reasons[right]
@@ -97,6 +108,8 @@ def _execute(tape, constants, admitted, source_reasons, members, values, reasons
                     values[target] = values[left] - values[right]
                 elif code == 6:
                     values[target] = values[left] * values[right]
+                elif code == _POSITIVE_DIV and values[right] <= 0.0:
+                    reasons[target] = _NONPOSITIVE
                 elif values[right] == 0.0:
                     reasons[target] = _ZERO
                 else:
@@ -165,12 +178,15 @@ def _lower(checked, shape, checkpoint):
         instructions[position] = (_OPS[op], number, left, right, member, int(op != 'annual'))
         position += 1
         if op == 'annual':
-            fold = {'mean': _SUM, 'min': _MIN, 'max': _MAX}[node['stat']]
+            fold = {'mean': _SUM, 'min': _MIN, 'max': _MAX,
+                    'growth': _FINAL, 'cagr': _FINAL}[node['stat']]
             for index in range(1, node['count']):
                 instructions[position] = (fold, number, -1, -1, member + index, 0)
                 position += 1
-            instructions[position] = (_MEAN if node['stat'] == 'mean' else _FINAL,
-                                      number, -1, node['count'], -1, 1)
+            final = {'mean': _MEAN, 'min': _FINAL, 'max': _FINAL,
+                     'growth': _GROWTH, 'cagr': _CAGR}[node['stat']]
+            instructions[position] = (final, number, -1, node['count'],
+                                      member + node['count'] - 1, 1)
             position += 1
     if position != steps:
         raise RuntimeError('Compiled formula instruction count differs from its reservation.')
@@ -197,7 +213,8 @@ class _Execution:
         roots = {item['root']: item['admitted'] for item in observed['roots']}
         contexts = {item['id']: item['root'] for item in observed['contexts']}
         sources = {item['id']: item for item in observed['results']}
-        names = [None, 'ROOT_NOT_ADMITTED', 'ZERO_DENOMINATOR', 'NONFINITE_RESULT']
+        names = [None, 'ROOT_NOT_ADMITTED', 'ZERO_DENOMINATOR', 'NONFINITE_RESULT',
+                 'NONPOSITIVE_DENOMINATOR', 'NONPOSITIVE_ENDPOINT']
         codes = {name: number for number, name in enumerate(names)}
         for observation, (offset, count) in self.tape.member_offsets.items():
             checkpoint()

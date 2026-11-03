@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from backtest import result_evidence, calendar_requests
 from backtest.application import original_calculations, jobs, queue, library as saved, strategy_requests as s, evidence_views
-from backtest.inputs import daily, research, sqlite_observations
+from backtest.inputs import daily, research, sqlite_observations, observation_inputs
 from backtest.engines.numerical import generation
 from backtest.variables import definitions, reference
 from backtest.runtime import backtest_control
@@ -74,6 +74,10 @@ class ExecutionTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db:
             for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
                 db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
+            db.execute('DELETE FROM observation_metadata')
+            observation_inputs.finish(db, '2015-01-05', scopes=[
+                dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015)
+                for pool in ('legacy','cached')])
             db.commit()
         reader,_=self.run_result('january',dict(strategy=self.capture.to_dict(),first=2015,last=2015))
         self.assertEqual(reader.manifest['summary']['first'],2015)

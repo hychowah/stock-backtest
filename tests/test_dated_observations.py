@@ -264,7 +264,15 @@ class TransportTests(unittest.TestCase):
             self.assertEqual(results,self.observe(num,list(expected),context=context)['results'])
             computed_results=[]
             for program in programs:
-                formula=reference.evaluate(reference.plan(program,[{key:value for key,value in self.contexts()[0 if context=='root' else 1].items() if key not in ('id','kind')}]),num).to_dict()
+                plan=reference.plan(program,[{key:value for key,value in self.contexts()[0 if context=='root' else 1].items() if key not in ('id','kind')}])
+                formula=reference.evaluate(plan,num).to_dict()
+                from backtest.engines.numerical import formula_capabilities
+                if 2 in formula_capabilities.capabilities()['definition_versions']:
+                    from backtest.engines.numerical import formulas
+                    from scalar_qualification import compare_blocks
+                    with formulas.Evaluator() as evaluator:
+                        numerical = evaluator.evaluate(plan,num).to_dict()
+                    compare_blocks([formula], [numerical])
                 computed_results.extend(formula['results'])
             self.assertEqual(len(computed_results),52)
             for result,computed in zip(results,computed_results):
@@ -382,6 +390,14 @@ class TransportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'byte bound'):self.observe(num,['market.volume'],limits={'bytes':500})
         with self.assertRaisesRegex(RuntimeError,'cancel'):
             num.dated('TEST',dated.STOCK,date(2015,1,2),checkpoint=Mock(side_effect=RuntimeError('cancel')))
+
+    def test_dated_only_preflight_does_not_depend_on_annual_history(self):
+        sql, _ = self.views()
+        sql._bounds['max_annual'] = provider.CEILINGS['rows']
+        with patch.object(sql, 'company', side_effect=AssertionError('Unexpected annual read')):
+            result = self.observe(sql, ['market.volume'])['results'][0]
+        self.assertTrue(result['valid'])
+        self.assertEqual(result['members'][0]['value'], 12.5)
 
     def test_old_version_missing_dated_relations_and_content_tamper_rejected(self):
         sql,num=self.views()

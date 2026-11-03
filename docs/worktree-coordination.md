@@ -1,5 +1,49 @@
 # Parallel work on the website and backtest engine
 
+## Custom-variable Phase 11 resumption — 3 November 2026
+
+The user's explicit `$finish-phase` instruction resumes Phase 11 from
+`72457bc` on `feature/custom-variables`. Its [execution plan](plans/custom-variables/phases/phase-11/execution-plan-2026-11-03.md)
+records the complete authoring, bounded coverage and expanded execution outcome.
+The fresh independent design for each slice assigns exact production seams to
+this feature branch before protected edits. Existing financial owners, stored
+rounding, immutable formats, resource ceilings, source/cache ordering and worker
+lifetimes retain their contracts. Stored January/latest roots and dated or
+derived contexts remain distinct, even at equal dates. Missing prepared lanes
+never fall back to recalculation. Original remains default. Main and engine
+files and indexes are read-only. Phase 12 and all integration/live actions remain
+held. Earlier Phase 11 holds retain their dated meaning and are superseded only
+for this authorized phase. No live-asset inspection is authorized.
+
+The [Slice 1 independent design](plans/custom-variables/phases/phase-11/slice-01-design.md)
+assigns its exact 13 production seams to this branch: backend-specific formula
+admission, optional execution-root provenance, demand-derived bounded company
+reads and independent expanded compiled arithmetic. Existing complete-read and
+omitted-provenance behavior remain compatible. Financial-owner formulas,
+schemas, generation arrays, workers, source/cache ordering, durable formats and
+ceilings are not assigned. Other worktrees require no action.
+
+The independent [content-encoding addendum](plans/custom-variables/phases/phase-11/slice-01-content-encoding-addendum.md)
+additionally assigns only `observation_inputs.content_identity()` and private
+exact row-encoding helpers. Every scan, freshness call, checkpoint and digest
+byte remains authoritative. No cross-call content cache or extra research,
+daily, generation or freshness-callback edit is assigned.
+
+The independent preactivation audit accepts the exact expanded policy after
+all four findings are corrected. The main agent activates only its two recorded
+admission files. Actual source matches the qualified candidate; final public
+WSL checks and guide checks/review pass. Slice 1 completes in the independently audited commit containing its phase record.
+The ordinary editor remains four inputs until the fresh Slice 2 design and
+audited implementation. Phase 11 is still in progress. Native HTTP, the raw queue
+claim launcher and junction case remain outside the unchanged guard's evidence.
+No other worktree or live asset is changed.
+
+The user requests stopping after the Slice 1 commit. Finish that verified,
+independently audited commit, then pause Phase 11. Slice 2 needs explicit
+resumption and a fresh design against the Slice 1 commit. Phase 12 and all
+integration/live actions stay held.
+
+
 ## Custom-variable Phase 10 resumption — 3 November 2026
 
 The user's `work on phase 10` clarification to `$finish-phase` authorizes Phase 10

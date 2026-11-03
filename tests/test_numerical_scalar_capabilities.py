@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
 import io
 import json
+from copy import deepcopy
 import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
@@ -15,6 +16,8 @@ from backtest.engines.numerical import formula_capabilities,formulas,policy
 from backtest.engines.numerical.runtime import NumericalRuntime
 from backtest.engines.numerical.session import Session
 from backtest.variables import library,definitions,reference
+from backtest.variables import selection as original_selection
+from backtest import observations
 import test_strategy_requests as requests
 import test_variable_definitions as language
 
@@ -36,12 +39,14 @@ class CapabilityTests(unittest.TestCase):
     def test_declaration_matches_compiler_and_is_detached(self):
         value=formula_capabilities.capabilities()
         self.assertEqual(value,formulas.capabilities())
-        self.assertEqual(value['operations'],list(formulas._OPS))
-        self.assertEqual(value['parameter_ids'],list(formulas._PARAMETERS))
+        self.assertEqual(set(formula_capabilities.IMPLEMENTED_OPERATIONS),set(formulas._OPS))
+        self.assertEqual(set(formula_capabilities.IMPLEMENTED_PARAMETERS),set(formulas._PARAMETERS))
+        self.assertTrue(set(value['operations']) <= set(formulas._OPS))
+        self.assertTrue(set(value['parameter_ids']) <= set(formulas._PARAMETERS))
         self.assertEqual(value['application_modes'],['latest','january','custom','random'])
         self.assertFalse(value['eager']);self.assertFalse(value['sample_preview'])
-        value['parameter_ids'].clear()
-        self.assertEqual(len(formula_capabilities.capabilities()['parameter_ids']),4)
+        original_count=len(value['parameter_ids']);value['parameter_ids'].clear()
+        self.assertEqual(len(formula_capabilities.capabilities()['parameter_ids']),original_count)
         capture=self.capture()
         program=library.VariableCapture(definitions.canonical(capture.to_dict()['variables'])).program
         self.assertEqual(formula_capabilities.require_program(program),definitions.require_program(program))
@@ -56,12 +61,49 @@ class CapabilityTests(unittest.TestCase):
         self.assertEqual(owner.preflight(dict(strategy=capture,engine='experimental')),'experimental')
         preparation.status.assert_not_called();preparation._runtime.assert_not_called()
 
+    def test_future_recognition_does_not_expand_either_qualified_gate(self):
+        captured=library.VariableCapture(definitions.canonical(self.capture().to_dict()['variables'])).program
+        checked=definitions.require_program(captured)
+        future_namespace=deepcopy(checked)
+        extra=deepcopy(future_namespace['bundle']['definitions'][0])
+        extra['definition']['version']=4
+        future_namespace['bundle']['definitions'].append(extra)
+        future_parameter=deepcopy(checked)
+        future_parameter['nodes'].append(dict(op='parameter',parameter='annual.future_probe',path='/future'))
+        with patch.object(observations, 'catalog', return_value=observations.catalog()+[dict(id='annual.future_probe')]), \
+             patch.object(formula_capabilities, 'IMPLEMENTED_PARAMETERS', formula_capabilities.IMPLEMENTED_PARAMETERS+('annual.future_probe',)), \
+             patch.object(reference, 'require_program', side_effect=AssertionError('No reference or financial work')):
+            for projection in (future_namespace, future_parameter):
+                with patch.object(definitions, 'require_program', return_value=projection):
+                    for gate in (original_selection.require_program,formula_capabilities.require_program):
+                        with self.subTest(gate=gate.__module__, future=projection is future_namespace), \
+                             self.assertRaises(definitions.FormulaError) as caught:
+                            gate(captured)
+                        self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
+
+    def test_each_definition_catalog_combination_uses_the_declared_gate(self):
+        expanded = 3 in formula_capabilities.capabilities()['definition_versions']
+        for version in (1, 2, 3):
+            for catalog in ('financial-parameters/1', 'financial-parameters/2', 'financial-parameters/3'):
+                definition = language.definition(language.constant('1'))
+                definition.update(version=version, parameter_catalog=catalog)
+                program = definitions.validate(language.bundle(language.entry(definition)))
+                for gate in (original_selection.require_program, formula_capabilities.require_program):
+                    with self.subTest(version=version, catalog=catalog, gate=gate.__module__):
+                        if expanded or (version == 1 and catalog == 'financial-parameters/1'):
+                            self.assertEqual(gate(program), program.to_dict())
+                        else:
+                            with self.assertRaises(definitions.FormulaError) as caught:
+                                gate(program)
+                            self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
+
     def test_callable_compiler_uses_the_declared_subset_before_observations(self):
         captured=library.VariableCapture(definitions.canonical(self.capture().to_dict()['variables'])).program
         plan=reference.plan(captured,[dict(symbol='A',pool='cached',mode='historical',date='2015-01-02')])
         view=Mock();view.validate.side_effect=AssertionError('No financial observation')
-        with formulas.Evaluator() as evaluator,patch.object(formula_capabilities,'OPERATIONS',
-                tuple(op for op in formula_capabilities.OPERATIONS if op!='div')):
+        field = 'QUALIFIED_OPERATIONS' if 3 in formula_capabilities.capabilities()['definition_versions'] else 'OPERATIONS'
+        with formulas.Evaluator() as evaluator,patch.object(formula_capabilities,field,
+                tuple(op for op in getattr(formula_capabilities,field) if op!='div')):
             with self.assertRaises(definitions.FormulaError) as caught:evaluator.evaluate(plan,view)
             self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
             self.assertEqual(evaluator.stats['kernel_compilations'],0)
@@ -69,7 +111,8 @@ class CapabilityTests(unittest.TestCase):
 
     def test_unsupported_subset_raw_alias_and_malformed_capture_precede_readiness(self):
         capture=self.capture().to_dict();owner,preparation=self.owner()
-        with patch.object(formula_capabilities,'OPERATIONS',tuple(op for op in formula_capabilities.OPERATIONS if op!='div')):
+        field = 'QUALIFIED_OPERATIONS' if 3 in formula_capabilities.capabilities()['definition_versions'] else 'OPERATIONS'
+        with patch.object(formula_capabilities,field,tuple(op for op in getattr(formula_capabilities,field) if op!='div')):
             with self.assertRaises(definitions.FormulaError) as caught:
                 owner.calculate_into('latest',dict(strategy=capture,engine='experimental'),io.BytesIO(),None,None)
             self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
@@ -132,8 +175,7 @@ owner=Selectable(preparation)
 try:
     capabilities=owner.capabilities()
     assert capabilities['sample_preview']['engine']=='original'
-    assert capabilities['engines'][1]['scalar']['formulas']['parameter_ids']==[
-        'annual.revenue','annual.operating_income','annual.operating_margin','market.enterprise_value']
+    assert capabilities['engines'][1]['scalar']['formulas']['parameter_ids']==json.loads(sys.argv[4])
     with patch.object(owner.original,'_financial',return_value=nullcontext()),patch.object(daily,'connect',return_value=db),patch.object(daily,'fingerprint',return_value={'inputs':{'historical_through':'2015-01-05'}}):
         output=io.BytesIO()
         owner.calculate_into('custom',dict(strategy=capture,start='2015-01-02',end='2015-01-05',months=12),output,None,None)
@@ -154,7 +196,7 @@ finally:
                 path=Path(folder)/'daily.sqlite';target=sqlite3.connect(path)
                 try:fixture.db.backup(target)
                 finally:target.close()
-                outcome=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT),str(path),json.dumps(capture)],
+                outcome=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT),str(path),json.dumps(capture),json.dumps(formula_capabilities.capabilities()['parameter_ids'])],
                     capture_output=True,text=True)
         finally:fixture.db.close()
         self.assertEqual(outcome.returncode,0,outcome.stderr)

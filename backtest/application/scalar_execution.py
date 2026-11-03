@@ -14,11 +14,10 @@ from pathlib import Path
 
 _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
-from backtest import selection
+from backtest import observations, selection
 from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
 from backtest.variables import definitions, library, reference, evaluation
-from backtest.variables import selection as scalar_selection
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
 MAX_METADATA_BYTES = 16 * 1024 * 1024
@@ -70,9 +69,9 @@ def scope_rows(db, *, pool, period=None, metadata_bytes=None):
     return rows
 
 
-def _plans(program, roots, record_bytes, checkpoint, limits=None, metadata_bytes=None):
+def _plans(program, roots, record_bytes, checkpoint, limits=None, metadata_bytes=None, engine='original'):
     """Compile every chunk before reading its observations; adapt temporal contexts."""
-    scalar_selection.require_program(program, checkpoint=checkpoint)
+    strategy_requests.require_formula_support(program, engine, checkpoint=checkpoint)
     maximum=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
     plans = [];used=0
     remaining = roots
@@ -129,7 +128,7 @@ class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run."""
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
-                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, aggregate_trials=1, metadata_bytes=None):
+                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, aggregate_trials=1, metadata_bytes=None, engine='original'):
         # The arithmetic callable consumes checked plans; the provider and global
         # selection keep their meanings. Prefixes qualify independent trial scopes.
         self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
@@ -138,6 +137,7 @@ class Executor:
                 or type(scope_prefix) is not str or len(scope_prefix)>64):
             raise definitions.FormulaError('WORK_LIMIT','/execution','Invalid scalar execution reservation.')
         self.evaluate = evaluate or reference.evaluate
+        self.engine = engine
         self.scope_prefix = scope_prefix
         self.evaluation_limits = evaluation_limits
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
@@ -147,14 +147,25 @@ class Executor:
         self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
-    def select(self, db, period, entry, exit_day=None, *, latest=False):
+    def select(self, db, period, entry, exit_day=None, *, latest=False, owner_scope=None):
         self.checkpoint()
         if self.program is not None:
-            scalar_selection.require_program(self.program, checkpoint=self.checkpoint)
+            strategy_requests.require_formula_support(self.program, self.engine, checkpoint=self.checkpoint)
+        if owner_scope is None:
+            owner_scope = dict(kind='dated')
+        if (type(owner_scope) is not dict or not (owner_scope == {'kind':'dated'} or
+                (set(owner_scope) == {'kind','book'} and owner_scope['kind'] == 'prepared'
+                 and type(owner_scope['book']) is int and owner_scope['book'] >= 0))):
+            raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Invalid owner scope.')
+        if owner_scope['kind'] == 'prepared' and (owner_scope['book'] != (0 if latest else period) or not any(
+                item['mode'] == ('latest' if latest else 'historical')
+                and item['pool'] == self.pool and item['context_date'] == str(entry)
+                and item['book'] == owner_scope['book'] for item in self.view.projection['scopes'])):
+            raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
         rows = scope_rows(db, pool=self.pool, period=None if latest else period,metadata_bytes=self.metadata_bytes)
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
-        roots = [dict(symbol=row['symbol'], pool=self.pool, mode='latest' if latest else 'historical', date=str(entry)) for row in rows]
-        plans = _plans(self.program, roots, self.record_bytes, self.checkpoint, self.evaluation_limits,self.metadata_bytes) if self.program else []
+        roots = [dict(symbol=row['symbol'], pool=self.pool, mode='latest' if latest else 'historical', date=str(entry), owner_scope=owner_scope) for row in rows]
+        plans = _plans(self.program, roots, self.record_bytes, self.checkpoint, self.evaluation_limits,self.metadata_bytes,self.engine) if self.program else []
         bounds=self.view.bounds
         inspected=2*len(rows)
         role_sources=[self.capture['selection']['ranking']['source']]+[item['source'] for item in self.capture['selection']['conditions']]
@@ -163,8 +174,11 @@ class Executor:
             for plan in plans:
                 compiled=plan.to_dict();dates={root['date'] for root in compiled['requests'] if root['mode']=='historical'}
                 inspected+=2*len(dates)*(bounds['report_rows']+bounds['population'])
-                inspected+=len(compiled['requests'])*(bounds['max_reports']+bounds['max_annual']+8)
+                annual = 2*bounds['max_annual'] if observations.requires_annual_fields(compiled['provider']['requests']) else 0
+                inspected+=len(compiled['requests'])*(bounds['max_reports']+annual+11)
                 inspected+=4*len(compiled['provider']['contexts'])
+                inspected+=observations.additional_work_bound(compiled['provider']['requests'],
+                    compiled['provider']['contexts'], bounds)
         else:
             inspected+=(len(rows)+255)//256*(2*(bounds['report_rows']+bounds['population']) if not latest else 2*256)
         self.budget.reserve(plans,rows,inspected)
@@ -214,6 +228,8 @@ class Executor:
                 group = [dict(id='r' + str(i), **root) for i, root in enumerate(roots[first:first+256])]
                 budget = dict(rows=2*(self.view.bounds['report_rows']+self.view.bounds['population']), bytes=16*1024*1024)
                 decisions=self.view.admit(group, budget, self.checkpoint)
+                for decision in decisions:
+                    decision['owner_scope'] = owner_scope
                 admitted += sum(item['admitted'] for item in decisions)
                 for local,decision in enumerate(decisions):permitted[first+local]=decision['admitted']
                 self.sink(dict(type='admission',value=dict(scope=identity,roots=decisions)))

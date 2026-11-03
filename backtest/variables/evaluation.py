@@ -146,12 +146,17 @@ def _compile(program, roots, limits, checkpoint):
     for index, root in enumerate(roots):
         checkpoint()
         path = '/requests/' + str(index)
-        if type(root) is not dict or set(root) != {'symbol', 'pool', 'mode', 'date'}:
-            _fail('INVALID_SHAPE', path, 'A root needs symbol, pool, mode and date only.')
+        if type(root) is not dict or set(root) not in ({'symbol', 'pool', 'mode', 'date'}, {'symbol', 'pool', 'mode', 'date', 'owner_scope'}):
+            _fail('INVALID_SHAPE', path, 'A root needs symbol, pool, mode, date and optional owner scope.')
         # Check types before hashing, including malformed unhashable fields.
-        if any(type(value) is not str for value in root.values()):
+        if any(type(root[name]) is not str for name in ('symbol', 'pool', 'mode', 'date')):
             _fail('INVALID_SHAPE', path, 'Root request fields must be strings.')
-        key = tuple(root[name] for name in ('symbol', 'pool', 'mode', 'date'))
+        # Canonical encoding distinguishes explicitly directed roots from legacy
+        # roots, and from each other, even when their dates are equal.
+        try:
+            key = definitions.canonical(root)
+        except (TypeError, ValueError, RecursionError):
+            _fail('INVALID_SHAPE', path, 'Invalid root owner scope.')
         if key not in root_ids:
             root_ids[key] = add_context(dict(kind='root', **root), path)
         request_roots.append(root_ids[key])

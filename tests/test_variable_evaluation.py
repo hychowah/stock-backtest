@@ -64,6 +64,20 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(block['results'][0]['reason'], 'ROOT_NOT_ADMITTED')
         self.assertIsNone(block['results'][0]['value'])
 
+    def test_equal_date_directed_roots_remain_distinct_and_canonical(self):
+        root = dict(symbol='A', pool='legacy', mode='latest', date=self.fixture.latest_date)
+        roots = [dict(root, owner_scope=dict(kind='prepared', book=0)),
+                 dict(root, owner_scope=dict(kind='dated')), dict(root)]
+        plan = r.plan(program(language.constant('12')), roots)
+        checked = e.require_plan(plan)
+        self.assertEqual(len(set(checked['request_roots'])), 3)
+        self.assertEqual(checked['requests'], roots)
+        block = r.evaluate(plan, self.fixture.view()).to_dict()
+        self.assertEqual(block['requests'], roots)
+        self.assertEqual(block['observations']['roots'][0]['owner_scope'], roots[0]['owner_scope'])
+        self.assertEqual(block['observations']['roots'][1]['owner_scope'], roots[1]['owner_scope'])
+        self.assertNotIn('owner_scope', block['observations']['roots'][2])
+
     def test_tree_order_is_binary64_without_reassociation_or_folding(self):
         c, b = language.constant, language.binary
         first = b('add', b('add', c('1e16'), c('-1e16')), c('1'))

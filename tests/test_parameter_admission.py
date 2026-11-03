@@ -1,4 +1,4 @@
-"""Semantic recognition never opens Original, numerical, preview or provider work."""
+"""Unqualified semantics fail before Original, numerical or provider work."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -6,6 +6,7 @@ import hashlib
 import io
 import subprocess
 import unittest
+from functools import wraps
 from unittest.mock import Mock, patch
 from backtest import observations
 from backtest.variables import definitions as d, parameters, library, reference, selection
@@ -17,6 +18,21 @@ from test_strategy_requests import intent, formula, condition
 from test_parameter_contract import expanded
 
 ROOTS=[dict(symbol='A',pool='cached',mode='historical',date='2015-01-02')]
+EXPANDED_QUALIFIED = 3 in formula_capabilities.capabilities()['definition_versions']
+
+
+def restrict_catalog_two(test):
+    """Model a recognized catalog which neither backend has qualified."""
+    @wraps(test)
+    def run(*args, **kwargs):
+        original = frozenset(item for item in selection.QUALIFIED_NAMESPACES
+                             if item[1] != parameters.V2)
+        numerical = frozenset(item for item in formula_capabilities.QUALIFIED_NAMESPACES
+                              if item[1] != parameters.V2)
+        with patch.object(selection, 'QUALIFIED_NAMESPACES', original), \
+             patch.object(formula_capabilities, 'QUALIFIED_NAMESPACES', numerical):
+            return test(*args, **kwargs)
+    return run
 
 
 def capture(entries):
@@ -39,7 +55,7 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(d.FormulaError) as caught:callback()
         self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
 
-    def test_every_v2_case_restores_but_both_backends_reject_complete_capture(self):
+    def test_every_v2_case_restores_and_obeys_both_backend_gates(self):
         for entries in expanded_cases():
             with self.subTest(parameter=entries[0]['definition']['expression']):
                 captured=capture(entries)
@@ -50,10 +66,13 @@ class AdmissionTests(unittest.TestCase):
                 self.assertEqual(d.require_program(program),program.to_dict())
                 reference.require_program(program)
                 for gate in (selection.require_program,formula_capabilities.require_program):
-                    self.error(lambda:gate(program))
+                    if EXPANDED_QUALIFIED:self.assertEqual(gate(program),program.to_dict())
+                    else:self.error(lambda:gate(program))
                 for engine in ('original','experimental'):
-                    self.error(lambda:s.check_options(dict(strategy=captured.to_dict(),engine=engine)))
+                    if EXPANDED_QUALIFIED:self.assertEqual(s.check_options(dict(strategy=captured.to_dict(),engine=engine)),captured.to_dict())
+                    else:self.error(lambda:s.check_options(dict(strategy=captured.to_dict(),engine=engine)))
 
+    @restrict_catalog_two
     def test_application_modes_reject_before_readiness_financial_or_compiler(self):
         preparation=Mock();owner=Selectable(preparation)
         self.addCleanup(owner.retire);self.addCleanup(owner.close)
@@ -73,6 +92,7 @@ class AdmissionTests(unittest.TestCase):
                 self.error(lambda:owner.original.calculate_into('latest',dict(strategy=captured),io.BytesIO(),None,None))
         preparation.status.assert_not_called();preparation._runtime.assert_not_called()
 
+    @restrict_catalog_two
     def test_preview_and_chunk_planning_reject_before_shared_planner(self):
         for entries in expanded_cases():
             captured=capture(entries)
@@ -82,19 +102,21 @@ class AdmissionTests(unittest.TestCase):
                 self.error(lambda:scalar_execution._plans(program,ROOTS,8*1024**2,lambda:None))
 
     def test_reference_accepts_constants_old_inputs_and_unused_v2_definitions(self):
-        # Direct reference admission must reach input validation. Qualified
-        # selection still refuses each complete /2 capture before inputs.
+        # Direct reference admission reaches input validation. Qualified
+        # selection accepts or rejects the complete capture by its policy.
         for entries in (list(expanded_cases())[0],list(expanded_cases())[1],list(expanded_cases())[-1]):
             program=d.validate(bundle(*entries,roots=[root(entries[0])]))
             plan=reference.plan(program,ROOTS)
             inputs=Mock();inputs.validate.side_effect=AssertionError('Direct reference reached inputs')
             reference.require_program(program)
-            self.error(lambda:selection.require_program(program))
+            if EXPANDED_QUALIFIED:self.assertEqual(selection.require_program(program),program.to_dict())
+            else:self.error(lambda:selection.require_program(program))
             inputs.validate.assert_not_called()
             with self.assertRaisesRegex(AssertionError,'Direct reference reached inputs'):
                 reference.evaluate(plan,inputs)
             inputs.validate.assert_called_once()
 
+    @restrict_catalog_two
     def test_callable_selection_rejects_before_input_validation_or_properties(self):
         class Untouched:
             def __getattribute__(self, name):
@@ -108,6 +130,7 @@ class AdmissionTests(unittest.TestCase):
             self.assertEqual(selection.require_plan(plan),plan.to_dict())
             self.error(lambda:selection.evaluate(plan,Untouched()))
 
+    @restrict_catalog_two
     def test_callable_executor_rejects_before_scope_view_or_sink_access(self):
         class Untouched:
             def __getattribute__(self, name):
@@ -123,6 +146,7 @@ class AdmissionTests(unittest.TestCase):
                 scope.assert_not_called()
             sink.assert_not_called()
 
+    @restrict_catalog_two
     def test_numerical_prepare_rejects_before_tape_kernel_or_input_construction(self):
         from backtest.engines.numerical import formulas
         for entries in (list(expanded_cases())[0],list(expanded_cases())[1],list(expanded_cases())[-1]):
@@ -187,15 +211,17 @@ sys.meta_path.insert(0,Block())
 from test_parameter_admission import expanded_cases,capture
 from backtest.application import strategy_requests as s
 from backtest.variables import library,definitions as d,reference,selection
+qualified = sys.argv[1] == 'open'
 for entries in expanded_cases():
  c=capture(entries);s.require_strategy(c)
  program=library.VariableCapture(d.canonical(c.to_dict()['variables'])).program
  reference.require_program(program)
  try:selection.require_program(program)
- except d.FormulaError as e:assert e.code=='UNSUPPORTED_CAPABILITY'
- else:raise AssertionError('expanded execution admitted')
+ except d.FormulaError as e:
+  assert not qualified and e.code=='UNSUPPORTED_CAPABILITY'
+ else:assert qualified
 '''
-        subprocess.run([sys.executable,'-B','-c',code],cwd=Path(__file__).resolve().parent,
+        subprocess.run([sys.executable,'-B','-c',code,'open' if EXPANDED_QUALIFIED else 'closed'],cwd=Path(__file__).resolve().parent,
                        env={**__import__('os').environ,'PYTHONPATH':str(Path(__file__).resolve().parents[1])},check=True)
 
 

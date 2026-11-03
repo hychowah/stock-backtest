@@ -19,6 +19,11 @@ class PreparedMeasureTests(unittest.TestCase):
         root = dict(mode='latest', pool='cached')
         self.assertTrue(bridge.prepared_scope(metadata, root, dict(id='a', root='a', date='2020-01-02')))
         self.assertFalse(bridge.prepared_scope(metadata, root, dict(id='b', root='a', date='2020-01-02')))
+        dated = dict(root, owner_scope=dict(kind='dated'))
+        prepared = dict(root, owner_scope=dict(kind='prepared', book=0))
+        self.assertFalse(bridge.prepared_scope(metadata, dated, dict(id='a', root='a', date='2020-01-02')))
+        self.assertTrue(bridge.prepared_scope(metadata, prepared, dict(id='a', root='a', date='2020-01-02')))
+        self.assertFalse(bridge.prepared_scope(metadata, prepared, dict(id='b', root='a', date='2020-01-02')))
         db.execute("UPDATE observation_metadata SET value='[]' WHERE key='scopes'")
         with self.assertRaises(ValueError):
             source.require(db, verify_content=True)

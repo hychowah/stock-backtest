@@ -53,7 +53,9 @@ The owners relevant to that feature are:
   `backtest/variables/measures.py` exports exact-reference measure bundles.
 - `backtest/variables/reference.py` executes direct /1, /2 and supported /3
   observation vocabulary. `backtest/variables/selection.py` owns the qualified
-  /1 four-input gate used before application and callable selection execution.
+  Original gate used before application and callable selection execution.
+  Phase 11 qualifies the expanded captured vocabulary for Original and
+  numerical execution. The ordinary picker keeps four inputs.
   Semantic restore and planning remain independent of execution qualification.
 - `backtest/financial/metrics.py` and `backtest/screening.py` for today's built-in
   pair and display-unit threshold contracts. These are not a general scalar

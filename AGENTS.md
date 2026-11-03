@@ -1,5 +1,39 @@
 # EBITDA/EV January book
 
+## Phase 11 resumption — 3 November 2026
+
+The user explicitly resumes Phase 11 from `72457bc` on
+`feature/custom-variables`, including implementation, required private synthetic
+verification and independently audited commits. The [execution plan](docs/plans/custom-variables/phases/phase-11/execution-plan-2026-11-03.md)
+records all exits and independent assignments. Each filed slice design assigns
+its narrow protected seams before edits. This supersedes earlier Phase 11 holds
+only. Preserve Phase 10 owner contexts, financial policy, stored rounding,
+immutable bytes, bounded reads, freshness, cancellation and existing ceilings.
+Original remains default; unsupported numerical work fails without fallback.
+Main and the engine worktree remain read-only. Phase 12, integration, merge,
+push, deployment, live restart, download and access or mutation of live runtime,
+cache or durable-store assets remain unauthorized. Use private fixtures only.
+
+Phase 11 Slice 1 has passed independent preactivation audit. Its exact qualified
+policy is active in this feature source. All 77 provider/backend IDs, 52 direct
+inputs and 33 reusable definitions have private qualification through the
+existing Original and bounded numerical owners. Final public-source WSL checks
+pass 726 tests with five expected platform skips. Native offline core checks
+pass 686 tests with one environment skip; separate application, inventory,
+resource and arithmetic-boundary checks pass. Retain the exact per-run source
+correspondence, concurrent timings and unavailable cases in the [phase record](docs/plans/custom-variables/phases/phase-11/README.md).
+Slice 1 completes in the independently audited commit containing its phase record. The ordinary editor retains
+four inputs; expanded authoring and coverage remain Slice 2 work. Phase 11 is
+not complete. This source work establishes no installed readiness or live data
+coverage. All integration and Phase 12 holds remain.
+
+The user's later instruction is to stop after this Slice 1 is committed.
+Finish its final verification, independent audit and commit, then pause the
+Phase 11 goal. Do not begin Slice 2 without resumption. The [Slice 2 handoff](docs/plans/custom-variables/phases/phase-11/handoffs/slice-02.md)
+retains the remaining editor, coverage and workflow exits. Do not call Phase 11
+complete or start Phase 12.
+
+
 Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
 `work on phase 10` clarification to `$finish-phase` on `feature/custom-variables`.
 The [execution plan](docs/plans/custom-variables/phases/phase-10/execution-plan-2026-11-03.md)

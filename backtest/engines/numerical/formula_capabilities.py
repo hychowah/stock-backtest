@@ -8,7 +8,8 @@ does not construct an evaluator, provider, runtime or financial connection.
 import hashlib
 from pathlib import Path
 
-from backtest.variables import definitions, evaluation
+from backtest.variables import definitions, evaluation, selection
+from backtest import observations
 
 VERSION = 1
 MAX_CHUNK_STEPS = 256
@@ -17,6 +18,16 @@ OPERATIONS = ('constant', 'parameter', 'annual', 'ref', 'at', 'lookback',
               'neg', 'add', 'sub', 'mul', 'div')
 PARAMETERS = ('annual.revenue', 'annual.operating_income',
               'annual.operating_margin', 'market.enterprise_value')
+# Compiler vocabulary is distinct from the currently qualified public policy.
+# These declarations alone do not admit an application request.
+IMPLEMENTED_OPERATIONS = OPERATIONS + ('positive_div',)
+IMPLEMENTED_PARAMETERS = tuple(item['id'] for item in observations.catalog())
+IMPLEMENTED_ANNUAL_STATISTICS = ('mean', 'min', 'max', 'growth', 'cagr')
+# Qualification is pinned separately from compiler/provider implementation.
+QUALIFIED_PARAMETERS = selection.QUALIFIED_PARAMETERS
+QUALIFIED_NAMESPACES = selection.QUALIFIED_NAMESPACES
+QUALIFIED_OPERATIONS = selection.QUALIFIED_OPERATIONS
+QUALIFIED_ANNUAL_STATISTICS = selection.QUALIFIED_ANNUAL_STATISTICS
 MODES = ('latest', 'january', 'custom', 'random')
 _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -26,6 +37,7 @@ def fingerprint():
     current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     if current != _LOADED:
         raise definitions.FormulaError('STALE_INPUT_GENERATION', '', 'Loaded numerical capability source changed.')
+    selection.policy_fingerprint()
     return current
 
 
@@ -33,9 +45,9 @@ def capabilities():
     """Return detached supported semantics; readiness and coverage are separate."""
     return dict(format='variable-capabilities', version=1,
         backend_id='numba-formulas', backend_version=VERSION,
-        definition_versions=[1], catalog_versions=['financial-parameters/1'],
-        temporal_policies=['annual-lag90/1'], parameter_ids=list(PARAMETERS),
-        operations=list(OPERATIONS), annual_statistics=['mean', 'min', 'max'],
+        definition_versions=[1, 2, 3], catalog_versions=['financial-parameters/1', 'financial-parameters/2', 'financial-parameters/3'],
+        temporal_policies=['annual-lag90/1'], parameter_ids=list(QUALIFIED_PARAMETERS),
+        operations=sorted(QUALIFIED_OPERATIONS), annual_statistics=sorted(QUALIFIED_ANNUAL_STATISTICS),
         root_modes=['historical', 'latest'], limits=dict(evaluation.CEILINGS),
         max_chunk_steps=MAX_CHUNK_STEPS, max_cache_bytes=MAX_CACHE_BYTES,
         application_admission=True, application_modes=list(MODES),
@@ -47,18 +59,17 @@ def require_program(program, *, checkpoint=lambda: None):
     checkpoint()
     checked = definitions.require_program(program)
     if checked['version'] != 1 or any(
-            item['definition']['version'] != 1 or
-            item['definition']['parameter_catalog'] != 'financial-parameters/1' or
-            item['definition']['temporal_policy'] != 'annual-lag90/1'
+            (item['definition']['version'], item['definition']['parameter_catalog'],
+             item['definition']['temporal_policy']) not in QUALIFIED_NAMESPACES
             for item in checked['bundle']['definitions']):
         raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', '/variables', 'Unsupported numerical formula namespace.')
     for node in checked['nodes']:
         checkpoint()
-        if node['op'] not in OPERATIONS:
+        if node['op'] not in QUALIFIED_OPERATIONS:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported numerical formula operation.')
-        if node['op'] == 'annual' and node['stat'] not in ('mean', 'min', 'max'):
+        if node['op'] == 'annual' and node['stat'] not in QUALIFIED_ANNUAL_STATISTICS:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported numerical annual statistic.')
-        if node['op'] in ('parameter', 'annual') and node['parameter'] not in PARAMETERS:
+        if node['op'] in ('parameter', 'annual') and node['parameter'] not in QUALIFIED_PARAMETERS:
             raise definitions.FormulaError('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported numerical observation parameter.')
     fingerprint()
     return checked

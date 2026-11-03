@@ -225,10 +225,11 @@ def canonical_block(block):
     if set(observed)!={'contexts','format','generation','projection','provider_policy','results','roots','version'}:
         raise AssertionError('Unexpected observation block fields.')
     for item in observed['roots']:
-        roots[item['root']]=(item['symbol'],item['pool'],item['mode'],item['date'])
+        scope = definitions.canonical(item['owner_scope']) if 'owner_scope' in item else None
+        roots[item['root']]=(item['symbol'],item['pool'],item['mode'],item['date'],scope)
     context_counts=defaultdict(int);contexts={}
     for item in observed['contexts']:
-        if set(item)!={'id','root','date'}:raise AssertionError('Unexpected temporal context fields.')
+        if set(item) not in ({'id','root','date'}, {'id','root','date','owner_scope'}):raise AssertionError('Unexpected temporal context fields.')
         root=roots[item['root']];ordinal=context_counts[root];context_counts[root]+=1
         contexts[item['id']]=(root,ordinal,item['date'])
     observation_counts=defaultdict(int);observations={}
@@ -239,7 +240,10 @@ def canonical_block(block):
     root_rows=[]
     for item in observed['roots']:
         row=deepcopy(item);row['root']=roots[item['root']];root_rows.append(row)
-    context_rows=[dict(id=contexts[item['id']],root=roots[item['root']],date=item['date']) for item in observed['contexts']]
+    context_rows=[]
+    for item in observed['contexts']:
+        row=deepcopy(item);row['id']=contexts[item['id']];row['root']=roots[item['root']]
+        context_rows.append(row)
     observation_rows=[]
     for item in observed['results']:
         row=deepcopy(item);row['id']=observations[item['id']];row['context']=contexts[item['context']]

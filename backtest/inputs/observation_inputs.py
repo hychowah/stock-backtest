@@ -96,9 +96,65 @@ def store_latest(db, symbol, pool, evidence):
                _prepared_record((symbol, pool, int(evidence['admitted']), encoded(evidence))))
 
 
+_CONTENT_COLUMNS = {
+    'observation_sources': ('symbol', 'endpoint', 'evidence_json'),
+    'observation_annual': ('symbol', 'endpoint', 'fiscal', 'evidence_json'),
+    'observation_latest': ('symbol', 'pool', 'admitted', 'evidence_json'),
+    'observation_dated': ('symbol', 'endpoint', 'day', 'evidence_json'),
+    'observation_sessions': ('day', 'evidence_json'),
+    'observation_measure_contexts': ('mode', 'pool', 'context_date', 'symbol', 'evidence_json'),
+}
+
+
+def _content_json_available(db):
+    try:
+        result = db.execute("SELECT json_array('probe')").fetchone()
+    except sqlite3.OperationalError as error:
+        if str(error) == 'no such function: json_array':
+            return False
+        raise
+    if result is None or result[0] != '["probe"]':
+        return False
+    # A connection-level replacement may agree on the probe but encode other
+    # rows differently. Use the ordinary encoder unless SQLite reports its
+    # built-in function and no application-defined replacement.
+    functions = [row for row in db.execute('PRAGMA function_list')
+                 if row[0].lower() == 'json_array']
+    return any(row[1] == 1 and row[4] == -1 for row in functions) and not any(
+        row[1] == 0 for row in functions)
+
+
+def _content_rows(db, table, order, json_available):
+    """Use native JSON only for exact known schemas and ASCII text/integer rows."""
+    if not json_available:
+        for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
+            yield None, row
+        return
+    columns = _CONTENT_COLUMNS[table]
+    schema = db.execute("SELECT type FROM sqlite_master WHERE name=?", (table,)).fetchone()
+    temporary = db.execute("SELECT type FROM sqlite_temp_master WHERE name=?", (table,)).fetchone()
+    info = db.execute(f'PRAGMA table_xinfo({table})').fetchall()
+    if (temporary is not None or schema is None or schema[0] != 'table'
+            or tuple(row[1] for row in info) != columns or any(row[6] != 0 for row in info)):
+        for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
+            yield None, row
+        return
+    checks = []
+    for column in columns:
+        if table == 'observation_latest' and column == 'admitted':
+            checks.append(f"typeof({column}) IN ('integer','null')")
+        else:
+            checks.append(f"(typeof({column})='null' OR (typeof({column})='text' AND length(CAST({column} AS BLOB))=length({column})))")
+    expression = f"CASE WHEN {' AND '.join(checks)} THEN json_array({','.join(columns)}) END"
+    for row in db.execute(f'SELECT {expression}, * FROM {table} ORDER BY {order}'):
+        yield row[0], row[1:]
+
+
 def content_identity(db, checkpoint=lambda: None, *, scopes=None):
+    """Hash every row at each call; native encoding never caches freshness."""
     digest = hashlib.sha256()
     digest.update(('scopes\n' + encoded([] if scopes is None else scopes) + '\n').encode())
+    json_available = _content_json_available(db)
     for table, order in (('observation_sources', 'symbol,endpoint'),
                          ('observation_annual', 'symbol,endpoint,fiscal'),
                          ('observation_latest', 'symbol,pool'),
@@ -106,9 +162,10 @@ def content_identity(db, checkpoint=lambda: None, *, scopes=None):
                          ('observation_sessions', 'day'),
                          ('observation_measure_contexts', 'mode,pool,context_date,symbol')):
         digest.update((table + '\n').encode())
-        for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
+        for fast, row in _content_rows(db, table, order, json_available):
             checkpoint()
-            digest.update((encoded(tuple(row)) + '\n').encode())
+            text = encoded(tuple(row)) if fast is None else fast.replace('\x7f', '\\u007f')
+            digest.update((text + '\n').encode())
     return digest.hexdigest()
 
 
@@ -328,7 +385,7 @@ class ReadView:
             raise ValueError('Prepared observation record exceeds its byte bound.')
         return json.loads(text)
 
-    def company(self, symbol, pool, *, budget=None, checkpoint=lambda: None):
+    def company(self, symbol, pool, *, budget=None, requirements=None, checkpoint=lambda: None):
         # The observation operation owns whole-generation admission and its
         # final freshness check. A company read inspects only its bounded facts.
         if self.closed:
@@ -349,6 +406,13 @@ class ReadView:
         if budget is not None and size > budget['bytes']:
             raise ValueError('Observation company facts exceed their byte bound.')
         endpoints = financial_inputs.observation_fields()
+        if requirements is not None:
+            if (type(requirements) is not dict or any(
+                    endpoint not in endpoints or type(fields) not in (set, frozenset)
+                    or not fields <= set(endpoints[endpoint])
+                    for endpoint, fields in requirements.items())):
+                raise ValueError('Invalid observation fact requirements.')
+            return self._projected_company(symbol, pool, reports, requirements, budget, checkpoint)
         annual = {endpoint: {} for endpoint in endpoints}
         # Bound total retained rows and each endpoint's full history separately.
         # The provider's max_annual preflight counts all endpoints together.
@@ -370,6 +434,75 @@ class ReadView:
                                   (symbol, pool)).fetchone()
         result = dict(symbol=symbol, pool=pool, reports=reports, annual=annual, sources=sources,
                       latest=decode(latest[0]) if latest else None)
+        if budget is not None and len(encoded(result).encode('utf-8')) > budget['bytes']:
+            raise ValueError('Observation company facts exceed their byte bound.')
+        return result
+
+    def _projected_company(self, symbol, pool, reports, requirements, budget, checkpoint):
+        """Decode only requested states; retain income dates for the fiscal spine."""
+        fields_by_endpoint = financial_inputs.observation_fields()
+        annual = {endpoint: {} for endpoint in requirements}
+        size = len(encoded(reports).encode('utf-8'))
+        def decode(text):
+            nonlocal size
+            size += len(text.encode('utf-8'))
+            if budget is not None and size > budget['bytes']:
+                raise ValueError('Observation company facts exceed their byte bound.')
+            return self._json(text)
+        if not requirements:
+            # Report EBITDA and dated owner calculations need the report
+            # anchor, not annual statement records or their source evidence.
+            result = dict(symbol=symbol, pool=pool, reports=reports,
+                          annual={}, sources={}, latest=None)
+            if budget is not None and len(encoded(result).encode('utf-8')) > budget['bytes']:
+                raise ValueError('Observation company facts exceed their byte bound.')
+            return result
+        if requirements:
+            annual.setdefault('income-statement', {})
+        # Check original record sizes and history counts even when fields are
+        # projected away. SQLite returns lengths, not complete JSON to Python.
+        counts = {}
+        for endpoint, length in self._db.execute(
+                'SELECT endpoint,length(CAST(evidence_json AS BLOB)) FROM observation_annual '
+                'WHERE symbol=? ORDER BY endpoint,fiscal LIMIT ?',
+                (symbol, len(fields_by_endpoint) * self.max_history + 1)):
+            checkpoint()
+            counts[endpoint] = counts.get(endpoint, 0) + 1
+            if endpoint not in fields_by_endpoint or counts[endpoint] > self.max_history or length > self.max_record_bytes:
+                raise ValueError('Prepared observation history exceeds its bound.')
+        for endpoint, length in self._db.execute(
+                'SELECT endpoint,length(CAST(evidence_json AS BLOB)) FROM observation_sources '
+                'WHERE symbol=? AND endpoint IN (' + ','.join('?' for _ in fields_by_endpoint) + ') '
+                'ORDER BY endpoint LIMIT ?', (symbol, *fields_by_endpoint, len(fields_by_endpoint) + 1)):
+            checkpoint()
+            if length > self.max_record_bytes:
+                raise ValueError('Prepared observation record exceeds its bound.')
+        latest = self._db.execute('SELECT length(CAST(evidence_json AS BLOB)) FROM observation_latest '
+                                  'WHERE symbol=? AND pool=?', (symbol, pool)).fetchone()
+        if latest and latest[0] > self.max_record_bytes:
+            raise ValueError('Prepared observation record exceeds its bound.')
+        for endpoint in annual:
+            fields = sorted(requirements.get(endpoint, ()))
+            projection = ','.join('json_extract(evidence_json, ?)' for _ in fields)
+            sql = 'SELECT fiscal' + (',' + projection if projection else '') + ' FROM observation_annual WHERE symbol=? AND endpoint=? ORDER BY fiscal LIMIT ?'
+            args = tuple('$."' + field + '"' for field in fields) + (symbol, endpoint, self.max_history + 1)
+            for row in self._db.execute(sql, args):
+                checkpoint()
+                states = {}
+                for field, value in zip(fields, row[1:]):
+                    if value is not None:
+                        states[field] = decode(value)
+                annual[endpoint][row[0]] = states
+        sources = {}
+        if requirements:
+            endpoints = sorted(requirements)
+            for endpoint, evidence in self._db.execute(
+                    'SELECT endpoint,evidence_json FROM observation_sources WHERE symbol=? AND endpoint IN ('
+                    + ','.join('?' for _ in endpoints) + ') ORDER BY endpoint LIMIT ?',
+                    (symbol, *endpoints, len(endpoints) + 1)):
+                checkpoint()
+                sources[endpoint] = decode(evidence)
+        result = dict(symbol=symbol, pool=pool, reports=reports, annual=annual, sources=sources, latest=None)
         if budget is not None and len(encoded(result).encode('utf-8')) > budget['bytes']:
             raise ValueError('Observation company facts exceed their byte bound.')
         return result

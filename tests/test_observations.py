@@ -103,6 +103,21 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(values['results'][2]['unit'], 'USD')
         self.assertTrue(all(call.args[2] == 'price' for call in self.lookup.call_args_list))
 
+    def test_explicit_owner_scope_is_checked_and_preserved(self):
+        view = self.view()
+        contexts = [dict(id='root', kind='root', symbol='A', pool='cached',
+                         mode='latest', date=self.latest_date,
+                         owner_scope=dict(kind='prepared', book=0))]
+        result = obs.observe(obs.plan([self.request()], contexts), view).to_dict()
+        self.assertEqual(result['roots'][0]['owner_scope'], contexts[0]['owner_scope'])
+        self.assertEqual(result['contexts'][0]['owner_scope'], contexts[0]['owner_scope'])
+        contexts[0]['owner_scope'] = dict(kind='prepared', book=1)
+        with self.assertRaises(obs.ObservationError):
+            obs.observe(obs.plan([self.request()], contexts), view)
+        contexts[0]['owner_scope'] = dict(kind='prepared', book=True)
+        with self.assertRaises(obs.ObservationError):
+            obs.plan([self.request()], contexts)
+
     def test_plan_strict_shape_types_parameters_dates_and_immutable_snapshot(self):
         requests, contexts = [self.request()], self.contexts()
         plan = obs.plan(requests, contexts)
@@ -313,7 +328,7 @@ class ProviderTests(unittest.TestCase):
         view = self.view()
         bounds = view.bounds
         exact = (2 * (bounds['report_rows'] + bounds['population']) + 1
-                 + bounds['max_reports'] + bounds['max_annual'] + 6
+                 + bounds['max_reports'] + 2 * bounds['max_annual'] + 9
                  + bounds['max_reports'] + bounds['max_annual'] + 1)
         self.assertTrue(obs.observe(obs.plan([self.request()], self.contexts(), dict(rows=exact)), view).to_dict()['results'][0]['valid'])
         with patch.object(view, 'admit', side_effect=AssertionError('Complete population read')):

@@ -1,5 +1,13 @@
 # Custom ranking and filtering variables
 
+Phase 11 resumes on 3 November 2026 from `72457bc` under the user's explicit
+`$finish-phase` instruction. The [execution plan](phases/phase-11/execution-plan-2026-11-03.md)
+tracks all agreed exits, exact slice ownership and independently planned,
+implemented and audited commits. The native goal covers the complete phase and
+its held Phase 12 handoff. Earlier Phase 11 holds are superseded only for this
+phase. Main/engine integration and every live-runtime action remain held.
+
+
 Date: 2026-10-30
 
 Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
@@ -364,7 +372,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and [Phase 9 handoff](phases/phase-08/handoffs/phase-09.md). All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
 | **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and [execution plan](phases/phase-09/execution-plan-2026-11-03.md). Preserve financial policy and generation ownership. |
 | **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), [execution plan](phases/phase-10/execution-plan-2026-11-03.md) and [held Phase 11 handoff](phases/phase-10/handoffs/phase-11.md). |
-| **11. Discoverable, qualified capabilities** | Planned: expanded editor, bounded coverage inspection and both-engine qualification | [Continuation: Phase 11](parameter-expansion-plan-2026-11-03.md#phase-11--discoverable-qualified-capabilities). Support, readiness and data coverage stay distinct. |
+| **11. Discoverable, qualified capabilities** | Stop after audited Slice 1 commit: expanded captured execution qualified; editor and bounded coverage inspection remain | [Phase record](phases/phase-11/README.md) and [Slice 2 handoff](phases/phase-11/handoffs/slice-02.md). Exact policy activated after independent preactivation audit; Slice 1 completes in the independently audited commit containing its phase record. The user must resume remaining Phase 11 work. |
 | **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
 
 Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.

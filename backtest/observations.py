@@ -83,6 +83,27 @@ def catalog():
                  contexts=['root', 'at', 'lookback']) for key, value in _CATALOG.items()]
 
 
+def requires_annual_fields(requests):
+    """Describe fact demand for aggregate reservations without exposing fields."""
+    return any(item['parameter'] in _ANNUAL or item['parameter'] == 'annual.operating_margin'
+               for item in requests)
+
+
+def additional_work_bound(requests, contexts, bounds):
+    """Pay for repeated scans and owner work beyond one company read per root."""
+    reports, annual = bounds['max_reports'], bounds['max_annual']
+    financial = bounds.get('max_financial', annual)
+    owner_contexts = {item['context'] for item in requests if item['parameter'].startswith('owner.')}
+    owner_count = sum(item['parameter'].startswith('owner.') for item in requests)
+    report_count = sum(item['parameter'] == 'annual.report_ebitda' for item in requests)
+    dated_count = sum(item['parameter'] in _DATED for item in requests)
+    annual_work = sum(item['count'] * (annual + 1) for item in requests
+                      if item['parameter'] in _ANNUAL or item['parameter'] == 'annual.operating_margin')
+    return (len(contexts) * reports + 2 * report_count * reports + annual_work + 4 * dated_count
+            + len(owner_contexts) * (3 * reports + 4 * financial + 10)
+            + owner_count * (reports + financial + 1))
+
+
 def _fail(code, path, message):
     raise ObservationError(code, path, message)
 
@@ -141,7 +162,10 @@ def _compile(requests, contexts, limits):
                   'lookback': ('id', 'kind', 'parent', 'months')}
         if not isinstance(kind, str) or kind not in fields:
             _fail('UNSUPPORTED_OPERATION', path, 'Unsupported observation context.')
-        _shape(item, fields[kind], path)
+        expected = fields[kind]
+        if kind == 'root' and 'owner_scope' in item:
+            expected = (*expected, 'owner_scope')
+        _shape(item, expected, path)
         _identifier(item['id'], path + '/id')
         if item['id'] in nodes:
             _fail('INVALID_SHAPE', path, 'Duplicate observation context.')
@@ -150,6 +174,13 @@ def _compile(requests, contexts, limits):
                     or item['pool'] not in ('cached', 'legacy') or item['mode'] not in ('historical', 'latest')):
                 _fail('INVALID_SHAPE', path, 'Invalid root company, pool or mode.')
             _day(item['date'], path + '/date')
+            if 'owner_scope' in item:
+                scope = item['owner_scope']
+                if (type(scope) is not dict or
+                    not (scope == {'kind': 'dated'} or
+                         (set(scope) == {'kind', 'book'} and scope['kind'] == 'prepared'
+                          and type(scope['book']) is int and scope['book'] >= 0))):
+                    _fail('INVALID_SHAPE', path + '/owner_scope', 'Invalid owner scope.')
         else:
             _identifier(item['parent'], path + '/parent')
             if kind == 'at':
@@ -171,6 +202,8 @@ def _compile(requests, contexts, limits):
         visiting.add(identity)
         if item['kind'] == 'root':
             value = dict(id=identity, root=identity, date=item['date'])
+            if 'owner_scope' in item:
+                value['owner_scope'] = item['owner_scope']
             depths[identity] = 1
         else:
             parent = resolve(item['parent'], depth + 1)
@@ -371,16 +404,33 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
     policy = policy_fingerprint()
     bounds = inputs.bounds
     roots = [item for item in submitted['contexts'] if item['kind'] == 'root']
+    # An explicit prepared identity is a checked owner, never a fallback hint.
+    for root in roots:
+        scope = root.get('owner_scope')
+        if scope and scope['kind'] == 'prepared' and not any(
+                item['mode'] == root['mode'] and item['pool'] == root['pool']
+                and item['context_date'] == root['date'] and item['book'] == scope['book']
+                for item in inputs.projection['scopes']):
+            _fail('INVALID_SHAPE', '/contexts', 'Prepared owner scope does not match the admitted projection.')
     root_nodes = {item['id']: item for item in roots}
     dates = {item['date'] for item in roots if item['mode'] == 'historical'}
-    fact_keys = {(root_nodes[resolved[item['context']]['root']]['symbol'],
-                  root_nodes[resolved[item['context']]['root']]['pool'], resolved[item['context']]['date'])
-                 for item in submitted['requests']}
+    fact_keys = set()
+    for item in submitted['requests']:
+        context = resolved[item['context']]
+        root = root_nodes[context['root']]
+        parameter = item['parameter']
+        if (parameter in _DATED or
+                (parameter == 'market.enterprise_value' and context['id'] == context['root']) or
+                (parameter.startswith('owner.') and
+                 measure_observations.prepared_scope(inputs.projection, root, context))):
+            continue
+        fact_keys.add((root['symbol'], root['pool'], context['date']))
     inspected = len(dates) * 2 * (bounds['report_rows'] + bounds['population']) + len(roots)
     companies = {(symbol, pool) for symbol, pool, _ in fact_keys}
     inspected += sum(3 if item['parameter'].startswith('treasury.') else 4
                      for item in submitted['requests'] if item['parameter'] in _DATED)
-    inspected += len(companies) * (bounds['max_reports'] + bounds['max_annual'] + 6)
+    annual_rows = 2 * bounds['max_annual'] if requires_annual_fields(submitted['requests']) else 0
+    inspected += len(companies) * (bounds['max_reports'] + annual_rows + 9)
     inspected += len({root_nodes[resolved[item['context']]['root']]['symbol'] for item in submitted['requests'] if item['parameter'] == 'annual.report_ebitda'}) * bounds['max_reports']
     # Fetching the cached broad history and scanning it for each requested
     # report-EBITDA selection are separate work, even without income rows.
@@ -388,7 +438,8 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                      if item['parameter'] == 'annual.report_ebitda')
     inspected += len(fact_keys) * bounds['max_reports']
     inspected += sum(item['count'] * (bounds['max_annual'] + 1)
-                     for item in submitted['requests'] if item['parameter'].startswith('annual.'))
+                     for item in submitted['requests'] if item['parameter'] in _ANNUAL
+                     or item['parameter'] == 'annual.operating_margin')
     owner_contexts = {item['context'] for item in submitted['requests'] if item['parameter'].startswith('owner.')}
     inspected += len(owner_contexts) * (3 * bounds['max_reports'] + 4 * bounds.get('max_financial', bounds['max_annual']) + 10)
     inspected += sum(bounds['max_reports'] + bounds.get('max_financial', bounds['max_annual']) + 1
@@ -396,12 +447,28 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
     if inspected > limits['rows']:
         _fail('WORK_LIMIT', '/limits/rows', 'Observation request exceeds its inspected-row bound.')
     decisions = inputs.admit(roots, dict(rows=limits['rows'], bytes=limits['bytes']), checkpoint)
+    for root, decision in zip(roots, decisions):
+        if 'owner_scope' in root:
+            decision['owner_scope'] = root['owner_scope']
     roots_by_id = {item['root']: item for item in decisions}
     result = dict(format='parameter-observations', version=VERSION, generation=inputs.identity,
                   projection=inputs.projection['content'], provider_policy=policy,
                   roots=decisions, contexts=list(resolved.values()), results=[])
     used_bytes = len(encoded(result).encode('utf-8'))
     facts_cache, anchor_cache, period_cache, broad_cache, owner_cache = {}, {}, {}, {}, {}
+    # Union requirements for each company before any bounded company read.
+    # Income dates form the fiscal spine even when its fields are not needed.
+    requirements = {}
+    for request in submitted['requests']:
+        context = resolved[request['context']]
+        root = root_nodes[context['root']]
+        needed = requirements.setdefault((root['symbol'], root['pool']), {})
+        parameter = request['parameter']
+        source = _ANNUAL.get(parameter)
+        if source:
+            needed.setdefault(source['endpoint'], set()).add(source['field'])
+        elif parameter == 'annual.operating_margin':
+            needed.setdefault('income-statement', set()).update(('operatingIncome', 'revenue'))
     facts_bytes = 0
     for request in submitted['requests']:
         checkpoint()
@@ -444,7 +511,8 @@ def observe(observation_plan, inputs, checkpoint=lambda: None):
                 key = root['symbol'], root['pool']
                 if key not in facts_cache:
                     facts_cache[key] = inputs.company(root['symbol'], root['pool'],
-                        budget=dict(bytes=limits['bytes'] - facts_bytes), checkpoint=checkpoint)
+                        budget=dict(bytes=limits['bytes'] - facts_bytes),
+                        requirements=requirements[key], checkpoint=checkpoint)
                     facts_bytes += len(encoded(facts_cache[key]).encode('utf-8'))
                     if facts_bytes > limits['bytes']:
                         _fail('WORK_LIMIT', '/limits/bytes', 'Observation facts exceed their byte bound.')

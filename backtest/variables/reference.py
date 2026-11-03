@@ -6,8 +6,8 @@ interpreter owns binary64 tree order, oldest-first annual folds, signed division
 and first-unavailable-operand precedence. Growth and CAGR require every member,
 then a positive first value (NONPOSITIVE_DENOMINATOR). CAGR also requires a
 positive last value (NONPOSITIVE_ENDPOINT). Nonfinite arithmetic is unavailable
-as NONFINITE_RESULT. These version 2 operations are reference-only; scalar and
-application admission are separate. It imports no numerical packages.
+as NONFINITE_RESULT. Scalar and application qualification are separate from
+implemented arithmetic. This module imports no numerical packages.
 """
 import hashlib
 import math

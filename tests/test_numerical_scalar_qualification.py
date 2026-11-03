@@ -19,6 +19,23 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class ComparatorTests(unittest.TestCase):
+    def test_explicit_owner_scope_is_part_of_complete_meaning(self):
+        import test_variable_definitions as language
+        fixture=Fixture(1);self.addCleanup(fixture.db.close)
+        capture=fixture.capture(language.constant('1')).to_dict()
+        program=library.VariableCapture(definitions.canonical(capture['variables'])).program
+        base=dict(symbol='A0000',pool='cached',mode='latest',date='2015-01-05')
+        roots=[dict(base,owner_scope=dict(kind='prepared',book=0)),
+               dict(base,owner_scope=dict(kind='dated'))]
+        with fixture.view() as view:
+            original=reference.evaluate(reference.plan(program,roots),view).to_dict()
+        compare_blocks([original],[deepcopy(original)])
+        for group in ('roots','contexts'):
+            changed=deepcopy(original)
+            changed['observations'][group][0]['owner_scope']=dict(kind='dated')
+            with self.subTest(group=group),self.assertRaises(AssertionError):
+                compare_blocks([original],[changed])
+
     def test_complete_blocks_include_unselected_missing_values_and_every_operation(self):
         fixture=Fixture(300);self.addCleanup(fixture.db.close)
         capture=fixture.capture().to_dict()
@@ -45,6 +62,18 @@ class ComparatorTests(unittest.TestCase):
         with self.assertRaises(AssertionError):compare_blocks(expected,changed)
         changed=deepcopy(actual);changed[-1]['observations']['results'][0]['members'][0]['fiscal_date']='2013-06-30'
         with self.assertRaises(AssertionError):compare_blocks(expected,changed)
+
+    def test_denominator_rule_is_not_normalized_away(self):
+        import test_variable_definitions as language
+        fixture=Fixture(1);self.addCleanup(fixture.db.close)
+        capture=fixture.capture(language.binary('div',language.constant('1'),language.constant('2'))).to_dict()
+        program=library.VariableCapture(definitions.canonical(capture['variables'])).program
+        roots=[dict(symbol='A0000',pool='cached',mode='historical',date='2015-01-02')]
+        with fixture.view() as view:
+            original=reference.evaluate(reference.plan(program,roots),view).to_dict()
+        changed=deepcopy(original)
+        next(item for item in changed['operations'] if 'denominator_rule' in item)['denominator_rule']='changed'
+        with self.assertRaises(AssertionError):compare_blocks([original],[changed])
 
     def test_chunk_local_identifiers_do_not_change_resolved_meaning(self):
         fixture=Fixture(2);self.addCleanup(fixture.db.close)

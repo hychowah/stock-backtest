@@ -11,6 +11,7 @@ import test_variable_definitions as lang
 import test_observations as fixtures
 import test_variable_selection as selection_tests
 import test_strategy_requests as requests
+EXPANDED_QUALIFIED = 3 in formula_capabilities.capabilities()['definition_versions']
 
 
 def make(stat='growth', count=3, version=2, catalog='financial-parameters/1'):
@@ -102,7 +103,7 @@ class GrowthTests(unittest.TestCase):
         wrong = make(); wrong['output'] = dict(unit='USD', display='usd')
         with self.assertRaises(d.FormulaError): compile_def(wrong)
 
-    def test_mixed_reference_and_unused_v2_rejected_by_both_gates(self):
+    def test_mixed_reference_and_unused_v2_follow_both_gates(self):
         old = lang.entry(lang.definition(lang.constant('2')), 'old')
         v2 = lang.definition(lang.reference(old)); v2['version'] = 2
         new = lang.entry(v2, 'new')
@@ -110,20 +111,23 @@ class GrowthTests(unittest.TestCase):
             program = d.validate(lang.bundle(old, new, roots=roots))
             self.assertEqual(reference.require_program(program), program.to_dict())
             for gate in (selection.require_program, formula_capabilities.require_program):
-                with self.assertRaises(d.FormulaError) as caught: gate(program)
-                self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
+                if EXPANDED_QUALIFIED:self.assertEqual(gate(program), program.to_dict())
+                else:
+                    with self.assertRaises(d.FormulaError) as caught: gate(program)
+                    self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
             root = dict(symbol='A', pool='legacy', mode='historical', date=self.fixture.root_date)
             plan = selection.plan(program, [root], selection_tests.specification(program))
             inputs = Mock()
-            with self.assertRaises(d.FormulaError) as caught:
-                selection.evaluate(plan, inputs)
-            self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
-            self.assertEqual(inputs.mock_calls, [])
+            if not EXPANDED_QUALIFIED:
+                with self.assertRaises(d.FormulaError) as caught:
+                    selection.evaluate(plan, inputs)
+                self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
+                self.assertEqual(inputs.mock_calls, [])
         root = dict(symbol='A', pool='legacy', mode='historical', date=self.fixture.root_date)
         block = reference.evaluate(reference.plan(program, [root]), self.fixture.view()).to_dict()
         self.assertEqual(block['results'][0]['value'], 2.)
 
-    def test_application_rejects_v2_before_preparation(self):
+    def test_application_v2_admission_follows_qualified_policy(self):
         definition = lang.definition(lang.constant('2')); definition['version'] = 2
         entry = lang.entry(definition, 'version2')
         capture = strategy_requests.capture_strategy(requests.intent(requests.formula(entry)), submitted=[entry]).to_dict()
@@ -131,9 +135,12 @@ class GrowthTests(unittest.TestCase):
         owner = calculations.Selectable(preparation)
         self.addCleanup(owner.retire); self.addCleanup(owner.close)
         for engine in ('original', 'experimental'):
-            with self.assertRaises(d.FormulaError) as caught:
-                owner.calculate('latest', dict(strategy=capture, engine=engine), None, None)
-            self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
+            if EXPANDED_QUALIFIED:
+                self.assertEqual(strategy_requests.check_options(dict(strategy=capture, engine=engine)), capture)
+            else:
+                with self.assertRaises(d.FormulaError) as caught:
+                    owner.calculate('latest', dict(strategy=capture, engine=engine), None, None)
+                self.assertEqual(caught.exception.code, 'UNSUPPORTED_CAPABILITY')
         self.assertEqual(preparation.mock_calls, [])
 
 if __name__ == '__main__': unittest.main()

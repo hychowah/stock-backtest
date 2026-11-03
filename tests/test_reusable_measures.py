@@ -91,6 +91,21 @@ class InventoryExecution(unittest.TestCase):
         self.assertEqual(len(block['results']), 20)
         self.assertTrue(all(result['valid'] for result in block['results']))
 
+    def test_report_ebitda_never_reads_annual_statement_rows(self):
+        from backtest import observations
+        fixture = fixtures.ProviderTests('test_catalog_and_example_return_ingredients_without_formula_arithmetic')
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        view = fixture.view()
+        view._bounds['max_annual'] = observations.CEILINGS['rows']
+        queries = []
+        fixture.db.set_trace_callback(queries.append)
+        self.addCleanup(fixture.db.set_trace_callback, None)
+        block = observations.observe(observations.plan(
+            [fixture.request(parameter='annual.report_ebitda')], fixture.contexts()), view).to_dict()
+        self.assertTrue(block['results'][0]['valid'])
+        self.assertFalse(any('observation_annual' in sql and 'LIMIT 0' not in sql for sql in queries))
+
     def test_each_measure_executes_in_larger_expression(self):
         fixture = fixtures.ProviderTests('test_catalog_and_example_return_ingredients_without_formula_arithmetic')
         fixture.setUp()
@@ -135,7 +150,16 @@ class InventoryExecution(unittest.TestCase):
                 outer = lang.entry(definition, 'outer')
                 bundle['definitions'].append(outer)
                 bundle['roots'] = [lang.root(outer)]
-                result = reference.evaluate(reference.plan(d.validate(bundle), [root]), view).to_dict()['results'][0]
+                plan = reference.plan(d.validate(bundle), [root])
+                block = reference.evaluate(plan, view).to_dict()
+                from backtest.engines.numerical import formula_capabilities
+                if 3 in formula_capabilities.capabilities()['definition_versions']:
+                    from backtest.engines.numerical import formulas
+                    from scalar_qualification import compare_blocks
+                    with formulas.Evaluator() as evaluator:
+                        numerical = evaluator.evaluate(plan, view).to_dict()
+                    compare_blocks([block], [numerical])
+                result = block['results'][0]
                 self.assertTrue(result['valid'], result)
                 self.assertEqual(result['value'], expected[key])
 
@@ -156,12 +180,15 @@ class InventoryExecution(unittest.TestCase):
         db.execute('DELETE FROM observation_metadata')
         view._expected = source.finish(db, fixture.latest_date, scopes=[dict(mode='historical', pool='legacy', context_date=fixture.root_date, book=2015)])
         from backtest import observations
-        contexts = fixture.contexts() + [dict(id='same', kind='at', parent='root', date=fixture.root_date)]
-        requests = [fixture.request(parameter='owner.pe', context=context, identity=context) for context in ('root','same')]
+        contexts = fixture.contexts() + [dict(id='same', kind='at', parent='root', date=fixture.root_date),
+            dict(fixture.contexts()[0], id='prepared', owner_scope=dict(kind='prepared', book=2015)),
+            dict(fixture.contexts()[0], id='dated', owner_scope=dict(kind='dated'))]
+        requests = [fixture.request(parameter='owner.pe', context=context, identity=context)
+                    for context in ('root','same','prepared','dated')]
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper:
             block = observations.observe(observations.plan(requests, contexts), view).to_dict()
-        self.assertEqual([x['members'][0]['value'] for x in block['results']], [9., 15e6])
-        helper.assert_called_once()
+        self.assertEqual([x['members'][0]['value'] for x in block['results']], [9., 15e6, 9., 15e6])
+        self.assertEqual(helper.call_count, 2)
         self.assertTrue(all(call.args[1] <= __import__('datetime').date.fromisoformat(fixture.root_date) for call in fixture.lookup.call_args_list if not call.args[3]))
 
     def test_report_ebitda_history_uses_broad_spine_and_missing_year(self):
@@ -211,9 +238,12 @@ class CaptureAndAdmission(unittest.TestCase):
         for roots in ([lang.root(old)], [lang.root(new)]):
             program = d.validate(lang.bundle(old, new, roots=roots))
             for gate in (selection.require_program, formula_capabilities.require_program):
-                with self.assertRaises(d.FormulaError) as error:
-                    gate(program)
-                self.assertEqual(error.exception.code, 'UNSUPPORTED_CAPABILITY')
+                if 3 in formula_capabilities.capabilities()['definition_versions']:
+                    self.assertEqual(gate(program), program.to_dict())
+                else:
+                    with self.assertRaises(d.FormulaError) as error:
+                        gate(program)
+                    self.assertEqual(error.exception.code, 'UNSUPPORTED_CAPABILITY')
         from backtest.application import calculations, strategy_requests
         import test_strategy_requests as requests
         capture = strategy_requests.capture_strategy(requests.intent(requests.formula(new)), submitted=[new]).to_dict()
@@ -222,9 +252,12 @@ class CaptureAndAdmission(unittest.TestCase):
         self.addCleanup(owner.retire)
         self.addCleanup(owner.close)
         for engine in ('original','experimental'):
-            with self.assertRaises(d.FormulaError) as error:
-                owner.calculate('latest', dict(strategy=capture, engine=engine), None, None)
-            self.assertEqual(error.exception.code, 'UNSUPPORTED_CAPABILITY')
+            if 3 in formula_capabilities.capabilities()['definition_versions']:
+                self.assertEqual(strategy_requests.check_options(dict(strategy=capture,engine=engine)), capture)
+            else:
+                with self.assertRaises(d.FormulaError) as error:
+                    owner.calculate('latest', dict(strategy=capture, engine=engine), None, None)
+                self.assertEqual(error.exception.code, 'UNSUPPORTED_CAPABILITY')
         self.assertEqual(preparation.mock_calls, [])
 
     def test_broad_report_history_does_not_require_income_or_legacy_eligibility(self):

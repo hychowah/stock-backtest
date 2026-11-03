@@ -71,15 +71,18 @@ class FormulaTests(unittest.TestCase):
 
     def test_callable_capability_is_exact_and_bounded_application_is_declared(self):
         capability = f.capabilities()
-        # Direct reference observations have expanded; numerical admission has not.
-        self.assertEqual(capability['parameter_ids'], ['annual.revenue', 'annual.operating_income',
-            'annual.operating_margin', 'market.enterprise_value'])
-        self.assertEqual(set(capability['operations']), {'constant','parameter','annual','ref','at','lookback','neg','add','sub','mul','div'})
+        expanded = 3 in capability['definition_versions']
+        expected = ([item['id'] for item in observations.catalog()] if expanded else
+            ['annual.revenue', 'annual.operating_income', 'annual.operating_margin', 'market.enterprise_value'])
+        self.assertEqual(capability['parameter_ids'], expected)
+        operations = {'constant','parameter','annual','ref','at','lookback','neg','add','sub','mul','div'}
+        if expanded: operations.add('positive_div')
+        self.assertEqual(set(capability['operations']), operations)
         self.assertTrue(capability['application_admission'])
         self.assertFalse(capability['eager']);self.assertFalse(capability['sample_preview'])
         self.assertEqual(capability['limits'], dict(r.CEILINGS))
         capability['parameter_ids'].clear()
-        self.assertEqual(len(f.capabilities()['parameter_ids']), 4)
+        self.assertEqual(len(f.capabilities()['parameter_ids']), len(expected))
 
     def test_binary64_order_has_independent_expected_values(self):
         c, b = language.constant, language.binary

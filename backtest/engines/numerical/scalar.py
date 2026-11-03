@@ -63,7 +63,7 @@ class Resources:
             record_bytes=writer.record_bytes,checkpoint=self.checkpoint,
             evaluate=self.evaluator.evaluate,scope_prefix='trial:'+str(number)+':',
             evaluation_limits=dict(retained_bytes=self.limits['formula']),aggregate_trials=trials,
-            metadata_bytes=self.limits['metadata'])
+            metadata_bytes=self.limits['metadata'],engine='experimental')
 
     def evaluate_periods(self,options,writer,*,number=1,trials=1):
         """Produce a complete scalar trial without owning its outer seal."""

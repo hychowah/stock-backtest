@@ -432,13 +432,20 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         if expected is None or any(descriptor[key] != expected[key] for key in ('unit', 'display', 'storage')):
             _fail('UNSUPPORTED_CAPABILITY', '/builtins', 'Captured scalar semantics are unsupported by the current backend.')
     if checked['variables'] is not None:
-        if engine == 'experimental':
-            from backtest.engines.numerical import formula_capabilities as admission
-        else:
-            from backtest.variables import selection as admission
-        admission.require_program(library.VariableCapture(
-            definitions.canonical(checked['variables'])).program, checkpoint=checkpoint)
+        require_formula_support(library.VariableCapture(
+            definitions.canonical(checked['variables'])).program, engine, checkpoint=checkpoint)
     return checked
+
+
+def require_formula_support(program, engine='original', *, checkpoint=backtest_control.checkpoint):
+    """Check the pinned backend before readiness or financial access."""
+    if engine == 'experimental':
+        from backtest.engines.numerical import formula_capabilities as admission
+    elif engine == 'original':
+        from backtest.variables import selection as admission
+    else:
+        _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Unsupported calculation engine.')
+    return admission.require_program(program, checkpoint=checkpoint)
 
 
 def preview_engine(engine='original'):
