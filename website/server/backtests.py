@@ -169,6 +169,29 @@ def schedule_request(self):
 
 def dispatch(handler,data_jobs):
     path=handler.path
+    if path in ('/api/variable-coverage/scopes','/api/variable-coverage/inspect') and handler.command=='POST':
+        origin=handler.headers.get('Origin')
+        if origin and origin!='http://'+handler.headers.get('Host',''):
+            handler.reply(403,dict(error='Open the website to inspect coverage.'));return True
+        try:
+            length=int(handler.headers.get('Content-Length','0'))
+            if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid coverage request size.')
+            request=durable_evidence.decode(handler.rfile.read(length))
+            expected=set() if path.endswith('/scopes') else {'strategy','scope'}
+            if type(request) is not dict or set(request)!=expected:raise ValueError('Invalid coverage request fields.')
+            if expected and type(request['strategy']) is not dict:
+                raise ValueError('Inspection requires a captured strategy object.')
+            with backtest_control.cancel_when(handler.disconnect_check()):
+                value=handler.server.calculations.coverage(request.get('strategy'),request.get('scope'))
+            handler.reply(200,value)
+        except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
+            return True
+        except (Unavailable,Busy):
+            handler.reply(503,dict(error='Prepared inputs are unavailable. Retry after preparation.'))
+        except (ValueError,TypeError) as error:
+            details=strategy_requests.failure_details(error) or dict(code=None,path=None)
+            handler.reply(400,dict(error=str(error),**details))
+        return True
     if path=='/api/variable-preview' and handler.command=='POST':
         origin=handler.headers.get('Origin')
         if origin and origin!='http://'+handler.headers.get('Host',''):

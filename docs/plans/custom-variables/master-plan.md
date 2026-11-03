@@ -1,168 +1,23 @@
 # Custom ranking and filtering variables
 
-Phase 11 resumes on 3 November 2026 from `72457bc` under the user's explicit
-`$finish-phase` instruction. The [execution plan](phases/phase-11/execution-plan-2026-11-03.md)
-tracks all agreed exits, exact slice ownership and independently planned,
-implemented and audited commits. The native goal covers the complete phase and
-its held Phase 12 handoff. Earlier Phase 11 holds are superseded only for this
-phase. Main/engine integration and every live-runtime action remain held.
-
-
-Date: 2026-10-30
-
-Phase 10 resumes on 3 November 2026 from `7b59835` under the user's
-`work on phase 10` clarification to `$finish-phase`. Its execution plan
-records the finite reusable-measure and annual-growth scope, exact ownership,
-independent slices and required evidence. This supersedes earlier Phase 10 holds
-only. Phases 11–12, main integration and live-runtime actions remain held.
-Phase 10 completes in source in the independently audited commit containing its
-[phase record](phases/phase-10/README.md). Slice 1 is `206e50c`; the final slice
-provides all 33 reusable reference measures. Final checks pass 592 WSL tests with
-five expected skips and 595 private native tests with one environment skip.
-Reference support does not qualify expanded authoring/application/numerical use.
-The Phase 11 handoff remains held.
-
-Phase 9 resumes on 3 November 2026 from `30ff79d` under the user's
-`start next phase $finish-phase` instruction. Its execution plan
-records narrow ownership, required evidence and independent slices. Phase 9 is
-complete in source in the audited commit containing its phase record. This
-supersedes earlier Phase 9 holds only for the authorized phase.
-Main/engine integration, publication, live data and Phases 11–12 remain held.
-The later instruction above separately resumes Phase 10.
-
-Parameter-list revision: 2026-11-02. The user requested a longer list of valuation
-inputs, limited to fields supplied by the existing FMP routes or calculations
-from those fields. This documentation update does not resume implementation.
-
-Status, 3 November 2026: **Phases 1–10 are complete in source.**
-The [Phase 8 record](phases/phase-08/README.md) retains independent audit,
-393 passing source-bound WSL tests and its handoff. The separate semantic catalog
-recognizes all 52 direct inputs and two existing adapters. Catalog /1 preserves
-the initial four observations; /2 adds the complete vocabulary and share units.
-At the Phase 8 boundary, only revenue, operating income, operating margin and EV
-were usable provider and picker observations. Phase 9 Slice 1 is audited
-`307a2c1`. Slice 2 now implements all 52 direct observations and the two existing
-adapters for callable reference `/1` and `/2` execution. Final independent audit
-corrections and source-bound WSL/private native verification are complete. The ordinary picker retains the
-four original inputs. Qualified scalar selection, preview, application and
-numerical `/2` execution remain closed. Named measures, broader authoring/backend
-qualification and integration remain assigned to Phases 10–12.
-
-The earlier 3 November resumption authorized Phase 8 implementation, independently
-audited commits and its handoff on `feature/custom-variables`. The later
-instruction above separately resumes Phase 9. Neither authorizes main integration,
-merge, push, publication, restart, download or live-data work.
-The [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
-retains the later work and its phase workflow. Earlier planning-only descriptions
-retain their original dated meaning.
-
-Phase 6 resumed from `f877c0c` and completes in three independently audited slices. The user's 2 November instruction authorizes
-variable editor and strategy integration with independently designed, implemented
-and audited slices. The current execution plan
-records three slices. Slice 1 is committed as `de14704`. Slice 2 implements
-Original scalar execution and immutable evidence. Its independent audit fixes
-and final source-bound checks are complete.
-Slice 3 implements the shared editor, draft capture and detached presentation
-against audited `9978ea7`. All six audit findings and the shared-dependency
-follow-up are fixed. Final checks pass 536 WSL tests, 446 private native tests
-and 18 source-bound browser checks. Actual UI, guide and complete export reviews
-pass. The current record retains exact source
-bindings, cleanup and superseded attempts.
-Phase 7 completes from `5cded92` on this feature branch. Its
-current execution plan records three
-slices. Slice 1 completes bounded compiled evaluation
-after independent audit and final source-bound checks. Slice 2
-implements dormant candidate-owned execution and full trial evidence recovery.
-All six independent audit findings are closed. Final source-bound WSL, guarded
-native and browser checks pass. Slice 3 passes the corrected-source private WSL
-and guarded native semantic, lifecycle and representative workload gates. Its
-bounded public numerical integration and shared pinned selector are implemented.
-Actual desktop/mobile browser and guide review, independent audit, final
-source-bound verification and private workload qualification pass. The
-slice record retains exact receipts and limits.
-Original remains default. No download, deployment, integration into main or
-default change is authorized.
+Current scope: Phases 1–11 are complete in source. Phase 11 Slice 1 is `3231c6c`;
+Slice 2 completes in the independently audited commit containing its
+[phase record](phases/phase-11/README.md). It adds discoverable shared authoring,
+exact measure Save/reopen, bounded recorded-scope coverage, actual browser checks,
+complete exports and detached replay. The [phase workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
+requires independent planning, a separate writer, independent audit and commits.
 
 ## Hold and resume
 
-Phase 8 completes from `3dccd88` under explicit 3 November authorization.
-Its execution plan records narrow
-ownership and one independently designed coherent slice. The
-[phase session workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
-remains canonical. The semantic contract, compatibility evidence, independent
-audit corrections, final verification and handoff are complete in the commit
-containing the phase record. Phase 9 also completes under the later instruction
-and current execution plan.
-Its two audited slices supply all direct observations and reference execution.
-Phase 10 now resumes under the
-later explicit instruction above; its earlier handoff remains historical.
-Preserve completed phase records as history. Earlier saved next-session prompts
-and dated holds do not resume a later phase or authorize main integration.
+The latest user request authorizes Phase 11 source implementation, private
+synthetic verification and audited commits. It supersedes the stop after Slice 1.
+Phase 12, integration, merge, push, deployment, installed restart, downloads and
+live runtime/cache/store access remain held. Main and engine worktrees remain
+read-only. A completed phase grants no authorization for the next phase.
 
-The latest 2 November instruction authorizes Phase 7 numerical backend
-implementation and qualification on this feature branch. It supersedes the
-numerical hold below. Phase 6 remains complete. The
-[current Phase 7 record](phases/phase-07/README.md) and
-[compatibility reconciliation](phases/phase-07/compatibility.md) describe the
-completed work. All three substantial slices receive independent design,
-implementation and smart-commit audits. Later designs use preceding committed
-source. Public experimental scalar admission remains closed in the first two slices. Original
-remains default, with no cutover authorized. Phase 1 payloads remain illustrative.
-The following Phase 6 and earlier records retain their dated meaning.
-
-Slice 1 adds complete immutable scalar strategy intent and library-free unsaved
-captures. It allocates no application result integer and changes no ordinary
-request, job, queue or result reader. Later slices receive fresh independent
-designs against preceding committed source. Financial/provider capabilities,
-source/input freshness, cancellation, ownership ordering, attachment lifetimes
-and execution-resource contracts remain unchanged. The
-Phase 5 handoff is the entry record; its
-Phase 6 hold is superseded by this explicit user authorization.
-The following Phase 2/3 records and older inspections remain dated context.
-
-The 30 October hold deferred Phases 2–7 until engine completion and an ownership
-decision. CB-14 and CB-15 now record complete supported opt-in readiness and
-normal-app selection. Their revised scope keeps Original as default. The older
-default-cutover assumption is superseded; it is not a current prerequisite.
-
-On 2 November the user requested Phase 2 planning, implementation and audited
-commits until completion in this feature worktree. That instruction assigns
-the narrow financial-input, prepared-admission, generation and provider scope
-here. The engine worktree is clean at `8850e77`; this branch and main started at
-`9455b6c`. Current package owners and completed CB-19 work were rechecked.
-`books.entry_valuation` and its numerical normalizer already exist and are reused.
-
-Phase 2 covers revenue, operating income, operating margin and enterprise value.
-Later field admission, expression arithmetic, scalar selection, durable variables,
-the editor and numerical formulas remain outside this resumption. The original
-Phase 1 contract and dated Phase 2 proposals remain review records; use the new
-execution plan for current ownership, interfaces and implementation sequence.
-
-The [engine-owner handoff](engine-handoff.md) records what to communicate to
-that worktree. It identifies reusable implementation, later contract changes and
-existing main integration obligations. It adds no engine task or readiness gate.
-Preparing a main-side record does not notify a separate engine session.
-
-The website keeps its existing built-in metrics and filters. Phase 2 adds
-prepared evidence, admitted roots and four dated parameter observations. It
-enables no custom strategy or formula runtime behavior.
-
-Phase 1 rechecked engine HEAD `a8cbb69` and its active working tree. Persistent
-isolated preview integration is present. CB-13 is recorded complete. CB-14
-capacity increments 1–4 are committed; increment 5 is partial, uncommitted and
-not verified for use. CB-15 remains blocked. The fixed policy catalog and
-pair-valued factor interface still require an explicit scalar-variable change.
-See ownership and inspected interfaces for source
-evidence and the distinction between existing agreements and proposed ownership.
-
-Phase 2 rechecked engine HEAD `3856d02`. That commit adds a hardware decision
-and stopped-session handoff; capacity5 source remains uncommitted. The engine
-working tree is actively changing. The earlier fixture failure is historical:
-the current source supplies its missing metadata, but this phase has not tested
-the repair. See the current inspection and
-provider design and ownership scope, and
-provider validation plan. No provider or
-custom-variable capability is implemented by these records.
+Earlier phase records and git history retain their dated scope and evidence.
+Current authorization and standing contracts live in `AGENTS.md`. Installed
+readiness and real-cache coverage require separate authorized qualification.
 
 ## Design
 
@@ -350,7 +205,7 @@ Completed artifacts preserve submitted definitions, selected values, labels, and
 
 **7. Future engine compatibility**
 
-The engine worktree is already developing a persistent numerical preview. Its current policy adapter explicitly accepts a fixed metric/filter catalog, and its factor interface emits ranking pairs. Arbitrary variables are therefore a contract change, not an automatic extension.
+The bounded numerical backend accepts qualified captured scalar programs. Its capability owner binds supported namespaces and parameters. Expanded recognition alone grants no execution qualification.
 
 The stable boundary should be **validated variable requirements → scalar values and validity**. The numerical engine can compile supported expressions behind that boundary. The reference evaluator remains the correctness authority.
 
@@ -372,7 +227,7 @@ Initially, custom formulas can use the local service in every website mode. Exis
 | **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and Phase 9 handoff. All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
 | **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and execution plan. Preserve financial policy and generation ownership. |
 | **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), execution plan and held Phase 11 handoff. |
-| **11. Discoverable, qualified capabilities** | Stop after audited Slice 1 commit: expanded captured execution qualified; editor and bounded coverage inspection remain | [Phase record](phases/phase-11/README.md) and [Slice 2 handoff](phases/phase-11/handoffs/slice-02.md). Exact policy activated after independent preactivation audit; Slice 1 completes in the independently audited commit containing its phase record. The user must resume remaining Phase 11 work. |
+| **11. Discoverable, qualified capabilities** | **Complete in source; both slices independently planned, implemented and audited.** Expanded execution, discoverable authoring, exact measure Save/reopen and bounded recorded-scope coverage | [Phase record](phases/phase-11/README.md) maps all exits to WSL/native/browser evidence, complete exports and detached replay. Phase 12 remains held. |
 | **12. Integration candidate** | Planned: compatibility audit, source verification and controlled main integration readiness | [Continuation: Phase 12](parameter-expansion-plan-2026-11-03.md#phase-12--integration-candidate). Source merge and deployment have separate gates. |
 
 Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.
@@ -381,24 +236,14 @@ Do not build automatic strategy search, arbitrary user code, cross-sectional ran
 
 Quarterly/TTM support is a later extension of the history provider. It requires explicit download controls, availability policy, preparation, and validation; the formula language should not need redesign.
 
-## Unknowns
+## Remaining qualification
 
-| Question | Cheapest useful probe |
-|---|---|
-| How much historical data exists for each proposed parameter? | Audit prepared-field coverage and a permitted native cache sample. Produce a parameter/date coverage matrix without downloading. |
-| Does "three-month average" mean daily observed valuations, quarterly accounts, or both? | Show those choices separately in a small editor prototype. Keep their definitions distinct regardless of the preference. |
-| Which documented FMP fields can preparation expose? | Use the [source map](parameter-catalog.md) to extend validation and evidence on the agreed branch after resumption. Most new fields are preserved in full raw responses but are not prepared. For example, debt/assets needs the documented `totalAssets` field added to validated inputs. Measure coverage before advertising support. |
-| Can custom formulas remain usable in a standalone HTML export? | Measure a representative formula bundle and its required historical input payload. Decide browser support from that evidence. |
-| How does the numerical engine admit expanded requirements? | Phase 7 already admits four checked parameters. Qualify new catalog versions, units, observations and history operations through the existing capability owner. Adding an entry must not automatically admit it. |
-| Does the builder remain understandable for longer formulas? | Test three tasks: a simple P/E filter, the example formula, and a formula using a saved variable. Observe grouping and time-basis mistakes before finalizing the editor. |
+Native/live-cache coverage and installed readiness are unknown. They need
+separate authorization. Source inspection uses recorded January/latest scopes
+and reports the complete snapshot denominator, generation and missing reasons.
+Fixed/random execution remains a separate qualified capability. Calendar-series,
+quarterly and TTM statistics remain later capabilities with distinct semantics.
 
-Phase 2 completes under the scoped 2 November authorization in this second
-audited implementation commit. Both slices change source and synthetic fixtures.
-They do not change installed runtime data or portable snapshots. The current
-phase record contains required verification and independent audit outcomes.
-
-Phase 3 source now consumes four supported observations through an immutable
-validated program and a bounded reference evaluator. It changes no financial,
-prepared-input, selection, application or numerical-engine contract. Current
-verification and independent audit evidence live in its phase record. Phase 4 is
-complete, as are Phases 5–7 as described above. Source completion authorizes no runtime publication or integration into main.
+Standalone custom-formula execution needs a measured input-size and browser
+performance decision. Current custom formulas use the local service; standalone
+January/latest built-in screening remains available.

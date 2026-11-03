@@ -114,3 +114,7 @@ class Selectable:
         strategy_requests.check_options({'strategy':capture})
         with self.experimental.parent_operation():
             return self.original.preview(capture,roots,engine=engine)
+
+    def coverage(self,capture=None,scope=None):
+        with self.experimental.parent_operation():
+            return self.original.coverage(capture,scope)

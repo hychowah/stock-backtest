@@ -171,13 +171,13 @@ class AdmissionTests(unittest.TestCase):
             observations.plan([dict(id='o',parameter='annual.unknown',context='r',count=1)],contexts)
         self.assertEqual(caught.exception.code,'UNKNOWN_PARAMETER')
 
-    def test_ordinary_picker_stays_four_while_direct_provider_expands(self):
+    def test_legacy_catalog_stays_four_while_expanded_authoring_supports_shares(self):
         expected=['annual.revenue','annual.operating_income','annual.operating_margin','market.enterprise_value']
         self.assertEqual(len(observations.catalog()),77)
         self.assertEqual([item['id'] for item in observations.catalog()][:4],expected)
         value=variable_authoring.catalog()
         self.assertEqual([item['id'] for item in value['parameters']],expected)
-        self.assertNotIn('share',value['displays'])
+        self.assertEqual(value['displays']['share'],parameters.units(parameters.V3)['share']['displays'])
         for catalog in (parameters.V1,parameters.V2):
             quantity=entry(dict(definition(constant('100','USD'),'USD','usd'),parameter_catalog=catalog))
             captured=s.capture_strategy(intent(formula(quantity),[condition(formula(quantity),'0.0001','usd_million')]),submitted=[quantity])

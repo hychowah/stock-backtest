@@ -7,18 +7,13 @@ for `feature/custom-variables`. Dated phase text elsewhere is history, and each
 phase README is that phase's record. When the state changes, replace this
 section. Do not append another resumption paragraph.
 
-**Where the work is.** Phases 1–10 are complete in source, each in an
-independently audited commit containing its phase record. Phase 11 is paused
-after Slice 1, committed as `3231c6c`. Slice 1 supplies the execution
-foundation: qualified application execution of all 52 direct inputs and 33
-reusable measures through Original and the bounded numerical engine, over Latest,
-January, fixed and random schedules. Slice 2 is not started. It owns the shared
-editor (categories, search, descriptions, units, time choices), bounded coverage
-inspection, desktop, mobile and keyboard checks, exports and detached replay. Do
-not begin it, call Phase 11 complete or start Phase 12 until the user resumes
-work. The [Slice 2 handoff](docs/plans/custom-variables/phases/phase-11/handoffs/slice-02.md)
-records the recovery point and the [Phase 11 record](docs/plans/custom-variables/phases/phase-11/README.md)
-has the exits and verification limits.
+**Where the work is.** Phases 1–11 are complete in source in independently
+audited commits. Phase 11 Slice 1 is `3231c6c`; its final slice is the audited
+commit containing the [Phase 11 record](docs/plans/custom-variables/phases/phase-11/README.md).
+The shared editor exposes the expanded vocabulary and exact measures. Coverage
+inspects complete bounded recorded January/latest scopes. Desktop/mobile/keyboard,
+exports and detached replay checks pass on private synthetic fixtures. Phase 12
+and integration remain held. The phase record owns evidence and the next handoff.
 
 **Authorization.** A user resumption names a phase or slice. It supersedes holds
 for that scope only. Without a new explicit instruction, these stay unauthorized:
@@ -41,8 +36,9 @@ calculation.
 
 **What is usable.** Reference (Python) evaluation covers definition versions 1–3
 and catalogs `/1`–`/3`, including annual mean, min, max, growth and CAGR. The
-ordinary editor and picker still offer the original four inputs. Sample preview
-uses Original. Eager scalar execution and numerical sample preview are
+shared editor offers 52 direct inputs, policy adapters and 33 exact measure terms.
+New formulas use version 3/catalog `/3`; old formulas require explicit upgrade.
+Sample preview and recorded-scope coverage use Original. Eager scalar execution and numerical sample preview are
 unsupported. The single qualified scalar gate belongs to
 `backtest/variables/selection.py`. Reference or provider support alone grants no
 application qualification. Observation projection 4, research schema 11 and

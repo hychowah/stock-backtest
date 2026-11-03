@@ -57,6 +57,29 @@ class ExecutionTests(unittest.TestCase):
         patch.object(original_calculations.Original,'_financial',side_effect=financial).start()
         self.calc=original_calculations.Original()
     def options(self,**changes):return dict(strategy=self.capture.to_dict(),start='2015-01-02',end='2015-01-05',months=12,**changes)
+    def test_coverage_owns_and_closes_both_private_connections(self):
+        listing=self.calc.coverage()
+        self.assertFalse(self.financial);self.assertFalse(self.opened)
+        scope=next(item for item in listing['scopes'] if item['mode']=='latest' and item['pool']=='cached')
+        value=self.calc.coverage(self.capture.to_dict(),dict(scope,generation=listing['generation']))
+        self.assertEqual(value['population'],12)
+        self.assertFalse(self.financial);self.assertFalse(self.opened)
+        with self.assertRaises(ValueError):self.calc.coverage(self.capture.to_dict(),dict(scope,generation='0'*64))
+        self.assertFalse(self.financial);self.assertFalse(self.opened)
+    def test_coverage_mid_evaluation_cancellation_closes_resources(self):
+        from backtest.application import variable_coverage
+        listing=self.calc.coverage();scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+        real=variable_coverage.reference.evaluate;calls=[]
+        def interrupt(plan,view,checkpoint):
+            def check():
+                calls.append(1)
+                if len(calls)==10:raise backtest_control.Cancelled()
+                checkpoint()
+            return real(plan,view,check)
+        with patch.object(variable_coverage.reference,'evaluate',side_effect=interrupt):
+            with self.assertRaises(backtest_control.Cancelled):
+                self.calc.coverage(self.capture.to_dict(),dict(scope,generation=listing['generation']))
+        self.assertEqual(len(calls),10);self.assertFalse(self.opened);self.assertFalse(self.financial)
     def run_result(self,mode='custom',options=None,planned=None):
         stream=io.BytesIO();config=[]
         completion=self.calc.calculate_into(mode,options or self.options(),stream,None,config.append,planned=planned)

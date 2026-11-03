@@ -790,11 +790,14 @@ never fall back to recalculation. Report EBITDA uses broad accepted report
 history. Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact
 endpoint dates. Only those named annual adapters support annual history.
 Projection 4, research schema 11 and daily cache 5 require incompatible caches
-to rebuild; durable records keep their formats. The ordinary authoring picker keeps
-four inputs. `variables.selection.require_program()` owns the separate qualified
-/1 scalar-selection gate. Original application, preview, chunk planning and
-callable selection reject /2 and /3 captures before financial access. Numerical
-/2 and /3 execution stays closed. Semantic restoration is independent of those gates.
+to rebuild; durable records keep their formats. Version-3 authoring exposes all
+52 direct inputs, policy adapters and 33 exact measures. The original four-item
+catalog remains available for legacy definitions. `variables.selection.require_program()`
+owns qualified scalar admission. Supported captures run through Original and
+bounded numerical execution in Latest, January, fixed and random modes. Original
+sample preview and complete recorded January/latest coverage are separate
+operations. Numerical sample preview and eager scalar execution remain unsupported.
+Semantic restoration remains independent of execution qualification.
 Old definitions, captures, artifacts and durable records retain their bytes.
 Private synthetic tests establish source correctness, not native/live-cache
 coverage. No download, publication to main or running-server update is implied.

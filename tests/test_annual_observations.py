@@ -184,7 +184,7 @@ class AnnualProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'stale'):
             provider.observe(provider.plan(requests, roots), view)
 
-    def test_direct_all_field_mapping_values_units_receipts_and_unchanged_picker(self):
+    def test_direct_all_field_mapping_values_units_receipts_and_legacy_catalog(self):
         rows = annual_rows()
         fiscal = '2014-06-30'
         for endpoint, records in rows.items():
@@ -205,7 +205,8 @@ class AnnualProviderTests(unittest.TestCase):
         self.assertEqual([item['description'] for item in variable_authoring.catalog()['parameters']],
             ['Selected annual revenue', 'Selected annual operating income',
              'Operating income / positive revenue', 'Existing dated enterprise value'])
-        self.assertNotIn('share', variable_authoring.catalog()['displays'])
+        self.assertEqual(variable_authoring.catalog()['displays']['share'],
+                         parameters.units(parameters.V3)['share']['displays'])
 
     def test_exact_income_spine_preserves_missing_mismatched_newer_and_shifted_dates(self):
         self.fixture.annual.pop('2013-06-30')

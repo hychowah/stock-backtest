@@ -111,6 +111,14 @@ def catalog():
     return copy.deepcopy(list(_DESCRIPTORS.values()))
 
 
+def exact(variable_id, revision):
+    """Return the immutable definition and owner label for an exact identity."""
+    for key, entry in _ENTRIES.items():
+        if entry['variable_id'] == variable_id and entry['revision'] == revision:
+            return copy.deepcopy(dict(definition=entry['definition'], name=_DESCRIPTORS[key]['name']))
+    return None
+
+
 def bundle(ids):
     """Return an ordinary checked bundle with only the requested closure."""
     if type(ids) is not list or not ids or any(type(key) is not str or key not in _ENTRIES for key in ids):

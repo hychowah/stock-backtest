@@ -53,15 +53,18 @@ def scope_rows(db, *, pool, period=None, metadata_bytes=None):
     where = 's.pool=?'
     if period is not None:
         where += ' AND s.year=?'; args.append(period)
-    cursor = db.execute('SELECT s.*,c.name,c.sector,c.exchange FROM ' + table +
-        ' s JOIN companies c USING(symbol) WHERE ' + where + ' ORDER BY s.rowid', args)
+    cursor = db.execute('SELECT s.*,c.name,c.sector,c.exchange,c.symbol AS _company_symbol FROM ' + table +
+        ' s LEFT JOIN companies c USING(symbol) WHERE ' + where + ' ORDER BY s.rowid', args)
     names = [item[0] for item in cursor.description]
     rows = [];used=0
     for row in cursor:
         backtest_control.checkpoint()
         if len(rows) == MAX_CANDIDATES:
             raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
-        detached=dict(zip(names,row));used+=_size(detached)+1
+        detached=dict(zip(names,row))
+        if detached.pop('_company_symbol') is None:
+            raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.')
+        used+=_size(detached)+1
         if used>maximum:raise definitions.FormulaError('WORK_LIMIT','/population','Complete pool metadata exceeds its byte ceiling.')
         rows.append(detached)
     if _size(rows) > maximum:
@@ -124,6 +127,47 @@ def preview(capture, roots, view, *, record_bytes=8 * 1024 * 1024, checkpoint=ba
     return evaluate_preview(plan_preview(capture,roots,record_bytes=record_bytes,checkpoint=checkpoint),roots,view,checkpoint=checkpoint)
 
 
+def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner_scope=None,
+               budget, record_bytes=8 * 1024 * 1024, checkpoint=backtest_control.checkpoint,
+               limits=None, metadata_bytes=None, engine='original'):
+    """Plan every root in one complete scope before observation. Chunking bounds evaluation resources and never changes membership, ranking or the meaning of a completed scope."""
+    checkpoint()
+    if program is not None:
+        strategy_requests.require_formula_support(program, engine, checkpoint=checkpoint)
+    if owner_scope is None: owner_scope = dict(kind='dated')
+    if (type(owner_scope) is not dict or not (owner_scope == {'kind':'dated'} or
+            (set(owner_scope) == {'kind','book'} and owner_scope['kind'] == 'prepared'
+             and type(owner_scope['book']) is int and owner_scope['book'] >= 0))):
+        raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Invalid owner scope.')
+    pool=capture['pool']
+    if owner_scope['kind'] == 'prepared' and (owner_scope['book'] != (0 if latest else period) or not any(
+            item['mode'] == ('latest' if latest else 'historical') and item['pool'] == pool
+            and item['context_date'] == str(entry) and item['book'] == owner_scope['book']
+            for item in view.projection['scopes'])):
+        raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
+    rows=scope_rows(db,pool=pool,period=None if latest else period,metadata_bytes=metadata_bytes)
+    if len({row['symbol'] for row in rows}) != len(rows):
+        raise definitions.FormulaError('INVALID_SHAPE','/population','Prepared scope contains duplicate companies.')
+    roots=[dict(symbol=row['symbol'],pool=pool,mode='latest' if latest else 'historical',date=str(entry),owner_scope=owner_scope) for row in rows]
+    plans=_plans(program,roots,record_bytes,checkpoint,limits,metadata_bytes,engine) if program else []
+    bounds=view.bounds
+    inspected=2*len(rows)
+    sources=[capture['selection']['ranking']['source']]+[item['source'] for item in capture['selection']['conditions']]
+    inspected+=len(rows)*sum(source['kind']=='builtin' for source in sources)
+    if plans:
+        for plan in plans:
+            compiled=plan.to_dict();dates={root['date'] for root in compiled['requests'] if root['mode']=='historical'}
+            inspected+=2*len(dates)*(bounds['report_rows']+bounds['population'])
+            annual=2*bounds['max_annual'] if observations.requires_annual_fields(compiled['provider']['requests']) else 0
+            inspected+=len(compiled['requests'])*(bounds['max_reports']+annual+11)
+            inspected+=4*len(compiled['provider']['contexts'])
+            inspected+=observations.additional_work_bound(compiled['provider']['requests'],compiled['provider']['contexts'],bounds)
+    else:
+        inspected+=(len(rows)+255)//256*(2*(bounds['report_rows']+bounds['population']) if not latest else 2*256)
+    budget.reserve(plans,rows,inspected)
+    return rows,roots,plans,inspected
+
+
 class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run."""
     contract = 2
@@ -148,40 +192,13 @@ class Executor:
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
     def select(self, db, period, entry, exit_day=None, *, latest=False, owner_scope=None):
-        self.checkpoint()
-        if self.program is not None:
-            strategy_requests.require_formula_support(self.program, self.engine, checkpoint=self.checkpoint)
-        if owner_scope is None:
-            owner_scope = dict(kind='dated')
-        if (type(owner_scope) is not dict or not (owner_scope == {'kind':'dated'} or
-                (set(owner_scope) == {'kind','book'} and owner_scope['kind'] == 'prepared'
-                 and type(owner_scope['book']) is int and owner_scope['book'] >= 0))):
-            raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Invalid owner scope.')
-        if owner_scope['kind'] == 'prepared' and (owner_scope['book'] != (0 if latest else period) or not any(
-                item['mode'] == ('latest' if latest else 'historical')
-                and item['pool'] == self.pool and item['context_date'] == str(entry)
-                and item['book'] == owner_scope['book'] for item in self.view.projection['scopes'])):
-            raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
-        rows = scope_rows(db, pool=self.pool, period=None if latest else period,metadata_bytes=self.metadata_bytes)
+        rows, roots, plans, inspected = plan_scope(db, self.view, self.program, self.capture,
+            period, entry, latest=latest, owner_scope=owner_scope, budget=self.budget,
+            record_bytes=self.record_bytes, checkpoint=self.checkpoint,
+            limits=self.evaluation_limits, metadata_bytes=self.metadata_bytes, engine=self.engine)
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
-        roots = [dict(symbol=row['symbol'], pool=self.pool, mode='latest' if latest else 'historical', date=str(entry), owner_scope=owner_scope) for row in rows]
-        plans = _plans(self.program, roots, self.record_bytes, self.checkpoint, self.evaluation_limits,self.metadata_bytes,self.engine) if self.program else []
-        bounds=self.view.bounds
-        inspected=2*len(rows)
+        if owner_scope is None: owner_scope = dict(kind='dated')
         role_sources=[self.capture['selection']['ranking']['source']]+[item['source'] for item in self.capture['selection']['conditions']]
-        inspected+=len(rows)*sum(source['kind']=='builtin' for source in role_sources)
-        if plans:
-            for plan in plans:
-                compiled=plan.to_dict();dates={root['date'] for root in compiled['requests'] if root['mode']=='historical'}
-                inspected+=2*len(dates)*(bounds['report_rows']+bounds['population'])
-                annual = 2*bounds['max_annual'] if observations.requires_annual_fields(compiled['provider']['requests']) else 0
-                inspected+=len(compiled['requests'])*(bounds['max_reports']+annual+11)
-                inspected+=4*len(compiled['provider']['contexts'])
-                inspected+=observations.additional_work_bound(compiled['provider']['requests'],
-                    compiled['provider']['contexts'], bounds)
-        else:
-            inspected+=(len(rows)+255)//256*(2*(bounds['report_rows']+bounds['population']) if not latest else 2*256)
-        self.budget.reserve(plans,rows,inspected)
         if hashlib.sha256(Path(__file__).read_bytes()).hexdigest()!=_LOADED:
             raise definitions.FormulaError('STALE_INPUT_GENERATION','','Loaded scalar execution source changed.')
         policy=selection.policy_fingerprint()

@@ -19,6 +19,29 @@ import test_strategy_requests as strategy
 
 
 class AuthoringHttpTests(ExistingHttp):
+    def test_inspection_rejects_non_object_strategy_before_financial_work(self):
+        with patch.object(self.calc,'coverage',side_effect=AssertionError('Malformed inspection must not enter coverage')) as inspect:
+            for strategy in (None,False,0,'strategy',[]):
+                status,body,_=self.request('/api/variable-coverage/inspect',dict(strategy=strategy,scope='not a scope'))
+                self.assertEqual(status,400,body)
+            inspect.assert_not_called()
+        self.assertFalse(self.manager.runs);self.assertFalse(self.opened)
+    def test_coverage_transport_is_exact_and_allocates_no_job(self):
+        status,listing,_=self.request('/api/variable-coverage/scopes',{})
+        self.assertEqual(status,200,listing);listing=json.loads(listing)
+        scope=next(item for item in listing['scopes'] if item['pool']=='cached' and item['mode']=='latest')
+        payload=dict(strategy=self.capture.to_dict(),scope=dict(scope,generation=listing['generation']))
+        status,result,_=self.request('/api/variable-coverage/inspect',payload)
+        self.assertEqual(status,200,result);self.assertEqual(json.loads(result)['population'],12)
+        for bad in (dict(payload,extra=True),dict(payload,scope=dict(payload['scope'],book=False)),
+                    dict(payload,scope=dict(payload['scope'],generation='0'*64)),
+                    dict(payload,scope=dict(payload['scope'],book=float('nan'))),
+                    dict(payload,scope=dict(payload['scope'],unexpected=1)),
+                    dict(payload,scope=[])):
+            status,_,_=self.request('/api/variable-coverage/inspect',bad);self.assertEqual(status,400)
+        with patch.object(strategy_requests,'REQUEST_BYTES',16):
+            status,_,_=self.request('/api/variable-coverage/inspect',payload);self.assertEqual(status,400)
+        self.assertFalse(self.manager.runs);self.assertFalse(self.opened)
     def setUp(self):
         super().setUp();self.server.variable_store=library.Store(Path(self.folder.name)/'variables.sqlite')
     def post(self,path,value):
@@ -147,6 +170,10 @@ class AuthoringHttpTests(ExistingHttp):
         with closing(sqlite3.connect(self.path)) as db:
             for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
                 db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
+            from backtest.inputs import observation_inputs
+            db.execute('DELETE FROM observation_metadata')
+            scopes=[dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015) for pool in ('cached','legacy')]
+            observation_inputs.finish(db,'2015-01-05',scopes=scopes)
             db.commit()
         def browser(value):
             process=subprocess.run(['node','-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));'],

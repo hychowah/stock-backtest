@@ -9,7 +9,7 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
-from backtest.variables import definitions as d, library
+from backtest.variables import definitions as d, library, measures, selection
 from backtest.application import variable_authoring as a
 from backtest.application import strategy_requests as s
 import test_variable_definitions as language
@@ -20,6 +20,40 @@ class AuthoringTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
         self.store=library.Store(Path(self.folder.name)/'variables.sqlite')
+    def test_all_exact_measures_validate_save_reopen_capture_without_import(self):
+        catalog=a.catalog();descriptors=catalog['measures'];self.assertEqual(len(descriptors),33)
+        self.assertEqual({item['id'] for item in catalog['expanded_parameters']},set(selection.QUALIFIED_PARAMETERS))
+        self.assertTrue(all(all(item['support'].values()) for item in catalog['expanded_parameters']+descriptors))
+        for measure in descriptors:
+            with self.subTest(measure=measure['id']):
+                root=measure['root']
+                definition=dict(format='variable-definition',version=3,parameter_catalog='financial-parameters/3',
+                    temporal_policy=d.TEMPORAL_POLICY,expression=dict(op='ref',**root),
+                    output=dict(unit=measure['unit'],display=measure['display']))
+                validated=a.validate(dict(definition=definition,name=measure['name'],
+                    submitted=measure['submitted'],labels=measure['labels']),self.store)
+                saved=self.store.create(measure['name'],definition)
+                selected={key:saved[key] for key in ('variable_id','revision')}
+                reopened=self.store.authoring_snapshot(selected)
+                self.assertEqual(reopened['authored'][0]['definition'],definition)
+                capture=self.store.capture([selected]).to_dict()
+                self.assertEqual(capture,reopened['capture'])
+                with patch.object(measures,'exact',side_effect=AssertionError('Detached restore read registry')):
+                    self.assertEqual(a.detached(dict(root=selected,capture=capture))['selected'],selected)
+                self.assertEqual(validated['output']['unit'],measure['unit'])
+        self.assertEqual(len(self.store.list()),33)
+    def test_measure_wrong_revision_and_corrupt_archive_are_never_hidden(self):
+        measure=a.catalog()['measures'][0];root=measure['root']
+        definition=dict(format='variable-definition',version=3,parameter_catalog='financial-parameters/3',
+            temporal_policy=d.TEMPORAL_POLICY,expression=dict(op='ref',**root),
+            output=dict(unit=measure['unit'],display=measure['display']))
+        wrong=deepcopy(definition);wrong['expression']['revision']='sha256:'+'0'*64
+        with self.assertRaises(d.FormulaError) as failure:self.store.create('Wrong',wrong)
+        self.assertEqual(failure.exception.code,'MISSING_REFERENCE')
+        saved=self.store.create('Correct',definition)
+        with closing(sqlite3.connect(self.store.path)) as db:
+            db.execute('INSERT INTO revisions VALUES(?,?,?,?)',(root['variable_id'],root['revision'],'null','fixture'));db.commit()
+        with self.assertRaises(library.InvalidStore):self.store.authoring_snapshot({key:saved[key] for key in ('variable_id','revision')})
     def test_compaction_retains_extreme_exact_revisions_without_float_roundtrip(self):
         for literal in ['1e100','5e-324','1.7976931348623157e308','-0','123456789012345678901234567890123456789012345678901234567890e-60']:
             item=language.entry(language.definition(language.constant(literal)))
@@ -132,7 +166,7 @@ class AuthoringTests(unittest.TestCase):
         self.assertEqual(result['variables']['program']['bundle']['roots'],[old,new])
         self.assertEqual(len(result['variables']['program']['bundle']['definitions']),2)
 
-    def test_catalog_has_exactly_four_parameters_and_stored_builtin_adapters(self):
+    def test_legacy_catalog_retains_four_parameters_and_stored_builtin_adapters(self):
         catalog=a.catalog();self.assertEqual(len(catalog['parameters']),4)
         self.assertTrue(any(item['id']=='filter:profit_margin' for item in catalog['builtins']))
     def test_selected_dependencies_dont_accumulate_unrelated_editor_revisions(self):

@@ -6,18 +6,52 @@ catalog read. No operation starts a calculation or owns financial resources.
 """
 from backtest import observations
 from backtest.runtime import backtest_control
-from backtest.variables import definitions, library, parameters
+from backtest.variables import definitions, library, parameters, measures, selection
+from backtest.engines.numerical import formula_capabilities
 from backtest.application import strategy_requests
 
 
 def catalog():
-    # Provider capability is broader than the qualified application surface.
-    # Preserve the /1 picker order, descriptions and displays until qualification.
     available = {item['id']: item for item in observations.catalog()}
     admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
+    expanded = parameters.catalog(parameters.V3)
+    implemented=set(formula_capabilities.IMPLEMENTED_PARAMETERS)
+    qualified=set(selection.QUALIFIED_PARAMETERS)
+    numerical=set(formula_capabilities.capabilities()['parameter_ids'])
+    for item in expanded:
+        item['support']=dict(recognized=True,implemented=item['id'] in implemented,
+            application_qualified=item['id'] in qualified,original=item['id'] in qualified,
+            bounded_numerical=item['id'] in numerical)
+    terms = []
+    for descriptor in measures.catalog():
+        bundle = measures.bundle([descriptor['id']])
+        labels = []
+        for entry in bundle['definitions']:
+            found = measures.exact(entry['variable_id'], entry['revision'])
+            labels.append(dict(variable_id=entry['variable_id'], revision=entry['revision'], name=found['name']))
+        program=definitions.validate(bundle)
+        nodes=definitions.require_program(program)['nodes']
+        measure_implemented=all(node['op'] in formula_capabilities.IMPLEMENTED_OPERATIONS and
+            (node['op'] not in ('parameter','annual') or node['parameter'] in implemented)
+            for node in nodes)
+        try:
+            strategy_requests.require_formula_support(program,'original')
+            original=True
+        except definitions.FormulaError:
+            original=False
+        try:
+            formula_capabilities.require_program(program)
+            numerical_measure=True
+        except definitions.FormulaError:
+            numerical_measure=False
+        terms.append(dict(descriptor, submitted=bundle['definitions'], labels=labels,
+            support=dict(recognized=True,implemented=measure_implemented,application_qualified=original,
+                         original=original,bounded_numerical=numerical_measure)))
     return dict(parameters=admitted, builtins=strategy_requests.builtin_catalog(),
-                displays={'scalar':['number','multiple','percent','percentage_points'],
-                          'USD':['usd','usd_million'], 'USD/share':['usd_per_share']},
+                expanded_parameters=expanded, version2_parameters=parameters.catalog(parameters.V2), measures=terms, units=parameters.units(parameters.V3),
+                operations=sorted(selection.QUALIFIED_OPERATIONS),
+                namespaces=[parameters.V1,parameters.V2,parameters.V3],
+                displays={unit:details['displays'] for unit,details in parameters.units(parameters.V3).items()},
                 preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,
                 request_bytes=strategy_requests.REQUEST_BYTES)
 

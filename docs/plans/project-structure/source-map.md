@@ -55,7 +55,9 @@ The owners relevant to that feature are:
   observation vocabulary. `backtest/variables/selection.py` owns the qualified
   Original gate used before application and callable selection execution.
   Phase 11 qualifies the expanded captured vocabulary for Original and
-  numerical execution. The ordinary picker keeps four inputs.
+  bounded numerical execution. The shared editor exposes all 52 direct inputs,
+  policy adapters and 33 exact measures. The four-item legacy catalog remains
+  available for old definitions.
   Semantic restore and planning remain independent of execution qualification.
 - `backtest/financial/metrics.py` and `backtest/screening.py` for today's built-in
   pair and display-unit threshold contracts. These are not a general scalar

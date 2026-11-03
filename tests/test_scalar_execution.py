@@ -62,6 +62,10 @@ class Fixture:
 class ScalarTests(unittest.TestCase):
     def setUp(self):
         self.fixture=Fixture();self.addCleanup(self.fixture.db.close)
+    def test_orphan_snapshot_rejects_complete_scope(self):
+        self.fixture.db.execute("DELETE FROM companies WHERE symbol='A0000'")
+        with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture())
+        self.assertEqual(failure.exception.path,'/population')
     def test_more_than_256_candidates_rank_globally_with_complete_chunks(self):
         stocks,records=self.fixture.select(self.fixture.capture())
         self.assertEqual([h['symbol'] for h in stocks],[f'A{i:04d}' for i in range(299,294,-1)])

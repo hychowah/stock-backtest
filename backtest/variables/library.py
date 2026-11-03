@@ -20,7 +20,7 @@ import uuid
 
 from backtest.paths import ROOT
 from backtest.runtime import backtest_control
-from backtest.variables import definitions
+from backtest.variables import definitions, measures
 
 DATABASE = ROOT / 'data' / 'variable-library.sqlite'
 SCHEMA_VERSION = 1
@@ -407,6 +407,15 @@ class Store:
         return definition
 
     @classmethod
+    def _resolve_exact(cls, db, variable_id, revision):
+        """Resolve an exact reference from submitted content, a checked archive row, or a matching immutable built-in definition. Built-in resolution never imports library entries or substitutes another revision."""
+        definition = cls._lookup(db, variable_id, revision)
+        if definition is not None:
+            return definition
+        builtin = measures.exact(variable_id, revision)
+        return builtin['definition'] if builtin else None
+
+    @classmethod
     def _admit(cls, db, variable_id, definition, checkpoint):
         # The definition owner alone computes identity, normalizes and resolves.
         revision = definitions.revision(definition)
@@ -415,12 +424,12 @@ class Store:
             raise definitions.FormulaError('DEFINITION_LIMIT', '', 'Formula definition exceeds its byte bound.')
         definition = json.loads(authored)
         root = dict(variable_id=variable_id, revision=revision)
-        definitions.resolve([root], lambda *identity: cls._lookup(db, *identity),
+        definitions.resolve([root], lambda *identity: cls._resolve_exact(db, *identity),
                             submitted=[dict(root, definition=definition)], checkpoint=checkpoint)
         if cls._lookup(db, variable_id, revision) is not None:
             # A reused immutable row must also remain valid. Never conceal a
             # damaged archived row by keeping only its matching primary key.
-            definitions.resolve([root], lambda *identity: cls._lookup(db, *identity),
+            definitions.resolve([root], lambda *identity: cls._resolve_exact(db, *identity),
                                 checkpoint=checkpoint)
         return revision, authored
 
@@ -515,7 +524,7 @@ class Store:
         No later library state is needed by require_program or execution.
         """
         with self._transaction(checkpoint=checkpoint) as db:
-            return definitions.resolve(roots, lambda *identity: self._lookup(db, *identity),
+            return definitions.resolve(roots, lambda *identity: self._resolve_exact(db, *identity),
                                        submitted=submitted, limits=limits, checkpoint=checkpoint)
 
     def capture(self, roots, *, submitted=None, labels=None, limits=None,
@@ -539,9 +548,17 @@ class Store:
     def _capture_snapshot(self, db, roots, submitted, labels, limits, checkpoint):
         formula_limits, bound = _capture_limits(limits)
         archived = set()
+        builtins = {}
         def lookup(variable_id, revision):
-            archived.add((variable_id, revision))
-            return self._lookup(db, variable_id, revision)
+            definition = self._lookup(db, variable_id, revision)
+            if definition is not None:
+                archived.add((variable_id, revision))
+                return definition
+            builtin = measures.exact(variable_id, revision)
+            if builtin:
+                builtins[variable_id, revision] = builtin['name']
+                return builtin['definition']
+            return None
         program = definitions.resolve(roots, lookup, submitted=submitted,
                                       limits=formula_limits, checkpoint=checkpoint)
         def metadata(identity):
@@ -549,7 +566,12 @@ class Store:
             if row is None:
                 raise InvalidStore('Variable revision metadata is absent. Its data was kept.')
             return self._metadata(row)
-        return _finish_capture(program, archived, metadata, labels, bound, checkpoint)
+        if labels is not None and type(labels) is not list:
+            _capture_error('INVALID_SHAPE', '/labels', 'Labels must name unique submitted definitions only.')
+        names = list(labels) if labels is not None else []
+        names.extend(dict(variable_id=identity[0], revision=identity[1], name=name)
+                     for identity, name in builtins.items())
+        return _finish_capture(program, archived, metadata, names, bound, checkpoint)
 
     def authoring_snapshot(self, exact, *, checkpoint=backtest_control.checkpoint):
         """Read an exact raw closure, capture and entry from one read snapshot.
@@ -563,11 +585,10 @@ class Store:
         _identifier(exact['variable_id'])
         with self._transaction(checkpoint=checkpoint) as db:
             captured = self._capture_snapshot(db, [exact], None, None, None, checkpoint)
-            entries = captured.to_dict()['program']['bundle']['definitions']
             authored = []
-            for item in entries:
+            for item in captured.to_dict()['program']['bundle']['definitions']:
                 checkpoint()
-                definition = self._lookup(db, item['variable_id'], item['revision'])
+                definition = self._resolve_exact(db, item['variable_id'], item['revision'])
                 authored.append(dict(variable_id=item['variable_id'], revision=item['revision'], definition=definition))
             row = db.execute('SELECT * FROM entries WHERE variable_id=?', (exact['variable_id'],)).fetchone()
             if row is None:

@@ -121,6 +121,31 @@ class Original(Control):
             finally:db.close()
         return dict(value,producer=dict(engine='original',label='Original reference sample preview'))
 
+    def coverage(self, capture=None, scope=None, *, admission='interactive'):
+        """Discover or inspect recorded scopes under ordinary financial ownership."""
+        from backtest.application import variable_coverage, strategy_requests
+        from backtest.inputs import research, sqlite_observations
+        if capture is not None:
+            strategy_requests.check_options({'strategy':capture})
+            capture=strategy_requests.from_wire(capture)
+        with self._financial(admission,None):
+            if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
+            db=daily.connect();source=None
+            try:
+                accepted=daily.fingerprint()
+                def fresh():
+                    self._checkpoint()
+                    if daily.fingerprint()!=accepted:raise ValueError('Scalar inputs changed during inspection.')
+                source=research.connect()
+                with sqlite_observations.prepared_view(db,fresh,checkpoint=self._checkpoint) as view:
+                    value=(variable_coverage.scopes(source,view) if capture is None else
+                           variable_coverage.inspect(capture,scope,source,view,checkpoint=self._checkpoint))
+                    fresh()
+            finally:
+                if source is not None:source.close()
+                db.close()
+        return dict(value,producer=dict(engine='original',label='Original reference coverage'))
+
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
                        admission='interactive', max_bytes=256*1024**2, piece_bytes=1024*1024, record_bytes=8*1024*1024):
         """Stream scalar codec 2; publish only after the ordinary financial owner closes."""

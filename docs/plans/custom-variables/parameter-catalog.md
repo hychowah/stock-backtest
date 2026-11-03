@@ -2,56 +2,26 @@
 
 Checked: 2026-11-02.
 
-Phase 11 Slice 1 source update, 3 November: supported captured programs now have
-qualified Original and bounded numerical execution for all 52 direct inputs
-and the adapters used by 33 reusable measures. The fixed backend inventory has
-77 IDs. Its exact policy opens only after private qualification and independent
-preactivation audit. The [phase record](phases/phase-11/README.md) retains source
-correspondence, finite workload timings and native limits. The ordinary editor
-still has four inputs; categories, expanded insertion and coverage inspection
-remain Slice 2. Numerical sample preview and eager scalar execution remain
-unsupported. No installed readiness or live-cache coverage is established.
-Earlier dated phase statements below keep their historical scope.
+Current Phase 11 source exposes owner descriptions for all 52 direct inputs,
+existing-policy adapters and 33 exact named measures through the shared editor.
+Categories, search, units and supported history choices use the same semantic
+owners as execution. The [phase record](phases/phase-11/README.md) owns final
+verification and audited completion evidence. Catalog recognition, implemented
+observations, backend qualification, installed readiness and observed coverage
+remain separate.
 
-Phase 9 source update, 3 November: all 52 direct inputs now have prepared
-observation and callable reference implementation. [Final Phase 9 audit and
-verification](phases/phase-09/README.md) complete in its audited closure commit. Observation projection 3,
-research schema 10 and daily version 4 bind annual and dated evidence. The
-ordinary picker retains four inputs; qualified scalar selection, preview,
-application and numerical `/2` execution remain closed. This source work
-establishes no native/live-cache coverage. Earlier source checks and phase updates
-below keep their original dated scope; stable field mappings remain unchanged.
+Qualified captured programs run through Original and bounded numerical execution
+in Latest, January, fixed and random modes. The fixed backend inventory contains
+77 IDs. A capture retains the 32-definition ceiling. Numerical sample preview and
+eager scalar execution remain unsupported. Inspection evaluates complete recorded
+January/latest scopes with their generation, denominator and unavailable reasons.
+These source capabilities establish no installed readiness or live-cache coverage.
 
-This is the target input inventory for the custom-variable plan. The user
-requested a broader list of valuation ingredients. Include an ingredient only
-when an existing FMP download route supplies it directly, or when an explicit
-calculation can use supplied inputs. Do not add speculative fields.
-
-Phase 8 implementation update, 3 November: the separate financial-free semantic
-catalog now recognizes these 52 direct fields plus the two existing adapters.
-The [field-by-field contract](phases/phase-08/parameter-contract.md) allocates
-stable IDs, units, signs, sampling and history guarantees. Catalog /1 remains
-frozen. Catalog /2 adds share units and the full vocabulary. All /2 execution is
-closed. The provider and ordinary picker still expose only revenue, operating
-income, operating margin and EV. The [phase record](phases/phase-08/README.md)
-records completed independent audit, final source-bound checks and handoff in
-its completion commit. Historical source and
-coverage statements below keep their original dates; no new provider or cache
-inspection was performed. The earlier planning-only and no-ID statements below
-are superseded solely for this Phase 8 semantic contract.
-
-Planning update, 3 November: the [Phases 8–12 continuation](parameter-expansion-plan-2026-11-03.md)
-now sequences implementation of this full inventory and named calculated measures,
-then integration qualification. It is planned, not implemented. Only revenue,
-operating income, operating margin and EV are current formula observations.
-The source check below retains its original date; no new provider check or
-cache inspection was performed for this planning update.
-
-Phase 2 resumed on 2 November with the initial four observations only. The initial
-provider is now implemented; its [phase record](phases/phase-02/README.md) tracks
-verification and audited completion. This
-broader inventory changes no runtime catalog, schema, formula or download control. It allocates no new
-parameter IDs. Existing Phase 1 IDs and example meanings remain unchanged.
+This inventory maps documented fields from existing FMP routes. Include an input
+only when an existing route supplies it or an explicit calculation uses supplied
+inputs. Preserve the [versioned field contract](phases/phase-08/parameter-contract.md),
+source meanings, original immutable definitions and financial policy. Phase READMEs
+and git history retain earlier implementation states and exact verification.
 
 ## Source check and its limits
 
@@ -66,8 +36,8 @@ The existing Full annual financial data action requests `income-statement`,
 requests `key-metrics` and `ratios`. See
 [`website/server/data_manager.py`](../../../website/server/data_manager.py).
 [`backtest/inputs/financial_inputs.py`](../../../backtest/inputs/financial_inputs.py)
-saves full statement responses, including fields not currently prepared. Its
-validated projection currently includes only:
+saves full statement responses, including fields not currently prepared. At the original source check, its
+validated projection included only:
 
 - Income: `revenue`, `operatingIncome`, `netIncome`, `epsDiluted`, `ebit`,
   `interestExpense`.
@@ -75,8 +45,8 @@ validated projection currently includes only:
   `totalCurrentLiabilities`, `totalDebt`.
 - Cash flow: `freeCashFlow`.
 
-Other mapped statement fields need explicit validation, conflict resolution,
-prepared evidence and backend admission after the feature resumes. A raw field
+Phases 8–11 add validation, conflict resolution, prepared evidence and qualified
+execution for the remaining mapped fields. A raw field
 must not become usable merely because the downloader retained it. Reuse valid
 saved responses first. Missing data stays unavailable. Downloads remain an
 explicit data-panel action.

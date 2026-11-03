@@ -17,6 +17,7 @@ from threading import Event, Thread
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
 from backtest.application import jobs, queue, library as saved, result_access, temporary_evidence
 from backtest.variables import library
+from backtest.inputs import observation_inputs
 from website.server import app, variables, backtests, results
 from test_custom_strategy_execution import ExecutionTests
 from test_scalar_execution import Fixture
@@ -34,6 +35,10 @@ def main():
             fixture.db.backup(db)
             for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
                 db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
+            scopes=[dict(mode='latest',pool=pool,context_date='2015-01-05',book=0) for pool in ('legacy','cached')]
+            scopes += [dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015) for pool in ('legacy','cached')]
+            db.execute('DELETE FROM observation_metadata')
+            observation_inputs.finish(db,'2015-01-05',scopes=scopes)
             db.commit()
         fixture.db.close()
         html=(root/'index.html').read_text()
