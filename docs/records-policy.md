@@ -56,6 +56,8 @@ commit or the next one:
    is lost after deletion.
 3. Delete every phase README and every `working/` directory. Keep decision
    records that are still in force. Delete superseded decisions.
+4. Delete the initiative's probes and experiment code. One that must survive
+   becomes a phase of an active plan.
 
 A complete initiative holds only `master-plan.md`, contract documents and
 decision records. An initiative contract document may stay when it describes

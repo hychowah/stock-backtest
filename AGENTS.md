@@ -13,7 +13,10 @@ Follow [docs/records-policy.md](docs/records-policy.md). Standing documents
 describe the current system. An active multi-session plan lives in
 `docs/plans/<initiative>/`, with working notes in `phases/phase-NN/working/`.
 Close out a finished initiative: keep its summary and decisions, delete the rest.
-Logs, timings and raw benchmark output stay in ignored `tmp/`. Put slice
+Logs, timings, raw benchmark output and new experiment or probe code stay in
+ignored `tmp/`. `tools/experiments/` holds only the retained comparison runner
+and API probes listed in `tools/README.md`. An experiment that must survive
+becomes a phase of an active plan. Put slice
 evidence, audit findings and their dispositions in the commit message. Before
 every commit, run `python3 tests/check_records.py` in the WSL source checkout. Do
 not commit if it fails. After changing the check, run
@@ -37,14 +40,21 @@ checkout. Verify with private synthetic fixtures, never the live cache.
 
 When two lines of work touch the same contract, agree which branch owns it
 before editing. Shared contracts are calculation rules, engine interfaces,
-prepared schemas, freshness checks, worker and lock ownership, and benchmark
-code. Keep edits to shared files narrow. Avoid broad refactors, renames and
-formatting changes in these areas.
+prepared schemas, freshness checks, worker and lock ownership, and the engine
+comparison runner. Keep edits to shared files narrow. Avoid broad refactors,
+renames and formatting changes in these areas.
 
 ## Standing engineering rules
 
 - Preserve financial calculations and policy, stored rounding, old immutable
-  bytes, captured requests, queue records, artifacts and durable store formats.
+  bytes, captured requests, queue records, artifacts and durable store formats
+  that exist in a `main` commit or in user data. Do not add readers or upgrades
+  for formats that never reached `main`.
+- Build for current needs. An abstraction, option or mode needs a current
+  caller. Check each input once, at its boundary. Freshness re-checks of files,
+  databases and payloads that can change between steps are separate and stay.
+- Tests check product behavior through public interfaces. Keep new tests fast;
+  a slow qualification workload needs the user's agreement.
 - Unsupported numerical work fails explicitly, with no fallback. A missing
   prepared company or lane never falls back to another calculation.
 - Preserve operation-boundary freshness, bounded leaf reads, cancellation,
