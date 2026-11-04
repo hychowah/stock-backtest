@@ -7,7 +7,7 @@ Original remains the application default. Stored results open without Rust or
 the numerical packages. Experimental calculation uses compiled Numba with the
 measured 2×2 preference, reduced by current CPU and memory observations. Backend
 and worker controls are not application settings. Read the
-[final measured decision](plans/parallel-backtest/phases/CB-19G.decision.md).
+[final measured decision](plans/parallel-backtest/master-plan.md).
 
 Install `requirements-numerical.txt` in the chosen supported Python environment,
 then select **Prepare experimental engine**. This checks saved inputs, performs
@@ -278,13 +278,13 @@ binding preserves the existing filename/size/mtime rule. It is not a new content
 hash of raw prices. Legacy caches without sufficient price evidence rebuild.
 Durable library and queue snapshots remain separate from these derived caches.
 
-[The current readiness record](plans/compiled-backtest/phases/CB-14.readiness.md)
+[The current readiness record](plans/compiled-backtest/master-plan.md)
 supersedes the earlier universal release gate. Original remains the default.
 CB-15 now implements the normal-app selector in source. Publication remains
 a separate authorized operation.
 
-Current source reconciles main's research schema 8, operating-yield-spread filter
-and selection order. Both experimental selection orders use the shared SQL
+Current source reconciles the current research schema, the operating-yield-spread
+filter and selection order. Both experimental selection orders use the shared SQL
 selector. Rank-first retains original ranks and adds no replacements. The
 experimental catalog supports all current thresholds, including
 `operating_yield_spread_3y`. Annual specialization executes Original's spread

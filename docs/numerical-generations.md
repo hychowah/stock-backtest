@@ -166,9 +166,9 @@ Factors and complete books consume the same numerical output. They do not
 implement a second financial formula.
 
 The generation includes `treasury10(day, yield_percent)` in `records.sqlite`.
-Phase 9 carries observation version 3 through the existing temporal SQLite
+The generation carries observation version 4 through the existing temporal SQLite
 sidecar. Annual endpoint evidence is joined by separate dated source rows and
-saved calendar sessions. Research schema 10 and daily version 4 copy the complete
+saved calendar sessions. Research schema 11 and daily version 5 copy the complete
 accepted projection. Old observation versions and incomplete dated tables require
 offline rebuilding. Source policy, semantic meaning, complete content, accepted
 projection and the immutable manifest bind reuse. The read-only dated resolver is
@@ -196,7 +196,7 @@ older generations and trial checkpoints for new calculations. Prepare a current
 experimental generation. Durable saved results remain readable. Format 1 and
 temporal/factor interface versions remain unchanged. Unknown future catalogs
 still fail preparation. This source extension makes no performance or real-data
-capacity claim. See the [implementation record](plans/compiled-backtest/phases/CB-16.operating-spread.md).
+capacity claim. See the [implementation record](plans/compiled-backtest/master-plan.md).
 
 ## Format 1
 
@@ -366,7 +366,7 @@ do not claim durability through arbitrary hardware or filesystem failure.
 
 CB-04 verification uses private synthetic inputs. It does not qualify real-data
 capacity or make a new speed comparison. See the
-[phase record](plans/compiled-backtest/phases/CB-04.md) for exact observations.
+[phase record](plans/compiled-backtest/master-plan.md) for exact observations.
 
 ## Temporal interface 1
 
@@ -474,7 +474,7 @@ versions, compiler execution identity, entry day, pool and normalized fields.
 No disk cache or cross-process factor store is added. Close the evaluator before
 the attachment. Its close clears retained results and compiled callables.
 Callers still own source and financial access through freshness validation,
-calculation and final closure. See the [CB-06 record](plans/compiled-backtest/phases/CB-06.md)
+calculation and final closure. See the [CB-06 record](plans/compiled-backtest/master-plan.md)
 for verification scope and memory observations.
 
 ## Explicit persistent runtime (CB-11)

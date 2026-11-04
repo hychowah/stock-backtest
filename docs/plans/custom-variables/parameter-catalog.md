@@ -5,8 +5,8 @@ Checked: 2026-11-02.
 Current Phase 11 source exposes owner descriptions for all 52 direct inputs,
 existing-policy adapters and 33 exact named measures through the shared editor.
 Categories, search, units and supported history choices use the same semantic
-owners as execution. The [phase record](phases/phase-11/README.md) owns final
-verification and audited completion evidence. Catalog recognition, implemented
+owners as execution. The [close-out summary](master-plan.md) owns the completion
+status and limits. Catalog recognition, implemented
 observations, backend qualification, installed readiness and observed coverage
 remain separate.
 
@@ -19,9 +19,9 @@ These source capabilities establish no installed readiness or live-cache coverag
 
 This inventory maps documented fields from existing FMP routes. Include an input
 only when an existing route supplies it or an explicit calculation uses supplied
-inputs. Preserve the [versioned field contract](phases/phase-08/parameter-contract.md),
-source meanings, original immutable definitions and financial policy. Phase READMEs
-and git history retain earlier implementation states and exact verification.
+inputs. Preserve the [versioned field contract](variable-design.md#parameters),
+source meanings, original immutable definitions and financial policy. Commit
+messages retain earlier implementation states and exact verification.
 
 ## Source check and its limits
 

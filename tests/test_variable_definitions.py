@@ -325,7 +325,7 @@ class DefinitionTests(unittest.TestCase):
         self.assert_error('DEFINITION_LIMIT', d.validate, submitted)
 
     def test_program_projection_for_operating_yield_and_dated_reference(self):
-        cases = json.loads((Path(__file__).resolve().parents[1] / 'docs/plans/custom-variables/phases/phase-01/examples.json').read_text())['cases']
+        cases = json.loads((Path(__file__).resolve().parents[1] / 'tests/fixtures/variable-examples.json').read_text())['cases']
         example = next(case for case in cases if case['id'] == 'operating_yield_three_year')
         base = entry(example['definition'], 'yield')
         dated = entry(definition(dict(op='lookback', months=3,
@@ -338,7 +338,7 @@ class DefinitionTests(unittest.TestCase):
         self.assertEqual(result['nodes'][-2]['date'], '2023-07-01')
 
     def test_historical_examples_are_classified_against_actual_capability(self):
-        cases = json.loads((Path(__file__).resolve().parents[1] / 'docs/plans/custom-variables/phases/phase-01/examples.json').read_text())['cases']
+        cases = json.loads((Path(__file__).resolve().parents[1] / 'tests/fixtures/variable-examples.json').read_text())['cases']
         unsupported = {'spread_percentage_points': 'UNKNOWN_PARAMETER', 'calendar_month_clamp': 'UNKNOWN_PARAMETER',
                        'calendar_mean': 'UNSUPPORTED_OPERATION', 'quarterly_not_lookback': 'UNKNOWN_PARAMETER'}
         for case in cases:

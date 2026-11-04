@@ -1,252 +1,107 @@
 # Custom ranking and filtering variables
 
-Current scope: Phases 1–12 are complete for their source scope. The independently
-audited commit containing the [Phase 12 record](phases/phase-12/README.md) completes
-expanded-capability reconciliation and source compatibility checks. The shared
-editor, exact measures, bounded recorded-scope coverage, exports and detached
-replay retain their Phase 11 contracts. The user authorized their source
-integration into the existing main worktree; the integration commit carries the
-current handoff. Publication and installed qualification remain separate.
-The [phase workflow](parameter-expansion-plan-2026-11-03.md#phase-session-workflow)
-requires independent planning, a separate writer, independent audit and commits.
-
-## Hold and resume
-
-The latest user request authorizes integration and merge into the existing main
-worktree. Main's unrelated files must remain intact, and its advance must not
-trigger publication. Push, deployment, installed restart, downloads and live
-runtime/cache/store access remain held. Read-only process metadata supports the
-publication check. The engine branch remains unchanged.
-
-Earlier phase records and git history retain their dated scope and evidence.
-Current authorization and standing contracts live in `AGENTS.md`. Installed
-readiness and real-cache coverage require separate authorized qualification.
-
-## Design
-
-**Goal**
-
-Create one variable system for both ranking and filtering. Users can combine financial parameters, choose how each parameter is measured over time, and save useful formulas. The website should make simple choices easy while allowing advanced formulas without requiring programming.
-
-**Options considered**
-
-| Option | Common interface | Consequence |
-|---|---|---|
-| Extend the existing metric and filter catalogs | Register each new formula as another metric/filter and prepare its values | Preserves today's shape, but arbitrary combinations create an expanding catalog. Ranking still assumes every value has a reciprocal yield. |
-| Introduce reusable variable definitions | Define a formula once; evaluate it for a company and date; use its scalar value anywhere | Separates financial meaning from ranking, filters, presentation, and execution. Both built-in and custom variables can use the same interface. |
-
-**Choose reusable variable definitions.** The current multiple/yield pair is suitable for EV/EBITDA, but unsuitable for profit margin, market cap, or arbitrary formulas. A variable should return one value with a unit and availability status. Ranking direction belongs to the strategy.
-
-The current code confirms this boundary: `metrics.py` prepares ranking pairs and separate filter values; SQL and browser selection rank by yield. The new system must generalize that boundary while preserving old calculations through compatibility adapters.
-
-**1. A parameter catalog with explicit meanings**
-
-Each parameter needs a stable identifier, description, unit, source requirements, supported time operations, and numerical rules.
-
-The target input list is limited to documented fields from the FMP routes the
-project already downloads. The [FMP source map](parameter-catalog.md) gives the
-exact field, unit and preparation status for every admitted input. It also lists
-calculations and exclusions. Endpoint support does not prove company/date
-coverage or mean that the current app exposes a field.
-
-| Group | Target inputs |
-|---|---|
-| Income and expenses | Revenue, cost of revenue, selling/general/administrative expense, research and development expense, operating income, interest income, interest expense, pretax income, income tax expense, net income |
-| Share counts | Weighted-average basic shares and weighted-average diluted shares |
-| Noncash and operating cash inputs | Combined depreciation and amortization, stock-based compensation, operating cash flow, capital-expenditure cash flow, net acquisition cash flow, cash taxes paid, cash interest paid |
-| Financing cash inputs | Net debt issuance, common dividends paid, preferred dividends paid, common-share repurchase cash flow, common-share issuance cash flow |
-| Cash and investments | Cash and cash equivalents, short-term investments, long-term investments |
-| Operating assets | Net receivables, accounts receivable, inventory, prepaid expenses, total current assets, net property/plant/equipment, goodwill, intangible assets excluding goodwill, total assets |
-| Operating liabilities | Accounts payable, accrued expenses, current deferred revenue, noncurrent deferred revenue, total current liabilities, total liabilities |
-| Debt and ownership claims | FMP short-term debt, FMP long-term debt, FMP lease obligations, book shareholders' equity, book preferred stock, noncontrolling interests |
-| Market observations | Dividend-adjusted close and trading volume |
-| Reference rates | US 3-month and 10-year Treasury yields |
-
-Reported amounts and share counts are the formula ingredients. Familiar
-calculated measures remain reusable built-in variables: gross profit, EBIT,
-EBITDA, free cash flow, net debt, working capital, market cap, enterprise value,
-reported EPS, margins, growth rates, yields and valuation ratios. Keep their
-definitions visible. Preserve the existing calculations and immutable Phase 1
-examples. The source map separates established adapters from proposed formulas.
-
-Use one revenue parameter with a chosen date, lookback or averaging operation.
-Do not create separate input entries for current revenue, prior-year revenue and
-three-year average revenue. Apply the same rule to the other inputs.
-
-Do not add an item merely because a broader accounting category contains it.
-The admitted list uses combined depreciation/amortization, net debt issuance and
-net acquisition cash flow. Separate depreciation/amortization, gross borrowing
-and repayment, gross acquisition spending, restricted cash, separate lease
-types and other unverified splits are excluded. The source map records the full
-exclusion list and the limits of this documentation check.
-
-Avoid ambiguous names such as "debt ratio." Show the actual definition, such as **Total debt / total assets**.
-
-Catalog entries must distinguish **supported**, **missing required data**, and **not yet supported**. A parameter must not appear usable merely because a raw provider response might contain a similarly named field.
-
-**2. Time is part of the variable definition**
-
-The interface must distinguish these operations:
-
-| Choice | Meaning |
-|---|---|
-| Value at screen date | Value available when the stock is selected |
-| Value 3 months earlier | Reconstruct the value available at that earlier date |
-| Value on a specific date | Use that date only when it does not exceed the screen date |
-| Average/minimum/maximum of 3 annual observations | Operate on three consecutive eligible fiscal years |
-| Average/minimum/maximum over 3 calendar months | Operate on a defined dated series, using its declared sampling rule |
-
-A three-month lookback is not a quarterly financial statement. The existing financial cache accepts annual reports only. Quarterly and TTM financial measures need a separate data capability.
-
-Recommended defaults:
-
-- Annual financial averages use equally weighted, consecutive fiscal observations.
-- Require the complete requested annual history. Do not silently average two years when three were requested.
-- Calendar-window statistics use an explicitly defined observation schedule and coverage rule.
-- At every historical observation date, apply the existing report-availability and age rules.
-- Never use a later report to fill an earlier missing input.
-- Preserve the current 90-day annual lag, strict availability-before-date rule, and 800-day age limit.
-- Keep the distinction between the current backtest availability model and a true historical filing-vintage dataset.
-
-For the example, the builder would express:
-
-```text
-A1 =
-  Revenue [latest eligible annual report]
-  × Average [Operating margin, 3 consecutive fiscal years]
-  ÷ Enterprise value [screen date]
-```
-
-The average applies to each year's operating margin. It is not the ratio of average operating income to average revenue.
-
-**3. One formula definition, several execution implementations**
-
-Use a restricted expression tree as the saved definition. The visual builder and optional text editor produce the same tree.
-
-Start with parameters, constants, `+`, `−`, `×`, `÷`, parentheses, supported time operations, and references to saved variables. References resolve to immutable revisions. Reject cycles.
-
-The core interface is:
-
-```text
-validate(definition, capabilities)
-    → normalized definition, unit, requirements, errors
-
-evaluate(definitions, companies, screen dates, input generation)
-    → values, validity, reason codes, evidence
-```
-
-The evaluator owns temporal alignment, units, dependency reuse, and missing-data propagation. Ranking and filtering consume its results without understanding formulas.
-
-Use canonical calculation units internally; convert only at the display boundary. A margin displayed as 12% must participate in multiplication as 0.12. Threshold entry must display its unit.
-
-Malformed formulas fail validation before a run. Missing inputs, zero denominators, and nonfinite results produce an unavailable value with a reason. Built-in ratios retain their existing positive-denominator rules. General arithmetic can retain meaningful signed values.
-
-Bound formula size and evaluation work. "Unlimited combinations" means combinations of supported operations, not arbitrary executable Python or JavaScript.
-
-**4. Ranking and filtering share variables**
-
-A strategy specifies:
-
-```text
-Ranking: variable revision + highest/lowest first + rank range
-Filters: variable revision + comparison + threshold
-Selection order: filter first / rank first
-```
-
-Allow any supported scalar variable in either position. Keep existing deterministic ties, original ranks, survivor weighting, and no-replacement behavior.
-
-Do not fabricate a reciprocal yield for a general formula. Results show **Ranking value**, its unit, and direction. Existing built-in valuation results can retain their familiar multiple/yield columns.
-
-Translate legacy requests at one boundary. Preserve existing default selections and saved records. Custom ranking must not inherit an invisible "minimum metric yield = 0" condition.
-
-**5. A focused user interface**
-
-Keep the main strategy form small:
-
-```text
-Rank by    [A1 — Operating yield ▾]  [Highest first ▾]
-Ranks      [1] to [50]
-
-Filters
-[Current ratio ▾]  [greater than ▾]  [1.5 ×]
-[A1 ▾]             [greater than ▾]  [8 %]
-
-[+ Add filter]       [Create variable]
-```
-
-The variable picker contains **Favourites**, **My variables**, and **Built-ins**, with search and category labels.
-
-"Create variable" opens a side panel on desktop and a full-screen editor on small screens:
-
-1. Choose a parameter.
-2. Choose its time basis and statistic.
-3. Add an operator and another term.
-4. Name the variable.
-5. Preview, then apply or save.
-
-Show the formula as editable blocks with explicit grouping. Provide a synchronized text editor under **Advanced**. Both views edit the same definition.
-
-The preview shows:
-
-- A plain-language explanation.
-- Output unit.
-- Required data.
-- Available-company count and missing-data reasons for a selected date.
-- Several sample calculations with input dates.
-
-Editing a formula must not automatically launch a full backtest. Apply changes through the existing strategy draft boundary, including its queue-edit protections.
-
-**6. Saved variables and reproducibility**
-
-Use a durable variable library, separate from rebuildable financial caches. A variable has a stable ID, name, immutable revisions, and favourite status.
-
-Saving and favouriting are distinct: every saved variable appears in **My variables**; stars make commonly used ones easier to find. Unsaved formulas can still be used in a draft.
-
-Runs and queued tests capture the complete resolved formula bundle, its revision identity, and display metadata. Editing or deleting a library entry cannot change an already submitted test.
-
-Completed artifacts preserve submitted definitions, selected values, labels, and results. Opening an old result requires no evaluation and no current library entry.
-
-**7. Future engine compatibility**
-
-The bounded numerical backend accepts qualified captured scalar programs. Its capability owner binds supported namespaces and parameters. Expanded recognition alone grants no execution qualification.
-
-The stable boundary should be **validated variable requirements → scalar values and validity**. The numerical engine can compile supported expressions behind that boundary. The reference evaluator remains the correctness authority.
-
-Each backend declares supported definition versions, parameters, and temporal operations. Unsupported work fails clearly before execution; it must not silently change meaning or switch engines.
-
-Initially, custom formulas can use the local service in every website mode. Existing standalone January/latest functionality remains available. Offline custom-formula support should follow a measured input-size and browser-performance probe.
-
-## Plan
-
-| Phase | Abstraction delivered | Completion evidence and handoff |
-|---|---|---|
-| **1. Variable contract and ownership** | Contract documentation delivered | Versioned contract and examples, [compatibility](phases/phase-01/compatibility.md), historical ownership map, and Phase 2 handoff. Current Phase 2 ownership is assigned above. |
-| **2. Parameter and history provider** | **Complete in source; both slices independently audited.** | [Phase record](phases/phase-02/README.md), Slice 1 and Slice 2. The provider supports revenue, operating income, operating margin and EV. The broader [FMP target inventory](parameter-catalog.md) does not expand this scope. Required WSL/native verification and both independent smart-commit passes are complete. |
-| **3. Formula evaluator** | **Complete in source; both slices independently audited.** Strict immutable programs and bounded provider-backed scalar execution. | [Current record](phases/phase-03/README.md), Slice 1, Slice 2 and Phase 4 handoff. Slice 1 is `d23cfa2`; Slice 2's malformed-plan finding is fixed. All 173 post-audit WSL/private native tests pass. |
-| **4. General scalar selection** | **Complete in source; both slices independently audited.** Callable finite-scalar selection and explicit legacy adapters. | [Current record](phases/phase-04/README.md), execution plan and Phase 5 handoff. Final checks cover both pools/orders/directions, ties, signed/missing values, empty scopes and legacy parity. Slice 1 is `6561a56`; Slice 2 has 336 WSL passes, two established platform skips and 259 private native passes. |
-| **5. Durable variable library** | **Complete in source; both slices independently audited.** Immutable revisions, independent names/favourites, exact resolution and atomic detached capture | [Phase record](phases/phase-05/README.md), execution plan and Phase 6 handoff. Final Slice 2 checks pass 282 WSL and 221 private native tests. Existing requests, queue and saved results stay unchanged. |
-| **6. Variable editor and strategy integration** | **Complete in source; all three slices independently audited.** Captured intent, Original execution/evidence, the shared workspace, draft capture and detached presentation pass final source-bound verification. | [Current record](phases/phase-06/README.md), Slice 3, execution plan, [compatibility](phases/phase-06/compatibility.md) and held Phase 7 handoff. |
-| **7. Numerical backend qualification** | **Complete in source; all three slices independently audited.** Bounded compiled evaluation, candidate-owned execution and qualified pinned capability | [Current record](phases/phase-07/README.md), execution plan and [compatibility](phases/phase-07/compatibility.md). Compare complete semantics and measure exact-source WSL/private native workloads. Original remains default. |
-| **8. Complete parameter contract** | **Complete in source; one independently planned, implemented and audited slice.** Versioned meaning, share units and immutable compatibility | [Phase record](phases/phase-08/README.md), [field contract](phases/phase-08/parameter-contract.md), [compatibility](phases/phase-08/compatibility.md) and Phase 9 handoff. All 52 direct descriptions plus two adapters are checked. All 393 WSL tests pass. Four usable observations remain; /2 execution is closed. |
-| **9. Evidence for all sources** | **Complete in source; two independently planned, implemented and audited slices.** Endpoint-aware annual facts, dated market/rate observations and direct reference execution for all 52 inputs | [Phase record](phases/phase-09/README.md) and execution plan. Preserve financial policy and generation ownership. |
-| **10. Reusable measure library** | **Complete in source; two independently planned, implemented and audited slices.** All 33 named measures, annual growth/CAGR, captured exact definitions and preserved legacy arithmetic | [Phase record](phases/phase-10/README.md), execution plan and held Phase 11 handoff. |
-| **11. Discoverable, qualified capabilities** | **Complete in source; both slices independently planned, implemented and audited.** Expanded execution, discoverable authoring, exact measure Save/reopen and bounded recorded-scope coverage | [Phase record](phases/phase-11/README.md) maps all exits to WSL/native/browser evidence, complete exports and detached replay. |
-| **12. Integration candidate** | **Complete for source readiness; independently planned, implemented and audited.** Expanded-capability reconciliation, historical durable-content checks and final candidate verification | [Phase record](phases/phase-12/README.md). The subsequent authorized fast-forward integrates this source into main. Publication and runtime qualification remain held. |
-
-Each phase includes interface comments, focused tests, compatibility notes, and affected architecture-guide updates. Financial phases must have one agreed owning branch. Custom-variable Phases 6 and 7 are complete in source. Unrelated website and engine development can continue under the existing worktree boundaries.
-
-Do not build automatic strategy search, arbitrary user code, cross-sectional ranking inside formulas, or silent missing-value substitution in the first release. These add separate semantics beyond the requested formula system.
-
-Quarterly/TTM support is a later extension of the history provider. It requires explicit download controls, availability policy, preparation, and validation; the formula language should not need redesign.
-
-## Remaining qualification
-
-Native/live-cache coverage and installed readiness are unknown. They need
-separate authorization. Source inspection uses recorded January/latest scopes
-and reports the complete snapshot denominator, generation and missing reasons.
-Fixed/random execution remains a separate qualified capability. Calendar-series,
-quarterly and TTM statistics remain later capabilities with distinct semantics.
-
-Standalone custom-formula execution needs a measured input-size and browser
-performance decision. Current custom formulas use the local service; standalone
-January/latest built-in screening remains available.
+Status: complete
+
+## Outcome
+
+Users can define a scalar variable once and use it to rank or filter stocks.
+The shared editor offers 52 direct FMP inputs, existing-policy adapters and 33
+exact named measures. A formula can use annual mean, minimum, maximum, growth and
+CAGR, and fixed-date or lookback contexts. Saved variables live in a durable
+library with immutable revisions and favourites. Runs, queued tests and saved
+results capture the complete formula bundle. They reopen without evaluation.
+
+Original runs custom strategies in Latest, January, fixed and random modes, and
+owns sample preview. The experimental engine runs the same bounded scalar modes
+when the user selects it. Coverage inspection reports complete counts and
+missing reasons for a recorded January or latest scope. The source is integrated
+into `main`. The program did not publish it or qualify an installed runtime.
+
+The design contract is in [variable design](variable-design.md).
+
+## Key decisions
+
+- **Reusable definitions, not a larger metric catalog.** A variable returns one
+  value with a unit and a status. Ranking direction belongs to the strategy. The
+  multiple/yield pair suits EV/EBITDA only. Adding each formula to the catalog
+  would grow it with every combination.
+- **Annual data only.** The financial cache holds annual reports. Quarterly, TTM
+  and calendar-window statistics need a separate data capability. The formula
+  language does not need redesign for them.
+- **Strict time and missing-data rules.** The 90-day lag, strict
+  availability-before-date and 800-day anchor limit apply at every observation.
+  The full requested history is required. A newer report never fills a missing
+  value. Missing, conflicting and nonfinite facts are unavailable with a reason.
+- **Context ownership.** A root in a recorded January or latest scope reads
+  stored owner lanes. Derived `at` and `lookback` contexts use dated owner
+  policy, even at an equal date. A missing prepared company or lane never falls
+  back to another calculation.
+- **Legacy settings keep stored comparison scale (Phase 4).** The Phase 1
+  proposal converted old thresholds to canonical units. It was rejected because
+  binary64 division by 100 merges distinct stored values. Example:
+  `13.501116090704034` and `13.501116090704036` both become
+  `0.13501116090704035`. Canonical conversion applies only to new thresholds.
+- **Versioned meaning; no rewrites.** Definition versions 1–3 and catalogs
+  `/1`–`/3` keep their recorded meaning. New formulas use version 3 and catalog
+  `/3`. Old formulas need an explicit upgrade. Stored rounding, old immutable
+  bytes, queue records and durable formats are unchanged.
+- **One correctness authority.** The Python reference evaluator defines results.
+  The numerical engine compiles supported programs behind the same scalar
+  boundary. Unsupported work fails before execution, with no fallback.
+- **One qualification gate.** `backtest/variables/selection.py` admits a fixed
+  77-ID inventory. Catalog recognition, provider support or compiler support
+  alone grants no application qualification.
+- **Conservative library retention (Phase 5).** Delete hides an entry. Revisions
+  stay. There is no eviction. A damaged store is preserved and reported.
+- **Exact authoring content.** Owners produce the editor descriptors. One
+  resolution boundary serves Save, reopening and capture. See
+  [decision 0001](phases/phase-11/decisions/0001-exact-authoring-content.md).
+- **Complete recorded-scope coverage.** A separate owner counts every snapshot
+  row in a recorded scope. It does not extend preview, which stays at 1–16
+  roots. See [decision 0002](phases/phase-11/decisions/0002-complete-recorded-scope-coverage.md).
+- **Compatibility at existing owners (Phase 12).** Historical definitions,
+  queue plans and saved evidence are checked through their current owners. No
+  compatibility gateway was added. See
+  [compatibility boundaries](phases/phase-12/decisions/0001-compatibility-boundaries.md).
+- **Cache versions.** Observation projection 4, research schema 11 and daily
+  cache 5 carry the new evidence. Older derived caches must rebuild.
+- **Unchanged ceilings.** The 32-definition closure ceiling, 50 conditions,
+  ranks 1–5000 and existing resource, freshness, worker and lock rules stay.
+- **Excluded from the first release.** Automatic strategy search, arbitrary
+  code, cross-sectional ranking inside formulas and silent missing-value
+  substitution.
+
+## Where the current contracts live
+
+- [Variable design contract](variable-design.md): parameters, units, time
+  operations, formula language, measures, strategy intent, library, execution
+  and editor.
+- [FMP source map](parameter-catalog.md): provider fields and excluded items.
+- Decision records: [exact authoring content](phases/phase-11/decisions/0001-exact-authoring-content.md),
+  [complete recorded-scope coverage](phases/phase-11/decisions/0002-complete-recorded-scope-coverage.md)
+  and [compatibility boundaries](phases/phase-12/decisions/0001-compatibility-boundaries.md).
+- [Source map](../project-structure/source-map.md) and the
+  [architecture guide](../../architecture-guide/dist/index.html).
+- Root [AGENTS.md](../../../AGENTS.md#feature-contracts): the Custom variables
+  contract and the standing engineering rules.
+- Code owners: `backtest/variables/`, `backtest/observations.py` and
+  `backtest/measure_observations.py`, plus `strategy_requests.py`,
+  `variable_authoring.py`, `variable_coverage.py` and `scalar_execution.py` in
+  `backtest/application/`.
+
+## Known limits and open items
+
+- Installed readiness is not established by source work.
+- Real-cache coverage is not established. All checks used private synthetic
+  fixtures. Field coverage for real companies and dates is unknown.
+- Publication, deployment and installed restart need separate authorization.
+  Each future `main` advance must recheck that no publication supervisor runs.
+- Native HTTP and browser operation, literal native production launches and
+  larger random workloads are not qualified.
+- New durable containers were created by current code. Migration from older
+  container schemas is not tested.
+- Numerical sample preview and eager scalar execution are unsupported.
+- Original stays the default engine.
+- Offline standalone formula execution needs a measured input-size and
+  browser-performance decision. Custom formulas use the local service.
+- No speedup or capacity claim follows from the recorded workloads.

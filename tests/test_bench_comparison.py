@@ -115,7 +115,7 @@ class ProtocolTests(unittest.TestCase):
         import copy
         import json
         import subprocess
-        path = Path(__file__).resolve().parents[1] / 'docs/plans/compiled-backtest/phases/CB-02/execution/prospective-comparison.json'
+        path = Path(__file__).resolve().parents[1] / 'tests/fixtures/prospective-comparison.json'
         value = json.loads(path.read_bytes())
         result = validate_prospective(value)
         self.assertEqual(result['arithmetic'], 'feasible')

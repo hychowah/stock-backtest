@@ -281,7 +281,7 @@ class OwnershipTests(unittest.TestCase):
         storage.close()
 
     def test_declaration_is_unchanged_and_preservation_requires_closure(self):
-        record = json.loads((ROOT/'docs/plans/compiled-backtest/phases/CB-02/execution/native-browser-capability.json').read_bytes())
+        record = json.loads((ROOT/'tests/fixtures/native-browser-capability.json').read_bytes())
         self.assertEqual(LIMITS,record['declaration']['limits'])
         storage = self.storage(); browser = NativeBrowser(storage)
         self.addCleanup(browser.close)

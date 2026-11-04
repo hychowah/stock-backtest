@@ -3,7 +3,7 @@
 Source contract. Automatic producers remain eager. The CB-14 record gives the
 verification scope and remaining operational gates.
 
-The [30 October performance direction](plans/compiled-backtest/phases/CB-14.performance-direction.md)
+The [30 October performance direction](plans/compiled-backtest/master-plan.md)
 sets no absolute user waiting-time limit. It seeks about 4× over the original
 ordinary method, or close, with effort proportionate to the gain. Resource and
 experiment limits remain unchanged. Candidate eager/bounded observations do not
@@ -150,7 +150,7 @@ G03/G06 remain software-admission failures, not proof of hardware RAM exhaustion
 Operational gates remain unresolved; CB-15 is blocked. Increment 6 must use actual
 hardware and workflow observations before choosing routing or higher limits.
 
-Initial [increment-6 observations](plans/compiled-backtest/phases/CB-14.capacity6.md)
+Initial [increment-6 observations](plans/compiled-backtest/master-plan.md)
 retain eager routing and every existing limit. They separate physical RAM,
 changing available memory, recursive graph accounting and encoded result bytes.
 The small fictional representation probe does not qualify a larger workload.
@@ -160,7 +160,7 @@ saving, ordinary-service reopening and all 116 CSV downloads pass. This supports
 the unchanged eager policy for that scope. Broader-input and full-window
 capacity, workflow acceptance and final route/limit selection remain open.
 
-A separate [fresh FMP prefix](plans/compiled-backtest/phases/CB-14.capacity6.real-inputs.md)
+A separate [fresh FMP prefix](plans/compiled-backtest/master-plan.md)
 uses 192 private symbols and four weekly trials in January–May 2015. It preserves
 68 periods and 3,400 holdings. Original API results pass strict ordinary-reference
 comparison. Complete browser values, saving, ordinary stored reopening and all
@@ -171,7 +171,7 @@ present-day selection bias. It supplies no full-universe, full-window, cold
 workflow or acceptance qualification. Eager routing and all limits stay unchanged.
 
 
-The [retained-input twelve-trial continuation](plans/compiled-backtest/phases/CB-14.capacity6.real12.md)
+The [retained-input twelve-trial continuation](plans/compiled-backtest/master-plan.md)
 passes on the same cohort and calendar with empty numerical checkpoints. All
 204 periods, 10,200 holdings and 50 fresh/reopened CSVs are complete. Strict
 original-API comparisons have zero numerical differences. Every CSV cell and
@@ -183,7 +183,7 @@ or routing change follows. The next proposed resource observation uses the
 existing bounded interfaces at the same twelve-trial scope, after a new declaration.
 
 
-The [same-plan bounded real-input observation](plans/compiled-backtest/phases/CB-14.capacity6.bounded12.md)
+The [same-plan bounded real-input observation](plans/compiled-backtest/master-plan.md)
 produces all twelve trials, 204 periods and 10,200 holdings. Original typed codec
 trials pass strict ordinary/eager comparisons after a retained private comparison
 repair. The actual consumer workflow fails the existing browser session deadline
@@ -201,7 +201,7 @@ hash; that extra pass is outside those Reader/page counts. The probes do not
 isolate the cause of the complete browser delay. Those historical receipts remain
 unchanged.
 
-The subsequent [consumer fix](plans/compiled-backtest/phases/CB-14.capacity6.consumer.md)
+The subsequent [consumer fix](plans/compiled-backtest/master-plan.md)
 profiles the actual service and browser path. Repeated complete semantic decoding
 dominates early requests. Prefix decoding is meaningful for late requests. Physical
 hashing is a small part of their cost. The independent design keeps complete
@@ -243,4 +243,4 @@ including its captured strategy and every explanation. Scalar `holdings`/`screen
 CSV includes original values, units, direction and qualified links; retain its
 companion evidence file for full offline explanation. Counted attachment lengths
 and existing independent request pins remain unchanged. Old codec-1 exports
-retain their original bytes. See [Phase 6 compatibility](plans/custom-variables/phases/phase-06/compatibility.md).
+retain their original bytes. See [Phase 6 compatibility](plans/custom-variables/master-plan.md).

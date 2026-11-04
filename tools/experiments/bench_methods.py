@@ -297,7 +297,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime',type=Path,required=True)
     parser.add_argument('--workdir',type=Path,required=True)
-    parser.add_argument('--manifest',type=Path,default=ROOT/'docs/plans/compiled-backtest/phases/CB-01/workloads.json')
+    parser.add_argument('--manifest',type=Path,default=ROOT/'tools/experiments/workloads.json')
     parser.add_argument('--methods',nargs='+',choices=METHODS,default=list(METHODS))
     parser.add_argument('--cases',nargs='*')
     parser.add_argument('--seed',type=int,default=42)

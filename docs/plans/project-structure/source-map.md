@@ -1,8 +1,6 @@
 # Current source owners
 
-Updated during Phase 7 Slice 3 qualification. This map describes source after the structure refactor.
-Historical designs, measurements and captured artifacts retain their original
-paths and source hashes. The engine worktree has not been synchronized.
+This map describes the current source owners after the structure refactor.
 
 | Concern | Current owner |
 |---|---|
@@ -32,7 +30,7 @@ Remaining old executable paths do not serve as library import aliases.
 ## Custom-variable provider and reference evaluator
 
 Phase 2 resumed on 2 November in `feature/custom-variables`. The dated structure
-refactor did not implement it. See the [current Phase 2 record](../custom-variables/phases/phase-02/README.md).
+refactor did not implement it. See the [custom-variable master plan](../custom-variables/master-plan.md).
 The owners relevant to that feature are:
 
 - `backtest/observations.py` owns the direct observation capabilities, immutable
@@ -73,7 +71,7 @@ The owners relevant to that feature are:
 
 `backtest/variables/definitions.py` now owns immutable formula validation,
 normalization, identities, unit inference and resolved dependency programs.
-Phase 3 resumed from `9e5d97d`; see its [current record](../custom-variables/phases/phase-03/README.md).
+Phase 3 resumed from `9e5d97d`; see the [custom-variable master plan](../custom-variables/master-plan.md).
 `backtest/variables/reference.py` owns bounded context plans, provider-backed
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL

@@ -11,7 +11,7 @@ from website.rendering.build import build
 
 def cli():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--snapshot',action='store_true',help='Explicitly refresh the tracked portable website in website/dist')
+    parser.add_argument('--snapshot',action='store_true',help='Write an untracked portable website export to website/dist')
     parser.add_argument('--cache-owned',action='store_true',help=argparse.SUPPRESS)
     args=parser.parse_args()
     with nullcontext() if args.cache_owned else cache_access.access():

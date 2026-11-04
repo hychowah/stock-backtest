@@ -1,81 +1,120 @@
 # Backtest library usability
 
-### Design
+Status: complete
 
-**Goal:** Make completed tests easy to retain, find, rename and compare. Provide 100 saved slots, automatic queue-to-library transfer, stable identifiers, performance sorting and bounded lists. Preserve stored results and all calculation, request, cancellation and ownership contracts.
+## Outcome
 
-**Options:**
+The saved-backtest library keeps completed tests so that users can find, rename,
+inspect and compare them. All four phases are complete.
 
-1. **One execution-and-results database.** A single record moves from waiting to completed; queue and library become filtered views. Common interface: submit, list by state, rename, open and delete. This is a clean design for a new system, but here it changes existing durable-store ownership and result-reader contracts.
-2. **Library owns completed results; queue owns execution.** Keep both databases. Add one recoverable transfer operation between them. Common interfaces: `library.rename(id, name)`, `library.accept_queue_result(source_id, ...)`, and `queue.archive_completed(id, saved_id)`. Existing result readers continue to own artifact compatibility.
+- The library holds up to 100 records. Each record shows its existing UUID.
+  Users can rename a record and sort by stored performance. Queue and library
+  lists are bounded, labeled scroll regions with keyboard access.
+- Each completed queue result moves to the library through a recoverable
+  transfer. It is not calculated again. A full library or a failed transfer
+  keeps the complete result visible in the queue for retry.
+- Users can compare exactly two saved records. The comparison shows recorded
+  performance and aligned parameter rows. Changed rows are marked.
+- Each saved row has a lazy All parameters disclosure.
 
-**Chosen:** Option 2. Existing durable databases and protected engine boundaries are real constraints. A reliable transfer establishes the desired ownership without changing execution.
+Opening, comparing or inspecting a stored record never calculates, prepares
+data or reads a current catalog. The work changed no financial calculation,
+request shape, cancellation rule or resource ownership.
 
-- `saved_backtests.Store` owns capacity, names, stable IDs and import receipts. Existing records already have UUID primary keys; expose these instead of inventing another identifier.
-- Queue completion commits its original artifact first. Transfer then saves a complete independent library record and acknowledges archival in the queue. Only afterward may queue-held result bytes be removed.
-- A durable import receipt keyed by queue ID makes retries safe. Keep the receipt after library deletion so interrupted transfer cannot recreate an explicitly deleted result. Renaming an imported record must survive retries.
-- Archived queue records retain submission receipts but leave the visible queue and its capacity count. Existing completed records follow the same transfer path.
-- At capacity or after a transfer failure, retain the complete queue result and show “Completed — waiting for saved slot” or a retry notice. Retry without recalculation. Failed and stopped tests remain in the queue.
-- `BacktestComparison` describes stored artifacts and compares their parameters. It owns display normalization, including legacy calendar representations and documented defaults. It never mutates artifacts or submits calculations.
-- Comparison uses exactly two saved records, highlights changed parameter rows, and shows unchanged rows too. Performance remains explicitly labeled: CAGR for fixed/January tests; mean trial CAGR for random tests. Different windows or test types receive a comparability notice.
-- Queue and library lists use bounded, labeled scroll regions. Headers and controls remain outside them.
+## Key decisions
 
-### Plan
+- **Two databases, one transfer.** The queue owns execution in
+  `data/backtest-queue.sqlite`. The library owns completed results in
+  `data/saved-backtests.sqlite`. Two alternatives were rejected. One combined
+  execution-and-results database would change durable-store ownership and
+  reader contracts. An attached-database transaction would couple both schemas,
+  publication internals and transaction ownership.
+- **Use the existing UUID primary keys.** No second identifier was added.
+- **Rename is metadata only.** `POST /api/backtests/<id>` takes
+  `{"name": "..."}`. The body limit is 4 KiB. Names have 1–120 characters.
+  An invalid name returns 400. A missing ID returns 404. Result bytes, creation
+  dates and IDs do not change. Rename needs no financial access or decoding.
+- **Capacity is 100, atomic across instances.** The browser reads the limit from
+  the collection response. Nothing is evicted automatically.
+- **Sorting uses stored values only.** Performance means stored CAGR, or stored
+  mean trial CAGR for random tests. Missing values are last in both directions.
+  Ties sort by saved date descending, then UUID ascending. The default is newest
+  saved.
+- **Idempotent library admission.** `Store.accept_queue_result(source_id, name,
+  open_source)` writes a `queue_imports` receipt keyed by queue ID. The receipt,
+  the record and its complete evidence commit in one transaction. The receipt
+  survives deletion of the saved record. A retry returns the first outcome. It
+  cannot recreate a deleted record, take another slot or undo a rename. A short
+  preflight checks receipts before capacity and opens no source. The final write
+  transaction repeats both checks.
+- **Queue reservation and archival.** The queue `transfers` table stores the
+  reservation, saved ID, a safe retry reason and the completion fingerprint.
+  The fingerprint survives archival, so a completion retry cannot replace the
+  original result. Deletion wins before reservation. During a reservation,
+  deletion returns a conflict that asks the user to refresh and retry. Archived
+  rows keep submission and completion receipts, but leave the visible list and
+  its capacity count. Their duplicate result bytes are removed after the library
+  receipt commits. Open detached readers keep their bytes.
+- **One reconciler.** Only the elected queue consumer transfers results. It does
+  this before readiness and pause checks, so paused or engine-unavailable queues
+  still transfer. The queue read transaction ends before library publication.
+  A transfer failure never enters calculation-failure handling.
+- **Browser refresh by revision.** Queue collection responses carry
+  `library_revision`, the archived-result count. A changed value refreshes the
+  library. An active rename or library mutation defers that refresh until Save,
+  Cancel or Escape.
+- **Comparison is a pure browser module.** A server comparison endpoint was
+  rejected, because it would add presentation policy beside the browser artifact
+  owner. `website/browser/backtest-comparison.js` describes stored artifacts and
+  aligns their rows. Its normalization rules:
+  - Calendars normalize through `CalendarSettings`.
+  - AND-filter order and repeated identical conditions do not change meaning.
+  - Strict operators and exact values stay exact.
+  - Only documented omission defaults apply, such as filter-first and Original.
+  - Unfamiliar settings stay visible with their field names.
+  - Stored labels are used.
+  - Requested engine and recorded producer stay separate. A missing producer is
+    unidentified.
+  - Seed policy and recorded seed stay separate.
+  - Random results are trial distributions. Mean trial CAGR is never presented
+    as one portfolio return.
+  - Different test types or windows produce a comparability notice.
+  - Changed rows use color and the word "Different".
+- **Comparison loading is independent of the main view.** It uses the shared
+  result-acquisition scope, projects each artifact at once and releases its
+  reader. Its own generation token discards stale replies. It never opens,
+  publishes or restores the main result or form.
+- **All parameters loads lazily.** Embedding settings in every list response was
+  rejected, because it changes server metadata and loads settings for all
+  records. A native `<details>` element loads one compact description on first
+  expansion. Native `toggle` events do not bubble, so a capture listener handles
+  them. State is keyed by record ID and pruned on deletion. A failure shows an
+  inline retry.
+- **Layout check.** A preview with 100 fictional records per list kept both
+  lists bounded. At 1440×1000 the queue was 560 px high and the library 480 px.
+  At 390×844 the page had no horizontal overflow.
 
-1. **Deliver the manageable library.** Raise capacity atomically to 100 and have the browser read the returned limit. Expose full UUIDs, add inline Rename with Save/Cancel, and provide performance ascending/descending sorting with missing values last and deterministic ties. Rename changes only metadata. Bound both lists without changing queue behavior. Deliver interface comments and tests for capacity races, unchanged artifact bytes, rename validation, sorting and acknowledged mutations after failed refreshes.
+## Where the current contracts live
 
-2. **Deliver recoverable completion transfer.** Implement the library’s idempotent import interface and queue archival acknowledgment. The queue consumer reconciles completed results after completion and during recovery, including while execution is paused. Later UI work consumes transfer status instead of knowing transaction details. Test interruption before and after each commit, concurrent instances, full capacity, deletion and rename during recovery, older completed jobs, and eager/version-3 evidence. Preserve existing lock order and financial-resource lifetimes.
+- Root [AGENTS.md](../../../AGENTS.md#feature-contracts): the Saved library
+  and queue, and Result access contracts.
+- [Durable evidence snapshots](../../durable-evidence.md), for version-3
+  results inside the queue and library databases.
+- [Acquired result readers](../../evidence-views.md).
+- [Architecture guide](../../architecture-guide/dist/index.html).
+- Source owners: `backtest/application/library.py`,
+  `backtest/application/queue.py`, `website/browser/saved-backtests.js`,
+  `website/browser/backtest-comparison.js` and `website/browser/queue.js`.
+- Checks: `tests/test_saved_backtests.py`, `tests/test_queue_transfer.py`,
+  `tests/test_queue.py`, `tests/check-saved-backtests.cjs`,
+  `tests/check-backtest-comparison.cjs` and `tests/check-saved-comparison.cjs`.
 
-3. **Deliver stored-result comparison.** Add a pure parameter-description/comparison module and two-record selection in the library. Acquire records through existing artifact readers without publishing them into the main result view. Keep compact descriptions and release temporary readers. Highlight differences with text as well as color. Test legacy defaults, calendars, filters, random seeds, requested engines versus recorded producers, missing performance and selection changes.
+## Known limits and open items
 
-Each slice updates the architecture guide, runs focused synthetic Python/browser checks and relevant regression checks, then receives its own smart commit. Exclude unrelated dirty files. Do not build a new result store, recalculate saved results, add charts, or introduce automatic eviction.
-
-### Unknowns
-
-- **Transfer representation:** Verify how eager blobs and version-3 evidence can enter the same idempotent import operation. Probe both with temporary databases before implementing transfer.
-- **Historical parameter variation:** Inspect synthetic legacy/current fixtures to identify comparison defaults and unknown fields. Preserve unfamiliar settings visibly rather than silently dropping them.
-- **Scrolling usability:** Preview 100 fictional records on desktop and mobile. Check keyboard access, focus retention, rename controls and comparison width before committing.
-- **Native compatibility:** Run durable-store and queue checks with native Windows fixtures when available; report any checks that remain unverified.
-
-## Phase record
-
-- Phase 1: committed as `e049f43` after independent smart-commit audit and focused verification.
-- Phase 2: committed as `d09d376` after independent smart-commit audit and focused verification. See [phase-02.md](phase-02.md).
-- Phase 3: complete after independent smart-commit audit and focused verification. See [phase-03.md](phase-03.md).
-- Follow-up phase 4: saved-row All parameters inspection complete after independent smart-commit audit and focused verification. See [phase-04.md](phase-04.md).
-
-The work is committed on `ui/backtest-library`. An existing automatic publication
-supervisor watches `main`. That branch stays at `f7e320d81761f4a9ee4f1c119e03285b0609efb9`
-while these slices are implemented. The task branch avoids automatic publication.
-No supervisor stop, deployment or installed-server restart is part of this work.
-
-Phase 1 keeps existing UUID primary keys and adds `POST /api/backtests/<id>` with
-`{"name":"New name"}`. The response is the updated list metadata. Invalid names
-return 400; a missing ID returns 404. The body is limited to 4 KiB. The operation
-changes only the name. No financial access or result decoding is needed.
-
-The browser reads library capacity from the existing collection response. Sort
-order uses stored CAGR, or stored mean trial CAGR for random tests. Missing
-performance stays last in both directions. Saved date descending, then UUID
-ascending, breaks ties. The default is newest saved.
-
-Phase 1 verification on 1 November 2026:
-
-- `python3 tests/test_saved_backtests.py`: 13 tests passed in WSL.
-- Native Windows Python, source UNC path, `tests/test_saved_backtests.py`: 13 tests passed.
-- `node tests/check-saved-backtests.cjs`: passed. Includes 100 slots, server-advertised capacity, rename validation/cancel/failed-refresh acknowledgment, full IDs and signed/missing/tied performance sorting.
-- `node tests/check-queue.cjs`: passed.
-- `node tests/check-result-artifacts.cjs`: passed.
-- `node tests/check-backtest-runs.cjs`: passed.
-- `node docs/architecture-guide/check.cjs`: passed.
-- Root's browser preview used 100 fictional records per list. At 1440×1000 the queue height was 560 px and library height was 480 px. At 390×844 the page had no horizontal overflow. Both lists remained bounded. Inline Rename focused its input and stayed within the viewport. Focusing the queue and pressing PageDown scrolled it by 480 px. Preview screenshots are kept under ignored `tmp/library-ui-preview/`.
-
-The independent smart-commit audit found a rename keyboard guard regression and
-two root-level preview screenshots. The guard now requires an active matching
-rename input. Regression checks cover ordinary Enter/Escape events and rename
-input Save/Cancel keys. The screenshots were moved into ignored preview storage.
-
-The ordinary range check needs generated local output. This checkout has no
-`website/local/index.html`; no real-cache build was requested for this slice. No live data,
-installed user stores, downloads, deployment or snapshot refresh is part of this
-work. Unrelated snapshot and market-scope files stay excluded.
+- Comparison covers exactly two records. It adds no charts.
+- Saved results are never recalculated, and the library never evicts a record.
+  At capacity, completed queue results wait for a free slot.
+- Browser reader release is best effort. A server that cannot be reached cannot
+  acknowledge a release. Server-side limits still bound retained readers.
+- Verification used fictional fixtures in WSL and native Windows. No installed
+  user stores, real-cache build or deployment were part of this work.

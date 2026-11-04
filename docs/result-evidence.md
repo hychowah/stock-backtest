@@ -167,7 +167,7 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 
 ## Remaining integration
 
-The [capacity design](plans/compiled-backtest/phases/CB-14.capacity-design.md)
+The [capacity design](plans/compiled-backtest/master-plan.md)
 now has an explicit dormant runtime transfer and temporary Jobs owner. It
 adds explicit queue/library persistence in increment 4. Increment 5 connects
 ResultArtifacts, bounded inspection and complete HTTP attachments. The producer
@@ -248,5 +248,5 @@ receipts, ordered evaluation chunks, admission/built-in lanes, selection receipt
 and selected screen or portfolio rows. References qualify scope and chunk. A
 selected row cannot precede its complete scope and selection receipts. Latest
 is screen-only, with zero trials/periods and no future-return fields. Old codec-1
-trial/checkpoint readers are unchanged. See [current compatibility](plans/custom-variables/phases/phase-06/compatibility.md)
+trial/checkpoint readers are unchanged. See [current compatibility](plans/custom-variables/master-plan.md)
 for record/work bounds, closure, pages and complete offline evidence export.

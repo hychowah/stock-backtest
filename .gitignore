@@ -38,12 +38,10 @@ data/numerical-preparation-*.json.download
 data/numerical-preparation-*.lock
 data/numerical-preparation-*.lock.live/
 
-# Rebuildable local website output; tracked dist is an explicit portable snapshot.
+# Rebuildable website output. `website/build.py --snapshot` writes the portable
+# export to website/dist/; neither folder is tracked.
 website/local/
-
-# Legacy portable-snapshot build stamps.
-website/dist/.build-state.json
-website/dist/.build-state.tmp
+website/dist/
 
 # Local background website identity and startup lock.
 data/website-server-*.json

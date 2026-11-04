@@ -83,9 +83,6 @@ class ExpandedMeasurements(measurements.MeasurementTests):
                       and '__pycache__' not in p.parts and p.suffix != '.pyc'}
             if (root / 'requirements-numerical.txt').is_file():
                 actual.add('requirements-numerical.txt')
-            fixture = 'docs/plans/custom-variables/phases/phase-01/examples.json'
-            if (root / fixture).is_file():
-                actual.add(fixture)
             if (type(manifest) is not dict or not manifest or set(manifest) != actual
                     or any(not isinstance(name, str) or name.startswith('/') or '..' in Path(name).parts
                            for name in manifest)):

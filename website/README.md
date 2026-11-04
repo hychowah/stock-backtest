@@ -1,6 +1,6 @@
 # January strategy screener
 
-Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. Opening `dist/index.html` directly still supports the saved latest and January views.
+Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. A portable export built with `python3 website/build.py --snapshot` opens directly from `dist/index.html` and supports the saved latest and January views.
 
 ## Automatic updates
 
@@ -124,7 +124,7 @@ Latest mode has separate prepared records for the original 250-candidate pool an
 
 Click **Screen latest**, **Top 50**, or **Top 100**. Download latest picks exports the currently selected stocks, including valuation date, adjusted price, estimated market cap/EV, ratios, fiscal date, and assumed availability date. `dist/latest-picks.csv` is the default-settings fallback export generated at build time; browser downloads reflect the current filters. The latest table is also embedded as a no-JavaScript fallback.
 
-Updating source caches does not update an already-open standalone HTML file. Run `python3 scripts/research.py prepare` and `python3 website/build.py` for the local server, then reload the page. To refresh a standalone file in `dist/`, use `python3 website/build.py --snapshot` explicitly. These commands never download data. Future latest sessions are prepared independently of the canonical backtest's saved Through date, so new current prices do not silently extend the old report.
+Updating source caches does not update an already-open standalone HTML file. Run `python3 scripts/research.py prepare` and `python3 website/build.py` for the local server, then reload the page. To refresh the untracked standalone export in `dist/`, use `python3 website/build.py --snapshot` explicitly. These commands never download data. Future latest sessions are prepared independently of the canonical backtest's saved Through date, so new current prices do not silently extend the old report.
 
 ## Ranking metrics
 
@@ -238,7 +238,7 @@ managed children receive `--cache-owned` from their owning parent.
 
 ## Local builds and portable snapshots
 
-Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the tracked portable snapshot in `website/dist/`.
+Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the untracked portable export in `website/dist/`.
 
 Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 

@@ -28,8 +28,9 @@ The server also saves development logs in `data/logs/website-<namespace>-<pid>.l
 
 The website opens with Latest stock picks. Switch to Historical backtest for
 January books or custom trade dates with monthly, quarterly, half-yearly or
-yearly rebalancing. You can still open [website/dist/index.html](website/dist/index.html)
-directly for the saved latest/January views; custom schedules use the local service.
+yearly rebalancing. `python3 website/build.py --snapshot` writes an untracked
+portable export to `website/dist/`. Open its `index.html` directly for the saved
+latest and January views; custom schedules use the local service.
 
 Custom and random-date backtests run on the server. Locking your phone,
 refreshing, or closing the page does not stop them. Reopen the same address in
@@ -84,41 +85,23 @@ For an explanation of the program, open the [plain-language architecture guide](
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
-Current source offers **Original** and **New engine — experimental** for dated
-runs. Original remains the default. Both engines support operating yield spread.
-Each submitted run keeps its selected engine. Experimental preparation is optional
-in Manage backtest data. Prepare again after upgrading to the spread implementation.
-Saved results stay readable. See the [startup guide](docs/candidate-startup.md) and
-[release handoff](docs/plans/compiled-backtest/phases/CB-15.release-handoff.md).
+Dated runs offer **Original** and **New engine — experimental**. Original is
+the default. Each submitted run keeps its selected engine. Experimental
+preparation is optional in Manage backtest data. Saved results stay readable. See
+the [startup guide](docs/candidate-startup.md). The
+[faster engine summary](docs/plans/compiled-backtest/master-plan.md) records the
+decisions and measured speeds. Historical timings are not a current-source speed
+guarantee.
 
-The [faster backtest engine master plan](docs/plans/compiled-backtest/master-plan.md)
-records supported opt-in selection and the remaining qualification work. Its
-[research findings](docs/plans/compiled-backtest/research.md) retain earlier design
-comparisons. Historical timings do not supply a current-source speed guarantee.
-Each code phase automatically runs `$strategic-design-plan`, implementation and
-verification, then `$smart-commit`. Agents ask only about critical blockers or
-decisions that need the user's judgment.
+Custom ranking and filtering variables are part of `main`. Formulas combine
+financial parameters with point-in-time measures and run with Original. Sample
+preview uses Original reference execution. Eager scalar execution is unsupported.
+See the [custom-variable summary](docs/plans/custom-variables/master-plan.md).
 
-Custom-variable Phases 1–4 are complete in source on `feature/custom-variables`.
-They provide the definition contract, trusted annual evidence, four-parameter
-point-in-time provider, reference evaluator and scalar selection.
-[Phase 5](docs/plans/custom-variables/phases/phase-05/README.md) adds a separate
-durable variable library, exact revision resolution and atomic detached capture.
-Both source slices are complete under the user's 2 November authorization.
-Their independent audits and final WSL/private native checks are recorded in
-the phase record. [Phase 6](docs/plans/custom-variables/phases/phase-06/README.md)
-is complete in source after three independently audited slices. It adds complete
-captured strategy intent, bounded Original execution, explicit previews,
-immutable artifact-4 scalar results and the shared variable workspace.
-[Phase 7](docs/plans/custom-variables/phases/phase-07/README.md) is complete in source.
-Slices 1 and 2 complete compiled evaluation, Candidate integration and detached
-trial recovery after independent audit and source-bound checks. Slice 3 exposes
-supported bounded scalar execution in Latest, January, fixed and random modes.
-Independent audit, final source-bound verification and private workload
-qualification pass.
-Sample preview uses Original reference execution. Eager scalar execution is
-unsupported. See the phase record for qualification scope and limits.
-Original remains default. Standalone built-in controls keep their behavior.
+Each code phase runs `$strategic-design-plan`, implementation and verification,
+then `$smart-commit`. Agents ask only about critical blockers or decisions that
+need the user's judgment. Records follow the
+[records policy](docs/records-policy.md).
 
 
 ## Run from the saved data
@@ -155,7 +138,7 @@ scripts/             Data preparation, screening, backtest, exit analysis, and p
 data/                Prepared local SQLite database (generated; ignored by Git)
 website/             Website source, builder, hosting identity, and built output
   local/             Ignored local server output
-  dist/              Tracked portable snapshot; refresh explicitly
+  dist/              Ignored portable export from build.py --snapshot
 results/
   summary-exits.txt  Current backtest result
   stops/             Early trading-stop analysis and filing classifications
@@ -203,11 +186,11 @@ Source, reviewed reports and the portable snapshot are versioned. Downloaded dat
 
 ## Local builds and portable snapshots
 
-Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the tracked portable snapshot in `website/dist/`.
+Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the portable export in `website/dist/`.
 
-Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
+Run `python3 website/build.py --snapshot` to write the portable export after preparing data. The export is not tracked. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 
-Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
+Range and SQL/browser parity checks use local output by default. To check a portable export, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
 
 
 Website engine alignment keeps Original and Experimental behind one application
@@ -215,8 +198,7 @@ calculation interface. Both support fixed and random schedules with custom
 week/month intervals and all current stock filters. Original remains default.
 Latest and January use shared prepared screening. Stored charts, holdings,
 attribution and exports use the completed artifact's original evidence.
-See [the alignment record](docs/plans/compiled-backtest/phases/CB-18.website-alignment.md)
-for boundaries and verification. Source qualification is separate from deployment.
+Source qualification is separate from deployment.
 
 The [current source map](docs/plans/project-structure/source-map.md) identifies
 financial, input, engine, application, website and tool owners. Browser assets

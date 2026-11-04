@@ -753,7 +753,7 @@ def parser():
                         help='Benchmark exact inventory validation and planned request work; no production changes.')
     result.add_argument('--case', default='legacy-F0-42',
                         help='One frozen primary case ID; use separate serial runs for other cases.')
-    result.add_argument('--manifest', type=Path, default=ROOT/'docs/plans/compiled-backtest/phases/CB-01/workloads.json')
+    result.add_argument('--manifest', type=Path, default=ROOT/'tools/experiments/workloads.json')
     result.add_argument('--request-budget', type=float, default=180.)
     result.add_argument('--setup-budget', type=float, default=600.)
     result.add_argument('--smoke-budget', type=float, default=60.)

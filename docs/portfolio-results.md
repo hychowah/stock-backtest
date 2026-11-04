@@ -244,7 +244,7 @@ or callback failure prevents final batch completion and preserves earlier
 committed checkpoints. The caller closes and publishes its output.
 
 
-The [12-trial retained-input pilot](plans/compiled-backtest/phases/CB-14.capacity6.real12.md)
+The [12-trial retained-input pilot](plans/compiled-backtest/master-plan.md)
 adds strict original-API agreement for all twelve weekly trials on the same
 192-symbol private cohort. All 204 periods and 10,200 holdings agree with ordinary
 explicit-date evaluation. Maximum absolute and normalized relative differences
@@ -255,7 +255,7 @@ This prepared, short-window workflow supplies no full-universe, cold-workflow,
 full-window or operational-acceptance qualification.
 
 
-The [bounded same-plan observation](plans/compiled-backtest/phases/CB-14.capacity6.bounded12.md)
+The [bounded same-plan observation](plans/compiled-backtest/master-plan.md)
 retains all original typed financial evidence for twelve trials. Complete trials
 and trial summaries agree with ordinary explicit-date evaluation and the retained
 original eager trials. The complete batch is rebuilt with the existing robustness
@@ -279,6 +279,6 @@ selected-holding schema differs. It replaces required `metric_yield` and
 prepared financial fields remain. No reciprocal metric is invented.
 
 This contract number is independent of application artifact 4 and bounded
-evidence codec 2. The [Phase 6 compatibility record](plans/custom-variables/phases/phase-06/compatibility.md)
+evidence codec 2. The [Phase 6 compatibility record](plans/custom-variables/master-plan.md)
 describes their explicit dispatch. Legacy diagnostic and numerical callers keep
 contract 1. No saved record or financial result is rewritten on reading.
