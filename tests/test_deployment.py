@@ -455,7 +455,7 @@ class DeploymentTests(unittest.TestCase):
                          (ROOT / 'website/runtime_access.py').read_bytes())
 
     def test_genuine_old_controller_publishes_selected_new_layout(self):
-        """bdd75d9 really extracts the selected stable entry as one file."""
+        """616b6ef really extracts the selected stable entry as one file."""
         import importlib.util
         historical = ROOT/'tests/fixtures/deployment-old-controller/deploy.py'
         self.assertEqual(hashlib.sha256(historical.read_bytes()).hexdigest(),'5a9fd344a2c64287ca24ba430ddd480201b7cf48b11516511cea627d5250db50')

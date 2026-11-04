@@ -1,4 +1,4 @@
-Frozen deployment controller from commit `bdd75d9f8cba1e95c1446e697ee143b17a33e46b`.
+Frozen deployment controller from commit `616b6ef20ba0cd0af88e1a7983e673c84bc29dcf`.
 
 SHA-256: `5a9fd344a2c64287ca24ba430ddd480201b7cf48b11516511cea627d5250db50`
 

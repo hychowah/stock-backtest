@@ -71,7 +71,7 @@ The owners relevant to that feature are:
 
 `backtest/variables/definitions.py` now owns immutable formula validation,
 normalization, identities, unit inference and resolved dependency programs.
-Phase 3 resumed from `9e5d97d`; see the [custom-variable master plan](../custom-variables/master-plan.md).
+Phase 3 resumed from `c1f81a4`; see the [custom-variable master plan](../custom-variables/master-plan.md).
 `backtest/variables/reference.py` owns bounded context plans, provider-backed
 binary64 scalar execution, calculation identity and detached operation evidence.
 It consumes the checked program and public observation provider without raw/SQL
@@ -147,7 +147,7 @@ each exact dependency once through the existing submitted/labels contract.
 Checked immutable restoration stays separate from deliberate editing.
 
 
-Phase 7 is authorized from `5cded92` on `feature/custom-variables`. Shared
+Phase 7 is authorized from `7a77e6a` on `feature/custom-variables`. Shared
 `backtest/variables/evaluation.py` owns checked task/context planning, provider
 observation, bounds and detached evidence lifecycle. `reference.py` retains
 independent Python arithmetic. `backtest/engines/numerical/formulas.py` owns

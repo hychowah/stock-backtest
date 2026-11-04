@@ -4,9 +4,9 @@
     "report": "native-browser-audit.md",
     "status": "clear"
   },
-  "base_commit": "a4820af4964a4ab43c05519606a2cf62168074a9",
+  "base_commit": "7c36c513f48fe170503bb1140882d636e5459973",
   "declaration": {
-    "base_commit": "a4820af4964a4ab43c05519606a2cf62168074a9",
+    "base_commit": "7c36c513f48fe170503bb1140882d636e5459973",
     "browser_resources": "unqualified",
     "limits": {
       "bootstrap_output_bytes": 1048576,

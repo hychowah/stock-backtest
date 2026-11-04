@@ -36,7 +36,7 @@ MANIFEST_BYTES = 16*1024**2
 IO_WORKERS = 4
 POLL_SECONDS = .05
 # Only this Git-bound older protocol has native peer-lock qualification.
-REVISION = 'd877cb40faf0c643e4c4e386e87b6074e8cca5d2'
+REVISION = '56ec1dd8effb93844bc9c74e18c8b66cabbd78e3'
 OWNERSHIP_SOURCES = {
     'scripts/cache_access.py': '5dc7463285d6ae1d0dba58fdf901f832ccc59714e4ff676d108e05d9247f9713',
     'website/runtime_access.py': 'c1e65debe45102ac5f32b63da104cda141918a9bd0c5a136ea2b8e766e8b12eb',
