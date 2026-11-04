@@ -482,6 +482,12 @@ automatically. Delete only the record selected by
 the user. Check `python3 tests/test_saved_backtests.py`, including native Windows,
 `node tests/check-saved-backtests.cjs` and the existing range/control checks.
 
+Each saved row has Copy settings. It restores the editable draft without publishing
+a result or calculating. Copy turns Auto-run off and retains the recorded random
+seed. The draft owns restored metric and filter labels separately from result
+labels. Unavailable saved choices stay visible. Held queue edits retain their
+existing restoration protection. Temporary result readers close after copying.
+
 Each saved row has a lazy All parameters disclosure. Reuse the stored-result
 description loader and retain only compact parameter rows by stable ID. Preserve
 expansion through sorting, renaming and list refreshes. Prune deleted IDs and

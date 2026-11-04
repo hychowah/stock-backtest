@@ -74,6 +74,7 @@ function settingsChanged(changed,run=true){
   }
   updateResultsState();
   StrategyDraft.touch();
+  if(!StrategyDraft.isScalar())StrategyDraft.render();
   if(run && !StrategyDraft.isScalar() && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
 }
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
@@ -102,8 +103,9 @@ function initializeFilters(){
 }
 function renderConditions(){
   const container=document.getElementById('filter-conditions');
+  const filters=StrategyDraft.catalog().filters;
   container.innerHTML=filterConditions.map((c,i)=>`<div class="condition-row">
-    <label>Metric<select data-index="${i}" data-key="field" aria-label="Filter ${i+1} metric">${Object.entries({...screeningData.filter_catalog,...displayCatalog().filters}).map(([key,m])=>`<option value="${safe(key)}" ${key===c.field?'selected':''} ${m.available?'':'disabled'}>${safe(m.label)}${m.available?'':' — needs financial data'}</option>`).join('')}</select></label>
+    <label>Metric<select data-index="${i}" data-key="field" aria-label="Filter ${i+1} metric">${Object.entries({...filters,...(!filters[c.field]?{[c.field]:{label:c.field,available:false}}:{})}).map(([key,m])=>`<option value="${safe(key)}" ${key===c.field?'selected':''} ${m.available?'':'disabled'}>${safe(m.label)}${m.available?'':screeningData.filter_catalog[key]?' — needs financial data':' — unavailable'}</option>`).join('')}</select></label>
     <label>Comparison<select data-index="${i}" data-key="op" aria-label="Filter ${i+1} comparison"><option value="lt" ${c.op==='lt'?'selected':''}>Less than (&lt;)</option><option value="gt" ${c.op==='gt'?'selected':''}>More than (&gt;)</option></select></label>
     <label>Value<input data-index="${i}" data-key="value" aria-label="Filter ${i+1} value" type="number" step="any" required value="${safe(c.value)}" placeholder="Enter value"></label>
     <button type="button" data-remove="${i}" aria-label="Remove filter ${i+1}">Remove</button></div>`).join('');
@@ -136,7 +138,6 @@ function updateMetricLabels(o){
   const label=metricLabel(o.metric);
   document.querySelectorAll('[data-metric-multiple]').forEach(el=>el.textContent=label+' (×)');
   document.querySelectorAll('[data-metric-yield]').forEach(el=>el.textContent='Selected metric yield');
-  document.getElementById('strategy-heading').textContent='Lowest '+label;
 }
 function drawMarketCaps(){
   const values=data.map(d=>medianMarketCap(d.year)).filter(v=>v!==null);
@@ -325,7 +326,9 @@ function downloadSelection(kind){
 }
 function syncCatalogControls(){
   const selected=document.getElementById('ranking-metric').value;
-  document.getElementById('ranking-metric').innerHTML=Object.entries({...screeningData.metrics,...displayCatalog().metrics}).map(([key,item])=>`<option value="${safe(key)}">${safe(item.label)}</option>`).join('');
+  const metrics=StrategyDraft.catalog().metrics;
+  if(selected&&!metrics[selected])metrics[selected]={label:selected};
+  document.getElementById('ranking-metric').innerHTML=Object.entries(metrics).map(([key,item])=>`<option value="${safe(key)}" ${screeningData.metrics[key]?'':'disabled'}>${safe(item.label)}${screeningData.metrics[key]?'':' — unavailable'}</option>`).join('');
   document.getElementById('ranking-metric').value=selected;
 }
 function restoreSavedBacktest(snapshot){
@@ -335,11 +338,27 @@ function restoreSavedBacktest(snapshot){
   publishResult(artifact);
   if(artifact.kind!=='january')document.getElementById('schedule-message').textContent='Saved backtest restored. No calculation was run.';
 }
+function copySavedBacktestSettings(snapshot){
+  const artifact=ResultArtifacts.decode(snapshot);
+  if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
+  restoreBacktestSettings(artifact.settings,artifact.catalog,artifact.result.configuration?.seed);
+  autoRun.checked=false;
+  try{localStorage.setItem('backtest-auto-run','false');}catch(_){}
+  updateResultsState();
+  document.getElementById('strategy-form').scrollIntoView?.({behavior:'smooth',block:'start'});
+  document.getElementById('run-screen').focus?.({preventScroll:true});
+}
 // The form owns its draft. Restoration sources cannot replace a queued edit;
 // only its session may load settings until a confirmed save/cancel ends it.
 const StrategyDraft=(()=>{
-  let active=null,revision=0,scalar=null;
+  let active=null,revision=0,scalar=null,restoredCatalog=null;
   const copy=value=>JSON.parse(JSON.stringify(value));
+  // Editable labels belong to the draft. Result labels stay with their artifact.
+  // Availability comes from current support, even when a saved label is retained.
+  function catalog(){
+    const source=sourceCatalog();
+    return {metrics:{...source.metrics,...restoredCatalog?.metrics},filters:Object.fromEntries(Object.entries({...source.filters,...restoredCatalog?.filters}).map(([id,item])=>[id,{...item,available:!!source.filters[id]?.available}]))};
+  }
   const exactKey=value=>JSON.stringify([value.variable_id,value.revision]);
   function sameContent(left,right){
     const ordered=value=>Array.isArray(value)?value.map(ordered):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,ordered(value[key])])):value;
@@ -384,7 +403,7 @@ const StrategyDraft=(()=>{
     document.getElementById('variable-strategy-summary').textContent=scalar?sourceName(scalar.intent.selection.ranking.source)+' · exact revisions retained. Run explicitly to calculate.':'Built-in strategies work offline. Reusable variables use the local service.';
     const help=document.getElementById('strategy-ranking-help');
     help.textContent=scalar?'Rank 1 has the '+(scalar.intent.selection.ranking.direction==='highest'?'highest':'lowest')+' available selected variable value. Missing ranking values are excluded. Conditions apply at the chosen selection stage; survivors have equal weight.':'Choose whether filters apply before ranking or after the requested ranks are selected. Rank 1 has the lowest selected valuation multiple. Latest mode ranks at the latest cached close. The saved January view rebalances equally each January; custom calendars rebalance on the selected fixed or random schedule.';
-    document.getElementById('strategy-heading').textContent=scalar?(scalar.intent.selection.ranking.direction==='highest'?'Highest ':'Lowest ')+sourceName(scalar.intent.selection.ranking.source).split(' @ ')[0]:'Lowest '+metricLabel(document.getElementById('ranking-metric').value);
+    document.getElementById('strategy-heading').textContent=scalar?(scalar.intent.selection.ranking.direction==='highest'?'Highest ':'Lowest ')+sourceName(scalar.intent.selection.ranking.source).split(' @ ')[0]:'Lowest '+(catalog().metrics[document.getElementById('ranking-metric').value]?.label||document.getElementById('ranking-metric').value);
     for(const id of ['legacy-ranking-control','legacy-yield-control','legacy-multiple-control','legacy-extra-filters','legacy-metric-help'])document.getElementById(id).hidden=!!scalar;
     for(const id of ['min-cap','min-ev'])document.getElementById(id).required=!scalar;
     document.getElementById('auto-run').disabled=!!scalar;
@@ -448,6 +467,7 @@ const StrategyDraft=(()=>{
   const refusal=()=>Error('Save or cancel the queued edit before replacing the strategy settings.');
   function apply(settings,catalog=sourceCatalog(),seed=settings.seed){
     touch();
+    restoredCatalog=copy(catalog);
     scalar=settings.strategy?{intent:{format:'strategy-intent',version:1,selection:copy(settings.strategy.selection),pool:settings.strategy.pool,bounds:copy(settings.strategy.bounds)},detached:settings.strategy.variables?[copy(settings.strategy.variables)]:[],projections:{},original:copy(settings.strategy)}:null;
     screeningMode=settings.mode==='latest'?'latest':'backtest';
     document.getElementById('schedule-kind').value=settings.mode==='january'?'january':'custom';
@@ -478,7 +498,7 @@ const StrategyDraft=(()=>{
         document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
       }
     }
-    renderConditions();renderScalar();
+    syncCatalogControls();renderConditions();renderScalar();
   }
   function restore(...args){
     if(active)throw refusal();
@@ -492,7 +512,7 @@ const StrategyDraft=(()=>{
     };
     active=session;touch();return session;
   }
-  return {restore,beginQueuedEdit,read:()=>({revision,settings:copy(currentSettings()),detached:scalar?copy(scalar.detached):[]}),patch,prepareSubmission,selectionSettings,touch,isScalar:()=>!!scalar,render:renderScalar,condition:(index,key,value)=>{const item=scalar.intent.selection.conditions[index];if(key==='op')item.op=value;else{item.threshold=copy(item.submitted_threshold||item.threshold);item.threshold[key]=value;delete item.submitted_threshold;delete item.comparison_value;delete item.storage_comparison_value;}touch();updateResultsState();},remove:index=>{scalar.intent.selection.conditions.splice(index,1);touch();renderScalar();updateResultsState();}};
+  return {restore,beginQueuedEdit,catalog,read:()=>({revision,settings:copy(currentSettings()),detached:scalar?copy(scalar.detached):[]}),patch,prepareSubmission,selectionSettings,touch,isScalar:()=>!!scalar,render:renderScalar,condition:(index,key,value)=>{const item=scalar.intent.selection.conditions[index];if(key==='op')item.op=value;else{item.threshold=copy(item.submitted_threshold||item.threshold);item.threshold[key]=value;delete item.submitted_threshold;delete item.comparison_value;delete item.storage_comparison_value;}touch();updateResultsState();},remove:index=>{scalar.intent.selection.conditions.splice(index,1);touch();renderScalar();updateResultsState();}};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 
@@ -557,7 +577,7 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
 });
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
-SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest});
+SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest,copy:copySavedBacktestSettings});
 BacktestQueue.init({libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
   prepare:()=>{autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
   configure:()=>{

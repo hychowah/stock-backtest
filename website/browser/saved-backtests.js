@@ -2,7 +2,7 @@
 const SavedBacktests=(()=>{
   const node=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let current=()=>null,isRunning=()=>false,openRecord=()=>{};
+  let current=()=>null,isRunning=()=>false,openRecord=()=>{},copySettings=()=>{};
   let queueRefresh=false;
   const disclosures=new Map();
   let comparisonIds=['',''],comparison=null,comparisonLoading=false,comparisonGeneration=0;
@@ -39,7 +39,7 @@ const SavedBacktests=(()=>{
       const kind={january:'January',custom:'Fixed dates',random:'Random dates'}[record.kind]||'Backtest';
       const cagr=record.cagr===null||record.cagr===undefined?'—':(record.cagr*100).toFixed(2)+'%';
       const description=kind+' · '+record.start+' → '+record.end+' · '+(record.kind==='random'?'Mean trial CAGR ':'CAGR ')+cagr;
-      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+escape(record.id)+'" data-rename-input="'+escape(record.id)+'" value="'+escape(renaming.name)+'" maxlength="120"></label><button type="button" data-save-name="'+escape(record.id)+'">Save name</button><button type="button" data-cancel-name="'+escape(record.id)+'">Cancel</button>':pendingDelete===record.id?'<span>Delete this saved backtest?</span> <button type="button" data-confirm="'+escape(record.id)+'">Delete record</button> <button type="button" data-keep="'+escape(record.id)+'">Keep</button>':'<button type="button" data-open="'+escape(record.id)+'">Open</button> <button type="button" data-rename="'+escape(record.id)+'">Rename</button> <button type="button" data-delete="'+escape(record.id)+'">Delete</button>';
+      const actions=renaming?.id===record.id?'<label class="saved-rename">New name<input id="saved-rename-'+escape(record.id)+'" data-rename-input="'+escape(record.id)+'" value="'+escape(renaming.name)+'" maxlength="120"></label><button type="button" data-save-name="'+escape(record.id)+'">Save name</button><button type="button" data-cancel-name="'+escape(record.id)+'">Cancel</button>':pendingDelete===record.id?'<span>Delete this saved backtest?</span> <button type="button" data-confirm="'+escape(record.id)+'">Delete record</button> <button type="button" data-keep="'+escape(record.id)+'">Keep</button>':'<button type="button" data-open="'+escape(record.id)+'">Open</button> <button type="button" data-copy="'+escape(record.id)+'">Copy settings</button> <button type="button" data-rename="'+escape(record.id)+'">Rename</button> <button type="button" data-delete="'+escape(record.id)+'">Delete</button>';
       return '<li><div><strong>'+escape(record.name)+'</strong><span>'+escape(description)+'</span><small>Saved '+escape(new Date(record.created_at).toLocaleString())+'</small><small class="saved-id">ID: '+escape(record.id)+'</small>'+parameterDisclosure(record.id)+'</div><div class="saved-actions">'+actions+'</div></li>';
     }).join('')||'<li>No saved backtests yet.</li>';
     node('saved-list').querySelectorAll('button,input').forEach(control=>control.disabled=busy);
@@ -162,6 +162,13 @@ const SavedBacktests=(()=>{
       if(used.consumed)message('Opened “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'” without rerunning it.');
     });
   }
+  async function copy(id){
+    await perform(async()=>{
+      message('Loading saved settings…');
+      const used=await ResultArtifacts.use({kind:'saved',id},artifact=>copySettings(artifact));
+      if(used.consumed)message('Copied settings from “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'”. Adjust the strategy controls, then select Run backtest. Auto-run is off.');
+    });
+  }
   async function remove(id){
     await perform(async ticket=>{
       message('Deleting saved record…');
@@ -190,7 +197,7 @@ const SavedBacktests=(()=>{
     queueRefresh=false;void perform(refresh);
   }
   function init(access){
-    current=access.current;isRunning=access.isRunning;openRecord=access.open;
+    current=access.current;isRunning=access.isRunning;openRecord=access.open;copySettings=access.copy;
     node('saved-compare-left').addEventListener('change',()=>chooseComparison(0,node('saved-compare-left').value));
     node('saved-compare-right').addEventListener('change',()=>chooseComparison(1,node('saved-compare-right').value));
     node('saved-compare').addEventListener('click',compareSelected);
@@ -224,6 +231,7 @@ const SavedBacktests=(()=>{
       if(data.rename){renaming={id:data.rename,name:records.find(record=>record.id===data.rename).name};pendingDelete=null;render();node('saved-rename-'+data.rename)?.focus?.();return;}
       if(data.cancelName){renaming=null;render();if(queueRefresh)changed();return;}
       if(data.open)return open(data.open);
+      if(data.copy)return copy(data.copy);
       if(data.confirm)return remove(data.confirm);
       if(data.delete){pendingDelete=data.delete;render();}
       if(data.keep){pendingDelete=null;render();}

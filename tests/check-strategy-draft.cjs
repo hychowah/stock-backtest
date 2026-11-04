@@ -23,6 +23,8 @@ const context=vm.createContext({console,data:[],document:{getElementById:node,qu
 const source=fs.readFileSync(path.join(__dirname,'../website/browser/range.js'),'utf8');
 vm.runInContext(source.slice(0,source.indexOf('\ninitializeFilters();')),context);
 vm.runInContext('updateResultsState=()=>{};setModeVisibility=()=>{};renderConditions=()=>{};',context);
+vm.runInContext("const autoRun=document.getElementById('auto-run');",context);
+context.ResultArtifacts.decode=require('../website/browser/result-artifacts.js').decode;
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-runs.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context),copy=value=>JSON.parse(JSON.stringify(value)),tick=()=>new Promise(resolve=>setImmediate(resolve));
 for(const [key,id] of Object.entries({selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'}))node(id).value=defaults[key]===null?'':String(key==='min_cap'||key==='min_ev'?defaults[key]/1e6:defaults[key]);
@@ -66,6 +68,18 @@ context.source=exact;context.detached=detached;context.authored=detached.program
   context.settings={...context.settings,mode,engine:'experimental',first:2015,last:2015,trials:1,seed:42};run('StrategyDraft.restore(settings)');
   const value=await run('StrategyDraft.prepareSubmission()');assert.equal(value.mode,mode);assert.equal(value.engine,'experimental');assert.equal(node('backtest-engine').value,'experimental');assert.equal(value.strategy.selection.ranking.source.revision,exact.revision);
  }
+ // Copying a detached scalar result keeps exact captured content editable.
+ const copiedSettings={...context.settings,engine:'experimental'};
+ context.savedCopy={version:4,kind:'random',settings:copiedSettings,result:{configuration:{seed:321}},catalog:{metrics:{},filters:{}},evidence:{id:'a'.repeat(32),format_version:2,trials:1,periods:1,holdings:1}};
+ const copyBytes=JSON.stringify(context.savedCopy),requestsBeforeCopy=requests.length;
+ node('auto-run').checked=true;run('copySavedBacktestSettings(savedCopy)');
+ assert.equal(node('auto-run').checked,false);assert.equal(storage.get('backtest-auto-run'),'false');
+ assert.equal(node('random-seed').value,'321');assert.equal(node('backtest-engine').value,'experimental');
+ assert.equal(requests.length,requestsBeforeCopy);assert.equal(JSON.stringify(context.savedCopy),copyBytes);
+ assert.deepEqual(copy((await run('StrategyDraft.prepareSubmission()')).strategy),copiedSettings.strategy);
+ run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
+ assert.equal(run('StrategyDraft.read().settings.strategy.selection.ranking.direction'),'lowest');
+ assert.equal(JSON.stringify(context.savedCopy),copyBytes);
  // Repeated selection retains one complete exact capture, not editing history.
  for(let i=0;i<30;i++)run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.read().detached.length'),1);

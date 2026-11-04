@@ -23,8 +23,10 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/saved-ba
 const call=code=>vm.runInContext(code,ctx);ctx.snapshot=snapshot;ctx.result=result;
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{
+ let copied=null,refuseCopy=false;
  ctx.readArtifact=()=>view==='latest'?null:artifact;ctx.isRunning=()=>running;ctx.openRecord=value=>loaded=value;
- call('SavedBacktests.init({current:readArtifact,isRunning,open:openRecord})');await settle();
+ ctx.copySettings=value=>{if(refuseCopy)throw Error('Save or cancel the queued edit before replacing the strategy settings.');copied=value;};
+ call('SavedBacktests.init({current:readArtifact,isRunning,open:openRecord,copy:copySettings})');await settle();
  assert.equal(node('saved-count').textContent,'0 / 100');assert(node('save-backtest').disabled);
  artifact={version:2,kind:'january',settings:snapshot,result,presentation:{},catalog:{metrics:{},filters:{}}};call('SavedBacktests.update()');
  assert(!node('save-backtest').disabled);
@@ -40,6 +42,15 @@ const settle=()=>new Promise(resolve=>setImmediate(resolve));
  assert.deepStrictEqual(JSON.parse(JSON.stringify(loaded.settings)),snapshot);
  assert.equal(loaded.result.years[0].holdings[0].symbol,'SAVED');
  assert(node('saved-message').textContent.includes('without rerunning'));
+ assert(node('saved-list').innerHTML.includes('data-copy="'+first.id+'">Copy settings'));
+ const storedBytes=JSON.stringify(first),displayed=loaded,beforeCopy=requests.length;
+ await node('saved-list').handlers.click({target:{dataset:{copy:first.id}}});
+ assert.deepStrictEqual(copied.settings,snapshot);assert.strictEqual(loaded,displayed);
+ assert.equal(JSON.stringify(first),storedBytes);assert(requests.slice(beforeCopy).every(r=>!r.method));
+ assert(node('saved-message').textContent.includes('Copied settings'));assert(node('saved-message').textContent.includes('Auto-run is off'));
+ refuseCopy=true;copied=null;
+ await node('saved-list').handlers.click({target:{dataset:{copy:first.id}}});
+ assert.equal(copied,null);assert(node('saved-message').textContent.includes('Save or cancel'));refuseCopy=false;
  // Full IDs, inline rename, cancellation and acknowledgment survive list failure.
  assert(node('saved-list').innerHTML.includes('ID: '+first.id));
  node('saved-list').handlers.click({target:{dataset:{rename:first.id}}});
