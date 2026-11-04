@@ -10,6 +10,15 @@ python3 scripts/research.py prepare
 
 The first run reads the existing financial cache and each relevant stock-price file once. Subsequent preparation only checks source metadata when data and calculation code have not changed. Queries skip the full per-price-file scan to keep parameter changes fast. Raw downloads are preserved. The completed database and canonical report are published only after the SQL and independent engines agree on the original top-50 holdings, ranks, fiscal reports, price dates, prices, valuations, exit basis and returns at full precision. `--force` requests a complete offline rebuild.
 
+When saved data changes, preparation still builds a new database, but it copies unchanged company work from the published one. Reuse needs an equal reuse scope. The scope covers the content of the calculation source, the rules values, the report Through date, the universe file, the annual financial files, and the SPY and Treasury rows up to the historical horizon. The horizon is the later of the Through date and 31 days after the last January entry. Historical forward lookups start at a January entry and reach at most eight days. Exit lookups read backward from a day on or before Through. Historical calculations therefore cannot read rows after the horizon. Inside an equal scope, each company is a separate unit:
+
+- Its historical snapshots, prices, filter values and measure contexts are copied when its saved price rows up to the horizon are equal.
+- Its dated price evidence is copied when the price file bytes are equal. Its source evidence is copied only when its coverage receipt is also equal.
+- Files save rows newest first, so a daily download adds rows before the saved rows and moves each saved row by the same number of places. When the saved rows are otherwise equal, only the days of the new rows are resolved. The evidence of every other day is copied with each row position moved by that number. Any other change resolves the whole file.
+- Latest valuations are always recalculated. An unlisted company with equal file bytes is not parsed.
+
+Downloads rewrite a checked file even when no row changes, so file content, not its timestamp, decides reuse. Copied rows keep their original order, so the database equals a full rebuild row for row. Freshness checks are unchanged. `--force` recalculates every company.
+
 Preparation stores historical observations and a separate latest-session valuation snapshot:
 
 - Company name, exchange, sector (cached metadata, not historical profiles).
@@ -79,6 +88,8 @@ python3 tests/check_screener.py
 The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation compares every historical year with the independent engine. `python3 tests/test_baseline.py` checks changed prices, holding-level mismatches, latest-only updates, interrupted publication, recovery receipts and Windows sharing locks. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across historical and latest configurations, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
 
 ## Measured performance
+
+Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. The remaining time is mostly the content identity of all observation rows, the dated evidence of the new rows, and publication of the complete database file. These timings do not describe the real cache or native Windows.
 
 The completed local database contains 39,468 January snapshots for the two candidate pools and occupies about 17 MB. On this environment, a full preparation took 62 seconds. After preparation, measured end-to-end times including Python startup were 0.45 seconds for top 100 in 2015–2020, 0.59 seconds for a filtered version, and 1.8 seconds for the website rebuild. These are observed timings, not guarantees. See `results/experiments/performance.json`.
 
@@ -674,6 +685,13 @@ reference calculation reads raw files and keeps its original selection and retur
 arithmetic. It does not call the prepared engine. Full-precision numbers use
 relative and absolute tolerances of `1e-12`. All years and holding identities must
 match. Equal annual averages cannot conceal a holding mismatch.
+
+The reference calculation runs when the reuse scope changes, or when any company's
+historical rows are recalculated, added or removed. Sometimes every historical unit
+is copied, and the copied baseline equals the published verified baseline. Then
+preparation keeps the earlier agreement, because both engines already agreed on
+these exact historical inputs. A daily price update after the Through date
+therefore needs no reference run. `--force` and `scripts/revalue.py` always run it.
 
 When the engines agree, `backtest/inputs/baseline.py` updates the report and research
 database together under cache ownership. `results/baseline-history/<generation>/`

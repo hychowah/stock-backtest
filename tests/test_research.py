@@ -401,5 +401,20 @@ for(let i=0;i<cases.length;i++){
             db.close()
 
 
+class SavedDateTests(unittest.TestCase):
+    def test_saved_date_reader_equals_strptime(self):
+        from datetime import datetime
+        def expected(value):
+            if not value:return None
+            try:return datetime.strptime(str(value)[:10],'%Y-%m-%d').date()
+            except ValueError:return None
+        values=[f'{y}-{m:02d}-{d:02d}' for y in ('0000','0001','1999','2024','2026','9999') for m in range(14) for d in range(33)]
+        values+=['2026-1-05','2026-01-5','2026-1-5','2026-01- 5','20260105','2026/01/05',' 2026-01-05','2026-01-05T09:30:00Z',
+                 '2026-01-05 extra','２０２６-01-05','2026-٠١-05','-026-01-05','+2026-01-0','2026-0a-05','',None,0,20260105,
+                 date(2026,1,5),'2026-02-29','2024-02-29']
+        for value in values:
+            self.assertEqual(rules.parse_day(value),expected(value),repr(value))
+
+
 if __name__=='__main__':
     unittest.main()

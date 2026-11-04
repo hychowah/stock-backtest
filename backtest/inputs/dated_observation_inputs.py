@@ -8,6 +8,7 @@ from datetime import date
 import hashlib
 import json
 import math
+import re
 
 from backtest.inputs import cache_assets, market
 
@@ -39,13 +40,36 @@ def _day(value):
         return None
 
 
-def resolve(path, endpoint, ledger, *, stock=False, checkpoint=lambda: None):
+def row_day(row):
+    """Return the saved day under which dated evidence groups one row, or None."""
+    return _day(row.get('date')) if isinstance(row, dict) else None
+
+
+# Stored day evidence is canonical JSON: sorted keys and escaped strings, so
+# '"index":' can only be a key. Each retained row names its file position once,
+# followed by its next sorted key.
+_POSITION = re.compile(r'"index":(\d+),"reported_currency":')
+
+
+def shifted(document, offset):
+    """Return stored day evidence after its rows moved offset places later in the file.
+
+    Return None unless every index key was moved, for example after a change
+    to the retained-row layout; the caller then resolves the file in full.
+    """
+    result, moved = _POSITION.subn(lambda match: f'"index":{int(match[1]) + offset},"reported_currency":', document)
+    return result if moved == document.count('"index":') else None
+
+
+def resolve(path, endpoint, ledger, *, stock=False, checkpoint=lambda: None, days=None):
     """Return bounded detached rows and exact-content source/receipt evidence.
 
     Equal admissible values agree; null and invalid variants remain identified.
     Currency-free stock routes use the admitted USD-company/share basis. Explicit
     foreign currency disqualifies only price, never volume. All signed rates are
     valid. Receipt acceptance delegates to the unchanged SeriesAsset contract.
+    days limits dated rows to those saved days; None keeps every day. Source
+    evidence is always complete. A caller copies the other days it already holds.
     """
     source = dict(endpoint=endpoint, asset='px/' + path.name if stock else path.name,
                   sha256=None, disposition='missing', receipt=None, invalid_rows=[])
@@ -85,12 +109,14 @@ def resolve(path, endpoint, ledger, *, stock=False, checkpoint=lambda: None):
     grouped = {}
     for index, row in enumerate(rows):
         checkpoint()
+        day = row_day(row)
+        if day is not None and days is not None and day not in days:
+            continue
         # Hash all original variants, including invalid dates and repeated rows.
         raw = json.dumps(row, sort_keys=True, separators=(',', ':'), allow_nan=True)
         if len(raw.encode()) > MAX_RECORD_BYTES:
             raise ValueError('Prepared observation record exceeds its byte bound.')
         identity = dict(index=index, sha256=hashlib.sha256(raw.encode()).hexdigest())
-        day = _day(row.get('date')) if isinstance(row, dict) else None
         if day is None:
             source['invalid_rows'].append(identity)
             continue
@@ -128,9 +154,9 @@ def resolve(path, endpoint, ledger, *, stock=False, checkpoint=lambda: None):
     return dict(source=source, dated=dated)
 
 
-def stock(raw, symbol, ledger, checkpoint=lambda: None):
+def stock(raw, symbol, ledger, checkpoint=lambda: None, *, days=None):
     return resolve(raw/'px'/market.cache_path_for(symbol).name, STOCK, ledger,
-                   stock=True, checkpoint=checkpoint)
+                   stock=True, checkpoint=checkpoint, days=days)
 
 
 def shared(raw, ledger, checkpoint=lambda: None):

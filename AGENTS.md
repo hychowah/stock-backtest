@@ -253,6 +253,8 @@ The linked documents hold the detail.
 prepared baseline with `revalue.calculate(through)` at full precision. Both
 engines must agree on all years, ranks, symbols, dates, prices, valuations,
 returns and exit basis. Never bypass disagreement or relax the tolerance.
+Reused company units must equal a full rebuild row for row. A changed reuse
+scope or historical unit reruns the comparison.
 `backtest/inputs/baseline.py` owns the report cutoff, rendering, revision
 evidence and recoverable report/database publication. Verified changes update the
 canonical report without advancing its Through date. Previous reports stay
@@ -262,7 +264,8 @@ Use `scripts/research.py screen` flags for experiments instead of editing `HOLD`
 The `legacy` pool keeps the original 250-candidate pre-price screen with the
 current exit rule. The `cached` pool covers cached-price companies only; report
 missing coverage and unreviewed early stops. Checks: `tests/test_baseline.py`
-(also native Windows) and `tests/test_research.py`. See
+(also native Windows), `tests/test_research.py` and
+`tests/test_prepared_reuse.py`. See
 [docs/research-workflow.md](docs/research-workflow.md).
 
 **Website screening.** `website/rendering/data.py` embeds both prepared pools.

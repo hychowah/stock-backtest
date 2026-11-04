@@ -6,9 +6,10 @@ from contextlib import closing
 from bisect import bisect_left, bisect_right
 import csv
 import hashlib
-from datetime import date
+from datetime import date, timedelta
 import json
 import os
+import platform
 import stat
 from pathlib import Path
 import sqlite3
@@ -91,9 +92,7 @@ def signature():
     existing precedence. No inventory or derived prefix survives the call.
     """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px', Path(baseline.__file__), Path(__file__), Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(__file__).with_name('legacy_downloads.py'), Path(__file__).with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__)]
-    paths += [Path(financial_inputs.__file__), Path(observation_inputs.__file__), Path(__file__).with_name('daily.py'),
-              Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__)]
+    paths += [RAW/'px'] + calculation_sources()
     entries = [(path, path.stat()) for path in paths]
     ledger_path = RAW/'download-coverage.json'
     if ledger_path.exists():
@@ -122,6 +121,201 @@ def signature():
 
 def price_sources():
     return {p.name: [info.st_size,info.st_mtime_ns] for p,info in _metadata_entries(RAW/'px', '*.json')}
+
+
+def calculation_sources():
+    """Source files whose content establishes prepared rows and their check."""
+    here = Path(__file__)
+    return [Path(baseline.__file__), here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), here.with_name('legacy_downloads.py'), here.with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__),
+            Path(financial_inputs.__file__), Path(observation_inputs.__file__), here.with_name('daily.py'),
+            Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__)]
+
+
+# Historical forward price lookups start at a January entry and reach at most
+# 4 + 4 days; exit lookups read backward from a day on or before the report
+# cutoff. Rows after the later of the cutoff and the last entry + REUSE_MARGIN
+# can change only latest and dated units.
+REUSE_MARGIN = timedelta(days=31)
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=True).encode('utf-8')).hexdigest()
+
+
+def _file_digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _rows_digest(rows):
+    return hashlib.sha256(json.dumps(rows,separators=(',',':'),allow_nan=True).encode('utf-8')).hexdigest()
+
+
+def _beyond(row, horizon):
+    """True only when both saved-date readers place the row after the horizon."""
+    if not isinstance(row,dict):
+        return False
+    value=row.get('date')
+    try:
+        iso=date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return False
+    if iso<=horizon:
+        return False
+    day=rules.parse_day(value)
+    return day is not None and day>horizon
+
+
+def _bounded_digest(payload, horizon, key=None):
+    """Digest the saved rows that a historical calculation can read.
+
+    Drop rows dated after the horizon from the row list, or only from
+    payload[key]. Keep everything else bound, including undated rows and the
+    complete light series, whose presence selects the valuation scale. Saved
+    key order is kept: a reordered file only costs a recalculation.
+    """
+    if key is None:
+        value=[row for row in payload if not _beyond(row,horizon)] if isinstance(payload,list) else payload
+    elif isinstance(payload,dict) and isinstance(payload.get(key),list):
+        value=dict(payload,**{key:[row for row in payload[key] if not _beyond(row,horizon)]})
+    else:
+        value=payload
+    return hashlib.sha256(json.dumps(value,separators=(',',':'),allow_nan=True).encode('utf-8')).hexdigest()
+
+
+def _reuse_scope(through, horizon, treasury_rows):
+    """Identify every shared input of historical rows and of the reference check.
+
+    The interpreter and SQLite versions are bound too: date parsing and the
+    order of unsorted queries may change with either of them.
+    """
+    return _digest(dict(
+        version=SCHEMA_VERSION, observations=observation_inputs.VERSION, through=str(through),
+        runtime=[platform.python_implementation(),platform.python_version(),sqlite3.sqlite_version],
+        code=[_file_digest(path) for path in calculation_sources()],
+        rules=[rules.FIRST_YEAR,rules.LAST_YEAR,str(rules.ASOF),rules.MIN_MARKET_CAP,rules.MIN_EV,rules.BUFFER,rules.HOLD,
+               rules.LAG.days,rules.MAX_AGE.days,sorted(map(list,rules.BANKRUPT)),legacy.FIRST_YEAR,legacy.LAST_YEAR,legacy.HOLD],
+        universe=_file_digest(RAW/'universe.json'), metrics=_file_digest(RAW/'metrics.jsonl'),
+        financial={path.relative_to(RAW).as_posix():[info.st_size,info.st_mtime_ns]
+                   for path,info in _metadata_entries(RAW/'financial-inputs','*/*.json')},
+        spy=_bounded_digest(json.loads((RAW/'spy-div.json').read_text()),horizon),
+        treasury=_bounded_digest(treasury_rows,horizon)))
+
+
+class _PriorUnits:
+    """Company units of the published database that a new build may copy.
+
+    The prior database is attached read-only only when its reuse scope equals
+    the current scope. Copied rows keep their original order, so the new
+    database equals a full rebuild row for row. Callers end the transaction
+    before finish() detaches the prior database.
+    """
+    SPANS = ('snapshots','baseline_prices','filter_values')
+
+    @classmethod
+    def open(cls, db, path, owner, scope):
+        if not path.exists():
+            return None
+        location=path.resolve().as_uri()+'?mode=ro'
+        try:
+            with closing(sqlite3.connect(location,uri=True)) as prior:
+                owner.check_ready(prior)
+                meta={key:json.loads(value) for key,value in prior.execute(
+                    "SELECT key,value FROM metadata WHERE key IN ('version','reuse','baseline_result')")}
+        except (sqlite3.Error,ValueError,OSError):
+            return None
+        reuse=meta.get('reuse')
+        units=reuse.get('symbols') if isinstance(reuse,dict) else None
+        if (not isinstance(units,dict) or meta.get('version')!=SCHEMA_VERSION or reuse.get('scope')!=scope
+                or 'baseline_result' not in meta
+                or any(not isinstance(unit,dict) or set(unit)!={'content','history','receipt','rows'}
+                       or unit['rows'] is not None and (not isinstance(unit['rows'],list) or len(unit['rows'])!=2
+                                                        or type(unit['rows'][0]) is not int or not isinstance(unit['rows'][1],str))
+                       for unit in units.values())):
+            return None
+        db.execute('ATTACH DATABASE ? AS prior',(location,))
+        return cls(db,units,meta['baseline_result'])
+
+    def __init__(self, db, units, baseline_result):
+        self.db,self.units,self.baseline=db,units,baseline_result
+        self.spans={}
+        for table in self.SPANS:
+            for symbol,low,high,count in db.execute(f'SELECT symbol,min(rowid),max(rowid),count(*) FROM prior.{table} GROUP BY symbol'):
+                self.spans.setdefault(symbol,{})[table]=(low,high) if high-low+1==count else None
+        self.history,self.sources,self.dated=set(),set(),set()
+
+    def copy_history(self, symbol, digest):
+        """Copy one company's historical rows when its readable prices are equal."""
+        spans=self.spans.get(symbol,{})
+        unit=self.units.get(symbol)
+        if unit is None or unit['history']!=digest or None in spans.values():
+            return False
+        for table,span in spans.items():
+            # The unary + keeps SQLite on the rowid range; a mode index would
+            # scan every historical row of every company for each company.
+            self.db.execute(f'INSERT INTO {table} SELECT * FROM prior.{table} WHERE rowid BETWEEN ? AND ?'
+                            +(" AND +mode='historical'" if table=='filter_values' else '')+' ORDER BY rowid',span)
+        self.history.add(symbol)
+        return True
+
+    def prepended(self, symbol, rows):
+        """Return how many rows a download added before the unchanged saved rows.
+
+        SeriesAsset saves rows newest first, so a daily download moves every
+        earlier row by the same number of places. Return None for any other change.
+        """
+        known=self.units.get(symbol)
+        known=known['rows'] if known is not None else None
+        if not isinstance(rows,list) or known is None or not len(rows)>known[0]:
+            return None
+        offset=len(rows)-known[0]
+        return offset if _rows_digest(rows[offset:])==known[1] else None
+
+    def shifted(self, symbol, offset, days):
+        """Return the prior day evidence of moved rows, except days the new rows touch.
+
+        Return None when any stored day cannot be moved exactly.
+        """
+        moved=[]
+        for row in self.db.execute('SELECT * FROM prior.observation_dated WHERE symbol=? AND endpoint=?',
+                                   (symbol,dated_observation_inputs.STOCK)):
+            if row[2] in days:
+                continue
+            document=dated_observation_inputs.shifted(row[3],offset)
+            if document is None:
+                return None
+            moved.append(observation_inputs._prepared_record((row[0],row[1],row[2],document)))
+        return moved
+
+    def copy_dated(self, symbol, unit):
+        """Batch the dated rows of equal bytes; return whether the source row is copied too.
+
+        Dated rows depend only on the file bytes. The source row also holds the
+        coverage receipt, so it is copied only when that receipt is unchanged.
+        Return None when the caller must resolve the file completely.
+        """
+        known=self.units.get(symbol)
+        if known is None or known['content']!=unit['content']:
+            return None
+        self.dated.add(symbol)
+        if known['receipt']!=unit['receipt']:
+            return False
+        self.sources.add(symbol)
+        return True
+
+    def finish(self):
+        """Copy batched observation units, commit and release the prior database."""
+        self.db.execute('CREATE TEMP TABLE reused(kind TEXT,symbol TEXT,PRIMARY KEY(kind,symbol)) WITHOUT ROWID')
+        self.db.executemany('INSERT INTO temp.reused VALUES(?,?)',[(kind,s) for kind,symbols in
+            (('history',self.history),('source',self.sources),('dated',self.dated)) for s in symbols])
+        self.db.execute("""INSERT INTO observation_measure_contexts SELECT * FROM prior.observation_measure_contexts
+                           WHERE mode='historical' AND symbol IN (SELECT symbol FROM temp.reused WHERE kind='history')""")
+        for table,kind in (('observation_sources','source'),('observation_dated','dated')):
+            self.db.execute(f"""INSERT INTO {table} SELECT * FROM prior.{table}
+                                WHERE endpoint=? AND symbol IN (SELECT symbol FROM temp.reused WHERE kind=?)""",
+                            (dated_observation_inputs.STOCK,kind))
+        self.db.commit()
+        self.db.execute('DROP TABLE temp.reused')
+        self.db.execute('DETACH DATABASE prior')
 
 
 def prepared_price_binding(path=DATABASE):
@@ -156,7 +350,7 @@ def connect(path=DATABASE, check=True, full_prices=False):
     db.row_factory=sqlite3.Row
     try:
         baseline.Baseline(RESULTS,path).check_ready(db)
-        meta={r['key']:json.loads(r['value']) for r in db.execute('SELECT * FROM metadata')}
+        meta={r['key']:json.loads(r['value']) for r in db.execute("SELECT * FROM metadata WHERE key IN ('version','inputs','prices')")}
         if meta.get('version') != SCHEMA_VERSION:
             raise ValueError('Database version changed; run research.py prepare')
         if check and (meta.get('inputs')!=signature() or (full_prices and meta.get('prices')!=price_sources())):
@@ -278,6 +472,8 @@ def prepare(path=DATABASE, force=False):
         end=market.session_on_or_after(sessions,date(year+1,1,1)) if year<rules.LAST_YEAR else sessions[-1]
         a,b=after(spy,entry,4),before(spy,end,4)
         periods[year]=(entry,end,books.benchmark_return(a[1],b[1]),market.asof_yield(yields,entry))
+    horizon=max([historical_end]+[entry+REUSE_MARGIN for entry,*_ in periods.values()])
+    scope=_reuse_scope(historical_end,horizon,treasury_rows)
     latest_day=all_spy[-1][0]
     active={s for s,r in universe.items() if r.get('listed') is True}
     latest_statements,latest_ranks=books.candidates(tuple({s:rows for s,rows in pool.items() if s in active} for pool in (broad,book)),latest_day)
@@ -287,10 +483,14 @@ def prepare(path=DATABASE, force=False):
     temporary=path.with_name(path.name+'.building')
     if temporary.exists():
         temporary.unlink()
-    db=sqlite3.connect(temporary)
+    db=sqlite3.connect(temporary.resolve().as_uri(),uri=True)
     db.row_factory=sqlite3.Row
     try:
         db.executescript(SCHEMA)
+        # A company unit whose inputs are unchanged is copied from the published,
+        # verified database. A forced preparation always recalculates.
+        prior=None if force else _PriorUnits.open(db,path,owner,scope)
+        units,rebuilt,shifts={},set(),{}
         db.executemany('INSERT OR REPLACE INTO treasury10 VALUES(?,?)',
                        [(str(day),value) for row in treasury_rows
                         if (day:=rules.parse_day(row.get('date'))) is not None
@@ -319,18 +519,41 @@ def prepare(path=DATABASE, force=False):
             a,b=after(spy,entry,4),before(spy,end,4)
             db.execute('INSERT INTO baseline_periods VALUES(?,?,?,?,?)',(year,str(a[0]),str(b[0]),a[1],b[1]))
         cached_symbols=sorted(s for s in broad if market.cache_path_for(s).name in sources)
-        total=0
+        total=reused=0
         for number,symbol in enumerate(cached_symbols,1):
             valuation_evidence={}
-            payload=json.loads(market.cache_path_for(symbol).read_text())
-            light=[]
-            for r in payload.get('light') or []:
-                value=r.get('price') if r.get('price') is not None else r.get('close')
-                light.extend(bars([dict(date=r.get('date'),value=value)],'value'))
-            light.sort()
-            div=bars(payload.get('div') or [],'adjClose')
+            location=market.cache_path_for(symbol);name=location.name
+            # File bytes, never the file stamp, decide reuse: downloads rewrite
+            # checked files with equal bytes, and a copy can keep old stamps.
+            # Equal bytes of an unlisted company are not parsed: it has no
+            # latest root.
+            content=_file_digest(location)
+            unchanged=prior is not None and symbol in prior.units and prior.units[symbol]['content']==content
+            payload=None if unchanged and symbol not in active else json.loads(location.read_text())
+            rows=payload.get('div') if isinstance(payload,dict) else None
+            unit=units[symbol]=dict(content=content,
+                history=prior.units[symbol]['history'] if unchanged else _bounded_digest(payload,horizon,'div'),
+                receipt=_digest(ledger.get('px/'+name)),
+                rows=prior.units[symbol]['rows'] if unchanged else [len(rows),_rows_digest(rows)] if isinstance(rows,list) else None)
+            offset=None if unchanged or prior is None else prior.prepended(symbol,rows)
+            if offset is not None:
+                shifts[symbol]=offset,{day for row in rows[:offset] if (day:=dated_observation_inputs.row_day(row)) is not None}
+            if prior is not None and prior.copy_history(symbol,unit['history']):
+                reused+=1
+            else:
+                rebuilt.add(symbol)
+                if payload is None:
+                    payload=json.loads(location.read_text())
+            light=div=None
+            if payload is not None:
+                light=[]
+                for r in payload.get('light') or []:
+                    value=r.get('price') if r.get('price') is not None else r.get('close')
+                    light.extend(bars([dict(date=r.get('date'),value=value)],'value'))
+                light.sort()
+                div=bars(payload.get('div') or [],'adjClose')
             inserts=[]
-            for year,(entry,end,_,treasury) in periods.items():
+            for year,(entry,end,_,treasury) in (periods.items() if symbol in rebuilt else ()):
                 for pool,statements in [('legacy',book.get(symbol,[])),('cached',broad[symbol])]:
                     candidate=ranks[year].get(symbol)
                     if pool=='legacy' and candidate is None:
@@ -392,6 +615,8 @@ def prepare(path=DATABASE, force=False):
                 lookup_calls.append(dict(requested_date=str(day),column=column,forward=forward,slack=slack,observation=[str(result[0]),result[1]] if result else None))
                 return result
             for mode,table,day_key in [('historical','snapshots','entry'),('latest','latest_snapshots','price_date')]:
+                if mode=='historical' and symbol not in rebuilt:
+                    continue
                 for saved in db.execute('SELECT * FROM '+table+' WHERE symbol=?',(symbol,)).fetchall():
                     observation=dict(saved)
                     pairs=metrics.evaluate(observation,history)
@@ -407,15 +632,26 @@ def prepare(path=DATABASE, force=False):
                     db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
-                print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} January snapshots',flush=True)
+                print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} new January snapshots; {reused:,} companies reused',flush=True)
         for symbol in sorted(set(broad)-set(cached_symbols)):
             observation_inputs.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
         for (symbol,pool),evidence in latest_admission.items():
             observation_inputs.store_latest(db,symbol,pool,evidence)
         for symbol in sorted(broad):
             backtest_control.checkpoint()
-            observation_inputs.store_dated(db,symbol,dated_observation_inputs.STOCK,
-                dated_observation_inputs.stock(RAW,symbol,ledger,backtest_control.checkpoint),backtest_control.checkpoint)
+            copied=prior.copy_dated(symbol,units[symbol]) if symbol in units and prior is not None else None
+            if copied:
+                continue
+            # Equal bytes keep every day; prepended rows touch only their own days.
+            shift=shifts.get(symbol) if copied is None else None
+            moved=prior.shifted(symbol,*shift) if shift else None
+            days=() if copied is False else shift[1] if moved is not None else None
+            resolution=dated_observation_inputs.stock(RAW,symbol,ledger,backtest_control.checkpoint,days=days)
+            if days is not None and resolution['source']['sha256']!=units[symbol]['content']:
+                raise ValueError('Dated observation source changed during preparation.')
+            observation_inputs.store_dated(db,symbol,dated_observation_inputs.STOCK,resolution,backtest_control.checkpoint)
+            if moved:
+                db.executemany('INSERT INTO observation_dated VALUES(?,?,?,?)',moved)
         for endpoint,resolution in dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint).items():
             observation_inputs.store_dated(db,'',endpoint,resolution,backtest_control.checkpoint)
         prepare_metrics(db)
@@ -438,14 +674,24 @@ def prepare(path=DATABASE, force=False):
             record=observation_inputs._prepared_record((mode,pool,scope_day,symbol,observation_inputs.encoded(observation_inputs.measure_observations.detached(evidence))))
             db.execute('UPDATE observation_measure_contexts SET evidence_json=? WHERE mode=? AND pool=? AND context_date=? AND symbol=?',
                 (record[4],mode,pool,scope_day,symbol))
+        if prior is not None:
+            prior.finish()
         observation_inputs.finish(db,latest_day,backtest_control.checkpoint,scopes=scopes)
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end)).items():
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end),
+                              reuse=dict(scope=scope,symbols=units)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
         if inputs!=signature() or sources!=price_sources():
             raise ValueError('Inputs changed during preparation; retry.')
         db.commit()
-        result=verify_reference(db)
+        # The independent engine already agreed on these exact historical
+        # inputs when every company unit was copied and the copied baseline is
+        # the published one. Any recalculated or removed unit is checked again.
+        result=prepared_baseline(db) if prior is not None and not rebuilt and prior.units.keys()==units.keys() else None
+        if result is not None and json.loads(json.dumps(result))==prior.baseline:
+            print('Historical inputs unchanged; the verified January baseline was reused.',flush=True)
+        else:
+            result=verify_reference(db)
         if inputs!=signature() or sources!=price_sources():
             raise ValueError('Inputs changed during baseline verification; retry.')
         db.close()
