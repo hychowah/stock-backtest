@@ -50,8 +50,6 @@ class Jobs:
     def start_evidence(self,identifier,mode,options,*,planned=None,max_bytes=256*1024**2,
                        piece_bytes=1024*1024,record_bytes=8*1024*1024):
         """Explicit temporary evidence job. No HTTP or browser route selects it."""
-        if not callable(getattr(self.calculations,'calculate_into',None)):
-            raise ValueError('This calculation owner does not support bounded evidence.')
         return self._start(identifier,mode,options,planned=planned,
             limits=dict(max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes))
 
@@ -70,7 +68,6 @@ class Jobs:
             self.calculations.preflight(options,planned=planned)
             strategy_requests.check_request(dict(id=identifier,mode=mode,options=options,planned=planned))
         if scalar and limits is None:
-            if not callable(getattr(self.calculations,'calculate_into',None)):raise ValueError('Scalar execution is unavailable.')
             limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
         if mode not in (strategy_requests.SCALAR_MODES if scalar else ('custom','random')) or not isinstance(options,dict):
             raise ValueError('Expected backtest mode and options.')

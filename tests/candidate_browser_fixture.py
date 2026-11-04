@@ -1,16 +1,12 @@
 """Owned, fictional candidate service for actual browser qualification."""
-import json
 import os
 from pathlib import Path
 import sys
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
-sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'tests')]
+sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'tests')]
 from source_service_fixture import FictionalWorkspace
-import sys as _root_sys
-from pathlib import Path as _RootPath
-_root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
 from native_browser_fixture import NativeBrowser
 
@@ -28,7 +24,7 @@ class WorkflowBrowser(NativeBrowser):
 
 
 class CandidateService:
-    def __init__(self,workspace,scenario="workflow"):
+    def __init__(self,workspace,scenario):
         self.fixture=workspace;self.scenario=scenario
         self.closed=False;self.ready=False;self.port=None;self.owner=None;workspace.own(self)
 
@@ -61,15 +57,3 @@ class CandidateService:
             assert self.owner.closed and self.owner.descendants_empty and self.owner.eof
             assert self.owner.process.returncode==0,self.owner.closure()
         self.closed=True
-
-
-def main():
-    with FictionalWorkspace() as workspace:
-        service=CandidateService(workspace).start()
-        print(json.dumps(dict(port=service.port,source=str(workspace.source))),flush=True)
-        assert input()=='close'
-        service.close()
-        print(json.dumps(dict(closed=True,closure=service.owner.closure())),flush=True)
-
-
-if __name__=='__main__':main()

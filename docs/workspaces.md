@@ -4,11 +4,9 @@ Edit and commit source in WSL. Run the server, saved-data preparation and full-d
 
 The original legacy folder is retained as a fallback. It is not the active development checkout. The WSL repository preserves its saved history in `.git-local`. A `.git` pointer enables ordinary Git commands. The Windows runtime has no separate Git repository.
 
-Frontend and unrelated backend work continue on `main`. The linked
-`cb02/input-ownership` worktree owns the new backtest engine. Read
-[worktree-coordination.md](../AGENTS.md#current-state-and-authorization) before changing shared
-calculation, cache, worker, API or startup contracts. The feature worktree does
-not replace the registered deployment source.
+Read [AGENTS.md](../AGENTS.md#current-state-and-authorization) before changing
+shared calculation, cache, worker, API or startup contracts. A feature branch or
+linked worktree does not replace the registered deployment source.
 
 ## Daily commands
 
@@ -30,10 +28,8 @@ deployment command is needed for later commits. Refresh an open browser page to
 load the new HTML. Restarts do not open another browser tab.
 
 The watcher follows `refs/heads/main`, including a deliberate change of its tip.
-It does not follow the engine worktree, the checked-out feature branch, remote
-repositories or uncommitted edits. It does not fetch or pull Git history. The
-compiled engine still needs its readiness gates before integration into main.
-The two pre-existing portable-snapshot edits stay in WSL until separately reviewed.
+It does not follow other branches, a checked-out feature branch, remote
+repositories or uncommitted edits. It does not fetch or pull history.
 
 Use `python3 tools/deploy.py --revision <commit> --start` to run one fixed revision
 without automatic updates. `--revision HEAD` also freezes that resolved commit
@@ -85,7 +81,7 @@ Source publication and native server execution share a lock. A deployment stops 
 | SQLite databases, process identities, locks and logs under `data/` | Windows runtime |
 | Current verified `results/summary-exits.txt` and baseline history | Windows runtime |
 | Built local page under `website/local/` | Windows runtime |
-| Native environments and compiled caches | Windows runtime; create them for Windows |
+| Native environments and frozen-engine caches | Windows runtime; create them for Windows |
 | Deployment hashes and commit identity | Windows `data/deployment.json` |
 
 Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. The canonical report is special: after initial installation, deployment never replaces it. Its exact content must remain bound to the prepared research database.
@@ -131,7 +127,7 @@ The ignored `data/workspace.json` records `source` (the WSL path), `distro`, `ru
 
 The original folder keeps its source, history and saved data. Its old `backtest-web.cmd` can launch that retained copy explicitly. Its code predates deployment ownership. Use it as a separate fallback; do not point the new deployment target at that source repository. A rollback to another deployed revision requires that revision to contain the workspace deployment tools.
 
-The user architecture guide describes the current split. The compiled-engine master plan remains a separate program; this workspace migration does not implement its calculation phases.
+The user architecture guide describes the current split.
 
 ## Engine comparison runs
 

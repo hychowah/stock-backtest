@@ -13,9 +13,11 @@ import these canonical owners.
 | `tools.experiments.parallel_comparison` | Scoped private comparison and its fixed child |
 | `tools.experiments.probe*`, `download_one`, `fetch_bulk` | Retained API acquisition experiments |
 
-The documented deployment, comparison, probe and download command paths remain
-thin entries in `tools/`. `scripts/list_stops.py` and `scripts/classify_stops.py`
-also remain commands. Private workers and library modules have no forwarding
+The thin entries in `tools/` are `deploy.py`, `probe.py`, `download_one.py` and
+`fetch_bulk.py`. Each forwards to its owner in the table. Run
+`tools/experiments/probe_list.py` and `probe_span.py` as modules, for example
+`python3 -m tools.experiments.probe_list`. `scripts/list_stops.py` and
+`scripts/classify_stops.py` also remain commands. Private workers and library modules have no forwarding
 entries. Numerical policy, decisions, process ownership and the Numba
 implementation belong to `backtest`, not to tools.
 
@@ -35,13 +37,10 @@ saved results or rebuild the website. Use `scripts/revalue.py` and
 ## Engine comparison
 
 `tools/experiments/parallel_comparison.py` compares Original with the
-experimental engine on a private copy of prepared inputs. It is the only
-retained runner. The earlier benchmark harness (the end-to-end benchmark, the
-frozen production baseline, the six-method comparison and the captured-input
-execution owners) was removed. Its decisions and measured results are recorded
-in the [faster engine summary](../docs/plans/compiled-backtest/master-plan.md),
-the [parallel backtest summary](../docs/plans/parallel-backtest/master-plan.md)
-and [results/experiments](../results/experiments/README.md).
+experimental engine on a private copy of prepared inputs. The engine is frozen;
+see the [faster engine summary](../docs/plans/compiled-backtest/master-plan.md)
+and the [parallel backtest summary](../docs/plans/parallel-backtest/master-plan.md)
+for its decisions and measured results.
 
 ## WSL deployment
 

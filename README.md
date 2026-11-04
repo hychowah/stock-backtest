@@ -4,7 +4,7 @@ A standalone US stock backtest and interactive results website. Each January, bu
 
 ## Open the website
 
-Source development now lives in WSL at `<wsl-checkout>`.
+Source development lives in WSL at `<wsl-checkout>`.
 The native Windows runtime is `<windows-runtime>`. Edit and commit in WSL.
 Start the native runtime with `python3 tools/deploy.py --start`, or run the
 installed `backtest-web.cmd` from Windows Terminal. Startup deploys the latest
@@ -98,10 +98,7 @@ financial parameters with point-in-time measures and run with Original. Sample
 preview uses Original reference execution. Eager scalar execution is unsupported.
 See the [custom-variable summary](docs/plans/custom-variables/master-plan.md).
 
-Each code phase runs `$strategic-design-plan`, implementation and verification,
-then `$smart-commit`. Agents ask only about critical blockers or decisions that
-need the user's judgment. Records follow the
-[records policy](docs/records-policy.md).
+Records follow the [records policy](docs/records-policy.md).
 
 
 ## Run from the saved data
@@ -146,10 +143,12 @@ results/
 raw/                 Reusable universe, financial metrics, prices, SPY, Treasury data
   px/                One price-history file per stock
   archive/           Unused bulk downloads and exploratory responses
-tools/              API probes, download experiments, and market-data repair
+tools/              Deployment, operations, retained API probes and comparison runner
 tests/              Calculation and path checks
 docs/               Methodology, assumptions, and limitations
 ```
+
+The [source map](docs/plans/project-structure/source-map.md) lists the owners of financial, input, engine, application, website and tool code. Browser assets live in `website/browser/`, static builds in `website/rendering/` and HTTP adapters in `website/server/`.
 
 See [fast screening and backtesting](docs/research-workflow.md) for parameter examples, coverage limits, and the preparation/query separation.
 
@@ -182,25 +181,8 @@ git --git-dir=.git-local --work-tree=. log --oneline
 
 Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
 
-Source, reviewed reports and the portable snapshot are versioned. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. Collect a changed verified runtime report with `python3 tools/deploy.py --collect-report` before reviewing and committing it. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
+Source and reviewed reports are versioned. The portable export in `website/dist/` is ignored. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. Collect a changed verified runtime report with `python3 tools/deploy.py --collect-report` before reviewing and committing it. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
 
 ## Local builds and portable snapshots
 
-Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the portable export in `website/dist/`.
-
-Run `python3 website/build.py --snapshot` to write the portable export after preparing data. The export is not tracked. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
-
-Range and SQL/browser parity checks use local output by default. To check a portable export, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
-
-
-Original runs fixed and random schedules with custom week/month intervals and
-all current stock filters. Latest and January use shared prepared screening. Stored charts, holdings,
-attribution and exports use the completed artifact's original evidence.
-Source qualification is separate from deployment.
-
-The [current source map](docs/plans/project-structure/source-map.md) identifies
-financial, input, engine, application, website and tool owners. Browser assets
-live in `website/browser/`. Static builds live in `website/rendering/` and HTTP
-adapters in `website/server/`. Documented build and startup commands retain
-their paths. Maintained tool implementations live in `tools/ops/`; retained
-experiments live in `tools/experiments/`.
+Builds write ignored `website/local/`. `python3 website/build.py --snapshot` writes the untracked export in `website/dist/`. See [website/README.md](website/README.md#local-builds-and-portable-snapshots).

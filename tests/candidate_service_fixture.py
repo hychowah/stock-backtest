@@ -27,9 +27,6 @@ def main():
         from backtest.inputs import market, fmp_download, cache_assets
         from backtest.engines.reference import legacy
         fmp_download.KEY_PATH=source.parent/'nonexistent-offline-key'
-        if scenario=='build':
-            context.enter_context(patch('subprocess.run',
-                side_effect=OSError('fictional build failure')))
         if scenario.startswith('ordinary'):
             class WithoutNative:
                 def find_spec(self,fullname,path=None,target=None):

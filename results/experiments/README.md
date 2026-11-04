@@ -26,12 +26,6 @@ status and trial outcome exactly.
   prototype took 261.4, 178.6, 163.3 and 155.0 seconds. Four workers are the
   default. The final four-worker run took 43.2 seconds, including worker cleanup
   after forced parent termination.
-- `parallel-book-upgrade.json`: the real daily cache upgraded from version 2 to
-  3. All 2,581 dated periods and 2,881 pool markers kept identical digests.
-- `requested-pool-upgrade.json`: the real daily cache upgraded from version 1 to
-  2 and kept all 300 dated books.
-- `backtest-benchmark-wsl-pilot.json` and `backtest-benchmark-wsl-full.json`:
-  separate WSL diagnostics. Do not use WSL timings as the Windows baseline.
 - `performance.json`: local preparation, query and build timings for the
   research database.
 
@@ -41,7 +35,8 @@ status and trial outcome exactly.
   scoped comparison of Original and the experimental engine. With 24 fresh
   trials over 2010–2019, Original took 71.0 seconds and Numba 59.8 seconds.
 - [Parallel qualification](parallel-qualification-2026-11-01/README.md): CB-19G
-  final source qualification and the Numba-over-Rust backend decision.
+  final source qualification. It compares the Numba and Rust backends and
+  selects Numba. The Rust backend is removed.
 
 ## Downloads
 
@@ -50,17 +45,3 @@ status and trial outcome exactly.
 - `fmp-throughput-2026-10-23.json`: transport experiment that supports the
   32-worker, 45-starts-per-second defaults. It is not a sustained-rate or full
   application benchmark.
-
-## Ad hoc screens
-
-A screen such as the earlier top-100 example can be reproduced on demand. It is
-not kept here:
-
-```bash
-python3 scripts/research.py screen --top 100 --first 2015 --last 2020 --output tmp/top100-2015-2020.json
-```
-
-The first January book has fewer than 100 usable names in the original
-250-candidate pool. Full-universe top-100 claims need broader price coverage and
-exit review. Additional early stops outside the original top 50 have not had the
-manual bankruptcy review.

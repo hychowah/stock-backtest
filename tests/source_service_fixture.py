@@ -1,162 +1,21 @@
-"""Complete fictional source-root qualification. No real data or admission.
+"""A complete fictional workspace copied from private source. No real data.
 
-Fixture allowances bound this verification exercise. They neither modify
-captured-execution limits nor qualify production capacity, installed
-compatibility, browser resources or real benchmark admission.
+Fixture allowances catch runaway fixture growth. They are not capacity limits.
 """
 
-from contextlib import closing, contextmanager
 from datetime import date, timedelta
 import hashlib
-import uuid
-import http.client
 import json
 import math
 import os
 from pathlib import Path
 import shutil
-import sqlite3
 import sys
 import tempfile
-import time
 
 ROOT = Path(__file__).resolve().parents[1]
 
 MIB = 1024**2
-
-START_SECONDS = 20.
-CLIENT_SECONDS = 30.
-CLOSE_SECONDS = 15.
-MAX_RESPONSE = 8 * 1024**2
-_pending_services = {}
-
-
-class SyntheticService:
-    """Own a disposable service loaded from verified private source.
-
-    Publish its loopback address after binding. Keep source ownership until the
-    listener, request threads, databases and child process close. Restart creates
-    a new interpreter against the same synthetic saved data. Unknown closure
-    retains this owner and its controls for explicit retry.
-    """
-    start_seconds = START_SECONDS
-    client_seconds = CLIENT_SECONDS
-    close_seconds = CLOSE_SECONDS
-    max_response = MAX_RESPONSE
-
-    def command(self, path):
-        raise NotImplementedError
-
-    def limits(self):
-        raise NotImplementedError
-
-    def __init__(self, fixture, request, **scenario):
-        self.fixture, self.request_spec = fixture, request
-        self.control = fixture.root / ('http-' + uuid.uuid4().hex)
-        self.scenario = scenario
-        self.owned = None
-        self.events = []
-        self.clients = set()
-        self.stop_sent = self.closed = self.ready = False
-
-    def start(self):
-        from backtest.runtime.process_owner import OwnedProcess
-        self.control.mkdir()
-        request = dict(self.request_spec, control=str(self.control), scenario=self.scenario)
-        path = self.control / 'request.json'; path.write_bytes(encoded(request))
-        _pending_services[id(self)] = self
-        command = self.command(path)
-        env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', NUMBA_NUM_THREADS='2',
-                   OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
-        try:
-            self.owned = OwnedProcess(command, env=env, limits=self.limits())
-            self.owned.start()
-            ready = self.wait('ready', self.start_seconds)
-            self.port = ready['port']
-            if ready['host'] != '127.0.0.1' or self.port in (0, 3000):
-                raise AssertionError('Invalid disposable service address.')
-            self.ready = True
-            return self
-        except BaseException as error:
-            self.owned = self.owned or getattr(error, 'owned_process', None)
-            try: self.close()
-            except BaseException: error.synthetic_service = self
-            raise
-
-    def wait(self, event, seconds=None):
-        seconds = self.client_seconds if seconds is None else seconds
-        until = time.monotonic() + seconds
-        while time.monotonic() < until:
-            value = self.owned.event(.02)
-            if value:
-                self.events.append(value)
-                if value.get('event') == 'failed':
-                    raise AssertionError('Synthetic service transport failed: ' + value['reason'])
-                if value.get('event') == event: return value
-            elif self.owned.process.poll() is not None: break
-        raise AssertionError('Missing synthetic service event: ' + event)
-
-    @contextmanager
-    def connection(self):
-        client = http.client.HTTPConnection('127.0.0.1', self.port, timeout=self.client_seconds)
-        self.clients.add(client)
-        try: yield client
-        finally: client.close(); self.clients.discard(client)
-
-    def request(self, method, path, payload=None, *, status=200):
-        with self.connection() as client:
-            body = None if payload is None else encoded(payload)
-            client.request(method, path, body, {'Content-Type': 'application/json'})
-            response = client.getresponse()
-            raw = response.read(self.max_response + 1)
-            assert response.status == status, (response.status, raw[:200])
-            assert len(raw) <= self.max_response
-            length = response.getheader('Content-Length')
-            if length is not None: assert int(length) == len(raw)
-            if path.startswith('/api/'): return json.loads(raw)
-            return raw
-
-    def close(self):
-        if self.closed: return
-        if self.owned is not None:
-            if not self.stop_sent and self.owned.process.poll() is None:
-                (self.control / 'stop').touch()
-                self.stop_sent = True
-            self.owned.process.wait(timeout=self.close_seconds)
-            self.owned.close()
-            if not self.owned.closed: raise TimeoutError('Synthetic service closure is unconfirmed.')
-            while not self.owned.events.empty():
-                self.events.append(self.owned.events.get_nowait())
-            if self.ready:
-                assert self.owned.failure is None, 'Synthetic service transport failed.'
-                assert self.owned.process.returncode == 0, 'Synthetic service failed during shutdown.'
-                names = [row.get('event') for row in self.events]
-                assert names.index('shutdown_started') < names.index('service_closed') < names.index('source_released')
-        for client in list(self.clients): client.close()
-        self.clients.clear()
-        self.closed = True
-        _pending_services.pop(id(self), None)
-
-    def __enter__(self): return self.start()
-
-    def __exit__(self, kind, error, tb):
-        try: self.close()
-        except BaseException:
-            if error is None: raise
-            error.synthetic_service = self
-
-
-def encoded(value):
-    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
-
-
-def _verify(root, files):
-    """Reject a copied source file whose bytes differ from the recorded inventory."""
-    for relative, expected in files.items():
-        target = (root / relative).resolve()
-        if not target.is_relative_to(root) or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
-            raise AssertionError('Copied source differs from its recorded inventory.')
-
 
 # Allowances catch runaway fixture growth; they are not capacity limits. Keep
 # them well above the largest measured workspace.
@@ -183,7 +42,7 @@ class FictionalWorkspace:
     preparation and build functions.
     """
     def __init__(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix='cb02-source-service-')
+        self.temporary = tempfile.TemporaryDirectory(prefix='fictional-workspace-')
         self.root = Path(self.temporary.name)
         self.source = self.root / 'application'
         self._owners = []
@@ -204,8 +63,6 @@ class FictionalWorkspace:
         dependency_file = ROOT / 'requirements-numerical.txt'
         shutil.copy2(dependency_file, self.source / dependency_file.name)
         self.sources[dependency_file.name] = sha(self.source / dependency_file.name)
-        # The selected application path must prepare and run without Rust.
-        self.native_components_bytes=0
         self._generate()
         self.inputs = self.input_inventory()
         write(self.root / 'specification.json', dict(specification=SPEC, allowances=ALLOWANCES,
@@ -293,9 +150,7 @@ class FictionalWorkspace:
             if p.is_file(): files.append((p, p.stat().st_size))
         assert all(sha(self.source/n)==s for n,s in self.sources.items())
         size = lambda root: sum(n for p,n in files if p.is_relative_to(root))
-        native=size(self.source/'data/numerical-native')
-        assert native<=self.native_components_bytes+64*MIB, ('native fixture components plus build allowance',native)
-        result = dict(total=sum(n for _,n in files)-native, native=native, raw=size(self.source/'raw'),
+        result = dict(total=sum(n for _,n in files), raw=size(self.source/'raw'),
             website=size(self.source/'website/local'), history=size(self.source/'results/baseline-history'),
             control=sum(n for p,n in files if not p.is_relative_to(self.source) and p.suffix!='.sqlite'),
             downloads=size(self.root/'downloads'), databases={p.name:n for p,n in files
@@ -317,10 +172,6 @@ class FictionalWorkspace:
             self.temporary._finalizer.detach()
             _retained_workspaces[id(self)]=self
             raise
-        if any(s.fixture is self and not s.closed for s in _pending_services.values()):
-            self.temporary._finalizer.detach()
-            _retained_workspaces[id(self)]=self
-            raise AssertionError('Unconfirmed service closure retains the fictional workspace.')
         self.inventory()
         self.temporary.cleanup()
         self.closed=True
@@ -330,50 +181,9 @@ class FictionalWorkspace:
     def __exit__(self, *args): self.close()
 
 
-class SourceService(SyntheticService):
-    """Own one disposable source service from pre-import source ownership through
-    closure of data jobs, request threads, listener, descendants and transport.
-    Readiness means ordinary preparation and building succeeded before the
-    loopback listener was published.
-    """
-    start_seconds = 180.
-    client_seconds = 60.
-    close_seconds = 15.
-    max_response = 16*MIB
-
-    def __init__(self, workspace, **scenario):
-        super().__init__(workspace, dict(source=str(workspace.source), sources=workspace.sources), **scenario)
-        workspace.own(self)
-
-    def command(self, path):
-        return [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
-            'import sys;sys.path[:0]=sys.argv[1:3];from source_service_fixture import child;child(sys.argv[3])',
-            str(ROOT/'tests'), str(ROOT), str(path)]
-
-    def limits(self):
-        from backtest.runtime.process_owner import ProcessLimits
-        return ProcessLimits(2*1024**3, 16, 25, user_cpu_seconds=180., close_seconds=5.)
-
-    def restart(self):
-        self.close()
-        return SourceService(self.fixture).start()
-
-    def job(self, action, payload=None):
-        self.request('POST', '/api/data/'+action, payload or {}, status=202)
-        until = time.monotonic()+self.client_seconds
-        while time.monotonic()<until:
-            state=self.request('GET','/api/data/status')
-            if not state['job']['running']:
-                assert state['job']['error'] is None, state['job']
-                return state
-            time.sleep(.01)
-        raise TimeoutError('Fictional data job deadline expired.')
-
-
 def dependency_guard(source):
-    """Reject ambient application opens and provider sockets in each interpreter.
+    """Reject ambient application opens and provider sockets in this interpreter.
 
-    Build subprocesses use this same guard through a private sitecustomize.
     It is a Python dependency check, not a hostile native-code sandbox.
     """
     import sysconfig
@@ -414,146 +224,9 @@ def dependency_guard(source):
     sys.addaudithook(audit)
 
 
-def guarded_environment(source):
-    """Give ordinary Python children the same tested dependency boundary."""
-    guard=source.parent/'guard';guard.mkdir(exist_ok=True)
-    (guard/'sitecustomize.py').write_text('import sys\nsys.path[:0]='+repr([str(ROOT/'tests'),str(ROOT)])+ '\nfrom source_service_fixture import dependency_guard\nfrom pathlib import Path\ndependency_guard(Path('+repr(str(source))+'))\n',encoding='utf-8')
-    return dict(os.environ,PYTHONPATH=str(guard),PYTHONDONTWRITEBYTECODE='1')
-
-
 def assert_package_source(source):
     """Every loaded package module belongs to the acquired private source."""
     loaded=[module for name,module in sys.modules.items()
             if name in ('backtest','website') or name.startswith(('backtest.','website.'))]
     assert loaded
     assert all(Path(module.__file__).resolve().is_relative_to(source) for module in loaded)
-
-
-def child(request_path):
-    assert input()=='GO'
-    request=json.loads(Path(request_path).read_bytes())
-    source=Path(request['source']).resolve();control=Path(request['control']).resolve()
-    _verify(source,request['sources'])
-    import mimetypes
-    mimetypes.init()
-    # Only the secret-provider dependency is redirected. No financial or
-    # preparation/signature function is replaced. Children inherit the guard.
-    os.environ.update(guarded_environment(source))
-    dependency_guard(source)
-    sys.path.insert(0,str(source))
-    from website import runtime_access
-    def emit(event,**values): print(json.dumps(dict(event=event,**values)),flush=True)
-    def barrier(name):
-        emit(name,at=time.monotonic())
-        until=time.monotonic()+60.
-        while not (control/(name+'.release')).exists():
-            if time.monotonic()>until:raise TimeoutError('Source-service barrier expired.')
-            time.sleep(.005)
-    with runtime_access.ownership(source,timeout=0):
-        emit('source_acquired')
-        from backtest.financial import rules
-        from backtest.inputs import market, fmp_download, cache_assets, daily, research
-        from backtest.engines.reference import legacy
-        fmp_download.KEY_PATH=source.parent/'missing-fixture-key'
-        from website.server import app
-        from backtest.engines.original import robustness as robustness
-        from backtest.engines.original import schedules
-        from backtest import screening
-        assert_package_source(source)
-        if request['scenario'].get('fail_start'):raise RuntimeError('Fictional startup failure.')
-        # Barriers observe actual operations. Results and ownership are unchanged.
-        from backtest.runtime import cache_access as cache_access
-        if request['scenario'].get('hold_prepare'):
-            original=research.prepare
-            def preparing(*args,**kwargs):
-                barrier('preparation_held')
-                return original(*args,**kwargs)
-            research.prepare=preparing
-        app.ensure_ready()
-        for module in (app,schedules,robustness,app.data_manager,cache_access,market,runtime_access,research):
-            assert Path(module.__file__).resolve().is_relative_to(source)
-        assert_package_source(source)
-        assert app.current_build()
-        with cache_access.access(),closing(research.connect(full_prices=True)) as db:
-            baseline=research.verify_reference(db)
-            latest=screening.latest(db)
-            historical=screening.historical(db,first=2015,last=2016,rank_to=4)
-            browser_latest=screening.latest(db,pool='cached',metric='ev_ebitda_3y',rank_to=7,
-                filters=[dict(field='pe',op='lt',value=20.)])
-            browser_historical=screening.historical(db,first=2015,last=2016,pool='cached',rank_from=2,rank_to=4)
-            metadata={row[0]:json.loads(row[1]) for row in db.execute('SELECT * FROM metadata')}
-        with cache_access.access(),closing(daily.connect()) as db:
-            daily_metadata={row[0]:json.loads(row[1]) for row in db.execute('SELECT * FROM metadata')}
-        write(control/'expected.json',dict(baseline=baseline,latest=latest,historical=historical,
-            browser_latest=browser_latest,browser_historical=browser_historical,
-            metadata=metadata,daily_metadata=daily_metadata,signature=research.signature()))
-        if request['scenario'].get('oracle'):
-            oracle=control/'oracle.sqlite'
-            shutil.copy2(daily.DATABASE,oracle)
-            with cache_access.access(),closing(daily.connect(oracle)) as db:
-                options=dict(start='2015-01-01',end='2016-12-30',months=12,pool='cached',rank_to=4)
-                config=robustness.plan(db,**options,trials=5,seed=42)
-                fixed=schedules.backtest(db,**options)
-                random=robustness.run(db,config)
-                inspected=schedules.backtest_dates(db,dates=config['samples'][2],**options)
-            # The HTTP adapter adds current producer metadata after closing resources.
-            # Keep full equality, including that explicit application contract.
-            for result in (fixed,random,inspected):
-                result['producer']=dict(engine='original',label='Original')
-            write(control/'oracle.json',dict(fixed=fixed,random=random,inspected=inspected))
-            # The oracle is disposable. Its selected books never warm the service.
-            oracle.unlink()
-        if request['scenario'].get('hold_rebuild'):
-            original_prepare=research.prepare
-            def rebuild_prepare(*args,**kwargs):
-                barrier('rebuild_held')
-                return original_prepare(*args,**kwargs)
-            research.prepare=rebuild_prepare
-        from backtest.application.original_calculations import Original
-        financial=Original._financial
-        from contextlib import contextmanager
-        @contextmanager
-        def observed_financial(self,admission,progress):
-            entered=False
-            try:
-                with financial(self,admission,progress):
-                    entered=True
-                    emit('acquired',at=time.monotonic())
-                    try:
-                        if request['scenario'].get('hold_request'):barrier('request_held')
-                        yield
-                    finally:emit('leaving',at=time.monotonic())
-            finally:
-                if entered:emit('released',at=time.monotonic())
-        Original._financial=observed_financial
-        if request['scenario'].get('disconnect'):
-            original_run=robustness.run
-            def interrupted(db,config,progress=None,**kwargs):
-                def progress_barrier(value):
-                    progress(value)
-                    if value['type']=='progress' and value['completed']==1:barrier('trial_committed')
-                return original_run(db,config,progress=progress_barrier,**kwargs)
-            robustness.run=interrupted
-        app.Handler.log_message=lambda *args:None
-        server=app.Server(('127.0.0.1',0),app.Handler)
-        close_admission=server.close_calculation_admission
-        def observed_close_admission():
-            close_admission()
-            emit('admission_closed',at=time.monotonic())
-        server.close_calculation_admission=observed_close_admission
-        server.daemon_threads=False
-        from threading import Thread
-        listener=Thread(target=server.serve_forever,kwargs=dict(poll_interval=.02));listener.start()
-        try:
-            emit('ready',host='127.0.0.1',port=server.server_address[1],pid=os.getpid(),
-                 sources=request['sources'],current_build=app.current_build())
-            until=time.monotonic()+600.
-            while not (control/'stop').exists():
-                if time.monotonic()>until:raise TimeoutError('Source service lifetime expired.')
-                time.sleep(.005)
-            emit('shutdown_started')
-        finally:
-            server.shutdown();app.DATA_JOBS.close();server.server_close()
-            listener.join(timeout=5.);assert not listener.is_alive()
-            emit('service_closed')
-    emit('source_released')

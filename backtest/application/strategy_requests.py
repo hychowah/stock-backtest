@@ -411,7 +411,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
     """Admit custom options before readiness/input work; leave legacy options alone.
 
     Custom options carry one strategy projection. Duplicate selection settings are
-    rejected rather than guessed. The experimental backend never falls back.
+    rejected rather than guessed. Unsupported engines fail without fallback.
     Routes, jobs and queue admission use this owner for new scalar submissions.
     """
     if type(options) is not dict:

@@ -4,8 +4,7 @@ const nodes=new Map();
 const node=id=>{if(!nodes.has(id))nodes.set(id,{id,value:'',checked:false,hidden:false,textContent:'',events:{},addEventListener(name,fn){this.events[name]=fn;}});return nodes.get(id);};
 node('backtest-engine').value='original';
 let current={mode:'latest',scalar:false};
-const capabilities={calendar:null,engines:[
- {id:'original',calendar:1,status:{state:'current'},scalar:{operations:['latest','january','custom','random']}}]};
+const capabilities={engines:[{id:'original',calendar:1}]};
 const context=vm.createContext({module:{exports:{}},document:{getElementById:node},location:{protocol:'http:'},
  fetch:async()=>({ok:true,json:async()=>capabilities})});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/engine-controls.js'),'utf8'),context);
