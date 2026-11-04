@@ -63,9 +63,8 @@ dates. Saved results and user data survive. A missing Git observation keeps the
 current server. A failed update retries automatically; pending journals stay in
 place for recovery. A staging failure leaves the old server serving.
 
-Experimental engine setup is the data panel's **Prepare experimental engine**
-action; see [experimental engine preparation](candidate-startup.md). It never
-changes the installed revision or the normal launcher.
+The experimental engine is frozen. The installed website neither prepares nor
+runs it; see the [frozen engine notes](candidate-startup.md).
 
 For an already-installed revision without contacting WSL, run native Python directly:
 

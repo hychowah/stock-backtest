@@ -25,8 +25,9 @@ not commit if it fails. After changing the check, run
 ## Current state and authorization
 
 All initiatives in `docs/plans/` are complete. Their summaries give the outcome,
-key decisions and known limits. Original is the default engine. The experimental
-engine is optional; the benchmark harness and the Rust backend were removed.
+key decisions and known limits. Original is the only engine the website runs.
+The experimental (Numba) engine is frozen in source (see Engines); the benchmark
+harness and the Rust backend were removed.
 Custom variables are integrated into `main`. Source work does not establish
 installed readiness or real-cache coverage.
 
@@ -72,18 +73,17 @@ own process. It skips the files that `FROZEN` and `NOT_ENTRIES` name.
 The fast tier is the default and runs eight files at a time. `--tier heavy`
 runs the files that `HEAVY` names, one at a time. `--tier all` runs both, one
 at a time. `--jobs` overrides the count. The `tests/run.py` docstring
-describes the isolation. In WSL, every tier needs only `python3` and Node.js:
-`python3 tests/run.py`. On native Windows, the browser checks still need the
-numerical packages.
+describes the isolation. Every tier needs only `python3` and Node.js:
+`python3 tests/run.py`.
 
 `FROZEN` names the tests of the frozen experimental engine. No tier runs them.
 No live test file imports a frozen test or a frozen source module directly:
 `backtest/engines/numerical/`, `backtest/application/calculations.py`,
 `candidate_calculations.py` and `preparation.py`.
-`tests/test_package_structure.py` scans the imports of the test files. Live
-product code can still reach frozen source at runtime. Frozen tests need the
-numerical environment, `tmp/numerical-venv` in the main checkout. Run one
-directly only to unfreeze the engine. It can have drifted from live
+`tests/test_package_structure.py` scans the imports of the test files and
+checks that the server entry and Original load no frozen source. Frozen tests
+need the numerical environment, `tmp/numerical-venv` in the main checkout. Run
+one directly only to unfreeze the engine. It can have drifted from live
 interfaces.
 
 - Before every commit, run the fast tier in the WSL source checkout. Do not
@@ -387,20 +387,30 @@ draft. Checks: `tests/test_saved_backtests.py`, `tests/test_queue.py` and
 `node tests/check-*.cjs` checks for saved backtests, queue, comparison and result
 artifacts.
 
-**Engines.** `backtest.application.calculations.Selectable` is the single
-router; callers use the calculation owner directly. `options.engine` is
-`original` or `experimental`; omission means Original. Preserve the choice in
-jobs, queue receipts, held edits, recovery and replay, outside financial plans.
-Unsupported experimental settings fail explicitly. Normal startup needs no
-numerical packages. The data panel's Prepare experimental engine action owns
-optional setup, and data changes invalidate readiness. Old numerical generations
-and checkpoints are never reused as current. No idle application child keeps
-financial ownership between calls. New results record `result.producer`; never
-infer a producer for older results. `backtest/calendar_requests.py` owns request
-and plan policy; preserve legacy planner hashes. Checks:
-`tests/test_website_engine_alignment.py` and native
-`tests/test_selectable_browser.py`, both frozen (see Tests). See
-[docs/candidate-startup.md](docs/candidate-startup.md) and
+**Engines.** `backtest.application.original_calculations.Original` is the only
+live calculation owner. The server, jobs and the queue use it directly.
+`Original.preflight` admits new work. It refuses an `options.engine` other than
+`original` with `UNSUPPORTED_CAPABILITY` at `/engine`. In requests and records,
+`options.engine` is `original` or `experimental`; omission means Original.
+Preserve the recorded value in jobs, queue receipts, held edits, recovery and
+replay, outside financial plans. Never rewrite it to Original. The queue claims
+only rows of `Original.engine`; a waiting row that names another engine stays
+waiting until the user edits or deletes it. A restored draft keeps its recorded
+engine and shows the engine choice. Opening, copying or comparing a stored
+experimental result never calculates. New results record `result.producer`;
+never infer a producer for older results. `backtest/calendar_requests.py` owns
+request and plan policy; preserve legacy planner hashes. Normal startup needs
+no numerical packages. Checks: `tests/test_calculations.py`,
+`tests/test_backtest_jobs.py` and `tests/test_package_structure.py`.
+
+The experimental (Numba) engine is frozen. Frozen source:
+`backtest/engines/numerical/`, `backtest/application/calculations.py`,
+`candidate_calculations.py` and `preparation.py`, `scripts/numerical_generation.py`
+and `requirements-numerical.txt`. No live module imports it;
+`tools/experiments/` may. Edit frozen source only to keep it importable. Its
+tests are in `FROZEN` (see Tests). Existing `data/numerical/` and
+`data/numerical-preparation.json` stay on the runtime; nothing live reads them.
+See [docs/candidate-startup.md](docs/candidate-startup.md) and
 [docs/numerical-generations.md](docs/numerical-generations.md).
 
 **Result access.** `backtest/application/result_access.py` owns acquired results,

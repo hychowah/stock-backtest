@@ -5,6 +5,8 @@ sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolv
 from http.server import ThreadingHTTPServer
 import http.client
 import json
+import subprocess
+import tempfile
 from threading import Event, Thread
 from types import SimpleNamespace
 import unittest
@@ -111,9 +113,57 @@ class HttpTests(ExecutionTests):
         self.assertEqual(self.request(base+'page/scopes/1/0',method='GET')[0],400)
 
 
+class FrozenEngineAdmissionTests(unittest.TestCase):
+    def test_formula_requests_naming_experimental_load_no_numerical_code(self):
+        # A fresh process, so imports made by other tests cannot hide one.
+        code='''
+import json,sys,tempfile
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+from threading import Event,Thread
+from types import SimpleNamespace
+sys.path[:0]=[sys.argv[1],sys.argv[2]]
+from backtest.application import jobs,queue,strategy_requests as s
+from backtest.application.original_calculations import Original
+from website.server import app
+import test_strategy_requests as requests,test_variable_definitions as language
+authored=language.entry(language.definition(dict(op='parameter',id='annual.revenue'),'USD','usd'),'draft:ranking')
+capture=s.capture_strategy(requests.intent(requests.formula(authored)),submitted=[authored]).to_dict()
+options=dict(strategy=capture,start='2015-01-02',end='2015-01-05',months=12,engine='experimental')
+class Handler(app.Handler):
+    def log_message(self,*args):pass
+with tempfile.TemporaryDirectory() as folder:
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    server.calculations=Original()
+    server.backtest_jobs=jobs.Jobs(server.calculations,evidence_root=Path(folder)/'jobs')
+    server.backtest_queue=SimpleNamespace(store=queue.Store(Path(folder)/'queue.sqlite'),start=lambda:None,wake=Event())
+    thread=Thread(target=server.serve_forever);thread.start()
+    try:
+        for path,body in (('/api/backtest-runs/'+'a'*32,dict(mode='custom',options=options)),
+                          ('/api/backtest-queue',dict(id='b'*32,name='Frozen',mode='custom',options=options,
+                                                      catalog=dict(metrics={},filters={}),presentation={}))):
+            client=HTTPConnection(*server.server_address,timeout=10)
+            client.request('POST',path,json.dumps(body),{'Content-Type':'application/json'})
+            response=client.getresponse();failure=json.loads(response.read());client.close()
+            assert response.status==400 and (failure['code'],failure['path'])==('UNSUPPORTED_CAPABILITY','/engine'),(path,response.status,failure)
+        assert server.backtest_jobs.runs=={} and server.backtest_queue.store.listing()['records']==[]
+    finally:
+        server.shutdown();thread.join();server.backtest_jobs.close();server.server_close()
+loaded=[name for name in sys.modules if name.startswith('backtest.engines.numerical')]
+assert not loaded,loaded
+'''
+        root=Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as folder:
+            result=subprocess.run([sys.executable,'-I','-B','-c',code,str(root),str(root/'tests')],
+                                  cwd=folder,capture_output=True,text=True,timeout=120)
+        self.assertEqual(result.returncode,0,result.stderr)
+
+
 def load_tests(loader,tests,pattern):
-    return unittest.TestSuite(HttpTests(name) for name in ('test_http_preview_is_explicit_bounded_and_does_not_create_job',
+    return unittest.TestSuite([*(HttpTests(name) for name in ('test_http_preview_is_explicit_bounded_and_does_not_create_job',
         'test_http_origin_and_experimental_admission_precede_work','test_http_scalar_failures_keep_diagnostics_and_legacy_error_shape',
-        'test_http_job_reader_and_complete_export_are_original_bytes'))
+        'test_http_job_reader_and_complete_export_are_original_bytes')),
+        FrozenEngineAdmissionTests('test_formula_requests_naming_experimental_load_no_numerical_code')])
 
 if __name__=='__main__':unittest.main()

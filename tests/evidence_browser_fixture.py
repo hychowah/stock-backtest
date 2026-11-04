@@ -1,7 +1,12 @@
 """Private explicit evidence jobs for the fictional native browser pilot.
 
 Ordinary submission stays eager. This helper runs only in the test service's
-explicit evidence scenario, after real candidate preparation and before HTTP.
+explicit evidence scenario, before HTTP.
+
+Known limit: seed() pins the frozen experimental engine, which produced bounded
+evidence for ordinary settings. The server now refuses that engine, so
+tests/test_evidence_browser.py is FROZEN (tests/run.py) until seed() builds
+its evidence with Original captured strategies.
 """
 
 # Resolve the importable package for direct-file commands and spawned fixtures.

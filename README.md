@@ -85,13 +85,13 @@ For an explanation of the program, open the [plain-language architecture guide](
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
-Dated runs offer **Original** and **New engine — experimental**. Original is
-the default. Each submitted run keeps its selected engine. Experimental
-preparation is optional in Manage backtest data. Saved results stay readable. See
-the [startup guide](docs/candidate-startup.md). The
-[faster engine summary](docs/plans/compiled-backtest/master-plan.md) records the
-decisions and measured speeds. Historical timings are not a current-source speed
-guarantee.
+The website runs only the **Original** engine. The experimental (Numba) engine
+is frozen in source: the website does not offer it, and the server refuses a
+request that names it. Saved results from the experimental engine stay readable
+with their producer label. The [frozen engine notes](docs/candidate-startup.md)
+and the [faster engine summary](docs/plans/compiled-backtest/master-plan.md)
+record its decisions and measured speeds. Historical timings are not a
+current-source speed guarantee.
 
 Custom ranking and filtering variables are part of `main`. Formulas combine
 financial parameters with point-in-time measures and run with Original. Sample
@@ -193,10 +193,8 @@ Run `python3 website/build.py --snapshot` to write the portable export after pre
 Range and SQL/browser parity checks use local output by default. To check a portable export, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
 
 
-Website engine alignment keeps Original and Experimental behind one application
-calculation interface. Both support fixed and random schedules with custom
-week/month intervals and all current stock filters. Original remains default.
-Latest and January use shared prepared screening. Stored charts, holdings,
+Original runs fixed and random schedules with custom week/month intervals and
+all current stock filters. Latest and January use shared prepared screening. Stored charts, holdings,
 attribution and exports use the completed artifact's original evidence.
 Source qualification is separate from deployment.
 

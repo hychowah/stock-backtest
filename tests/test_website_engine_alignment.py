@@ -11,7 +11,6 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-import test_engine_selection as selection_tests
 import test_candidate_calculations as candidate_tests
 import sys as _root_sys
 from pathlib import Path as _RootPath
@@ -25,9 +24,9 @@ from test_queue import request
 
 
 class WebsiteAlignmentTests(unittest.TestCase):
-    setUp=selection_tests.RuntimeSelectionTests.setUp
-    make=selection_tests.RuntimeSelectionTests.make
-    assert_closed=selection_tests.RuntimeSelectionTests.assert_closed
+    setUp=candidate_tests.CandidateTests.setUp
+    make=candidate_tests.CandidateTests.make
+    assert_closed=candidate_tests.CandidateTests.assert_closed
 
     def owner(self):
         financial_inputs(self.fixture.fixture.db)
@@ -93,6 +92,49 @@ class WebsiteAlignmentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'differ'):
             owner.calculate('random',dict(options,selection_order='rank_first'),None,None,planned=before)
         self.assertIsNone(candidate.runtime)
+
+    def test_matched_fixed_seeded_random_replay_and_return_to_original(self):
+        from test_candidate_calculations import CandidateTests
+        from backtest.engines.numerical.portfolio import compare_results
+        from test_operating_spread_engine import financial_inputs, FILTERS
+        financial_inputs(self.fixture.fixture.db)
+        self.fixture.binding['daily'] = dict(operating_spread=True)
+        self.fixture.prepare()
+        (self.root/'binding.json').write_text(json.dumps(self.fixture.binding))
+        candidate=CandidateTests.candidate(self)
+        owner=engine_selection.Selectable(candidate.preparation);owner.experimental=candidate
+        owner.status=lambda:dict(state='current')
+        self.addCleanup(owner.close);self.addCleanup(owner.retire)
+        def connect():
+            db=sqlite3.connect(self.fixture.fixture.path);db.row_factory=sqlite3.Row;return db
+        with patch('backtest.inputs.daily.connect',side_effect=connect),patch('backtest.runtime.cache_access.workspace',self.fixture.owner):
+            for mode,extra in (('custom',{}),('random',dict(trials=2,seed=2607948532))):
+                options=dict(start='2015-01-02',end='2016-12-30',months=12,pool='cached',min_cap=0.,min_ev=0.,rank_to=5,selection_order='rank_first',filters=FILTERS,**extra)
+                plans=[]
+                experimental=owner.calculate(mode,dict(options,engine='experimental'),None,plans.append)
+                original=owner.calculate(mode,dict(options,engine='original'),None,None,planned=plans[0] if plans else None)
+                self.assertTrue(all(period['names'] for period in
+                    (original['periods'] if mode=='custom' else original['trial_results'][0]['periods'])))
+                self.assertIsNone(candidate.runtime);self.assertEqual(experimental.pop('producer')['engine'],'experimental')
+                self.assertEqual(original.pop('producer')['engine'],'original')
+                if mode=='custom':self.assertTrue(compare_results(original,experimental)['exact'])
+                else:
+                    self.assertEqual(original['distributions'],experimental['distributions'])
+                    for a,b in zip(original['trial_results'],experimental['trial_results']):self.assertTrue(compare_results(a,b)['exact'])
+                self.assert_closed(candidate.created[-1])
+                if mode=='random':
+                    store=backtest_queue.Store(self.root/'selected-queue.sqlite')
+                    item=store.enqueue(request(mode='random',options=dict(options,engine='experimental')))
+                    store.claim();store.progress(item['id'],'configuration',plans[0])
+                    store.recover()
+                    consumer=backtest_queue.Queue(backtest_queue.Store(store.path),calculations=owner,library=backtest_queue.saved_backtests.Store((backtest_queue.Store(store.path)).path.with_name('saved-library.sqlite')))
+                    consumer._run(consumer.store.claim())
+                    completed=consumer.store.get(item['id'])
+                    self.assertEqual(completed['state'],'complete')
+                    self.assertEqual(completed['options']['engine'],'experimental')
+                    self.assertEqual(completed['snapshot']['result']['producer']['engine'],'experimental')
+                    self.assertEqual(completed['snapshot']['result']['configuration'],plans[0])
+                    self.assertGreater(completed['snapshot']['result']['execution']['recovered_trials'],0)
 
 
 if __name__=='__main__':unittest.main()

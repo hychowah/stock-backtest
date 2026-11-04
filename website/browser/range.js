@@ -12,7 +12,7 @@ const displayCatalog=()=>currentArtifact()?.catalog||sourceCatalog();
 const metricLabel=id=>displayCatalog().metrics[id]?.label||screeningData.metrics[id]?.label||id;
 function currentSettings(){
   const read=readOptions(),{first,last,...legacy}=read,options=StrategyDraft.selectionSettings(legacy),view=viewKey();
-  const engine=EngineControls.fields({scalar:StrategyDraft.isScalar()});
+  const engine=EngineControls.fields();
   if(view==='latest')return {mode:'latest',...options,...(StrategyDraft.isScalar()?engine:{})};
   if(view==='january')return {mode:'january',first,last,...options,...(StrategyDraft.isScalar()?engine:{})};
   const settings={mode:'custom',...options,...CalendarSettings.read(),...engine};

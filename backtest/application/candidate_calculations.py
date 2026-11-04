@@ -1,4 +1,7 @@
-"""Candidate lifetime, hidden behind the shared application calculation entry."""
+"""Candidate lifetime, hidden behind the shared application calculation entry.
+
+Frozen with the experimental engine (AGENTS.md, Engines): no live module imports it.
+"""
 from contextlib import contextmanager
 from threading import Lock
 import time

@@ -161,9 +161,8 @@ actual stock entry/exit dates, selected metrics, weights and contributions.
 `backtest/calendar.py` owns calendar configuration, anchored boundaries,
 session rolling and seeded sampling. Read the
 [calendar contract](schedule-calendar.md) for its version and old-request mapping.
-Original remains the website default and accepts the five existing month counts.
-New engine — experimental accepts version-1 calendars with 1–104 weeks or
-1–24 months. The submitted engine controls calendar validation and readiness.
+The website runs Original. It accepts the five existing month counts and
+version-1 calendars with 1–104 weeks or 1–24 months.
 `backtest/inputs/daily.py` owns the daily SQLite index and saved books.
 `backtest/engines/original/schedules.py` calculates missing dated books.
 `backtest/portfolio_results.py` reduces ordered selected books into complete
@@ -321,10 +320,9 @@ cache contention and exact random-date recovery.
 
 The offline numerical diagnostic now has separate completed-trial checkpoints.
 It uses the same ordered summary and capture consumer as the ordinary driver.
-The normal website selects Original by default or the submitted experimental
-engine through the existing calculation owner. Original keeps ordinary saved-book
-recovery. Experimental reuses its generation-bound checkpoints and closes its
-child before each published outcome.
+The website runs these requests on Original, which keeps ordinary saved-book
+recovery. The frozen experimental engine kept generation-bound checkpoints; the
+website no longer runs it.
 Checkpoint retention applies only to derived calculations. Saved-library and
 completed queue snapshots remain readable after current input changes. See the
 [checkpoint contract](trial-checkpoints.md) for identity and retention rules.
@@ -791,10 +789,10 @@ Projection 4, research schema 11 and daily cache 5 require incompatible caches
 to rebuild; durable records keep their formats. Version-3 authoring exposes all
 52 direct inputs, policy adapters and 33 exact measures. The original four-item
 catalog remains available for legacy definitions. `variables.selection.require_program()`
-owns qualified scalar admission. Supported captures run through Original and
-bounded numerical execution in Latest, January, fixed and random modes. Original
-sample preview and complete recorded January/latest coverage are separate
-operations. Numerical sample preview and eager scalar execution remain unsupported.
+owns qualified scalar admission. Supported captures run through Original in
+Latest, January, fixed and random modes. Original sample preview and complete
+recorded January/latest coverage are separate operations. Eager scalar execution
+remains unsupported.
 Semantic restoration remains independent of execution qualification.
 Old definitions, captures, artifacts and durable records retain their bytes.
 Private synthetic tests establish source correctness, not native/live-cache

@@ -376,6 +376,35 @@ class ConsumerTests(unittest.TestCase):
                     server.server_close()
                 self.closed.clear()
 
+    def test_held_experimental_row_saves_only_with_original(self):
+        class Handler(serve.Handler):
+            def log_message(self,*args):pass
+        server=serve.Server(('127.0.0.1',0),Handler);server.backtest_queue=self.consumer
+        thread=Thread(target=server.serve_forever);thread.start()
+        def update(identifier,payload):
+            client=HTTPConnection(*server.server_address,timeout=5)
+            try:
+                client.request('POST','/api/backtest-queue/'+identifier+'/update',json.dumps(payload))
+                response=client.getresponse();return response.status,json.loads(response.read())
+            finally:client.close()
+        try:
+            self.store.pause(True)
+            recorded=request('Recorded experimental',options=dict(request()['options'],engine='experimental'))
+            item=self.store.enqueue(recorded)
+            held=self.store.change(item['id'],'hold',dict(revision=item['revision']))
+            edit={key:value for key,value in recorded.items() if key!='id'}
+            status,failure=update(item['id'],dict(revision=held['revision'],**edit))
+            self.assertEqual(status,400,failure)
+            self.assertEqual((failure['code'],failure['path']),('UNSUPPORTED_CAPABILITY','/engine'))
+            unchanged=self.store.get(item['id'])
+            self.assertEqual((unchanged['state'],unchanged['revision'],unchanged['options']['engine']),('held',held['revision'],'experimental'))
+            edit['options']=dict(edit['options'],engine='original')
+            status,saved=update(item['id'],dict(revision=held['revision'],**edit))
+            self.assertEqual(status,200,saved)
+            self.assertEqual((saved['state'],saved['options']['engine']),('queued','original'))
+        finally:
+            server.shutdown();thread.join();server.server_close()
+
     def test_real_http_queue_admission_mutations_results_and_origins(self):
         class Handler(serve.Handler):
             def log_message(self,*args):pass

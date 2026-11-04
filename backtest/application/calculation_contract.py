@@ -16,11 +16,17 @@ class Unavailable(ValueError):
     """No calculation began because admitted inputs are not ready."""
 
 
+# Every engine id that a request or a stored record can name, with its label.
+# 'experimental' is frozen: records keep it and displays label it, but no live
+# owner runs it (AGENTS.md, Engines).
 ENGINES={'original':'Original','experimental':'New engine — experimental'}
 
 
 def engine_id(options):
-    """Omitted request choice always means Original, never historical provenance."""
+    """Decode the recorded engine id; this does not admit work.
+
+    Omitted request choice always means Original, never historical provenance.
+    """
     if not isinstance(options,dict):raise ValueError('Expected backtest options.')
     value=options.get('engine','original')
     if not isinstance(value,str) or value not in ENGINES:raise ValueError('Choose Original or New engine — experimental.')

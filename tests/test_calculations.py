@@ -19,6 +19,7 @@ import sqlite3
 import sys
 import tempfile
 from threading import Event, Thread
+import time
 import unittest
 from unittest.mock import patch
 
@@ -35,11 +36,13 @@ from backtest.engines.original import schedules as schedules
 from website.server import app as serve
 from test_queue import request
 import test_robustness as fixtures
+from test_package_structure import FROZEN_SOURCE
 
 
 def financial_result(value):
     # Execution diagnostics differ for fresh/replayed and memory/file databases.
-    if isinstance(value,dict):return {k:financial_result(v) for k,v in value.items() if k not in ('seconds','execution')}
+    # The producer label is evidence about the owner, not a financial value.
+    if isinstance(value,dict):return {k:financial_result(v) for k,v in value.items() if k not in ('seconds','execution','producer')}
     if isinstance(value,list):return [financial_result(v) for v in value]
     return value
 
@@ -95,6 +98,33 @@ class CalculationTests(unittest.TestCase):
             self.assertIs(server.backtest_jobs.calculations,server.calculations)
             self.assertIs(server.backtest_queue.calculations,server.calculations)
         finally:server.server_close()
+
+    def test_original_results_record_producer_and_load_no_frozen_module(self):
+        result=self.service.calculate('custom',dict(self.options,engine='original'),None,None)
+        self.assertEqual(result['producer'],dict(engine='original',label='Original'))
+        loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')
+                or any(name==frozen or name.startswith(frozen+'.') for frozen in FROZEN_SOURCE)]
+        self.assertEqual(loaded,[])
+
+    def test_queue_leaves_rows_of_other_engines_waiting_until_edited(self):
+        store=backtest_queue.Store(self.root/'queue.sqlite')
+        recorded=store.enqueue(request('Recorded experimental',options=dict(self.options,engine='experimental')))
+        current=store.enqueue(request('Original',options=self.options))
+        consumer=backtest_queue.Queue(store,calculations=self.service,
+            library=backtest_queue.saved_backtests.Store(self.root/'saved-library.sqlite'))
+        self.addCleanup(consumer.close)
+        def finished(identifier):
+            deadline=time.monotonic()+10
+            while store.get(identifier)['state'] not in ('complete','archived'):
+                if time.monotonic()>deadline:self.fail('The queued test did not finish.')
+                time.sleep(.02)
+        consumer.start();finished(current['id'])
+        waiting=store.get(recorded['id'])
+        self.assertEqual((waiting['state'],waiting['options']['engine']),('queued','experimental'))
+        held=store.change(recorded['id'],'hold',dict(revision=waiting['revision']))
+        edited=request('Recorded experimental',options=dict(self.options,engine='original'))
+        store.change(recorded['id'],'update',dict(revision=held['revision'],**{k:v for k,v in edited.items() if k!='id'}))
+        consumer.wake.set();finished(recorded['id'])
 
     def test_24_full_trials_replay_changed_filters_and_empty_selection(self):
         options=dict(self.options,trials=24,seed=42)

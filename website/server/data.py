@@ -14,7 +14,7 @@ def data_allowed(self):
 def data_request(self,jobs):
     if not data_allowed(self):self.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return
     action=self.path.removeprefix('/api/data/')
-    if action not in ('check','download','rebuild','prepare','cancel'):
+    if action not in ('check','download','rebuild','cancel'):
         self.reply(404,dict(error='Unknown data action.'));return
     try:
         length=int(self.headers.get('Content-Length','0'))

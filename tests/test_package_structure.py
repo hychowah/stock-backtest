@@ -98,6 +98,27 @@ assert not any(name=='backtest' or name.startswith('backtest.') for name in sys.
                     elif (tests/(module+'.py')).is_file():pending.append(chain+[module])
         self.assertEqual(problems,[])
 
+    def test_server_and_original_imports_load_no_frozen_or_numerical_module(self):
+        """The server entry and every module Original imports, including its
+        lazy imports, load no frozen source and no numerical package."""
+        code="""
+import importlib,sys
+sys.path.insert(0,sys.argv[1])
+for name in ('website.server.app','backtest.application.original_calculations',
+             'backtest.application.strategy_requests','backtest.application.scalar_execution',
+             'backtest.application.scalar_runs','backtest.application.variable_coverage',
+             'backtest.inputs.research','backtest.inputs.sqlite_observations','backtest.scalar_result_evidence'):
+    importlib.import_module(name)
+frozen=tuple(sys.argv[2:])
+loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')
+        or any(name==item or name.startswith(item+'.') for item in frozen)]
+assert not loaded,loaded
+"""
+        with tempfile.TemporaryDirectory() as folder:
+            result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT),*FROZEN_SOURCE],
+                                  cwd=folder,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
     def test_canonical_storage_has_no_original_engine_dependency(self):
         for path in (ROOT/'backtest/inputs').glob('*.py'):
             tree=ast.parse(path.read_text(encoding="utf-8"))

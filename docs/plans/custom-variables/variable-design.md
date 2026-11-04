@@ -255,7 +255,7 @@ alignment, EV and reasons. Neither reads raw files or SQL directly.
 | Path | Contract |
 |---|---|
 | Original | Default. Latest, January, fixed and random scalar modes; sample preview |
-| Experimental numerical engine | Opt-in. Bounded Latest, January, fixed and random scalar modes through `Selectable.calculate_into` |
+| Experimental numerical engine | Frozen. The website does not run it; the server refuses a request that names it |
 | Sample preview | Original only, 1–16 explicit company/date roots |
 | Eager scalar `calculate()` | Unsupported |
 | Coverage inspection | Original reference over a complete recorded January or latest scope |

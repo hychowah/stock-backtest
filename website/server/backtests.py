@@ -8,11 +8,11 @@ from backtest.application import durable_evidence, strategy_requests
 from backtest.application.calculation_contract import Busy, Unavailable
 
 def require_calculation(self,options=None,*,planned=None):
-    # A busy inspection is advisory, not a failed execution admission.
-    # The calculation owner and child still validate admitted inputs.
+    # Admission refuses an engine this server does not run. Readiness is
+    # advisory here; the calculation owner still validates admitted inputs.
     self.server.calculations.preflight(options,planned=planned)
-    if self.server.calculations.ready_for(options,advisory=True):return True
-    self.reply(503,dict(error='Experimental preparation is unavailable. Use Prepare experimental engine in Manage backtest data. Original and stored results remain available.'))
+    if self.server.calculations.ready():return True
+    self.reply(503,dict(error='Prepared inputs are unavailable. Rebuild from the data panel. Stored results remain available.'))
     return False
 
 def queue_request(self,data_jobs):
@@ -33,14 +33,16 @@ def queue_request(self,data_jobs):
         def invalid(value):raise ValueError('Queue values must be finite.')
         request=json.loads(self.rfile.read(length),parse_constant=invalid)
         if not isinstance(request,dict):raise ValueError('Expected queue options.')
-        if not (self.command=='POST' and collection and store.accepted(request.get('id'))):strategy_requests.check_request(request)
-        if self.command=='POST' and collection:
-            if not store.accepted(request.get('id')) and not require_calculation(self,request.get('options')):return
+        adding=self.command=='POST' and collection
+        # Refuse an engine this server does not run before any strategy check.
+        if adding and not store.accepted(request.get('id')) and not require_calculation(self,request.get('options')):return
+        if self.command=='POST' and path[1:]==['update']:self.server.calculations.preflight(request.get('options'))
+        if not (adding and store.accepted(request.get('id'))):strategy_requests.check_request(request)
+        if adding:
             result=store.enqueue(request)
         elif self.command=='POST' and path==['pause']:
             result=store.pause(request.get('paused'))
         elif self.command=='POST' and len(path)==2:
-            if path[1]=='update':self.server.calculations.preflight(request.get('options'))
             result=store.change(path[0],path[1],request)
         elif self.command=='DELETE' and len(path)==1:
             result=store.change(path[0],'delete',request)
@@ -76,8 +78,10 @@ def backtest_run_request(self):
             def invalid(value):raise ValueError('Backtest values must be finite.')
             request=json.loads(self.rfile.read(length),parse_constant=invalid)
             if not isinstance(request,dict):raise ValueError('Expected backtest options.')
-            if not jobs.accepted(identifier):strategy_requests.check_request(request)
-            if not jobs.accepted(identifier) and not require_calculation(self,request.get('options'),planned=request.get('planned')):return
+            if not jobs.accepted(identifier):
+                # Refuse an engine this server does not run before any strategy check.
+                if not require_calculation(self,request.get('options'),planned=request.get('planned')):return
+                strategy_requests.check_request(request)
             self.reply(202,jobs.start(identifier,request.get('mode'),request.get('options'),planned=request.get('planned')))
         else:self.reply(404,dict(error='Unknown run action.'))
     except backtest_jobs.Missing as error:self.reply(404,dict(error=str(error)))

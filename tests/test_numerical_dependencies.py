@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'scripts'), str(ROOT)]
@@ -15,7 +15,6 @@ from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import diagnostics as diagnostics
 from backtest.application import preparation as preparation
-from website.server import app as serve
 class DependencyDiagnosticsTests(unittest.TestCase):
     def setUp(self):
         self.context = ExitStack()
@@ -102,22 +101,6 @@ class DependencyDiagnosticsTests(unittest.TestCase):
             installed=preparation.dependencies()
             self.assertFalse(installed['rust_required']);self.assertNotIn('native',installed)
         with self.assertRaises(ValueError):preparation.dependencies('rust')
-
-    def test_normal_startup_reports_optional_dependencies_and_still_serves_original(self):
-        self.versions.clear()
-        server = Mock()
-        server.server_address = ('127.0.0.1', 8765)
-        with patch.object(serve.diagnostics, 'configure', return_value=self.path), \
-                patch.object(serve.diagnostics, 'close'), \
-                patch.object(serve, 'ensure_ready'), \
-                patch.object(serve.cache_access, 'access', side_effect=lambda: ExitStack()), \
-                patch.object(serve.cache_assets, 'source_problem', return_value=False), \
-                patch.object(serve, 'Server', return_value=server):
-            serve.main(arguments=['--no-browser'])
-        server.serve_forever.assert_called_once()
-        server.server_close.assert_called_once()
-        self.assertIn('numpy is missing', self.stderr.getvalue())
-        self.assertEqual(len(self.warnings()), 1)
 
 
 if __name__ == '__main__':

@@ -301,6 +301,7 @@ class DurableTests(unittest.TestCase):
     def test_jobs_pin_expiry_copy_and_shutdown_drain(self):
         source_reader,meta,expected=source()
         class Calculation:
+            def preflight(self,options,*,planned=None):return 'original'
             def calculate_into(self,mode,options,destination,*args,**kw):
                 data=source_reader.stream.getvalue();destination.write(data)
                 return dict(manifest=source_reader.manifest,transfer=dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))

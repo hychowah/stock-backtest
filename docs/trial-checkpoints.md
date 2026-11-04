@@ -1,5 +1,11 @@
 # Completed-trial calculation checkpoints
 
+**Frozen.** The website does not offer or run the experimental engine. The
+server refuses a request that names it, and no live module imports its source
+(AGENTS.md, Engines). This document describes the frozen source and its last
+qualified behavior. Unfreezing starts with its frozen tests in
+`tmp/numerical-venv` (AGENTS.md, Tests).
+
 CB-10 added offline numerical random recovery. Current application requests use
 the calculation owner's `calculate` method for legacy requests. Captured scalar
 requests use its bounded `calculate_into` method. Original uses ordinary schedules and `book_batch`.

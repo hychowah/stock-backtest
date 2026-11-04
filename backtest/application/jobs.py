@@ -65,13 +65,15 @@ class Jobs:
         scalar=isinstance(options,dict) and 'strategy' in options
         options=strategy_requests.canonical_options(options)
         accepted=scalar and self.accepted(identifier)
-        if not accepted:strategy_requests.check_request(dict(id=identifier,mode=mode,options=options,planned=planned))
+        if not accepted:
+            # Refuse an engine this owner does not run before any strategy check.
+            self.calculations.preflight(options,planned=planned)
+            strategy_requests.check_request(dict(id=identifier,mode=mode,options=options,planned=planned))
         if scalar and limits is None:
             if not callable(getattr(self.calculations,'calculate_into',None)):raise ValueError('Scalar execution is unavailable.')
             limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
-        if mode not in (('latest','january','custom','random') if scalar else ('custom','random')) or not isinstance(options,dict):
+        if mode not in (strategy_requests.SCALAR_MODES if scalar else ('custom','random')) or not isinstance(options,dict):
             raise ValueError('Expected backtest mode and options.')
-        if not accepted and hasattr(self.calculations,'preflight'):self.calculations.preflight(options,planned=planned)
         json.dumps(options,allow_nan=False)
         if limits is None:json.dumps(planned,allow_nan=False)
         if planned is not None and (mode!='random' or not isinstance(planned,dict)):
@@ -98,7 +100,7 @@ class Jobs:
             while len(self.runs)>=4:self._drop(next(iter(self.runs)))
             run=dict(id=identifier,mode=mode,options=deepcopy(options),state='running',started=now,
                      progress=None,configuration=None,result=None,error=None,stop=Event(),planned=deepcopy(planned) if entry is None else None)
-            if hasattr(self.calculations,'preflight'):run['engine']=engine_id(options)
+            run['engine']=engine_id(options)
             if entry is not None:
                 run.update(_evidence=entry,_plan_identity=entry['reference']['sha256'] if entry['reference'] else None,evidence=None)
             self.runs[identifier]=run

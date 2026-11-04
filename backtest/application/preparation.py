@@ -1,5 +1,7 @@
 """Closed candidate preparation, independent of application calculation routing.
 
+Frozen with the experimental engine (AGENTS.md, Engines): no live module imports it.
+
 The caller owns source before importing this module and through close(). A
 successful report describes a verified, CLOSED runtime, never an admission
 capability. Status uses fresh inventories; a saved report cannot prove freshness.

@@ -15,10 +15,17 @@ from backtest.runtime import cache_access as cache_access
 from backtest.engines.original import robustness as robustness
 from backtest.engines.original import schedules as schedules
 from backtest import calendar_requests as calendar_requests
-from backtest.application.calculation_contract import Control, Busy, Unavailable
+from backtest.application.calculation_contract import Control, Busy, Unavailable, ENGINES, engine_id
 
 
 class Original(Control):
+    """The calculation owner that the website runs.
+
+    `engine` names the only engine this owner runs. A request or record may
+    name another engine; preflight refuses it and never runs it as Original.
+    Every new result records this producer.
+    """
+    engine='original'
     calendar_version=1
 
     @contextmanager
@@ -51,17 +58,17 @@ class Original(Control):
         waits cancellably through contention. Neither policy retries an engine
         error. Configuration is published before random work, under ownership.
         """
+        self.preflight(options,planned=planned)
         if 'strategy' in options:
-            from backtest.application import strategy_requests
-            strategy_requests.check_options(options)
             raise ValueError('Captured scalar strategies require the bounded result reader.')
+        options={key:value for key,value in options.items() if key!='engine'}
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')
         with self.lock:
             if self.closed.is_set():raise Busy('The server is stopping. Restart it before running a backtest.')
         with self._financial(admission,progress):
             ready=self.ready()
             self._checkpoint()  # Stop takes precedence over stale deferral.
-            if not ready:raise Unavailable('Candidate preparation is unavailable. Rebuild from the data panel.')
+            if not ready:raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             db=daily.connect()
             try:
                 db.execute('PRAGMA cache_size=-131072')
@@ -83,21 +90,40 @@ class Original(Control):
                     result=evaluate(db,**options)
                 backtest_control.checkpoint()
             finally:db.close()
+        result['producer']=dict(engine=self.engine,label=ENGINES[self.engine])
         return result
 
     def preflight(self, options, *, planned=None):
+        """Admit new work before readiness, inputs or planning.
+
+        A request or record that names another engine fails with
+        UNSUPPORTED_CAPABILITY at /engine. Then captured strategies and a
+        recorded plan are checked. Reading stored records never calls this.
+        """
         from backtest.application import strategy_requests
-        if isinstance(options,dict) and 'strategy' in options and options.get('engine','original')!='original':
+        engine=engine_id(options)
+        if engine!=self.engine:
             from backtest.variables.definitions import FormulaError
             raise FormulaError('UNSUPPORTED_CAPABILITY','/engine',
-                'Original cannot execute a strategy pinned to another engine.')
+                ENGINES[engine]+' is frozen and cannot run. Choose Original to run this test.')
         strategy_requests.check_options(options)
         if planned is not None:strategy_requests.validate_recorded(options,planned)
-        return 'original'
+        return self.engine
 
-    def ready_for(self, options, *, advisory=False):
-        self.preflight(options)
-        return self.ready()
+    def capabilities(self):
+        """Describe what this server runs, for GET /api/backtest-capabilities.
+
+        The engines list names only the engines this server runs. Labels for
+        other recorded engine ids stay with the browser.
+        """
+        from backtest.application import strategy_requests
+        return dict(calendar=None,shared_views=['latest','january'],
+            engines=[dict(id=self.engine,label=ENGINES[self.engine],calendar=self.calendar_version,
+                operations=['custom','random'],
+                scalar=dict(operations=list(strategy_requests.SCALAR_MODES),
+                    execution='bounded-complete-evidence',eager=False,sample_preview=True),
+                status=dict(state='current'))],
+            sample_preview=dict(engine=self.engine,label='Original reference sample preview'))
 
     def preview(self, capture, roots, *, admission='interactive', engine='original'):
         """Explicit Original reference samples under ordinary input lifetime."""

@@ -1,5 +1,7 @@
 """One application calculation capability with an immutable submitted choice.
 
+Frozen with the experimental engine (AGENTS.md, Engines): no live module imports it.
+
 Engine metadata never enters financial plans. Producer metadata describes only
 new completed results; request defaults cannot establish old result provenance.
 """

@@ -1,5 +1,11 @@
 # Offline numerical generations
 
+**Frozen.** The website does not offer or run the experimental engine. The
+server refuses a request that names it, and no live module imports its source
+(AGENTS.md, Engines). This document describes the frozen source and its last
+qualified behavior. Unfreezing starts with its frozen tests in
+`tmp/numerical-venv` (AGENTS.md, Tests).
+
 ## Current execution ownership (CB-19G)
 
 Python owns recorded plans, shared SQL selection, the financial reducer,

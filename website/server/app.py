@@ -23,6 +23,7 @@ from backtest.application import library as saved_backtests
 from backtest.application import jobs as backtest_jobs
 from backtest.application.result_access import ResultAccess
 from backtest.application import queue as backtest_queue
+from backtest.application.original_calculations import Original
 from website.rendering.state import current_build, LOCAL_OUTPUT
 
 DATA_JOBS=data_manager.Jobs()
@@ -31,10 +32,7 @@ SAVED_BACKTESTS=saved_backtests.Store()
 
 class Server(ThreadingHTTPServer):
     def __init__(self,*args,**kwargs):
-        from backtest.application.preparation import Preparation
-        from website.rendering.state import ensure_presentation
-        from backtest.application.calculations import Selectable
-        self.calculations=Selectable(Preparation(ROOT.parent,ensure_presentation=ensure_presentation))
+        self.calculations=Original()
         self.backtest_jobs=backtest_jobs.Jobs(self.calculations)
         self.backtest_queue=backtest_queue.Queue(calculations=self.calculations,library=SAVED_BACKTESTS)
         self.result_access=ResultAccess(self.backtest_jobs,SAVED_BACKTESTS,self.backtest_queue.store)
@@ -58,7 +56,6 @@ class Server(ThreadingHTTPServer):
         self.result_access.close()
         self.backtest_jobs.close()
         super().server_close()
-        if hasattr(self.calculations,'retire'):self.calculations.retire()
 
     def handle_error(self,request,client_address):
         error=sys.exc_info()[1]
@@ -148,7 +145,6 @@ def close_owners(server):
             try:
                 DATA_JOBS.close()
                 server.server_close()
-                server.calculations.preparation.close()
                 return
             except KeyboardInterrupt:continue
     finally:signal.signal(signal.SIGINT,previous)
@@ -165,10 +161,6 @@ def main(*,arguments=None):
     print('Development log: '+diagnostics.relative_path(path) if path else 'Development log unavailable. Terminal logging remains active.',flush=True)
     diagnostics.event('server.starting',port=args.port,managed=args.managed)
     try:
-        # Report optional setup before data preparation, without blocking Original.
-        from backtest.application.preparation import dependencies, PreparationError
-        try:dependencies()
-        except PreparationError:pass
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
         with context as lifecycle:run_server(args,lifecycle,parser)
     except KeyboardInterrupt:
@@ -206,8 +198,6 @@ def run_server(args,lifecycle,parser):
             parser.exit(1,f'Cannot start the local website service: {retry_error}\n')
         print(f'Port {args.port} is already in use; opening a fresh website instance.',flush=True)
     server.data_recovery=recovery
-    DATA_JOBS.preparation=server.calculations.preparation
-    DATA_JOBS.calculations=server.calculations
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)

@@ -171,13 +171,12 @@ plan column. Canonical calendar metadata participates in checkpoint evidence.
 `engine-controls.js` owns engine choice and advisory capabilities. Existing
 artifact comparison handles submitted settings. Equivalent legacy/canonical monthly settings compare in memory.
 Original stored settings, labels and version-1/version-2 snapshots stay intact.
-The capability endpoint is `/api/backtest-capabilities`. The isolated entry
-retains `calendar:1`. The normal app returns legacy `calendar:null` plus an
-`engines` list. Both Original and Experimental have `calendar:1` and
-`operations:["custom","random"]`. Their status reports preparation readiness
-separately. `shared_views:["latest","january"]` identifies prepared screening.
-The submitted `options.engine` chooses the policy. Omission means Original.
-Both submission and execution check that policy. Browser replay keeps its engine
+The capability endpoint is `/api/backtest-capabilities`. The normal app returns
+legacy `calendar:null` plus an `engines` list. The list names only Original, with `calendar:1` and
+`operations:["custom","random"]`. `shared_views:["latest","january"]`
+identifies prepared screening. The submitted `options.engine` is recorded.
+Omission means Original. Submission and execution refuse an engine that the
+server does not run, such as the frozen experimental engine. Browser replay keeps its engine
 separate from the financial plan and checks the recorded choice. A live selector
 change cannot alter the recorded producer of an existing result. Direct-file pages cannot run
 dated calculations.
@@ -189,14 +188,15 @@ Legacy random CSV headers keep `months`. Canonical random CSVs use
 New normal-app results retain producer identity in their immutable result and
 add an engine column to their CSVs. Older evidence without producer metadata
 keeps its original headers and remains unidentified. See the
-[normal-app preparation contract](candidate-startup.md#normal-app-selectable-engines-cb-15-source).
+[calculation engine notes](../website/README.md#calculation-engine).
 
 
-## Both website engines
+## Website engine
 
-Both Original and Experimental accept version-1 fixed and random requests.
+Original accepts version-1 fixed and random requests.
 `backtest/calendar_requests.py` owns decoding, exact recorded-plan matching and
-saved-session validation. Both engines import this canonical owner.
+saved-session validation. Original and the frozen experimental engine import
+this canonical owner.
 Original's explicit `schedules.backtest_calendar` operation uses the existing
 book evaluator and reducer. The legacy `backtest`, `backtest_dates` and
 `robustness.plan` interfaces retain their accepted arguments and serialized

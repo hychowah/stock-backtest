@@ -256,6 +256,9 @@ class Store:
             db.execute("UPDATE jobs SET state='cancelled',finished=?,revision=revision+1 WHERE state='stopping'",(now(),))
 
     def claim(self,engines=None):
+        """Start the first waiting row whose recorded engine is in `engines`
+        (any engine when None). Other rows keep waiting at their position;
+        only the user edits or deletes them."""
         with self.database() as db:
             if db.execute('SELECT paused FROM control').fetchone()[0]:return None
             rows=db.execute(f"SELECT {COLUMNS} FROM jobs WHERE state='queued' ORDER BY position,id")
@@ -445,8 +448,8 @@ class Queue:
                     while not self.stopping.is_set():
                         self.reconcile_completed()
                         if not self.ready():self.wake.wait(.5);self.wake.clear();continue
-                        engines=self.calculations.queue_engines() if hasattr(self.calculations,'queue_engines') else None
-                        job=self.store.claim(engines)
+                        # Rows that name an engine this owner does not run keep waiting.
+                        job=self.store.claim({self.calculations.engine})
                         if job is None:self.wake.wait(.5);self.wake.clear();continue
                         self._run(job)
             except ValueError:

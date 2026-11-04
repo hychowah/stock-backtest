@@ -225,5 +225,9 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const abandoned=call('BacktestQueue.add()');await settle();
   scalarRecord.state='running';scalarRecord.edit.state='cancelled';await call('BacktestQueue.refresh()');assert.equal(endedEdits,endedBefore+1);
   releaseCapture();await abandoned;assert.equal(requests.filter(request=>request.url.endsWith('/update')).length,updatesBefore);assert.equal(settings.strategy.selection.rank_to,4);
+  // A waiting test that names an engine this server does not run explains how to continue.
+  records.push({id:'f'.repeat(32),name:'Recorded experimental',mode:'custom',options:{start:'2015-01-01',end:'2016-12-30',months:3,engine:'experimental'},state:'queued',position:records.length+1,revision:1,cagr:null,edit:null});
+  await call('BacktestQueue.refresh()');
+  assert(node('queue-list').innerHTML.includes('New engine — experimental cannot run on this server. Edit it to choose Original, or delete it.'));
   console.log('Passed: snapshots, order-independent edit sessions, lost hold/save/cancel acknowledgements, immutable retry after execution, external hold reconciliation, queue controls and stale-read protection.');
 })().catch(error=>{console.error(error);process.exitCode=1});

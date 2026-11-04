@@ -341,20 +341,21 @@ Check `node tests/check-result-artifacts.cjs` alongside the saved-library and ra
 checks. The library checks include failed refreshes and out-of-order responses.
 
 
-### Selectable dated engines
+### Calculation engine
 
-Current source offers Original (default) and New engine — experimental for
-custom dated fixed/random runs. January and latest screens keep their paths.
-Normal startup and ordinary rebuild require no numerical packages. Use the
-separate Prepare experimental engine action in Manage backtest data after
-installing the pinned optional stack. See [preparation and recovery](../docs/candidate-startup.md#normal-app-selectable-engines-cb-15-source).
+The website runs only Original. A new draft shows no engine choice. Custom
+dated, random and variable-strategy runs use Original on the local service.
+January and latest screens keep their shared prepared paths. Normal startup and
+rebuild need no numerical packages.
 
-The submitted engine stays with manual jobs, queued tests, retries and replay.
-Original accepts monthly presets. Custom week/month calendars require the
-experimental engine. Experimental operating yield spread fails explicitly.
-New results and CSVs identify their recorded producer; older evidence remains
-unidentified. Opening stored evidence does not calculate. No automatic fallback
-or default replacement is provided. CB-15 source is not a deployed release.
+The experimental (Numba) engine is frozen in source. The server refuses a
+request that names it with `UNSUPPORTED_CAPABILITY` at `/engine`. A restored
+test that names it keeps that engine and shows the engine choice, so the user
+can choose Original. A waiting queued test that names it stays waiting until
+the user edits or deletes it. Replay keeps the recorded engine. Manage backtest
+data has no experimental preparation action. New results and CSVs identify
+their recorded producer; older evidence stays unidentified. Opening stored
+evidence does not calculate. See the [frozen engine notes](../docs/candidate-startup.md).
 
 ## Source owners
 

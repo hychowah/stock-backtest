@@ -24,6 +24,7 @@ from backtest.variables import definitions, library
 STRATEGY_BYTES = 192 * 1024
 REQUEST_BYTES = 256 * 1024
 MAX_CONDITIONS = 50
+SCALAR_MODES = ('latest', 'january', 'custom', 'random')  # bounded captured-strategy execution
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,160}\Z')
 _SELECTION_FIELDS = {'ranking', 'conditions', 'rank_from', 'rank_to', 'selection_order'}
 _BOUND_DEFAULTS = dict(min_cap=100e6, max_cap=None, min_ev=50e6, sector=None, exchange=None)
@@ -438,7 +439,11 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
 
 
 def require_formula_support(program, engine='original', *, checkpoint=backtest_control.checkpoint):
-    """Check the pinned backend before readiness or financial access."""
+    """Check the pinned backend before readiness or financial access.
+
+    Only frozen experimental-engine code passes 'experimental'; Original's
+    preflight refuses that engine before it calls check_options.
+    """
     if engine == 'experimental':
         from backtest.engines.numerical import formula_capabilities as admission
     elif engine == 'original':
@@ -460,7 +465,7 @@ def execution_options(mode,options,*,planned=None,checkpoint=backtest_control.ch
     options=canonical_options(options,checkpoint=checkpoint)
     if check_options(options,checkpoint=checkpoint) is None:
         raise ValueError('Bounded scalar execution requires a captured strategy.')
-    if mode not in ('latest','january','custom','random'):raise ValueError('Unsupported scalar mode.')
+    if mode not in SCALAR_MODES:raise ValueError('Unsupported scalar mode.')
     allowed={'strategy','engine'}|({'first','last'} if mode=='january' else set() if mode=='latest' else
         {'start','end','months','calendar','dates'} if mode=='custom' else {'start','end','months','calendar','trials','seed'})
     if set(options)-allowed:raise ValueError('Unknown option for the scalar execution mode.')

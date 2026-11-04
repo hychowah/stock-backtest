@@ -2,6 +2,8 @@
 
 Status: complete
 
+Frozen: the website does not offer the experimental engine and has no Prepare action (AGENTS.md, Engines).
+
 ## Outcome
 
 The program adds a second engine for custom dated backtests. The website calls
@@ -101,15 +103,15 @@ the current worker policy and provider choice.
 
 ## Known limits and open items
 
-- Original stays the default. Replacing it needs a separate user decision.
+- Original is the only engine the website runs.
 - The approximate 4× goal is not shown on current source. No matched
   uninterrupted full-batch timing exists.
 - Capacity is not qualified. Over the full 1997–2025 window, these plans exceed
   the 256 MiB eager result estimate: 100 annual trials (ranks 1–50), 24 annual
   trials (ranks 1–100) and 24 or 100 weekly trials. Holding records alone need
   about 655 MB for 24 weekly trials and 2.73 GB for 100.
-- Installed readiness is not established. After source installation, run
-  Prepare experimental engine again. Publication needs separate authorization.
+- Installed readiness is not established. The frozen engine has no Prepare
+  action. Publication needs separate authorization.
 - Version-3 durable evidence needs current readers. Source from before version 3
   is not a safe rollback target.
 - The scan does not detect a same-size edit with a restored timestamp.

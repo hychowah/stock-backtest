@@ -35,5 +35,6 @@ const run=code=>vm.runInContext(code,ctx);
  node('data-symbols').value='';await run("DataPanel.start('check')");assert(node('data-error').textContent.includes('Enter the stock symbols'));
  ctx.fetch=async()=>({ok:false,status:404});await run('DataPanel.refresh()');assert(node('data-connection').textContent.includes('Restart start.cmd'));assert(node('data-download').disabled);
  ctx.location.protocol='file:';run('DataPanel.init()');assert(node('data-connection').textContent.includes('start.cmd'));assert(node('data-check').disabled);
+ assert(!elements.has('data-prepare')&&!elements.has('data-candidate'),'The panel offers no experimental engine preparation.');
  console.log('Passed: status-only startup, selected download request, progress/polling, coverage rendering, escaping, missing-key state, validation and offline/older-server instructions.');
 })().catch(error=>{console.error(error);process.exitCode=1});

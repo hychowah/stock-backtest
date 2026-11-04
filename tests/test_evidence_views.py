@@ -144,6 +144,7 @@ class ViewTests(unittest.TestCase):
     def test_fresh_reader_survives_jobs_expiry_and_saves_original_metadata(self):
         original_reader,metadata,_=source('custom')
         class Owner:
+            def preflight(owner,options,*,planned=None):return 'original'
             def calculate_into(owner,mode,options,destination,*callbacks,**kw):
                 data=original_reader.stream.getvalue();destination.write(data)
                 import hashlib
@@ -511,6 +512,7 @@ process.stdout.write(JSON.stringify(out));});"""
         entered=Event()
         class Owner:
             ready=lambda:True
+            def preflight(owner,options,*,planned=None):return 'original'
             def calculate(owner,*args,**kwargs):
                 entered.set()
                 while True:

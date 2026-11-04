@@ -2,6 +2,8 @@
 
 Status: complete
 
+The experimental engine is frozen: the website does not offer it and has no Prepare action (AGENTS.md, Engines).
+
 ## Outcome
 
 Users can define a scalar variable once and use it to rank or filter stocks.
@@ -12,8 +14,8 @@ library with immutable revisions and favourites. Runs, queued tests and saved
 results capture the complete formula bundle. They reopen without evaluation.
 
 Original runs custom strategies in Latest, January, fixed and random modes, and
-owns sample preview. The experimental engine runs the same bounded scalar modes
-when the user selects it. Coverage inspection reports complete counts and
+owns sample preview. The experimental engine that also ran these modes is now
+frozen; the website does not run it. Coverage inspection reports complete counts and
 missing reasons for a recorded January or latest scope. The source is integrated
 into `main`. The program did not publish it or qualify an installed runtime.
 
@@ -101,7 +103,7 @@ The design contract is in [variable design](variable-design.md).
 - New durable containers were created by current code. Migration from older
   container schemas is not tested.
 - Numerical sample preview and eager scalar execution are unsupported.
-- Original stays the default engine.
+- Original is the only engine the website runs.
 - Offline standalone formula execution needs a measured input-size and
   browser-performance decision. Custom formulas use the local service.
 - No speedup or capacity claim follows from the recorded workloads.

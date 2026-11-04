@@ -85,6 +85,18 @@ class JobTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('Job did not finish.')
 
+    def test_experimental_engine_is_refused_and_capabilities_list_only_original(self):
+        status,failure=self.start(options=dict(self.options,engine='experimental'))
+        self.assertEqual(status,400,failure)
+        self.assertEqual((failure['code'],failure['path']),('UNSUPPORTED_CAPABILITY','/engine'))
+        self.assertEqual(self.server.backtest_jobs.runs,{})
+        client=HTTPConnection(*self.server.server_address,timeout=5)
+        try:
+            client.request('GET','/api/backtest-capabilities')
+            capabilities=json.loads(client.getresponse().read())
+        finally:client.close()
+        self.assertEqual([engine['id'] for engine in capabilities['engines']],['original'])
+
     def test_closed_browser_does_not_cancel_and_reopen_gets_complete_result(self):
         status,run=self.start();self.assertEqual(status,202)
         self.assertTrue(self.entered.wait(5))

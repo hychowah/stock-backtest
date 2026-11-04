@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 from threading import Event, Lock, Thread
+import time
 from backtest.inputs import financial_inputs as financial_inputs
 from backtest.inputs import cache_assets as cache_assets
 from backtest.runtime import cache_access as cache_access
@@ -315,9 +316,7 @@ def _download(o,emit,stop,client):
 
 
 class Jobs:
-    def __init__(self,preparation=None):
-        self.preparation=preparation
-        self.calculations=None
+    def __init__(self):
         self.lock=Lock();self.cancel=Event()
         self.closing=False
         self.thread=None;self.report=None;self.rebuilt=False
@@ -325,9 +324,7 @@ class Jobs:
 
     def snapshot(self):
         path=diagnostics.log_path()
-        with self.lock:result=dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
-        if self.preparation is not None:result['candidate']=(self.calculations.status() if self.calculations is not None else self.preparation.status())
-        return result
+        with self.lock:return dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
 
     def emit(self,**values):
         with self.lock:self.state.update(values)
@@ -336,8 +333,7 @@ class Jobs:
         if self.cancel.is_set():raise Cancelled()
 
     def start(self,action,request):
-        if action not in ('check','download','rebuild','prepare'):raise ValueError('Choose check, download, rebuild or experimental preparation.')
-        if action=='prepare' and self.preparation is None:raise ValueError('Experimental preparation is unavailable.')
+        if action not in ('check','download','rebuild'):raise ValueError('Choose check, download or rebuild.')
         o=options(request)
         with self.lock:
             if self.closing:raise ValueError('The server is stopping. Reopen the data panel after restart.')
@@ -348,34 +344,24 @@ class Jobs:
         return self.snapshot()
 
     def work(self,action,o):
-        if self.calculations is None:return self._work(action,o)
-        try:
-            with self.calculations.parent_operation(cancelled=self.cancel.is_set):
-                return self._work(action,o)
-        except backtest_control.Cancelled:
-            self.emit(running=False,message='Cancelled before data admission.')
-        except Exception as error:
-            diagnostics.failure('data.admission_failed',error)
-            self.emit(running=False,error='Candidate retirement or admission failed. Retry after closure.',message='Data operation did not start.')
-
-    def _work(self,action,o):
         diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
         try:
-            if action=='prepare':
-                # Runtime dispatch occurs outside calling-thread financial
-                # ownership. Preparation proves child closure before returning.
-                self.preparation.prepare(progress=self.emit,cancelled=self.cancel.is_set)
-                self.rebuilt=True
-                with cache_access.access():report=inspect(o,self.emit,self.stop)
-                with self.lock:self.report=report
-                self.emit(message='Candidate preparation and website rebuild complete.',warning=' '.join(report.get('warnings',[])))
-                diagnostics.event('data.completed',action=action)
-                return
             # Audit and replacement share the same lock as custom backtests.
-            with cache_access.access():
+            # Waiting for it ends promptly on Cancel.
+            deadline=time.monotonic()+30
+            while True:
+                if self.cancel.is_set():
+                    diagnostics.event('data.cancelled',action=action)
+                    self.emit(message='Cancelled before data admission.');return
+                ownership=cache_access.access(timeout=.25)
+                try:ownership.__enter__()
+                except cache_access.Contention:
+                    if time.monotonic()>=deadline:raise
+                    continue
+                break
+            try:
                 self.stop()
                 if action=='rebuild':
-                    if self.preparation is not None:self.preparation.invalidate()
                     self.emit(message='Preparing January and custom-date databases…')
                     daily.prepare();self.stop()
                     self.emit(message='Rebuilding the website…')
@@ -384,15 +370,13 @@ class Jobs:
                     report=inspect(o,self.emit,self.stop)
                 elif action=='download':
                     try:report=download(o,self.emit,self.stop)
-                    finally:
-                        if self.preparation is not None:
-                            self.rebuilt=False
-                            self.preparation.invalidate()
+                    finally:self.rebuilt=False
                 else:report=inspect(o,self.emit,self.stop)
                 with self.lock:self.report=report
                 self.emit(warning=' '.join(report.get('warnings',[])))
                 self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
                 diagnostics.event('data.completed',action=action)
+            finally:ownership.__exit__(None,None,None)
         except (Cancelled,backtest_control.Cancelled):
             diagnostics.event('data.cancelled',action=action)
             self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
@@ -406,22 +390,13 @@ class Jobs:
             self.emit(error=message,message='Data job failed. Existing completed files were kept.')
         except Exception as error:
             diagnostics.failure('data.failed',error,action=action)
-            # Retain an uncertain preparation owner. It cannot become a
-            # completed data job while runtime resources may remain alive.
-            if self.preparation is not None and getattr(error,'numerical_runtime',None) is not None:
-                self.emit(error='Candidate closure is unconfirmed. Shutdown must finish before continuing.',
-                          message='Waiting for candidate runtime closure…')
-                while self.preparation.runtime is not None:
-                    try:self.preparation.close()
-                    except Exception:
-                        import time
-                        time.sleep(.25)
             self.emit(error='Data operation failed. Check the development log below for details, then retry.',message='Data job failed. Existing completed files were kept.')
         finally:self.emit(running=False)
 
     def cancel_job(self):
+        # Emit before setting the flag, so the worker's cancelled message is last.
+        self.emit(message='Cancellation requested. Waiting for the active request or step to finish…')
         self.cancel.set()
-        self.emit(message='Cancellation requested. Waiting for the active request or preparation step to finish…')
         return self.snapshot()
 
     def close(self):
@@ -433,4 +408,3 @@ class Jobs:
             self.cancel.set()
             thread=self.thread
         if thread:thread.join()
-        if self.preparation is not None:self.preparation.close()

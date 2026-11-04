@@ -10,10 +10,9 @@ status and limits. Catalog recognition, implemented
 observations, backend qualification, installed readiness and observed coverage
 remain separate.
 
-Qualified captured programs run through Original and bounded numerical execution
-in Latest, January, fixed and random modes. The fixed backend inventory contains
-77 IDs. A capture retains the 32-definition ceiling. Numerical sample preview and
-eager scalar execution remain unsupported. Inspection evaluates complete recorded
+Qualified captured programs run through Original in Latest, January, fixed and
+random modes. The fixed backend inventory contains 77 IDs. A capture retains the
+32-definition ceiling. Eager scalar execution remains unsupported. Inspection evaluates complete recorded
 January/latest scopes with their generation, denominator and unavailable reasons.
 These source capabilities establish no installed readiness or live-cache coverage.
 

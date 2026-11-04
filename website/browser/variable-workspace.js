@@ -41,7 +41,7 @@ const VariableWorkspace=(()=>{
   function getAt(path){return path?path.split('.').reduce((v,key)=>v[key],editor.definition.expression):editor.definition.expression;}
   function replaceAt(path,value){if(!path)editor.definition.expression=value;else{const parts=path.split('.'),key=parts.pop();getAt(parts.join('.'))[key]=value;}}
   function parameters(){return editor.definition.parameter_catalog==='financial-parameters/3'?(catalog?.expanded_parameters||[]):editor.definition.parameter_catalog==='financial-parameters/2'?(catalog?.version2_parameters||[]):(catalog?.parameters||[]);}
-  function support(item){const s=item.support;if(!s)return '';return `Recognized; implementation ${s.implemented?'available':'unavailable'}; application qualification ${s.application_qualified?'qualified':'not qualified'}; Original ${s.original?'supported':'unsupported'}; bounded numerical ${s.bounded_numerical?'supported':'unsupported'}. Installed readiness and observed coverage are separate.`;}
+  function support(item){const s=item.support;if(!s)return '';return `Recognized; application qualification ${s.application_qualified?'qualified':'not qualified'}; Original ${s.original?'supported':'unsupported'}. Installed readiness and observed coverage are separate.`;}
   function options(items,selected){
     const groups=new Map();for(const item of items){const group=item.kind==='adapter'?'Existing policy adapters':item.source?.endpoint||'Financial inputs';if(!groups.has(group))groups.set(group,[]);groups.get(group).push(item);}
     return [...groups].map(([group,values])=>`<optgroup label="${esc(group)}">${values.map(p=>`<option value="${esc(p.id)}" ${selected===p.id?'selected':''}>${esc(p.description)} (${esc(p.unit)})</option>`).join('')}</optgroup>`).join('');

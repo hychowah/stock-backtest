@@ -93,7 +93,7 @@ const ScheduleView=(()=>{
     const {first,last,...filters}=options;
     const random=!!replay || (!override && node('date-testing').value==='random');
     const {engine:replayEngine,...plan}=replay||{};
-    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,...('engine' in EngineControls.fields()?{engine:replayEngine??'original'}:{})}:
+    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,engine:replayEngine??'original'}:
       override?{...filters,...override,...EngineControls.fields()}:{...filters,...CalendarSettings.read(),...EngineControls.fields()};
     if(!replay&&random){
       body.trials=+node('random-trials').value;

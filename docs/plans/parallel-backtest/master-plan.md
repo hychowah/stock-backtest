@@ -2,13 +2,14 @@
 
 Status: complete
 
+Frozen: the website does not offer the experimental engine and has no Prepare action (AGENTS.md, Engines).
+
 ## Outcome
 
 The experimental engine runs random-date trials in parallel processes. Compiled
 Numba is its only production complete-book provider. The default layout is two
 workers with two numerical threads each. Observed CPU and memory headroom can
-reduce it. Original remains the default application engine. Users choose only
-the engine. Backend, worker and thread settings stay internal.
+reduce it. Backend, worker and thread settings stayed internal.
 
 The parts are:
 

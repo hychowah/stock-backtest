@@ -14,6 +14,7 @@ from pathlib import Path
 import sys
 import tempfile
 from threading import Event
+import time
 import unittest
 from unittest.mock import patch
 
@@ -32,7 +33,7 @@ class CacheTests(unittest.TestCase):
         self.context.enter_context(patch.object(d,'derived_status',return_value=[]))
         self.context.enter_context(patch.object(d,'baseline_audit',return_value=None))
         self.context.enter_context(patch.object(fmp_download,'KEY_PATH',self.root/'absent-key'))
-        self.context.enter_context(patch.object(d.cache_access,'access',side_effect=lambda:nullcontext()))
+        self.context.enter_context(patch.object(d.cache_access,'access',side_effect=lambda timeout=30:nullcontext()))
         self.context.enter_context(patch('urllib.request.urlopen',side_effect=AssertionError('Unexpected request')))
         self.put('universe.json',[dict(symbol='A',listed=True),dict(symbol='B',listed=True)])
         (self.raw/'metrics.jsonl').write_text(json.dumps(dict(symbol='A',rows=[])))
@@ -460,11 +461,22 @@ class CacheTests(unittest.TestCase):
         from contextlib import contextmanager
         gate=Event();entered=Event();jobs=d.Jobs()
         @contextmanager
-        def queued():
+        def queued(timeout=30):
             entered.set();gate.wait(3);yield
         with patch.object(d.cache_access,'access',side_effect=queued),patch.object(d,'inspect') as inspect:
             jobs.start('check',{});self.assertTrue(entered.wait(3));jobs.cancel_job();gate.set();jobs.thread.join(3)
         inspect.assert_not_called();self.assertIn('Cancelled',jobs.snapshot()['job']['message'])
+
+    def test_cancel_while_another_owner_holds_the_cache_ends_promptly(self):
+        owner=d.cache_access.WorkspaceAccess(self.root/'held.lock');attempted=Event();jobs=d.Jobs()
+        def access(timeout=30):
+            attempted.set();return owner.hold(timeout)
+        with patch.object(d.cache_access,'access',side_effect=access),owner.hold():
+            jobs.start('check',{});self.assertTrue(attempted.wait(3))
+            began=time.monotonic();jobs.cancel_job();jobs.thread.join(3)
+            self.assertFalse(jobs.thread.is_alive());self.assertLess(time.monotonic()-began,2)
+        self.assertEqual(jobs.snapshot()['job']['message'],'Cancelled before data admission.')
+        self.assertFalse(jobs.snapshot()['job']['running'])
 
     def test_jobs_single_writer_cancel_and_sanitized_failure(self):
         gate=Event();entered=Event();jobs=d.Jobs()
@@ -521,6 +533,8 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(self.handler('POST','/api/data/check',dict(scope='cached'))[0][0],202)
             start.assert_called_once_with('check',dict(scope='cached'))
             self.assertEqual(self.handler('POST','/api/data/arbitrary')[0][0],404)
+            self.assertEqual(self.handler('POST','/api/data/prepare')[0][0],404)
+        self.assertNotIn('candidate',serve.DATA_JOBS.snapshot())
 
     def test_recovery_page_does_not_need_build_or_database(self):
         page=serve.data.data_page()

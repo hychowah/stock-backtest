@@ -166,7 +166,7 @@ class NativeStopTests(unittest.TestCase):
         self.assertEqual(child.returncode,0,error)
         with runtime_access.ownership(self.root,exclusive=True,timeout=.1):pass
 
-    def test_supervisor_joins_selectable_queue_before_releasing_source(self):
+    def test_supervisor_joins_queue_before_releasing_source(self):
         # Use current application owners with a slow synthetic calculation.
         # The bootstrap and all durable output stay in this disposable root.
         app=f'''import importlib.util,sys,time,json
@@ -196,11 +196,10 @@ Base=app.Server
 class Server(Base):
  def __init__(self,*args,**kwargs):
   with patch.object(app.backtest_queue,'Store',return_value=store):super().__init__(*args,**kwargs)
-  self.calculations.status=lambda:dict(state='unavailable')
-  self.calculations.original.calculate=slow
+  self.calculations.calculate=slow
 app.Server=Server
 def main():
- with patch('backtest.application.preparation.dependencies'),patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.cache_assets,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
+ with patch.object(app.cache_access,'access',side_effect=lambda:__import__('contextlib').nullcontext()),patch.object(app.cache_assets,'source_problem',return_value=False),patch.object(app,'ensure_ready'),patch.object(app.diagnostics,'configure',return_value=None):
   app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
  value=store.get(item['id']);replayed=store.claim()
  assert value['state']=='queued' and value['options']==options
