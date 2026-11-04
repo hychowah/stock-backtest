@@ -9,7 +9,7 @@ const exact={variable_id:'variable:one',revision:'sha256:'+'1'.repeat(64)};
 const definition={format:'variable-definition',version:1,parameter_catalog:'financial-parameters/1',temporal_policy:'annual-lag90/1',expression:{op:'constant',value:'2',unit:'scalar'},output:{unit:'scalar',display:'number'}};
 const entry={...exact,name:'Saved source',version:1,favourite:false,deleted:false};
 const capture={program:{bundle:{definitions:[{...exact,definition}]},definitions:[{...exact,unit:'scalar',display:'number'}]},presentation:[{...exact,name:entry.name}]};
-let revision=3,draftSettings=null,draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,captureWait=null,coverageWait=null,previewCount=0,conflict=false,useWire=false,lastWireValidation=null;
+let revision=3,draftSettings=null,draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,authoredFailure=false,captureWait=null,coverageWait=null,previewCount=0,conflict=false,patchFailure=null,useWire=false,lastWireValidation=null;
 const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null,wire=wireOrigin?JSON.parse(fs.readFileSync(0,'utf8')):null;
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
 const context=vm.createContext({console,document,AbortController,VariableEvidence:{preview:value=>{assert.equal(value.population,'explicit-request-scopes');return '<p>3 requested samples; not complete-pool coverage</p>';}},crypto:require('node:crypto').webcrypto,Uint8Array,fetch:async(url,options={})=>{
@@ -23,7 +23,7 @@ const context=vm.createContext({console,document,AbortController,VariableEvidenc
  if(url.endsWith('/catalog'))return response(ownerCatalog);
  if(url==='/api/variables')return response(body?{...entry,name:body.name,version:2}:{entries:emptyLibrary?[]:[entry]});
  if(url.endsWith('/detached')){assert.deepEqual(body.root,exact);return response({selected:exact,name:'Original detached name',authored:[{...exact,definition}],capture});}
- if(url.endsWith('/authored')){if(authoredWait)await authoredWait();return response({entry,selected:exact,authored:[{...exact,definition}],capture});}
+ if(url.endsWith('/authored')){if(authoredWait)await authoredWait();if(authoredFailure)throw Error('Cannot read authored fixture');return response({entry,selected:exact,authored:[{...exact,definition}],capture});}
  if(url.endsWith('/validate')){if(validationWait)await validationWait();return response({root:{variable_id:body.variable_id,revision:exact.revision},output:{unit:body.definition.output.unit,display:body.definition.output.display},requirements:[],capture,authored:[...(body.submitted||[]),{variable_id:body.variable_id,revision:exact.revision,definition:body.definition}]});}
  if(url.endsWith('/save')){if(saveWait)await saveWait();return conflict?response({error:'Entry changed',code:'VERSION_CONFLICT'},409):response({...entry,name:body.name,version:2});}
  if(url.endsWith('/favourite'))return response({...entry,version:2,favourite:true});
@@ -37,7 +37,7 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 const event=(id,type,target=node(id))=>node(id).handlers[type]({target,stopPropagation(){}});
 const click=id=>{event(id,'click');return tick();};
-context.draft={read:()=>({revision,settings:draftSettings,detached:draftDetached}),patch:(change,expected)=>{assert.equal(expected,revision,'Stale picker apply');applied.push(structuredClone(change));revision++;}};
+context.draft={read:()=>({revision,settings:draftSettings,detached:draftDetached}),patch:(change,expected)=>{if(patchFailure)throw Error(patchFailure);assert.equal(expected,revision,'Stale picker apply');applied.push(structuredClone(change));revision++;}};
 run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
 (async()=>{
  await run("VariableWorkspace.open('ranking')");
@@ -46,6 +46,34 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  const pickerParameterCount=()=>[...node('variable-picker').innerHTML.matchAll(/data-parameter=/g)].length;
  const measureDisabled=()=>/\bdisabled\b/.test(node('variable-picker').innerHTML.match(/<button[^>]*data-measure="gross_margin"[^>]*>/)[0]);
  assert.equal(pickerParameterCount(),ownerCatalog.expanded_parameters.length);assert.equal(measureDisabled(),false);
+ // Compose a quotient through the actual canvas, toolbar and picker handlers.
+ const selectTerm=path=>event('variable-equation','click',{dataset:{equationPath:path},closest(){return this;}});
+ const operate=action=>event('variable-equation-tools','click',{dataset:{equationAction:action},closest(){return this;}});
+ const parameter=id=>event('variable-picker','click',{dataset:{parameter:id},closest(){return this;}});
+ const current=()=>JSON.parse(node('variable-json').value);
+ parameter('annual.operating_income');operate('div');
+ assert.equal(current().left.id,'annual.operating_income');assert.equal(current().right.id,'');
+ assert(node('variable-equation').innerHTML.includes('＋ Parameter'));
+ parameter('annual.revenue');
+ assert.deepEqual(current(),{op:'div',left:{op:'parameter',id:'annual.operating_income'},right:{op:'parameter',id:'annual.revenue'}});
+ assert(node('variable-equation').innerHTML.includes('Operating income'));
+ selectTerm('left');operate('mul');operate('constant');
+ event('variable-tree','input',{dataset:{path:'left.right',field:'value'},value:'2.50'});
+ assert.equal(current().left.right.value,'2.50');assert(node('variable-equation').innerHTML.includes('2.50'));
+ assert.equal(current().right.id,'annual.revenue','Editing a numerator must preserve the denominator');
+ operate('undo');assert.equal(current().left.right.value,'1');operate('redo');assert.equal(current().left.right.value,'2.50');
+ operate('remove');assert.deepEqual(current().left,{op:'parameter',id:'annual.operating_income'});
+ operate('undo');assert.equal(current().left.right.value,'2.50');
+ selectTerm('');operate('remove');assert.deepEqual(current(),{op:'parameter',id:''});
+ operate('undo');assert.equal(current().left.right.value,'2.50');
+ selectTerm('right');operate('source');parameter('annual.revenue');
+ assert.equal(current().left.right.value,'2.50','Insert parameter targets the selected term');
+ // Saved references insert at the selected position and keep exact dependencies.
+ selectTerm('right');operate('source');
+ event('variable-picker','click',{dataset:{library:exact.variable_id,revision:exact.revision},closest(){return this;}});await tick();await tick();
+ assert.deepEqual(current().right,{op:'ref',...exact});assert.equal(current().left.right.value,'2.50');
+ operate('undo');assert.equal(current().right.id,'annual.revenue');operate('redo');
+ await click('variable-validate');assert(calls.at(-1).body.submitted.some(item=>item.variable_id===exact.variable_id&&item.revision===exact.revision));
  const expression={op:'div',left:{op:'mul',left:{op:'parameter',id:'annual.revenue'},right:{op:'annual',stat:'mean',count:3,parameter:'annual.operating_margin'}},right:{op:'parameter',id:'market.enterprise_value'}};
  // Advanced JSON remains local before validation, so even malformed numeric
  // fields must be escaped when the real visual renderer displays them.
@@ -53,7 +81,7 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
   node('variable-json').value=JSON.stringify(malformed);await click('variable-accept-json');assert(node('variable-tree').innerHTML.includes('&quot; onfocus=&quot;unsafe'));assert(!node('variable-tree').innerHTML.includes('value="" onfocus="unsafe'));
  }
  node('variable-json').value=JSON.stringify(expression);await click('variable-accept-json');
- assert.deepEqual(JSON.parse(node('variable-json').value),expression);assert(node('variable-tree').innerHTML.includes('Numerator'));assert(node('variable-tree').innerHTML.includes('Denominator'));
+ assert.deepEqual(JSON.parse(node('variable-json').value),expression);assert(node('variable-equation').innerHTML.includes('aria-label="Numerator"'));assert(node('variable-equation').innerHTML.includes('aria-label="Denominator"'));
  await click('variable-validate');assert.deepEqual(calls.at(-1).body.definition.expression,expression);assert(node('variable-explanation').textContent.includes(exact.revision));
  node('variable-display').value='multiple';event('variable-display','change');assert(!node('variable-explanation').textContent.includes(exact.revision));assert(node('variable-explanation').textContent.includes('need validation'));
  // A late validation cannot relabel new edits as checked.
@@ -122,6 +150,41 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  event('variable-coverage-inspect','click');await tick();await click('variable-coverage-scopes');release();validationWait=null;await tick();await tick();
  assert.equal(inspections().length,beforeDiscovery);
  assert.equal(node('variable-coverage-result').textContent,'Select a recorded scope to inspect.');
+ // Applying while the source picker is pending applies the whole formula.
+ const beforePendingApply=applied.length,pendingExpression=current();operate('source');await click('variable-apply');
+ assert.equal(applied.length,beforePendingApply+1);assert.equal(applied.at(-1).role,'ranking');
+ assert.deepEqual(calls.at(-1).body.definition.expression,pendingExpression);
+ // Insertion mode must not hide rejected Apply or change its destination.
+ for(const destination of ['ranking','condition',0]){
+  await run('VariableWorkspace.open('+JSON.stringify(destination)+')');
+  const before=current(),count=applied.length;operate('source');
+  assert.equal(node('variable-apply').textContent,destination==='ranking'?'Apply to ranking':'Apply to filter');
+  if(destination==='ranking')revision++;else patchFailure='Finish editing the held draft first';
+  await click('variable-apply');patchFailure=null;
+  assert.equal(applied.length,count);assert(node('variable-dialog').open);
+  assert(node('variable-errors').textContent.includes(destination==='ranking'?'Stale picker apply':'Finish editing the held draft first'));
+  assert(!node('variable-message').textContent.includes('Formula validated'));
+  assert.deepEqual(current(),before);
+  await click('variable-start-new');operate('source');parameter('annual.operating_margin');await click('variable-apply');
+  if(destination==='ranking')assert.equal(applied.length,count,'A stale session still cannot apply');
+  else {assert.equal(applied.length,count+1);assert.equal(applied.at(-1).role,destination);}
+ }
+ // A cancelled source read cannot overwrite another selected term or report
+ // its old failure into the current insertion. A current failure is visible.
+ await run("VariableWorkspace.open('ranking')");
+ node('variable-json').value=JSON.stringify(expression);await click('variable-accept-json');
+ for(const replacement of ['selection','insertion']){
+  selectTerm('right');operate('source');const before=current();
+  authoredWait=()=>new Promise(resolve=>release=resolve);event('variable-picker','click',pick);await tick();
+  if(replacement==='selection')selectTerm('left');else {selectTerm('left');operate('source');authoredFailure=true;}
+  release();authoredWait=null;await tick();await tick();authoredFailure=false;assert.deepEqual(current(),before);assert.equal(node('variable-errors').textContent,'');
+ }
+ authoredFailure=true;event('variable-picker','click',pick);await tick();authoredFailure=false;
+ assert(node('variable-errors').textContent.includes('Cannot read authored fixture'));
+ // Source selection during validation does not discard a valid Apply.
+ let validationRelease;validationWait=()=>new Promise(resolve=>validationRelease=resolve);
+ event('variable-apply','click');await tick();operate('source');validationRelease();validationWait=null;await tick();await tick();
+ assert.equal(applied.at(-1).role,'ranking');assert(!node('variable-dialog').open);
  if(wire){
   useWire=true;draftSettings={strategy:{selection:{ranking:{source:wire.shared.editor_source},conditions:[]},variables:wire.shared.editor_expected.capture}};draftDetached=[];
   await run("VariableWorkspace.open('ranking')");
@@ -136,5 +199,5 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
   assert.equal(calls.at(-1).body.submitted.length,9);assert.equal(calls.at(-1).body.labels.length,9);assert(!('detached' in calls.at(-1).body));
  }
  assert(!calls.some(call=>call.url.includes('/api/backtest-')));assert.equal(errors.length,0);
- console.log('Passed: actual tree/JSON round trip, grouping, stale validation, exact picker, explicit bounded preview, optimistic conflict, save race, favourite, apply and keyboard focus; no jobs.');
+ console.log('Passed: editable equation composition, term selection, parameter insertion, exact decimal edits, removal, undo/redo, tree/JSON round trip, grouping, stale validation, exact picker, explicit bounded preview, optimistic conflict, save race, favourite, apply and keyboard focus; no jobs.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
