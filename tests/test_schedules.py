@@ -514,8 +514,9 @@ class RefreshTests(unittest.TestCase):
 
     def assert_matches_full_build(self,kept):
         with closing(daily.connect(self.path)) as cache:
-            self.assertEqual(set(self.book_rows(cache)),set(kept))
-            stored={key:value for key,value in self.book_rows(cache).items()}
+            # Kept books are the saved originals, unchanged.
+            stored=self.book_rows(cache)
+            self.assertEqual(stored,kept)
             periods=s.backtest(cache,**self.OPTIONS)['periods']
             after=self.book_rows(cache)
         path,expected,fresh=self.full_build()
@@ -530,7 +531,6 @@ class RefreshTests(unittest.TestCase):
         self.assertNotIn('C.json',reads)
         self.assertIn('A.json',reads)
         with closing(daily.connect(self.path)) as cache:
-            self.assertEqual(self.book_rows(cache),self.saved)
             self.assertEqual(cache.execute("SELECT price FROM prices WHERE symbol='A' AND day='2015-08-03'").fetchone()[0],40)
             with patch.object(s,'compute_period',side_effect=AssertionError('Kept books must be reused')):
                 self.assertEqual(s.backtest(cache,**self.OPTIONS)['periods'],self.books)
@@ -577,8 +577,7 @@ class RefreshTests(unittest.TestCase):
     def test_cache_without_refresh_evidence_is_rebuilt(self):
         with closing(sqlite3.connect(self.path)) as db,db:db.execute("DELETE FROM metadata WHERE key='refresh'")
         self.append()
-        with patch.object(daily,'_keep_books',side_effect=AssertionError('No evidence means a full build')):
-            daily.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source)
         self.assert_matches_full_build({})
 
     def test_failed_refresh_keeps_previous_cache_and_books(self):

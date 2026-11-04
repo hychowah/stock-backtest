@@ -132,14 +132,14 @@ def calculation_sources():
 
 
 # Historical forward price lookups start at a January entry and reach at most
-# 4 + 4 days; exit lookups read backward from a day on or before the report
-# cutoff. Rows after the later of the cutoff and the last entry + REUSE_MARGIN
-# can change only latest and dated units.
+# books.FORWARD_REACH; exit lookups read backward from a day on or before the
+# report cutoff. REUSE_MARGIN is a wider margin: rows after the later of the
+# cutoff and the last entry + REUSE_MARGIN can change only latest and dated units.
 REUSE_MARGIN = timedelta(days=31)
 
 
 def _digest(value):
-    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=True).encode('utf-8')).hexdigest()
+    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 
 
 def _file_digest(path):
@@ -147,7 +147,7 @@ def _file_digest(path):
 
 
 def _rows_digest(rows):
-    return hashlib.sha256(json.dumps(rows,separators=(',',':'),allow_nan=True).encode('utf-8')).hexdigest()
+    return hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
 
 
 def _beyond(row, horizon):
@@ -179,7 +179,7 @@ def _bounded_digest(payload, horizon, key=None):
         value=dict(payload,**{key:[row for row in payload[key] if not _beyond(row,horizon)]})
     else:
         value=payload
-    return hashlib.sha256(json.dumps(value,separators=(',',':'),allow_nan=True).encode('utf-8')).hexdigest()
+    return _rows_digest(value)
 
 
 def _reuse_scope(through, horizon, treasury_rows):
@@ -192,8 +192,6 @@ def _reuse_scope(through, horizon, treasury_rows):
         version=SCHEMA_VERSION, observations=observation_inputs.VERSION, through=str(through),
         runtime=[platform.python_implementation(),platform.python_version(),sqlite3.sqlite_version],
         code=[_file_digest(path) for path in calculation_sources()],
-        rules=[rules.FIRST_YEAR,rules.LAST_YEAR,str(rules.ASOF),rules.MIN_MARKET_CAP,rules.MIN_EV,rules.BUFFER,rules.HOLD,
-               rules.LAG.days,rules.MAX_AGE.days,sorted(map(list,rules.BANKRUPT)),legacy.FIRST_YEAR,legacy.LAST_YEAR,legacy.HOLD],
         universe=_file_digest(RAW/'universe.json'), metrics=_file_digest(RAW/'metrics.jsonl'),
         financial={path.relative_to(RAW).as_posix():[info.st_size,info.st_mtime_ns]
                    for path,info in _metadata_entries(RAW/'financial-inputs','*/*.json')},
@@ -220,20 +218,16 @@ class _PriorUnits:
             with closing(sqlite3.connect(location,uri=True)) as prior:
                 owner.check_ready(prior)
                 meta={key:json.loads(value) for key,value in prior.execute(
-                    "SELECT key,value FROM metadata WHERE key IN ('version','reuse','baseline_result')")}
+                    "SELECT key,value FROM metadata WHERE key IN ('reuse','baseline_result')")}
         except (sqlite3.Error,ValueError,OSError):
             return None
+        # The scope binds this source and schema, so an equal scope means this
+        # code wrote the units in their current form.
         reuse=meta.get('reuse')
-        units=reuse.get('symbols') if isinstance(reuse,dict) else None
-        if (not isinstance(units,dict) or meta.get('version')!=SCHEMA_VERSION or reuse.get('scope')!=scope
-                or 'baseline_result' not in meta
-                or any(not isinstance(unit,dict) or set(unit)!={'content','history','receipt','rows'}
-                       or unit['rows'] is not None and (not isinstance(unit['rows'],list) or len(unit['rows'])!=2
-                                                        or type(unit['rows'][0]) is not int or not isinstance(unit['rows'][1],str))
-                       for unit in units.values())):
+        if not isinstance(reuse,dict) or reuse.get('scope')!=scope:
             return None
         db.execute('ATTACH DATABASE ? AS prior',(location,))
-        return cls(db,units,meta['baseline_result'])
+        return cls(db,reuse['symbols'],meta.get('baseline_result'))
 
     def __init__(self, db, units, baseline_result):
         self.db,self.units,self.baseline=db,units,baseline_result

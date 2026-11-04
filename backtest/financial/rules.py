@@ -19,8 +19,8 @@ def parse_day(value: object) -> date | None:
     if not value:
         return None
     text = str(value)[:10]
-    # Saved rows use ASCII YYYY-MM-DD. This form gives exactly the strptime
-    # result about ten times faster; every other form keeps strptime.
+    # Saved rows use ASCII YYYY-MM-DD. This faster path gives exactly the
+    # strptime result for that form; every other form keeps strptime.
     if len(text) == 10 and text.isascii() and text[4] == text[7] == '-' and (text[:4] + text[5:7] + text[8:]).isdigit():
         try:
             return date(int(text[:4]), int(text[5:7]), int(text[8:]))

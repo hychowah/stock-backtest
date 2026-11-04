@@ -74,7 +74,7 @@ cache requires the ordinary offline preparation before numerical export.
 CB-14 also binds daily inputs to the price inventory accepted by the prepared
 research database. Editing an existing raw price file need not change its parent
 directory timestamp. Research preparation accepts the new file inventory first.
-The prior daily cache then fails validation until daily preparation rebuilds it.
+The prior daily cache then fails validation until daily preparation refreshes it.
 Numerical export rejects that mismatch. A new generation cannot bind new inventory
 evidence to old daily prices. The binding preserves filename/size/mtime semantics;
 it does not add raw content hashing or per-book raw-inventory scans.

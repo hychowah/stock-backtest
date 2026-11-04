@@ -45,17 +45,13 @@ def _engine_sources():
             Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
 
 
-def _source_key(path):
-    return path.relative_to(r.ROOT).as_posix() if path.is_relative_to(r.ROOT) else path.name
-
-
 def fingerprint(source=None):
     # Daily prices bind to the validated research price inventory. Changed
     # prepared inputs refresh prices/books. Normal checks do not scan raw files.
     return dict(version=VERSION, observation_version=observation_inputs.VERSION,
                 inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
                 observations=r.prepared_observation_binding(source or r.DATABASE),
-                engine={_source_key(p):[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
+                engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
 
 def connect(path=DATABASE,source=None):
     # The returned connection is caller-owned.
@@ -88,17 +84,6 @@ def _price_rows(payload):
     return [(str(day),valuation.get(day),adjusted.get(day)) for day in sorted(valuation.keys()|adjusted.keys())]
 
 
-def _session_rows():
-    return [(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')]
-
-
-def _treasury_rows():
-    # A repeated day keeps its last saved value, as INSERT OR REPLACE did.
-    rows={row['date'][:10]:row['month3']/100 for row in json.loads((r.RAW/'treasury.json').read_text())
-          if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None}
-    return sorted(rows.items())
-
-
 def _digest(value):
     return hashlib.sha256(json.dumps(value,separators=(',',':')).encode()).hexdigest()
 
@@ -128,37 +113,22 @@ def _copy_research(reference,db):
     return digest.hexdigest()
 
 
-def _layout(db):
-    return sorted(tuple(row) for row in db.execute('SELECT type,name,tbl_name,sql FROM sqlite_master'))
-
-
 def _previous(path):
     """Return the saved inputs and refresh evidence of an existing cache.
 
-    The evidence is None unless it is well formed and the cache has the
-    current layout.
+    Old rows are read only when the saved code identities equal the current
+    ones. Those bind this module, so its schema and evidence form match too.
     """
     # Read-write, like connect(): a book write interrupted by a crash leaves a
     # hot journal that only a writable connection rolls back.
     with closing(sqlite3.connect(path,timeout=60)) as db:
         saved=dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('daily_inputs','refresh')"))
-        layout=_layout(db)
     try:
         current=json.loads(saved['daily_inputs']) if 'daily_inputs' in saved else None
         evidence=json.loads(saved['refresh']) if 'refresh' in saved else None
     except ValueError:
         return None,None
-    if (not isinstance(evidence,dict) or set(evidence)!={'version','code','books','prices'}
-            or evidence['version']!=VERSION or not isinstance(evidence['books'],str)
-            or not isinstance(evidence['code'],dict) or set(evidence['code'])!={'prices','books'}
-            or not isinstance(evidence['prices'],dict)
-            or any(not isinstance(unit,dict) or set(unit)!={'content','last','digest'} for unit in evidence['prices'].values())):
-        return current,None
-    with closing(sqlite3.connect(':memory:')) as expected:
-        expected.executescript(SCHEMA)
-        if layout!=_layout(expected):
-            return current,None
-    return current,evidence
+    return current,(evidence if isinstance(evidence,dict) and evidence.get('version')==VERSION else None)
 
 
 def _first_difference(old,new):
@@ -196,8 +166,8 @@ def _prices(db,symbols,saved,code):
             rows=_price_rows(json.loads(data))
             db.executemany('INSERT INTO prices VALUES(?,?,?,?)',[(symbol,*row) for row in rows])
             units[symbol]=dict(content=content,last=rows[-1][0] if rows else None,digest=_digest(rows))
-            if saved is not None:
-                if same_code and old is not None and _digest([row for row in rows if old['last'] is not None and row[0]<=old['last']])==old['digest']:
+            if same_code:
+                if old is not None and _digest([row for row in rows if old['last'] is not None and row[0]<=old['last']])==old['digest']:
                     later=[row for row in rows if old['last'] is None or row[0]>old['last']]
                     changed=later[0][0] if later else None
                 else:
@@ -215,7 +185,7 @@ def _dated_change(db,table):
     return _first_difference(rows('old'),rows('main'))
 
 
-def _keep_books(db,since=None):
+def _keep_books(db,since):
     """Copy saved books that read no input changed on or after since.
 
     A book reads no price, session or yield after max(exit, entry+FORWARD_REACH).
@@ -263,13 +233,13 @@ def prepare(path=DATABASE, source=r.DATABASE):
     try:
         db.executescript(SCHEMA)
         if saved is not None:
-            db.execute('ATTACH DATABASE ? AS old',(Path(path).resolve().as_uri()+'?mode=ro',))
+            db.execute('ATTACH DATABASE ? AS old',(path.resolve().as_uri()+'?mode=ro',))
         tables=_copy_research(reference,db)
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
         code=_code()
         units,earliest=_prices(db,symbols,saved,code)
-        db.executemany('INSERT INTO sessions VALUES(?,?)',_session_rows())
-        db.executemany('INSERT INTO treasuries VALUES(?,?)',_treasury_rows())
+        db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')])
+        db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None])
         books=_digest(dict(tables=tables,symbols=symbols))
         if saved is not None and code['books']==saved['code']['books'] and books==saved['books']:
             earliest+=[day for table in ('sessions','treasuries','treasury10') if (day:=_dated_change(db,table)) is not None]
@@ -280,7 +250,6 @@ def prepare(path=DATABASE, source=r.DATABASE):
         for key,value in dict(daily_inputs=inputs,cached_symbols=symbols,refresh=evidence).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         db.commit()
-        if saved is not None:db.execute('DETACH DATABASE old')
         db.close();reference.close();temporary.replace(path)
     except BaseException:
         db.close();reference.close();temporary.unlink(missing_ok=True);raise
