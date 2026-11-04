@@ -39,7 +39,7 @@ python3 scripts/research.py screen --pool cached --min-cap 500000000 --max-cap 5
 python3 scripts/research.py screen --pool cached --min-ev 100000000 --max-multiple 8 --sector Technology --exchange NASDAQ
 
 # Save a separate experiment, without overwriting the original report
-python3 scripts/research.py screen --top 100 --output results/experiments/top100.json
+python3 scripts/research.py screen --top 100 --output tmp/top100.json
 
 # Inspect how much of the universe can be valued from the cached prices
 python3 scripts/research.py status
@@ -211,7 +211,7 @@ versus 467.0 seconds for the saved eager reference (3.5× faster). The original
 candidate pool, top 50 and seed 20261022 were used, ending on 2026-10-20. Loading
 and per-trial saving were included; test-only cloning/reset was excluded. Every
 selected holding, valuation, exit status and trial outcome matched exactly.
-See `results/experiments/backtest-benchmark-applied.json`. The real daily cache
+The [experiment summaries](../results/experiments/README.md) keep these numbers. The real daily cache
 upgraded in place, retaining all 300 existing books without parsing JSON prices.
 
 ### Running and interrupted backtests
@@ -411,14 +411,13 @@ books and 537,906 stock snapshots. Loading, Windows process startup, transfers,
 staging and per-trial saving are included; common test-only cloning is excluded.
 Settings remain original pool, top 50, current EV/EBITDA, seed 20261022,
 1996-01-01 through 2026-10-20. Broader-pool and monthly timings were not measured.
-See `results/experiments/backtest-benchmark-parallel.json` and the final applied
-run in `backtest-benchmark-parallel-applied.json`.
+The [experiment summaries](../results/experiments/README.md) keep these numbers and
+the final applied run.
 
 The rejected first implementation let every price query acquire a read lock.
 It took 261.4/178.6/163.3/155.0 seconds with 1/2/4/8 workers. One short read
-transaction per book removed that overhead. The failed variant is retained in
-`results/experiments/backtest-benchmark-parallel-locking.json`; its timings are
-not the applied implementation. The production cache was unchanged by all runs.
+transaction per book removed that overhead. Those timings belong to the
+rejected variant, not the applied implementation. The production cache was unchanged by all runs.
 
 
 ### Selection order
