@@ -7,11 +7,28 @@
   <div class="variable-dialog-head"><h2 id="variable-dialog-title">Variables</h2><button type="button" id="variable-close" aria-label="Close variable workspace">Close</button></div>
   <p id="variable-message" role="status" aria-live="polite"></p>
   <div class="variable-workspace-grid">
-    <section aria-label="Variable picker"><label>Search variables <input id="variable-search" type="search" autocomplete="off"></label><button type="button" id="variable-refresh">Refresh variables</button><div id="variable-picker" class="variable-picker" tabindex="0" aria-label="Variable choices"></div></section>
+    <section aria-label="Variable picker"><label>Search parameters and variables <input id="variable-search" type="search" autocomplete="off" placeholder="Revenue, EBITDA, debt…"></label><button type="button" id="variable-refresh">Refresh variables</button><div id="variable-picker" class="variable-picker" tabindex="0" aria-label="Variable choices"></div></section>
     <section aria-label="Variable editor"><div class="variable-toolbar"><button type="button" id="variable-start-new">New variable</button><button type="button" id="variable-edit-selected">Edit selected revision</button><button type="button" id="variable-upgrade">Use expanded inputs</button></div>
       <label>Variable name <input id="variable-name" maxlength="120" value="Operating margin"></label>
       <p id="variable-selected" class="hint">Unsaved variable</p>
-      <div id="variable-tree" class="variable-tree"></div>
+      <section class="variable-composer" aria-label="Equation editor">
+        <div class="variable-composer-heading"><h3>Equation</h3><span>Choose a term. Add an operation or insert a parameter.</span></div>
+        <div id="variable-equation-tools" class="variable-toolbar" aria-label="Equation operations">
+          <button type="button" data-equation-action="source">Insert parameter</button>
+          <button type="button" data-equation-action="add" aria-label="Add to selected term">+</button>
+          <button type="button" data-equation-action="sub" aria-label="Subtract from selected term">−</button>
+          <button type="button" data-equation-action="mul" aria-label="Multiply selected term">×</button>
+          <button type="button" data-equation-action="div" aria-label="Divide selected term">÷</button>
+          <button type="button" data-equation-action="neg" aria-label="Negate selected term">−( )</button>
+          <button type="button" data-equation-action="constant">Number</button>
+          <button type="button" data-equation-action="remove">Remove term</button>
+          <button type="button" id="variable-equation-undo" data-equation-action="undo" disabled>Undo</button>
+          <button type="button" id="variable-equation-redo" data-equation-action="redo" disabled>Redo</button>
+        </div>
+        <div id="variable-equation" class="variable-equation" tabindex="0" role="group" aria-label="Editable equation" aria-describedby="variable-equation-help"></div>
+        <p id="variable-equation-help" class="hint">Click a parameter to replace it or change its settings. Click an operator or fraction bar to select a group. Parentheses show which terms belong together.</p>
+        <div class="variable-term-settings"><h4>Selected term</h4><div id="variable-tree" class="variable-tree"></div></div>
+      </section>
       <div class="variable-output"><label>Output unit <select id="variable-output-unit"><option value="scalar">Scalar (ratio)</option><option value="USD">USD</option><option value="USD/share">USD per share</option><option value="share">Shares</option></select></label><label>Display unit <select id="variable-display"><option value="percent">Percent</option><option value="number">Number</option><option value="multiple">Multiple</option><option value="percentage_points">Percentage points</option><option value="usd">USD</option><option value="usd_million">USD millions</option><option value="usd_per_share">USD per share</option><option value="shares">Shares</option></select></label></div>
       <details id="variable-advanced"><summary>Advanced JSON · same expression tree</summary><label>Expression JSON <textarea id="variable-json" rows="10" spellcheck="false"></textarea></label><button type="button" id="variable-accept-json">Use JSON expression</button></details>
       <p class="hint">Annual values use the latest eligible annual report: 90-day lag, availability strictly before the screen date, and at most 800 days old. Annual statistics require every consecutive fiscal year. Month lookbacks reconstruct an earlier date; they do not use quarterly or TTM accounts. Calendar-series statistics are not supported.</p>

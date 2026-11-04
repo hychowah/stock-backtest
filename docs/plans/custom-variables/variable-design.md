@@ -288,12 +288,16 @@ semantic owners. **Create variable** opens a side panel on desktop and a
 full-screen editor on small screens. The user chooses a parameter, its time basis
 and statistic, adds terms, names the variable, previews it, then applies or saves.
 
-The formula shows as editable blocks with explicit grouping, and as synchronized
-text under **Advanced**. The preview shows a plain-language explanation, the
+The formula shows as an editable equation with explicit grouping and stacked
+fractions. Select a term to insert a parameter or change its time and statistic
+settings. Operation buttons extend the selected term. Undo and Redo restore
+equation edits. Only the selected term has settings below the equation.
+**Advanced JSON** edits the same expression tree. The preview shows a plain-language explanation, the
 unit, required data, available-company counts and missing reasons, and sample
 calculations with input dates. Editing, validation, preview, coverage, Save and
 Apply start no backtest. Apply goes through `StrategyDraft`, with its held
-queue-edit protection.
+queue-edit protection. Source insertion changes only the selected term. It keeps
+the Apply destination. A rejected Apply shows an error and keeps the editor open.
 
 ## Out of scope
 
