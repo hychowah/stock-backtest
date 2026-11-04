@@ -47,6 +47,9 @@ The owners relevant to that feature are:
   and SPY calendar evidence without repair or download. It retains field states,
   duplicate row identities and exact-content receipts separately from financial
   normalization. Shared sources use the empty symbol.
+- `backtest/inputs/operation_inputs.py` holds one Original scalar operation's daily
+  and research connections. The complete daily fingerprint runs at entry and
+  normal exit; each step between them checks one research-file status.
 - `backtest/measure_observations.py` bridges bounded stored or dated financial-owner evidence.
   `backtest/variables/measures.py` exports exact-reference measure bundles.
 - `backtest/variables/reference.py` executes direct /1, /2 and supported /3

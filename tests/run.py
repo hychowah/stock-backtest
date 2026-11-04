@@ -37,7 +37,7 @@ RUNS = Path.home() / '.cache' / 'ebitda-ev-spread-tests'
 # Tier tables. Every discovered entry not named here is fast. A listed name
 # that does not exist, or a name in two tables, stops the run. Adding a name to
 # HEAVY accepts a slow workload and needs the user's agreement.
-HEAVY = frozenset()
+HEAVY = frozenset({'test_original_long_window.py'})
 # Tests of the frozen experimental engine (AGENTS.md, Tests). No tier runs
 # them, and they need tmp/numerical-venv. No live test file imports one of
 # them or a frozen source module directly; tests/test_package_structure.py

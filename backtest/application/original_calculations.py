@@ -128,48 +128,32 @@ class Original(Control):
     def preview(self, capture, roots, *, admission='interactive', engine='original'):
         """Explicit Original reference samples under ordinary input lifetime."""
         from backtest.application import scalar_execution, strategy_requests
-        from backtest.inputs import sqlite_observations
+        from backtest.inputs import operation_inputs, sqlite_observations
         options={'strategy':capture}
         strategy_requests.preview_engine(engine)
         strategy_requests.check_options(options)
         plans=scalar_execution.plan_preview(strategy_requests.from_wire(capture),roots)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
-            db=daily.connect()
-            try:
-                accepted=daily.fingerprint()
-                def fresh():
-                    self._checkpoint()
-                    if daily.fingerprint()!=accepted:raise ValueError('Scalar inputs changed during execution.')
-                with sqlite_observations.prepared_view(db,fresh,checkpoint=self._checkpoint) as view:
+            with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
+                with sqlite_observations.prepared_view(inputs.db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
                     value=scalar_execution.evaluate_preview(plans,roots,view,checkpoint=self._checkpoint)
-                    fresh()
-            finally:db.close()
         return dict(value,producer=dict(engine='original',label='Original reference sample preview'))
 
     def coverage(self, capture=None, scope=None, *, admission='interactive'):
         """Discover or inspect recorded scopes under ordinary financial ownership."""
         from backtest.application import variable_coverage, strategy_requests
-        from backtest.inputs import research, sqlite_observations
+        from backtest.inputs import operation_inputs, sqlite_observations
         if capture is not None:
             strategy_requests.check_options({'strategy':capture})
             capture=strategy_requests.from_wire(capture)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
-            db=daily.connect();source=None
-            try:
-                accepted=daily.fingerprint()
-                def fresh():
-                    self._checkpoint()
-                    if daily.fingerprint()!=accepted:raise ValueError('Scalar inputs changed during inspection.')
-                source=research.connect()
-                with sqlite_observations.prepared_view(db,fresh,checkpoint=self._checkpoint) as view:
+            with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
+                source=inputs.research()
+                with sqlite_observations.prepared_view(inputs.db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
                     value=(variable_coverage.scopes(source,view) if capture is None else
                            variable_coverage.inspect(capture,scope,source,view,checkpoint=self._checkpoint))
-                    fresh()
-            finally:
-                if source is not None:source.close()
-                db.close()
         return dict(value,producer=dict(engine='original',label='Original reference coverage'))
 
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
@@ -177,7 +161,7 @@ class Original(Control):
         """Stream scalar codec 2; publish only after the ordinary financial owner closes."""
         import hashlib
         from backtest import scalar_result_evidence
-        from backtest.inputs import research, sqlite_observations
+        from backtest.inputs import operation_inputs, sqlite_observations
         from backtest.application import strategy_requests, scalar_runs
         self.preflight(options,planned=planned)
         options=strategy_requests.execution_options(mode,options,planned=planned,checkpoint=self._checkpoint)
@@ -188,14 +172,10 @@ class Original(Control):
         writer=None
         with self._financial(admission,progress):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
-            db=daily.connect();source=None
-            try:
-                accepted=daily.fingerprint()
-                def fresh():
-                    self._checkpoint()
-                    if daily.fingerprint()!=accepted:raise ValueError('Scalar inputs changed during execution.')
-                if mode in ('latest','january'):source=research.connect()
-                with sqlite_observations.prepared_view(db,fresh,checkpoint=self._checkpoint) as view:
+            with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
+                db=inputs.db
+                source=inputs.research() if mode in ('latest','january') else None
+                with sqlite_observations.prepared_view(db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
                     metadata=dict(mode=mode,options=options,configuration=planned,input=view.identity,
                         projection=view.projection,producer=dict(engine='original',label='Original'))
                     def configured(value):
@@ -210,10 +190,7 @@ class Original(Control):
                         piece_bytes=piece_bytes,record_bytes=record_bytes,checkpoint=self._checkpoint)
                     summary=scalar_runs.execute(db,source,mode,financial,writer,view,configured,planned=planned,
                         progress=progress,checkpoint=self._checkpoint)
-                    view.validate();fresh()
-            finally:
-                if source is not None:source.close()
-                db.close()
+                    view.validate()
         # Sealing runs after financial handles and ownership have closed.
         manifest=writer.finish(summary)
         destination.flush();destination.seek(0)

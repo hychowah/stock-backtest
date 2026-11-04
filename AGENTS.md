@@ -76,15 +76,11 @@ at a time. `--jobs` overrides the count. The `tests/run.py` docstring
 describes the isolation. Every tier needs only `python3` and Node.js:
 `python3 tests/run.py`.
 
-`FROZEN` names the tests of the frozen experimental engine. No tier runs them.
-No live test file imports a frozen test or a frozen source module directly:
-`backtest/engines/numerical/`, `backtest/application/calculations.py`,
-`candidate_calculations.py` and `preparation.py`.
-`tests/test_package_structure.py` scans the imports of the test files and
-checks that the server entry and Original load no frozen source. Frozen tests
-need the numerical environment, `tmp/numerical-venv` in the main checkout. Run
-one directly only to unfreeze the engine. It can have drifted from live
-interfaces.
+`FROZEN` names the tests of the frozen experimental engine (see Engines). No
+tier runs them, and no live test file imports one or frozen source directly.
+`tests/test_package_structure.py` checks test imports, the server entry and
+Original. Frozen tests need `tmp/numerical-venv` in the main checkout. Run one
+directly only to unfreeze the engine; it may have drifted.
 
 - Before every commit, run the fast tier in the WSL source checkout. Do not
   commit if it fails. It takes under a minute. Give it a tool timeout of at
@@ -428,6 +424,10 @@ need an explicit upgrade. `backtest/variables/selection.py` holds the single
 qualified scalar gate. Reference or provider support alone grants no application
 qualification. Eager scalar execution and numerical sample preview are
 unsupported. Derived `at` and `lookback` contexts use dated owner policy, even at
-an equal date. Preserve the 32-definition closure ceiling. See
+an equal date. Preserve the 32-definition closure ceiling. Original scalar
+operations hold inputs through `backtest/inputs/operation_inputs.py`: a full
+fingerprint at entry and normal exit, one file status per step. Checks:
+`tests/test_operation_inputs.py` and heavy `tests/test_original_long_window.py`.
+See
 [variable design](docs/plans/custom-variables/variable-design.md) and the
 [parameter catalog](docs/plans/custom-variables/parameter-catalog.md).

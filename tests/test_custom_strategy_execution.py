@@ -52,6 +52,7 @@ class ExecutionTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(daily,'connect',side_effect=connect).start()
         patch.object(research,'connect',side_effect=connect).start()
+        patch.object(research,'DATABASE',Path(self.folder.name)/'research.sqlite').start()
         patch.object(daily,'fingerprint',return_value=self.binding).start()
         patch.object(original_calculations.Original,'_financial',side_effect=financial).start()
         self.calc=original_calculations.Original()
