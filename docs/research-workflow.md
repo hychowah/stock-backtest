@@ -89,7 +89,7 @@ The research tests cover availability dates, rank selection before future return
 
 ## Measured performance
 
-Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. The remaining time is mostly the content identity of all observation rows, the dated evidence of the new rows, and publication of the complete database file. These timings do not describe the real cache or native Windows.
+Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. The remaining time is mostly the content identity of all observation rows, the dated evidence of the new rows, and publication of the complete database file. In the same workspace, a full daily cycle was `scripts/schedules.py prepare` after one download, then the same 202-book monthly schedule from 2010. It took 115 seconds with the previous source, which rebuilt both databases and recalculated every book. It took 59 seconds with the refresh, which kept every book. These timings do not describe the real cache or native Windows.
 
 The completed local database contains 39,468 January snapshots for the two candidate pools and occupies about 17 MB. On this environment, a full preparation took 62 seconds. After preparation, measured end-to-end times including Python startup were 0.45 seconds for top 100 in 2015–2020, 0.59 seconds for a filtered version, and 1.8 seconds for the website rebuild. These are observed timings, not guarantees. See `results/experiments/performance.json`.
 
@@ -194,10 +194,30 @@ Daily cache version 5 tracks this in `period_pools`. Older daily caches take the
 ordinary rebuild path. Daily inputs now include a digest
 of the price inventory accepted by committed research metadata. The digest covers
 filenames, sizes and modification times. Normal daily connections do not scan raw
-prices. After research preparation accepts an in-place price edit, daily prices
-and dated books must rebuild. Older caches without this binding cannot establish
+prices. Older caches without this binding cannot establish
 compatibility and take the ordinary rebuild path. This affects derived data only;
 durable library and queue snapshots remain independent.
+
+When the daily inputs change, preparation still writes a new daily cache, but it
+refreshes from the previous one when that cache has refresh evidence and the
+current layout. Prices of a company whose file bytes and price code are unchanged
+are copied without parsing. A changed file is parsed, and its first changed day
+is found from a saved digest of its rows or from a row comparison. Saved dated
+books are kept as follows:
+
+- All books are dropped when a book input without dates changes: the copied
+  companies, statements or financial inputs, the cached company set, or the
+  content of the book calculation code.
+- Otherwise a book is kept when it reads no input on or after the earliest
+  changed day of any price, SPY session, Treasury yield or 10-year yield. A book
+  reads nothing after the later of its exit and its entry plus
+  `books.FORWARD_REACH` (eight days: two four-day forward lookups).
+
+A daily download therefore keeps every book whose reach ends before the new
+session.
+The refreshed cache equals a full build of the same inputs, and each kept book
+equals the book a full build calculates. A cache without refresh evidence takes
+the full build path.
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
 The default listener is `0.0.0.0:3000`; the browser opens

@@ -17,7 +17,9 @@ import json
 import tempfile
 import subprocess
 import time
-from contextlib import ExitStack,closing
+from contextlib import ExitStack,closing,redirect_stdout
+import io
+import os
 import sys
 import unittest
 from unittest.mock import patch
@@ -402,16 +404,213 @@ class PreparationTests(unittest.TestCase):
         db=daily.connect(self.path)
         self.assertEqual(research.ten_year_yield(db,date(2015,1,2)),3)
         self.assertEqual(db.execute('SELECT COUNT(*) FROM prices').fetchone()[0],1);db.close()
-        with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')):
+        with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')), \
+                patch.object(Path,'read_bytes',side_effect=AssertionError('Unchanged preparation must not read prices')):
             daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
 
     def test_failure_preserves_previous_cache(self):
         daily.prepare(self.path,self.source);original=self.path.read_bytes()
+        # Changed bytes are parsed again; the parse fails.
+        (research.RAW/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=11)])))
         with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(research,'bars',side_effect=ValueError('bad fixture')):
             with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
+
+
+class RefreshTests(unittest.TestCase):
+    """A stale cache with refresh evidence must equal a full build of the same inputs."""
+    SESSIONS=['2015-01-02','2015-02-02','2015-03-02','2015-04-01','2015-05-01','2015-06-01','2015-07-01']
+    OPTIONS=dict(start='2015-01-01',end='2015-07-01',months=1,rank_to=3,min_cap=0,min_ev=0)
+    TABLES={'prices':'symbol,day','sessions':'day','treasuries':'day','companies':'symbol','statements':'symbol,fiscal',
+            'financial_inputs':'symbol,fiscal','treasury10':'day',**{t:'1' for t in daily.observation_inputs.TABLES}}
+
+    def setUp(self):
+        self.context=ExitStack();self.addCleanup(self.context.close)
+        self.root=root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
+        self.path=root/'daily.sqlite';self.source=root/'research.sqlite'
+        self.raw=raw=root/'raw';(raw/'px').mkdir(parents=True)
+        days=['2014-06-30']+self.SESSIONS
+        for symbol,prices in [('A',[10,20,22,24,26,28,30,32]),('B',[10,10,11,12,13,12,11,10]),('C',[10,10,10,10,10,10,10,10])]:
+            (raw/'px'/f'{symbol}.json').write_text(json.dumps(dict(div=[dict(date=d,adjClose=p) for d,p in zip(days,prices)])))
+        (raw/'spy-div.json').write_text(json.dumps([dict(date=d,adjClose=100+i) for i,d in enumerate(self.SESSIONS)]))
+        (raw/'treasury.json').write_text(json.dumps([dict(date=d,month3=2) for d in self.SESSIONS]))
+        db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
+        for symbol,ebitda in [('A',30e6),('B',20e6),('C',10e6)]:
+            db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
+            db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
+        db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)")
+        daily.observation_inputs.finish(db,'2015-07-01')
+        db.execute("INSERT INTO metadata VALUES('prices','{}')")
+        db.commit();db.close()
+        self.generation=0
+        for owner,key,value in [(research,'RAW',raw),(market,'RAW',raw)]:
+            self.context.enter_context(patch.object(owner,key,value))
+        self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
+        self.context.enter_context(patch.object(daily,'fingerprint',side_effect=lambda source=None:{'fixture':self.generation}))
+        self.context.enter_context(patch.object(research,'prepare'))
+        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
+        self.context.enter_context(redirect_stdout(io.StringIO()))
+        self.accept_prices()
+        daily.prepare(self.path,self.source)
+        with closing(daily.connect(self.path)) as cache:
+            self.books=s.backtest(cache,**self.OPTIONS)['periods']
+            self.saved=self.book_rows(cache)
+        self.assertEqual(len(self.saved),6)
+
+    def accept_prices(self):
+        """Record the price inventory as research preparation would, then make the cache stale."""
+        with closing(sqlite3.connect(self.source)) as db,db:
+            db.execute("UPDATE metadata SET value=? WHERE key='prices'",(json.dumps(research.price_sources()),))
+        self.generation+=1
+
+    def append(self,day='2015-08-03'):
+        for name in ('A','B'):
+            path=self.raw/'px'/f'{name}.json';payload=json.loads(path.read_text())
+            payload['div'].insert(0,dict(date=day,adjClose=40));path.write_text(json.dumps(payload))
+        for name,row in [('spy-div.json',dict(date=day,adjClose=120)),('treasury.json',dict(date=day,month3=2.5))]:
+            path=self.raw/name;rows=json.loads(path.read_text());path.write_text(json.dumps(rows+[row]))
+        with closing(sqlite3.connect(self.source)) as db,db:db.execute('INSERT INTO treasury10 VALUES(?,4)',(day,))
+        self.accept_prices()
+
+    @staticmethod
+    def book_rows(db):
+        """Saved books by (entry, exit, pool), independent of period ids."""
+        books={}
+        for period_id,entry,exit_day in db.execute('SELECT year,entry,exit FROM periods ORDER BY year'):
+            for pool, in db.execute('SELECT pool FROM period_pools WHERE period_id=? ORDER BY pool',(period_id,)):
+                tables=[]
+                for table in ('snapshots','filter_values','screening_metrics'):
+                    cursor=db.execute(f'SELECT * FROM {table} WHERE year=? AND pool=?',(period_id,pool))
+                    year=[column[0] for column in cursor.description].index('year')
+                    tables.append(sorted((tuple(row)[:year]+tuple(row)[year+1:] for row in cursor),key=repr))
+                books[(entry,exit_day,pool)]=tables
+        return books
+
+    def contents(self,path):
+        with closing(sqlite3.connect(path)) as db:
+            return {table:sorted((tuple(row) for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}')),key=repr) for table,order in self.TABLES.items()}
+
+    def full_build(self):
+        """A fresh cache of the same inputs, with the same books computed from scratch."""
+        path=self.root/'fresh.sqlite'
+        path.unlink(missing_ok=True)
+        daily.prepare(path,self.source)
+        with closing(daily.connect(path)) as fresh:
+            periods=s.backtest(fresh,**self.OPTIONS)['periods']
+            return path,periods,self.book_rows(fresh)
+
+    def refresh(self):
+        """Refresh the cache; return the price files whose rows were parsed."""
+        parsed=[]
+        original=daily._price_rows
+        def recorded(payload):
+            parsed.extend(p.name for p in sorted((self.raw/'px').glob('*.json')) if json.loads(p.read_bytes())==payload)
+            return original(payload)
+        with patch.object(daily,'_price_rows',side_effect=recorded):
+            daily.prepare(self.path,self.source)
+        return parsed
+
+    def assert_matches_full_build(self,kept):
+        with closing(daily.connect(self.path)) as cache:
+            self.assertEqual(set(self.book_rows(cache)),set(kept))
+            stored={key:value for key,value in self.book_rows(cache).items()}
+            periods=s.backtest(cache,**self.OPTIONS)['periods']
+            after=self.book_rows(cache)
+        path,expected,fresh=self.full_build()
+        self.assertEqual(self.contents(self.path),self.contents(path))
+        self.assertEqual(periods,expected)
+        self.assertEqual(after,fresh)
+        for key in kept:self.assertEqual(stored[key],fresh[key])
+
+    def test_pure_append_keeps_every_book_and_unchanged_files_unparsed(self):
+        self.append()
+        reads=self.refresh()
+        self.assertNotIn('C.json',reads)
+        self.assertIn('A.json',reads)
+        with closing(daily.connect(self.path)) as cache:
+            self.assertEqual(self.book_rows(cache),self.saved)
+            self.assertEqual(cache.execute("SELECT price FROM prices WHERE symbol='A' AND day='2015-08-03'").fetchone()[0],40)
+            with patch.object(s,'compute_period',side_effect=AssertionError('Kept books must be reused')):
+                self.assertEqual(s.backtest(cache,**self.OPTIONS)['periods'],self.books)
+        self.assert_matches_full_build(self.saved)
+
+    def test_historical_edit_drops_only_books_that_can_read_it(self):
+        path=self.raw/'px'/'A.json';payload=json.loads(path.read_text())
+        next(row for row in payload['div'] if row['date']=='2015-04-01')['adjClose']=99
+        path.write_text(json.dumps(payload));self.accept_prices()
+        self.refresh()
+        # Books that exit on or after the edited day, or whose entry window
+        # reaches it, are dropped; earlier books are kept unchanged.
+        kept={key:value for key,value in self.saved.items() if key[1]<'2015-04-01'}
+        self.assertEqual(len(kept),2)
+        self.assert_matches_full_build(kept)
+
+    def test_changed_bytes_with_a_kept_stamp_are_parsed(self):
+        # A restore that keeps size and timestamps must not hide changed rows.
+        path=self.raw/'px'/'A.json';text=path.read_text();stamp=path.stat()
+        path.write_text(text.replace('"adjClose": 26','"adjClose": 62'))
+        os.utime(path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
+        self.assertEqual([path.stat().st_size,path.stat().st_mtime_ns],[stamp.st_size,stamp.st_mtime_ns])
+        self.generation+=1
+        self.assertIn('A.json',self.refresh())
+        self.assert_matches_full_build({key:value for key,value in self.saved.items() if key[1]<'2015-04-01'})
+
+    def test_statement_change_drops_every_book(self):
+        with closing(sqlite3.connect(self.source)) as db,db:
+            db.execute("UPDATE statements SET ebitda=40e6,ebitda_yield=40e6/150e6 WHERE symbol='B'")
+        self.generation+=1
+        self.refresh()
+        self.assert_matches_full_build({})
+
+    def test_changed_book_code_drops_books_and_keeps_prices(self):
+        with closing(sqlite3.connect(self.path)) as db,db:
+            evidence=json.loads(db.execute("SELECT value FROM metadata WHERE key='refresh'").fetchone()[0])
+            evidence['code']['books']='0'*64
+            db.execute("UPDATE metadata SET value=? WHERE key='refresh'",(json.dumps(evidence),))
+        self.generation+=1
+        reads=self.refresh()
+        self.assertFalse({'A.json','B.json','C.json'}&set(reads))
+        self.assert_matches_full_build({})
+
+    def test_cache_without_refresh_evidence_is_rebuilt(self):
+        with closing(sqlite3.connect(self.path)) as db,db:db.execute("DELETE FROM metadata WHERE key='refresh'")
+        self.append()
+        with patch.object(daily,'_keep_books',side_effect=AssertionError('No evidence means a full build')):
+            daily.prepare(self.path,self.source)
+        self.assert_matches_full_build({})
+
+    def test_failed_refresh_keeps_previous_cache_and_books(self):
+        before=self.contents(self.path)
+        self.append()
+        with patch.object(daily,'_dated_change',side_effect=ValueError('bad fixture')):
+            with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
+        self.assertEqual(self.contents(self.path),before)
+        self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
+        with closing(sqlite3.connect(self.path)) as db:self.assertEqual(self.book_rows(db),self.saved)
+
+    def test_short_book_reach_covers_prices_after_its_exit(self):
+        for name,price in [('A',23),('B',11),('C',10)]:
+            path=self.raw/'px'/f'{name}.json';payload=json.loads(path.read_text())
+            payload['div'].append(dict(date='2015-03-04',adjClose=price));path.write_text(json.dumps(payload))
+        path=self.raw/'spy-div.json';rows=json.loads(path.read_text())
+        path.write_text(json.dumps(rows+[dict(date='2015-03-04',adjClose=103)]))
+        self.accept_prices();self.refresh()
+        short=dict(dates=['2015-03-02'],start='2015-03-01',end='2015-03-04',rank_to=3,min_cap=0,min_ev=0)
+        with closing(daily.connect(self.path)) as cache:
+            s.backtest_dates(cache,**short)
+            before=self.book_rows(cache)
+        self.assertIn(('2015-03-02','2015-03-04','legacy'),before)
+        # A price after the two-day book's exit, but within its entry reach.
+        path=self.raw/'px'/'A.json';payload=json.loads(path.read_text())
+        payload['div'].append(dict(date='2015-03-06',adjClose=23.5));path.write_text(json.dumps(payload))
+        self.accept_prices();self.refresh()
+        with closing(daily.connect(self.path)) as cache:after=self.book_rows(cache)
+        self.assertNotIn(('2015-03-02','2015-03-04','legacy'),after)
+        self.assertEqual(after,{key:value for key,value in before.items()
+            if max(date.fromisoformat(key[1]),date.fromisoformat(key[0])+financial_books.FORWARD_REACH)<date(2015,3,6)})
+        self.assertEqual(len(after),2)
 
 
 if __name__=='__main__':unittest.main()

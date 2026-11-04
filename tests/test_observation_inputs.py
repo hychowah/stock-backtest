@@ -168,7 +168,7 @@ class ProjectionTests(unittest.TestCase):
     def test_daily_cancellation_preserves_previous_database(self):
         self.prepare(); before = self.path.read_bytes()
         def cancelled(): raise RuntimeError('fixture cancellation')
-        with patch.object(daily, 'connect', side_effect=ValueError('force rebuild')), \
+        with patch.object(daily, 'fingerprint', return_value={'stale inputs': True}), \
              patch.object(daily.backtest_control, 'checkpoint', side_effect=cancelled):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 daily.prepare(self.path, self.source)

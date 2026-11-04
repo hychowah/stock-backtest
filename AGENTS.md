@@ -253,8 +253,8 @@ The linked documents hold the detail.
 prepared baseline with `revalue.calculate(through)` at full precision. Both
 engines must agree on all years, ranks, symbols, dates, prices, valuations,
 returns and exit basis. Never bypass disagreement or relax the tolerance.
-Reused company units must equal a full rebuild row for row. A changed reuse
-scope or historical unit reruns the comparison.
+Reused company units must equal a full rebuild; a changed scope or
+historical unit reruns the comparison.
 `backtest/inputs/baseline.py` owns the report cutoff, rendering, revision
 evidence and recoverable report/database publication. Verified changes update the
 canonical report without advancing its Through date. Previous reports stay
@@ -335,7 +335,8 @@ as the rows. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
 Reuse `screening.select` and `metrics.evaluate`; never duplicate formulas. Label
 dated period returns, not annual returns. Daily inputs bind accepted research
-content, policy and price inventory; older caches rebuild. A root in a recorded
+content, policy and price inventory; older caches rebuild and refreshes keep
+only unaffected books. A root in a recorded
 January or latest scope reads that scope's stored owner lanes. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).

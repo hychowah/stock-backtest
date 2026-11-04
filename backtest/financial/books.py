@@ -3,7 +3,15 @@
 Price adapters return (date, positive price) or None within the given tolerance.
 Storage, calendar planning and SQL insertion stay outside this module.
 """
+from datetime import timedelta
+
 from backtest.financial import rules as run
+
+# Forward price lookups accept a session up to ENTRY_SLACK days after their
+# anchor: the entry valuation after the entry day, then the buy price after the
+# valuation day. No book reads a price later than max(exit, entry+FORWARD_REACH).
+ENTRY_SLACK=4
+FORWARD_REACH=timedelta(days=2*ENTRY_SLACK)
 
 
 def statements(records, universe):
@@ -54,7 +62,7 @@ def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
     if valuation is None:
         return None
     fiscal_px,entry_px,cap,ev,ebitda=valuation
-    start=lookup(entry_px[0],'adjusted',True,4)
+    start=lookup(entry_px[0],'adjusted',True,ENTRY_SLACK)
     if start is None or start[0]>=exit_day:
         return None
     end=lookup(exit_day,'adjusted',False,10)
@@ -75,7 +83,7 @@ def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
 def entry_valuation(statement, entry_day, lookup):
     """Return fiscal and entry observations, cap, EV and EBITDA without an exit."""
     fiscal_px=lookup(statement['fiscal'],'price',False,7)
-    entry_px=lookup(entry_day,'price',True,4)
+    entry_px=lookup(entry_day,'price',True,ENTRY_SLACK)
     if fiscal_px is None or entry_px is None:
         return None
     cap=statement['market_cap']*(entry_px[1]/fiscal_px[1])
