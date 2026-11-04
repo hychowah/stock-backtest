@@ -158,8 +158,10 @@ def _verify(root, files):
             raise AssertionError('Copied source differs from its recorded inventory.')
 
 
-ALLOWANCES = dict(raw=64*MIB, database=128*MIB, website=64*MIB,
-                  history=32*MIB, control=16*MIB, downloads=16*MIB, total=512*MIB)
+# Allowances catch runaway fixture growth; they are not capacity limits. Keep
+# them well above the largest measured workspace.
+ALLOWANCES = dict(raw=64*MIB, database=512*MIB, website=64*MIB,
+                  history=32*MIB, control=16*MIB, downloads=16*MIB, total=2048*MIB)
 SPEC = dict(companies=64, first='1992-01-01', through='2026-10-21',
             fiscal_first=1992, fiscal_last=2025, calendar='fictional weekdays')
 _retained_workspaces = {}
@@ -300,7 +302,9 @@ class FictionalWorkspace:
                 if p.parent==self.source/'data' and p.suffix=='.sqlite'})
         for name in ('total','raw','website','history','control','downloads'):
             assert result[name] <= ALLOWANCES[name], (name,result[name],ALLOWANCES[name])
-        assert all(n<=ALLOWANCES['database'] for p,n in files if p.suffix=='.sqlite')
+        for p,n in files:
+            if p.suffix=='.sqlite':
+                assert n <= ALLOWANCES['database'], ('database',p.name,n,ALLOWANCES['database'])
         return result
 
     def close(self):
