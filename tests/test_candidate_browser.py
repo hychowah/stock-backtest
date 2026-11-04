@@ -5,24 +5,11 @@ import json
 import os
 from pathlib import Path
 import sys
-import time
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from native_browser_fixture import BrowserStorage,NativeBrowser
-from candidate_browser_fixture import FictionalWorkspace,CandidateService
-
-
-class WorkflowBrowser(NativeBrowser):
-    def wait(self,expression):
-        # Polling jobs produce routine network events. Retain events only around
-        # downloads; the workflow asserts application results instead of headers.
-        deadline=time.monotonic()+120
-        while True:
-            if self.evaluate('Boolean('+expression+')'):return
-            self.clear_events()
-            if time.monotonic()>deadline:raise TimeoutError('Candidate workflow wait expired.')
-            time.sleep(.05)
+from native_browser_fixture import BrowserStorage
+from candidate_browser_fixture import FictionalWorkspace,CandidateService,WorkflowBrowser
 
 
 @unittest.skipUnless(os.name=='nt','Actual native Chrome requires Windows.')

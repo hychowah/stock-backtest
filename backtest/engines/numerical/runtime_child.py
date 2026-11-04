@@ -114,7 +114,7 @@ def main():
         from backtest.engines.numerical.runtime import FRAME_BYTES, MAX_REQUEST_BYTES, MAX_PAYLOAD_BYTES, read_payload, write_payload
         from backtest.runtime import backtest_control as backtest_control
         from backtest.runtime import cache_access as cache_access
-        from backtest.engines.numerical import transfer as numerical_transfer
+        from backtest.application import evidence_transfer as numerical_transfer
         from backtest.runtime.process_owner import close_own_session
         stop,shutdown,ack,exited = Event(),Event(),Event(),Event()
         commands = Queue(maxsize=1)

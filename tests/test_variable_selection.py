@@ -236,27 +236,18 @@ class VariableSelectionTests(unittest.TestCase):
             self.error('STALE_INPUT_GENERATION',s.evaluate,plan,view)
 
 
-class GenerationSelectionTests(unittest.TestCase):
-    def test_real_generation_complete_population_and_legacy_buffer_cannot_expand(self):
-        fixture=fixtures.GenerationAdmissionTests('test_complete_population_buffer_order_and_uncached_names_survive_generation')
+class PopulationAdmissionSelectionTests(unittest.TestCase):
+    def test_complete_population_and_legacy_buffer_cannot_expand(self):
+        fixture=fixtures.PopulationAdmissionTests('test_complete_population_buffer_order_and_uncached_names')
         fixture.setUp();self.addCleanup(fixture.doCleanups)
-        db=fixture.db
-        for index in range(260):
-            symbol=f'Z{index:03d}'
-            db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
-            db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',150e6,180e6,162e6,.9))
-            if index>=10:
-                db.executemany('INSERT INTO prices VALUES(?,?,?,?)',[(symbol,day,10.,10.) for day in ('2014-06-30','2015-01-02')])
-        db.commit();fixture.fixture.fixture.prepare()
+        fixture.add_population()
         roots=[dict(symbol=symbol,pool=pool,mode='historical',date='2015-01-02') for symbol,pool in [('Z249','legacy'),('Z250','legacy'),('Z005','legacy'),('Z250','cached')]]
         program=expressions.program(language.constant('5'))
-        with fixture.fixture.fixture.store.open_current() as attachment:
-            with attachment.observations() as inputs:
-                block=s.evaluate(s.plan(program,roots,specification(program)),inputs)
-                values=block.to_dict()
-                self.assertEqual([[row['symbol'] for row in scope['selected']] for scope in values['scopes']],[['Z249'],['Z250']])
-                self.assertEqual(values['scopes'][0]['selected'][0]['candidate_rank'],250)
-                self.assertEqual([row['reason'] for row in values['evaluation']['observations']['roots']],[None,'OUTSIDE_LEGACY_BUFFER','MISSING_CACHED_PRICES',None])
+        block=s.evaluate(s.plan(program,roots,specification(program)),fixture.view())
+        values=block.to_dict()
+        self.assertEqual([[row['symbol'] for row in scope['selected']] for scope in values['scopes']],[['Z249'],['Z250']])
+        self.assertEqual(values['scopes'][0]['selected'][0]['candidate_rank'],250)
+        self.assertEqual([row['reason'] for row in values['evaluation']['observations']['roots']],[None,'OUTSIDE_LEGACY_BUFFER','MISSING_CACHED_PRICES',None])
         self.assertEqual(block.to_dict(),json.loads(block.to_json()))
 
 

@@ -16,7 +16,17 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import result_evidence as result_evidence
-from test_trial_checkpoints import completed
+from backtest import portfolio_results
+from datetime import date
+
+
+def completed(spy=.2):
+    """One complete fictional trial result with a single empty period."""
+    result=portfolio_results.evaluate([(date(2015,1,2),date(2016,1,4))],
+        lambda entry,exit_day:dict(entry=str(entry),exit=str(exit_day),holdings=[],spy=spy),
+        common_start=date(2015,1,1))
+    result.update(months=12,options={},seconds=.1)
+    return result
 
 
 class WorkspaceTests(unittest.TestCase):

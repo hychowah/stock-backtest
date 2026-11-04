@@ -318,10 +318,10 @@ class CaptureTests(unittest.TestCase):
         self.assertEqual(len(library.require_capture(capture)['presentation']), 32)
         self.assertLess(len(capture.to_json()), library.CAPTURE_BYTES)
 
-    def test_actual_generation_evaluation_and_selection_remain_detached(self):
+    def test_actual_daily_evaluation_and_selection_remain_detached(self):
         import test_observations as fixtures
         from test_variable_selection import specification
-        fixture = fixtures.GenerationAdmissionTests('test_complete_population_buffer_order_and_uncached_names_survive_generation')
+        fixture = fixtures.PopulationAdmissionTests('test_complete_population_buffer_order_and_uncached_names')
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         symbol = 'CAPTURE'
@@ -331,17 +331,15 @@ class CaptureTests(unittest.TestCase):
         fixture.db.executemany('INSERT INTO prices VALUES(?,?,?,?)',
             [(symbol, day, 10., 10.) for day in ('2014-06-30', '2015-01-02')])
         fixture.db.commit()
-        fixture.fixture.fixture.prepare()
         ev = self.store.create('Captured EV', definition(dict(op='parameter', id='market.enterprise_value'), 'USD', 'usd'))
         capture = self.store.capture([root(ev)])
         requests = [dict(symbol=symbol, pool='legacy', mode='historical', date='2015-01-02')]
-        with fixture.fixture.fixture.store.open_current() as attachment:
-            with attachment.observations() as inputs:
-                formula = r.evaluate(r.plan(capture.program, requests), inputs)
-                selected = s.evaluate(s.plan(capture.program, requests,
-                    specification(capture.program)), inputs)
-                self.assertEqual(formula.to_dict()['results'][0]['value'], 180e6)
-                self.assertEqual(selected.to_dict()['scopes'][0]['selected'][0]['ranking_value'], 180e6)
+        inputs = fixture.view()
+        formula = r.evaluate(r.plan(capture.program, requests), inputs)
+        selected = s.evaluate(s.plan(capture.program, requests,
+            specification(capture.program)), inputs)
+        self.assertEqual(formula.to_dict()['results'][0]['value'], 180e6)
+        self.assertEqual(selected.to_dict()['scopes'][0]['selected'][0]['ranking_value'], 180e6)
         formula_text, selection_text, capture_text = formula.to_json(), selected.to_json(), capture.to_json()
         changed = self.store.edit(ev['variable_id'], 1, definition(constant('3', 'USD'), 'USD', 'usd'))
         self.store.delete(changed['variable_id'], changed['version'])

@@ -11,7 +11,7 @@ import tempfile
 import uuid
 import hashlib
 
-from backtest.engines.numerical import transfer as transfer
+from backtest.application import evidence_transfer as transfer
 from backtest import result_evidence as result_evidence
 
 

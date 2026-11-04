@@ -8,7 +8,6 @@ The application runner uses the ordinary pinned Selectable and Candidate lifetim
 from collections import defaultdict
 from contextlib import ExitStack
 from copy import deepcopy
-from datetime import date, timedelta
 import hashlib
 import io
 import json
@@ -23,13 +22,12 @@ from unittest.mock import Mock, patch
 
 from backtest import result_evidence
 from backtest.application import calculations, strategy_requests
-from backtest.inputs import daily, financial_inputs, research
-from backtest.financial import rules
-from backtest.engines.reference import legacy
+from backtest.inputs import daily, research
 from backtest.variables import definitions
 from backtest.runtime.process_owner import process_metrics
 from backtest.runtime import backtest_control
 from numerical_scalar_fixture import Inputs
+from prepared_inputs_fixture import history
 from test_numerical_scalar_process import ScalarCandidateTests
 import test_strategy_requests as intent
 import test_variable_definitions as language
@@ -59,59 +57,6 @@ def program(*, shared=True):
         intent.condition(intent.formula(revenue),'0','usd_million')],rank_to=20)
     value['pool']='cached'
     return strategy_requests.capture_strategy(value,submitted=[base,signal,change,revenue])
-
-
-def history(companies, first, last):
-    """Configure existing real preparation with deterministic fictional assets."""
-    def configure(inputs):
-        raw = research.RAW
-        start, through = date(first,1,2), date(last,10,20)
-        sessions=[]; day=start
-        while day<=through:
-            if day.weekday()<5:sessions.append(day)
-            day+=timedelta(days=1)
-        through=sessions[-1]
-        symbols=[f'Q{i:04d}' for i in range(companies)]
-        (raw/'universe.json').write_text(json.dumps([dict(symbol=symbol,name='Fictional '+symbol,
-            exchange='NYSE',sector='Technology' if i%2 else 'Energy',listed=True)
-            for i,symbol in enumerate(symbols)]))
-        earlier=[];day=date(first-2,1,1)
-        while day<start:
-            if day.weekday()<5:earlier.append(day)
-            day+=timedelta(days=1)
-        prices=sorted(set(sessions+earlier+[date(year,6,30) for year in range(first-5,last+1)]))
-        # Each saved fiscal date is explicit. All returns and provider values
-        # use these same dividend-adjusted prices; no external data is read.
-        for path in (raw/'px').glob('*.json'):path.unlink()
-        with (raw/'metrics.jsonl').open('w') as metrics:
-            for i,symbol in enumerate(symbols):
-                metrics.write(json.dumps(dict(symbol=symbol,rows=[dict(date=f'{year}-06-30',
-                    marketCap=120e6+i*1e5,enterpriseValue=180e6+i*1e5,
-                    evToEBITDA=5+i/10000,reportedCurrency='USD')
-                    for year in range(first-5,last+1)]))+'\n')
-                (raw/'px'/f'{symbol}.json').write_text(json.dumps(dict(div=[dict(date=str(day),
-                    adjClose=20.+(day-date(first,1,1)).days*.0005+i*.0001)
-                    for day in prices])))
-                rows=[]
-                for year in range(first-5,last+1):
-                    revenue=100e6+(year-first)*1e6+(i%29)*1e5
-                    operating=(-2e6 if i%17==0 else 20e6)+(year-first)*1e5+(i%13)*1e4
-                    rows.append(dict(date=f'{year}-06-30',reportedCurrency='USD',
-                        revenue=None if i%23==0 else revenue,operatingIncome=operating))
-                financial_inputs.publish(raw,symbol,'income-statement',rows,{},raw/'coverage.json')
-        (raw/'spy-div.json').write_text(json.dumps([dict(date=str(day),
-            adjClose=100.+(day-start).days*.005) for day in sessions]))
-        (raw/'treasury.json').write_text(json.dumps([dict(date=str(day),month3=2.,year10=3.) for day in sessions]))
-        (research.RESULTS/'summary-exits.txt').write_text('Through '+str(through)+'\n')
-        research.signature.return_value=dict(fixture='private-scalar-qualification',historical_through=str(through))
-        # The established preparation fixture substitutes its canonical report
-        # verifier. This scenario keeps that substitution explicit and compares
-        # full independently executed Original/numerical artifacts afterwards.
-        research.verify_reference.side_effect=lambda db:research.prepared_baseline(db)
-        for owner in (rules,legacy):
-            inputs.context.enter_context(patch.object(owner,'FIRST_YEAR',first))
-            inputs.context.enter_context(patch.object(owner,'LAST_YEAR',last))
-    return configure
 
 
 class Scenario(unittest.TestCase):

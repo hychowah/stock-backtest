@@ -12,6 +12,19 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
+from native_browser_fixture import NativeBrowser
+
+
+class WorkflowBrowser(NativeBrowser):
+    def wait(self,expression):
+        # Polling jobs produce routine network events. Retain events only around
+        # downloads; the workflow asserts application results instead of headers.
+        deadline=time.monotonic()+120
+        while True:
+            if self.evaluate('Boolean('+expression+')'):return
+            self.clear_events()
+            if time.monotonic()>deadline:raise TimeoutError('Candidate workflow wait expired.')
+            time.sleep(.05)
 
 
 class CandidateService:

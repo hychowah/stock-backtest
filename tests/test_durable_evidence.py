@@ -367,51 +367,6 @@ class DurableTests(unittest.TestCase):
         self.queue.finish_evidence(req['id'],meta,reader)
         with self.queue.open_evidence(req['id']) as opened:self.assertEqual(opened.metadata,meta)
 
-    def test_real_fictional_input_generation_replacement_and_checkpoint_eviction(self):
-        import test_numerical_trials as trials
-        from numerical_inputs_fixture import NumericInputs
-        from backtest.engines.numerical.numba import NumbaExecutor
-        from backtest.engines.numerical.portfolio import NumericalPortfolio
-        from backtest.engines.numerical.portfolio import compare_results
-        fixture=trials.NumericalTrialsTests('test_full_month_pool_metric_filter_rank_matrix_and_exact_recovery')
-        fixture.setUp();self.addCleanup(fixture.doCleanups)
-        inputs,provider,portfolio,checkpoints=fixture.evaluator('source')
-        config=fixture.config(months=12,rank_to=3);binding=trials.diagnostic.checkpoint_binding(portfolio,config)
-        experiment=checkpoints.open(binding);details=[]
-        result=trials.diagnostic.run(portfolio,config,experiment,capture=lambda n,r:details.append(r))['result']
-        options=dict(start=config['start'],end=config['end'],months=config['months'],trials=config['requested'],seed=config['seed'],**config['options'])
-        stream=io.BytesIO();writer=result_evidence.Writer(stream,trials=config['requested'],
-            metadata=dict(mode='random',options=options,configuration=config,generation=inputs.signature,source=binding['implementation']),max_bytes=LIMIT)
-        for n,trial in enumerate(details,1):
-            writer.start_trial(n)
-            for period in trial['periods']:writer.period(period)
-            writer.end_trial({k:v for k,v in trial.items() if k!='periods'})
-        writer.finish(result);reader=result_evidence.Reader(stream,max_bytes=LIMIT)
-        meta=dict(version=3,kind='random',settings=dict(mode='random',**options),result=result,
-            catalog={'metrics':{},'filters':{}},presentation={'original':'saved labels'})
-        record=self.library.save_evidence('generation bound original',meta,reader);req=self.completed_queue(reader,meta)
-        with fixture.db:fixture.db.execute("UPDATE prices SET adjusted=adjusted*1.1 WHERE day>='2016-01-04'")
-        replacement=NumericInputs(fixture.reader,trials.s);self.addCleanup(replacement.close)
-        self.assertNotEqual(replacement.signature,inputs.signature)
-        new_provider=NumbaExecutor(replacement,limits=deepcopy(provider.limits));self.addCleanup(new_provider.close)
-        new_portfolio=NumericalPortfolio(replacement,new_provider);self.addCleanup(new_portfolio.close)
-        new_binding=trials.diagnostic.checkpoint_binding(new_portfolio,config);checkpoints.max_experiments=1
-        changed=trials.diagnostic.run(new_portfolio,config,checkpoints.open(new_binding))['result']
-        self.assertNotEqual(result['distributions'],changed['distributions']);self.assertEqual(experiment.read(),[])
-        with ExitStack() as guards:
-            for owner,name in ((trials.diagnostic,'run'),(trials.diagnostic,'run_into'),(trials.s,'backtest'),
-                    (trials.s,'backtest_dates'),(backtest_jobs.Original,'calculate'),(trials.trial_checkpoints.Experiment,'load'),
-                    (trials.trial_checkpoints.Store,'open')):
-                guards.enter_context(patch.object(owner,name,side_effect=AssertionError('Stored evidence must not calculate')))
-            for store,identifier in ((saved.Store(self.library.path),record['id']),(queue.Store(self.queue.path),req['id'])):
-                with store.open_evidence(identifier) as opened:
-                    actual=codec.collect(opened.reader)
-                    self.assertEqual(actual,details)
-                    for original,copy in zip(details,actual,strict=True):
-                        self.assertTrue(compare_results(original,copy)['exact'])
-                    self.assertEqual(opened.metadata,meta)
-                    self.assertEqual(opened.reader.metadata['generation'],inputs.signature)
-
     def test_independent_process_copies_respect_atomic_cap_without_eviction(self):
         for _ in range(98):self.library.save('legacy',legacy_snapshot())
         reader,meta,_=source();path=self.root/'source';path.write_bytes(reader.stream.getvalue())

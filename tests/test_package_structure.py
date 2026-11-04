@@ -1,6 +1,7 @@
-"""Package boundaries, query-free validation and source closure contracts."""
+"""Package boundaries, query-free validation and the frozen-code boundary."""
 from copy import deepcopy
-import importlib
+import ast
+import importlib.util
 import inspect
 from pathlib import Path
 import sqlite3
@@ -17,7 +18,10 @@ from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 from backtest.financial import metrics
-from backtest.engines.numerical.random import _source_closure, source_identity
+
+# Frozen experimental-engine source (AGENTS.md, Tests). Live tests never import it.
+FROZEN_SOURCE=('backtest.engines.numerical','backtest.application.calculations',
+               'backtest.application.candidate_calculations','backtest.application.preparation')
 
 
 class PackageTests(unittest.TestCase):
@@ -44,45 +48,6 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Every catalog'):
                 research.prepare_metrics(NoDatabase())
 
-    def test_package_relative_closure_includes_initializers_without_execution(self):
-        with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder)
-            files={'entry.py':'from localpkg import branch\n',
-                   'localpkg/__init__.py':"raise RuntimeError('must never execute')\n",
-                   'localpkg/branch.py':'from . import policy\nfrom .nested.leaf import VALUE\n',
-                   'localpkg/policy.py':'VALUE=1\n',
-                   'localpkg/nested/__init__.py':'from .. import policy\n',
-                   'localpkg/nested/leaf.py':'from ..policy import VALUE\n'}
-            for name,content in files.items():
-                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
-            before=_source_closure(root,['entry.py'])
-            self.assertEqual(set(before),set(files))
-            path=root/'localpkg/policy.py';path.write_text('VALUE=2\n')
-            after=_source_closure(root,['entry.py'])
-            self.assertNotEqual(before,after)
-            self.assertEqual([k for k in before if before[k]!=after[k]],['localpkg/policy.py'])
-
-    def test_current_identity_keeps_new_and_conservative_source_coverage(self):
-        sources=source_identity()
-        self.assertTrue({'backtest/__init__.py','backtest/financial/__init__.py',
-            'backtest/financial/rules.py','backtest/financial/books.py','backtest/financial/metrics.py',
-            'backtest/screening.py','backtest/calendar.py','backtest/calendar_requests.py',
-            'backtest/portfolio_results.py','backtest/inputs/research.py','backtest/engines/reference/legacy.py','backtest/engines/reference/revalue.py',
-            'backtest/engines/numerical/policy.py','backtest/runtime/cache_access.py','website/runtime_access.py'}<=sources.keys())
-        self.assertTrue(all('\\' not in name and not name.startswith('/') for name in sources))
-        with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder);(root/'website').mkdir()
-            owner=root/'website/runtime_access.py'
-            owner.write_bytes((ROOT/'website/runtime_access.py').read_bytes())
-            entry=root/'entry.py'
-            entry.write_text('import importlib.util\n')
-            before=_source_closure(root,['entry.py','website/runtime_access.py'])
-            owner.write_bytes(owner.read_bytes()+b'\n# private ownership mutation\n')
-            after=_source_closure(root,['entry.py','website/runtime_access.py'])
-            self.assertEqual(set(before),set(after))
-            self.assertEqual(before['entry.py'],after['entry.py'])
-            self.assertNotEqual(before['website/runtime_access.py'],after['website/runtime_access.py'])
-
     def test_private_source_fixture_contains_nested_financial_package(self):
         from source_service_fixture import FictionalWorkspace
         with FictionalWorkspace() as fixture:
@@ -97,11 +62,50 @@ from pathlib import Path
 root=Path(sys.argv[1])
 sys.path[:0]=[str(root/'tests'),str(root)]
 from source_service_fixture import dependency_guard
-import candidate_preparation_fixture, candidate_service_fixture, numerical_profile_fixture
+import candidate_service_fixture
 assert not any(name=='backtest' or name.startswith('backtest.') for name in sys.modules)
 """
         result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_live_tests_never_import_frozen_code(self):
+        """A live test entry and every test module it reaches, at any import
+        level, import no frozen source and no file that tests/run.py FROZEN names."""
+        spec=importlib.util.spec_from_file_location('tier_table',ROOT/'tests'/'run.py')
+        runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
+        tests=ROOT/'tests'
+        frozen_tests={name.removesuffix('.py') for name in runner.FROZEN}
+        def frozen(module):
+            return module in frozen_tests or any(module==name or module.startswith(name+'.') for name in FROZEN_SOURCE)
+        def imports(name):
+            """Yield each imported module with the names its statement binds."""
+            for node in ast.walk(ast.parse((tests/(name+'.py')).read_text(encoding='utf-8'))):
+                if isinstance(node,ast.Import):
+                    for alias in node.names:yield alias.name,[]
+                elif isinstance(node,ast.ImportFrom) and node.module and not node.level:
+                    yield node.module,[node.module+'.'+alias.name for alias in node.names]
+        problems=[]
+        for path in sorted(tests.glob('test_*.py')):
+            if path.name in runner.FROZEN|runner.NOT_ENTRIES:continue
+            pending,seen=[[path.stem]],set()
+            while pending:
+                chain=pending.pop()
+                if chain[-1] in seen:continue
+                seen.add(chain[-1])
+                for module,names in imports(chain[-1]):
+                    found=[name for name in [module,*names] if frozen(name)]
+                    if found:problems.append(' > '.join(chain+[found[0]]))
+                    elif (tests/(module+'.py')).is_file():pending.append(chain+[module])
+        self.assertEqual(problems,[])
+
+    def test_canonical_storage_has_no_original_engine_dependency(self):
+        for path in (ROOT/'backtest/inputs').glob('*.py'):
+            tree=ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node,ast.ImportFrom):
+                    self.assertFalse((node.module or '').startswith(('scripts','tools','website','backtest.engines.original')),path)
+        for path in (ROOT/'backtest').rglob('__init__.py'):
+            self.assertTrue(all(isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) for n in ast.parse(path.read_text(encoding="utf-8")).body),path)
 
     def test_core_imports_do_not_load_command_or_optional_modules(self):
         code="""

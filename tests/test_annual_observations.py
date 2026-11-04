@@ -19,7 +19,6 @@ from backtest import observations as provider
 from backtest.application import variable_authoring
 from backtest.inputs import financial_inputs as financial, observation_inputs as source
 from backtest.inputs import daily, research, sqlite_observations
-from backtest.engines.numerical import generation
 from backtest.variables import parameters
 from test_parameter_contract import ORACLE as DIRECT_ORACLE
 ORACLE = {endpoint: dict(fields) for endpoint, fields in DIRECT_ORACLE.items()
@@ -319,52 +318,36 @@ class AnnualTransportTests(unittest.TestCase):
             financial.asset_path(research.RAW,'TEST',endpoint).unlink(missing_ok=True)
             financial.publish(research.RAW,'TEST',endpoint,rows,{},research.RAW/'coverage.json')
 
-    def test_actual_research_daily_sqlite_and_generation_share_all_endpoint_facts(self):
+    def test_actual_research_and_daily_sqlite_share_all_endpoint_facts(self):
         self.fixture.prepare()
-        ordinary_daily, ordinary_research = daily.connect, research.connect
-        store = generation.GenerationStore(self.fixture.source.parent/'annual-numerical',
-            generation.cache_access.WorkspaceAccess(self.fixture.source.parent/'annual.lock'))
-        with patch.object(daily,'connect',side_effect=lambda: ordinary_daily(self.fixture.path,self.fixture.source)), \
-             patch.object(research,'connect',side_effect=lambda path=self.fixture.source,**kw: ordinary_research(path,**kw)):
-            receipt = store.prepare()
-            with closing(ordinary_research(self.fixture.source)) as original, \
-                 closing(ordinary_daily(self.fixture.path,self.fixture.source)) as copied, \
-                 store.open_current() as attachment:
-                with sqlite_observations.prepared_view(copied,lambda:None) as sqlview, attachment.observations() as numview:
-                    self.assertEqual(source.require(original,verify_content=True)['version'],4)
-                    self.assertEqual(sqlview.company('TEST','cached'),numview.company('TEST','cached'))
-                    facts = numview.company('TEST','cached')
-                    for endpoint, fields in ORACLE.items():
-                        for field in fields:
-                            self.assertEqual(facts['annual'][endpoint]['2014-06-30'][field]['value'],self.rows[endpoint][0][field])
-                    for table in source.TABLES:
-                        self.assertEqual([tuple(row) for row in original.execute('SELECT * FROM '+table)],
-                                         [tuple(row) for row in attachment._db.execute('SELECT * FROM '+table)])
-                    contexts = [dict(id='root',kind='root',symbol='TEST',pool='cached',mode='historical',date='2015-01-02'),
-                                dict(id='latest',kind='root',symbol='TEST',pool='cached',mode='latest',date='2015-10-20')]
-                    requests = [dict(id=f'{context}:{identity}',parameter=identity,context=context,count=1)
-                        for context in ('root','latest') for fields in ORACLE.values() for identity in fields.values()]
-                    planned = provider.plan(requests,contexts)
-                    sqlresults = provider.observe(planned,sqlview).to_dict()
-                    numresults = provider.observe(planned,numview).to_dict()
-                    self.assertEqual(sqlresults['results'],numresults['results'])
-                    self.assertTrue(all(result['valid'] for result in numresults['results']))
-                    self.assertEqual(numview.identity,receipt['identity'])
-                    from backtest.variables import definitions, measures, reference
-                    program = definitions.validate(measures.bundle(['ev_ebitda','ebitda_yield']))
-                    root = dict(symbol='TEST',pool='cached',mode='historical',date='2015-01-02')
-                    plan = reference.plan(program, [root])
-                    sqlresult = reference.evaluate(plan, sqlview).to_dict()['results']
-                    numresult = reference.evaluate(plan, numview).to_dict()['results']
-                    self.assertEqual(sqlresult, numresult)
-                    stored = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='historical' AND pool='cached' AND year=2015 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
-                    self.assertEqual([item['value'] for item in sqlresult], list(stored))
-                    detached = source.encoded(facts)
-                attachment.close()
-                with self.assertRaisesRegex(ValueError,'closed'): numview.company('TEST','cached')
-                self.assertEqual(source.encoded(facts),detached)
+        with closing(research.connect(self.fixture.source)) as original, \
+             closing(daily.connect(self.fixture.path,self.fixture.source)) as copied:
+            with sqlite_observations.prepared_view(copied,lambda:None) as sqlview:
+                self.assertEqual(source.require(original,verify_content=True)['version'],4)
+                facts = sqlview.company('TEST','cached')
+                for endpoint, fields in ORACLE.items():
+                    for field in fields:
+                        self.assertEqual(facts['annual'][endpoint]['2014-06-30'][field]['value'],self.rows[endpoint][0][field])
+                for table in source.TABLES:
+                    self.assertEqual([tuple(row) for row in original.execute('SELECT * FROM '+table)],
+                                     [tuple(row) for row in copied.execute('SELECT * FROM '+table)])
+                contexts = [dict(id='root',kind='root',symbol='TEST',pool='cached',mode='historical',date='2015-01-02'),
+                            dict(id='latest',kind='root',symbol='TEST',pool='cached',mode='latest',date='2015-10-20')]
+                requests = [dict(id=f'{context}:{identity}',parameter=identity,context=context,count=1)
+                    for context in ('root','latest') for fields in ORACLE.values() for identity in fields.values()]
+                sqlresults = provider.observe(provider.plan(requests,contexts),sqlview).to_dict()
+                self.assertTrue(all(result['valid'] for result in sqlresults['results']))
+                from backtest.variables import definitions, measures, reference
+                program = definitions.validate(measures.bundle(['ev_ebitda','ebitda_yield']))
+                root = dict(symbol='TEST',pool='cached',mode='historical',date='2015-01-02')
+                sqlresult = reference.evaluate(reference.plan(program, [root]), sqlview).to_dict()['results']
+                stored = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='historical' AND pool='cached' AND year=2015 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
+                self.assertEqual([item['value'] for item in sqlresult], list(stored))
+                detached = source.encoded(facts)
+            with self.assertRaisesRegex(ValueError,'closed'): sqlview.company('TEST','cached')
+            self.assertEqual(source.encoded(facts),detached)
 
-    def test_version_one_is_rejected_by_daily_copy_borrowing_and_numerical_preparation(self):
+    def test_version_one_is_rejected_by_daily_copy_and_borrowing(self):
         self.fixture.prepare()
         with closing(sqlite3.connect(self.fixture.path)) as db:
             db.execute("UPDATE observation_metadata SET value='1' WHERE key='version'");db.commit()
@@ -373,14 +356,6 @@ class AnnualTransportTests(unittest.TestCase):
             target = sqlite3.connect(':memory:'); self.addCleanup(target.close); target.executescript(source.SCHEMA)
             with self.assertRaisesRegex(ValueError,'incompatible'): source.copy(db,target)
             self.assertEqual(target.execute('SELECT count(*) FROM observation_annual').fetchone()[0],0)
-        ordinary_daily, ordinary_research = daily.connect, research.connect
-        store = generation.GenerationStore(self.fixture.source.parent/'old-projection',
-            generation.cache_access.WorkspaceAccess(self.fixture.source.parent/'old.lock'))
-        # A real numerical preparation rejects the mismatching daily evidence.
-        with patch.object(daily,'connect',side_effect=lambda: ordinary_daily(self.fixture.path,self.fixture.source)), \
-             patch.object(research,'connect',side_effect=lambda path=self.fixture.source,**kw: ordinary_research(path,**kw)):
-            with self.assertRaisesRegex(ValueError,'incompatible'): store.prepare()
-        self.assertFalse((store.path/'current.json').exists())
 
     def test_research_version_one_projection_blocks_downstream_fingerprints(self):
         self.fixture.prepare()

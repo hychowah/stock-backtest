@@ -1,10 +1,9 @@
-"""Private source-evidence, prepared-copy and borrowed-attachment contracts."""
+"""Private source-evidence and prepared-copy contracts."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 
 from contextlib import ExitStack, closing
-from datetime import date
 import hashlib
 import json
 import sqlite3
@@ -14,9 +13,7 @@ from unittest.mock import patch
 
 from backtest.inputs import financial_inputs as financial, observation_inputs as observed
 from backtest.inputs import daily, research
-from backtest.engines.numerical import generation
 import test_research as research_fixtures
-import test_numerical_generation as generation_fixtures
 
 
 class ResolutionTests(unittest.TestCase):
@@ -129,31 +126,6 @@ class ProjectionTests(unittest.TestCase):
                         self.assertFalse(admitted); self.assertEqual(evidence['reason'], reason)
                     self.assertEqual(db.execute('SELECT count(*) FROM latest_snapshots').fetchone()[0], 0)
 
-    def test_real_preparation_through_immutable_generation_and_pending_guard(self):
-        self.prepare()
-        ordinary_connect = daily.connect
-        ordinary_research_connect = research.connect
-        store = generation.GenerationStore(self.source.parent/'numerical',
-            generation.cache_access.WorkspaceAccess(self.source.parent/'fixture.lock'))
-        with patch.object(daily, 'connect', side_effect=lambda: ordinary_connect(self.path, self.source)), \
-             patch.object(research, 'connect', side_effect=lambda path=self.source, **kw: ordinary_research_connect(path, **kw)):
-            receipt = store.prepare()
-            with store.open_current() as attached:
-                with attached.observations() as view:
-                    self.assertEqual(view.identity, receipt['identity'])
-                    facts = view.company('TEST', 'legacy')
-                    self.assertTrue(facts['latest']['admitted'])
-                    self.assertEqual(facts['annual']['income-statement']['2013-06-30']['operatingIncome']['value'], -5e6)
-                    self.assertEqual(view.lookup('TEST', date(2015, 10, 20), 'adjusted', False, 0),
-                                     (date(2015, 10, 20), 22))
-            marker = self.source.parent/'research.sqlite.publication.json'
-            marker.write_text('{}')
-            try:
-                with self.assertRaisesRegex(ValueError, 'Unfinished publication'):
-                    store.open_current()
-            finally:
-                marker.unlink()
-
     def test_projection_source_and_content_tampering_fail_closed(self):
         self.prepare()
         with closing(sqlite3.connect(self.path)) as db:
@@ -202,94 +174,6 @@ class ProjectionTests(unittest.TestCase):
                 daily.prepare(self.path, self.source)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
-
-class AttachmentTests(unittest.TestCase):
-    def setUp(self):
-        self.fixture = generation_fixtures.GenerationTests('test_export_values_order_missingness_and_mutable_books_reuse')
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        self.db, self.binding = self.fixture.db, self.fixture.binding
-        with tempfile.TemporaryDirectory() as folder:
-            raw = Path(folder)
-            financial.publish(raw, 'A', 'income-statement', [
-                dict(date='2014-06-30', reportedCurrency='USD', revenue=100, operatingIncome=-5),
-                dict(date='2013-06-30', reportedCurrency='USD', revenue=None)], {}, raw/'coverage.json')
-            observed.store_annual(self.db, 'A', financial.resolve_history(raw, 'A'))
-        for pool in ('legacy', 'cached'):
-            observed.store_latest(self.db, 'A', pool, dict(admitted=True, root_date='2016-12-30'))
-        self.binding['observations'] = observed.finish(self.db, '2016-12-30')
-        self.db.commit()
-
-    def test_generation_copy_borrowed_view_detachment_prices_and_closure(self):
-        self.fixture.prepare()
-        attached = self.fixture.attach()
-        view = attached.observations()
-        self.addCleanup(view.close)
-        company = view.company('A', 'legacy')
-        self.assertEqual(company['annual']['income-statement']['2014-06-30']['operatingIncome']['value'], -5)
-        self.assertIn('2013-06-30', company['annual']['income-statement'])
-        for table in observed.TABLES:
-            self.assertEqual([tuple(row) for row in self.db.execute('SELECT * FROM '+table)],
-                             [tuple(row) for row in attached._db.execute('SELECT * FROM '+table)])
-        # Price lookup uses the identical stored series, date and tolerance.
-        for column in ('price', 'adjusted'):
-            for forward in (False, True):
-                for day in (date(2015, 1, 1), date(2015, 1, 2), date(2015, 1, 5)):
-                    self.assertEqual(view.lookup('A', day, column, forward, 4),
-                                     daily.price(self.db, 'A', day, column, forward, 4))
-        detached = observed.encoded(company)
-        view.close(); attached.close()
-        self.assertEqual(observed.encoded(company), detached)
-        with self.assertRaisesRegex(ValueError, 'closed'): view.validate()
-        with self.assertRaisesRegex(ValueError, 'closed'): view.company('A', 'legacy')
-
-    def test_missing_projection_stale_generation_and_closed_attachment_reject(self):
-        self.fixture.prepare(); attached = self.fixture.attach()
-        view = attached.observations(); self.addCleanup(view.close)
-        self.binding['prices'] = {'changed': True}
-        with self.assertRaisesRegex(ValueError, 'stale'): view.validate()
-        attached.close()
-        with self.assertRaisesRegex(ValueError, 'closed'): attached.observations()
-        self.db.execute('DELETE FROM observation_metadata'); self.db.commit()
-        self.binding.pop('observations'); self.fixture.prepare()
-        missing = self.fixture.attach()
-        with self.assertRaisesRegex(ValueError, 'no admitted'): missing.observations()
-
-    def test_export_cancellation_preserves_current_generation(self):
-        first = self.fixture.prepare()
-        self.binding['prices'] = {'changed': True}
-        calls = 0
-        def cancel():
-            nonlocal calls
-            calls += 1
-            if calls > 5: raise RuntimeError('fixture cancellation')
-        with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
-            self.fixture.store.prepare(checkpoint=cancel)
-        self.assertEqual(self.fixture.store._pointer()['current'], first['identity'])
-
-    def test_observation_record_byte_boundary_rejects_before_publication(self):
-        row = self.db.execute("SELECT * FROM observation_annual WHERE fiscal='2014-06-30'").fetchone()
-        size = sum(len(value.encode('utf-8')) for value in row)
-        # Valid JSON whitespace changes only its byte size, not its source facts.
-        boundary = row[-1] + ' ' * (generation.MAX_MANIFEST - size)
-        def replace(text):
-            self.db.execute("UPDATE observation_annual SET evidence_json=? WHERE fiscal='2014-06-30'", (text,))
-            self.db.execute('DELETE FROM observation_metadata')
-            self.binding['observations'] = observed.finish(self.db, '2016-12-30')
-            self.db.commit()
-        replace(boundary)
-        first = self.fixture.prepare()
-        with self.fixture.store.open_current() as attached:
-            with attached.observations() as view:
-                self.assertEqual(view.company('A', 'legacy')['annual']['income-statement']['2014-06-30'], json.loads(row[-1]))
-        pointer = self.fixture.store._pointer()
-        replace(boundary + ' ')
-        with self.assertRaisesRegex(ValueError, 'observation record exceeds its byte bound'):
-            self.fixture.prepare()
-        self.assertEqual(self.fixture.store._pointer(), pointer)
-        self.assertEqual(pointer['current'], first['identity'])
-        self.assertEqual(list(self.fixture.store.path.glob('building-*')), [])
-        self.assertFalse((self.fixture.store.path/'publication.json').exists())
 
 
 if __name__ == '__main__':

@@ -1,8 +1,7 @@
-"""Unqualified semantics fail before Original, numerical or provider work."""
+"""Unqualified semantics fail before Original or provider work."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
-import hashlib
 import io
 import subprocess
 import unittest
@@ -11,26 +10,21 @@ from unittest.mock import Mock, patch
 from backtest import observations
 from backtest.variables import definitions as d, parameters, library, reference, selection
 from backtest.application import strategy_requests as s, scalar_execution, variable_authoring
-from backtest.application.calculations import Selectable
-from backtest.engines.numerical import formula_capabilities
+from backtest.application.original_calculations import Original
 from test_variable_definitions import definition, constant, entry, root, bundle
 from test_strategy_requests import intent, formula, condition
 from test_parameter_contract import expanded
 
 ROOTS=[dict(symbol='A',pool='cached',mode='historical',date='2015-01-02')]
-EXPANDED_QUALIFIED = 3 in formula_capabilities.capabilities()['definition_versions']
 
 
 def restrict_catalog_two(test):
-    """Model a recognized catalog which neither backend has qualified."""
+    """Model a recognized catalog which Original has not qualified."""
     @wraps(test)
     def run(*args, **kwargs):
         original = frozenset(item for item in selection.QUALIFIED_NAMESPACES
                              if item[1] != parameters.V2)
-        numerical = frozenset(item for item in formula_capabilities.QUALIFIED_NAMESPACES
-                              if item[1] != parameters.V2)
-        with patch.object(selection, 'QUALIFIED_NAMESPACES', original), \
-             patch.object(formula_capabilities, 'QUALIFIED_NAMESPACES', numerical):
+        with patch.object(selection, 'QUALIFIED_NAMESPACES', original):
             return test(*args, **kwargs)
     return run
 
@@ -55,7 +49,7 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaises(d.FormulaError) as caught:callback()
         self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
 
-    def test_every_v2_case_restores_and_obeys_both_backend_gates(self):
+    def test_every_v2_case_restores_and_obeys_the_original_gate(self):
         for entries in expanded_cases():
             with self.subTest(parameter=entries[0]['definition']['expression']):
                 captured=capture(entries)
@@ -65,32 +59,24 @@ class AdmissionTests(unittest.TestCase):
                 program=variable.program
                 self.assertEqual(d.require_program(program),program.to_dict())
                 reference.require_program(program)
-                for gate in (selection.require_program,formula_capabilities.require_program):
-                    if EXPANDED_QUALIFIED:self.assertEqual(gate(program),program.to_dict())
-                    else:self.error(lambda:gate(program))
-                for engine in ('original','experimental'):
-                    if EXPANDED_QUALIFIED:self.assertEqual(s.check_options(dict(strategy=captured.to_dict(),engine=engine)),captured.to_dict())
-                    else:self.error(lambda:s.check_options(dict(strategy=captured.to_dict(),engine=engine)))
+                self.assertEqual(selection.require_program(program),program.to_dict())
+                options=dict(strategy=captured.to_dict(),engine='original')
+                self.assertEqual(s.check_options(options),captured.to_dict())
 
     @restrict_catalog_two
-    def test_application_modes_reject_before_readiness_financial_or_compiler(self):
-        preparation=Mock();owner=Selectable(preparation)
-        self.addCleanup(owner.retire);self.addCleanup(owner.close)
-        with patch.object(owner,'ready_for',side_effect=AssertionError('No readiness')), \
-             patch.object(owner.original,'_financial',side_effect=AssertionError('No financial input')), \
-             patch.object(preparation,'_runtime',side_effect=AssertionError('No compiler/runtime')):
+    def test_application_modes_reject_before_readiness_or_financial_input(self):
+        owner=Original()
+        with patch.object(owner,'ready',side_effect=AssertionError('No readiness')), \
+             patch.object(owner,'_financial',side_effect=AssertionError('No financial input')):
             for entries in expanded_cases():
                 captured=capture(entries).to_dict()
-                for engine in ('original','experimental'):
-                    options=dict(strategy=captured,engine=engine)
-                    for mode in ('latest','january','custom','random'):
-                        self.error(lambda:owner.calculate_into(mode,options,io.BytesIO(),None,None))
-                        self.error(lambda:owner.calculate(mode,options,None,None))
-                    self.error(lambda:s.check_request(dict(kind='random',options=options)))
+                options=dict(strategy=captured,engine='original')
+                for mode in ('latest','january','custom','random'):
+                    self.error(lambda:owner.calculate_into(mode,options,io.BytesIO(),None,None))
+                    self.error(lambda:owner.calculate(mode,options,None,None))
+                self.error(lambda:s.check_request(dict(kind='random',options=options)))
                 self.error(lambda:owner.preview(captured,ROOTS))
-                self.error(lambda:owner.original.preview(captured,ROOTS))
-                self.error(lambda:owner.original.calculate_into('latest',dict(strategy=captured),io.BytesIO(),None,None))
-        preparation.status.assert_not_called();preparation._runtime.assert_not_called()
+                self.error(lambda:owner.calculate_into('latest',dict(strategy=captured),io.BytesIO(),None,None))
 
     @restrict_catalog_two
     def test_preview_and_chunk_planning_reject_before_shared_planner(self):
@@ -109,8 +95,7 @@ class AdmissionTests(unittest.TestCase):
             plan=reference.plan(program,ROOTS)
             inputs=Mock();inputs.validate.side_effect=AssertionError('Direct reference reached inputs')
             reference.require_program(program)
-            if EXPANDED_QUALIFIED:self.assertEqual(selection.require_program(program),program.to_dict())
-            else:self.error(lambda:selection.require_program(program))
+            self.assertEqual(selection.require_program(program),program.to_dict())
             inputs.validate.assert_not_called()
             with self.assertRaisesRegex(AssertionError,'Direct reference reached inputs'):
                 reference.evaluate(plan,inputs)
@@ -146,20 +131,6 @@ class AdmissionTests(unittest.TestCase):
                 scope.assert_not_called()
             sink.assert_not_called()
 
-    @restrict_catalog_two
-    def test_numerical_prepare_rejects_before_tape_kernel_or_input_construction(self):
-        from backtest.engines.numerical import formulas
-        for entries in (list(expanded_cases())[0],list(expanded_cases())[1],list(expanded_cases())[-1]):
-            program=d.validate(bundle(*entries,roots=[root(entries[0])]))
-            plan=reference.plan(program,ROOTS)
-            inputs=Mock();inputs.validate.side_effect=AssertionError('No inputs.validate')
-            with formulas.Evaluator() as evaluator, \
-                 patch.object(formulas,'_Tape',side_effect=AssertionError('No compiled tape')), \
-                 patch.object(evaluator,'_warm',side_effect=AssertionError('No compiler kernel')):
-                self.error(lambda:evaluator.evaluate(plan,inputs))
-                self.assertEqual(evaluator.stats['kernel_compilations'],0)
-            inputs.validate.assert_not_called()
-
     def test_new_provider_requests_distinguish_known_unsupported_from_unknown(self):
         contexts=[dict(id='r',kind='root',**ROOTS[0])]
         for item in parameters.catalog(parameters.V2):
@@ -187,10 +158,7 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(captured.to_dict()['selection']['conditions'][0]['threshold'],dict(value='125',unit='share'))
         self.assertEqual(s.require_strategy(captured),captured.to_dict())
 
-    def test_new_semantic_source_in_transitive_numerical_and_current_policy_identity(self):
-        from backtest.engines.numerical.random import source_identity
-        key='backtest/variables/parameters.py'
-        self.assertEqual(source_identity()[key],hashlib.sha256(Path(parameters.__file__).read_bytes()).hexdigest())
+    def test_new_semantic_source_changes_current_policy_identity(self):
         first=d.policy_fingerprint();provider=observations.policy_fingerprint()
         with patch.object(parameters,'policy_fingerprint',return_value='b'*64):
             self.assertNotEqual(d.policy_fingerprint(),first)
@@ -211,17 +179,13 @@ sys.meta_path.insert(0,Block())
 from test_parameter_admission import expanded_cases,capture
 from backtest.application import strategy_requests as s
 from backtest.variables import library,definitions as d,reference,selection
-qualified = sys.argv[1] == 'open'
 for entries in expanded_cases():
  c=capture(entries);s.require_strategy(c)
  program=library.VariableCapture(d.canonical(c.to_dict()['variables'])).program
  reference.require_program(program)
- try:selection.require_program(program)
- except d.FormulaError as e:
-  assert not qualified and e.code=='UNSUPPORTED_CAPABILITY'
- else:assert qualified
+ selection.require_program(program)
 '''
-        subprocess.run([sys.executable,'-B','-c',code,'open' if EXPANDED_QUALIFIED else 'closed'],cwd=Path(__file__).resolve().parent,
+        subprocess.run([sys.executable,'-B','-c',code],cwd=Path(__file__).resolve().parent,
                        env={**__import__('os').environ,'PYTHONPATH':str(Path(__file__).resolve().parents[1])},check=True)
 
 

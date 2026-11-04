@@ -15,8 +15,7 @@ from unittest.mock import patch
 
 from backtest import result_evidence, calendar_requests
 from backtest.application import original_calculations, jobs, queue, library as saved, strategy_requests as s, evidence_views
-from backtest.inputs import daily, research, sqlite_observations, observation_inputs
-from backtest.engines.numerical import generation
+from backtest.inputs import daily, research, observation_inputs
 from backtest.variables import definitions, reference
 from backtest.runtime import backtest_control
 from test_scalar_execution import Fixture
@@ -365,30 +364,6 @@ class ExecutionTests(unittest.TestCase):
         with self.assertRaises(backtest_control.Cancelled):
             with backtest_control.cancel_when(lambda:True):self.calc.calculate_into('custom',self.options(),io.BytesIO(),None,None)
         self.assertFalse(self.opened);self.assertFalse(self.financial)
-
-
-class AdapterParityTests(unittest.TestCase):
-    def test_sqlite_and_generation_provider_evidence_match(self):
-        import test_observation_inputs as fixtures
-        from backtest import observations
-        fixture=fixtures.ProjectionTests('test_real_preparation_through_immutable_generation_and_pending_guard')
-        fixture.setUp();self.addCleanup(fixture.doCleanups)
-        research.signature.return_value['historical_through']='2015-10-20'
-        fixture.prepare()
-        ordinary_connect=daily.connect;ordinary_research=research.connect
-        store=generation.GenerationStore(fixture.source.parent/'scalar-provider-parity',generation.cache_access.WorkspaceAccess(fixture.source.parent/'parity.lock'))
-        roots=[dict(id='r'+str(i),kind='root',symbol='TEST',pool='legacy',mode=mode,date=day) for i,(mode,day) in enumerate([('historical','2015-01-02'),('latest','2015-10-20')])]
-        plan=observations.plan([dict(id='o'+str(i),parameter='annual.revenue',context='r'+str(i),count=1) for i in range(2)],roots)
-        with patch.object(daily,'connect',side_effect=lambda:ordinary_connect(fixture.path,fixture.source)), patch.object(research,'connect',side_effect=lambda path=fixture.source,**kw:ordinary_research(path,**kw)):
-            store.prepare()
-            with store.open_current() as attached, closing(ordinary_connect(fixture.path,fixture.source)) as db:
-                expected=daily.fingerprint(fixture.source)
-                def fresh():self.assertEqual(daily.fingerprint(fixture.source),expected)
-                with attached.observations() as original, sqlite_observations.prepared_view(db,fresh) as current:
-                    before=observations.observe(plan,original).to_dict()
-                    after=observations.observe(plan,current).to_dict()
-                    before.pop('generation');after.pop('generation')
-                    self.assertEqual(before,after)
 
 
 if __name__=='__main__':unittest.main()

@@ -146,6 +146,20 @@ class OwnerExtractionTests(unittest.TestCase):
         missing = bridge.dated(inputs, root, context, anchor, lambda: None, budget=1000000)
         self.assertEqual(missing['reason'], 'LEGACY_MEASURE_UNAVAILABLE')
 
+    def test_entry_valuation_needs_no_holding_or_exit_prices(self):
+        from datetime import date
+        from backtest.financial import books
+        statement=dict(fiscal=date(2014,6,30),market_cap=100e6,enterprise=150e6,**{'yield':.2})
+        calls=[]
+        def lookup(day,column,forward,slack):
+            calls.append((day,column,forward,slack))
+            self.assertEqual(column,'price')
+            return day,10. if day==statement['fiscal'] else 20.
+        fiscal,entry,cap,ev,ebitda=books.entry_valuation(statement,date(2015,1,2),lookup)
+        self.assertEqual((cap,ev,ebitda),(200e6,250e6,30e6))
+        self.assertEqual(calls,[(statement['fiscal'],'price',False,7),(date(2015,1,2),'price',True,4)])
+        self.assertEqual((fiscal,entry),((statement['fiscal'],10.),(date(2015,1,2),20.)))
+
 
 class PreparedTransportTests(unittest.TestCase):
     def test_preparation_context_matches_final_stored_lanes(self):

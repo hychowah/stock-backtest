@@ -5,6 +5,8 @@ import json
 import sqlite3
 from pathlib import Path
 import sys
+import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -328,5 +330,59 @@ class CoordinatorTests(unittest.TestCase):
                     random.run(self.workspace,config,experiment,execution=lambda:pool,binding=self.binding(config))
             self.assertTrue(pool.closed,pool.closure());self.assertEqual(pool.stats['reserved_slots'],0)
 
+
+
+class SourceIdentityTests(unittest.TestCase):
+    """Numerical source identity, moved from test_package_structure.py."""
+    def test_package_relative_closure_includes_initializers_without_execution(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            files={'entry.py':'from localpkg import branch\n',
+                   'localpkg/__init__.py':"raise RuntimeError('must never execute')\n",
+                   'localpkg/branch.py':'from . import policy\nfrom .nested.leaf import VALUE\n',
+                   'localpkg/policy.py':'VALUE=1\n',
+                   'localpkg/nested/__init__.py':'from .. import policy\n',
+                   'localpkg/nested/leaf.py':'from ..policy import VALUE\n'}
+            for name,content in files.items():
+                path=root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content)
+            before=random._source_closure(root,['entry.py'])
+            self.assertEqual(set(before),set(files))
+            path=root/'localpkg/policy.py';path.write_text('VALUE=2\n')
+            after=random._source_closure(root,['entry.py'])
+            self.assertNotEqual(before,after)
+            self.assertEqual([k for k in before if before[k]!=after[k]],['localpkg/policy.py'])
+
+    def test_current_identity_keeps_new_and_conservative_source_coverage(self):
+        sources=random.source_identity()
+        self.assertTrue({'backtest/__init__.py','backtest/financial/__init__.py',
+            'backtest/financial/rules.py','backtest/financial/books.py','backtest/financial/metrics.py',
+            'backtest/screening.py','backtest/calendar.py','backtest/calendar_requests.py',
+            'backtest/portfolio_results.py','backtest/inputs/research.py','backtest/engines/reference/legacy.py','backtest/engines/reference/revalue.py',
+            'backtest/engines/numerical/policy.py','backtest/runtime/cache_access.py','website/runtime_access.py'}<=sources.keys())
+        self.assertTrue(all('\\' not in name and not name.startswith('/') for name in sources))
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'website').mkdir()
+            owner=root/'website/runtime_access.py'
+            owner.write_bytes((ROOT/'website/runtime_access.py').read_bytes())
+            entry=root/'entry.py'
+            entry.write_text('import importlib.util\n')
+            before=random._source_closure(root,['entry.py','website/runtime_access.py'])
+            owner.write_bytes(owner.read_bytes()+b'\n# private ownership mutation\n')
+            after=random._source_closure(root,['entry.py','website/runtime_access.py'])
+            self.assertEqual(set(before),set(after))
+            self.assertEqual(before['entry.py'],after['entry.py'])
+            self.assertNotEqual(before['website/runtime_access.py'],after['website/runtime_access.py'])
+
+    def test_private_bootstrap_numerical_fixtures_do_not_load_backtest(self):
+        code="""
+import sys
+from pathlib import Path
+root=Path(sys.argv[1])
+sys.path[:0]=[str(root/'tests'),str(root)]
+import candidate_preparation_fixture, numerical_profile_fixture
+assert not any(name=='backtest' or name.startswith('backtest.') for name in sys.modules)
+"""
+        result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
 
 if __name__=='__main__':unittest.main()

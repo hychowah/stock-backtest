@@ -5,20 +5,14 @@ import json
 from unittest.mock import patch
 
 from backtest.inputs import daily, research, financial_inputs
-from backtest.runtime import cache_access
 from backtest.engines.numerical import generation
-import test_observation_inputs
+from prepared_inputs_fixture import PreparedInputs
 
 
-class Inputs:
+class Inputs(PreparedInputs):
+    """PreparedInputs plus one published numerical generation in `store`."""
     def __init__(self, *, configure=None):
-        self.context=ExitStack()
-        self.fixture=test_observation_inputs.ProjectionTests('test_real_preparation_through_immutable_generation_and_pending_guard')
-        try:
-            self.fixture.setUp()
-            self.context.callback(self.fixture.doCleanups)
-            self.root=self.fixture.source.parent.parent
-            research.signature.return_value['historical_through']='2015-10-20'
+        def configured(inputs):
             raw=research.RAW
             (raw/'spy-div.json').write_text(json.dumps([dict(date=day,adjClose=value) for day,value in [
                 ('2015-01-02',100),('2015-04-02',103),('2015-07-02',108),('2015-10-20',110)]]))
@@ -28,21 +22,13 @@ class Inputs:
             financial_inputs.publish(raw,'TEST','income-statement',[
                 dict(date=f'{year}-06-30',reportedCurrency='USD',revenue=100e6,operatingIncome=value)
                 for year,value in ((2012,10e6),(2013,-5e6),(2014,20e6))],{},raw/'coverage.json')
-            if configure is not None:configure(self)
-            self.fixture.prepare()
-            self.owner=cache_access.WorkspaceAccess(self.root/'scalar-fixture.lock')
-            ordinary_daily,ordinary_research=daily.connect,research.connect
-            self.context.enter_context(patch.object(cache_access,'workspace',self.owner))
-            self.context.enter_context(patch.object(daily,'connect',side_effect=lambda:ordinary_daily(self.fixture.path,self.fixture.source)))
-            self.context.enter_context(patch.object(research,'connect',side_effect=lambda path=self.fixture.source,**kw:ordinary_research(path,**kw)))
+            if configure is not None:configure(inputs)
+        super().__init__(configure=configured)
+        try:
             self.store=generation.GenerationStore(self.root/'scalar-numerical',self.owner)
             self.receipt=self.store.prepare()
         except BaseException:
             self.close();raise
-
-    def close(self):self.context.close()
-    def __enter__(self):return self
-    def __exit__(self,*unused):self.close()
 
 
 class WireSession(__import__('backtest.engines.numerical.session',fromlist=['Session']).Session):

@@ -67,39 +67,36 @@ renames and formatting changes in these areas.
 ## Tests
 
 `tests/run.py` runs each `tests/test_*.py` and `tests/check-*.cjs` file in its
-own process, except the files that `NOT_ENTRIES` names. `check-range.cjs` and
-`check_screener.py` still run after `website/build.py`. The fast tier is the
-default and runs eight files at a time. `--tier heavy` runs the files that
-`HEAVY` names, one at a time. `--tier all` runs both, one at a time. `--jobs`
-overrides the count. The `tests/run.py` docstring describes the isolation.
+own process. It skips the files that `FROZEN` and `NOT_ENTRIES` name.
+`check-range.cjs` and `check_screener.py` still run after `website/build.py`.
+The fast tier is the default and runs eight files at a time. `--tier heavy`
+runs the files that `HEAVY` names, one at a time. `--tier all` runs both, one
+at a time. `--jobs` overrides the count. The `tests/run.py` docstring
+describes the isolation. In WSL, every tier needs only `python3` and Node.js:
+`python3 tests/run.py`. On native Windows, the browser checks still need the
+numerical packages.
 
-The runner needs numpy and numba. Use the private environment in the main
-checkout: `tmp/numerical-venv/bin/python tests/run.py`. A linked worktree uses
-that interpreter by its absolute path. To create it, run
-`python3 -m venv tmp/numerical-venv` and
-`tmp/numerical-venv/bin/pip install -r requirements-numerical.txt`. This
-downloads packages, so ask the user first.
+`FROZEN` names the tests of the frozen experimental engine. No tier runs them.
+No live test file imports a frozen test or a frozen source module directly:
+`backtest/engines/numerical/`, `backtest/application/calculations.py`,
+`candidate_calculations.py` and `preparation.py`.
+`tests/test_package_structure.py` scans the imports of the test files. Live
+product code can still reach frozen source at runtime. Frozen tests need the
+numerical environment, `tmp/numerical-venv` in the main checkout. Run one
+directly only to unfreeze the engine. It can have drifted from live
+interfaces.
 
 - Before every commit, run the fast tier in the WSL source checkout. Do not
-  commit if it fails. It takes about two minutes. Give it a tool timeout of at
+  commit if it fails. It takes under a minute. Give it a tool timeout of at
   least 10 minutes.
-- Before integrating a branch into `main`, also run `--tier heavy` if the
-  branch changes `backtest/engines/numerical/`, `backtest/variables/`,
-  `backtest/application/calculations.py`, `candidate_calculations.py` or
-  `preparation.py`, `backtest/calendar_requests.py`,
-  `backtest/runtime/process_owner.py`, `backtest/inputs/observation_inputs.py`,
-  `dated_observation_inputs.py` or `sqlite_observations.py`,
-  `tools/experiments/parallel_comparison*.py`, `requirements-numerical.txt`, or
-  a `tests/` module that a heavy file imports, directly or through another test
-  module. Run it in the background. It takes about 85 minutes. While you work
-  in one of these areas, run the heavy files that cover it directly.
+- Before integrating a branch into `main`, also run `--tier heavy` when a
+  `HEAVY` file covers the change. Run it in the background.
 - A new test file is fast. Keep it under 60 seconds; the runner lists fast
   files that take longer. Adding a file to `HEAVY` needs the user's agreement.
-- To run one file, call it directly, for example
-  `tmp/numerical-venv/bin/python tests/test_queue.py` or
-  `node tests/check-queue.cjs`. A direct call uses the system temporary folder.
-  WSL `/tmp` is too small for some fixtures, so set `TMPDIR` to a disk folder
-  outside every checkout, such as `~/.cache/ebitda-ev-spread-tests`.
+- To run one file, call it directly, for example `python3 tests/test_queue.py`
+  or `node tests/check-queue.cjs`. A direct call uses the system temporary
+  folder. WSL `/tmp` is too small for some fixtures, so set `TMPDIR` to a disk
+  folder outside every checkout, such as `~/.cache/ebitda-ev-spread-tests`.
 
 ## Git in this environment
 
@@ -401,8 +398,8 @@ and checkpoints are never reused as current. No idle application child keeps
 financial ownership between calls. New results record `result.producer`; never
 infer a producer for older results. `backtest/calendar_requests.py` owns request
 and plan policy; preserve legacy planner hashes. Checks:
-`tests/test_website_engine_alignment.py` (heavy tier) and native
-`tests/test_selectable_browser.py`. See
+`tests/test_website_engine_alignment.py` and native
+`tests/test_selectable_browser.py`, both frozen (see Tests). See
 [docs/candidate-startup.md](docs/candidate-startup.md) and
 [docs/numerical-generations.md](docs/numerical-generations.md).
 

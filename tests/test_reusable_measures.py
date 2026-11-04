@@ -152,13 +152,6 @@ class InventoryExecution(unittest.TestCase):
                 bundle['roots'] = [lang.root(outer)]
                 plan = reference.plan(d.validate(bundle), [root])
                 block = reference.evaluate(plan, view).to_dict()
-                from backtest.engines.numerical import formula_capabilities
-                if 3 in formula_capabilities.capabilities()['definition_versions']:
-                    from backtest.engines.numerical import formulas
-                    from scalar_qualification import compare_blocks
-                    with formulas.Evaluator() as evaluator:
-                        numerical = evaluator.evaluate(plan, view).to_dict()
-                    compare_blocks([block], [numerical])
                 result = block['results'][0]
                 self.assertTrue(result['valid'], result)
                 self.assertEqual(result['value'], expected[key])
@@ -221,9 +214,8 @@ class InventoryExecution(unittest.TestCase):
 class CaptureAndAdmission(unittest.TestCase):
     def test_capture_restore_and_unused_gates_before_financial_access(self):
         import tempfile
-        from unittest.mock import Mock, patch
+        from unittest.mock import patch
         from backtest.variables import library, selection
-        from backtest.engines.numerical import formula_capabilities
         bundle = measures.bundle(['gross_margin'])
         with tempfile.TemporaryDirectory() as folder:
             store = library.Store(Path(folder) / 'private.sqlite')
@@ -237,28 +229,11 @@ class CaptureAndAdmission(unittest.TestCase):
         new = lang.entry(new_definition, 'new')
         for roots in ([lang.root(old)], [lang.root(new)]):
             program = d.validate(lang.bundle(old, new, roots=roots))
-            for gate in (selection.require_program, formula_capabilities.require_program):
-                if 3 in formula_capabilities.capabilities()['definition_versions']:
-                    self.assertEqual(gate(program), program.to_dict())
-                else:
-                    with self.assertRaises(d.FormulaError) as error:
-                        gate(program)
-                    self.assertEqual(error.exception.code, 'UNSUPPORTED_CAPABILITY')
-        from backtest.application import calculations, strategy_requests
+            self.assertEqual(selection.require_program(program), program.to_dict())
+        from backtest.application import strategy_requests
         import test_strategy_requests as requests
         capture = strategy_requests.capture_strategy(requests.intent(requests.formula(new)), submitted=[new]).to_dict()
-        preparation = Mock()
-        owner = calculations.Selectable(preparation)
-        self.addCleanup(owner.retire)
-        self.addCleanup(owner.close)
-        for engine in ('original','experimental'):
-            if 3 in formula_capabilities.capabilities()['definition_versions']:
-                self.assertEqual(strategy_requests.check_options(dict(strategy=capture,engine=engine)), capture)
-            else:
-                with self.assertRaises(d.FormulaError) as error:
-                    owner.calculate('latest', dict(strategy=capture, engine=engine), None, None)
-                self.assertEqual(error.exception.code, 'UNSUPPORTED_CAPABILITY')
-        self.assertEqual(preparation.mock_calls, [])
+        self.assertEqual(strategy_requests.check_options(dict(strategy=capture, engine='original')), capture)
 
     def test_broad_report_history_does_not_require_income_or_legacy_eligibility(self):
         from backtest import observations

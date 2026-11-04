@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 
-from contextlib import closing
 from datetime import date, timedelta
 import json
 import math
@@ -14,9 +13,9 @@ from unittest.mock import Mock, patch
 
 from backtest import observations as obs
 from backtest.financial import books, rules
-from backtest.inputs import observation_inputs as source, daily, research
-from backtest.engines.numerical import generation
-import test_observation_inputs as input_fixtures
+from backtest.inputs import financial_inputs as financial, observation_inputs as source, daily, sqlite_observations
+from numerical_fixture import SyntheticDailyFixture
+from prepared_inputs_fixture import PreparedInputs
 
 
 def statement(fiscal, *, earnings_yield=.3):
@@ -383,15 +382,36 @@ class ProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'closed'): obs.observe(plan, view)
 
 
-class GenerationAdmissionTests(unittest.TestCase):
-    def setUp(self):
-        self.fixture = input_fixtures.AttachmentTests('test_generation_copy_borrowed_view_detachment_prices_and_closure')
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        self.db, self.binding = self.fixture.db, self.fixture.binding
-        self.binding['daily'] = dict(inputs=dict(historical_through='2016-12-30'))
+class PopulationAdmissionTests(unittest.TestCase):
+    """The daily SQLite view admits a complete population with the legacy buffer.
 
-    def test_complete_population_buffer_order_and_uncached_names_survive_generation(self):
+    Callers add companies to `db` before they borrow `view()`.
+    """
+    def setUp(self):
+        self.daily = SyntheticDailyFixture()
+        self.daily.setUp()
+        self.addCleanup(self.daily.doCleanups)
+        self.db = self.daily.db
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder)
+            financial.publish(raw, 'A', 'income-statement', [
+                dict(date='2014-06-30', reportedCurrency='USD', revenue=100, operatingIncome=-5),
+                dict(date='2013-06-30', reportedCurrency='USD', revenue=None)], {}, raw/'coverage.json')
+            source.store_annual(self.db, 'A', financial.resolve_history(raw, 'A'))
+        for pool in ('legacy', 'cached'):
+            source.store_latest(self.db, 'A', pool, dict(admitted=True, root_date='2016-12-30'))
+        source.finish(self.db, '2016-12-30')
+        self.db.execute('INSERT INTO metadata VALUES(?,?)',
+                        ('daily_inputs', json.dumps(dict(inputs=dict(historical_through='2016-12-30')))))
+        self.db.commit()
+
+    def view(self):
+        view = sqlite_observations.prepared_view(self.db, lambda: None)
+        self.addCleanup(view.close)
+        return view
+
+    def add_population(self):
+        """Add 260 companies; Z000-Z009 have no cached prices."""
         for index in range(260):
             symbol = f'Z{index:03d}'
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)', (symbol, symbol, 'NYSE', 'Energy'))
@@ -401,50 +421,42 @@ class GenerationAdmissionTests(unittest.TestCase):
                 self.db.executemany('INSERT INTO prices VALUES(?,?,?,?)',
                     [(symbol, day, 10., 10.) for day in ('2014-06-30', '2015-01-02')])
         self.db.commit()
+
+    def test_complete_population_buffer_order_and_uncached_names(self):
+        self.add_population()
         expected_books = daily.histories(self.db)
         expected_selected, expected_ranks = books.candidates(expected_books, date(2015, 1, 2))
-        self.fixture.fixture.prepare()
-        with self.fixture.fixture.store.open_current() as attached, attached.observations() as view:
-            roots = [dict(id=symbol+pool, kind='root', symbol=symbol, pool=pool, mode='historical', date='2015-01-02')
-                     for symbol, pool in (('Z249', 'legacy'), ('Z250', 'legacy'), ('Z005', 'legacy'), ('Z250', 'cached'))]
-            requests = [dict(id=root['id'], parameter='market.enterprise_value', context=root['id'], count=1) for root in roots]
-            block = obs.observe(obs.plan(requests, roots), view).to_dict()
-            decisions = block['roots']
-            self.assertEqual([item['admitted'] for item in decisions], [True, False, False, True])
-            self.assertEqual(decisions[0]['candidate_rank'], expected_ranks['Z249'])
-            self.assertEqual(decisions[0]['candidate_rank'], 250)
-            self.assertEqual(decisions[1]['reason'], 'OUTSIDE_LEGACY_BUFFER')
-            self.assertEqual(decisions[2]['reason'], 'MISSING_CACHED_PRICES')
-            valuation = books.entry_valuation(expected_selected['legacy']['Z249'], date(2015, 1, 2),
-                lambda day, column, forward, slack: daily.price(self.db, 'Z249', day, column, forward, slack))
-            self.assertEqual(decisions[0]['valuation']['enterprise_value'], valuation[3])
-            # A request containing only the low-ranked cached name cannot promote it.
-            alone = obs.observe(obs.plan([requests[1]], [roots[1]]), view).to_dict()
-            self.assertFalse(alone['roots'][0]['admitted'])
+        view = self.view()
+        roots = [dict(id=symbol+pool, kind='root', symbol=symbol, pool=pool, mode='historical', date='2015-01-02')
+                 for symbol, pool in (('Z249', 'legacy'), ('Z250', 'legacy'), ('Z005', 'legacy'), ('Z250', 'cached'))]
+        requests = [dict(id=root['id'], parameter='market.enterprise_value', context=root['id'], count=1) for root in roots]
+        block = obs.observe(obs.plan(requests, roots), view).to_dict()
+        decisions = block['roots']
+        self.assertEqual([item['admitted'] for item in decisions], [True, False, False, True])
+        self.assertEqual(decisions[0]['candidate_rank'], expected_ranks['Z249'])
+        self.assertEqual(decisions[0]['candidate_rank'], 250)
+        self.assertEqual(decisions[1]['reason'], 'OUTSIDE_LEGACY_BUFFER')
+        self.assertEqual(decisions[2]['reason'], 'MISSING_CACHED_PRICES')
+        valuation = books.entry_valuation(expected_selected['legacy']['Z249'], date(2015, 1, 2),
+            lambda day, column, forward, slack: daily.price(self.db, 'Z249', day, column, forward, slack))
+        self.assertEqual(decisions[0]['valuation']['enterprise_value'], valuation[3])
+        # A request containing only the low-ranked cached name cannot promote it.
+        alone = obs.observe(obs.plan([requests[1]], [roots[1]]), view).to_dict()
+        self.assertFalse(alone['roots'][0]['admitted'])
+
 
 class CompleteChainTests(unittest.TestCase):
     def test_real_preparation_to_provider_example_detaches_without_future_returns(self):
-        fixture = input_fixtures.ProjectionTests('test_real_preparation_through_immutable_generation_and_pending_guard')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        research.signature.return_value['historical_through'] = '2015-10-20'
-        fixture.prepare()
-        connect, research_connect = daily.connect, research.connect
-        store = generation.GenerationStore(fixture.source.parent/'provider-numerical',
-            generation.cache_access.WorkspaceAccess(fixture.source.parent/'provider.lock'))
-        with patch.object(daily, 'connect', side_effect=lambda: connect(fixture.path, fixture.source)), \
-             patch.object(research, 'connect', side_effect=lambda path=fixture.source, **kw: research_connect(path, **kw)):
-            store.prepare()
-            with store.open_current() as attached, attached.observations() as view:
-                block = obs.example(view, symbol='TEST', pool='legacy', mode='latest', screen_date='2015-10-20')
-                values = block.to_dict()
-                self.assertEqual(values['results'][2]['members'][0]['value'], 270e6)
-                self.assertEqual(values['results'][1]['reason'], 'MISSING_INPUT')
-                historical = obs.example(view, symbol='TEST', pool='legacy', mode='historical', screen_date='2015-01-02')
-                self.assertTrue(historical.to_dict()['roots'][0]['admitted'])
-            text = block.to_json()
-            self.assertEqual(block.to_dict(), json.loads(text))
-            self.assertNotIn('return', text)
+        with PreparedInputs() as inputs, inputs.view() as view:
+            block = obs.example(view, symbol='TEST', pool='legacy', mode='latest', screen_date='2015-10-20')
+            values = block.to_dict()
+            self.assertEqual(values['results'][2]['members'][0]['value'], 270e6)
+            self.assertEqual(values['results'][1]['reason'], 'MISSING_INPUT')
+            historical = obs.example(view, symbol='TEST', pool='legacy', mode='historical', screen_date='2015-01-02')
+            self.assertTrue(historical.to_dict()['roots'][0]['admitted'])
+        text = block.to_json()
+        self.assertEqual(block.to_dict(), json.loads(text))
+        self.assertNotIn('return', text)
 
 
 if __name__ == '__main__':

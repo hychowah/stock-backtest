@@ -183,9 +183,9 @@ complete-result contracts and admission limits. The new operation has no capture
 parameter. Complete-trial observers still receive original complete trials.
 
 The child first writes one bounded readable spool. Sealed trial views remain
-available for checkpoint retention. After completion, `numerical_transfer` copies
-its exact bytes through one 64 KiB binary slot. Each transfer has a fresh identity,
-length and SHA-256. Each piece binds sequence, offset, length and hash. The parent
+available for checkpoint retention. After completion,
+`backtest/application/evidence_transfer.py` copies its exact bytes through one
+64 KiB binary slot. Each transfer has a fresh identity, length and SHA-256. Each piece binds sequence, offset, length and hash. The parent
 acknowledges that identity and sequence after a successful write and slot closure.
 The child waits before replacing the slot. Final acknowledgement follows exact
 saved-byte verification and complete codec validation. Missing, corrupt, duplicate,

@@ -14,7 +14,7 @@ import time
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics as diagnostics
 from backtest.application import temporary_evidence as job_evidence
-from backtest.engines.numerical import transfer as numerical_transfer
+from backtest.application import evidence_transfer
 from backtest.application import durable_evidence as durable_evidence
 from backtest.application import strategy_requests
 class Missing(ValueError):
@@ -83,7 +83,7 @@ class Jobs:
                 reference=existing.get('_plan_identity')
                 candidate=None
                 if limits is not None:
-                    candidate=numerical_transfer.plan_identity(planned) if planned is not None else None
+                    candidate=evidence_transfer.plan_identity(planned) if planned is not None else None
                 if (existing['mode']!=mode or existing['options']!=options
                         or bool(existing.get('_evidence'))!=(limits is not None)
                         or (reference!=candidate if limits is not None else existing.get('planned')!=planned)):

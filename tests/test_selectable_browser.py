@@ -10,8 +10,7 @@ import sys
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from candidate_browser_fixture import FictionalWorkspace,CandidateService
-from test_candidate_browser import WorkflowBrowser
+from candidate_browser_fixture import FictionalWorkspace,CandidateService,WorkflowBrowser
 from native_browser_fixture import BrowserStorage
 import sys as _root_sys
 from pathlib import Path as _RootPath

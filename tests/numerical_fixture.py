@@ -1,9 +1,10 @@
-"""Synthetic daily database and exact comparison helpers for numerical engine tests.
+"""Synthetic daily database and exact comparison helpers.
 
 The fixture writes a small `daily.SCHEMA` database with five companies, adjusted
 and raw prices, sessions, statements, financial inputs and Treasury yields. It
-uses only the standard library. Engine tests compare their books with the
-original schedules engine through `compare`.
+uses only the standard library. Live observation tests borrow its database.
+Frozen numerical engine tests compare their books with the original schedules
+engine through `compare`.
 """
 from pathlib import Path as _TestPath
 import sys as _test_sys

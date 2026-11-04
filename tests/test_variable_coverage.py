@@ -14,7 +14,8 @@ from backtest.variables import library
 from backtest.inputs import observation_inputs
 from backtest.runtime import backtest_control
 import json
-from scalar_qualification import Scenario
+from backtest.application.original_calculations import Original
+from prepared_inputs_fixture import PreparedInputs, history
 
 class CoverageTests(unittest.TestCase):
     def setUp(self):
@@ -107,8 +108,9 @@ class CoverageTests(unittest.TestCase):
                     db.execute('UPDATE observation_measure_contexts SET evidence_json=? WHERE mode=? AND pool=? AND context_date=? AND symbol=?',(observation_inputs.encoded(evidence),mode,pool,day,symbol))
             return finish(db,*args,**kwargs)
         with patch.object(observation_inputs,'finish',side_effect=adversarial):
-            with Scenario(companies=4,first=2015,last=2016) as scenario:
-                listing=scenario.selectable.coverage()
+            with PreparedInputs(configure=history(4,2015,2016)):
+                owner=Original()
+                listing=owner.coverage()
                 for mode in ('historical','latest'):
                     scope=next(x for x in listing['scopes'] if x['mode']==mode and x['pool']=='cached')
                     parameter=dict(op='parameter',id='owner.ev_ebitda')
@@ -118,7 +120,7 @@ class CoverageTests(unittest.TestCase):
                         definition=language.definition(expression);definition.update(version=3,parameter_catalog='financial-parameters/3')
                         entry=language.entry(definition,'coverage:owner');intent=requests.intent(requests.formula(entry));intent['pool']='cached'
                         capture=strategy_requests.capture_strategy(intent,submitted=[entry])
-                        result=scenario.selectable.coverage(capture.to_dict(),dict(scope,generation=listing['generation']))
+                        result=owner.coverage(capture.to_dict(),dict(scope,generation=listing['generation']))
                         self.assertEqual(result['population'],4)
                         self.assertEqual(result['outputs'][0]['unavailable'],expected,(mode,expression,result))
 

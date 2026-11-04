@@ -317,8 +317,7 @@ class StrategyTests(unittest.TestCase):
         captured = s.capture_strategy(intent()).to_dict()
         for key in ('metric', 'min_yield', 'filters', 'rank_from', 'pool', 'selection_order', 'variables'):
             self.error('INVALID_STRATEGY', s.check_options, dict(strategy=captured, **{key: None}))
-        self.error('INVALID_STRATEGY', s.check_options, dict(engine='experimental', strategy=None))
-        self.assertEqual(s.check_options(dict(engine='experimental',strategy=captured)),captured)
+        self.error('INVALID_STRATEGY', s.check_options, dict(engine='original', strategy=None))
         self.assertEqual(s.check_options(dict(engine='original', calendar={'unchanged': True}, strategy=captured)), captured)
 
     def test_legacy_options_and_requests_are_not_normalized_or_restricted(self):

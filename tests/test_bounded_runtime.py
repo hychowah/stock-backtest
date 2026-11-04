@@ -17,7 +17,7 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import backtest_control as backtest_control
 from backtest.application import jobs as backtest_jobs
 from backtest.engines.numerical import runtime as numerical_runtime
-from backtest.engines.numerical import transfer as numerical_transfer
+from backtest.application import evidence_transfer as numerical_transfer
 from backtest import result_evidence as result_evidence
 from backtest.engines.original import robustness as robustness
 from backtest.engines.numerical.portfolio import compare_results

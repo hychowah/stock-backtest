@@ -1,22 +1,21 @@
 """Run this repository's test files by tier, each file in its own process.
 
-    tmp/numerical-venv/bin/python tests/run.py [--tier fast|heavy|all] [--jobs N]
+    python3 tests/run.py [--tier fast|heavy|all] [--jobs N]
 
 Entries are tests/test_*.py and tests/check-*.cjs. An entry is fast unless the
-table below names it, so a new test file joins the everyday gate. The fast
+tables below name it, so a new test file joins the everyday gate. The fast
 tier (default) gates every commit; the heavy tier holds slow qualification
-workloads (AGENTS.md, Tests). The interpreter that runs this file runs every
-Python entry, so it must import numpy and numba.
+workloads. No tier runs the files that FROZEN names (AGENTS.md, Tests). The
+interpreter that runs this file runs every Python entry; .cjs entries need
+node.
 
 Each file runs in a new process group, with TMPDIR, TEMP and TMP set to a
 private run folder under ~/.cache/ebitda-ev-spread-tests/. That place is on
-disk and outside every checkout. Numerical source identities name files inside
-the checkout by relative path, so fixtures that write source into temp fail
-there. The private input copy needs more free space than a shared
-memory-backed /tmp can give. The run folder is removed when the run ends. A
-file that exceeds its tier's time cap is killed with its group and fails. The
-exit status is non-zero when any file fails or the run folder cannot be
-removed.
+disk and outside every checkout. The private input copy needs more free space
+than a shared memory-backed /tmp can give. The run folder is removed when the
+run ends. A file that exceeds its tier's time cap is killed with its group and
+fails. The exit status is non-zero when any file fails or the run folder cannot
+be removed.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -35,37 +34,72 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / 'tests'
 RUNS = Path.home() / '.cache' / 'ebitda-ev-spread-tests'
 
-# Tier table. Every discovered entry not named here is fast. A listed name
-# that does not exist, or a name in both sets, stops the run. Adding a name to
+# Tier tables. Every discovered entry not named here is fast. A listed name
+# that does not exist, or a name in two tables, stops the run. Adding a name to
 # HEAVY accepts a slow workload and needs the user's agreement.
-HEAVY = frozenset({
+HEAVY = frozenset()
+# Tests of the frozen experimental engine (AGENTS.md, Tests). No tier runs
+# them, and they need tmp/numerical-venv. No live test file imports one of
+# them or a frozen source module directly; tests/test_package_structure.py
+# scans the test files' imports. Run one directly when unfreezing; it may have
+# drifted from live interfaces.
+FROZEN = frozenset({
+    'check-checkpoint-snapshots.cjs',
     'test_bounded_runtime.py',
+    'test_bounded_trials.py',
+    'test_candidate_browser.py',
     'test_candidate_calculations.py',
+    'test_candidate_calendar_recovery.py',
+    'test_engine_selection.py',
+    'test_guarded_numerical_entries.py',
+    'test_input_engine_ownership.py',
+    'test_legacy_selection_replay.py',
+    'test_numerical_books.py',
+    'test_numerical_calendar.py',
+    'test_numerical_delegated.py',
+    'test_numerical_dependencies.py',
+    'test_numerical_execution.py',
+    'test_numerical_expanded_admission.py',
+    'test_numerical_factors.py',
+    'test_numerical_formulas.py',
+    'test_numerical_generation.py',
+    'test_numerical_generation_hosts.py',
+    'test_numerical_history.py',
+    'test_numerical_matrix.py',
     'test_numerical_numba_books.py',
     'test_numerical_portfolios.py',
     'test_numerical_preparation.py',
     'test_numerical_profiles.py',
+    'test_numerical_publication.py',
     'test_numerical_random.py',
+    'test_numerical_readiness.py',
     'test_numerical_runtime.py',
     'test_numerical_scalar.py',
+    'test_numerical_scalar_capabilities.py',
     'test_numerical_scalar_measurements.py',
+    'test_numerical_scalar_native.py',
     'test_numerical_scalar_process.py',
     'test_numerical_scalar_qualification.py',
+    'test_numerical_temporal.py',
     'test_numerical_trial.py',
     'test_numerical_trial_pool.py',
     'test_numerical_trials.py',
+    'test_numerical_worker_control.py',
+    'test_operating_spread_engine.py',
+    'test_opt_in_readiness.py',
     'test_parallel_comparison.py',
     'test_phase11_candidate.py',
+    'test_phase11_compiled_operations.py',
     'test_phase11_measurements.py',
+    'test_scalar_admission.py',
+    'test_selectable_browser.py',
+    'test_trial_checkpoints.py',
     'test_website_engine_alignment.py',
 })
 # Files that match the entry patterns but are not standalone entries.
 NOT_ENTRIES = frozenset({
-    'check-checkpoint-snapshots.cjs',     # reads stdin from test_numerical_trials.py
-    'check-screener.cjs',                 # run by check_screener.py with SQL expectations
-    'check-range.cjs',                    # needs a built website/local; run after website/build.py
-    'test_guarded_numerical_entries.py',  # launched only by the guarded native procedure
-    'test_numerical_scalar_native.py',    # launched only by the guarded native procedure
+    'check-screener.cjs',  # run by check_screener.py with SQL expectations
+    'check-range.cjs',     # needs a built website/local; run after website/build.py
 })
 CAP_SECONDS = {'fast': 300, 'heavy': 3600}  # per file, set by the file's own tier
 SLOW_FAST_SECONDS = 60
@@ -89,17 +123,20 @@ class Result:
 
 def select(tier):
     """Return the entries of a tier in start order and how many entries the
-    tier leaves out. First, stop if the tier table names a missing file or
-    names a file in both HEAVY and NOT_ENTRIES."""
+    tier leaves out. Frozen files and non-entries are never entries. First,
+    stop if a table names a missing file or a file is in two tables."""
     names = {path.name for pattern in ('test_*.py', 'check-*.cjs') for path in TESTS.glob(pattern)}
-    missing = sorted((HEAVY | NOT_ENTRIES) - names)
-    twice = sorted(HEAVY & NOT_ENTRIES)
+    tables = (('HEAVY', HEAVY), ('FROZEN', FROZEN), ('NOT_ENTRIES', NOT_ENTRIES))
+    listed = HEAVY | FROZEN | NOT_ENTRIES
+    missing = sorted(listed - names)
+    owners = {name: [table for table, members in tables if name in members] for name in sorted(listed)}
+    twice = {name: found for name, found in owners.items() if len(found) > 1}
     if missing or twice:
         lines = ['The tier table in tests/run.py does not match tests/.']
         lines += [f'  not found: {name}' for name in missing]
-        lines += [f'  in HEAVY and NOT_ENTRIES: {name}' for name in twice]
+        lines += [f"  in {' and '.join(found)}: {name}" for name, found in twice.items()]
         raise SystemExit('\n'.join(lines))
-    entries = [Entry(TESTS / name, 'heavy' if name in HEAVY else 'fast') for name in names - NOT_ENTRIES]
+    entries = [Entry(TESTS / name, 'heavy' if name in HEAVY else 'fast') for name in names - FROZEN - NOT_ENTRIES]
     chosen = [entry for entry in entries if tier in ('all', entry.tier)]
     # Heavy files start first, so with --jobs above 1 their long caps overlap the rest.
     chosen.sort(key=lambda entry: (entry.tier != 'heavy', entry.path.name))
@@ -107,17 +144,7 @@ def select(tier):
 
 
 def require_interpreters(entries):
-    """Stop with the setup command when this interpreter cannot import numpy
-    and numba, or when a selected .cjs file has no node on PATH."""
-    try:
-        import numpy, numba  # noqa: F401,E401
-    except ImportError as error:
-        raise SystemExit(
-            f'{sys.executable} cannot import the numerical packages ({error}).\n'
-            'Create the private environment in the main checkout once, then run the tests with it:\n'
-            '  python3 -m venv tmp/numerical-venv\n'
-            '  tmp/numerical-venv/bin/pip install -r requirements-numerical.txt\n'
-            '  tmp/numerical-venv/bin/python tests/run.py')
+    """Stop when a selected .cjs file has no node on PATH."""
     if any(entry.path.suffix == '.cjs' for entry in entries) and not shutil.which('node'):
         raise SystemExit('The selected checks include .cjs files, and node is not on PATH.')
 
@@ -295,6 +322,7 @@ def main(argv=None):
     summary = f'{args.tier} tier: {len(results) - len(failed)} passed, {len(failed)} failed in {elapsed:.1f} s.'
     if left_out:
         summary += f" Not run: {left_out} {'heavy' if args.tier == 'fast' else 'fast'} files."
+    summary += f' Frozen, never run: {len(FROZEN)} files.'
     if interrupted:
         summary += f' Interrupted; {len(entries) - len(results)} files did not finish.'
     print(summary)

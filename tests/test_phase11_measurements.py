@@ -17,7 +17,7 @@ import scalar_qualification
 import test_numerical_scalar_measurements as measurements
 import test_variable_definitions as language
 import test_strategy_requests as intent
-import test_dated_observations as dated_fixture
+import test_numerical_generation_hosts as dated_fixture
 from test_parameter_contract import ORACLE
 from test_phase11_candidate import expanded_capture
 
@@ -131,7 +131,7 @@ class ExpandedMeasurements(measurements.MeasurementTests):
 
     def test_all_52_direct_inputs_in_one_expression(self):
         started = time.perf_counter()
-        fixture = dated_fixture.TransportTests('test_all_52_actual_preparation_sqlite_numerical_provider_and_reference')
+        fixture = dated_fixture.GenerationTransportTests('test_all_52_actual_preparation_sqlite_numerical_provider_and_reference')
         fixture.setUp(); self.addCleanup(fixture.doCleanups)
         sql, numerical_view = fixture.views()
         expected = {identity:fixture.fixture.rows[endpoint][0][field]

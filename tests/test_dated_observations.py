@@ -16,7 +16,6 @@ import unittest
 from unittest.mock import Mock, patch
 from backtest.inputs import dated_observation_inputs as dated, observation_inputs as source
 from backtest.inputs import daily, research, sqlite_observations
-from backtest.engines.numerical import generation
 from backtest import observations as provider
 from backtest.variables import definitions, reference, parameters
 import test_annual_observations as annual
@@ -136,8 +135,8 @@ class ResolutionTests(unittest.TestCase):
                 with patch.object(dated, 'MAX_RECORD_BYTES', exact):
                     source.store_dated(first, symbol, endpoint, facts)
                     source.finish(first, '2015-01-02')
-                    # Both daily and numerical transport use this same checked
-                    # copy owner. An accepted full record must survive each hop.
+                    # Every transport uses this same checked copy owner. An
+                    # accepted full record must survive each hop.
                     for _ in range(2):
                         copied = stack.enter_context(closing(sqlite3.connect(':memory:')))
                         copied.executescript(source.SCHEMA)
@@ -154,7 +153,7 @@ class ResolutionTests(unittest.TestCase):
 
 class TransportTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=annual.AnnualTransportTests('test_actual_research_daily_sqlite_and_generation_share_all_endpoint_facts')
+        self.fixture=annual.AnnualTransportTests('test_actual_research_and_daily_sqlite_share_all_endpoint_facts')
         self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         self.owner=self.fixture.fixture
         self.path=research.RAW/'px/TEST.json'
@@ -165,18 +164,12 @@ class TransportTests(unittest.TestCase):
         for row in treasury:row['year10']=-1
         (research.RAW/'treasury.json').write_text(json.dumps(treasury))
 
-    def views(self):
+    def view(self):
+        """Prepare, then borrow the daily SQLite observation view."""
         self.owner.prepare()
         stack=ExitStack();self.addCleanup(stack.close)
-        ordinary_daily,ordinary_research=daily.connect,research.connect
-        store=generation.GenerationStore(self.owner.source.parent/'dated-numerical',
-              generation.cache_access.WorkspaceAccess(self.owner.source.parent/'dated.lock'))
-        stack.enter_context(patch.object(daily,'connect',side_effect=lambda:ordinary_daily(self.owner.path,self.owner.source)))
-        stack.enter_context(patch.object(research,'connect',side_effect=lambda path=self.owner.source,**kw:ordinary_research(path,**kw)))
-        store.prepare()
-        self.db=stack.enter_context(closing(ordinary_daily(self.owner.path,self.owner.source)))
-        self.attached=stack.enter_context(store.open_current())
-        return stack.enter_context(sqlite_observations.prepared_view(self.db,lambda:None)),stack.enter_context(self.attached.observations())
+        self.db=stack.enter_context(closing(daily.connect(self.owner.path,self.owner.source)))
+        return stack.enter_context(sqlite_observations.prepared_view(self.db,lambda:None))
 
     def contexts(self):
         return [dict(id='root',kind='root',symbol='TEST',pool='cached',mode='historical',date='2015-01-02'),
@@ -194,15 +187,14 @@ class TransportTests(unittest.TestCase):
         spy.write_text(json.dumps(payload))
         digest = hashlib.sha256(spy.read_bytes()).hexdigest()
         (research.RAW/'download-coverage.json').write_text(json.dumps({'spy-div.json': dict(sha256=digest, windows=[])}))
-        sql, num = self.views()
-        for view in (sql, num):
-            receipt = view.source('', dated.CALENDAR)
-            self.assertEqual(receipt['sha256'], digest)
-            self.assertIsNone(receipt['receipt'])
-            self.assertEqual(view.session_backward(date(2015,1,2),7)['day'], '2015-01-02')
-            results = self.observe(view, ['market.adjusted_price','market.volume'])['results']
-            self.assertTrue(all(result['valid'] for result in results))
-            self.assertEqual(results[1]['members'][0]['value'], 12.5)
+        view = self.view()
+        receipt = view.source('', dated.CALENDAR)
+        self.assertEqual(receipt['sha256'], digest)
+        self.assertIsNone(receipt['receipt'])
+        self.assertEqual(view.session_backward(date(2015,1,2),7)['day'], '2015-01-02')
+        results = self.observe(view, ['market.adjusted_price','market.volume'])['results']
+        self.assertTrue(all(result['valid'] for result in results))
+        self.assertEqual(results[1]['members'][0]['value'], 12.5)
         self.assertEqual(json.loads(spy.read_bytes()), payload)
 
     def test_retained_historical_spy_wrapper_prepares_sessions_without_false_receipt(self):
@@ -211,7 +203,7 @@ class TransportTests(unittest.TestCase):
     def test_retained_data_spy_wrapper_prepares_sessions_without_false_receipt(self):
         self._assert_spy_wrapper('data')
 
-    def test_actual_full_record_boundary_survives_daily_and_numerical_or_preserves_research(self):
+    def test_actual_full_record_boundary_survives_daily_transport_or_preserves_research(self):
         payload = json.loads(self.path.read_bytes())
         rows = []
         for row in payload['div']:
@@ -222,9 +214,7 @@ class TransportTests(unittest.TestCase):
         exact = max(source.record_bytes(('TEST', dated.STOCK, day, source.encoded(states)))
                     for day, states in facts['dated'].items())
         with patch.object(dated, 'MAX_RECORD_BYTES', exact):
-            sql, num = self.views()
-            for view in (sql, num):
-                self.assertTrue(self.observe(view, ['market.adjusted_price','market.volume'])['results'][1]['valid'])
+            self.assertTrue(self.observe(self.view(), ['market.adjusted_price','market.volume'])['results'][1]['valid'])
         before = self.owner.source.read_bytes()
         with patch.object(dated, 'MAX_RECORD_BYTES', exact-1), self.assertRaisesRegex(ValueError, 'byte bound'):
             research.prepare(self.owner.source, force=True)
@@ -237,16 +227,15 @@ class TransportTests(unittest.TestCase):
         ledger={'px/TEST.json':dict(sha256='a'*64,previous=dict(sha256=digest,windows=[['2015-01-01','2015-10-20']])),
                 'treasury.json':dict(sha256=tdigest,windows=[])}
         (research.RAW/'download-coverage.json').write_text(json.dumps(ledger))
-        sql,num=self.views()
-        for view in (sql,num):
-            self.assertEqual(view.source('TEST',dated.STOCK)['receipt']['sha256'],digest)
-            self.assertEqual(view.source('',dated.TREASURY)['receipt']['sha256'],tdigest)
-            self.assertEqual(view.source('TEST',dated.STOCK)['receipt']['windows'],[['2015-01-01','2015-10-20']])
-        receipt=sql.source('TEST',dated.STOCK);receipt['receipt']['windows'].clear()
-        self.assertTrue(sql.source('TEST',dated.STOCK)['receipt']['windows'])
+        view=self.view()
+        self.assertEqual(view.source('TEST',dated.STOCK)['receipt']['sha256'],digest)
+        self.assertEqual(view.source('',dated.TREASURY)['receipt']['sha256'],tdigest)
+        self.assertEqual(view.source('TEST',dated.STOCK)['receipt']['windows'],[['2015-01-01','2015-10-20']])
+        receipt=view.source('TEST',dated.STOCK);receipt['receipt']['windows'].clear()
+        self.assertTrue(view.source('TEST',dated.STOCK)['receipt']['windows'])
 
-    def test_all_52_actual_preparation_sqlite_numerical_provider_and_reference(self):
-        sql,num=self.views()
+    def test_all_52_actual_preparation_provider_and_reference(self):
+        view=self.view()
         expected={identity:self.fixture.rows[endpoint][0][field] for endpoint,fields in ORACLE.items()
                   for field,identity in fields.items() if identity.startswith('annual.')}
         expected.update({'market.adjusted_price':20,'market.volume':12.5,'treasury.us_3m':.02,'treasury.us_10y':-.01})
@@ -260,51 +249,39 @@ class TransportTests(unittest.TestCase):
             entries.append(entry(value,'draft:'+identity))
         programs=[definitions.validate(bundle(*entries[i:i+16],roots=[root(e) for e in entries[i:i+16]])) for i in range(0,len(entries),16)]
         for context in ('root','latest'):
-            results=self.observe(sql,list(expected),context=context)['results']
-            self.assertEqual(results,self.observe(num,list(expected),context=context)['results'])
+            results=self.observe(view,list(expected),context=context)['results']
             computed_results=[]
             for program in programs:
                 plan=reference.plan(program,[{key:value for key,value in self.contexts()[0 if context=='root' else 1].items() if key not in ('id','kind')}])
-                formula=reference.evaluate(plan,num).to_dict()
-                from backtest.engines.numerical import formula_capabilities
-                if 2 in formula_capabilities.capabilities()['definition_versions']:
-                    from backtest.engines.numerical import formulas
-                    from scalar_qualification import compare_blocks
-                    with formulas.Evaluator() as evaluator:
-                        numerical = evaluator.evaluate(plan,num).to_dict()
-                    compare_blocks([formula], [numerical])
-                computed_results.extend(formula['results'])
+                computed_results.extend(reference.evaluate(plan,view).to_dict()['results'])
             self.assertEqual(len(computed_results),52)
             for result,computed in zip(results,computed_results):
                 identity=result['parameter'];want=22 if identity=='market.adjusted_price' and context=='latest' else expected[identity]
                 self.assertTrue(result['valid'],identity);self.assertEqual(result['members'][0]['value'],want,identity)
                 self.assertTrue(computed['valid'],identity);self.assertEqual(computed['value'],want,identity)
-        for table in source.TABLES:
-            self.assertEqual([tuple(r) for r in self.db.execute('SELECT * FROM '+table)],
-                             [tuple(r) for r in self.attached._db.execute('SELECT * FROM '+table)])
 
     def test_at_and_lookback_without_annual_anchor_and_future_exclusion(self):
         payload=json.loads(self.path.read_text());payload['div'].append(dict(date='2010-01-04',adjClose=8,volume=0));self.path.write_text(json.dumps(payload))
         p=research.RAW/'spy-div.json';rows=json.loads(p.read_text());rows.append(dict(date='2010-01-04',adjClose=80));p.write_text(json.dumps(rows))
         p=research.RAW/'treasury.json';rows=json.loads(p.read_text());rows.append(dict(date='2010-01-04',month3=-2,year10=0));p.write_text(json.dumps(rows))
-        sql,num=self.views();contexts=self.contexts()+[dict(id='past',kind='at',parent='root',date='2010-01-04'),dict(id='look',kind='lookback',parent='root',months=60)]
+        view=self.view();contexts=self.contexts()+[dict(id='past',kind='at',parent='root',date='2010-01-04'),dict(id='look',kind='lookback',parent='root',months=60)]
         for context in ('past','look'):
-            block=self.observe(num,['market.volume','market.adjusted_price','treasury.us_3m','annual.revenue'],contexts,context)
+            block=self.observe(view,['market.volume','market.adjusted_price','treasury.us_3m','annual.revenue'],contexts,context)
             if context=='past':
                 self.assertEqual([r['members'][0]['value'] for r in block['results'][:3]],[0,8,-.02])
                 self.assertIsNone(block['results'][0]['anchor'])
             self.assertFalse(block['results'][-1]['valid'])
         with self.assertRaises(provider.ObservationError):
-            self.observe(sql,['market.volume'],contexts+[dict(id='future',kind='at',parent='root',date='2015-01-03')],'future')
+            self.observe(view,['market.volume'],contexts+[dict(id='future',kind='at',parent='root',date='2015-01-03')],'future')
 
     def test_session_seven_day_boundary_exact_stock_and_volume_without_price(self):
-        sql,num=self.views()
+        view=self.view()
         contexts=self.contexts()+[dict(id='seven',kind='at',parent='latest',date='2015-01-09'),dict(id='eight',kind='at',parent='latest',date='2015-01-10')]
-        self.assertTrue(self.observe(sql,['market.volume'],contexts,'seven')['results'][0]['valid'])
-        self.assertEqual(self.observe(sql,['market.volume'],contexts,'eight')['results'][0]['reason'],'MISSING_SESSION')
+        self.assertTrue(self.observe(view,['market.volume'],contexts,'seven')['results'][0]['valid'])
+        self.assertEqual(self.observe(view,['market.volume'],contexts,'eight')['results'][0]['reason'],'MISSING_SESSION')
         # Removing only own-stock exact row never carries its earlier row.
         self.db.execute("DELETE FROM observation_dated WHERE symbol='TEST' AND day='2015-01-02'")
-        result=self.observe(sql,['market.volume'])['results'][0];self.assertEqual(result['reason'],'MISSING_INPUT')
+        result=self.observe(view,['market.volume'])['results'][0];self.assertEqual(result['reason'],'MISSING_INPUT')
         # This is a private borrowed SQLite fixture; content checking remains an
         # admission concern and catches this explicit later mutation independently.
         with self.assertRaisesRegex(ValueError,'stale'):source.require(self.db,verify_content=True)
@@ -313,9 +290,9 @@ class TransportTests(unittest.TestCase):
         p=research.RAW/'treasury.json';rows=[r for r in json.loads(p.read_text()) if r['date'] not in ('2015-01-02','2015-10-20')];rows.extend([
             dict(date='2015-01-01',month3=3,year10=1),dict(date='2015-01-02',month3=None,year10=-2),
             dict(date='2015-10-20',month3=5,year10=0),dict(date='2015-10-20',month3=6,year10=0)])
-        p.write_text(json.dumps(rows));sql,num=self.views()
+        p.write_text(json.dumps(rows));view=self.view()
         for context,reason,rate in (('root','MISSING_INPUT',-.02),('latest','CONFLICTING_INPUT',0)):
-            results=self.observe(num,['treasury.us_3m','treasury.us_10y'],context=context)['results']
+            results=self.observe(view,['treasury.us_3m','treasury.us_10y'],context=context)['results']
             self.assertEqual(results[0]['reason'],reason);self.assertEqual(results[1]['members'][0]['value'],rate)
             self.assertEqual(results[0]['members'][0]['observation_date'],self.contexts()[0 if context=='root' else 1]['date'])
 
@@ -328,22 +305,21 @@ class TransportTests(unittest.TestCase):
         p=research.RAW/'spy-div.json';rows=json.loads(p.read_text());rows.extend([
             dict(date='2015-10-19',adjClose=100),dict(date='2015-10-16',adjClose=100),
             dict(date='2015-10-14',adjClose=100)])
-        p.write_text(json.dumps(rows));sql,num=self.views()
+        p.write_text(json.dumps(rows));view=self.view()
         contexts=self.contexts()+[dict(id=str(i),kind='at',parent='latest',date=day) for i,day in enumerate(('2015-10-19','2015-10-16','2015-10-14'))]
-        for view in (sql,num):
-            values=self.observe(view,['market.adjusted_price','market.volume'],contexts,'0')['results']
-            self.assertFalse(values[0]['valid']);self.assertEqual(values[1]['members'][0]['value'],0)
-            values=self.observe(view,['market.adjusted_price','market.volume'],contexts,'1')['results']
-            self.assertEqual(values[0]['reason'],'NON_USD_INPUT');self.assertEqual(values[1]['members'][0]['value'],.5)
-            values=self.observe(view,['market.adjusted_price','market.volume'],contexts,'2')['results']
-            self.assertTrue(all(r['reason']=='MISSING_INPUT' for r in values))
-            self.assertTrue(all(r['members'][0]['observation_date']=='2015-10-14' for r in values))
+        values=self.observe(view,['market.adjusted_price','market.volume'],contexts,'0')['results']
+        self.assertFalse(values[0]['valid']);self.assertEqual(values[1]['members'][0]['value'],0)
+        values=self.observe(view,['market.adjusted_price','market.volume'],contexts,'1')['results']
+        self.assertEqual(values[0]['reason'],'NON_USD_INPUT');self.assertEqual(values[1]['members'][0]['value'],.5)
+        values=self.observe(view,['market.adjusted_price','market.volume'],contexts,'2')['results']
+        self.assertTrue(all(r['reason']=='MISSING_INPUT' for r in values))
+        self.assertTrue(all(r['members'][0]['observation_date']=='2015-10-14' for r in values))
 
     def test_reference_at_and_lookback_dated_inputs_without_annual_anchor(self):
         payload=json.loads(self.path.read_text());payload['div'].append(dict(date='2010-01-04',adjClose=8,volume=.25));self.path.write_text(json.dumps(payload))
         p=research.RAW/'spy-div.json';rows=json.loads(p.read_text());rows.append(dict(date='2010-01-04',adjClose=80));p.write_text(json.dumps(rows))
         p=research.RAW/'treasury.json';rows=json.loads(p.read_text());rows.append(dict(date='2010-01-04',month3=-2,year10=0));p.write_text(json.dumps(rows))
-        sql,num=self.views()
+        view=self.view()
         roots=[dict(symbol='TEST',pool='cached',mode='latest',date='2015-10-20')]
         for operation in (dict(op='at',date='2010-01-04'),dict(op='lookback',months=60)):
             # The lookback resolves to 20 October 2010. Treasury has no age
@@ -352,12 +328,12 @@ class TransportTests(unittest.TestCase):
                 value=definition(dict(operation,arg=dict(op='parameter',id=identity)),unit,display)
                 value['parameter_catalog']=parameters.V2
                 program=definitions.validate(bundle(entry(value)))
-                result=reference.evaluate(reference.plan(program,roots),num).to_dict()['results'][0]
+                result=reference.evaluate(reference.plan(program,roots),view).to_dict()['results'][0]
                 if operation['op']=='lookback' and identity=='market.volume':self.assertFalse(result['valid'])
                 else:self.assertTrue(result['valid']);self.assertEqual(result['value'],want)
 
     def test_copy_cancellation_record_bounds_and_publication_preserve_previous(self):
-        sql,num=self.views()
+        self.view()
         target=sqlite3.connect(':memory:');self.addCleanup(target.close);target.executescript(source.SCHEMA)
         with self.assertRaisesRegex(RuntimeError,'cancel'):
             source.copy(self.db,target,Mock(side_effect=RuntimeError('cancel')))
@@ -370,37 +346,36 @@ class TransportTests(unittest.TestCase):
         self.assertFalse(self.owner.source.with_name(self.owner.source.name+'.building').exists())
 
     def test_bounded_queries_keep_four_freshness_checks_and_close(self):
-        sql,num=self.views()
-        for view in (sql,num):
-            freshness=Mock(wraps=view._validate);view._validate=freshness
-            self.observe(view,['market.volume','market.adjusted_price','treasury.us_3m','treasury.us_10y'])
-            self.assertEqual(freshness.call_count,4)
-            with patch.object(view,'_validate',side_effect=AssertionError('whole generation scan')):
-                self.assertIsNotNone(view.session_backward(date(2015,1,2),7))
-                self.assertIsNotNone(view.dated('TEST',dated.STOCK,date(2015,1,2)))
-                self.assertIsNotNone(view.source('',dated.TREASURY))
-            view.close()
-            for call in (lambda:view.source('',dated.TREASURY),lambda:view.dated('TEST',dated.STOCK,date(2015,1,2)),lambda:view.session_backward(date(2015,1,2),7)):
-                with self.assertRaisesRegex(ValueError,'closed'):call()
+        view=self.view()
+        freshness=Mock(wraps=view._validate);view._validate=freshness
+        self.observe(view,['market.volume','market.adjusted_price','treasury.us_3m','treasury.us_10y'])
+        self.assertEqual(freshness.call_count,4)
+        with patch.object(view,'_validate',side_effect=AssertionError('whole database scan')):
+            self.assertIsNotNone(view.session_backward(date(2015,1,2),7))
+            self.assertIsNotNone(view.dated('TEST',dated.STOCK,date(2015,1,2)))
+            self.assertIsNotNone(view.source('',dated.TREASURY))
+        view.close()
+        for call in (lambda:view.source('',dated.TREASURY),lambda:view.dated('TEST',dated.STOCK,date(2015,1,2)),lambda:view.session_backward(date(2015,1,2),7)):
+            with self.assertRaisesRegex(ValueError,'closed'):call()
 
     def test_dated_reads_pay_rows_bytes_and_cancellation(self):
-        sql,num=self.views()
-        with patch.object(sql,'dated',side_effect=AssertionError('No read before preflight')):
-            with self.assertRaises(provider.ObservationError):self.observe(sql,['market.volume'],limits={'rows':1})
-        with self.assertRaisesRegex(ValueError,'byte bound'):self.observe(num,['market.volume'],limits={'bytes':500})
+        view=self.view()
+        with patch.object(view,'dated',side_effect=AssertionError('No read before preflight')):
+            with self.assertRaises(provider.ObservationError):self.observe(view,['market.volume'],limits={'rows':1})
+        with self.assertRaisesRegex(ValueError,'byte bound'):self.observe(view,['market.volume'],limits={'bytes':500})
         with self.assertRaisesRegex(RuntimeError,'cancel'):
-            num.dated('TEST',dated.STOCK,date(2015,1,2),checkpoint=Mock(side_effect=RuntimeError('cancel')))
+            view.dated('TEST',dated.STOCK,date(2015,1,2),checkpoint=Mock(side_effect=RuntimeError('cancel')))
 
     def test_dated_only_preflight_does_not_depend_on_annual_history(self):
-        sql, _ = self.views()
-        sql._bounds['max_annual'] = provider.CEILINGS['rows']
-        with patch.object(sql, 'company', side_effect=AssertionError('Unexpected annual read')):
-            result = self.observe(sql, ['market.volume'])['results'][0]
+        view = self.view()
+        view._bounds['max_annual'] = provider.CEILINGS['rows']
+        with patch.object(view, 'company', side_effect=AssertionError('Unexpected annual read')):
+            result = self.observe(view, ['market.volume'])['results'][0]
         self.assertTrue(result['valid'])
         self.assertEqual(result['members'][0]['value'], 12.5)
 
     def test_old_version_missing_dated_relations_and_content_tamper_rejected(self):
-        sql,num=self.views()
+        self.view()
         for version in (1,2):
             self.db.execute('UPDATE observation_metadata SET value=? WHERE key=?',(json.dumps(version),'version'))
             with self.assertRaisesRegex(ValueError,'stale'):source.require(self.db)

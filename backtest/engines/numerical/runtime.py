@@ -15,7 +15,7 @@ from queue import Full, Queue
 from threading import Event, Lock, RLock
 import sys
 import time
-from backtest.engines.numerical import transfer as numerical_transfer
+from backtest.application import evidence_transfer as numerical_transfer
 from backtest.engines.numerical.execution import ExecutionPolicy
 
 from backtest.runtime.process_owner import OwnedProcess
