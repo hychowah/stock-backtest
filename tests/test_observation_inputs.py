@@ -203,17 +203,6 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), before)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
 
-    def test_legacy_daily_upgrade_cannot_invent_observation_projection(self):
-        self.prepare()
-        with closing(sqlite3.connect(self.path)) as db:
-            current = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-            old = dict(current, version=2); old.pop('observations'); old.pop('observation_version')
-            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'", (json.dumps(old),)); db.commit()
-        before = self.path.read_bytes()
-        self.assertFalse(daily.upgrade_daily_cache(self.path, current))
-        self.assertEqual(self.path.read_bytes(), before)
-
-
 class AttachmentTests(unittest.TestCase):
     def setUp(self):
         self.fixture = generation_fixtures.GenerationTests('test_export_values_order_missingness_and_mutable_books_reuse')

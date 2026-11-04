@@ -314,8 +314,7 @@ Random-date saves include every trial's exact trade dates, stock rows and period
 returns, plus the seed and distribution summary. Trial inspection uses these
 stored rows. It does not recalculate the book. Current background jobs and queued
 random tests capture full trial holdings through the calculation owner’s `calculate` method.
-Existing `/api/robustness` streaming clients can opt into full trial results with
-`X-Backtest-Details: holdings`. Summary-only clients keep their existing response. Save a completed new run; older summary-only
+Save a completed new run; older summary-only
 results do not contain enough evidence for a complete random backtest record.
 
 ### Completed-result ownership and saved-record compatibility

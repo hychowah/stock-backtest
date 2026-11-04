@@ -6,7 +6,7 @@ import sys
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from candidate_browser_fixture import FictionalWorkspace,CandidateService
-from bench_native_browser import BrowserStorage,NativeBrowser
+from native_browser_fixture import BrowserStorage,NativeBrowser
 
 
 @unittest.skipUnless(os.name=='nt','Actual native Chrome requires Windows.')

@@ -19,7 +19,7 @@ request shape or durable record format.
 - `website/` holds presentation and HTTP only: `browser/` (plain scripts,
   styles, fragments), `rendering/` (detached data, static page, assets, build,
   freshness) and `server/` (lifetime and grouped HTTP adapters).
-  `serve.py`, `serve_candidate.py`, `runtime_access.py` and `build.py` stay as
+  `serve.py`, `runtime_access.py` and `build.py` stay as
   stable entries and source-owning bootstraps.
 - `tools/ops/` holds maintained operations. `tools/experiments/` holds retained
   benchmarks, probes and download experiments. `scripts/` and thin `tools/*.py`

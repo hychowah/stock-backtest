@@ -18,7 +18,7 @@ This map describes the current source owners after the structure refactor.
 | Plain browser assets and standalone HTML fragments | `website/browser/` |
 | Detached database projections, static rendering, assets, exports and freshness | `website/rendering/` |
 | Server lifetime and grouped calculation, stored-result and data HTTP adapters | `website/server/` |
-| Stable build command and source-owning startup entries | `website/build.py`, `serve.py`, `serve_candidate.py`, `runtime_access.py` |
+| Stable build command and source-owning startup entries | `website/build.py`, `serve.py`, `runtime_access.py` |
 | Maintained operational implementations | `tools/ops/` |
 | Retained benchmarks, API probes and historical experiments | `tools/experiments/` |
 | Documented executable commands | `scripts/`, retained thin `tools/*.py` entries, Windows command files |

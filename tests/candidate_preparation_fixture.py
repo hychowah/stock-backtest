@@ -7,7 +7,7 @@ import sys
 def main():
     source,tests,output=map(Path,sys.argv[1:4])
     sys.path[:0]=[str(tests),str(tests.parent)]
-    from bench_source_service_fixture import dependency_guard
+    from source_service_fixture import dependency_guard
     dependency_guard(source)
     sys.path[:0]=[str(source)]
     from website import runtime_access

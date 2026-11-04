@@ -4,8 +4,8 @@ These summaries are separate from the canonical `results/summary-exits.txt`.
 Each one keeps its original settings. Old timings are historical measurements,
 not current-source speed guarantees. Raw logs, holdings and benchmark output
 stay in ignored `tmp/` under the [records policy](../../docs/records-policy.md).
-Benchmark execution is closed; `tools/experiments/` keeps the historical
-harness.
+The benchmark harness that produced them was removed;
+`tools/experiments/parallel_comparison.py` is the only retained comparison runner.
 
 ## Original engine speed work
 

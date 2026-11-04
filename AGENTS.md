@@ -23,9 +23,9 @@ not commit if it fails. After changing the check, run
 
 All initiatives in `docs/plans/` are complete. Their summaries give the outcome,
 key decisions and known limits. Original is the default engine. The experimental
-engine is optional, and real benchmark admission is closed. Custom variables are
-integrated into `main`. Source work does not establish installed readiness or
-real-cache coverage.
+engine is optional; the benchmark harness and the Rust backend were removed.
+Custom variables are integrated into `main`. Source work does not establish
+installed readiness or real-cache coverage.
 
 Do long work on a branch or linked worktree. Integrate into `main` only with the
 user's authorization. Push, deployment, installed-runtime restart, downloads and
@@ -171,8 +171,8 @@ calling it a bankruptcy.
 
 Documented commands live in `scripts/`. Financial policy, screening, calendars
 and portfolio results live in `backtest/`; `backtest/paths.py` resolves paths.
-Operational tools are in `tools/ops/`; closed benchmark experiments are in
-`tools/experiments/`. Current reports are in `results/`, older reports in
+Operational tools are in `tools/ops/`; `tools/experiments/` keeps the
+Original-versus-experimental comparison runner and the FMP API probes. Current reports are in `results/`, older reports in
 `results/legacy/`, stop analyses in `results/stops/` and small cited experiment
 summaries in `results/experiments/`. The website source lives in `website/`.
 

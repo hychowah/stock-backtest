@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-import test_bench_candidates as source_tests
+import test_numerical_books as source_tests
 from backtest.engines.numerical.numba import NumbaExecutor
 
 
@@ -82,7 +82,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
                 actual = compiled.evaluate(batch,self.all_fields())
                 self.assertNotEqual(inputs.policy.signature,base_inputs.policy.signature)
                 self.assertNotEqual(original,actual)
-                self.assertTrue(source_tests.baseline.compare(expected,actual)['exact'])
+                self.assertTrue(source_tests.shared.compare(expected,actual)['exact'])
 
     def test_uncovered_source_structure_and_dependencies_fail_attachment(self):
         mutations = (
@@ -107,7 +107,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
             source = source_tests.core.PythonExecutor(changed_inputs)
             self.addCleanup(source.close)
             actual = changed.evaluate(batch,self.all_fields())
-            self.assertTrue(source_tests.baseline.compare(source.evaluate(batch,self.all_fields()),actual)['exact'])
+            self.assertTrue(source_tests.shared.compare(source.evaluate(batch,self.all_fields()),actual)['exact'])
             self.assertNotEqual(original_book,actual)
         self.assertNotEqual(changed_inputs.policy.signature,original_inputs.policy.signature)
 
@@ -121,7 +121,7 @@ class CompiledCandidateTests(NumbaCandidateTests):
             source = NumbaExecutor(inputs)
             self.addCleanup(source.close)
             for book, actual in zip(batch,source.evaluate(batch,self.all_fields()),strict=True):
-                self.assertTrue(source_tests.baseline.compare(self.reference(inputs,book),actual)['exact'])
+                self.assertTrue(source_tests.shared.compare(self.reference(inputs,book),actual)['exact'])
             with self.assertRaisesRegex(ValueError,'Unsupported candidate policy'):
                 self.factory(inputs)
             self.assertEqual(inputs.policy.signature,signature)

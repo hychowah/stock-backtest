@@ -39,9 +39,13 @@ def seed(server,source):
     for index,kind in enumerate(('random','custom')):
         options=dict(settings,**(dict(trials=4,seed=42) if kind=='random' else {}))
         identifier=('a' if kind=='random' else 'b')*32
-        eager=server.calculations.calculate(kind,options,None,None)
+        # Bounded evidence for ordinary settings is numerical. The router passes
+        # options without the engine key, so recorded settings stay engine-free.
+        # Evidence summaries carry no producer; compare the same eager fields.
+        pinned=dict(options,engine='experimental')
+        eager=server.calculations.calculate(kind,pinned,None,None);eager.pop('producer')
         began=time.perf_counter()
-        server.backtest_jobs.start_evidence(identifier,kind,options,max_bytes=16*1024**2,record_bytes=1024**2)
+        server.backtest_jobs.start_evidence(identifier,kind,pinned,max_bytes=16*1024**2,record_bytes=1024**2)
         server.backtest_jobs.runs[identifier]['thread'].join(120)
         status=server.backtest_jobs.snapshot(identifier)
         assert status['state']=='complete',status
@@ -101,15 +105,15 @@ def seed(server,source):
 def forbid_read_dependencies(context,serve_app):
     """Assert real ordinary HTTP reads do not use readiness or financial access."""
     from unittest.mock import patch
-    state=local();access=serve_app.cache_access.access;ready=serve_app.backtests.calculation_ready
+    state=local();access=serve_app.cache_access.access;ready=serve_app.backtests.require_calculation
     def guarded_access(*args,**kwargs):
         if getattr(state,'reading',False):raise AssertionError('Stored read requested financial access')
         return access(*args,**kwargs)
-    def guarded_ready(handler):
+    def guarded_ready(handler,*args,**kwargs):
         if getattr(state,'reading',False):raise AssertionError('Stored read requested readiness')
-        return ready(handler)
+        return ready(handler,*args,**kwargs)
     context.enter_context(patch.object(serve_app.cache_access,'access',guarded_access))
-    context.enter_context(patch.object(serve_app.backtests,'calculation_ready',guarded_ready))
+    context.enter_context(patch.object(serve_app.backtests,'require_calculation',guarded_ready))
     for name in ('evidence_request','saved_backtest_request'):
         call=getattr(serve_app.results,name)
         def guarded(handler,*args,_call=call,**kwargs):

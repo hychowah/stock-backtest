@@ -115,4 +115,5 @@ the current worker policy and provider choice.
 - The scan does not detect a same-size edit with a restored timestamp.
 - The cached pool is not the full universe. Its extra holdings had no manual
   bankruptcy review.
-- Real benchmark execution stays closed by `tools/experiments/bench_admission.py`.
+- The benchmark harness was later removed. `tools/experiments/parallel_comparison.py`
+  is the only retained comparison runner.

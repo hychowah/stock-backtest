@@ -329,8 +329,8 @@ class TrialPool:
                     self.stats['readiness'].append(deepcopy(event))
                     self.stats['started_workers']+=1
                     del pending[owner.index]
-            # First readiness probes actual cold memory and publishes an
-            # immutable Rust build. Only then may remaining bounded launches
+            # First readiness probes actual cold memory and the compiled
+            # provider. Only then may remaining bounded launches
             # overlap. No partially initialized worker receives a trial.
             if not self.workers:
                 await_ready({0:launch_worker(0)})

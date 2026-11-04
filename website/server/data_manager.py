@@ -315,9 +315,8 @@ def _download(o,emit,stop,client):
 
 
 class Jobs:
-    def __init__(self,preparation=None,*,optional_preparation=False):
+    def __init__(self,preparation=None):
         self.preparation=preparation
-        self.optional_preparation=optional_preparation
         self.calculations=None
         self.lock=Lock();self.cancel=Event()
         self.closing=False
@@ -362,7 +361,7 @@ class Jobs:
     def _work(self,action,o):
         diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
         try:
-            if action=='prepare' or action=='rebuild' and self.preparation is not None and not self.optional_preparation:
+            if action=='prepare':
                 # Runtime dispatch occurs outside calling-thread financial
                 # ownership. Preparation proves child closure before returning.
                 self.preparation.prepare(progress=self.emit,cancelled=self.cancel.is_set)

@@ -6,13 +6,12 @@ from backtest.application import original_calculations
 from backtest.application.original_calculations import Original
 from backtest.inputs import daily
 from contextlib import ExitStack
-import io
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from threading import Event, Thread
+from threading import Event
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -22,7 +21,7 @@ sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT)]
 from backtest.runtime import cache_access as access
 from backtest.inputs import research as research
 from backtest.engines.original import schedules as schedules
-from website.server import app as serve
+from backtest.application import jobs as backtest_jobs
 class AccessTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
@@ -55,32 +54,22 @@ class AccessTests(unittest.TestCase):
             class Entered(Exception):pass
             with patch.object(access,'access',side_effect=Entered),self.assertRaises(Entered):prepare()
 
-    def test_fixed_and_random_requests_hold_ownership_through_database_close(self):
-        for path in ('/api/schedule','/api/robustness'):
-            with self.subTest(path=path):
-                entered=Event();finish=Event();responses=[];close_probes=[];errors=[]
+    def test_fixed_and_random_runs_hold_ownership_through_database_close(self):
+        for mode in ('custom','random'):
+            with self.subTest(mode=mode):
+                entered=Event();finish=Event();close_probes=[]
                 db=SimpleNamespace(execute=lambda *a:[],close=lambda:close_probes.append(self.probe()))
                 def calculate(*args,**kwargs):entered.set();finish.wait(10);return {'result':'complete'}
-                handler=object.__new__(serve.Handler)
-                handler.disconnect_check=lambda:lambda:False
-                handler.path=path;handler.client_address=('127.0.0.1',1)
-                handler.server=SimpleNamespace(calculations=Original());handler.headers={'Host':'127.0.0.1:3000','Content-Length':'2'}
-                handler.rfile=io.BytesIO(b'{}');handler.reply=lambda status,payload:responses.append(status)
-                handler.wfile=io.BytesIO();handler.send_response=responses.append
-                handler.send_header=lambda *args:None;handler.end_headers=lambda:None
-                def request():
-                    try:handler.do_POST()
-                    except BaseException as error:errors.append(error)
+                jobs=backtest_jobs.Jobs(Original())
                 with patch.object(daily,'connect',return_value=db),patch.object(schedules,'backtest',side_effect=calculate),patch.object(original_calculations.robustness,'plan',return_value={'options':{}}),patch.object(original_calculations.robustness,'run',side_effect=calculate):
-                    thread=Thread(target=request);thread.start()
+                    jobs.start('a'*32,mode,{});thread=jobs.runs['a'*32]['thread']
                     try:
                         self.assertTrue(entered.wait(5))
-                        self.assertEqual(self.probe(),2,'A second server must not rebuild during calculation or streaming.')
+                        self.assertEqual(self.probe(),2,'A second server must not rebuild during calculation.')
                     finally:finish.set();thread.join(20)
-                self.assertFalse(thread.is_alive());self.assertEqual(errors,[])
+                self.assertFalse(thread.is_alive());jobs.close()
                 self.assertEqual(close_probes,[2],'Ownership must remain held while the DB closes.')
                 self.assertEqual(self.probe(),0)
-                if path.endswith('schedule'):self.assertEqual(responses,[200])
 
 
 @unittest.skipUnless(sys.platform=='win32','Native LockFileEx reader-gate verification.')

@@ -509,11 +509,6 @@ def verify_reference(db):
     return result
 
 
-def website_holdings(path=DATABASE):
-    with connect(path) as db:
-        return aggregate(screening.historical(db))
-
-
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--database',type=Path,default=DATABASE)

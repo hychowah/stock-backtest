@@ -180,9 +180,8 @@ filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
-Daily cache version 5 tracks this in `period_pools`. Compatible version-1/2 caches
-upgrade automatically at startup without reparsing prices or discarding books
-when their complete prerequisite binding agrees. Daily inputs now include a digest
+Daily cache version 5 tracks this in `period_pools`. Older daily caches take the
+ordinary rebuild path. Daily inputs now include a digest
 of the price inventory accepted by committed research metadata. The digest covers
 filenames, sizes and modification times. Normal daily connections do not scan raw
 prices. After research preparation accepts an in-place price edit, daily prices
@@ -233,8 +232,7 @@ Locking a phone, refreshing, closing the page or changing views does not cancel
 the calculation. Reopen the same address in the same browser to restore the
 submitted settings and retrieve progress or the completed result. Browser
 storage must remain available. A lost connection retries without starting a new
-calculation. The earlier synchronous schedule and streamed random APIs remain
-available for existing callers.
+calculation.
 
 The page shows a spinner and elapsed time. It does not invent a completion
 percentage. Settings remain editable. Edits do not change the submitted run or
@@ -349,8 +347,9 @@ on ordered values; standard deviation is the population dispersion of the sample
 scenarios. Empty-book trials stay in the table and are excluded from both sides
 of paired averages. Percentiles are scenario descriptions, not confidence limits.
 
-The loopback `/api/robustness` endpoint streams NDJSON trial progress and a final
-summary. `backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
+The browser submits each run to the loopback `/api/backtest-runs/<id>` service and
+polls its status; progress counts real completed trials, and the run continues on
+the server if the page closes. `backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
 deduplicates missing date-pair/pool books across the batch. Bounded process
 workers read prepared inputs with read-only SQLite connections and calculate
 ahead through `schedules.compute_period`. Each process loads report histories
@@ -597,7 +596,7 @@ and the website build without network requests. Two independent engines must agr
 strategy page after rebuilding to load the new embedded data.
 
 `website/server/data_manager.py` owns the inventory and background job. The local
-service exposes `/api/data/status`, `/api/data/report`, and POST actions
+service exposes `/api/data/status` and the POST actions
 `check`, `download`, `rebuild`, and `cancel`. Data endpoints accept only local,
 same-origin requests. `backtest/runtime/cache_access.py` owns one project-wide resource
 coordinator, backed by ignored `data/website-data-0.lock`. Startup, standalone

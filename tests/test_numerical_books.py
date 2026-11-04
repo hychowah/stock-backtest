@@ -18,16 +18,16 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import test_bench_methods as shared
-import tools.experiments.bench_candidates as core
+import numerical_fixture as shared
+import numerical_inputs_fixture as core
 import numpy as np
 
-s,baseline = shared.s,shared.baseline
+s = shared.s
 
 
 class CandidateTests(unittest.TestCase):
     factory = core.PythonExecutor
-    setUp = shared.SharedMethodsTests.setUp
+    setUp = shared.SyntheticDailyFixture.setUp
 
     def make(self,*,capture=True):
         inputs = core.NumericInputs(self.reader,s)
@@ -47,14 +47,14 @@ class CandidateTests(unittest.TestCase):
         executor.limits['request_plan'] = True
         for pool in ('legacy', 'cached'):
             for profile in ('all', 'F0', 'F1', 'F2'):
-                options = dict(baseline.options(pool, 'F0' if profile == 'all' else profile))
+                options = dict(shared.options(pool, 'F0' if profile == 'all' else profile))
                 if profile == 'all': options.update(self.all_fields())
                 batch = [('2015-01-02', '2016-01-04', pool),
                          ('2016-02-29', '2016-12-30', pool)]
                 executor.begin(dict(options=options)); ordinary.begin(dict(options=options))
                 expected = ordinary.evaluate(batch)
                 observed = executor.evaluate(batch)
-                self.assertTrue(baseline.compare(expected, observed)['exact'])
+                self.assertTrue(shared.compare(expected, observed)['exact'])
                 if profile == 'all':
                     for key, value in ordinary.trace.items():
                         np.testing.assert_allclose(executor.trace[key], value, rtol=0, atol=0,
@@ -89,7 +89,7 @@ class CandidateTests(unittest.TestCase):
         fields = set()
         for book,actual in zip(batch,results,strict=True):
             expected = self.reference(inputs,book)
-            self.assertTrue(baseline.compare(expected,actual)['exact'])
+            self.assertTrue(shared.compare(expected,actual)['exact'])
             fields.update(row[1] for row in actual['filters'])
         self.assertEqual(fields,set(core.PolicyProgram().fields['thresholds']))
         first = results[0]
@@ -135,7 +135,7 @@ class CandidateTests(unittest.TestCase):
         batch = [('2015-01-02','2016-01-04',pool) for pool in ('legacy','cached')]
         actual = executor.evaluate(batch,self.all_fields())
         for book,result in zip(batch,actual,strict=True):
-            self.assertTrue(baseline.compare(self.reference(inputs,book),result)['exact'])
+            self.assertTrue(shared.compare(self.reference(inputs,book),result)['exact'])
         source_reports,source_ranks = financial_books.candidates(inputs.books,date(2015,1,2))
         for index,book in enumerate(batch):
             expected = {symbol:source_ranks.get(symbol) for symbol in inputs.symbols}
@@ -151,7 +151,7 @@ class CandidateTests(unittest.TestCase):
                      ('2016-01-04','2016-12-30','legacy')]
             actual = executor.evaluate(books,self.all_fields())
             for book,result in zip(books,actual,strict=True):
-                self.assertTrue(baseline.compare(self.reference(inputs,book),result)['exact'])
+                self.assertTrue(shared.compare(self.reference(inputs,book),result)['exact'])
         self.assertNotIn('A',{row[0] for row in actual[0]['snapshots']})
         stopped = next(row for row in actual[-1]['snapshots'] if row[0]=='STOP')
         self.assertEqual(stopped[-2:],(-1.,'Bankruptcy'))
@@ -169,7 +169,7 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual({row[1] for row in second[0]['filters']},{'pb'})
         self.assertEqual(executor.stats['books'],1)
         self.assertEqual(executor.stats['batches'],1)
-        self.assertTrue(baseline.compare(first[0]['snapshots'],second[0]['snapshots'])['exact'])
+        self.assertTrue(shared.compare(first[0]['snapshots'],second[0]['snapshots'])['exact'])
         with self.assertRaises(ValueError):inputs.raw_values[0] = 0.
         with self.assertRaises(ValueError):inputs.financial_parameters[0,0] = 0.
         executor.close()
@@ -185,7 +185,7 @@ class CandidateTests(unittest.TestCase):
         book = ('2015-01-02','2016-01-04','cached')
         inputs,executor = self.make()
         actual = executor.evaluate([book],self.all_fields())[0]
-        self.assertTrue(baseline.compare(self.reference(inputs,book),actual)['exact'])
+        self.assertTrue(shared.compare(self.reference(inputs,book),actual)['exact'])
         holding = next(row for row in actual['snapshots'] if row[0]=='A')
         self.assertEqual(holding[2],'2014-09-30')
         self.assertTrue(any(row[0]=='A' and row[1]=='ev_ebitda_3y' for row in actual['metrics']))
@@ -193,7 +193,7 @@ class CandidateTests(unittest.TestCase):
         self.db.commit()
         inputs,executor = self.make()
         actual = executor.evaluate([book],self.all_fields())[0]
-        self.assertTrue(baseline.compare(self.reference(inputs,book),actual)['exact'])
+        self.assertTrue(shared.compare(self.reference(inputs,book),actual)['exact'])
         self.assertFalse(any(row[0]=='A' and row[1]=='ev_ebitda_3y' for row in actual['metrics']))
         # EBITDA history and full annual EPS history have independent missingness.
         self.assertTrue(any(row[0]=='A' and row[1]=='peg' for row in actual['filters']))
@@ -205,7 +205,7 @@ class CandidateTests(unittest.TestCase):
         book = ('2015-01-02','2016-01-04','cached')
         inputs,executor = self.make()
         actual = executor.evaluate([book],self.all_fields())[0]
-        self.assertTrue(baseline.compare(self.reference(inputs,book),actual)['exact'])
+        self.assertTrue(shared.compare(self.reference(inputs,book),actual)['exact'])
         self.assertFalse(any(row[0]=='A' and row[1] in ('roe','peg') for row in actual['filters']))
         self.assertTrue(any(row[0]=='A' and row[1]=='ev_ebitda_3y' for row in actual['metrics']))
         values = json.loads(self.db.execute("SELECT values_json FROM financial_inputs WHERE symbol='A' AND fiscal='2014-06-30'").fetchone()[0])
@@ -214,7 +214,7 @@ class CandidateTests(unittest.TestCase):
         self.db.commit()
         inputs,executor = self.make()
         actual = executor.evaluate([book],self.all_fields())[0]
-        self.assertTrue(baseline.compare(self.reference(inputs,book),actual)['exact'])
+        self.assertTrue(shared.compare(self.reference(inputs,book),actual)['exact'])
         self.assertFalse(any(row[0]=='A' and row[1]=='pe' for row in actual['filters']))
         self.assertTrue(any(row[0]=='A' and row[1]=='fcf' and row[2]<0 for row in actual['filters']))
 

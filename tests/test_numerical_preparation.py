@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'tests'), str(ROOT/'tools')]
-from bench_source_service_fixture import FictionalWorkspace, sha, SPEC
+from source_service_fixture import FictionalWorkspace, sha, SPEC
 
 
 CHILD = r'''
@@ -17,7 +17,7 @@ from pathlib import Path
 from contextlib import closing
 source=Path(sys.argv[1]); tests=Path(sys.argv[2]); result=Path(sys.argv[3])
 sys.path[:0]=[str(tests),str(tests.parent)]
-from bench_source_service_fixture import dependency_guard
+from source_service_fixture import dependency_guard
 dependency_guard(source)
 sys.path[:0]=[str(source)]
 from website import runtime_access
@@ -39,7 +39,7 @@ with runtime_access.ownership(source):
     _,python_peak=tracemalloc.get_traced_memory();tracemalloc.stop()
     with store.open_current() as inputs:
         inputs.validate()
-        from tools.experiments.bench_candidates import NumericInputs
+        from numerical_inputs_fixture import NumericInputs
         with closing(daily.connect()) as db:
             old=NumericInputs(db,s)
             try:
@@ -90,7 +90,7 @@ import sys,json
 from pathlib import Path
 source=Path(sys.argv[1]);tests=Path(sys.argv[2])
 sys.path[:0]=[str(tests),str(tests.parent)]
-from bench_source_service_fixture import dependency_guard
+from source_service_fixture import dependency_guard
 dependency_guard(source)
 sys.path[:0]=[str(source)]
 from website import runtime_access
@@ -114,7 +114,7 @@ class PreparationTests(unittest.TestCase):
             output=workspace.root/'numerical.log'
             with output.open('wb') as stream:
                 process=subprocess.run([sys.executable,'-I','-B','-c',CHILD,str(workspace.source),
-                    str(ROOT/'tests'),str(result)],stdout=stream,stderr=subprocess.STDOUT,timeout=120)
+                    str(ROOT/'tests'),str(result)],stdout=stream,stderr=subprocess.STDOUT,timeout=300)
             if process.returncode:
                 self.fail(output.read_text(encoding='utf-8',errors='replace'))
             evidence=json.loads(result.read_bytes())

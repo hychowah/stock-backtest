@@ -12,7 +12,7 @@ assert.equal(new Set(ids).size, ids.length, 'IDs must be unique');
 for (const match of html.matchAll(/\bhref="#([^"]+)"/g)) assert(ids.includes(match[1]), `Missing anchor ${match[1]}`);
 for (const match of html.matchAll(/\baria-controls="([^"]+)"/g)) assert(ids.includes(match[1]), `Missing controlled panel ${match[1]}`);
 assert(!/<(?:link|img|script)\b[^>]*(?:src|href)=["']https?:/i.test(html), 'Guide must work without remote assets');
-assert(html.includes('Shared in-memory data remains a prototype.') && html.includes('The requested-pool change is now in the source.'), 'Source and prototype status must be clear');
+assert(html.includes('Shared in-memory data was only a benchmark prototype. That prototype was later removed.') && html.includes('The requested-pool change is now in the source.'), 'Source and removed-prototype status must be clear');
 assert(html.includes('Financial ratios use annual statement inputs.') && html.includes('All conditions must pass before ranking.'), 'Explain annual ratio inputs');
 assert(html.includes('WSL source') && html.includes('Windows runtime') && html.includes('tools/deploy.py') && html.includes('deployment.pending.json'), 'Explain source deployment and interrupted publication');
 assert(html.includes('server/app.py') && html.includes('runtime_access.py') && html.includes('--collect-report'), 'Explain native ownership and verified report collection');
@@ -24,12 +24,12 @@ assert(html.includes('Each saved row has an <strong>All parameters</strong> disc
 assert(html.includes('First saved test') && html.includes('Second saved test') && html.includes('Clear comparison') && html.includes('website/browser/backtest-comparison.js') && html.includes('The main result and strategy form stay unchanged.') && html.includes('Mean trial CAGR is not one portfolio return.'), 'Explain stored comparison controls, independent view, parameter differences and random statistics');
 assert(html.includes('Completed — waiting for saved slot') && html.includes('The saved copy commits before duplicate queue result bytes are removed.') && html.includes('The receipt survives saved-record deletion.') && html.includes('including while execution is paused'), 'Explain recoverable queue transfer, capacity, ownership and deletion receipts');
 assert(html.includes('The library has 100 slots.') && html.includes('stable UUID database ID') && html.includes('Sort saved backtests') && html.includes('Renaming changes only the name.') && html.includes('lists scroll inside bounded regions'), 'Explain library capacity, identity, rename, performance sort and bounded lists');
-assert(html.includes('tools/experiments/bench_baseline.py') && html.includes('CB-01') && html.includes('24 annual trials over 1997–2025') && html.includes('does not measure the browser or an HTTP server'), 'Explain the frozen production baseline and its measurement boundary');
+assert(html.includes('The CB-01 harness and its workload file were later removed.') && html.includes('CB-01') && html.includes('24 annual trials over 1997–2025') && html.includes('does not measure the browser or an HTTP server'), 'Explain the historical production baseline, its measurement boundary and the removed harness');
 assert(html.includes('backtest/engines/numerical/generation.py') && html.includes('data/numerical/') && html.includes('OS-locked lease') && html.includes('stale prior generation'), 'Explain offline numerical publication, read-only attachment and recovery');
 assert(html.includes('Exact worker attachment checked 1 November 2026.') && html.includes('worker_reference()') && html.includes('open_delegated') && html.includes('stable generation gate') && html.includes('CB-19C now supplies parent monitoring'), 'Explain delegated identity, reader pin and remaining worker lifetime responsibility');
 assert(html.includes('Recorded trial operation checked 1 November 2026.') && html.includes('backtest/engines/numerical/trial.py') && html.includes('Trial 37 remains trial 37.') && html.includes('not a committed checkpoint') && html.includes('CB-19C supplies process workers'), 'Explain recorded trials, bounded provisional artifacts and remaining pool responsibility');
 assert(html.includes('Persistent trial pool checked 1 November 2026.') && html.includes('Declared worker capacity stays fixed') && html.includes('completed-but-unreleased') && html.includes('inherited pipe or process handle') && html.includes('They are not RSS limits.'), 'Explain persistent workers, stable capacity identity, reservation lifetime and actual parent monitoring');
-assert(html.includes('tools/experiments/bench_execution.py') && html.includes('tools/experiments/bench_comparison.py') && html.includes('Real benchmark admission stays closed.') && html.includes('These fixture checks give no new speed result.'), 'Distinguish disposable financial execution from real admission and speed qualification');
+assert(html.includes('That harness and its tests were later removed.') && html.includes('<code>tools/experiments/parallel_comparison.py</code> is the only retained comparison runner.') && html.includes('Real benchmark admission stays closed.') && html.includes('These fixture checks give no new speed result.'), 'Label the removed benchmark harness as history and name the only retained comparison runner');
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 
@@ -126,9 +126,9 @@ console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 
 
 assert(html.includes('Ordered random coordination checked 1 November 2026.') && html.includes('Full recovery constructs no provider and starts no workers.') && html.includes('Unretained artifacts keep bounded reservations') && html.includes('Completion progress follows a successful save.'), 'Explain recovery before compilation, parent commitment and bounded ordered presentation');
 
-assert(html.includes('Complete period candidates checked 1 November 2026.') && html.includes('the same source-derived arithmetic and financial decision trees') && html.includes('Full recovery builds no provider.') && html.includes('not three permanent production engine choices') && html.includes('backtest/engines/numerical/rust_kernel.rs'), 'Explain the shared compiled candidate boundary, lazy recovery and comparison-only native status');
+assert(html.includes('Complete period candidates checked 1 November 2026.') && html.includes('the same source-derived arithmetic and financial decision trees') && html.includes('Full recovery builds no provider.') && html.includes('not three permanent production engine choices') && html.includes('The Rust backend was later removed.'), 'Explain the shared compiled candidate boundary, lazy recovery and the removed comparison backend');
 
-assert(html.includes('explicitly joins every numerical thread and its thread-local cleanup'), 'Explain complete native thread cleanup before library closure');
+assert(html.includes('Production runs only compiled Numba.') && html.includes('rejects every other backend'), 'Explain that compiled Numba is the only production numerical backend');
 
 assert(html.includes('Scoped comparison history checked 1 November 2026.') && html.includes('51.98 seconds for Rust and 59.52 seconds') && html.includes('startup and completed-build reuse benefit') && html.includes('failed shared statistics publication') && html.includes('tools/experiments/parallel_comparison.py'), 'Keep historical F comparison scope and failed publication explicit');
 
@@ -138,7 +138,11 @@ assert(html.includes('256 MiB readiness estimate') && html.includes('first actua
 
 assert(html.includes('Normal startup, status and experimental preparation require no Rust') && html.includes('requests no factor-kernel compilation') && html.includes('Ordinary preparation can reuse'), 'Explain selected dependencies and complete recovery without provider construction');
 
-assert(html.includes('tools/setup_numerical_native.py') && html.includes('outside benchmark tmp paths') && html.includes('durable pointer checks') && html.includes('within that inspection') && html.includes('Payload and required statistics must publish before a result frame.'), 'Explain retained offline native comparison setup and atomic protocol publication');
+assert(html.includes('That setup tool, its managed toolchain and its tests were later removed with the Rust backend.') && html.includes('Payload and required statistics must publish before a result frame.'), 'Label the removed native comparison setup as history and explain atomic protocol publication');
+
+for (const removed of ['backtest/engines/numerical/rust.py', 'rust_codegen', 'rust_kernel', 'toolchain_probe', 'setup_numerical_native', 'repair_market', 'backtest/engines/numerical/factors.py', 'test_numerical_rust', 'tests/bench_', 'tests/test_bench_', '/api/schedule', '/api/robustness', '/api/data/report']) {
+  assert(!html.includes(removed), `Guide must not describe removed source or route ${removed}`);
+}
 
 assert(html.includes('Final-source normal application qualification checked 1 November 2026.') && html.includes('120.686 seconds') && html.includes('51.414 seconds') && html.includes('remaining 21') && html.includes('single qualification observations') && html.includes('Recovery still validates inputs'), 'Explain final normal adapter qualification without equating recovery with instant delivery or a fresh Original comparison');
 

@@ -58,33 +58,6 @@ def connect(path=DATABASE,source=None):
         db.close();raise
     return db
 
-def upgrade_daily_cache(path, inputs):
-    """Retain compatible prices and books across preparation-engine upgrades.
-
-    Only this schema/engine change is compatible. Changed research inputs or
-    financial calculation code still require the ordinary offline rebuild.
-    Schema, completion markers and freshness metadata publish atomically.
-    """
-    db=sqlite3.connect(path,timeout=60)
-    try:
-        with db:
-            db.execute('BEGIN IMMEDIATE')
-            saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-            if (saved.get('version') not in (1,2) or inputs.get('version')!=VERSION
-                    or saved.get('observation_version')!=inputs.get('observation_version')
-                    or saved.get('observations')!=inputs.get('observations')
-                    or saved.get('inputs')!=inputs.get('inputs')
-                    or not isinstance(saved.get('prices'),str)
-                    or saved['prices']!=inputs.get('prices')):
-                return False
-            db.execute(POOL_SCHEMA)
-            if saved['version']==1:
-                for pool in ('cached','legacy'):
-                    db.execute('INSERT INTO period_pools SELECT year,? FROM periods',(pool,))
-            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(inputs),))
-        return True
-    finally:
-        db.close()
 
 @cache_access.exclusive
 def prepare(path=DATABASE, source=r.DATABASE):
@@ -100,9 +73,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
         try:
             db=connect(path,source)
         except ValueError:
-            if upgrade_daily_cache(path,inputs):
-                reference.close()
-                print('Daily cache upgraded; existing prices and completed pools retained.');return
+            pass
         else:
             db.close();reference.close();print('Daily cache already current; no prices parsed.');return
     path.parent.mkdir(parents=True,exist_ok=True)

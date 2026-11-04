@@ -141,7 +141,7 @@ class SelectionTests(unittest.TestCase):
     def test_optional_rebuild_does_not_prepare_numerical_stack(self):
         from website.server import data_manager
         owner=self.selectable()
-        jobs=data_manager.Jobs(owner.preparation,optional_preparation=True)
+        jobs=data_manager.Jobs(owner.preparation)
         options=data_manager.options(dict(scope='symbols',symbols='A',start='2015-01-01',end='2016-12-30',datasets=['prices']))
         with patch.object(daily,'prepare'),patch.object(data_manager.subprocess,'run'),patch.object(data_manager,'inspect',return_value={}):
             jobs._work('rebuild',options)

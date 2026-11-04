@@ -5,9 +5,11 @@ captured-execution limits nor qualify production capacity, installed
 compatibility, browser resources or real benchmark admission.
 """
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import date, timedelta
 import hashlib
+import uuid
+import http.client
 import json
 import math
 import os
@@ -19,9 +21,143 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-from bench_service_fixture import SyntheticService, _pending_services
 
 MIB = 1024**2
+
+START_SECONDS = 20.
+CLIENT_SECONDS = 30.
+CLOSE_SECONDS = 15.
+MAX_RESPONSE = 8 * 1024**2
+_pending_services = {}
+
+
+class SyntheticService:
+    """Own a disposable service loaded from verified private source.
+
+    Publish its loopback address after binding. Keep source ownership until the
+    listener, request threads, databases and child process close. Restart creates
+    a new interpreter against the same synthetic saved data. Unknown closure
+    retains this owner and its controls for explicit retry.
+    """
+    start_seconds = START_SECONDS
+    client_seconds = CLIENT_SECONDS
+    close_seconds = CLOSE_SECONDS
+    max_response = MAX_RESPONSE
+
+    def command(self, path):
+        raise NotImplementedError
+
+    def limits(self):
+        raise NotImplementedError
+
+    def __init__(self, fixture, request, **scenario):
+        self.fixture, self.request_spec = fixture, request
+        self.control = fixture.root / ('http-' + uuid.uuid4().hex)
+        self.scenario = scenario
+        self.owned = None
+        self.events = []
+        self.clients = set()
+        self.stop_sent = self.closed = self.ready = False
+
+    def start(self):
+        from backtest.runtime.process_owner import OwnedProcess
+        self.control.mkdir()
+        request = dict(self.request_spec, control=str(self.control), scenario=self.scenario)
+        path = self.control / 'request.json'; path.write_bytes(encoded(request))
+        _pending_services[id(self)] = self
+        command = self.command(path)
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', NUMBA_NUM_THREADS='2',
+                   OMP_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2', MKL_NUM_THREADS='2')
+        try:
+            self.owned = OwnedProcess(command, env=env, limits=self.limits())
+            self.owned.start()
+            ready = self.wait('ready', self.start_seconds)
+            self.port = ready['port']
+            if ready['host'] != '127.0.0.1' or self.port in (0, 3000):
+                raise AssertionError('Invalid disposable service address.')
+            self.ready = True
+            return self
+        except BaseException as error:
+            self.owned = self.owned or getattr(error, 'owned_process', None)
+            try: self.close()
+            except BaseException: error.synthetic_service = self
+            raise
+
+    def wait(self, event, seconds=None):
+        seconds = self.client_seconds if seconds is None else seconds
+        until = time.monotonic() + seconds
+        while time.monotonic() < until:
+            value = self.owned.event(.02)
+            if value:
+                self.events.append(value)
+                if value.get('event') == 'failed':
+                    raise AssertionError('Synthetic service transport failed: ' + value['reason'])
+                if value.get('event') == event: return value
+            elif self.owned.process.poll() is not None: break
+        raise AssertionError('Missing synthetic service event: ' + event)
+
+    @contextmanager
+    def connection(self):
+        client = http.client.HTTPConnection('127.0.0.1', self.port, timeout=self.client_seconds)
+        self.clients.add(client)
+        try: yield client
+        finally: client.close(); self.clients.discard(client)
+
+    def request(self, method, path, payload=None, *, status=200):
+        with self.connection() as client:
+            body = None if payload is None else encoded(payload)
+            client.request(method, path, body, {'Content-Type': 'application/json'})
+            response = client.getresponse()
+            raw = response.read(self.max_response + 1)
+            assert response.status == status, (response.status, raw[:200])
+            assert len(raw) <= self.max_response
+            length = response.getheader('Content-Length')
+            if length is not None: assert int(length) == len(raw)
+            if path.startswith('/api/'): return json.loads(raw)
+            return raw
+
+    def close(self):
+        if self.closed: return
+        if self.owned is not None:
+            if not self.stop_sent and self.owned.process.poll() is None:
+                (self.control / 'stop').touch()
+                self.stop_sent = True
+            self.owned.process.wait(timeout=self.close_seconds)
+            self.owned.close()
+            if not self.owned.closed: raise TimeoutError('Synthetic service closure is unconfirmed.')
+            while not self.owned.events.empty():
+                self.events.append(self.owned.events.get_nowait())
+            if self.ready:
+                assert self.owned.failure is None, 'Synthetic service transport failed.'
+                assert self.owned.process.returncode == 0, 'Synthetic service failed during shutdown.'
+                names = [row.get('event') for row in self.events]
+                assert names.index('shutdown_started') < names.index('service_closed') < names.index('source_released')
+        for client in list(self.clients): client.close()
+        self.clients.clear()
+        self.closed = True
+        _pending_services.pop(id(self), None)
+
+    def __enter__(self): return self.start()
+
+    def __exit__(self, kind, error, tb):
+        try: self.close()
+        except BaseException:
+            if error is None: raise
+            error.synthetic_service = self
+
+
+def encoded(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+
+
+def _verify(root, files):
+    """Reject a copied source file whose bytes differ from the recorded inventory."""
+    for relative, expected in files.items():
+        target = (root / relative).resolve()
+        if not target.is_relative_to(root) or hashlib.sha256(target.read_bytes()).hexdigest() != expected:
+            raise AssertionError('Copied source differs from its recorded inventory.')
+
+
 ALLOWANCES = dict(raw=64*MIB, database=128*MIB, website=64*MIB,
                   history=32*MIB, control=16*MIB, downloads=16*MIB, total=512*MIB)
 SPEC = dict(companies=64, first='1992-01-01', through='2026-10-21',
@@ -36,20 +172,6 @@ def sha(path):
 def write(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, separators=(',', ':'), allow_nan=False), encoding='utf-8')
-
-
-def copy_native(destination):
-    """Borrow immutable compiler bytes through fixture-owned hard-link names."""
-    native=ROOT/'data/numerical-native'
-    if not (native/'installation.json').is_file():return 0
-    target=Path(destination)/'data/numerical-native';target.mkdir(parents=True)
-    shutil.copy2(native/'installation.json',target/'installation.json')
-    directory=json.loads((native/'installation.json').read_bytes())['directory']
-    def link(source,destination):
-        try:os.link(source,destination)
-        except OSError:shutil.copy2(source,destination)
-    shutil.copytree(native/'toolchains'/directory,target/'toolchains'/directory,copy_function=link)
-    return sum(p.stat().st_size for p in target.rglob('*') if p.is_file())
 
 
 class FictionalWorkspace:
@@ -69,7 +191,7 @@ class FictionalWorkspace:
             for path in sorted((ROOT / folder).rglob('*')):
                 if any(part in ('local','dist','__pycache__','node_modules','.openai') for part in path.relative_to(ROOT/folder).parts):
                     continue
-                if not path.is_file() or not (path.suffix in ('.py','.js','.css','.html') or path.relative_to(ROOT).as_posix()=='backtest/engines/numerical/rust_kernel.rs'):
+                if not path.is_file() or not (path.suffix in ('.py','.js','.css','.html')):
                     continue
                 assert not path.is_symlink()
                 relative = path.relative_to(ROOT)
@@ -81,7 +203,6 @@ class FictionalWorkspace:
         shutil.copy2(dependency_file, self.source / dependency_file.name)
         self.sources[dependency_file.name] = sha(self.source / dependency_file.name)
         # The selected application path must prepare and run without Rust.
-        # Direct comparison-only Rust fixtures may explicitly copy_native().
         self.native_components_bytes=0
         self._generate()
         self.inputs = self.input_inventory()
@@ -162,25 +283,6 @@ class FictionalWorkspace:
         if not any(value is owner for value in self._owners):self._owners.append(owner)
         return owner
 
-    def capture_prepared(self):
-        """Capture this fictional workspace only after its service has confirmed
-        closure. Reuse the offline capture owner to preserve actual prepared
-        metadata, source identity and report binding. Never prepare or repair
-        inputs during capture.
-        """
-        if any(isinstance(owner,SourceService) and not owner.closed for owner in self._owners):
-            raise AssertionError('Close the fictional service before offline capture.')
-        if any(service.fixture is self and not service.closed for service in _pending_services.values()):
-            raise AssertionError('Unconfirmed service closure blocks offline capture.')
-        import tools.experiments.bench_capture_offline as bench_capture_offline
-        before=self.input_inventory()
-        report=sha(self.source/'results/summary-exits.txt')
-        capture=bench_capture_offline.capture_offline(self.source,self.source/'tmp'/'combined-capture')
-        assert before==self.input_inventory()
-        assert report==sha(self.source/'results/summary-exits.txt')
-        self.inventory()
-        return capture
-
     def inventory(self):
         """Check logical bytes and immutable source; this is not a disk quota."""
         files = []
@@ -241,7 +343,7 @@ class SourceService(SyntheticService):
 
     def command(self, path):
         return [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
-            'import sys;sys.path[:0]=sys.argv[1:3];from bench_source_service_fixture import child;child(sys.argv[3])',
+            'import sys;sys.path[:0]=sys.argv[1:3];from source_service_fixture import child;child(sys.argv[3])',
             str(ROOT/'tests'), str(ROOT), str(path)]
 
     def limits(self):
@@ -311,7 +413,7 @@ def dependency_guard(source):
 def guarded_environment(source):
     """Give ordinary Python children the same tested dependency boundary."""
     guard=source.parent/'guard';guard.mkdir(exist_ok=True)
-    (guard/'sitecustomize.py').write_text('import sys\nsys.path[:0]='+repr([str(ROOT/'tests'),str(ROOT)])+ '\nfrom bench_source_service_fixture import dependency_guard\nfrom pathlib import Path\ndependency_guard(Path('+repr(str(source))+'))\n',encoding='utf-8')
+    (guard/'sitecustomize.py').write_text('import sys\nsys.path[:0]='+repr([str(ROOT/'tests'),str(ROOT)])+ '\nfrom source_service_fixture import dependency_guard\nfrom pathlib import Path\ndependency_guard(Path('+repr(str(source))+'))\n',encoding='utf-8')
     return dict(os.environ,PYTHONPATH=str(guard),PYTHONDONTWRITEBYTECODE='1')
 
 
@@ -327,7 +429,6 @@ def child(request_path):
     assert input()=='GO'
     request=json.loads(Path(request_path).read_bytes())
     source=Path(request['source']).resolve();control=Path(request['control']).resolve()
-    from tools.experiments.bench_execution_worker import _verify
     _verify(source,request['sources'])
     import mimetypes
     mimetypes.init()

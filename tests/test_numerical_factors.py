@@ -15,8 +15,8 @@ import unittest
 from unittest.mock import patch
 
 import test_numerical_generation as fixtures
-import test_bench_candidates as candidate_tests
-from backtest.engines.numerical.factors import FactorEvaluator
+import test_numerical_books as candidate_tests
+from numerical_factor_oracle import FactorEvaluator
 from backtest.engines.numerical.policy import PolicyProgram, FACTOR_VERSION, _schema_tree, UNSUPPORTED_THRESHOLDS
 import numpy as np
 

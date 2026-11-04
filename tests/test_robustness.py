@@ -10,19 +10,15 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily
 from datetime import date,timedelta
 from pathlib import Path
-import io
-import json
 import sqlite3
 import sys
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 from backtest.engines.original import robustness as r
 from backtest.engines.original import schedules as s
-from website.server import app as serve
 from backtest.application import jobs as backtest_jobs
 class RobustnessTests(unittest.TestCase):
     def setUp(self):
@@ -43,13 +39,12 @@ class RobustnessTests(unittest.TestCase):
     def config(self,**options):
         return r.plan(self.db,start='2015-01-01',end='2016-12-30',rank_to=1,**options)
 
-    def stream(self,handler,configuration):
-        handler.server=SimpleNamespace(calculations=Original())
+    def calculate(self,mode,options,configuration=None,**kwargs):
         def connection():
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
             self.db.backup(db);return db
         with patch.object(daily,'connect',side_effect=connection):
-            serve.backtests.stream_batch(handler,{},planned=configuration)
+            return Original().calculate(mode,options,None,configuration,**kwargs)
 
     def test_seed_count_and_independent_draws_in_each_block(self):
         plan=self.config(trials=24,seed=11)
@@ -163,18 +158,6 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual([row['cagr'] for row in retry['trials']],[row['cagr'] for row in first['trials']])
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],2*periods)
 
-    def test_ndjson_handler_contract(self):
-        handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO()
-        statuses=[];handler.send_response=statuses.append
-        handler.send_header=lambda *args:None;handler.end_headers=lambda:None
-        configuration=self.config(trials=2)
-        self.stream(handler,configuration)
-        events=[json.loads(line) for line in handler.wfile.getvalue().splitlines()]
-        self.assertEqual(statuses,[200]);self.assertEqual(events[0]['type'],'configuration')
-        self.assertEqual(events[0]['configuration'],configuration)
-        self.assertEqual(events[-1]['type'],'complete')
-        self.assertEqual(events[-1]['result']['completed'],2)
-
     def test_optional_capture_keeps_full_trial_results_without_changing_summary(self):
         configuration=self.config(trials=3,seed=42)
         captured=[]
@@ -189,61 +172,27 @@ class RobustnessTests(unittest.TestCase):
         replay=r.run(self.db,configuration)
         self.assertEqual(result['distributions'],replay['distributions'])
 
-    def test_opt_in_stream_keeps_every_trial_holding_and_default_contract(self):
+    def test_calculation_owner_keeps_every_trial_holding(self):
         configuration=self.config(trials=2,seed=42)
-        def stream(headers):
-            handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO();handler.headers=headers
-            handler.send_response=lambda *args:None
-            handler.send_header=lambda *args:None;handler.end_headers=lambda:None
-            self.stream(handler,configuration)
-            return [json.loads(line) for line in handler.wfile.getvalue().splitlines()]
-        events=stream({'X-Backtest-Details':'holdings'})
-        result=events[-1]['result']
-        self.assertEqual(events[-1]['type'],'complete')
+        result=self.calculate('random',{},planned=configuration)
         self.assertEqual(len(result['trial_results']),2)
         for detail,summary in zip(result['trial_results'],result['trials']):
             self.assertEqual(len(detail['periods']),summary['periods'])
             self.assertEqual(detail['cagr'],summary['cagr'])
             self.assertEqual(detail['periods'][0]['holdings'][0]['symbol'],'A')
-        plain=stream({})[-1]['result']
-        self.assertNotIn('trial_results',plain)
-        self.assertEqual(plain['distributions'],result['distributions'])
 
-    def test_interrupted_stream_publishes_replay_identity_before_work(self):
-        handler=object.__new__(serve.Handler);handler.wfile=io.BytesIO()
-        handler.send_response=lambda *args:None
-        handler.send_header=lambda *args:None;handler.end_headers=lambda:None
-        configuration=self.config(trials=2)
-        with patch.object(r,'run',side_effect=ValueError('interrupted')):
-            self.stream(handler,configuration)
-        events=[json.loads(line) for line in handler.wfile.getvalue().splitlines()]
-        self.assertEqual(events[0],dict(type='configuration',configuration=configuration))
-        self.assertEqual(events[1]['type'],'error')
+    def test_interrupted_batch_publishes_replay_identity_before_work(self):
+        configuration=self.config(trials=2);published=[]
+        with patch.object(r,'run',side_effect=ValueError('interrupted')),self.assertRaisesRegex(ValueError,'interrupted'):
+            self.calculate('random',{},published.append,planned=configuration)
+        self.assertEqual(published,[configuration])
         replay=r.plan(self.db,start=configuration['start'],end=configuration['end'],months=configuration['months'],trials=configuration['requested'],seed=configuration['seed'],**configuration['options'])
         self.assertEqual(replay['samples'],configuration['samples'])
 
-    def test_http_route_streams_and_inspects_exact_dates(self):
-        def connection():
-            db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
-            self.db.backup(db);return db
-        def handler(path,payload):
-            obj=object.__new__(serve.Handler);body=json.dumps(payload).encode()
-            obj.server=SimpleNamespace(lifecycle=None,calculations=Original())
-            obj.disconnect_check=lambda:lambda:False
-            obj.path=path;obj.rfile=io.BytesIO(body);obj.wfile=io.BytesIO()
-            obj.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}
-            obj.statuses=[];obj.send_response=obj.statuses.append
-            obj.send_header=lambda *args:None;obj.end_headers=lambda:None
-            obj.replies=[];obj.reply=lambda status,value:obj.replies.append((status,value))
-            return obj
-        batch=handler('/api/robustness',dict(start='2015-01-01',end='2016-12-30',months=24,trials=2,seed=42,rank_to=1))
-        with patch.object(daily,'connect',side_effect=connection):batch.do_POST()
-        self.assertEqual(batch.statuses,[200])
-        result=json.loads(batch.wfile.getvalue().splitlines()[-1])['result']
-        inspect=handler('/api/schedule',dict(start='2015-01-01',end='2016-12-30',months=24,dates=result['trials'][0]['dates'],rank_to=1))
-        with patch.object(daily,'connect',side_effect=connection):inspect.do_POST()
-        self.assertEqual(inspect.replies[0][0],200)
-        self.assertAlmostEqual(inspect.replies[0][1]['cagr'],result['trials'][0]['cagr'])
+    def test_exact_trial_dates_reproduce_the_trial(self):
+        result=self.calculate('random',dict(start='2015-01-01',end='2016-12-30',months=24,trials=2,seed=42,rank_to=1))
+        inspected=self.calculate('custom',dict(start='2015-01-01',end='2016-12-30',months=24,dates=result['trials'][0]['dates'],rank_to=1))
+        self.assertAlmostEqual(inspected['cagr'],result['trials'][0]['cagr'])
 
 
 if __name__=='__main__':unittest.main()

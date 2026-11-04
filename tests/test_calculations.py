@@ -75,7 +75,7 @@ class CalculationTests(unittest.TestCase):
         handler.replies=[];handler.reply=lambda status,value:handler.replies.append((status,value))
         return handler
 
-    def test_jobs_queue_and_both_legacy_routes_share_owner_without_preholding(self):
+    def test_jobs_and_queue_share_owner_without_preholding(self):
         calls=[];original=self.service.calculate
         def calculate(*args,**kwargs):
             self.assertFalse(getattr(self.owner.state,'held',False))
@@ -88,12 +88,8 @@ class CalculationTests(unittest.TestCase):
             item=store.enqueue(request(options=self.options))
             queue=backtest_queue.Queue(store,calculations=self.service,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
             queue._run(store.claim());self.assertEqual(store.get(item['id'])['state'],'complete')
-            fixed=self.handler('/api/schedule',self.options);fixed.do_POST()
-            random=self.handler('/api/robustness',dict(self.options,trials=2,seed=42));random.do_POST()
-        self.assertEqual(calls,['custom','custom','custom','random'])
-        self.assertEqual(fixed.replies[0][0],200)
-        self.assertEqual(json.loads(random.wfile.getvalue().splitlines()[-1])['type'],'complete')
-        self.assertEqual(self.closures,[True]*4)
+        self.assertEqual(calls,['custom','custom'])
+        self.assertEqual(self.closures,[True]*2)
         server=serve.Server(('127.0.0.1',0),serve.Handler)
         try:
             self.assertIs(server.backtest_jobs.calculations,server.calculations)
@@ -168,59 +164,47 @@ class CalculationTests(unittest.TestCase):
                 self.service.calculate('custom',self.options,None,None,admission='queue')
             access.assert_called_once()
 
-    def test_unavailable_admitted_inputs_remain_a_legacy_503(self):
+    def test_unavailable_admitted_inputs_return_503(self):
         self.service.ready=lambda:False
-        for path in ('/api/schedule','/api/robustness'):
-            handler=self.handler(path,self.options);handler.do_POST()
-            self.assertEqual(handler.replies[0][0],503);self.assertEqual(handler.statuses,[])
+        for mode,options in (('custom',self.options),('random',dict(self.options,trials=2))):
+            handler=self.handler('/api/backtest-runs/'+'e'*32,dict(mode=mode,options=options))
+            handler.server.backtest_jobs=jobs=backtest_jobs.Jobs(self.service)
+            try:handler.do_POST()
+            finally:jobs.close()
+            self.assertEqual(handler.replies[0][0],503);self.assertEqual(jobs.runs,{})
         self.assertEqual(self.closures,[])
-
-    def test_legacy_errors_before_and_after_stream_headers_and_summary_capture(self):
-        invalid=self.handler('/api/robustness',dict(self.options,trials=0));invalid.do_POST()
-        self.assertEqual(invalid.replies[0][0],400);self.assertEqual(invalid.statuses,[])
-        stream=self.handler('/api/robustness',dict(self.options,trials=2))
-        with patch.object(robustness,'run',side_effect=ValueError('after planning')):stream.do_POST()
-        self.assertEqual(stream.statuses,[200]);self.assertEqual(stream.replies,[])
-        self.assertEqual([json.loads(line)['type'] for line in stream.wfile.getvalue().splitlines()],['configuration','error'])
-        plain=self.handler('/api/robustness',dict(self.options,trials=2,seed=42))
-        with patch.object(robustness,'run',wraps=robustness.run) as run:plain.do_POST()
-        self.assertIsNone(run.call_args.kwargs['capture'])
-        self.assertNotIn('trial_results',json.loads(plain.wfile.getvalue().splitlines()[-1])['result'])
-
-    def test_legacy_disconnect_cleans_up_without_complete_frame(self):
-        stream=self.handler('/api/robustness',dict(self.options,trials=2))
-        class Disconnected(io.BytesIO):
-            def write(self,value):raise BrokenPipeError()
-        stream.wfile=Disconnected()
-        with patch.object(robustness,'run') as run:stream.do_POST()
-        run.assert_not_called();self.assertEqual(self.closures,[True]);self.assertEqual(stream.replies,[])
 
     def test_shutdown_rejects_a_late_http_body_before_any_calculation(self):
         body_entered=Event();release=Event();outcome=[]
+        check=serve.backtests.strategy_requests.check_request
+        def late(value):
+            # Hold the accepted body after reading, before job admission.
+            body_entered.set()
+            if not release.wait(5):raise AssertionError('Late-body test did not release.')
+            return check(value)
         class Handler(serve.Handler):
             def log_message(self,*args):pass
-            def disconnect_check(self):
-                body_entered.set()
-                if not release.wait(5):raise AssertionError('Late-body test did not release.')
-                return lambda:False
         server=serve.Server(('127.0.0.1',0),Handler)
         self.service=server.calculations
         listener=Thread(target=server.serve_forever);listener.start()
         def send():
             client=HTTPConnection(*server.server_address,timeout=5)
             try:
-                client.request('POST','/api/schedule',json.dumps(self.options))
+                client.request('POST','/api/backtest-runs/'+'e'*32,json.dumps(dict(mode='custom',options=self.options)))
                 response=client.getresponse();outcome.append((response.status,json.loads(response.read())))
             finally:client.close()
-        sender=Thread(target=send);sender.start()
+        sender=Thread(target=send)
         try:
-            self.assertTrue(body_entered.wait(3));server.shutdown();listener.join(3)
-            self.assertTrue(self.service.closed.is_set());release.set();sender.join(3)
+            with patch.object(serve.backtests.strategy_requests,'check_request',side_effect=late):
+                sender.start()
+                self.assertTrue(body_entered.wait(3));server.shutdown();listener.join(3)
+                self.assertTrue(self.service.closed.is_set());release.set();sender.join(3)
             server.server_close();server.server_close()
-            self.assertEqual(outcome[0][0],400);self.assertIn('stopping',outcome[0][1]['error'])
+            self.assertEqual(outcome[0][0],409);self.assertIn('stopping',outcome[0][1]['error'])
             self.assertEqual(self.closures,[])
         finally:
-            release.set();sender.join(5)
+            release.set()
+            if sender.is_alive():sender.join(5)
             if listener.is_alive():server.shutdown();listener.join(5)
             server.server_close()
 

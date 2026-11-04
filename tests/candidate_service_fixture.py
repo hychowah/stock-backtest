@@ -1,4 +1,4 @@
-"""Contain a real isolated candidate entry with explicit fictional failures."""
+"""Contain the real ordinary app in a private source export with fictional failures."""
 from contextlib import ExitStack
 from pathlib import Path
 import sys
@@ -19,7 +19,7 @@ def forbid_calculations(context):
 def main():
     source,tests=map(Path,sys.argv[1:3]);scenario=sys.argv[3]
     sys.path[:0]=[str(tests),str(tests.parent)]
-    from bench_source_service_fixture import dependency_guard, assert_package_source
+    from source_service_fixture import dependency_guard, assert_package_source
     import mimetypes
     mimetypes.init()
     dependency_guard(source)
@@ -99,6 +99,10 @@ def main():
         original=serve_app.Server
         def server(*args,**kwargs):
             value=original(*args,**kwargs)
+            if scenario in ('workflow','evidence'):
+                # Normal startup prepares the experimental engine only on request.
+                # These scenarios start with a current numerical generation.
+                value.calculations.preparation.prepare(progress=lambda **values:print(values['message'],flush=True))
             if scenario=='evidence':
                 serve=value.serve_forever
                 def serve_evidence():
@@ -126,12 +130,7 @@ def main():
             context.enter_context(patch.object(serve_app.backtest_queue.Queue,'start',return_value=None))
         if scenario not in ('workflow','ordinary-workflow','selectable-workflow','evidence'):
             forbid_calculations(context)
-        if scenario.startswith('ordinary') or scenario=='selectable-workflow':
-            serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
-        else:
-            from website import serve_candidate
-            sys.argv=['serve_candidate.py','--private-root',str(source),'--no-browser']
-            serve_candidate.main()
+        serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
 
 
 if __name__=='__main__':main()

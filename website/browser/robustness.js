@@ -1,4 +1,4 @@
-/* Random-date experiment presentation and incremental NDJSON transport.
+/* Random-date experiment presentation.
    Formula and sampling policy belong to the backend; this module consumes results. */
 const RobustnessView=(()=>{
   const node=id=>document.getElementById(id);
@@ -11,35 +11,6 @@ const RobustnessView=(()=>{
     if(!node('repeat-random').checked)node('random-seed').value=String(next.seed);
     node('robustness-replay').hidden=false;
     node('robustness-replay-note').textContent='Date set saved. Replay uses the same dates, filters and window, including after an interrupted run.';
-  }
-  async function read(response,progress,isCurrent=()=>true){
-    if(!response.body?.getReader)return response.json();
-    const reader=response.body.getReader(),decoder=new TextDecoder();
-    let buffer='',complete=null;
-    function line(text){
-      if(!isCurrent())throw Error('Request cancelled.');
-      if(!text.trim())return;
-      const event=JSON.parse(text);
-      if(event.type==='configuration'){remember(event.configuration);progress(event);}
-      else if(event.type==='progress'||event.type==='preparation')progress(event);
-      else if(event.type==='complete')complete=event.result;
-      else if(event.type==='error')throw Error(event.message);
-    }
-    try{
-      while(true){
-        const {value,done}=await reader.read();
-        buffer+=decoder.decode(value,{stream:!done});
-        let end;
-        while((end=buffer.indexOf('\n'))!==-1){line(buffer.slice(0,end));buffer=buffer.slice(end+1);}
-        if(done)break;
-      }
-      if(buffer.trim())line(buffer);
-      if(!complete)throw Error('The server connection ended before all trials completed. Restart the launcher, then select Replay saved date test to reuse completed books.');
-      return complete;
-    }finally{
-      try{if(!isCurrent())await reader.cancel?.();}
-      finally{reader.releaseLock();}
-    }
   }
   function chart(result){
     const key=node('robustness-measure').value||'cagr';
@@ -123,5 +94,5 @@ const RobustnessView=(()=>{
     node('robustness-download').addEventListener('click',download);
     node('robustness-inspect').addEventListener('click',()=>{const result=getResult(),index=+node('robustness-trial').value;return result?inspect(result.trials[index],result.configuration,result.trial_results?.[index],index):undefined;});
   }
-  return {read,render,init,remember};
+  return {render,init,remember};
 })();

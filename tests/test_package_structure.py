@@ -84,7 +84,7 @@ class PackageTests(unittest.TestCase):
             self.assertNotEqual(before['website/runtime_access.py'],after['website/runtime_access.py'])
 
     def test_private_source_fixture_contains_nested_financial_package(self):
-        from bench_source_service_fixture import FictionalWorkspace
+        from source_service_fixture import FictionalWorkspace
         with FictionalWorkspace() as fixture:
             self.assertTrue({'backtest/financial/__init__.py','backtest/financial/rules.py',
                 'backtest/financial/books.py','backtest/financial/metrics.py'}<=fixture.sources.keys())
@@ -96,7 +96,7 @@ import sys
 from pathlib import Path
 root=Path(sys.argv[1])
 sys.path[:0]=[str(root/'tests'),str(root)]
-from bench_source_service_fixture import dependency_guard
+from source_service_fixture import dependency_guard
 import candidate_preparation_fixture, candidate_service_fixture, numerical_profile_fixture
 assert not any(name=='backtest' or name.startswith('backtest.') for name in sys.modules)
 """

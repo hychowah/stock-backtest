@@ -7,7 +7,7 @@ import sys
 import unittest
 ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT)]
-from bench_source_service_fixture import FictionalWorkspace
+from source_service_fixture import FictionalWorkspace
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))

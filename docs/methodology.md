@@ -59,7 +59,7 @@ A stock that still trades on the January sale date keeps that price. Being delis
 | `raw/spy-div.json` | SPY with dividends. |
 | `raw/treasury.json` | Treasury yields. `month3` is the 3-month yield, in percent. |
 
-`tools/probe.py`, `tools/fetch_bulk.py`, `tools/bench_metrics.py`, and the CSV files under `raw/archive/` were steps used to learn the API. The backtest does not read those CSV files.
+`tools/probe.py`, `tools/fetch_bulk.py` and the CSV files under `raw/archive/` were steps used to learn the API. The backtest does not read those CSV files.
 
 ## Limits
 

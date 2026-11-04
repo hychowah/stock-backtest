@@ -21,8 +21,8 @@ The parts are:
 - **CB-19E:** one typed candidate boundary for compiled Numba and Rust.
 - **CB-19F/G:** a scoped comparison, then selection and integration.
 
-Rust stays a comparison-only capability. Normal startup, preparation and
-calculation import no Rust code and need no compiler. CB-19 deployed nothing and
+The Rust comparison provider and its build tooling were removed after CB-19G.
+Normal startup, preparation and calculation need no compiler. CB-19 deployed nothing and
 restarted no installed server.
 
 ## Key decisions
@@ -95,8 +95,7 @@ restarted no installed server.
   [ordered coordinator](../../numerical-generations.md#ordered-random-coordinator-cb-19d)
   and [candidate boundary](../../numerical-generations.md#complete-period-comparison-cb-19e).
 - [Parallel checkpoint coordination](../../trial-checkpoints.md#parallel-ordered-coordination-cb-19d).
-- [Selected preparation](../../candidate-startup.md#current-selected-preparation-cb-19g)
-  and [comparison-only Rust setup](../../candidate-startup.md#comparison-only-rust-setup).
+- [Selected preparation](../../candidate-startup.md#current-selected-preparation-cb-19g).
 - [Architecture guide](../../architecture-guide/dist/index.html).
 - F evidence: [README](../../../results/experiments/parallel-comparison-2026-11-01/README.md),
   [decision](../../../results/experiments/parallel-comparison-2026-11-01/decision.json),
@@ -109,8 +108,7 @@ restarted no installed server.
   [final comparison](../../../results/experiments/parallel-qualification-2026-11-01/final-comparison.json).
 - Source: `backtest/engines/numerical/` (`execution.py`, `trial.py`,
   `trial_pool.py`, `trial_worker.py`, `random.py`, `session.py`,
-  `generation.py`, `candidates.py`). Comparison only: `rust.py`,
-  `rust_codegen.py`, `toolchain.py`, `tools/setup_numerical_native.py`,
+  `generation.py`, `candidates.py`). Comparison runner:
   `tools/parallel_comparison.py`.
 
 ## Known limits and open items

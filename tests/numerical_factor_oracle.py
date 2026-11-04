@@ -1,4 +1,8 @@
-"""Entry factors from one source-derived catalog over borrowed immutable inputs.
+"""Test oracle: entry factors from one source-derived catalog over borrowed inputs.
+
+Production evaluates complete books with NumbaExecutor. Tests use this Python
+evaluation over the same TemporalEvaluator and CompiledMatrix to check policy
+semantics such as missing inputs, rounding and calendar tolerances.
 
 Callers retain source/cache ownership and validate freshness before each job.
 There are no exit decisions, selection rules, SQL writes or durable caches here.

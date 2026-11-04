@@ -369,7 +369,7 @@ class DurableTests(unittest.TestCase):
 
     def test_real_fictional_input_generation_replacement_and_checkpoint_eviction(self):
         import test_numerical_trials as trials
-        from tools.experiments.bench_candidates import NumericInputs
+        from numerical_inputs_fixture import NumericInputs
         from backtest.engines.numerical.numba import NumbaExecutor
         from backtest.engines.numerical.portfolio import NumericalPortfolio
         from backtest.engines.numerical.portfolio import compare_results

@@ -323,7 +323,7 @@ class NativeBrowser:
         try:
             if self.storage.root is None: self.storage.start()
             command = [sys.executable, '-X', 'utf8', '-I', '-B', '-c',
-                'import sys;sys.path.insert(0,sys.argv[1]);from bench_native_browser import bootstrap;bootstrap(sys.argv[2],renderer_processes=int(sys.argv[3]) if len(sys.argv)>3 else None)',
+                'import sys;sys.path.insert(0,sys.argv[1]);from native_browser_fixture import bootstrap;bootstrap(sys.argv[2],renderer_processes=int(sys.argv[3]) if len(sys.argv)>3 else None)',
                 str(ROOT/'tests'), str(self.storage.root)]
             if self.renderer_processes is not None:command.append(str(self.renderer_processes))
             env = dict(os.environ, TEMP=str(self.storage.root/'temp'), TMP=str(self.storage.root/'temp'))

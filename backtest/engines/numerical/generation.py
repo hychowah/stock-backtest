@@ -309,7 +309,7 @@ def _valid_id(value):
 def _source_binding(policy, checkpoint=lambda: None):
     """One source definition for coordinator freshness and exact worker attach."""
     source = {p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else p.as_posix(): _sha(p, checkpoint) for p in policy.source_paths}
-    for name in ('generation.py', 'policy.py', 'decisions.py', 'temporal.py', 'factors.py'):
+    for name in ('generation.py', 'policy.py', 'decisions.py', 'temporal.py'):
         source['backtest/engines/numerical/'+name] = _sha(Path(__file__).with_name(name), checkpoint)
     source['backtest/runtime/cache_access.py'] = _sha(Path(cache_access.__file__), checkpoint)
     source['backtest/inputs/dated_observation_inputs.py'] = _sha(Path(dated_observation_inputs.__file__), checkpoint)

@@ -6,6 +6,7 @@ import unittest
 
 import test_candidate_calculations as candidate_tests
 from backtest.application import queue as backtest_queue
+from backtest.application import calculations as engine_selection
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -23,24 +24,27 @@ class CalendarRecoveryTests(unittest.TestCase):
     assert_closed=candidate_tests.CandidateTests.assert_closed
 
     def test_busy_queue_submission_is_advisory_but_unavailable_is_rejected(self):
-        owner=self.candidate();self.service=owner
+        candidate=self.candidate()
+        owner=engine_selection.Selectable(candidate.preparation);owner.experimental=candidate
+        # Inspect the fictional candidate directly; dependency probing is separate.
+        owner.status=candidate.status;self.service=owner
+        options=dict(self.options(),engine='experimental')
         store=backtest_queue.Store(self.root/'busy-queue.sqlite')
         queue=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
-        handler=calculation_tests.CalculationTests.handler(self,'/api/backtest-queue',request(options=self.options()))
-        handler.server.candidate_preparation=owner.preparation;handler.server.backtest_queue=queue;handler.command='POST'
-        owner.operation.acquire()
+        handler=calculation_tests.CalculationTests.handler(self,'/api/backtest-queue',request(options=options))
+        handler.server.backtest_queue=queue;handler.command='POST'
+        candidate.operation.acquire()
         try:
-            self.assertFalse(owner.ready())
-            with patch.object(owner,'calculate',side_effect=AssertionError('No calculation during submission')):
+            self.assertFalse(candidate.ready())
+            with patch.object(candidate,'calculate',side_effect=AssertionError('No calculation during submission')):
                 calculation_tests.serve.backtests.queue_request(handler,calculation_tests.serve.DATA_JOBS)
             self.assertEqual(handler.replies[0][0],200)
             self.assertEqual(store.listing()['records'][0]['state'],'queued')
-        finally:owner.operation.release()
-        owner.preparation.status.return_value=dict(state='unavailable')
-        unavailable=calculation_tests.CalculationTests.handler(self,'/api/backtest-queue',request(options=self.options()))
-        unavailable.server.candidate_preparation=owner.preparation
-        self.assertFalse(calculation_tests.serve.backtests.require_calculation(unavailable));self.assertEqual(unavailable.replies[0][0],503)
-        self.assertFalse(owner.ready());queue.close()
+        finally:candidate.operation.release()
+        candidate.preparation.status.return_value=dict(state='unavailable')
+        unavailable=calculation_tests.CalculationTests.handler(self,'/api/backtest-queue',request(options=options))
+        self.assertFalse(calculation_tests.serve.backtests.require_calculation(unavailable,options));self.assertEqual(unavailable.replies[0][0],503)
+        self.assertFalse(candidate.ready());queue.close()
 
     def test_canonical_plan_shutdown_requeue_replay_and_complete_snapshot(self):
         owner=self.candidate()

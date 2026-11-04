@@ -9,8 +9,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from bench_native_browser import BrowserStorage
-from bench_source_service_fixture import SPEC
+from native_browser_fixture import BrowserStorage
+from source_service_fixture import SPEC
 from candidate_browser_fixture import CandidateService,FictionalWorkspace
 from test_candidate_browser import WorkflowBrowser
 

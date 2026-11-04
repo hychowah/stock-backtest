@@ -213,7 +213,7 @@ class FixedChildTests(unittest.TestCase):
         # adapters and real contained workers. The complete raw universe is
         # fictional; no historical benchmark/service admission is invoked.
         sys.path.insert(0,str(ROOT/'tests'))
-        from bench_source_service_fixture import FictionalWorkspace
+        from source_service_fixture import FictionalWorkspace
         with FictionalWorkspace() as workspace:
             private=workspace.source
             for name in pc.sources(ROOT):

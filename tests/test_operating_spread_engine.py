@@ -14,9 +14,10 @@ from unittest.mock import patch
 
 import numpy as np
 import test_numerical_generation as generations
-import test_bench_candidates as candidates
+import numerical_fixture
+import numerical_inputs_fixture
 from backtest.engines.numerical.generation import DatedYields
-from backtest.engines.numerical.factors import FactorEvaluator
+from numerical_factor_oracle import FactorEvaluator
 from backtest.engines.numerical.policy import PolicyProgram
 from backtest.engines.numerical.numba import NumbaExecutor
 from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
@@ -143,7 +144,7 @@ class SpreadTests(unittest.TestCase):
                         expected = self.s.compute_period(self.db, date.fromisoformat(entry),
                             date.fromisoformat(exit_day), daily.histories(self.db),
                             daily.cached_symbols(self.db), pool)
-                        self.assertTrue(candidates.baseline.compare(expected, observed)['exact'])
+                        self.assertTrue(numerical_fixture.compare(expected, observed)['exact'])
                         self.assertTrue(any(field == FIELD for _, field, _ in observed['filters']))
             finally:
                 provider.close()
@@ -188,11 +189,11 @@ class SpreadTests(unittest.TestCase):
         self.prepare()
         inputs = self.attach()
         prior = inputs.signature
-        before = candidates.core.NumericInputs(self.fixture.reader, self.s)
+        before = numerical_inputs_fixture.NumericInputs(self.fixture.reader, self.s)
         self.addCleanup(before.close)
         self.db.execute("UPDATE treasury10 SET yield_percent=4 WHERE day='2014-12-31'")
         self.db.commit()
-        after = candidates.core.NumericInputs(self.fixture.reader, self.s)
+        after = numerical_inputs_fixture.NumericInputs(self.fixture.reader, self.s)
         self.addCleanup(after.close)
         self.assertNotEqual(before.signature, after.signature)
         # This fixture injects accepted metadata; production derives it from raw

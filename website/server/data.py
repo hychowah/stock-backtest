@@ -31,10 +31,9 @@ def dispatch(handler,jobs):
         handler.send_response(200);handler.send_header('Content-Type','text/html; charset=utf-8')
         handler.send_header('Cache-Control','no-store');handler.send_header('Content-Length',str(len(body)))
         handler.end_headers();handler.wfile.write(body)
-    elif handler.path in ('/api/data/status','/api/data/report') and handler.command=='GET':
+    elif handler.path=='/api/data/status' and handler.command=='GET':
         if not data_allowed(handler):handler.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return True
-        state=jobs.snapshot()
-        handler.reply(200,state if handler.path.endswith('status') else state['report'])
+        handler.reply(200,jobs.snapshot())
     elif handler.path.startswith('/api/data/') and handler.command=='POST':
         data_request(handler,jobs)
     else:return False

@@ -1,10 +1,10 @@
-# Isolated candidate preparation
+# Experimental engine preparation
 
 <a id="current-optional-native-setup-cb-19g"></a>
 ## Current selected preparation (CB-19G)
 
-Original remains the application default. Stored results open without Rust or
-the numerical packages. Experimental calculation uses compiled Numba with the
+Original remains the application default. Stored results open without the
+numerical packages. Experimental calculation uses compiled Numba with the
 measured 2×2 preference, reduced by current CPU and memory observations. Backend
 and worker controls are not application settings. Read the
 [final measured decision](plans/parallel-backtest/master-plan.md).
@@ -17,8 +17,7 @@ kernel groups before closing the runtime. Only confirmed closure permits a
 current readiness receipt. Status binds the pinned environment, whole-source
 inventory, saved inputs, report and numerical pointer. Pending publication still
 blocks readiness. Normal startup, status and preparation never install packages
-or contact a package service. Neither application engine uses a Rust compiler,
-managed Rust installation, native build manifest or Rust resource file.
+or contact a package service.
 
 Complete checkpoint recovery validates source, inputs, configured capacity and
 compiler identity. It constructs no calculation provider, starts no trial worker
@@ -49,58 +48,6 @@ They omit exception text and arbitrary paths. No financial calculation or
 checkpoint commitment is retried by this file-publication policy. F's historical
 external locking cause remains unproved.
 
-## Comparison-only Rust setup
-
-Rust ABI/code-generation and managed setup/probe capabilities remain for direct
-qualification and retained comparison evidence. They are not a selectable
-application backend. Current Runtime and comparison requests reject historical
-Rust and source-guard configurations explicitly. To reproduce E/F or intermediate
-G application comparisons, use their recorded revision or exact archived source,
-not the final current application source.
-
-An explicit offline qualification command accepts previously qualified local
-compiler/linker components and a checksum manifest:
-
-```text
-python tools/setup_numerical_native.py --components <local-components> --manifest <qualified-manifest.json>
-```
-
-This command performs no download and does not enable a different app engine.
-A version-2 manifest names platform, machine, compiler, target, complete relative
-file hashes, managed linker paths and provenance. Supported qualification targets
-are x86-64 Windows MSVC and Linux GNU. Include compiler runtime libraries, target
-`.rlib` and `.rmeta` files, linker executables and target runtime inputs. Windows
-needs qualified MSVC, UCRT and SDK inputs. Linux needs its qualified GNU bundle.
-All search paths remain relative to the managed bundle. Ambient `BACKTEST_RUSTC`,
-`BACKTEST_RUST_LINKER` and `BACKTEST_RUST_BUILDS` select no normal dependency or
-comparison build storage.
-
-The comparison-only installer copies these components into ignored
-`data/numerical-native/toolchains/` with a receipt. Equal verified files can share
-an inode within one immutable installation. No installed file borrows the
-qualification bundle's inode. Inspection checks every path and content, hashes a
-shared physical file once per inspection and retains no cross-call hash cache.
-Setup holds source ownership and its installation lock. Its contained child
-compiles, loads, calls and closes a small ABI probe before publication. Durable
-receipt inspection protects an installation during publication interruption.
-Unconfirmed closure retains its owner and files for retry. POSIX monitors
-installer death and drains compiler descendants before source release; Windows
-also uses Job owner-death containment. Direct Rust build identity separately
-binds its own comparison source, generated kernel and compiler/linker inventory.
-
-## Historical preparation sequence
-
-CB-12 adds a separate preparation entry. The installed website is unchanged by this source task. CB-15 now adds an
-optional normal-app selector; see the final section. CB-13A gives all calculation routes one
-application owner. CB-13B connects persistent numerical dispatch only in this
-isolated entry.
-
-Use an explicitly owned private source export with its own saved raw files,
-report, databases, logs, local build and durable stores. A different port alone
-does not isolate data. The entry rejects local registration, deployment records
-and Git checkouts. It never discovers another root or contacts an installed
-server. Preparation also rejects a root different from its loaded application.
-
 ## Environment and command
 
 The pinned stack is NumPy 2.5.4, Numba 0.68.0 and llvmlite 0.50.0.
@@ -113,22 +60,17 @@ is an explicit operation. With previously obtained matching wheels, use:
 
 ```powershell
 <private-python> -m pip install --no-index --find-links <owned-wheel-directory> -r requirements-numerical.txt
-<private-python> website/serve_candidate.py --private-root <absolute-private-source-export> --no-browser
 ```
 
-The entry defaults to loopback and an available ephemeral port. Its terminal
-prints the address. An explicit private port is allowed; port 3000 is rejected.
-There is no managed-server replacement option. No deployment or installed
-revision changes. Preserve the exact environment interpreter path. Do not
-resolve a venv redirector or symlink to another Python executable.
+Then select **Prepare experimental engine** in Manage backtest data. Preserve the
+exact environment interpreter path. Do not resolve a venv redirector or symlink
+to another Python executable.
 
 Startup never invokes pip, an installer or package networking. Missing wheels,
-packages or compatible Python leave the ordinary entry available. Reference
-commands and normal `website/serve.py` do not need the numerical stack.
-Package setup and market-data downloads are separate. Strategy execution never
-downloads market data. This isolated entry disables credentials before full
-application imports. The panel can inspect and rebuild saved files. Its explicit
-download action cannot obtain a credential here.
+packages or compatible Python leave Original available. Reference commands and
+normal `website/serve.py` do not need the numerical stack. Package setup and
+market-data downloads are separate. Strategy execution never downloads market
+data.
 
 ## Preparation and lifetime
 
@@ -226,8 +168,7 @@ Interactive callers keep bounded waiting. Queue callers wait cancellably and
 report contention. Only a typed admission-contention error is retried. Once
 execution begins, its errors are never retried as admission. Unavailable inputs
 defer queue work. Explicit Stop still wins. Random jobs and queue results keep
-all trial holdings. Legacy streams collect those details only with their
-existing `X-Backtest-Details: holdings` opt-in.
+all trial holdings.
 
 Shutdown publishes queue stop intent before closing calculation admission.
 An admission waiter therefore requeues on shutdown. A durable explicit Stop
@@ -236,8 +177,7 @@ Accepted calls drain through their existing job/request cleanup. Late request
 bodies cannot begin calculation. Stored result reads and queue edits do not
 enter calculation admission.
 
-CB-13B added persistent numerical execution in the isolated candidate entry.
-CB-14 now gives each accepted application call its own runtime. `candidate_calculations.Candidate` implements the shared calculation
+CB-13B added persistent numerical execution. CB-14 now gives each accepted application call its own runtime. `candidate_calculations.Candidate` implements the shared calculation
 boundary. It serializes numerical calls with parent data operations. The child
 holds source then financial ownership during the call, including all random
 trials. Confirmed closure precedes publication of every outcome. Between calls,

@@ -2,7 +2,6 @@
 import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
-from backtest.application.original_calculations import Original
 from backtest.inputs import market
 import sys as _root_sys
 from pathlib import Path as _RootPath
@@ -14,14 +13,12 @@ from datetime import date, timedelta
 from pathlib import Path
 import sqlite3
 import json
-import io
 import tempfile
 import subprocess
 import time
 from contextlib import ExitStack,closing
 import sys
 import unittest
-from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
@@ -413,119 +410,6 @@ class PreparationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
-
-    def version_one_cache(self):
-        daily.prepare(self.path,self.source)
-        previous=dict(version=1,inputs={'raw':'unchanged'},prices='fixture-prices',engine=[10,20])
-        current=dict(version=daily.VERSION,inputs=previous['inputs'],prices=previous['prices'],engine=[30,40])
-        db=sqlite3.connect(self.path)
-        db.execute('DROP TABLE period_pools')
-        db.execute("INSERT INTO periods VALUES(1,'2015-01-02','2015-07-01',.1,0,1,1)")
-        # Version 1 also regarded empty pools as complete.
-        db.execute("INSERT INTO periods VALUES(2,'2015-07-01','2015-12-31',.1,0,0,0)")
-        for pool in ('cached','legacy'):
-            db.execute('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                       (pool,1,'A',1,'2014-06-30','2015-01-02','2015-07-01',100e6,150e6,30e6,.2,5.,.2,.5,'Scheduled exit'))
-            db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('historical',pool,1,'A','ev_ebitda',5.,.2))
-        db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),))
-        db.commit();db.close()
-        return previous,current
-
-    def test_version_one_upgrade_preserves_prices_books_and_empty_pools(self):
-        previous,current=self.version_one_cache()
-        def contents():
-            db=sqlite3.connect(self.path)
-            try:return {table:db.execute('SELECT * FROM '+table).fetchall() for table in
-                        ('prices','companies','statements','sessions','treasuries','periods','snapshots','screening_metrics')}
-            finally:db.close()
-        before=contents()
-        with patch.object(daily,'fingerprint',return_value=current),patch.object(research,'bars',side_effect=AssertionError('Migration must not parse prices')):
-            with self.assertRaises(ValueError):daily.connect(self.path)
-            daily.prepare(self.path,self.source)
-            db=daily.connect(self.path)
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],4)
-            self.assertEqual(daily.prepared_period(db,date(2015,7,1),date(2015,12,31),'cached'),2)
-            self.assertEqual(json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0]),current)
-            db.close()
-        self.assertEqual(contents(),before)
-
-    def test_upgrade_rejects_changed_inputs_without_modifying_cache(self):
-        previous,current=self.version_one_cache();before=self.path.read_bytes()
-        current['inputs']={'raw':'changed'}
-        self.assertFalse(daily.upgrade_daily_cache(self.path,current))
-        self.assertEqual(self.path.read_bytes(),before)
-
-    def test_upgrade_never_rebinds_missing_or_changed_price_evidence(self):
-        previous,current=self.version_one_cache()
-        before=self.path.read_bytes()
-        for prices in (None,'changed-prices'):
-            changed=dict(current,prices=prices)
-            self.assertFalse(daily.upgrade_daily_cache(self.path,changed))
-            self.assertEqual(self.path.read_bytes(),before)
-        with closing(sqlite3.connect(self.path)) as db:
-            previous.pop('prices')
-            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),));db.commit()
-        before=self.path.read_bytes()
-        self.assertFalse(daily.upgrade_daily_cache(self.path,current))
-        self.assertEqual(self.path.read_bytes(),before)
-
-    def test_version_two_upgrade_preserves_partial_pool_completion(self):
-        previous,current=self.version_one_cache()
-        db=sqlite3.connect(self.path);db.execute(daily.POOL_SCHEMA)
-        prices=db.execute('SELECT * FROM prices').fetchall()
-        db.execute("INSERT INTO period_pools VALUES(1,'legacy')")
-        previous['version']=2
-        db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(previous),))
-        db.commit();db.close()
-        self.assertTrue(daily.upgrade_daily_cache(self.path,current))
-        db=sqlite3.connect(self.path)
-        self.assertEqual(db.execute('SELECT * FROM period_pools').fetchall(),[(1,'legacy')])
-        self.assertEqual(db.execute('SELECT * FROM prices').fetchall(),prices)
-        db.close()
-
-    def test_upgrade_rolls_back_schema_and_markers_if_metadata_update_fails(self):
-        previous,current=self.version_one_cache()
-        db=sqlite3.connect(self.path)
-        db.execute("CREATE TRIGGER fail_upgrade BEFORE UPDATE ON metadata BEGIN SELECT RAISE(ABORT,'interrupted upgrade'); END")
-        db.commit();db.close();before=self.path.read_bytes()
-        with self.assertRaisesRegex(sqlite3.IntegrityError,'interrupted upgrade'):
-            daily.upgrade_daily_cache(self.path,current)
-        self.assertEqual(self.path.read_bytes(),before)
-        db=sqlite3.connect(self.path);db.execute('DROP TRIGGER fail_upgrade');db.commit();db.close()
-        self.assertTrue(daily.upgrade_daily_cache(self.path,current))
-
-
-class ServiceTests(unittest.TestCase):
-    def setUp(self):
-        BacktestTests.setUp(self)
-        sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-        from website.server import app as serve
-        self.serve=serve
-
-    def request(self,payload,origin=None):
-        handler=object.__new__(self.serve.Handler)
-        handler.server=SimpleNamespace(lifecycle=None,calculations=Original())
-        handler.disconnect_check=lambda:lambda:False
-        body=json.dumps(payload).encode()
-        handler.path='/api/schedule';handler.rfile=io.BytesIO(body)
-        handler.headers={'Content-Length':str(len(body)),'Host':'127.0.0.1:8765'}
-        if origin:handler.headers['Origin']=origin
-        response=[];handler.reply=lambda status,payload:response.append((status,payload))
-        def connection():
-            db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
-            self.db.backup(db);return db
-        with patch.object(daily,'connect',side_effect=connection):handler.do_POST()
-        return response[0]
-
-    def test_real_handler_calculates_dates_without_a_socket(self):
-        status,payload=self.request(dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1))
-        self.assertEqual(status,200);self.assertEqual(len(payload['periods']),2)
-        self.assertAlmostEqual(payload['growth'],.75)
-        self.assertEqual(payload['periods'][0]['holdings'][0]['symbol'],'A')
-
-    def test_errors_are_json_and_foreign_origin_is_rejected(self):
-        self.assertEqual(self.request(dict(start='bad',end='2015-07-01'))[0],400)
-        self.assertEqual(self.request({},origin='http://different.example')[0],403)
 
 
 if __name__=='__main__':unittest.main()

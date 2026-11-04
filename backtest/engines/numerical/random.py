@@ -34,8 +34,7 @@ SOURCE_ROOTS = ('website/runtime_access.py','backtest/engines/numerical/random.p
                 'backtest/engines/numerical/runtime_child.py','backtest/engines/numerical/session.py',
                 'backtest/engines/numerical/execution.py','backtest/engines/numerical/trial_pool.py',
                 'backtest/engines/numerical/trial_worker.py',
-                'backtest/engines/numerical/checkpoints.py','backtest/engines/original/robustness.py',
-                'backtest/engines/numerical/rust.py','backtest/engines/numerical/rust_kernel.rs')
+                'backtest/engines/numerical/checkpoints.py','backtest/engines/original/robustness.py')
 
 def source_identity():
     """Hash the transitive local Python imports, without importing providers.
@@ -80,9 +79,7 @@ def _source_closure(root, roots):
         if key in seen:continue
         content=path.read_bytes();seen[key]=hashlib.sha256(content).hexdigest()
         if path.suffix!='.py':
-            if key!='backtest/engines/numerical/rust_kernel.rs':
-                raise ValueError('Unsupported numerical source resource.')
-            continue
+            raise ValueError('Unsupported numerical source resource.')
         package=list(path.relative_to(root).parts[:-1])
         for node in ast.walk(ast.parse(content,filename=key)):
             if isinstance(node,ast.Import):

@@ -16,15 +16,15 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'tools')]
-import test_bench_methods as shared
+import numerical_fixture as shared
 from backtest.engines.numerical import generation as ng
-from tools.experiments.bench_candidates import NumericInputs, PythonExecutor
+from numerical_inputs_fixture import NumericInputs, PythonExecutor
 import numpy as np
 
 
 class GenerationTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = shared.SharedMethodsTests('test_empty_trials_remain_visible_and_excluded_from_distributions')
+        self.fixture = shared.SyntheticDailyFixture()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.s, self.db = shared.s, self.fixture.db
@@ -94,7 +94,7 @@ class GenerationTests(unittest.TestCase):
 
     def test_preparation_source_books_and_factors_do_not_translate_compiled_guards(self):
         from backtest.engines.numerical.numba import NumbaExecutor
-        from backtest.engines.numerical.factors import FactorEvaluator
+        from numerical_factor_oracle import FactorEvaluator
         with patch('backtest.engines.numerical.decisions.CandidateDecisionProgram',
                    side_effect=AssertionError('Optional guard translator invoked')) as translator:
             self.prepare()
@@ -108,7 +108,7 @@ class GenerationTests(unittest.TestCase):
                     actual = executor.evaluate([book],fields)[0]
                     expected = self.s.compute_period(self.db, date(2015,1,2), date(2016,1,4),
                         daily.histories(self.db), daily.cached_symbols(self.db), pool)
-                    self.assertTrue(shared.baseline.compare(expected, actual)['exact'])
+                    self.assertTrue(shared.compare(expected, actual)['exact'])
                 self.assertNotIn('candidate_decisions', executor.compiler['fields'])
             with closing(FactorEvaluator(inputs)) as factors:
                 self.assertTrue(factors.evaluate([date(2015,1,2).toordinal()]))
@@ -130,7 +130,7 @@ class GenerationTests(unittest.TestCase):
                 for pool in ('legacy', 'cached'):
                     batch = [('2015-01-02','2016-01-04',pool), ('2016-02-29','2016-12-30',pool)]
                     for filters in ([], fields, [dict(field='pe',op='lt',value=20), dict(field='return_3y',op='gt',value=0)]):
-                        options = dict(shared.baseline.options(pool,'F0'), filters=filters, min_cap=0., min_ev=0.)
+                        options = dict(shared.options(pool,'F0'), filters=filters, min_cap=0., min_ev=0.)
                         executor.begin(dict(options=options))
                         actual = executor.evaluate(batch)
                         for book, value in zip(batch, actual):
@@ -140,7 +140,7 @@ class GenerationTests(unittest.TestCase):
                             # Source computes every filter; evaluator projects only requested fields.
                             needed = {f['field'] for f in filters}
                             expected['filters'] = [r for r in expected['filters'] if r[1] in needed]
-                            agreement=shared.baseline.compare(expected,value)
+                            agreement=shared.compare(expected,value)
                             self.assertTrue(agreement['exact'])
                             maximum_absolute=max(maximum_absolute,agreement['maximum_absolute'])
                             maximum_relative=max(maximum_relative,agreement['maximum_relative'])
@@ -159,7 +159,7 @@ class GenerationTests(unittest.TestCase):
                                         left_result = self.s.backtest_periods(left, [(date.fromisoformat(a),date.fromisoformat(b))],months=12,**settings)
                                         right_result = self.s.backtest_periods(right, [(date.fromisoformat(a),date.fromisoformat(b))],months=12,**settings)
                                         left_result.pop('seconds'); right_result.pop('seconds')
-                                        agreement=shared.baseline.compare(left_result,right_result)
+                                        agreement=shared.compare(left_result,right_result)
                                         self.assertTrue(agreement['exact'])
                                         maximum_absolute=max(maximum_absolute,agreement['maximum_absolute'])
                                         maximum_relative=max(maximum_relative,agreement['maximum_relative'])
@@ -278,7 +278,7 @@ class GenerationTests(unittest.TestCase):
         executor=PythonExecutor(attached)
         expected=PythonExecutor(old)
         try:
-            self.assertTrue(shared.baseline.compare(
+            self.assertTrue(shared.compare(
                 executor.evaluate([('2015-01-02','2016-01-04','legacy')]),
                 expected.evaluate([('2015-01-02','2016-01-04','legacy')]))['exact'])
         finally: executor.close(); expected.close()

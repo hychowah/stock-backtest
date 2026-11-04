@@ -19,9 +19,9 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
-import test_bench_methods as shared
+import numerical_fixture as shared
 import test_numerical_generation as generations
-from tools.experiments.bench_candidates import NumericInputs,PythonExecutor
+from numerical_inputs_fixture import NumericInputs,PythonExecutor
 from backtest.engines.numerical.numba import NumbaExecutor
 from backtest.engines.numerical.portfolio import NumericalPortfolio, compare_results
 from backtest.engines.numerical import random as diagnostic
@@ -32,7 +32,7 @@ s=shared.s
 
 
 class NumericalTrialsTests(unittest.TestCase):
-    setUp=shared.SharedMethodsTests.setUp
+    setUp=shared.SyntheticDailyFixture.setUp
 
     def evaluator(self, candidate_assembly='compiled'):
         inputs=NumericInputs(self.reader,s);self.addCleanup(inputs.close)

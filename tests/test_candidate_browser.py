@@ -9,7 +9,7 @@ import time
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from bench_native_browser import BrowserStorage,NativeBrowser
+from native_browser_fixture import BrowserStorage,NativeBrowser
 from candidate_browser_fixture import FictionalWorkspace,CandidateService
 
 
@@ -75,6 +75,8 @@ class CandidateBrowserTests(unittest.TestCase):
                         take('#schedule-download-holdings',[h for p in trial['periods'] for h in p['holdings']])
                     return contents
                 navigate();browser.click('#auto-run');browser.click('#mode-backtest');browser.fill('#schedule-kind','custom')
+                # Saved records retain this choice, so replay stays numerical.
+                browser.fill('#backtest-engine','experimental')
                 for selector,value in [('#trade-start','2015-01-02'),('#trade-end','2015-02-27'),('#rank-to','3'),('#date-testing','random'),('#random-trials','3')]:browser.fill(selector,value)
                 browser.wait("!document.querySelector('#calendar-controls').hidden");browser.click('#calendar-custom')
                 candidate=run();original_result=candidate['result']
@@ -154,6 +156,7 @@ class CandidateBrowserTests(unittest.TestCase):
                 url='http://127.0.0.1:'+str(service.port)+'/'
                 browser.navigate(url);browser.wait("!!ResultArtifacts.forView('latest')")
                 browser.click('#auto-run');browser.click('#mode-backtest');browser.fill('#schedule-kind','custom')
+                browser.fill('#backtest-engine','experimental')
                 for selector,value in [('#trade-start','2015-01-02'),('#trade-end','2015-02-27'),('#rank-to','3'),('#date-testing','random'),('#random-trials','24')]:browser.fill(selector,value)
                 browser.wait("!document.querySelector('#calendar-controls').hidden")
                 browser.click('#calendar-custom')

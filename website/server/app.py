@@ -138,8 +138,8 @@ def ensure_ready():
     print('Local caches and website are ready.',flush=True)
 
 
-def close_candidate_owners(server,candidate):
-    """Finish application joins before the candidate entry releases source."""
+def close_owners(server):
+    """Finish application joins before the entry point releases source."""
     import signal
     previous=signal.signal(signal.SIGINT,signal.SIG_IGN)
     try:
@@ -148,15 +148,13 @@ def close_candidate_owners(server,candidate):
             try:
                 DATA_JOBS.close()
                 server.server_close()
-                candidate.close()
+                server.calculations.preparation.close()
                 return
             except KeyboardInterrupt:continue
     finally:signal.signal(signal.SIGINT,previous)
 
 
-def main(*,candidate=None,arguments=None):
-    global DATA_JOBS
-    if candidate is not None:DATA_JOBS=data_manager.Jobs(preparation=candidate)
+def main(*,arguments=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port',type=int,default=3000)
     parser.add_argument('--host',default='0.0.0.0')
@@ -172,7 +170,7 @@ def main(*,candidate=None,arguments=None):
         try:dependencies()
         except PreparationError:pass
         context=launcher.Lifecycle(args.port,args.host) if args.managed else nullcontext()
-        with context as lifecycle:run_server(args,lifecycle,parser,candidate=candidate)
+        with context as lifecycle:run_server(args,lifecycle,parser)
     except KeyboardInterrupt:
         print('Website stopped.',flush=True)
     except (OSError,ValueError,RuntimeError) as error:
@@ -183,21 +181,12 @@ def main(*,candidate=None,arguments=None):
         diagnostics.close()
 
 
-def run_server(args,lifecycle,parser,*,candidate=None):
+def run_server(args,lifecycle,parser):
     try:
-        if candidate is not None:
-            from backtest.application.preparation import PreparationError
-            try:
-                candidate.prepare(progress=lambda **value:print(value['message'],flush=True))
-                recovery=False
-            except PreparationError as error:
-                recovery=True
-                print(str(error),flush=True)
-        else:
-            with cache_access.access():
-                recovery=cache_assets.source_problem()
-                if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
-                else:ensure_ready()
+        with cache_access.access():
+            recovery=cache_assets.source_problem()
+            if recovery:print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
+            else:ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
         diagnostics.failure('startup.failed',error)
         parser.exit(1,'Could not prepare the local website: '+str(error)+'\n')
@@ -217,17 +206,8 @@ def run_server(args,lifecycle,parser,*,candidate=None):
             parser.exit(1,f'Cannot start the local website service: {retry_error}\n')
         print(f'Port {args.port} is already in use; opening a fresh website instance.',flush=True)
     server.data_recovery=recovery
-    server.candidate_preparation=candidate
-    if candidate is not None:
-        from backtest.application.candidate_calculations import Candidate
-        server.calculations=Candidate(candidate)
-        server.backtest_jobs.calculations=server.calculations
-        server.backtest_queue.calculations=server.calculations
-        DATA_JOBS.calculations=server.calculations
-    else:
-        DATA_JOBS.preparation=server.calculations.preparation
-        DATA_JOBS.optional_preparation=True
-        DATA_JOBS.calculations=server.calculations
+    DATA_JOBS.preparation=server.calculations.preparation
+    DATA_JOBS.calculations=server.calculations
     port=server.server_address[1]
     # Managed cleanup owns the server immediately, including publication failure.
     if lifecycle:lifecycle.attach(server)
@@ -244,4 +224,4 @@ def run_server(args,lifecycle,parser,*,candidate=None):
     except KeyboardInterrupt:pass
     finally:
         server.close_calculation_admission()
-        close_candidate_owners(server,candidate or server.calculations.preparation)
+        close_owners(server)

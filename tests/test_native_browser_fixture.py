@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from unittest.mock import patch
 from urllib.parse import quote
 
-from bench_native_browser import (BrowserFailure, BrowserLimit, BrowserStorage,
+from native_browser_fixture import (BrowserFailure, BrowserLimit, BrowserStorage,
     LIMITS, NativeBrowser, ROOT, _WebSocket, _retained)
 sys.path.insert(0, str(ROOT))
 
@@ -141,11 +141,11 @@ class OwnershipTests(unittest.TestCase):
         def renamed():
             path.unlink()
             raise FileNotFoundError('Renamed before metadata acquisition')
-        with patch('bench_native_browser.os.scandir',side_effect=lambda directory:scan(directory,renamed)):
+        with patch('native_browser_fixture.os.scandir',side_effect=lambda directory:scan(directory,renamed)):
             self.assertEqual(storage.inventory()['downloads'],0)
         self.assertFalse(path.exists());self.assertTrue(closed);self.assertCountEqual(opened,closed);path.write_bytes(b'partial')
         def inaccessible():raise PermissionError('Unexpected access failure')
-        with patch('bench_native_browser.os.scandir',side_effect=lambda directory:scan(directory,inaccessible)):
+        with patch('native_browser_fixture.os.scandir',side_effect=lambda directory:scan(directory,inaccessible)):
             before=len(closed)
             with self.assertRaises(PermissionError):storage.inventory()
             self.assertGreater(len(closed),before)
@@ -159,7 +159,7 @@ class OwnershipTests(unittest.TestCase):
         @contextmanager
         def scan(directory):
             with original(directory):yield iter([Link()])
-        with patch('bench_native_browser.os.scandir',side_effect=scan):
+        with patch('native_browser_fixture.os.scandir',side_effect=scan):
             with self.assertRaises(BrowserFailure):storage.inventory()
 
     def test_inventory_counts_nested_and_unknown_files_and_each_exact_ceiling(self):
@@ -210,18 +210,18 @@ class OwnershipTests(unittest.TestCase):
         def disappearing(directory):
             if Path(directory)==folder:folder.rmdir()
             return original(directory)
-        with patch('bench_native_browser.os.scandir',side_effect=disappearing):
+        with patch('native_browser_fixture.os.scandir',side_effect=disappearing):
             self.assertEqual(storage.inventory()['downloads'],0)
         for error in (PermissionError('denied'),OSError('unexpected')):
-            with patch('bench_native_browser.os.scandir',side_effect=error):
+            with patch('native_browser_fixture.os.scandir',side_effect=error):
                 with self.assertRaises(type(error)):storage.inventory()
 
     def test_checkpoint_retains_quarter_second_inventory_cadence(self):
         storage=self.storage();browser=NativeBrowser(storage);self.addCleanup(browser.close)
         browser.started=0;browser.last_inventory=0
-        with patch('bench_native_browser.time.monotonic',return_value=.249),patch.object(storage,'inventory') as inventory:
+        with patch('native_browser_fixture.time.monotonic',return_value=.249),patch.object(storage,'inventory') as inventory:
             browser.checkpoint();inventory.assert_not_called()
-        with patch('bench_native_browser.time.monotonic',return_value=.25),patch.object(storage,'inventory') as inventory:
+        with patch('native_browser_fixture.time.monotonic',return_value=.25),patch.object(storage,'inventory') as inventory:
             browser.checkpoint();inventory.assert_called_once_with()
         self.assertEqual(browser.last_inventory,.25)
 
@@ -258,7 +258,7 @@ class OwnershipTests(unittest.TestCase):
         pending = Pending()
         original = OSError('injected creation')
         original.owned_process = pending
-        with patch('bench_native_browser.os.name','nt'),patch.object(Path,'is_file',return_value=True),patch('bench_native_browser.OwnedProcess',side_effect=original):
+        with patch('native_browser_fixture.os.name','nt'),patch.object(Path,'is_file',return_value=True),patch('native_browser_fixture.OwnedProcess',side_effect=original):
             with self.assertRaises(OSError) as caught: browser.start()
         self.assertIs(caught.exception,original)
         self.assertIs(original.native_browser,browser)
@@ -301,7 +301,7 @@ class NativeSmokeTests(unittest.TestCase):
         storage = BrowserStorage(); browser = NativeBrowser(storage)
         try:
             original = BrowserFailure('injected debugger attach')
-            with patch('bench_native_browser._WebSocket',side_effect=original):
+            with patch('native_browser_fixture._WebSocket',side_effect=original):
                 with self.assertRaises(BrowserFailure) as caught: browser.start()
             self.assertIs(caught.exception,original)
             self.assertTrue(browser.closed)

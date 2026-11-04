@@ -17,7 +17,6 @@ import unittest
 ROOT=Path(__file__).absolute().parents[1]
 sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'scripts'),str(ROOT)]
 import test_numerical_runtime as runtime_tests
-import test_calculations as calculation_tests
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
@@ -197,8 +196,8 @@ class CandidateTests(unittest.TestCase):
         owner.preparation.invalidate.assert_called_once()
         self.assertIsNone(owner.runtime)
 
-    def test_jobs_queue_legacy_routes_and_saved_snapshots(self):
-        owner=self.candidate();self.service=owner;options=self.options()
+    def test_jobs_queue_and_saved_snapshots(self):
+        owner=self.candidate();options=self.options()
         jobs=backtest_jobs.Jobs(owner);jobs.start('a'*32,'custom',options)
         jobs.runs['a'*32]['thread'].join(30)
         self.assertEqual(jobs.snapshot('a'*32)['state'],'complete');jobs.close()
@@ -207,17 +206,8 @@ class CandidateTests(unittest.TestCase):
         queue=backtest_queue.Queue(store,calculations=owner,library=backtest_queue.saved_backtests.Store((store).path.with_name('saved-library.sqlite')))
         queue._run(store.claim())
         self.assertEqual(store.get(record['id'])['state'],'complete')
-        for details in (False,True):
-            handler=calculation_tests.CalculationTests.handler(self,'/api/robustness',dict(options,trials=2,seed=42))
-            if details:handler.headers['X-Backtest-Details']='holdings'
-            handler.do_POST()
-            result=json.loads(handler.wfile.getvalue().splitlines()[-1])
-            self.assertEqual(result['type'],'complete')
-            self.assertEqual('trial_results' in result['result'],details)
-        handler=calculation_tests.CalculationTests.handler(self,'/api/schedule',options);handler.do_POST()
-        self.assertEqual(handler.replies[0][0],200)
 
-    def test_rebuild_and_cancelled_data_admission_do_not_overlap_child(self):
+    def test_prepare_and_cancelled_data_admission_do_not_overlap_child(self):
         owner=self.candidate();owner.calculate('custom',self.options(),None,None)
         old=owner.created[-1];jobs=data_manager.Jobs(preparation=owner.preparation);jobs.calculations=owner
         def prepare(**kw):
@@ -226,11 +216,11 @@ class CandidateTests(unittest.TestCase):
             self.assertTrue(owner.status()['busy'])
         owner.preparation.prepare.side_effect=prepare
         with patch.object(cache_access,'workspace',self.fixture.owner),patch.object(data_manager,'inspect',return_value=dict(warnings=[])):
-            jobs.work('rebuild',data_manager.options({}))
+            jobs.work('prepare',data_manager.options({}))
         self.assertTrue(jobs.rebuilt)
         jobs.cancel.set()
         owner.preparation.prepare.reset_mock()
-        jobs.work('rebuild',data_manager.options({}))
+        jobs.work('prepare',data_manager.options({}))
         owner.preparation.prepare.assert_not_called()
 
     def test_active_job_stop_and_shutdown_confirm_child_retirement(self):

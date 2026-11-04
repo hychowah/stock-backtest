@@ -7,30 +7,12 @@ from backtest.application import queue as backtest_queue
 from backtest.application import durable_evidence, strategy_requests
 from backtest.application.calculation_contract import Busy, Unavailable
 
-def calculation_ready(self,options=None):
-    if hasattr(self.server.calculations,'ready_for'):
-        return self.server.calculations.ready_for(options or {})
-    candidate=getattr(self.server,'candidate_preparation',None)
-    if candidate is None:return True
-    if getattr(self.server.calculations,'preparation',None) is candidate:
-        return self.server.calculations.ready()
-    return candidate.status().get('state')=='current'
-
 def require_calculation(self,options=None,*,planned=None):
     # A busy inspection is advisory, not a failed execution admission.
     # The calculation owner and child still validate admitted inputs.
-    if hasattr(self.server.calculations,'preflight'):
-        self.server.calculations.preflight(options,planned=planned)
-        if self.server.calculations.ready_for(options,advisory=True):return True
-        self.reply(503,dict(error='Experimental preparation is unavailable. Use Prepare experimental engine in Manage backtest data. Original and stored results remain available.'))
-        return False
-    candidate=getattr(self.server,'candidate_preparation',None)
-    if candidate is not None and getattr(self.server.calculations,'preparation',None) is candidate:
-        status=self.server.calculations.status()
-        allowed=status.get('state')=='current' or status.get('busy') is True
-    else:allowed=calculation_ready(self)
-    if allowed:return True
-    self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
+    self.server.calculations.preflight(options,planned=planned)
+    if self.server.calculations.ready_for(options,advisory=True):return True
+    self.reply(503,dict(error='Experimental preparation is unavailable. Use Prepare experimental engine in Manage backtest data. Original and stored results remain available.'))
     return False
 
 def queue_request(self,data_jobs):
@@ -58,8 +40,7 @@ def queue_request(self,data_jobs):
         elif self.command=='POST' and path==['pause']:
             result=store.pause(request.get('paused'))
         elif self.command=='POST' and len(path)==2:
-            if path[1]=='update' and hasattr(self.server.calculations,'preflight'):
-                self.server.calculations.preflight(request.get('options'))
+            if path[1]=='update':self.server.calculations.preflight(request.get('options'))
             result=store.change(path[0],path[1],request)
         elif self.command=='DELETE' and len(path)==1:
             result=store.change(path[0],'delete',request)
@@ -105,68 +86,6 @@ def backtest_run_request(self):
         self.reply(400,dict(error=str(error),**(strategy_requests.failure_details(error) or {})))
     except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
 
-def stream_batch(self,options,*,planned=None):
-    """Adapt calculation callbacks to the legacy stream after planning.
-
-    Pre-configuration failures remain HTTP errors. Once headers are sent,
-    calculation failures use an error frame. No database belongs here.
-    """
-    started=False
-    def event(payload):
-        backtest_control.checkpoint()
-        self.wfile.write((json.dumps(payload,allow_nan=False)+'\n').encode())
-        self.wfile.flush()
-    def configuration(value):
-        nonlocal started
-        self.send_response(200)
-        self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
-        self.send_header('Cache-Control','no-store')
-        self.end_headers()
-        started=True
-        event(dict(type='configuration',configuration=value))
-    try:
-        result=self.server.calculations.calculate('random',options,event,configuration,planned=planned,
-            details=getattr(self,'headers',{}).get('X-Backtest-Details')=='holdings')
-        event(dict(type='complete',result=result))
-    except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
-        # The completed trial transactions remain cached; stop before the
-        # next trial when the browser disconnects.
-        return
-    except Exception as error:
-        if not started:raise
-        diagnostics.failure('robustness.failed',error)
-        try:event(dict(type='error',message=str(error)))
-        except (BrokenPipeError,ConnectionResetError):pass
-
-def schedule_request(self):
-    origin=self.headers.get('Origin')
-    expected='http://'+self.headers.get('Host','')
-    if origin and origin!=expected:
-        self.reply(403,dict(error='Open the local website to run a schedule.'));return
-    try:
-        length=int(self.headers.get('Content-Length','0'))
-        if not 0<length<=16*1024**2:raise ValueError('Invalid request size.')
-        request=json.loads(self.rfile.read(length))
-        if not isinstance(request,dict):raise ValueError('Expected schedule options.')
-        if not require_calculation(self,request):return
-        with backtest_control.cancel_when(self.disconnect_check()):
-            backtest_control.checkpoint()
-            if self.path=='/api/robustness':
-                stream_batch(self,request)
-                return
-            result=self.server.calculations.calculate('custom',request,None,None)
-            backtest_control.checkpoint()
-        self.reply(200,result)
-    except Unavailable:
-        self.reply(503,dict(error='Candidate preparation is unavailable. Open the data panel and rebuild. Stored results remain available.'))
-    except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
-        # Contexts close databases and wait for worker cleanup before cache
-        # ownership is released. Completed trial transactions remain saved.
-        return
-    except (ValueError,TypeError,sqlite3.Error) as error:
-        diagnostics.failure('schedule.failed',error,mode='robustness' if self.path=='/api/robustness' else 'schedule')
-        self.reply(400,dict(error=str(error),**(strategy_requests.failure_details(error) or {})))
-
 def dispatch(handler,data_jobs):
     path=handler.path
     if path in ('/api/variable-coverage/scopes','/api/variable-coverage/inspect') and handler.command=='POST':
@@ -211,13 +130,10 @@ def dispatch(handler,data_jobs):
             handler.reply(400,dict(error=str(error),**details))
         return True
     if path=='/api/backtest-capabilities' and handler.command=='GET':
-        owner=handler.server.calculations
-        handler.reply(200,owner.capabilities() if hasattr(owner,'capabilities') else dict(calendar=owner.calendar_version))
+        handler.reply(200,handler.server.calculations.capabilities())
     elif (path=='/api/backtest-queue' and handler.command!='DELETE') or path.startswith('/api/backtest-queue/'):
         queue_request(handler,data_jobs)
     elif path.startswith('/api/backtest-runs/'):
         backtest_run_request(handler)
-    elif path in ('/api/schedule','/api/robustness') and handler.command=='POST':
-        schedule_request(handler)
     else:return False
     return True
