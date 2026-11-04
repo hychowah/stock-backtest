@@ -8,10 +8,12 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily
+from backtest.runtime import cache_access
 from datetime import date,timedelta
 from pathlib import Path
 import sqlite3
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -22,6 +24,9 @@ from backtest.engines.original import schedules as s
 from backtest.application import jobs as backtest_jobs
 class RobustnessTests(unittest.TestCase):
     def setUp(self):
+        folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
+        coordinator=patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(Path(folder.name)/'cache.lock'))
+        coordinator.start();self.addCleanup(coordinator.stop)
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
         self.addCleanup(self.db.close);self.db.executescript(daily.SCHEMA)
         self.db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")

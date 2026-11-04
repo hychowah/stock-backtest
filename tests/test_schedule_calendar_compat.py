@@ -3,7 +3,6 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily
-import atexit
 from datetime import date, timedelta
 import hashlib
 import json
@@ -14,10 +13,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'scripts'), str(ROOT)]
-from website import runtime_access
-_owner = runtime_access.ownership(ROOT)
-_owner.__enter__()
-atexit.register(_owner.__exit__, None, None, None)
 from backtest.financial import rules
 from backtest.inputs import market, fmp_download, cache_assets
 from backtest.engines.reference import legacy

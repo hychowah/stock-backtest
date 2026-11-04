@@ -70,10 +70,11 @@ renames and formatting changes in these areas.
 `tests/run.py` runs each `tests/test_*.py` and `tests/check-*.cjs` file in its
 own process. It skips the files that `FROZEN` and `NOT_ENTRIES` name.
 `check-range.cjs` and `check_screener.py` still run after `website/build.py`.
-The fast tier is the default and runs eight files at a time. `--tier heavy`
-runs the files that `HEAVY` names, one at a time. `--tier all` runs both, one
-at a time. `--jobs` overrides the count. The `tests/run.py` docstring
-describes the isolation. Every tier needs only `python3` and Node.js:
+`--tier` picks fast (default), heavy (`HEAVY`) or all. Eight files run at
+once; `--jobs` overrides it. Tests reaching cache-coordinated code patch
+`cache_access.workspace` with a private `WorkspaceAccess`; the runner fails a
+file that touches the checkout's `data/` beyond reading `workspace.json`. Its
+docstring describes the isolation. Every tier needs only `python3` and Node.js:
 `python3 tests/run.py`.
 
 `FROZEN` names the tests of the frozen experimental engine (see Engines). No

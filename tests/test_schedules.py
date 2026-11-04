@@ -7,6 +7,7 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
+from backtest.runtime import cache_access
 from backtest.financial import rules, books as financial_books, metrics
 from backtest import calendar as schedule_calendar, portfolio_results
 from datetime import date, timedelta
@@ -387,6 +388,7 @@ class PreparationTests(unittest.TestCase):
         db.commit();db.close()
         self.context.enter_context(patch.object(research,'RAW',raw))
         self.context.enter_context(patch.object(market,'RAW',raw))
+        self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
         self.context.enter_context(patch.object(daily,'fingerprint',return_value={'fixture':1}))
         self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
 

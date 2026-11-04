@@ -24,6 +24,7 @@ from datetime import date
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from backtest.inputs import research as r
+from backtest.runtime import cache_access
 
 
 class PreparedPriceBindingTests(unittest.TestCase):
@@ -254,6 +255,9 @@ class PreparationTests(unittest.TestCase):
                                   (r, 'RESULTS', results), (market, 'RAW', raw), (legacy, 'RAW', raw), (legacy, 'FIRST_YEAR', 2015), (rules, 'FIRST_YEAR', 2015),
                                   (legacy, 'LAST_YEAR', 2015), (rules, 'LAST_YEAR', 2015)]:
             self.context.enter_context(patch.object(owner, key, value))
+        # The coordinator follows this private root, as in an installed runtime.
+        self.context.enter_context(patch.object(cache_access, 'workspace',
+            cache_access.WorkspaceAccess(root / 'data' / 'website-data-0.lock')))
         self.context.enter_context(patch.object(r, 'signature', return_value={'fixture': 1}))
         self.context.enter_context(patch.object(r, 'verify_reference', side_effect=lambda db: (self.verify_fixture(db),r.prepared_baseline(db))[1]))
         self.context.enter_context(patch('urllib.request.urlopen', side_effect=AssertionError('Unexpected download')))

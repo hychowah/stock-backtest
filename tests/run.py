@@ -16,6 +16,16 @@ than a shared memory-backed /tmp can give. The run folder is removed when the
 run ends. A file that exceeds its tier's time cap is killed with its group and
 fails. The exit status is non-zero when any file fails or the run folder cannot
 be removed.
+
+Each Python process of a file, and each Python child that keeps the runner's
+PYTHONPATH, starts with a checkout-data guard. It refuses and records every
+open, directory creation, rename, removal or SQLite connection of an absolute
+path inside this checkout's data/ folder, except a read-only open of
+data/workspace.json (the machine registration). A file with a record fails,
+whatever its exit status. Tests own private copies of the cache and its
+coordinator (AGENTS.md, Tests). Node entries, non-Python children, and Python
+children started with -I or with a replaced PYTHONPATH are outside the guard
+and must receive private paths.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -104,6 +114,67 @@ SLOW_FAST_SECONDS = 60
 TAIL_LINES = 40
 TAIL_BYTES = 64 * 1024
 
+# Written as sitecustomize.py into each run, after a line that defines DATA.
+GUARD_SOURCE = '''"""Checkout-data guard that tests/run.py installs in every file process.
+
+Refuse and record each open, directory creation, rename, removal or SQLite
+connection whose path is DATA (the checkout's data folder) or inside it, except
+a read-only open of DATA/workspace.json. Only absolute paths are checked: an
+audited relative path can be relative to a directory descriptor that the event
+does not name (shutil.rmtree), and project code builds checkout paths from its
+absolute ROOT. Standard library only: it imports no project code, so it cannot
+change which source a process loads.
+"""
+import os
+import sys
+
+_PATHS = {'open': (0,), 'os.mkdir': (0,), 'os.rename': (0, 1), 'os.remove': (0,),
+          'os.rmdir': (0,), 'sqlite3.connect': (0,)}
+# The machine registration; the WSL-to-Windows stop check reads its native Python.
+_REGISTRATION = os.path.join(DATA, 'workspace.json')
+_WRITES = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
+
+
+def _inside(value):
+    """Return the path, normalized in the caller's letter case, when it is DATA or inside it."""
+    if not isinstance(value, (str, bytes, os.PathLike)):
+        return None
+    value = os.fsdecode(os.fspath(value))
+    if value.startswith('file:'):
+        from urllib.parse import urlsplit
+        from urllib.request import url2pathname
+        value = url2pathname(urlsplit(value).path)
+    if not os.path.isabs(value):
+        return None
+    path = os.path.normpath(value)
+    folded = os.path.normcase(path)
+    return path if folded == DATA or folded.startswith(DATA + os.sep) else None
+
+
+def _record(event, path):
+    log = os.environ.get('CHECKOUT_GUARD_LOG')
+    if log:
+        handle = os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(handle, f'{event} {path} (pid {os.getpid()})\\n'.encode())
+        finally:
+            os.close(handle)
+
+
+def _guard(event, args):
+    for position in _PATHS.get(event, ()):
+        path = _inside(args[position])
+        if path is None or (event == 'open' and os.path.normcase(path) == _REGISTRATION
+                            and isinstance(args[2], int) and not args[2] & _WRITES):
+            continue
+        _record(event, path)
+        raise AssertionError(f"A test used the checkout's data folder: {path}. "
+                             'Give it a private path or coordinator (AGENTS.md, Tests).')
+
+
+sys.addaudithook(_guard)
+'''
+
 
 @dataclass(frozen=True)
 class Entry:
@@ -151,7 +222,9 @@ class Run:
     """Own one run folder and every file process started in it.
 
     The folder is a new private directory under RUNS with temp/ (TMPDIR, TEMP
-    and TMP for every file and its descendants) and logs/ (one log per file).
+    and TMP for every file and its descendants), logs/ (one log per file, and
+    one .guard record per file that touched the checkout's data/) and guard/
+    (the sitecustomize.py that PYTHONPATH gives every file process).
     Each file process leads a new process group (a process tree on Windows).
     close() refuses new starts, kills the groups still running, then removes
     the folder. It returns a removal problem instead of hiding it.
@@ -166,8 +239,11 @@ class Run:
         self.folder = Path(tempfile.mkdtemp(prefix='run-', dir=RUNS))
         self.temp = self.folder / 'temp'
         self.logs = self.folder / 'logs'
-        self.temp.mkdir()
-        self.logs.mkdir()
+        self.guard = self.folder / 'guard'
+        for folder in (self.temp, self.logs, self.guard):
+            folder.mkdir()
+        data = os.path.normcase(str(ROOT / 'data'))
+        (self.guard / 'sitecustomize.py').write_text(f'DATA = {data!r}\n' + GUARD_SOURCE, encoding='utf-8')
         self._lock = threading.Lock()
         self._processes = set()
         self._closed = False
@@ -177,10 +253,13 @@ class Run:
         command = ([sys.executable, '-B', str(entry.path)] if entry.path.suffix == '.py'
                    else ['node', str(entry.path)])
         temp = str(self.temp)
-        environment = dict(os.environ, TMPDIR=temp, TEMP=temp, TMP=temp, PYTHONUNBUFFERED='1')
+        log = self.logs / (entry.path.name + '.log')
+        refused = self.logs / (entry.path.name + '.guard')
+        path = os.pathsep.join(filter(None, (str(self.guard), os.environ.get('PYTHONPATH'))))
+        environment = dict(os.environ, TMPDIR=temp, TEMP=temp, TMP=temp, PYTHONUNBUFFERED='1',
+                           PYTHONPATH=path, CHECKOUT_GUARD_LOG=str(refused))
         group = (dict(start_new_session=True) if os.name == 'posix'
                  else dict(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP))
-        log = self.logs / (entry.path.name + '.log')
         started = time.monotonic()
         with open(log, 'wb') as output:
             with self._lock:
@@ -199,7 +278,11 @@ class Run:
                 with self._lock:
                     self._processes.discard(process)
         elapsed = time.monotonic() - started
-        return Result(entry, status, elapsed, '' if status == 'PASS' else _tail(log))
+        if not refused.exists():
+            return Result(entry, status, elapsed, '' if status == 'PASS' else _tail(log))
+        records = refused.read_text(encoding='utf-8', errors='replace').splitlines()[:TAIL_LINES]
+        return Result(entry, 'FAIL' if status == 'PASS' else status, elapsed,
+                      "Refused access to the checkout's data/:\n" + '\n'.join(records) + '\n' + _tail(log))
 
     def close(self):
         """Refuse new starts, kill running groups and remove the folder.
@@ -272,13 +355,9 @@ def _interrupt(signum, frame):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Run the test files of one tier, each in its own process.')
     parser.add_argument('--tier', choices=('fast', 'heavy', 'all'), default='fast')
-    parser.add_argument('--jobs', type=_positive,
-                        help='files that run at the same time (default 8, or 1 when heavy files are selected)')
+    parser.add_argument('--jobs', type=_positive, default=8, help='files that run at the same time (default 8)')
     args = parser.parse_args(argv)
     entries, left_out = select(args.tier)
-    # Heavy fixtures hold the checkout's shared cache lock for minutes, and a
-    # waiter gives up after 30 s, so heavy files only pass one at a time.
-    jobs = args.jobs or (1 if any(entry.tier == 'heavy' for entry in entries) else 8)
     require_interpreters(entries)
     # Termination takes the interrupt path, so the run kills its groups first.
     for name in ('SIGTERM', 'SIGHUP'):
@@ -286,11 +365,11 @@ def main(argv=None):
             signal.signal(getattr(signal, name), _interrupt)
 
     run = Run()
-    print(f'{args.tier} tier: {len(entries)} files, {jobs} at a time, run folder {run.folder}', flush=True)
+    print(f'{args.tier} tier: {len(entries)} files, {args.jobs} at a time, run folder {run.folder}', flush=True)
     started = time.monotonic()
     results = []
     interrupted = False
-    pool = ThreadPoolExecutor(max_workers=max(1, min(jobs, len(entries))))
+    pool = ThreadPoolExecutor(max_workers=max(1, min(args.jobs, len(entries))))
     try:
         futures = [pool.submit(run.execute, entry, CAP_SECONDS[entry.tier]) for entry in entries]
         for future in as_completed(futures):

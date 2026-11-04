@@ -23,6 +23,35 @@ run = Path(tempfile.gettempdir()).resolve().parent
 sys.exit(0 if run.name.startswith('run-') and run.parent == Path(os.environ['EXPECTED_RUNS']) else 1)
 '''
 BROKEN = 'import sys\nfor n in range(100): print(f"line {n}")\nsys.exit(1)\n'
+# Swallows its own refusals and exits 0; a Python child repeats the open.
+DATA = '''import os, sqlite3, subprocess, sys
+from pathlib import Path
+lock = Path(__file__).resolve().parents[1] / 'data' / 'website-data-0.lock'
+try:
+    os.mkdir(lock.parent)
+except Exception:
+    pass
+try:
+    sqlite3.connect(f'file:{lock.parent}/research.sqlite?mode=rwc', uri=True)
+except Exception:
+    pass
+try:
+    open(lock, 'a+b')
+except Exception:
+    pass
+subprocess.run([sys.executable, '-c', 'import sys; open(sys.argv[1], "rb")', str(lock)])
+'''
+REGISTRATION = '''from pathlib import Path
+registration = Path(__file__).resolve().parents[1] / 'data' / 'workspace.json'
+assert registration.read_text() == '{}'
+'''
+REGISTRATION_WRITE = '''from pathlib import Path
+registration = Path(__file__).resolve().parents[1] / 'data' / 'workspace.json'
+try:
+    open(registration, 'a')
+except AssertionError:
+    pass
+'''
 ORPHAN = '''import subprocess, sys, time
 sleep = [sys.executable, '-c', 'import time; time.sleep(60)']
 print(f'grouped {subprocess.Popen(sleep).pid}')
@@ -101,10 +130,34 @@ class TierRunnerTests(unittest.TestCase):
     def test_heavy_tier_runs_only_heavy_entries(self):
         done = self.run_tier('--tier', 'heavy')
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        self.assertIn(f'heavy tier: {len(self.runner.HEAVY)} files, 1 at a time', done.stdout)
+        self.assertIn(f'heavy tier: {len(self.runner.HEAVY)} files, 8 at a time', done.stdout)
         passed = set(re.findall(r'(?m)^PASS .*  (\S+)$', done.stdout))
         self.assertEqual(passed, set(self.runner.HEAVY))
         self.assertIn('Not run: 3 fast files.', done.stdout)
+
+    def test_checkout_data_access_fails_the_file_and_names_the_path(self):
+        self.write('test_data.py', DATA)
+        done = self.run_tier()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertRegex(done.stdout, r'(?m)^FAIL .*  test_data\.py$')
+        data = self.root / 'data'
+        for event, path, count in (('os.mkdir', data, 1), ('sqlite3.connect', data / 'research.sqlite', 1),
+                                   ('open', data / 'website-data-0.lock', 2)):
+            records = re.findall(rf'(?m)^{re.escape(event)} {re.escape(str(path))} \(pid \d+\)$', done.stdout)
+            self.assertEqual(len(records), count, event)
+        self.assertFalse(data.exists())
+
+    def test_only_reading_the_machine_registration_passes(self):
+        registration = self.root / 'data' / 'workspace.json'
+        registration.parent.mkdir()
+        registration.write_text('{}', encoding='utf-8')
+        self.write('test_read_registration.py', REGISTRATION)
+        self.write('test_write_registration.py', REGISTRATION_WRITE)
+        done = self.run_tier()
+        self.assertRegex(done.stdout, r'(?m)^PASS .*  test_read_registration\.py$')
+        self.assertRegex(done.stdout, r'(?m)^FAIL .*  test_write_registration\.py$')
+        self.assertEqual(len(re.findall(rf'(?m)^open {re.escape(str(registration))} \(pid \d+\)$', done.stdout)), 1)
+        self.assertEqual(registration.read_text(encoding='utf-8'), '{}')
 
     def test_all_tiers_never_run_frozen_files(self):
         done = self.run_tier('--tier', 'all')
