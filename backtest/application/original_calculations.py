@@ -113,17 +113,10 @@ class Original(Control):
     def capabilities(self):
         """Describe what this server runs, for GET /api/backtest-capabilities.
 
-        The engines list names only the engines this server runs. Labels for
-        other recorded engine ids stay with the browser.
+        The engines list names only the engines this server runs, with the
+        calendar version each supports. Engine labels stay with the browser.
         """
-        from backtest.application import strategy_requests
-        return dict(calendar=None,shared_views=['latest','january'],
-            engines=[dict(id=self.engine,label=ENGINES[self.engine],calendar=self.calendar_version,
-                operations=['custom','random'],
-                scalar=dict(operations=list(strategy_requests.SCALAR_MODES),
-                    execution='bounded-complete-evidence',eager=False,sample_preview=True),
-                status=dict(state='current'))],
-            sample_preview=dict(engine=self.engine,label='Original reference sample preview'))
+        return dict(engines=[dict(id=self.engine,calendar=self.calendar_version)])
 
     def preview(self, capture, roots, *, admission='interactive', engine='original'):
         """Explicit Original reference samples under ordinary input lifetime."""

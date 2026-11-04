@@ -16,7 +16,7 @@ Queries use read-only connections and check core input files, calculation code, 
 
 `latest_snapshots` stores prospective picks with no holding return. Latest-date metadata records the actual cached session and coverage. The canonical report's saved Through date constrains historical snapshots independently of newer latest-session prices. After extending price data, run preparation then rebuild the website; an open HTML file is a saved snapshot, not a live data feed.
 
-Schema 4 stores `screening_metrics`: ready-to-rank multiple/yield pairs keyed
+`screening_metrics` stores ready-to-rank multiple/yield pairs keyed
 by mode, pool, year, symbol and catalog metric ID. Latest observations use year
 0. Preparation computes all formulas, including screening-date EV divided by
 three-year average EBITDA, and preserves the default metric's exact existing
@@ -31,11 +31,12 @@ and reusable entry/exit books. The local website service computes missing books
 and persists them here; original `research.sqlite` remains read-only. Daily-cache
 freshness includes the schedule engine and research calculation fingerprints.
 
-Daily cache version 3 retains `period_pools(period_id,pool)` from version 2. A completed period can
+`period_pools(period_id,pool)` records which pools a period completed. A completed period can
 contain one or both pools. The service prepares only the requested pool, and
 fills the other on demand while retaining the same period ID. Completion markers
 also cover empty pools; do not infer readiness from the presence of snapshots.
-Markers, snapshots and metrics commit together, once per schedule/trial.
+Markers, snapshots and metrics commit together, once per schedule/trial. See
+[the schedule calendar](../docs/schedule-calendar.md) for the date rules.
 
 Random batches plan unique missing books upfront. Read-only worker processes
 calculate ahead; one parent writes complete trials in order. Calculations do not
@@ -43,14 +44,13 @@ hold a write transaction. Price lookups share one short read transaction per
 book, released before the result returns to the writer. The parent stages large trials in a temporary local
 file before their atomic save. Replays start no workers when all books are saved.
 
-The launcher upgrades compatible version-1/2 caches in place. Version-1 books
-mark both pools complete; version-2 books retain individual completion markers.
-Prices, financials and dated results are retained. Changed research inputs or financial calculation code still trigger an
-offline rebuild. No market data is downloaded during either path.
+A daily cache from an older version, or one whose research inputs or calculation
+code changed, fails the freshness check. `python3 scripts/schedules.py prepare`
+then rebuilds it from the saved files. No market data is downloaded.
 
-`logs/website-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
+`logs/website-<namespace>-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
 
-Schema 6 adds `baseline_prices` and `baseline_periods` for holding-level agreement.
+`baseline_prices` and `baseline_periods` hold the holding-level agreement.
 Metadata stores the priced result, last historical revision and exact report
 hash. The report cutoff is a source input; generated report contents are a
 publication identity. An unfinished `research.sqlite.publication.json` blocks
@@ -63,21 +63,19 @@ freshness. Keep its referenced `results/baseline-history/` files for recovery.
 rebuildable research and schedule databases. Keep this file during cache cleanup,
 rebuilds and source deployment. Back it up with your local user data.
 
-The website stores at most 20 complete records. Each record keeps the submitted
+The website stores at most 100 complete records. Each record keeps the submitted
 settings, traded stocks, holding-period returns, result summaries and display
 labels. Opening a record reads its stored results without running a calculation.
 Changed data does not rewrite a saved record. Delete individual records in the
 website to free slots. Reaching the limit never removes an older record.
 
-`website/saved_backtests.py` owns this database. SQLite transactions enforce the
+`backtest/application/library.py` owns this database. SQLite transactions enforce the
 limit across server instances. Each complete snapshot is compressed inside its
 record. A failed save keeps existing records. This database does not participate
 in financial-cache freshness or rebuilds.
 
-Saved snapshots support versions 1 and 2 within the same database table. Version 2
-uses semantic presentation fields instead of DOM IDs and CSS classes. The browser
-converts version-1 records when opening them. Reading old records never rewrites
-their stored contents. Both formats preserve the original stock rows and returns.
+Reading an older record never rewrites its stored contents. See
+[durable evidence](../docs/durable-evidence.md) for the snapshot versions.
 
 ## Overnight backtest queue
 
@@ -85,7 +83,7 @@ their stored contents. Both formats preserve the original stock rows and returns
 and source deployment. It stores up to 100 fixed or random-date test records,
 including completed results. Results are compressed version-2 snapshots with
 their submitted settings and display labels. They stay until explicit deletion.
-The 20-slot saved library remains independent.
+The saved library remains independent.
 
 The queue also stores order, pause state, held edits, revisions, progress and
 random seeds. A started random test records its full date plan for interruption
@@ -107,8 +105,7 @@ an acknowledgement retry from recreating them.
 `variable-library.sqlite` contains reusable user variables. It is separate from
 financial caches, `saved-backtests.sqlite` and `backtest-queue.sqlite`. Preserve
 all three durable files during rebuilds, cleanup and source publication.
-`backtest/variables/library.py` owns the callable repository. It is not connected
-to ordinary website strategy submission in Phase 5.
+`backtest/variables/library.py` owns the callable repository.
 
 A stable variable ID has immutable authored content revisions. Names and
 favourites use an independent mutable entry version. Formula edits must supply
@@ -125,5 +122,5 @@ cover persistence; the installed store is not a test fixture.
 Atomic capture reads complete exact programs and presentation from one snapshot.
 The returned `VariableCapture` needs no later database state. Its checked restore
 remains usable after entry deletion or removal of the file. Capturing local
-definitions does not save them. Capture adds no application result format or
-formula integration with the existing queue and saved-backtest library.
+definitions does not save them. A strategy request carries its capture, so the
+queue and the saved-backtest library store the exact formulas with the result.

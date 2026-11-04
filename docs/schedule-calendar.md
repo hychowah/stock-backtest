@@ -172,9 +172,7 @@ plan column. Canonical calendar metadata participates in checkpoint evidence.
 artifact comparison handles submitted settings. Equivalent legacy/canonical monthly settings compare in memory.
 Original stored settings, labels and version-1/version-2 snapshots stay intact.
 The capability endpoint is `/api/backtest-capabilities`. The normal app returns
-legacy `calendar:null` plus an `engines` list. The list names only Original, with `calendar:1` and
-`operations:["custom","random"]`. `shared_views:["latest","january"]`
-identifies prepared screening. The submitted `options.engine` is recorded.
+an `engines` list. The list names only Original, with `calendar:1`. The submitted `options.engine` is recorded.
 Omission means Original. Submission and execution refuse an engine that the
 server does not run, such as the frozen experimental engine. Browser replay keeps its engine
 separate from the financial plan and checks the recorded choice. A live selector

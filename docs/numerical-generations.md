@@ -10,11 +10,11 @@ qualified behavior. Unfreezing starts with its frozen tests in
 
 Python owns recorded plans, shared SQL selection, the financial reducer,
 checkpoints and application lifetime. The selected complete-book provider stays
-behind that boundary. Compiled Numba is the sole production provider; Original
-remains the default application engine. Read
-[candidate startup](candidate-startup.md#current-optional-native-setup-cb-19g)
-for selected preparation. CB-19G kept compiled Numba; the Rust comparison
-provider and its build tooling were later removed.
+behind that boundary. Compiled Numba is the only provider. The engine is
+frozen; Original is the only engine the website runs. Read
+[candidate startup](candidate-startup.md#environment-and-command)
+for the environment and preparation. The Rust comparison provider and its build
+tooling are removed.
 The forwarding comparison factory and multiple Preparation profiles are removed.
 Historical app configurations require their exact retained source, not current dispatch.
 

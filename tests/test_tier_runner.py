@@ -88,10 +88,7 @@ class TierRunnerTests(unittest.TestCase):
         self.runs = self.home / '.cache' / 'ebitda-ev-spread-tests'
         self.tests = self.root / 'tests'
         self.tests.mkdir(parents=True)
-        # When the real HEAVY table is empty, the copy names one synthetic heavy entry.
-        text = RUNNER.read_text(encoding='utf-8')
-        (self.tests / 'run.py').write_text(
-            text.replace('HEAVY = frozenset()\n', "HEAVY = frozenset({'test_heavy.py'})\n", 1), encoding='utf-8')
+        (self.tests / 'run.py').write_text(RUNNER.read_text(encoding='utf-8'), encoding='utf-8')
         spec = importlib.util.spec_from_file_location('tier_runner_copy', self.tests / 'run.py')
         self.runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.runner)

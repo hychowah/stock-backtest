@@ -7,7 +7,7 @@ Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from t
 The registered Windows `backtest-web.cmd` starts the latest committed main and
 checks for new main commits every two seconds. A new commit automatically
 deploys and restarts the native server in the same terminal. Uncommitted saves
-and the engine branch do not trigger updates. Git is not fetched or pulled.
+and other branches do not trigger updates. Remote history is not fetched or pulled.
 Refresh the browser page after the server reports it is ready. Subsequent
 restarts do not open another tab.
 
@@ -240,7 +240,7 @@ managed children receive `--cache-owned` from their owning parent.
 
 Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the untracked portable export in `website/dist/`.
 
-Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Review and commit that refresh deliberately. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
+Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
 
 Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
 
@@ -376,4 +376,3 @@ owners without implementing financial policy or durable storage. Data jobs and
 launcher identity remain in `server/data_manager.py` and `server/launcher.py`.
 `website/serve.py` acquires source ownership before importing the application.
 It holds ownership until workers, requests, databases and result readers close.
-The executable startup and private candidate commands retain their paths.

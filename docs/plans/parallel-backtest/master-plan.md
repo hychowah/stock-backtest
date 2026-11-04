@@ -96,7 +96,7 @@ restarted no installed server.
   [ordered coordinator](../../numerical-generations.md#ordered-random-coordinator-cb-19d)
   and [candidate boundary](../../numerical-generations.md#complete-period-comparison-cb-19e).
 - [Parallel checkpoint coordination](../../trial-checkpoints.md#parallel-ordered-coordination-cb-19d).
-- [Selected preparation](../../candidate-startup.md#current-selected-preparation-cb-19g).
+- [Selected preparation](../../candidate-startup.md#environment-and-command).
 - [Architecture guide](../../architecture-guide/dist/index.html).
 - F evidence: [README](../../../results/experiments/parallel-comparison-2026-11-01/README.md),
   [decision](../../../results/experiments/parallel-comparison-2026-11-01/decision.json),
@@ -110,7 +110,7 @@ restarted no installed server.
 - Source: `backtest/engines/numerical/` (`execution.py`, `trial.py`,
   `trial_pool.py`, `trial_worker.py`, `random.py`, `session.py`,
   `generation.py`, `candidates.py`). Comparison runner:
-  `tools/parallel_comparison.py`.
+  `tools/experiments/parallel_comparison.py`.
 
 ## Known limits and open items
 
