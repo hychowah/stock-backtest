@@ -24,7 +24,7 @@ not commit if it fails. After changing the check, run
 
 ## Current state and authorization
 
-All initiatives in `docs/plans/` are complete. Their summaries give the
+Only `docs/plans/typed-storage/` is active. The other summaries give the
 outcome, key decisions and known limits. Original is the only engine the
 website runs. The source has no experimental (Numba) engine, benchmark
 harness, engine comparison runner or Rust backend (see Engines).
