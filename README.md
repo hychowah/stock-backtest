@@ -8,22 +8,20 @@ Source development lives in WSL at `<wsl-checkout>`.
 The native Windows runtime is `<windows-runtime>`. Edit and commit in WSL.
 Start the native runtime with `python3 tools/deploy.py --start`, or run the
 installed `backtest-web.cmd` from Windows Terminal. Startup serves the installed
-revision and checks committed `main` once a day at 01:00 local time. A new commit
-then causes verified deployment and one server restart. Add `--latest` to install
-the newest `main` commit at launch. A pending publication resumes its
-recorded revision before a newer revision can be selected.
+revision. It updates to committed `main` daily at 01:00 local time; add
+`--latest` to update at launch. See [workspace commands and ownership](docs/workspaces.md).
 
 Use `python3 tools/deploy.py --revision <commit> --start` to fix one launch to
 that revision. Standalone publication without `--start` retains the installed
 revision. A fresh standalone runtime requires an explicit revision. See
-[workspace commands and ownership](docs/workspaces.md) for recovery and the
-source-only explicit-argument forwarding limit.
+the same document for recovery and the source-only explicit-argument
+forwarding limit.
 
 On Windows, run **`backtest-web.cmd`** from the runtime folder, or double-click **`start.cmd`**. It prepares stale local caches in order,
 rebuilds the website when needed, starts the local service, and opens your browser.
 A standalone installation on another system can run `python3 website/serve.py` in the foreground with its own cache. In this split workspace, use the native Windows runtime. No API key or market-data
 download is needed; unchanged caches are reused. The first refresh can take a
-few minutes. The Windows command keeps the server attached to the terminal on `0.0.0.0:3000`. Open `http://127.0.0.1:3000` on this computer. The installed `backtest-web.cmd` command also works from other Windows Terminal folders. Keep the terminal open to see server logs. Press Ctrl+C to stop it. Repeating the command stops this project’s identified server and starts the latest committed main revision in the new terminal and watches it for updates. This also replaces any older background instance. Replacement waits for active requests to finish before it prepares data. If ownership is still held after 30 seconds, the command asks you to wait or stop the old terminal, then retry.
+few minutes. The Windows command keeps the server attached to the terminal on `0.0.0.0:3000`. Open `http://127.0.0.1:3000` on this computer. The installed `backtest-web.cmd` command also works from other Windows Terminal folders. Keep the terminal open to see server logs. Press Ctrl+C to stop it. Repeating the command stops this project’s identified server and starts a new one in the new terminal. This also replaces any older background instance. Replacement waits for active requests to finish before it prepares data. If ownership is still held after 30 seconds, the command asks you to wait or stop the old terminal, then retry.
 
 The server also saves development logs in `data/logs/`. The terminal and data panel show the current file. Logs keep safe error traces and operation times, never API keys, provider URLs, response bodies or exception text. Startup removes old logs. Run `python3 -m tools.ops.log_summary` to see where the time goes. The [development log](docs/architecture-guide/dist/index.html#development-log) section of the architecture guide has the details.
 

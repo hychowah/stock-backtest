@@ -53,39 +53,33 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(next_update_time(datetime(2026,11,5,23,30)),datetime(2026,11,6,1,0))
         self.assertEqual(next_update_time(datetime(2026,12,31,12,0)),datetime(2027,1,1,1,0))
 
-    def test_plain_start_serves_installed_revision_without_checking_main(self):
-        (self.root/d.MANIFEST).parent.mkdir();(self.root/d.MANIFEST).write_text('{}')
-        with patch.object(d,'deployment_revision',return_value='a'*40),patch.object(d,'main_revision') as tip,patch.object(d,'install_latest') as install,patch.object(d,'deploy') as publish:
-            self.assertEqual(d.starting_commit(self.config,False),'a'*40)
-        tip.assert_not_called();install.assert_not_called();publish.assert_not_called()
+    def test_starting_commit_serves_installed_unless_latest_or_fresh(self):
+        data=self.root/'data';data.mkdir()
+        for name,latest,manifest,journal,installs,recovers in (
+                ('plain',False,True,False,False,False),('journal',False,True,True,False,True),
+                ('latest',True,True,False,True,False),('fresh',False,False,False,True,False)):
+            with self.subTest(name):
+                for file,present in ((d.MANIFEST,manifest),(d.PENDING,journal)):
+                    (self.root/file).unlink(missing_ok=True)
+                    if present:(self.root/file).write_text('{}')
+                with patch.object(d,'deployment_revision',return_value='a'*40),patch.object(d,'main_revision',return_value='b'*40),patch.object(d,'install_latest') as install,patch.object(d,'deploy') as publish:
+                    self.assertEqual(d.starting_commit(self.config,latest),'b'*40 if installs else 'a'*40)
+                self.assertEqual(install.called,installs);self.assertEqual(publish.called,recovers)
 
-    def test_plain_start_finishes_a_pending_journal_but_keeps_the_installed_choice(self):
-        data=self.root/'data';data.mkdir();(data/'deployment.json').write_text('{}');(data/'deployment.pending.json').write_text('x')
-        with patch.object(d,'deployment_revision',return_value='a'*40),patch.object(d,'main_revision') as tip,patch.object(d,'install_latest') as install,patch.object(d,'deploy') as publish:
-            d.starting_commit(self.config,False)
-        publish.assert_called_once_with(self.config);tip.assert_not_called();install.assert_not_called()
-
-    def test_latest_flag_and_fresh_runtime_install_the_main_tip(self):
-        (self.root/d.MANIFEST).parent.mkdir();(self.root/d.MANIFEST).write_text('{}')
-        for latest,manifest in ((True,True),(False,False)):
-            if not manifest:(self.root/d.MANIFEST).unlink()
-            with patch.object(d,'main_revision',return_value='b'*40),patch.object(d,'install_latest') as install:
-                self.assertEqual(d.starting_commit(self.config,latest),'b'*40)
-            install.assert_called_once_with(self.config,'b'*40)
-
-    def test_main_is_not_read_before_the_daily_update_time(self):
-        child=Child();clock=Mock()
-        clock.now.side_effect=[datetime(2026,11,5,12),datetime(2026,11,5,12,30),datetime(2026,11,5,13)]
-        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision') as tip,patch.object(d,'spawn_server',return_value=child),patch.object(d.time,'sleep',side_effect=[None,None,KeyboardInterrupt]):
+    def run_days(self,times,tip):
+        """Follow with a scripted local clock; return how often main was read and installed."""
+        clock=Mock();clock.now.side_effect=times
+        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',side_effect=tip) as read,patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',return_value=Child()),patch.object(d.time,'sleep',side_effect=[None]*(len(times)-1)+[KeyboardInterrupt]):
             self.assertEqual(d.follow_main(self.config,[]),130)
-        tip.assert_not_called()
+        return read.call_count,install.called
 
-    def test_daily_check_runs_once_per_day_and_ignores_an_unchanged_tip(self):
-        child=Child();clock=Mock()
-        clock.now.side_effect=[datetime(2026,11,5,0,58),datetime(2026,11,5,0,59),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1)]
-        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',return_value='a'*40) as tip,patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',return_value=child),patch.object(d.time,'sleep',side_effect=[None,None,None,KeyboardInterrupt]):
-            self.assertEqual(d.follow_main(self.config,[]),130)
-        self.assertEqual(tip.call_count,1);install.assert_not_called()
+    def test_main_is_read_once_after_one_am_and_not_before(self):
+        times=[datetime(2026,11,5,0,58),datetime(2026,11,5,0,59),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1)]
+        self.assertEqual(self.run_days(times,['a'*40]),(1,False))
+
+    def test_unreadable_main_is_retried_instead_of_skipping_the_day(self):
+        times=[datetime(2026,11,5,0,58),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1),datetime(2026,11,5,1,2)]
+        self.assertEqual(self.run_days(times,[None,'a'*40]),(2,False))
 
     def test_update_replaces_once_and_unknown_git_keeps_serving(self):
         old,new=Child(),Child(0);tokens=[];installed=[]
@@ -148,6 +142,14 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs['env'][d.SUPERVISOR_ENV],'a'*32)
         self.assertIn(d.SUPERVISOR_ENV,run.call_args.kwargs['env']['WSLENV'].split(':'))
         self.assertNotIn('stdout',run.call_args.kwargs)
+
+    def test_latest_requires_start_and_conflicts_with_revision(self):
+        with patch.object(d.os,'name','posix'),patch.object(d,'configuration',return_value=self.config),patch.object(d,'follow_main',return_value=0) as follow:
+            with patch.object(sys,'argv',['deploy.py','--start','--latest','--no-browser']),self.assertRaises(SystemExit):d.main()
+            follow.assert_called_once_with(self.config,['--no-browser'],check=False,latest=True)
+            for arguments in (['--latest'],['--start','--latest','--revision','a'*40]):
+                with patch.object(sys,'argv',['deploy.py',*arguments]),patch.object(sys,'stderr'),self.assertRaises(SystemExit) as result:d.main()
+                self.assertEqual(result.exception.code,2)
 
     def test_start_defaults_to_following_main_and_explicit_revision_is_fixed(self):
         for selection in ([],['--revision','a'*40]):

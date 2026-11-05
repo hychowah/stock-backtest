@@ -433,10 +433,11 @@ def starting_commit(config, latest):
     `latest`, or a runtime with nothing installed, installs the main tip.
     """
     runtime = linux_path(config['runtime'])
-    if not latest and (runtime / PENDING).exists():
-        deploy(config)
-    if not latest and (runtime / MANIFEST).exists():
-        return deployment_revision(config)
+    if not latest:
+        if (runtime / PENDING).exists():
+            deploy(config)
+        if (runtime / MANIFEST).exists():
+            return deployment_revision(config)
     commit = main_revision()
     if commit is None:
         raise ValueError('Cannot read committed main. Check the source Git history and retry the launcher.')
@@ -471,9 +472,11 @@ def follow_main(config, arguments, *, check=False, latest=False):
                 now = datetime.now()
                 if now < due:
                     continue
-                due = next_update_time(now)
                 tip = main_revision()
-                if tip is None or tip == commit:
+                if tip is None:
+                    continue
+                due = next_update_time(now)
+                if tip == commit:
                     continue
                 if child.poll() is not None:
                     return child.returncode
