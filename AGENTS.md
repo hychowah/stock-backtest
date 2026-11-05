@@ -24,7 +24,7 @@ not commit if it fails. After changing the check, run
 
 ## Current state and authorization
 
-All initiatives in `docs/plans/` are complete. Their summaries give the outcome,
+Only `docs/plans/remove-slow-checks/` is active. Summaries give the outcome,
 key decisions and known limits. Original is the only engine the website runs.
 The experimental (Numba) engine is frozen in source (see Engines); the benchmark
 harness and the Rust backend were removed.
