@@ -10,7 +10,7 @@ never recomputes their values. Limits bound counts and encoded retained content,
 plus explicitly reserved native buffers. They do not claim a process RSS bound.
 Every complete block receives final source/input checks after encoding.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
@@ -32,8 +32,13 @@ _ARITHMETIC = dict(number='binary64', order='tree-left-before-right',
 
 @dataclass(frozen=True)
 class EvaluationPlan:
-    """Canonical captured inputs and derived work; evaluate() reconstructs it."""
+    """Canonical captured inputs and derived work.
+
+    plan() marks the plans it compiles; evaluate() reconstructs any other plan
+    before trusting it.
+    """
     document: str
+    compiled: bool = field(default=False, compare=False, repr=False)
 
     def to_dict(self):
         return json.loads(self.document)
@@ -254,7 +259,7 @@ def plan(program, roots, limits=None):
     remains observe()'s responsibility. Explicit dates apply to the whole subtree,
     including references, and must be valid for every enclosing requested root.
     """
-    return EvaluationPlan(_compile(program, roots, _limits(limits), lambda: None))
+    return EvaluationPlan(_compile(program, roots, _limits(limits), lambda: None), compiled=True)
 
 
 def require_plan(evaluation_plan, checkpoint=lambda: None):
@@ -271,6 +276,9 @@ def require_plan(evaluation_plan, checkpoint=lambda: None):
             'format', 'version', 'program', 'requests', 'limits', 'request_roots',
             'tasks', 'outputs', 'provider', 'reservations'}:
         _fail('INVALID_SHAPE', '', 'Evaluation plan fields do not match its format.')
+    if evaluation_plan.compiled:
+        # plan() built this document in this process from a checked program.
+        return submitted
     try:
         program_document = definitions.canonical(submitted['program'])
     except (TypeError, ValueError, RecursionError):

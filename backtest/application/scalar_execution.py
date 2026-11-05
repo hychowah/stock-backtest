@@ -20,7 +20,9 @@ from backtest.runtime import backtest_control
 from backtest.variables import definitions, library, reference, evaluation
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
-MAX_METADATA_BYTES = 16 * 1024 * 1024
+# Retained per-scope rows and lane references. 16 MiB failed a real cached-pool
+# scope with four built-in lanes and one formula; MAX_CANDIDATES bounds the rows.
+MAX_METADATA_BYTES = 256 * 1024 * 1024
 MAX_TASKS = 16 * 1024 * 1024
 MAX_SCOPES = 16384
 MAX_INSPECTED_ROWS = 2**31
@@ -43,6 +45,12 @@ class Budget:
                 or 2*_size(metadata) + sum(len(plan.document) for plan in plans) > self.metadata_bytes):
             raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar execution exceeds its aggregate work or scope bound.')
         self.tasks += tasks; self.scopes += 1; self.rows += inspected_rows
+    def extend(self, plans, inspected_rows):
+        """Add plans compiled after their scope's reservation."""
+        tasks = sum(len(plan.to_dict()['tasks']) for plan in plans)
+        if self.tasks + tasks > MAX_TASKS//self.trials or self.rows + inspected_rows > MAX_INSPECTED_ROWS//self.trials:
+            raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar execution exceeds its aggregate work or scope bound.')
+        self.tasks += tasks; self.rows += inspected_rows
 
 
 def scope_rows(db, *, pool, period=None, metadata_bytes=None):
@@ -127,6 +135,19 @@ def preview(capture, roots, view, *, record_bytes=8 * 1024 * 1024, checkpoint=ba
     return evaluate_preview(plan_preview(capture,roots,record_bytes=record_bytes,checkpoint=checkpoint),roots,view,checkpoint=checkpoint)
 
 
+def _plan_work(plans, bounds):
+    """Upper bound of the provider rows that evaluating plans inspects."""
+    inspected=0
+    for plan in plans:
+        compiled=plan.to_dict();dates={root['date'] for root in compiled['requests'] if root['mode']=='historical'}
+        inspected+=2*len(dates)*(bounds['report_rows']+bounds['population'])
+        annual=2*bounds['max_annual'] if observations.requires_annual_fields(compiled['provider']['requests']) else 0
+        inspected+=len(compiled['requests'])*(bounds['max_reports']+annual+11)
+        inspected+=4*len(compiled['provider']['contexts'])
+        inspected+=observations.additional_work_bound(compiled['provider']['requests'],compiled['provider']['contexts'],bounds)
+    return inspected
+
+
 def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner_scope=None,
                budget, record_bytes=8 * 1024 * 1024, checkpoint=backtest_control.checkpoint,
                limits=None, metadata_bytes=None, engine='original'):
@@ -155,13 +176,7 @@ def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner
     sources=[capture['selection']['ranking']['source']]+[item['source'] for item in capture['selection']['conditions']]
     inspected+=len(rows)*sum(source['kind']=='builtin' for source in sources)
     if plans:
-        for plan in plans:
-            compiled=plan.to_dict();dates={root['date'] for root in compiled['requests'] if root['mode']=='historical'}
-            inspected+=2*len(dates)*(bounds['report_rows']+bounds['population'])
-            annual=2*bounds['max_annual'] if observations.requires_annual_fields(compiled['provider']['requests']) else 0
-            inspected+=len(compiled['requests'])*(bounds['max_reports']+annual+11)
-            inspected+=4*len(compiled['provider']['contexts'])
-            inspected+=observations.additional_work_bound(compiled['provider']['requests'],compiled['provider']['contexts'],bounds)
+        inspected+=_plan_work(plans,bounds)
     else:
         inspected+=(len(rows)+255)//256*(2*(bounds['report_rows']+bounds['population']) if not latest else 2*256)
     budget.reserve(plans,rows,inspected)
@@ -217,14 +232,21 @@ class Executor:
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
     def select(self, db, period, entry, exit_day=None, *, latest=False, owner_scope=None):
-        rows, roots, plans, inspected = plan_scope(db, self.view, self.program, self.capture,
+        specification = deepcopy(self.capture['selection'])
+        # With a built-in ranking and filter-first order, a row that is not
+        # admitted, has no ranking value or fails a built-in condition can never
+        # be selected. Formulas are then evaluated only for the remaining rows.
+        # Admission still covers every row, so scope counts stay complete.
+        deferred = (self.program is not None and specification['ranking']['source']['kind'] == 'builtin'
+                    and specification['selection_order'] == 'filter_first')
+        rows, roots, plans, inspected = plan_scope(db, self.view, None if deferred else self.program, self.capture,
             period, entry, latest=latest, owner_scope=owner_scope, budget=self.budget,
             record_bytes=self.record_bytes, checkpoint=self.checkpoint,
             limits=self.evaluation_limits, metadata_bytes=self.metadata_bytes, engine=self.engine)
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
         # Records are written after selection, so per-candidate explanations
         # can be kept for the selected rows only. Scope counts stay complete.
-        records = []; emit = records.append
+        records = []; emit = records.append; evaluations = []
         if owner_scope is None: owner_scope = dict(kind='dated')
         role_sources=[self.capture['selection']['ranking']['source']]+[item['source'] for item in self.capture['selection']['conditions']]
         policy=selection.policy_fingerprint()
@@ -244,27 +266,32 @@ class Executor:
             nonlocal retained
             retained += 2*_size(value)+128
             if retained>self.metadata_bytes:raise definitions.FormulaError('WORK_LIMIT','/execution','Retained scalar lanes exceed their byte ceiling.')
-        offset = 0
-        for chunk, plan in enumerate(plans):
-            self.checkpoint()
-            block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
-            block_roots = block['observations']['roots']
-            admitted += sum(root['admitted'] for root in block_roots)
-            for local,decision in enumerate(block_roots):permitted[offset+local]=decision['admitted']
-            emit(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
-            width = len(plan.to_dict()['requests'])
-            for item in block['results']:
-                position = offset + item['request']
-                key = (item['variable_id'], item['revision'])
-                for role, source in enumerate(role_sources):
-                    if source['kind'] == 'formula' and (source['variable_id'], source['revision']) == key:
-                        lane = 'ranking' if role == 0 else 'c' + str(role - 1)
-                        values[position][lane] = item['value'] if item['valid'] else None
-                        references[position][lane] = dict(scope=identity, chunk=chunk, request=item['request'],
-                            variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
-                            valid=item['valid'], reason=item['reason'])
-                        charge(references[position][lane])
-            offset += width
+        def evaluate(plans, targets, admits):
+            # targets maps each planned root, in order, to its row index.
+            nonlocal admitted
+            offset = 0
+            for chunk, plan in enumerate(plans):
+                self.checkpoint()
+                block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
+                block_roots = block['observations']['roots']
+                if admits:
+                    admitted += sum(root['admitted'] for root in block_roots)
+                    for local,decision in enumerate(block_roots):permitted[targets[offset+local]]=decision['admitted']
+                evaluations.append(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
+                width = len(plan.to_dict()['requests'])
+                for item in block['results']:
+                    position = targets[offset + item['request']]
+                    key = (item['variable_id'], item['revision'])
+                    for role, source in enumerate(role_sources):
+                        if source['kind'] == 'formula' and (source['variable_id'], source['revision']) == key:
+                            lane = 'ranking' if role == 0 else 'c' + str(role - 1)
+                            values[position][lane] = item['value'] if item['valid'] else None
+                            references[position][lane] = dict(scope=identity, chunk=chunk, request=item['request'],
+                                variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
+                                valid=item['valid'], reason=item['reason'])
+                            charge(references[position][lane])
+                offset += width
+        evaluate(plans, range(len(rows)), True)
         if not plans and roots:
             # Admission is required even when every source is a stored built-in.
             for first in range(0, len(roots), 256):
@@ -315,15 +342,29 @@ class Executor:
             if lanes:emit(dict(type='lanes', value=dict(scope=identity, symbol=row['symbol'], lanes=lanes)))
         for index,allowed in enumerate(permitted):
             if not allowed:values[index]['ranking']=None
-        specification = deepcopy(self.capture['selection'])
         conditions = [dict(lane='c'+str(i),op=item['op'],value=item['storage_comparison_value']) for i,item in enumerate(specification['conditions'])]
         bounds = self.capture['bounds']
         for field, op in [('min_cap','ge'),('max_cap','le'),('min_ev','ge'),('sector','eq'),('exchange','eq')]:
             if bounds[field] is not None:
                 lane = {'min_cap':'market_cap','max_cap':'market_cap','min_ev':'enterprise_value'}.get(field,field)
                 conditions.append(dict(lane=lane,op=op,value=bounds[field]))
-        candidates = [dict(symbol=row['symbol'], candidate_rank=row['candidate_rank'],
-            values=dict(values[i], **{key:row.get(key) for key in ('market_cap','enterprise_value','sector','exchange')})) for i,row in enumerate(rows)]
+        def row_values(i):
+            return dict(values[i], **{key:rows[i].get(key) for key in ('market_cap','enterprise_value','sector','exchange')})
+        if deferred:
+            formula_lanes = {'c'+str(i) for i,item in enumerate(specification['conditions']) if item['source']['kind'] == 'formula'}
+            stored_conditions = [item for item in conditions if item['lane'] not in formula_lanes]
+            needed = [i for i in range(len(rows)) if permitted[i] and selection.finite(values[i].get('ranking')) is not None
+                      and selection.passes(row_values(i), stored_conditions, self.checkpoint)]
+            plans = _plans(self.program, [roots[i] for i in needed], self.record_bytes, self.checkpoint,
+                           self.evaluation_limits, self.metadata_bytes, self.engine) if needed else []
+            work = _plan_work(plans, self.view.bounds)
+            self.budget.extend(plans, work)
+            receipt['work'] = dict(inspected_rows=inspected+work, cumulative_inspected_rows=self.budget.rows,
+                                   cumulative_tasks=self.budget.tasks)
+            retained += sum(len(plan.document) for plan in plans)
+            if retained>self.metadata_bytes:raise definitions.FormulaError('WORK_LIMIT','/execution','Retained scalar lanes exceed their byte ceiling.')
+            evaluate(plans, needed, False)
+        candidates = [dict(symbol=row['symbol'], candidate_rank=row['candidate_rank'], values=row_values(i)) for i,row in enumerate(rows)]
         selected = selection.select(candidates, dict(ranking=dict(lane='ranking',direction=specification['ranking']['direction']),
             conditions=conditions, **{key:specification[key] for key in ('rank_from','rank_to','selection_order')}), self.checkpoint)
         output = []
@@ -347,7 +388,7 @@ class Executor:
         for index in kept:
             for link in references[index].values():
                 if 'chunk' in link: requests.setdefault(link['chunk'], set()).add(link['request'])
-        for record in records:
+        for record in evaluations + records:
             self.checkpoint()
             kind, value = record['type'], record['value']
             if kind == 'evaluation':

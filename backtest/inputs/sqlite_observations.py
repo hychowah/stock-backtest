@@ -37,22 +37,30 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
     binding = json.loads(admitted)
     identity = 'sqlite:' + hashlib.sha256(observation_inputs.encoded(dict(inputs=binding,adapter=_LOADED)).encode()).hexdigest()
     cached = daily.cached_symbols(db)
+    histories = {}; order = []
     class Population(Mapping):
-        # Financial pools decide eligibility. SQL supplies only one bounded raw
-        # history at a time, in the original first-occurrence population order.
+        # Financial pools decide eligibility. SQL supplies one bounded raw
+        # history per company, in the original first-occurrence population order.
+        # The view's generation cannot change while it is open, so each decoded
+        # history is read once per view and shared by every screen date.
         def __init__(self,pool):self.pool=pool
         def __getitem__(self,symbol):
-            rows=[daily.prepared_report(row)[1] for row in db.execute(
-                'SELECT * FROM statements WHERE symbol=? ORDER BY fiscal LIMIT ?', (symbol,MAX_HISTORY+1))]
-            checkpoint()
-            if len(rows)>MAX_HISTORY:raise ValueError('Prepared observation history exceeds its bound.')
-            if self.pool=='legacy':rows=books.pools({symbol:rows})[1].get(symbol,[])
-            if not rows:raise KeyError(symbol)
-            return rows
-        def __iter__(self):
-            for row in db.execute('SELECT symbol FROM statements GROUP BY symbol ORDER BY min(rowid)'):
+            key=(self.pool,symbol)
+            if key not in histories:
+                rows=[daily.prepared_report(row)[1] for row in db.execute(
+                    'SELECT * FROM statements WHERE symbol=? ORDER BY fiscal LIMIT ?', (symbol,MAX_HISTORY+1))]
                 checkpoint()
-                if self.pool=='cached' or self.get(row[0]):yield row[0]
+                if len(rows)>MAX_HISTORY:raise ValueError('Prepared observation history exceeds its bound.')
+                if self.pool=='legacy':rows=books.pools({symbol:rows})[1].get(symbol,[])
+                histories[key]=rows
+            if not histories[key]:raise KeyError(symbol)
+            return histories[key]
+        def __iter__(self):
+            if not order:
+                order.extend(row[0] for row in db.execute('SELECT symbol FROM statements GROUP BY symbol ORDER BY min(rowid)'))
+            for symbol in order:
+                checkpoint()
+                if self.pool=='cached' or self.get(symbol):yield symbol
         def __len__(self):
             return db.execute('SELECT count(DISTINCT symbol) FROM statements').fetchone()[0] if self.pool=='cached' else sum(1 for _ in self)
     populations=(Population('cached'),Population('legacy'))
