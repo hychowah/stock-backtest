@@ -4,7 +4,11 @@ const rankFrom=document.getElementById('rank-from'),rankTo=document.getElementBy
 const fromYear=document.getElementById('from-year'),toYear=document.getElementById('to-year');
 const fields={selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
 let screeningMode='latest';
+// Built-in strategies keep their filters here. Variable strategies keep them in
+// StrategyDraft. One row list shows whichever owner is active.
 let filterConditions=[];
+// A new row exists only in the form until its source is chosen.
+let pendingFilter=false,filterSources=null,filterSourcesState='idle';
 function viewKey(){return screeningMode==='latest'?'latest':document.getElementById('schedule-kind').value==='custom'?'custom':'january';}
 const currentArtifact=()=>ResultArtifacts.forView(viewKey());
 const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.filter_catalog});
@@ -101,24 +105,89 @@ function initializeFilters(){
   document.getElementById('random-seed').value='42';
   resetFilters();
 }
+function builtinFilterLabel(field){
+  const item=StrategyDraft.catalog().filters[field];
+  return (item?.label||field)+(item?.available?'':screeningData.filter_catalog[field]?' — needs financial data':' — unavailable');
+}
+function conditionRow(key,row,scalar){
+  const name=key==='new'?'New filter':'Filter '+(+key+1);
+  const search=`<div class="filter-source"><label for="filter-search-${key}">Filter on</label><div class="filter-combo"><input id="filter-search-${key}" data-filter-search="${key}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="filter-options-${key}" autocomplete="off" spellcheck="false" placeholder="Type to search: P/E, revenue, margin…" value="${safe(row.label)}" data-label="${safe(row.label)}"${row.title?` title="${safe(row.title)}"`:''}><span class="filter-combo-arrow" aria-hidden="true">▾</span><div id="filter-options-${key}" class="filter-options" role="listbox" aria-label="${name} choices" hidden></div></div></div>`;
+  if(key==='new')return `<div class="condition-row condition-pending">${search}<div class="condition-actions"><button type="button" data-filter-cancel>Cancel</button></div></div>`;
+  const value=scalar?`<input id="filter-value-${key}" data-index="${key}" data-key="value" aria-label="${name} value" inputmode="decimal" autocomplete="off" value="${safe(row.value)}" placeholder="Enter value">`
+    :`<input id="filter-value-${key}" data-index="${key}" data-key="value" aria-label="${name} value" type="number" step="any" required value="${safe(row.value)}" placeholder="Enter value">`;
+  const unit=!row.units?'':row.units.length>1?`<select data-index="${key}" data-key="unit" aria-label="${name} unit">${row.units.map(u=>`<option value="${safe(u)}" ${u===row.unit?'selected':''}>${safe(VariableWorkspace.displayName(u))}</option>`).join('')}</select>`:`<span class="condition-unit">${safe(VariableWorkspace.displayName(row.unit))}</span>`;
+  return `<div class="condition-row">${search}<label>Comparison<select data-index="${key}" data-key="op" aria-label="${name} comparison"><option value="gt" ${row.op==='gt'?'selected':''}>More than (&gt;)</option><option value="lt" ${row.op==='lt'?'selected':''}>Less than (&lt;)</option></select></label><label>Value<span class="condition-value">${value}${unit}</span></label><div class="condition-actions">${row.formula?`<button type="button" data-edit="${key}" aria-label="Edit ${name.toLowerCase()} formula">Edit formula</button>`:''}<button type="button" data-remove="${key}" aria-label="Remove ${name.toLowerCase()}">Remove</button></div></div>`;
+}
 function renderConditions(){
-  const container=document.getElementById('filter-conditions');
-  const filters=StrategyDraft.catalog().filters;
-  container.innerHTML=filterConditions.map((c,i)=>`<div class="condition-row">
-    <label>Metric<select data-index="${i}" data-key="field" aria-label="Filter ${i+1} metric">${Object.entries({...filters,...(!filters[c.field]?{[c.field]:{label:c.field,available:false}}:{})}).map(([key,m])=>`<option value="${safe(key)}" ${key===c.field?'selected':''} ${m.available?'':'disabled'}>${safe(m.label)}${m.available?'':screeningData.filter_catalog[key]?' — needs financial data':' — unavailable'}</option>`).join('')}</select></label>
-    <label>Comparison<select data-index="${i}" data-key="op" aria-label="Filter ${i+1} comparison"><option value="lt" ${c.op==='lt'?'selected':''}>Less than (&lt;)</option><option value="gt" ${c.op==='gt'?'selected':''}>More than (&gt;)</option></select></label>
-    <label>Value<input data-index="${i}" data-key="value" aria-label="Filter ${i+1} value" type="number" step="any" required value="${safe(c.value)}" placeholder="Enter value"></label>
-    <button type="button" data-remove="${i}" aria-label="Remove filter ${i+1}">Remove</button></div>`).join('');
-  document.getElementById('add-filter').disabled=filterConditions.length>=50;
+  const scalar=StrategyDraft.isScalar();
+  const rows=scalar?StrategyDraft.filterRows():filterConditions.map(c=>({label:builtinFilterLabel(c.field),op:c.op,value:c.value}));
+  document.getElementById('filter-conditions').innerHTML=rows.map((row,i)=>conditionRow(String(i),row,scalar)).join('')+(pendingFilter?conditionRow('new',{label:''},scalar):'');
+  document.getElementById('add-filter').disabled=rows.length>=50;
+  FilterPicker.refresh();
+  // Variable rows list their units from the catalog; a restored strategy loads it once.
+  if(scalar&&filterSourcesState==='idle')loadFilterSources();
+}
+function filterMessage(text,failed=false){const note=document.getElementById('filter-message');note.textContent=text;note.className=failed?'error':'hint';}
+// Every source a filter can use, in one searchable list. Built-in filters need
+// no service; variables, measures and parameters come from the local service.
+function filterChoices(){
+  const groups=[{label:'Built-in filters',options:Object.entries(StrategyDraft.catalog().filters).map(([field,item])=>({value:{kind:'builtin',field,label:item.label},label:item.label,keywords:field,
+    detail:item.available?'':screeningData.filter_catalog[field]?'Needs annual financial data. Download it in Manage backtest data.':'Unavailable in this data',disabled:!item.available}))}];
+  if(filterSources){
+    const library=[...filterSources.library].sort((a,b)=>(b.favourite?1:0)-(a.favourite?1:0));
+    groups.push({label:'My variables',options:library.map(entry=>({value:{kind:'library',variable_id:entry.variable_id,revision:entry.revision,label:entry.name},label:(entry.favourite?'★ ':'')+entry.name,detail:'Saved variable'}))});
+    groups.push({label:'Measures',options:filterSources.measures.map(item=>({value:{kind:'measure',id:item.id,label:item.name},label:item.name,detail:'Measure · '+VariableWorkspace.displayName(item.display),keywords:item.description}))});
+    groups.push({label:'Financial parameters',options:filterSources.parameters.map(item=>({value:{kind:'parameter',id:item.id,label:item.name},label:item.name,keywords:item.id,
+      detail:[item.source?.endpoint,item.unit==='scalar'?'ratio':item.unit,item.note].filter(Boolean).join(' · ')}))});
+  }
+  const note=filterSourcesState==='loading'?'Loading saved variables, measures and parameters…':filterSourcesState==='failed'?'Saved variables, measures and parameters need the local service. Built-in filters work offline.':'';
+  return {groups,note,actions:filterSourcesState==='failed'?[]:[{value:{kind:'create'},label:'＋ Create a new variable…',detail:'Build a formula in the variable editor, then add it as this filter.'}]};
+}
+function loadFilterSources(){
+  if(filterSourcesState==='loading')return;
+  if(!filterSources)filterSourcesState='loading';
+  VariableWorkspace.sources().then(value=>{filterSources=value;filterSourcesState='ready';},()=>{filterSourcesState=filterSources?'ready':'failed';}).then(renderConditions);
+}
+function focusFilterValue(index){document.getElementById('filter-value-'+index).focus();}
+function chooseFilter(key,choice){
+  const index=key==='new'?null:+key,role=index===null?'condition':index;
+  filterMessage('');
+  if(choice.kind==='create'){void VariableWorkspace.open(role);return;}
+  if(choice.kind==='builtin'&&!StrategyDraft.isScalar()){
+    if(index===null){filterConditions.push({field:choice.field,op:'gt',value:''});pendingFilter=false;}
+    else filterConditions[index].field=choice.field;
+    const row=index??filterConditions.length-1;
+    renderConditions();settingsChanged(undefined,String(filterConditions[row].value).trim()!=='');focusFilterValue(row);return;
+  }
+  // A variable source moves the whole strategy to the local service.
+  const expected=StrategyDraft.read().revision;
+  filterMessage('Adding '+choice.label+'…');
+  const work=choice.kind==='builtin'?VariableWorkspace.sources().then(()=>StrategyDraft.patch({role,source:{kind:'builtin',id:'filter:'+choice.field}},expected)):VariableWorkspace.useSource(role,choice,expected);
+  work.then(()=>{filterMessage('');focusFilterValue(index??StrategyDraft.filterRows().length-1);},failure=>{
+    renderConditions();
+    filterMessage(failure.code==='STALE_DRAFT'?'The strategy changed while '+choice.label+' was loading. Choose it again.':failure.message,true);
+  });
+}
+function editFilter(index,key,value,run){
+  if(StrategyDraft.isScalar()){StrategyDraft.condition(index,key,value);return;}
+  filterConditions[index][key]=value;settingsChanged(undefined,run);
 }
 function resetFilters(){
-  filterConditions=[];renderConditions();
+  filterConditions=[];pendingFilter=false;renderConditions();
   for(const [key,id] of Object.entries(fields)){
     const v=StockScreener.defaults[key];
     document.getElementById(id).value=v===null?'':String(key==='min_cap'||key==='min_ev'?v/1e6:key==='min_yield'?v*100:v);
   }
 }
 function readOptions(){
+  const o=readBounds();
+  o.filters=filterConditions.map(c=>{
+    if(String(c.value).trim()==='')throw Error('Enter a value for each added filter.');
+    return {...c,value:Number(c.value)};
+  });
+  return o;
+}
+function readBounds(){
   const o={first:+fromYear.value,last:+toYear.value,rank_from:+rankFrom.value,rank_to:+rankTo.value};
   for(const [key,id] of Object.entries(fields)){
     const text=document.getElementById(id).value.trim();
@@ -128,10 +197,6 @@ function readOptions(){
       o[key]=text===''?null:Number(text)*(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1);
     }
   }
-  o.filters=filterConditions.map(c=>{
-    if(String(c.value).trim()==='')throw Error('Enter a value for each added filter.');
-    return {...c,value:Number(c.value)};
-  });
   return o;
 }
 function updateMetricLabels(o){
@@ -391,54 +456,90 @@ const StrategyDraft=(()=>{
     intent.bounds=Object.fromEntries(['min_cap','max_cap','min_ev','sector','exchange'].map(key=>[key,legacy[key]]));
     return intent;
   }
-  function sourceName(source){
-    if(source.kind==='builtin')return scalar.original?.builtins.find(item=>item.id===source.id)?.label||source.id;
-    for(const capture of scalar?.detached||[]){const found=capture.presentation.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);if(found)return found.name+' @ '+source.revision;}
-    return source.variable_id+' @ '+source.revision;
+  const builtinDescriptor=id=>scalar?.original?.builtins?.find(item=>item.id===id)||VariableWorkspace.builtin(id);
+  function sourceLabel(source){
+    if(source.kind==='builtin'){const field=source.id.startsWith('filter:')?source.id.slice(7):null;return builtinDescriptor(source.id)?.label||(field&&catalog().filters[field]?.label)||source.id;}
+    for(const capture of scalar?.detached||[]){const found=capture.presentation.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);if(found)return found.name;}
+    return source.variable_id;
+  }
+  // Canonical unit and default display of a selected source.
+  function sourceOutput(source){
+    if(source.kind==='builtin')return builtinDescriptor(source.id);
+    for(const capture of [...(scalar?.detached||[])].reverse()){const found=capture.program.definitions.find(item=>exactKey(item)===exactKey(source));if(found)return found;}
+    return null;
+  }
+  function filterRows(){
+    return scalar.intent.selection.conditions.map(item=>{
+      const threshold=item.submitted_threshold||item.threshold,formula=item.source.kind==='formula',output=sourceOutput(item.source);
+      return {label:sourceLabel(item.source),title:formula?item.source.variable_id+' @ '+item.source.revision:'',op:item.op,value:threshold.value,unit:threshold.unit,formula,
+        units:formula?[...new Set([...VariableWorkspace.displays(output?.unit),threshold.unit])]:null};
+    });
+  }
+  // Built-in conditions return to the offline form in their display units.
+  // An edited threshold drops the values derived from its earlier submission.
+  function setThreshold(item,threshold){item.threshold=threshold;delete item.submitted_threshold;delete item.comparison_value;delete item.storage_comparison_value;}
+  function legacyFilters(){
+    return scalar.intent.selection.conditions.flatMap(item=>{
+      const threshold=item.submitted_threshold||item.threshold,field=item.source.kind==='builtin'&&item.source.id.startsWith('filter:')?item.source.id.slice(7):null;
+      return field&&threshold.unit===builtinDescriptor(item.source.id)?.display?[{field,op:item.op,value:threshold.value}]:[];
+    });
   }
   function renderScalar(){
     const controls=document.getElementById('variable-strategy-controls');if(!controls)return;
     EngineControls.sync();
     controls.hidden=!scalar;document.getElementById('variable-legacy').hidden=!scalar;
-    document.getElementById('variable-strategy-summary').textContent=scalar?sourceName(scalar.intent.selection.ranking.source)+' · exact revisions retained. Run explicitly to calculate.':'Built-in strategies work offline. Reusable variables use the local service.';
+    document.getElementById('variable-strategy-summary').textContent=scalar?'Ranking by '+sourceLabel(scalar.intent.selection.ranking.source)+'. Select Screen latest or Run backtest to calculate.':'Built-in strategies work offline. Reusable variables use the local service.';
     const help=document.getElementById('strategy-ranking-help');
     help.textContent=scalar?'Rank 1 has the '+(scalar.intent.selection.ranking.direction==='highest'?'highest':'lowest')+' available selected variable value. Missing ranking values are excluded. Conditions apply at the chosen selection stage; survivors have equal weight.':'Choose whether filters apply before ranking or after the requested ranks are selected. Rank 1 has the lowest selected valuation multiple. Latest mode ranks at the latest cached close. The saved January view rebalances equally each January; custom calendars rebalance on the selected fixed or random schedule.';
-    document.getElementById('strategy-heading').textContent=scalar?(scalar.intent.selection.ranking.direction==='highest'?'Highest ':'Lowest ')+sourceName(scalar.intent.selection.ranking.source).split(' @ ')[0]:'Lowest '+(catalog().metrics[document.getElementById('ranking-metric').value]?.label||document.getElementById('ranking-metric').value);
-    for(const id of ['legacy-ranking-control','legacy-yield-control','legacy-multiple-control','legacy-extra-filters','legacy-metric-help'])document.getElementById(id).hidden=!!scalar;
+    document.getElementById('strategy-heading').textContent=scalar?(scalar.intent.selection.ranking.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(scalar.intent.selection.ranking.source):'Lowest '+(catalog().metrics[document.getElementById('ranking-metric').value]?.label||document.getElementById('ranking-metric').value);
+    for(const id of ['legacy-ranking-control','legacy-yield-control','legacy-multiple-control','legacy-metric-help'])document.getElementById(id).hidden=!!scalar;
     for(const id of ['min-cap','min-ev'])document.getElementById(id).required=!scalar;
     document.getElementById('auto-run').disabled=!!scalar;
-    document.getElementById('auto-run-note').textContent=scalar?'Auto-run is suspended for variable strategies. Apply and preview keep the draft. Select Screen latest or Run backtest explicitly.':'Turn off to change several settings, then select Run backtest. You can edit settings during a run.';
-    for(const id of ['ranking-metric','min-yield','max-multiple','add-filter'])document.getElementById(id).disabled=!!scalar;
-    document.getElementById('filter-conditions').hidden=!!scalar;
-    if(!scalar){document.getElementById('variable-conditions').innerHTML='';return;}
-    document.getElementById('variable-direction').value=scalar.intent.selection.ranking.direction;
-    document.getElementById('variable-conditions').innerHTML=scalar.intent.selection.conditions.map((item,index)=>`<div class="variable-condition-row"><button type="button" data-variable-pick="${index}">${safe(sourceName(item.source))}</button><label>Comparison<select data-variable-index="${index}" data-variable-field="op"><option value="gt" ${item.op==='gt'?'selected':''}>More than (&gt;)</option><option value="lt" ${item.op==='lt'?'selected':''}>Less than (&lt;)</option></select></label><label>Exact threshold<input inputmode="decimal" data-variable-index="${index}" data-variable-field="value" value="${safe((item.submitted_threshold||item.threshold).value)}"></label><label>Display unit<select data-variable-index="${index}" data-variable-field="unit">${['number','multiple','percent','percentage_points','usd','usd_million','usd_per_share'].map(unit=>`<option value="${unit}" ${(item.submitted_threshold||item.threshold).unit===unit?'selected':''}>${unit}</option>`).join('')}</select></label><button type="button" data-variable-remove="${index}">Remove filter</button></div>`).join('');
+    document.getElementById('auto-run-note').textContent=scalar?'Auto-run is paused for variable strategies. Select Screen latest or Run backtest to calculate.':'Turn off to change several settings, then select Run backtest. You can edit settings during a run.';
+    for(const id of ['ranking-metric','min-yield','max-multiple'])document.getElementById(id).disabled=!!scalar;
+    if(scalar)document.getElementById('variable-direction').value=scalar.intent.selection.ranking.direction;
   }
   function transition(){
-    const legacy=readOptions();
+    const legacy=readBounds();
     if(legacy.min_yield!==0||legacy.max_multiple!==null)throw Error('Variable strategies cannot approximate inclusive minimum yield or maximum multiple. Set minimum yield to 0 and clear maximum multiple explicitly before choosing a variable. Your draft was kept.');
     const unit=field=>{const descriptor=VariableWorkspace.builtin('filter:'+field);if(!descriptor)throw Error('Open the variable picker to load the supported filter units. Your draft was kept.');return descriptor.display;};
-    scalar={intent:{format:'strategy-intent',version:1,pool:legacy.pool,bounds:{},selection:{ranking:{source:{kind:'builtin',id:'metric:'+legacy.metric+':yield'},direction:'highest'},rank_from:legacy.rank_from,rank_to:legacy.rank_to,selection_order:legacy.selection_order,conditions:legacy.filters.map(item=>({source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value),unit:unit(item.field)}}))}},detached:[],projections:{},original:null};
+    // Rows without a value move too; submission asks for the value.
+    const conditions=filterConditions.map(item=>({source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value).trim(),unit:unit(item.field)}}));
+    scalar={intent:{format:'strategy-intent',version:1,pool:legacy.pool,bounds:{},selection:{ranking:{source:{kind:'builtin',id:'metric:'+legacy.metric+':yield'},direction:'highest'},rank_from:legacy.rank_from,rank_to:legacy.rank_to,selection_order:legacy.selection_order,conditions}},detached:[],projections:{},original:null};
+    filterConditions=[];
   }
   function patch(change,expected){
-    if(expected!==revision)throw Error('The strategy draft changed. Open the picker again before applying.');
-    if(change.legacy){scalar=null;touch();renderScalar();updateResultsState();return;}
+    if(expected!==revision)throw Object.assign(Error('The strategy draft changed. Choose the source again.'),{code:'STALE_DRAFT'});
+    if(change.legacy){
+      const kept=scalar?legacyFilters():filterConditions,removed=scalar?scalar.intent.selection.conditions.length-kept.length:0;
+      filterConditions=kept;scalar=null;touch();renderScalar();renderConditions();updateResultsState();
+      if(removed)filterMessage(removed+(removed===1?' variable filter was':' variable filters were')+' removed. Built-in filters were kept.');
+      return;
+    }
     if(!scalar)transition();
     if(change.direction)scalar.intent.selection.ranking.direction=change.direction;
     if(change.role!==undefined){
-      if(change.role==='ranking')scalar.intent.selection.ranking.source=copy(change.source);
-      else if(typeof change.role==='number')scalar.intent.selection.conditions[change.role].source=copy(change.source);
-      else scalar.intent.selection.conditions.push({source:copy(change.source),op:'gt',threshold:{value:'0',unit:change.capture?.program.definitions.find(item=>item.variable_id===change.source.variable_id&&item.revision===change.source.revision)?.display||'number'}});
       if(change.capture)scalar.detached.push(copy(change.capture));
+      const conditions=scalar.intent.selection.conditions,formula=change.source.kind==='formula',output=sourceOutput(change.source);
+      if(change.role==='ranking')scalar.intent.selection.ranking.source=copy(change.source);
+      else if(typeof change.role==='number'){
+        // A new source keeps the typed value. Built-in units are fixed; a
+        // variable keeps the chosen unit only when it still fits.
+        const item=conditions[change.role],threshold=item.submitted_threshold||item.threshold;
+        const unit=formula&&VariableWorkspace.displays(output?.unit).includes(threshold.unit)?threshold.unit:output?.display||'number';
+        item.source=copy(change.source);setThreshold(item,{value:threshold.value,unit});
+      }
+      else{conditions.push({source:copy(change.source),op:'gt',threshold:{value:'',unit:output?.display||'number'}});pendingFilter=false;}
       if(change.authored)scalar.projections[exactKey(change.source)]={submitted:copy(change.authored),labels:copy(change.capture.presentation)};
       scalar.detached=compactDetached(scalar.detached,scalar.intent.selection);
       const selected=new Set([scalar.intent.selection.ranking.source,...scalar.intent.selection.conditions.map(item=>item.source)].filter(source=>source.kind==='formula').map(exactKey));
       scalar.projections=Object.fromEntries(Object.entries(scalar.projections).filter(([key])=>selected.has(key)));
     }
-    touch();renderScalar();updateResultsState();
+    touch();renderScalar();renderConditions();updateResultsState();
   }
   async function prepareSubmission(){
     const settings=copy(currentSettings());if(!scalar)return settings;
+    if(scalar.intent.selection.conditions.some(item=>String((item.submitted_threshold||item.threshold).value).trim()===''))throw Error('Enter a value for each added filter.');
     const submittedRevision=revision;
     const intent=readIntent(),detached=copy(compactDetached(scalar.detached,intent.selection)),projections=copy(scalar.projections),original=scalar.original?copy(scalar.original):null,originalIntent=original?{format:'strategy-intent',version:1,selection:original.selection,pool:original.pool,bounds:original.bounds}:null;
     const unchanged=sameContent(intent,originalIntent)&&sameContent(detached,scalar.original?.variables?[scalar.original.variables]:[]);
@@ -487,7 +588,7 @@ const StrategyDraft=(()=>{
     if(document.getElementById('backtest-engine'))set('backtest-engine',settings.engine??'original',
       EngineControls.label?.(settings.engine??'original')||settings.engine||'Original');
     EngineControls.sync();
-    filterConditions=(settings.filters||[]).map(condition=>({...condition}));
+    filterConditions=(settings.filters||[]).map(condition=>({...condition}));pendingFilter=false;
     if(settings.mode==='january'){
       set('from-year',settings.first);set('to-year',settings.last);
     }else if(settings.mode!=='latest'){
@@ -512,7 +613,7 @@ const StrategyDraft=(()=>{
     };
     active=session;touch();return session;
   }
-  return {restore,beginQueuedEdit,catalog,read:()=>({revision,settings:copy(currentSettings()),detached:scalar?copy(scalar.detached):[]}),patch,prepareSubmission,selectionSettings,touch,isScalar:()=>!!scalar,render:renderScalar,condition:(index,key,value)=>{const item=scalar.intent.selection.conditions[index];if(key==='op')item.op=value;else{item.threshold=copy(item.submitted_threshold||item.threshold);item.threshold[key]=value;delete item.submitted_threshold;delete item.comparison_value;delete item.storage_comparison_value;}touch();updateResultsState();},remove:index=>{scalar.intent.selection.conditions.splice(index,1);touch();renderScalar();updateResultsState();}};
+  return {restore,beginQueuedEdit,catalog,read:()=>({revision,settings:scalar?copy(currentSettings()):null,detached:scalar?copy(scalar.detached):[]}),patch,prepareSubmission,selectionSettings,touch,isScalar:()=>!!scalar,render:renderScalar,filterRows,condition:(index,key,value)=>{const item=scalar.intent.selection.conditions[index];if(key==='op')item.op=value;else setThreshold(item,{...item.submitted_threshold||item.threshold,[key]:value});touch();updateResultsState();},remove:index=>{scalar.intent.selection.conditions.splice(index,1);touch();renderConditions();updateResultsState();}};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 
@@ -520,9 +621,6 @@ initializeFilters();
 ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:StrategyDraft.isScalar()}));
 VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value});
 StrategyDraft.render();
-document.getElementById('variable-conditions').addEventListener('input',event=>{const t=event.target;if(t.dataset.variableField)StrategyDraft.condition(+t.dataset.variableIndex,t.dataset.variableField,t.value);});
-document.getElementById('variable-conditions').addEventListener('change',event=>{const t=event.target;if(t.dataset.variableField)StrategyDraft.condition(+t.dataset.variableIndex,t.dataset.variableField,t.value);});
-document.getElementById('variable-conditions').addEventListener('click',event=>{const t=event.target;if(t.dataset.variablePick!==undefined)void VariableWorkspace.open(+t.dataset.variablePick);if(t.dataset.variableRemove!==undefined)StrategyDraft.remove(+t.dataset.variableRemove);});
 document.getElementById('schedule-kind').addEventListener('change',()=>{setModeVisibility();settingsChanged();});
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
@@ -543,21 +641,29 @@ document.getElementById('download-returns').addEventListener('click',e=>{e.preve
 document.getElementById('download-holdings').addEventListener('click',e=>{e.preventDefault();downloadSelection('holdings');});
 applyRange();
 
+// A new row asks for its source first; it joins the strategy once chosen.
 document.getElementById('add-filter').addEventListener('click',()=>{
-  if(filterConditions.length<50)filterConditions.push({field:'return_1y',op:'gt',value:''});
-  renderConditions();settingsChanged(undefined,false);
+  if(!pendingFilter){pendingFilter=true;renderConditions();}
+  document.getElementById('filter-search-new').focus();
 });
+FilterPicker.bind(document.getElementById('filter-conditions'),{choices:filterChoices,choose:chooseFilter,opened:loadFilterSources});
 document.getElementById('filter-conditions').addEventListener('input',event=>{
   const target=event.target;
-  if(target.dataset.key){filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;settingsChanged(undefined,false);}
+  if(target.dataset.key)editFilter(Number(target.dataset.index),target.dataset.key,target.value,false);
 });
 document.getElementById('filter-conditions').addEventListener('change',event=>{
   const target=event.target;
-  if(target.dataset.key){filterConditions[Number(target.dataset.index)][target.dataset.key]=target.value;settingsChanged();}
+  if(target.dataset.key)editFilter(Number(target.dataset.index),target.dataset.key,target.value,true);
 });
 document.getElementById('filter-conditions').addEventListener('click',event=>{
-  const index=event.target.dataset.remove;
-  if(index!==undefined){filterConditions.splice(Number(index),1);renderConditions();settingsChanged();}
+  const target=event.target.closest('button');if(!target)return;
+  const {remove,edit}=target.dataset;
+  if(target.dataset.filterCancel!==undefined){pendingFilter=false;renderConditions();return;}
+  if(edit!==undefined){void VariableWorkspace.open(Number(edit));return;}
+  if(remove===undefined)return;
+  filterMessage('');
+  if(StrategyDraft.isScalar()){StrategyDraft.remove(Number(remove));return;}
+  filterConditions.splice(Number(remove),1);renderConditions();settingsChanged();
 });
 
 const autoRun=document.getElementById('auto-run');

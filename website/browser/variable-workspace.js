@@ -17,15 +17,40 @@ const VariableWorkspace=(()=>{
   const dependencies=(snapshot,root)=>content({submitted:snapshot.authored.filter(item=>exact(item)!==exact(root)),labels:snapshot.capture.presentation});
   const envelope=expression=>({format:'variable-definition',version:3,parameter_catalog:'financial-parameters/3',temporal_policy:'annual-lag90/1',expression,output:{unit:'scalar',display:'percent'}});
   const defaultExpression=()=>({op:'parameter',id:'annual.operating_margin'});
+  const displayNames={number:'Number',multiple:'Multiple (×)',percent:'Percent (%)',percentage_points:'Percentage points',usd:'US dollars',usd_million:'$ million',usd_per_share:'$ per share',shares:'Shares'};
+  const displayName=value=>displayNames[value]||value;
+  // Catalog descriptions can append caveats after a semicolon.
+  const parameterName=item=>String(item.description).split(';')[0].trim();
   const opNames={parameter:'Parameter',constant:'Constant',add:'Add (+)',sub:'Subtract (−)',mul:'Multiply (×)',div:'Divide (÷)',positive_div:'Divide by a positive value',neg:'Negate (−)',annual:'Annual statistic',at:'Value at date',lookback:'Value months earlier',ref:'Exact saved reference'};
-  let callbacks={},catalog=null,entries=[],editor=null,role='ranking',draftRevision=0,generation=0,mutation=0,listRequest=0,validation=0,preview=0,editRevision=0,returnFocus=null,sourceSelection=null,authoredRequest=0,coverageAbort=null,coverageVersion=0,coverageScopes=null;
+  let callbacks={},catalog=null,entries=[],editor=null,role='ranking',draftRevision=0,generation=0,mutation=0,listRequest=0,validation=0,preview=0,editRevision=0,returnFocus=null,sourceSelection=null,authoredRequest=0,coverageAbort=null,coverageVersion=0,coverageScopes=null,checkTimer=null;
+  // Edits are checked after a short pause; Use and Save always check first.
+  const CHECK_DELAY=400;
   function message(text,error=false){node('variable-message').textContent=text;node('variable-message').className=error?'backtest-failed':'hint';}
   async function request(path,body){
     const response=await fetch('/api/variables'+path,{cache:'no-store',...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
     const value=await response.json();if(!response.ok){const error=Object.assign(Error(value.error||'Variable operation failed.'),value,{status:response.status});throw error;}return value;
   }
   function error(error){node('variable-errors').textContent=(error.errors||[{path:error.path||'',message:error.message}]).map(issue=>(issue.path?issue.path+': ':'')+issue.message).join('\n');message(error.message,true);}
-  function invalidate(){validation++;preview++;editRevision++;coverageVersion++;coverageAbort?.abort();if(editor){editor.checked=null;node('variable-explanation').textContent=describe(editor.definition.expression)+' · Changes need validation.';}node('variable-errors').textContent='';node('variable-preview-result').textContent='';node('variable-coverage-result').textContent='';}
+  function showCheck(state,title){
+    node('variable-check').dataset.state=state;node('variable-check-title').textContent=title;
+    node('variable-check-chip').dataset.state=state;node('variable-check-chip').textContent={ready:'✓ Ready',pending:'Checking…',incomplete:'Formula incomplete',error:'Needs attention'}[state];
+  }
+  function emptyTerm(expression,depth=0){
+    if(!expression||typeof expression!=='object'||depth>32)return false;
+    if(expression.op==='parameter')return !expression.id;
+    if(expression.op==='ref')return !expression.variable_id;
+    return ['arg','left','right'].some(key=>emptyTerm(expression[key],depth+1));
+  }
+  function scheduleCheck(){
+    clearTimeout(checkTimer);checkTimer=null;
+    if(!editor)return;
+    if(emptyTerm(editor.definition.expression)){showCheck('incomplete','Choose a parameter for each empty box (＋ Parameter) to finish the formula.');return;}
+    showCheck('pending','Checking the formula…');
+    if(!catalog||!node('variable-dialog').open)return;
+    const local=generation;
+    checkTimer=setTimeout(()=>{checkTimer=null;if(local===generation&&node('variable-dialog').open)validate().catch(failure=>{if(local===generation)error(failure);});},CHECK_DELAY);
+  }
+  function invalidate(){validation++;preview++;editRevision++;coverageVersion++;coverageAbort?.abort();if(editor){editor.checked=null;node('variable-explanation').textContent=describe(editor.definition.expression);}node('variable-errors').textContent='';node('variable-preview-result').textContent='';node('variable-coverage-result').textContent='';scheduleCheck();}
   function describe(expression){
     if(!expression||typeof expression!=='object')return 'Invalid expression';
     const op=expression.op;
@@ -48,7 +73,7 @@ const VariableWorkspace=(()=>{
     (editor[direction==='undo'?'redo':'undo']??=[]).push(copy({expression:editor.definition.expression,content:editor.content,selectedPath:selectedPath()}));
     const previous=from.pop();editor.definition.expression=previous.expression;editor.content=previous.content;editor.selectedPath=previous.selectedPath;invalidate();renderEditor();
   }
-  // role is the stable Apply destination. Insertion owns only a term path and
+  // role is the stable Use destination. Insertion owns only a term path and
   // authored-read freshness; it never changes the workspace session generation.
   function cancelSource(){authoredRequest++;if(sourceSelection){sourceSelection=null;renderPicker();}}
   function chooseSource(path){
@@ -132,17 +157,31 @@ const VariableWorkspace=(()=>{
   }
   function renderEditor(){
     node('variable-name').value=editor.name;node('variable-output-unit').value=editor.definition.output.unit;
-    const displays=catalog?.displays?.[editor.definition.output.unit];if(displays)node('variable-display').innerHTML=displays.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');node('variable-display').value=editor.definition.output.display;
+    const displays=catalog?.displays?.[editor.definition.output.unit];if(displays)node('variable-display').innerHTML=displays.map(v=>`<option value="${esc(v)}">${esc(displayName(v))}</option>`).join('');node('variable-display').value=editor.definition.output.display;
     if(!getAt(selectedPath()))editor.selectedPath='';
     renderEquation();node('variable-tree').innerHTML=termSettings(getAt(selectedPath()),selectedPath());
-    node('variable-explanation').textContent=describe(editor.definition.expression)+(editor.checked?'':' · Changes need validation.');
-    node('variable-selected').textContent=editor.entry?editor.entry.name+' · selected '+editor.variable_id+' @ '+editor.selectedRevision+' · current entry version '+editor.entry.version+(editor.entry.deleted?' · deleted archive':''):editor.detachedSelection?'Captured exact selection · '+editor.variable_id+' @ '+editor.selectedRevision+' · archive lookup is not required':'Unsaved local variable · '+editor.variable_id;
-    node('variable-favourite').disabled=!editor.entry||editor.entry.deleted;node('variable-delete').disabled=!editor.entry||editor.entry.deleted;
-    node('variable-favourite').textContent=editor.entry?.favourite?'Remove favourite':'Favourite';
+    node('variable-explanation').textContent=editor.checked?editor.summary:describe(editor.definition.expression);
+    renderIdentity();
     node('variable-upgrade').hidden=editor.definition.version===3&&editor.definition.parameter_catalog==='financial-parameters/3';
-    node('variable-apply').textContent=role==='ranking'?'Apply to ranking':'Apply to filter';
+    node('variable-dialog-title').textContent=role==='ranking'?'Ranking variable':role==='condition'?'New filter':'Filter '+(role+1);
+    node('variable-apply').textContent=useLabel();
   }
-  function startNew(keepGeneration=false){if(!keepGeneration)generation++;cancelSource();invalidate();editor={name:'Operating margin',variable_id:'local:'+Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,'0')).join(''),definition:envelope(defaultExpression()),content:content()};renderEditor();renderPicker();}
+  // role is fixed for one open dialog, so the main action names its destination.
+  const useLabel=()=>role==='ranking'?'Use for ranking':role==='condition'?'Add as filter':'Update filter '+(role+1);
+  // State in words. The exact identity stays available as a tooltip.
+  function renderIdentity(){
+    const entry=editor.entry,saved=!!entry&&!entry.deleted;
+    const changed=saved&&!!editor.checked&&(editor.checked.root.revision!==editor.selectedRevision||!editor.detachedSelection&&editor.name!==entry.name);
+    const state=node('variable-selected');
+    state.textContent=entry?.deleted?'Deleted from My variables':saved?(changed?'Saved in My variables · unsaved changes':'Saved in My variables'):editor.detachedSelection?'Used by this strategy · not in My variables':'New variable · not saved';
+    state.title=editor.variable_id+(editor.selectedRevision?' @ '+editor.selectedRevision:'');
+    for(const id of ['variable-favourite','variable-delete']){node(id).hidden=!saved;node(id).disabled=!saved;}
+    node('variable-favourite').textContent=entry?.favourite?'★ Remove from favourites':'☆ Add to favourites';
+    node('variable-edit-selected').hidden=!saved||!!editor.detachedSelection;
+    node('variable-save').textContent=saved?'Save changes':'Save to My variables';
+    node('variable-save-new').hidden=!saved;
+  }
+  function startNew(keepGeneration=false){if(!keepGeneration)generation++;cancelSource();invalidate();editor={name:'Operating margin',variable_id:'local:'+Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,'0')).join(''),definition:envelope(defaultExpression()),content:content()};scheduleCheck();renderEditor();renderPicker();}
   async function refresh(){
     const requestNumber=++listRequest,version=mutation,local=generation;
     const value=await request('');if(requestNumber!==listRequest||version!==mutation||local!==generation)return;
@@ -154,10 +193,10 @@ const VariableWorkspace=(()=>{
     const query=node('variable-search').value.trim().toLowerCase();
     const matches=value=>!query||JSON.stringify(value).toLowerCase().includes(query);
     const group=(name,rows)=>'<h3>'+name+'</h3>'+rows.join('');
-    const item=entry=>`<button type="button" data-library="${esc(entry.variable_id)}" data-revision="${esc(entry.revision)}">${esc(entry.name)}${entry.favourite?' ★':''}<small>${esc(entry.revision)}</small></button>`;
+    const item=entry=>`<button type="button" data-library="${esc(entry.variable_id)}" data-revision="${esc(entry.revision)}" title="${esc(entry.variable_id+' @ '+entry.revision)}">${esc(entry.name)}${entry.favourite?' ★':''}<small>Saved variable</small></button>`;
     const params=parameters().filter(matches),categories=new Map();for(const p of params){const group=p.kind==='adapter'?'Existing policy adapters':p.source?.endpoint||'Financial inputs';if(!categories.has(group))categories.set(group,[]);categories.get(group).push(p);}
-    const sources=[...categories].map(([name,values])=>group(esc(name),values.map(p=>`<button type="button" data-parameter="${esc(p.id)}">${esc(p.description)}<small>${esc(p.source?`${p.source.endpoint} / ${p.source.field}`:p.adapter||'Existing policy')} · ${esc(p.unit)} · ${esc((p.contexts||[]).join(', '))} · ${esc(support(p))}</small></button>`))).join('');
-    node('variable-picker').innerHTML=group('Favourites',entries.filter(e=>e.favourite&&matches(e)).map(item))+group('My variables',entries.filter(matches).map(item))+sources+group('Measures',(catalog?.measures||[]).filter(matches).map(e=>`<button type="button" data-measure="${esc(e.id)}" ${editor?.definition.version<3?'disabled title="Use expanded inputs first"':''}>${esc(e.name)}<small>${esc(e.unit)} · ${esc(e.display)} · ${esc(e.missing)}${e.history?' · annual history: '+esc(e.history):''} · ${esc(support(e))}</small></button>`))+group('Built-ins',(sourceSelection?[]:catalog?.builtins||[]).filter(matches).map(e=>`<button type="button" data-builtin="${esc(e.id)}">${esc(e.label)}<small>${esc(e.unit)} · ${esc(e.display)}</small></button>`));
+    const sources=[...categories].map(([name,values])=>group(esc(name),values.map(p=>`<button type="button" data-parameter="${esc(p.id)}" title="${esc((p.source?`${p.source.endpoint} / ${p.source.field}`:p.adapter||'Existing policy')+' · '+(p.contexts||[]).join(', ')+' · '+support(p))}">${esc(p.description)}<small>${esc(p.unit==='scalar'?'ratio':p.unit)}</small></button>`))).join('');
+    node('variable-picker').innerHTML=group('Favourites',entries.filter(e=>e.favourite&&matches(e)).map(item))+group('My variables',entries.filter(matches).map(item))+sources+group('Measures',(catalog?.measures||[]).filter(matches).map(e=>`<button type="button" data-measure="${esc(e.id)}" ${editor?.definition.version<3?'disabled title="Use expanded inputs first"':''}>${esc(e.name)}<small>${esc(displayName(e.display))} · ${esc(e.missing)}${e.history?' · annual history: '+esc(e.history):''}</small></button>`))+group('Built-ins',(sourceSelection?[]:catalog?.builtins||[]).filter(matches).map(e=>`<button type="button" data-builtin="${esc(e.id)}">${esc(e.label)}<small>Built-in · ${esc(displayName(e.display))}</small></button>`));
   }
   async function open(selectedRole='ranking'){
     const draft=callbacks.draft.read(),selection=draft.settings?.strategy?.selection;
@@ -168,7 +207,7 @@ const VariableWorkspace=(()=>{
     startNew(true);message('Loading saved variables and supported parameters…');
     const openedEdit=editRevision;
     try{
-      catalog??=await request('/catalog');if(local!==generation)return;renderEditor();
+      catalog??=await request('/catalog');if(local!==generation)return;renderEditor();scheduleCheck();
       if(captured&&openedEdit===editRevision){
         const snapshot=await request('/detached',{root:{variable_id:selected.variable_id,revision:selected.revision},capture:copy(captured)});
         if(local!==generation)return;
@@ -177,7 +216,7 @@ const VariableWorkspace=(()=>{
           editor={name:snapshot.name,variable_id:selected.variable_id,selectedRevision:selected.revision,definition:copy(definition),content:dependencies(snapshot,selected),detachedSelection:true};invalidate();renderEditor();renderPicker();
         }
       }
-      await refresh();if(local===generation){message(editor.detachedSelection?'The selected captured revision is open. Editing and Apply need no archive. Save uses the available library and may report missing dependencies.':'Choose an exact revision, or edit a new variable. Nothing runs until you explicitly submit.');node('variable-search').focus();}
+      await refresh();if(local===generation){message(editor.detachedSelection?'This is the variable the strategy uses now. Edit it, then select '+useLabel()+'. Saving is optional.':'Choose a starting point on the left, or edit the formula below. Select '+useLabel()+' when it is ready.');node('variable-search').focus();}
     }
     catch(failure){if(local===generation)error(failure);}
   }
@@ -190,19 +229,29 @@ const VariableWorkspace=(()=>{
     message('Reading exact authored content…');
     try{
       const snapshot=await request('/authored',{variable_id,revision});if(!current())return;
-      if(selection){remember();sourceSelection=null;replaceAt(selection.path,{op:'ref',variable_id,revision});editor.selectedPath=selection.path;editor.content=content(editor.content,{submitted:snapshot.authored,labels:snapshot.capture.presentation});invalidate();renderEditor();renderPicker();focusEquation();message('Exact reference inserted.');return;}
+      if(selection){remember();sourceSelection=null;replaceAt(selection.path,{op:'ref',variable_id,revision});editor.selectedPath=selection.path;editor.content=content(editor.content,{submitted:snapshot.authored,labels:snapshot.capture.presentation});invalidate();renderEditor();renderPicker();focusEquation();message('Inserted “'+snapshot.entry.name+'” into the formula.');return;}
       const definition=snapshot.authored.find(item=>item.variable_id===variable_id&&item.revision===revision).definition;
-      editor={name:snapshot.entry.name,variable_id,selectedRevision:revision,definition:copy(definition),entry:snapshot.entry,content:dependencies(snapshot,{variable_id,revision}),checked:null};renderEditor();renderPicker();message('Exact authored revision loaded. Refreshing the library never changes this selection.');
+      editor={name:snapshot.entry.name,variable_id,selectedRevision:revision,definition:copy(definition),entry:snapshot.entry,content:dependencies(snapshot,{variable_id,revision}),checked:null};scheduleCheck();renderEditor();renderPicker();message('Loaded “'+snapshot.entry.name+'” from My variables. Select '+useLabel()+' to use it, or edit it first.');
     }catch(failure){if(current())error(failure);}
   }
   function editorRequest(){return {definition:copy(editor.definition),variable_id:editor.variable_id,name:node('variable-name').value.trim()||editor.variable_id,...content(editor.content)};}
+  function summary(definition,checked){
+    const uses=[...new Set(checked.requirements.map(r=>{const parameter=parameters().find(p=>p.id===r.parameter),name=parameter?parameterName(parameter):r.parameter;return r.count>1?name+' × '+r.count+' years':name;}))];
+    return describe(definition.expression)+' · Results shown as '+displayName(checked.output.display)+(uses.length?' · Uses '+uses.join(', '):'')+'. Some companies may still lack these inputs.';
+  }
   async function validate(){
+    clearTimeout(checkTimer);checkTimer=null;
+    if(emptyTerm(editor.definition.expression))throw Error('Choose a parameter for each empty box (＋ Parameter) first.');
     const local=generation,number=++validation,input=editorRequest();
-    const checked=await request('/validate',input);if(local!==generation||number!==validation)return null;
+    showCheck('pending','Checking the formula…');
+    let checked;
+    try{checked=await request('/validate',input);}
+    catch(failure){if(local===generation&&number===validation)showCheck('error','Fix the formula before using it');throw failure;}
+    if(local!==generation||number!==validation)return null;
     editor.checked=checked;editor.name=input.name;
-    editor.content=dependencies(checked,checked.root);
-    node('variable-errors').textContent='';node('variable-explanation').textContent=describe(input.definition.expression)+' · Output '+checked.output.unit+' / '+checked.output.display+' · '+checked.requirements.map(r=>r.parameter+' ('+r.count+' annual observations)').join(', ')+' · '+checked.root.revision;
-    message('Formula validated. Required input support does not guarantee sample availability.');return checked;
+    editor.content=dependencies(checked,checked.root);editor.summary=summary(input.definition,checked);
+    node('variable-errors').textContent='';node('variable-explanation').textContent=editor.summary;
+    showCheck('ready','✓ Ready to use');renderIdentity();return checked;
   }
   async function apply(){
     cancelSource();
@@ -217,14 +266,14 @@ const VariableWorkspace=(()=>{
     // A committed mutation remains successful even if the list refresh fails.
     if(local!==generation)return;
     editor.entry=saved;editor.variable_id=saved.variable_id;editor.selectedRevision=saved.revision;editor.checked=null;
-    if(edited===editRevision){editor.name=saved.name;renderEditor();message('Variable saved. Apply explicitly to change the strategy.');}
+    if(edited===editRevision){editor.name=saved.name;scheduleCheck();renderEditor();message('Saved “'+saved.name+'” to My variables. Select '+useLabel()+' to use it in this strategy.');}
     else message('The submitted version was saved. Your newer local edits are kept and need another save.');
     try{await refresh();}catch(_){message('Variable saved. The list could not refresh; use Refresh variables to retry.');}
   }
   async function metadata(action){
     if(!editor.entry)return;const local=generation,entry=copy(editor.entry);mutation++;
     const result=await request('/'+entry.variable_id+'/'+action,{version:entry.version,...(action==='favourite'?{favourite:!entry.favourite}:{})});mutation++;
-    if(local!==generation)return;editor.entry=result;renderEditor();message(action==='delete'?'Variable deleted from the active library. Captured strategies keep their original content.':'Favourite updated. The strategy did not change.');
+    if(local!==generation)return;editor.entry=result;renderEditor();message(action==='delete'?'Deleted from My variables. Strategies that already use it keep their own copy.':result.favourite?'Added to favourites.':'Removed from favourites.');
     try{await refresh();}catch(_){message('Change saved. The list could not refresh; use Refresh variables.');}
   }
   async function previewSamples(){
@@ -260,6 +309,33 @@ const VariableWorkspace=(()=>{
       node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}, book ${value.scope.book}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Provider admission: ${value.provider_admitted} admitted, ${value.provider_unavailable} unavailable; reasons ${JSON.stringify(value.provider_reasons)}. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
     }catch(failure){if(current())throw failure;}
   }
+  // The page's filter list offers the same sources as the picker. Policy
+  // adapters are left out there: built-in filters already provide them.
+  async function sources(){
+    catalog??=await request('/catalog');
+    const library=await request('');
+    return {library:library.entries.filter(entry=>!entry.deleted),measures:catalog.measures,
+      parameters:catalog.expanded_parameters.filter(item=>item.kind!=='adapter').map(item=>({...item,name:parameterName(item),note:String(item.description).split(';').slice(1).join(';').trim()}))};
+  }
+  // One list choice becomes an exact checked source, exactly as opening it in
+  // the editor and selecting Use would. expected fences the draft revision.
+  async function useSource(target,choice,expected){
+    catalog??=await request('/catalog');
+    let input;
+    if(choice.kind==='library'){
+      const root={variable_id:choice.variable_id,revision:choice.revision},snapshot=await request('/authored',root);
+      input={definition:copy(snapshot.authored.find(item=>exact(item)===exact(root)).definition),variable_id:root.variable_id,name:snapshot.entry.name,...dependencies(snapshot,root)};
+    }else if(choice.kind==='measure'){
+      const measure=catalog.measures.find(item=>item.id===choice.id);
+      input={definition:copy(measure.submitted.find(item=>exact(item)===exact(measure.root)).definition),variable_id:measure.root.variable_id,name:measure.name,...content({submitted:measure.submitted.filter(item=>exact(item)!==exact(measure.root)),labels:measure.labels})};
+    }else{
+      const parameter=catalog.expanded_parameters.find(item=>item.id===choice.id);
+      const output={unit:parameter.unit,display:parameter.unit==='USD'?'usd_million':catalog.displays[parameter.unit][0]};
+      input={definition:{...envelope({op:'parameter',id:parameter.id}),output},variable_id:'local:'+parameter.id,name:parameterName(parameter),submitted:[],labels:[]};
+    }
+    const checked=await request('/validate',input);
+    callbacks.draft.patch({role:target,source:{kind:'formula',...checked.root},capture:checked.capture,authored:checked.authored},expected);
+  }
   function attempt(work){
     Promise.resolve().then(()=>{
       let pending;
@@ -274,14 +350,14 @@ const VariableWorkspace=(()=>{
     callbacks=options;node('variable-preview-date').value=options.asof;
     const controls=document.querySelector('.variable-controls');
     controls.addEventListener('input',event=>event.stopPropagation());controls.addEventListener('change',event=>event.stopPropagation());
-    node('variable-rank').addEventListener('click',()=>attempt(()=>open('ranking')));node('variable-new').addEventListener('click',()=>attempt(()=>open('ranking')));node('variable-condition').addEventListener('click',()=>attempt(()=>open('condition')));
+    node('variable-rank').addEventListener('click',()=>attempt(()=>open('ranking')));node('variable-new').addEventListener('click',()=>attempt(()=>open('ranking')));
     node('variable-legacy').addEventListener('click',()=>callbacks.draft.patch({legacy:true},callbacks.draft.read().revision));
     node('variable-direction').addEventListener('change',()=>callbacks.draft.patch({direction:node('variable-direction').value},callbacks.draft.read().revision));
     node('variable-close').addEventListener('click',close);node('variable-dialog').addEventListener('cancel',()=>{cancelSource();generation++;invalidate();returnFocus?.focus?.();});
     node('variable-search').addEventListener('input',renderPicker);node('variable-refresh').addEventListener('click',()=>attempt(refresh));node('variable-start-new').addEventListener('click',()=>startNew());
-    node('variable-edit-selected').addEventListener('click',()=>{if(editor.detachedSelection)message('The exact captured revision is already open for editing.');else if(editor.entry)attempt(()=>loadExact(editor.variable_id,editor.selectedRevision));});
-    node('variable-picker').addEventListener('click',event=>{const target=event.target.closest('button');if(!target)return;if(target.dataset.library)attempt(()=>loadExact(target.dataset.library,target.dataset.revision));else if(target.dataset.measure||target.dataset.parameter){const measure=target.dataset.measure?catalog.measures.find(item=>item.id===target.dataset.measure):null;const expression=measure?{op:'ref',...measure.root}:{op:'parameter',id:target.dataset.parameter};remember();const path=sourceSelection?.path??selectedPath();cancelSource();replaceAt(path,expression);editor.selectedPath=path;if(measure)editor.content=content(editor.content,measure);invalidate();renderEditor();renderPicker();focusEquation();message('Source inserted. Validate before applying.');}else if(target.dataset.builtin)attempt(()=>{callbacks.draft.patch({role,source:{kind:'builtin',id:target.dataset.builtin}},draftRevision);close();});});
-    node('variable-upgrade').addEventListener('click',()=>{editor.definition.version=3;editor.definition.parameter_catalog='financial-parameters/3';invalidate();renderEditor();renderPicker();message('Expanded inputs enabled. Validate the changed definition.');});
+    node('variable-edit-selected').addEventListener('click',()=>attempt(()=>loadExact(editor.variable_id,editor.selectedRevision)));
+    node('variable-picker').addEventListener('click',event=>{const target=event.target.closest('button');if(!target)return;if(target.dataset.library)attempt(()=>loadExact(target.dataset.library,target.dataset.revision));else if(target.dataset.measure||target.dataset.parameter){const measure=target.dataset.measure?catalog.measures.find(item=>item.id===target.dataset.measure):null;const expression=measure?{op:'ref',...measure.root}:{op:'parameter',id:target.dataset.parameter};remember();const path=sourceSelection?.path??selectedPath();cancelSource();replaceAt(path,expression);editor.selectedPath=path;if(measure)editor.content=content(editor.content,measure);invalidate();renderEditor();renderPicker();focusEquation();message('Inserted into the formula.');}else if(target.dataset.builtin)attempt(()=>{callbacks.draft.patch({role,source:{kind:'builtin',id:target.dataset.builtin}},draftRevision);close();});});
+    node('variable-upgrade').addEventListener('click',()=>{editor.definition.version=3;editor.definition.parameter_catalog='financial-parameters/3';invalidate();renderEditor();renderPicker();message('Expanded inputs enabled. The formula is checked again.');});
     node('variable-equation-tools').addEventListener('click',event=>{const action=event.target.closest('button')?.dataset.equationAction;if(action)equationAction(action);});
     node('variable-equation').addEventListener('click',event=>{const target=event.target.closest('[data-equation-path]');if(!target)return;cancelSource();editor.selectedPath=target.dataset.equationPath;editRevision++;renderEditor();focusEquation();});
     node('variable-equation').addEventListener('keydown',event=>{const action={'+':'add','-':'sub','*':'mul','/':'div',Delete:'remove',Backspace:'remove'}[event.key];if(action&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();const target=event.target.closest('[data-equation-path]');if(target)editor.selectedPath=target.dataset.equationPath;equationAction(action);}});
@@ -291,9 +367,9 @@ const VariableWorkspace=(()=>{
     node('variable-name').addEventListener('input',()=>{invalidate();editor.name=node('variable-name').value;});
     for(const [id,key] of [['variable-output-unit','unit'],['variable-display','display']])node(id).addEventListener('change',()=>{editor.definition.output[key]=node(id).value;if(key==='unit')editor.definition.output.display=catalog.displays[editor.definition.output.unit][0];invalidate();renderEditor();});
     node('variable-accept-json').addEventListener('click',()=>attempt(()=>{const parsed=JSON.parse(node('variable-json').value);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Expression JSON must be an object.');remember();editor.definition.expression=parsed;editor.selectedPath='';cancelSource();invalidate();renderEditor();}));
-    node('variable-validate').addEventListener('click',()=>attempt(validate));node('variable-apply').addEventListener('click',()=>attempt(apply));node('variable-save').addEventListener('click',()=>attempt(()=>save(false)));node('variable-save-new').addEventListener('click',()=>attempt(()=>save(true)));node('variable-favourite').addEventListener('click',()=>attempt(()=>metadata('favourite')));node('variable-delete').addEventListener('click',()=>attempt(()=>metadata('delete')));node('variable-preview').addEventListener('click',()=>attempt(previewSamples));
+    node('variable-apply').addEventListener('click',()=>attempt(apply));node('variable-save').addEventListener('click',()=>attempt(()=>save(false)));node('variable-save-new').addEventListener('click',()=>attempt(()=>save(true)));node('variable-favourite').addEventListener('click',()=>attempt(()=>metadata('favourite')));node('variable-delete').addEventListener('click',()=>attempt(()=>metadata('delete')));node('variable-preview').addEventListener('click',()=>attempt(previewSamples));
     node('variable-coverage-scopes').addEventListener('click',()=>attempt(discoverCoverage));node('variable-coverage-inspect').addEventListener('click',()=>attempt(inspectCoverage));node('variable-coverage-scope').addEventListener('change',()=>{coverageVersion++;coverageAbort?.abort();node('variable-coverage-result').textContent='';});
   }
-  return {init,open,describe,request,copy,exact,content,builtin:id=>copy(catalog?.builtins.find(item=>item.id===id)??null)};
+  return {init,open,describe,request,copy,exact,content,sources,useSource,displayName,displays:unit=>[...catalog?.displays?.[unit]||[]],builtin:id=>copy(catalog?.builtins.find(item=>item.id===id)??null)};
 })();
 if(typeof module!=='undefined')module.exports=VariableWorkspace;

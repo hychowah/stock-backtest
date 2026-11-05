@@ -5,8 +5,8 @@ from pathlib import Path
 BROWSER=Path(__file__).resolve().parents[1]/'browser'
 SCRIPT_NAMES=('engine-controls.js','calendar-settings.js','result-artifacts.js',
     'backtest-comparison.js','saved-backtests.js','screener.js','contributions.js',
-    'robustness.js','backtest-runs.js','variable-evidence.js','evidence-results.js','variable-workspace.js','schedule.js','queue.js','range.js','responsive.js')
-STYLE_NAMES=('contributions.css','responsive.css','queue.css','variable-workspace.css')
+    'robustness.js','backtest-runs.js','variable-evidence.js','evidence-results.js','variable-workspace.js','filter-picker.js','schedule.js','queue.js','range.js','responsive.js')
+STYLE_NAMES=('contributions.css','responsive.css','queue.css','variable-workspace.css','filter-picker.css')
 
 
 def read(name):

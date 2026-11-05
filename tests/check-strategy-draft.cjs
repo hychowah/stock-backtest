@@ -15,7 +15,7 @@ const complete=input=>input.original||({format:'strategy-capture',version:1,sele
 const context=vm.createContext({console,data:[],document:{getElementById:node,querySelector:node,querySelectorAll:()=>[]},StockScreener:{defaults},
  CalendarSettings:{read:()=>({start:'2015-01-02',end:'2015-01-05',months:12}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:node('backtest-engine').value||'original'}),sync(){}},
  ResultArtifacts:{forView:()=>null,matches:()=>false},ScheduleView:{isRunning:()=>false},SavedBacktests:{update(){}},BacktestQueue:{isManaging:()=>false},
- VariableWorkspace:{content:workspaceModule.exports.content,builtin:id=>useWire?wire.builtins.find(item=>item.id===id):builtins[id.slice(7)],request:async(route,input)=>{assert(['/capture','/detached'].includes(route));requests.push(structuredClone(input));if(pause)await new Promise(resolve=>release=resolve);if(useWire){const body=JSON.stringify(input);assert(Buffer.byteLength(body)<=256*1024);const response=await fetch(wireOrigin+'/api/variables'+route,{method:'POST',headers:{'Content-Type':'application/json'},body});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}return route==='/detached'?{authored:input.capture.program.bundle.definitions}:{strategy:complete(input)};}},
+ VariableWorkspace:{content:workspaceModule.exports.content,displays:unit=>({scalar:['number','multiple','percent','percentage_points']}[unit]||[]),builtin:id=>useWire?wire.builtins.find(item=>item.id===id):builtins[id.slice(7)],request:async(route,input)=>{assert(['/capture','/detached'].includes(route));requests.push(structuredClone(input));if(pause)await new Promise(resolve=>release=resolve);if(useWire){const body=JSON.stringify(input);assert(Buffer.byteLength(body)<=256*1024);const response=await fetch(wireOrigin+'/api/variables'+route,{method:'POST',headers:{'Content-Type':'application/json'},body});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}return route==='/detached'?{authored:input.capture.program.bundle.definitions}:{strategy:complete(input)};}},
  localStorage:{get length(){return storage.size;},key:i=>[...storage.keys()][i],getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  crypto:{getRandomValues(bytes){ids.push(1);bytes.fill(ids.length);return bytes;}},Uint8Array,Date,AbortController,setTimeout,clearTimeout,
  fetch:async(url,options)=>{posted.push(JSON.parse(options.body));return {ok:true,json:async()=>({state:'complete',evidence:{manifest:{periods:1}}})};}
@@ -39,7 +39,9 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  assert.equal(run('StrategyDraft.isScalar()'),false);assert.equal(node('min-yield').value,'2');assert.equal(run('StrategyDraft.read().revision'),before);
  node('min-yield').value='0';run('filterConditions=[{field:"pe",op:"lt",value:12}];StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.isScalar()'),true);assert.equal(run('StrategyDraft.read().settings.strategy.selection.conditions[0].source.id'),'filter:pe');
- assert(node('strategy-heading').textContent.startsWith('Highest Original submitted label'));assert(node('legacy-yield-control').hidden);assert(node('legacy-multiple-control').hidden);assert(node('ranking-metric').disabled);assert(node('auto-run').disabled);assert(node('auto-run-note').textContent.includes('suspended'));assert(!node('min-cap').required);
+ assert(node('strategy-heading').textContent.startsWith('Highest Original submitted label'));assert(node('legacy-yield-control').hidden);assert(node('legacy-multiple-control').hidden);assert(node('ranking-metric').disabled);assert(node('auto-run').disabled);assert(node('auto-run-note').textContent.includes('paused'));assert(!node('min-cap').required);
+ // The moved built-in filter left the offline list, so one list stays current.
+ assert.equal(run('filterConditions.length'),0);assert.equal(run('StrategyDraft.filterRows()[0].label'),'P/E');assert.equal(run('StrategyDraft.filterRows()[0].units'),null);
  const token=run('StrategyDraft.read().revision');run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
  assert(node('strategy-heading').textContent.startsWith('Lowest Original submitted label'));assert(node('strategy-ranking-help').textContent.includes('lowest available selected variable'));
  assert.throws(()=>run(`StrategyDraft.patch({role:'ranking',source,capture:detached,authored},${token})`),/draft changed/);
@@ -80,6 +82,19 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.read().settings.strategy.selection.ranking.direction'),'lowest');
  assert.equal(JSON.stringify(context.savedCopy),copyBytes);
+ // New and replaced filter sources start in the source's own display unit.
+ run('StrategyDraft.patch({legacy:true},StrategyDraft.read().revision);filterConditions=[{field:"pe",op:"lt",value:""}]');node('min-cap').value='100';node('min-ev').value='50';
+ run('StrategyDraft.patch({role:"condition",source,capture:detached,authored},StrategyDraft.read().revision)');
+ const rows=()=>run('StrategyDraft.filterRows()');
+ assert.equal(rows()[0].value,'');assert.equal(rows()[1].value,'');assert.equal(rows()[1].unit,'percent');assert.equal(rows()[1].formula,true);assert(rows()[1].units.includes('number'));
+ await assert.rejects(run('StrategyDraft.prepareSubmission()'),/Enter a value for each added filter/);
+ run('StrategyDraft.condition(1,"value","15");StrategyDraft.condition(1,"unit","number");StrategyDraft.condition(0,"value","12")');
+ run('StrategyDraft.patch({role:1,source:{kind:"builtin",id:"filter:operating_yield_spread_3y"}},StrategyDraft.read().revision)');
+ assert.equal(rows()[1].unit,'percentage_points');assert.equal(rows()[1].value,'15');assert.equal(rows()[1].formula,false);
+ run('StrategyDraft.patch({role:1,source,capture:detached,authored},StrategyDraft.read().revision)');assert.equal(rows()[1].unit,'percentage_points','A fitting chosen unit stays');
+ // Returning to built-in controls keeps built-in filters and drops variables.
+ run('StrategyDraft.patch({role:"condition",source,capture:detached,authored},StrategyDraft.read().revision);StrategyDraft.patch({legacy:true},StrategyDraft.read().revision)');
+ assert.equal(run('StrategyDraft.isScalar()'),false);assert.deepEqual(copy(run('filterConditions')),[{field:'pe',op:'lt',value:'12'}]);
  // Repeated selection retains one complete exact capture, not editing history.
  for(let i=0;i<30;i++)run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.read().detached.length'),1);
@@ -105,8 +120,10 @@ context.source=exact;context.detached=detached;context.authored=detached.program
    context.choice=wire.shared.references[i];context.role=i?'condition':'ranking';
    run('StrategyDraft.patch({role,source:choice.source,capture:choice.capture,authored:choice.authored},StrategyDraft.read().revision)');
   }
+  // Added filters start empty; the user enters each threshold.
+  for(let i=1;i<wire.shared.references.length;i++)run('StrategyDraft.condition('+(i-1)+',"value","0")');
   const shared=await run('StrategyDraft.prepareSubmission()');assert.deepEqual(copy(shared.strategy),wire.shared.strategy);
   assert.equal(requests.at(-1).submitted.length,9);assert.equal(requests.at(-1).labels.length,9);assert(!('detached' in requests.at(-1)));assert(!('original' in requests.at(-1)));
  }
- console.log('Passed: actual StrategyDraft transition, inclusive legacy refusal, strict filters, stale Apply, snapshot-before-await, capture-before-ID, payload copy, held protection, detached null floors and all four modes.');
+ console.log('Passed: actual StrategyDraft transition, one filter owner per mode, empty thresholds, unit resets, built-in filters kept on return, inclusive legacy refusal, strict filters, stale Apply, snapshot-before-await, capture-before-ID, payload copy, held protection, detached null floors and all four modes.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
