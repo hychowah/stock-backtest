@@ -143,15 +143,12 @@ def _hash(document):
 
 
 def _encode(value, maximum, checkpoint=lambda: None):
-    chunks, used = [], 0
-    encoder = json.JSONEncoder(sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False)
-    for chunk in encoder.iterencode(value):
-        checkpoint()
-        used += len(chunk)
-        if used > maximum:
-            _fail('WORK_LIMIT', '/limits', 'Selection evidence exceeds its encoded-content bound.')
-        chunks.append(chunk)
-    return ''.join(chunks)
+    # The C encoder writes the same bytes as the incremental one, several times faster.
+    checkpoint()
+    text = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False)
+    if len(text) > maximum:
+        _fail('WORK_LIMIT', '/limits', 'Selection evidence exceeds its encoded-content bound.')
+    return text
 
 
 def policy_fingerprint():

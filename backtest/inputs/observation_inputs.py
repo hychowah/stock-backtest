@@ -191,6 +191,9 @@ class ReadView:
         self.max_history, self.max_record_bytes = max_history, max_record_bytes
         self._bounds = bounds
         self._populations, self._cached, self._session = populations, cached, session
+        # Candidates per screen date; the borrowed generation cannot change
+        # while the view is open, so each date is computed once per view.
+        self._candidates = {}
         self.closed = False
         self.validate()
 
@@ -232,7 +235,9 @@ class ReadView:
         by_day = {}
         for text in sorted(dates):
             checkpoint()
-            by_day[text] = books.candidates(self._populations(checkpoint), date.fromisoformat(text))
+            if text not in self._candidates:
+                self._candidates[text] = books.candidates(self._populations(checkpoint), date.fromisoformat(text))
+            by_day[text] = self._candidates[text]
         decisions, size = [], 0
         for root in roots:
             checkpoint()
