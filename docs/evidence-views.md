@@ -236,7 +236,14 @@ The same acquired-result owner dispatches codec 2 without current library,
 catalog or financial access. New `scopes`, `explanations` and `screen` operations
 use the existing bounded cursor pages. Trial/period/holding operations retain
 their shape for historical scalar results. Scope/chunk-qualified links identify
-the complete original explanation records. Latest has screen rows and no trial.
+the original explanation records. Latest has screen rows and no trial.
+
+New scalar results keep explanations for the selected rows only. Each
+evaluation chunk keeps its whole request list, so links stay valid, plus the
+results of selected rows and the operations, observations, contexts and roots
+they reach. Built-in `lanes` and `admission` records also cover selected rows
+only. The scope receipt still counts the complete prepared population. Older
+results keep every candidate's explanation and open unchanged.
 
 The complete `evidence` attachment streams the original checksummed framed file,
 including its captured strategy and every explanation. Scalar `holdings`/`screen`

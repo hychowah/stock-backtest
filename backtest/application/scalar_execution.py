@@ -168,6 +168,31 @@ def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner
     return rows,roots,plans,inspected
 
 
+def _retained_block(block, requests):
+    """Keep only the results of the given requests and the evidence they reach.
+
+    Request numbers stay valid because the request list is kept whole. Each
+    kept result keeps its operations, their observations and contexts, its
+    admission root and the program, so its trace reads as before.
+    """
+    results = [item for item in block['results'] if item['request'] in requests]
+    operations = {item['id']: item for item in block['operations']}
+    reached, pending = set(), [item['evidence']['operation'] for item in results]
+    while pending:
+        identity = pending.pop()
+        if identity in reached or identity not in operations: continue
+        reached.add(identity); pending.extend(operations[identity]['operands'])
+    kept_operations = [item for item in block['operations'] if item['id'] in reached]
+    observed = {item['observation'] for item in kept_operations if item.get('observation')}
+    roots = {item['root'] for item in results}
+    observations = block['observations']
+    kept_results = [item for item in observations['results'] if item['id'] in observed]
+    contexts = {item['context'] for item in kept_operations if item.get('context')} | {item['context'] for item in kept_results}
+    return dict(block, results=results, operations=kept_operations, observations=dict(observations,
+        results=kept_results, roots=[item for item in observations['roots'] if item['root'] in roots],
+        contexts=[item for item in observations['contexts'] if item['id'] in contexts]))
+
+
 class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run."""
     contract = 2
@@ -197,6 +222,9 @@ class Executor:
             record_bytes=self.record_bytes, checkpoint=self.checkpoint,
             limits=self.evaluation_limits, metadata_bytes=self.metadata_bytes, engine=self.engine)
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
+        # Records are written after selection, so per-candidate explanations
+        # can be kept for the selected rows only. Scope counts stay complete.
+        records = []; emit = records.append
         if owner_scope is None: owner_scope = dict(kind='dated')
         role_sources=[self.capture['selection']['ranking']['source']]+[item['source'] for item in self.capture['selection']['conditions']]
         policy=selection.policy_fingerprint()
@@ -223,7 +251,7 @@ class Executor:
             block_roots = block['observations']['roots']
             admitted += sum(root['admitted'] for root in block_roots)
             for local,decision in enumerate(block_roots):permitted[offset+local]=decision['admitted']
-            self.sink(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
+            emit(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
             width = len(plan.to_dict()['requests'])
             for item in block['results']:
                 position = offset + item['request']
@@ -247,10 +275,10 @@ class Executor:
                     decision['owner_scope'] = owner_scope
                 admitted += sum(item['admitted'] for item in decisions)
                 for local,decision in enumerate(decisions):permitted[first+local]=decision['admitted']
-                self.sink(dict(type='admission',value=dict(scope=identity,roots=decisions)))
+                emit(dict(type='admission',value=dict(scope=identity,roots=decisions)))
         receipt['provider_admitted_in_prepared_scope'] = admitted
         receipt.pop('provider_admitted')
-        self.sink(dict(type='scope', value=receipt))
+        emit(dict(type='scope', value=receipt))
         mode = 'latest' if latest else 'historical'; year = 0 if latest else period
         for index, row in enumerate(rows):
             self.checkpoint()
@@ -276,7 +304,7 @@ class Executor:
                     reason=None if valid else 'MISSING_INPUT')
                 charge(refs)
                 references[index][lane] = refs; lanes.append(dict(lane=lane, **refs))
-            if lanes:self.sink(dict(type='lanes', value=dict(scope=identity, symbol=row['symbol'], lanes=lanes)))
+            if lanes:emit(dict(type='lanes', value=dict(scope=identity, symbol=row['symbol'], lanes=lanes)))
         for index,allowed in enumerate(permitted):
             if not allowed:values[index]['ranking']=None
         specification = deepcopy(self.capture['selection'])
@@ -303,7 +331,23 @@ class Executor:
             output.append(dict(original, rank=item['rank'], ranking_value=value, ranking_unit=descriptor['unit'],
                 ranking_display=descriptor['display'], ranking_direction=specification['ranking']['direction'],
                 scalar_evidence=dict(scope=identity, lanes=references[index])))
-        self.sink(dict(type='selection',value=dict(scope=identity, selected=selected, requested=specification,
+        emit(dict(type='selection',value=dict(scope=identity, selected=selected, requested=specification,
             unavailable_ranking=sum(candidate['values'].get('ranking') is None for candidate in candidates))))
+        kept = {item['index'] for item in selected['selected']}
+        symbols = {rows[index]['symbol'] for index in kept}
+        requests = {}
+        for index in kept:
+            for link in references[index].values():
+                if 'chunk' in link: requests.setdefault(link['chunk'], set()).add(link['request'])
+        for record in records:
+            self.checkpoint()
+            kind, value = record['type'], record['value']
+            if kind == 'evaluation':
+                record = dict(record, value=dict(value, block=_retained_block(value['block'], requests.get(value['chunk'], set()))))
+            elif kind == 'lanes' and value['symbol'] not in symbols:
+                continue
+            elif kind == 'admission':
+                record = dict(record, value=dict(value, roots=[item for item in value['roots'] if item['symbol'] in symbols]))
+            self.sink(record)
         self.view.validate()
         return output
