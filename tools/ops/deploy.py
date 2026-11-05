@@ -20,6 +20,7 @@ import sys
 import tarfile
 import time
 import uuid
+from datetime import datetime, timedelta
 
 # Extracted native helpers use explicit stage/target paths until support is bound.
 ROOT = (None if '--native-publish' in sys.argv else Path(__file__).resolve().parents[2])
@@ -29,6 +30,7 @@ MANIFEST = 'data/deployment.json'
 PENDING = 'data/deployment.pending.json'
 CONFIG = 'data/workspace.json'
 UPDATE_POLL_SECONDS = 2
+UPDATE_HOUR = 1
 SUPERVISOR_ENV = 'EBITDA_WEB_SUPERVISOR'
 
 
@@ -417,22 +419,46 @@ def say(message, *, error=False):
     print(time.strftime('%Y-%m-%d %H:%M:%S ') + message, file=sys.stderr if error else sys.stdout, flush=True)
 
 
-def follow_main(config, arguments, *, check=False):
-    """Serve committed main and replace the child after each successful update.
+def next_update_time(now):
+    """The first 01:00 local time after now."""
+    due = now.replace(hour=UPDATE_HOUR, minute=0, second=0, microsecond=0)
+    return due if due > now else due + timedelta(days=1)
 
-    Publication owns shutdown, worker cleanup and source/cache locks. A failed
-    update retries its recorded journal before switching revisions. A child
-    stopped outside an update ends this controller, so an older terminal cannot
-    bring its server back. Cleanup targets this controller's identity only.
+
+def starting_commit(config, latest):
+    """Choose the revision a launch serves.
+
+    A plain launch serves the installed revision, so a restart never rebuilds
+    data for a newer commit. A recorded journal is finished first. Only
+    `latest`, or a runtime with nothing installed, installs the main tip.
     """
+    runtime = linux_path(config['runtime'])
+    if not latest and (runtime / PENDING).exists():
+        deploy(config)
+    if not latest and (runtime / MANIFEST).exists():
+        return deployment_revision(config)
     commit = main_revision()
     if commit is None:
         raise ValueError('Cannot read committed main. Check the source Git history and retry the launcher.')
     install_latest(config, commit)
+    return commit
+
+
+def follow_main(config, arguments, *, check=False, latest=False):
+    """Serve the installed revision; update to committed main once a day at 01:00.
+
+    A launch with `latest` installs the main tip first. Publication owns
+    shutdown, worker cleanup and source/cache locks. A failed update retries its
+    recorded journal before switching revisions. A child stopped outside an
+    update ends this controller, so an older terminal cannot bring its server
+    back. Cleanup targets this controller's identity only.
+    """
+    commit = starting_commit(config, latest)
     if check:
         verify_installed(config)
     supervisor = uuid.uuid4().hex
-    say('Automatic updates on: watching committed main every 2 seconds. Ctrl+C stops this server.')
+    due = next_update_time(datetime.now())
+    say('Daily updates on: committed main is checked at %02d:00 local time. Restart with --latest to update now. Ctrl+C stops this server.' % UPDATE_HOUR)
     child = spawn_server(config, arguments, supervisor)
     pending = None
     warned = None
@@ -441,14 +467,18 @@ def follow_main(config, arguments, *, check=False):
             if pending is None and child.poll() is not None:
                 return child.returncode
             time.sleep(UPDATE_POLL_SECONDS)
-            latest = main_revision()
             if pending is None:
-                if latest is None or latest == commit:
+                now = datetime.now()
+                if now < due:
+                    continue
+                due = next_update_time(now)
+                tip = main_revision()
+                if tip is None or tip == commit:
                     continue
                 if child.poll() is not None:
                     return child.returncode
-                pending = latest
-                say('New main commit ' + pending[:12] + '; updating and restarting the website.')
+                pending = tip
+                say('Daily update: main commit ' + pending[:12] + '; updating and restarting the website.')
             try:
                 install_latest(config, pending, before_publish=lambda: stop_child(config, child, supervisor))
             except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
@@ -571,10 +601,12 @@ def collect_report(config):
     shutil.rmtree(bundle)
 
 
-def native_launch(arguments, revision=None):
+def native_launch(arguments, revision=None, latest=False):
     config = read_json(ROOT / CONFIG)
     if config:
         selection = ['--revision', revision] if revision is not None else []
+        if latest:
+            selection.append('--latest')
         return subprocess.call(['wsl.exe', '-d', config['distro'], '--cd', config['source'],
                                 '--exec', 'python3', 'tools/deploy.py', '--start', *selection, *arguments])
     if revision is not None:
@@ -601,7 +633,8 @@ def main():
         os.environ['PYTHONUTF8'] = '1'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', help='Select a committed revision; with --start, freeze this launch instead of following main')
-    parser.add_argument('--start', action='store_true', help='Serve latest committed main and restart on updates; --revision freezes the launch')
+    parser.add_argument('--start', action='store_true', help='Serve the installed revision and update to committed main daily at 01:00; --revision freezes the launch')
+    parser.add_argument('--latest', action='store_true', help='With --start, install the latest committed main now instead of the installed revision')
     parser.add_argument('--collect-report', action='store_true', help='Collect a verified Windows report revision for review')
     parser.add_argument('--check', action='store_true', help='Deploy, then check installed native Windows paths and lifecycle')
     parser.add_argument('--native-publish', nargs=2, help=argparse.SUPPRESS)
@@ -621,7 +654,7 @@ def main():
         elif options.native_export:
             export_runtime_report(*options.native_export)
         elif options.native_launch:
-            raise SystemExit(native_launch(server_arguments, options.revision))
+            raise SystemExit(native_launch(server_arguments, options.revision, options.latest))
         elif options.native_check:
             check_runtime()
         else:
@@ -633,8 +666,10 @@ def main():
             else:
                 if server_arguments and not options.start:
                     parser.error('Server arguments require --start.')
+                if options.latest and (not options.start or options.revision is not None):
+                    parser.error('--latest requires --start and cannot be combined with --revision.')
                 if options.start and options.revision is None:
-                    raise SystemExit(follow_main(config, server_arguments, check=options.check))
+                    raise SystemExit(follow_main(config, server_arguments, check=options.check, latest=options.latest))
                 deploy(config, options.revision)
                 if options.check:
                     verify_installed(config)

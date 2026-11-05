@@ -20,14 +20,17 @@ python3 tools/deploy.py --start
 ```
 
 Deployment exports one selected Git commit. It does not copy working-tree edits.
-Running `backtest-web.cmd` or `python3 tools/deploy.py --start` selects the latest
-committed `main` and watches that branch every two seconds. A new main commit
-stages source, gracefully stops the current native server, publishes the new
-commit and starts its replacement in the same terminal. No additional launch or
-deployment command is needed for later commits. Refresh an open browser page to
-load the new HTML. Restarts do not open another browser tab.
+Running `backtest-web.cmd` or `python3 tools/deploy.py --start` serves the
+installed revision. A restart never installs a newer commit, so it never causes a
+database rebuild. Once a day at 01:00 local time the watcher reads committed
+`main`. If the tip differs from the installed commit, it stages source, gracefully
+stops the current native server, publishes the commit and starts its replacement
+in the same terminal. Any number of commits in one day cause one restart. Add
+`--latest` (`backtest-web.cmd --latest`) to install the current `main` tip at
+launch. A runtime with nothing installed installs the tip. Refresh an open
+browser page to load the new HTML. Restarts do not open another browser tab.
 
-The watcher follows `refs/heads/main`, including a deliberate change of its tip.
+The daily check follows `refs/heads/main`, including a deliberate change of its tip.
 It does not follow other branches, a checked-out feature branch, remote
 repositories or uncommitted edits. It does not fetch or pull history.
 
@@ -38,7 +41,7 @@ WSL. Direct native startup below also stays fixed.
 
 Plain `python3 tools/deploy.py` and `--check` retain the installed commit from
 `data/deployment.json` unless an explicit revision is supplied. A fresh standalone
-publication requires an explicit revision. Automatic `--start` selects main.
+publication requires an explicit revision. Automatic `--start` selects main only with `--latest`, at the daily check or on a fresh runtime.
 An invalid installation record still stops publication. An unfinished publication
 is completed at its recorded commit before automatic startup selects newer main.
 A conflicting explicit revision is rejected until recovery completes.

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 from threading import Thread
 import unittest
 from unittest.mock import Mock, patch
@@ -19,6 +20,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import tools.ops.deploy as d
 from website import runtime_access
+next_update_time=d.next_update_time
 class Child:
     def __init__(self,code=None):self.returncode=code;self.waits=[]
     def poll(self):return self.returncode
@@ -34,6 +36,7 @@ class UpdateTests(unittest.TestCase):
         self.root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
         self.config=dict(runtime=str(self.root),python=sys.executable,source='/fixture/source',distro='Fixture')
         self.context.enter_context(patch.object(d,'linux_path',side_effect=Path))
+        self.due=self.context.enter_context(patch.object(d,'next_update_time',return_value=datetime.min))
 
     def test_main_poll_uses_committed_branch_and_bounds_git_wait(self):
         with patch.object(d.subprocess,'check_output',return_value=b'a'*40+b'\n') as git:
@@ -43,6 +46,46 @@ class UpdateTests(unittest.TestCase):
         for failure in (OSError(),subprocess.CalledProcessError(1,['git']),subprocess.TimeoutExpired(['git'],5)):
             with patch.object(d.subprocess,'check_output',side_effect=failure):self.assertIsNone(d.main_revision())
         with patch.object(d.subprocess,'check_output',return_value=b'not-a-commit'):self.assertIsNone(d.main_revision())
+
+    def test_update_time_is_the_next_one_am(self):
+        self.assertEqual(next_update_time(datetime(2026,11,5,0,59)),datetime(2026,11,5,1,0))
+        self.assertEqual(next_update_time(datetime(2026,11,5,1,0)),datetime(2026,11,6,1,0))
+        self.assertEqual(next_update_time(datetime(2026,11,5,23,30)),datetime(2026,11,6,1,0))
+        self.assertEqual(next_update_time(datetime(2026,12,31,12,0)),datetime(2027,1,1,1,0))
+
+    def test_plain_start_serves_installed_revision_without_checking_main(self):
+        (self.root/d.MANIFEST).parent.mkdir();(self.root/d.MANIFEST).write_text('{}')
+        with patch.object(d,'deployment_revision',return_value='a'*40),patch.object(d,'main_revision') as tip,patch.object(d,'install_latest') as install,patch.object(d,'deploy') as publish:
+            self.assertEqual(d.starting_commit(self.config,False),'a'*40)
+        tip.assert_not_called();install.assert_not_called();publish.assert_not_called()
+
+    def test_plain_start_finishes_a_pending_journal_but_keeps_the_installed_choice(self):
+        data=self.root/'data';data.mkdir();(data/'deployment.json').write_text('{}');(data/'deployment.pending.json').write_text('x')
+        with patch.object(d,'deployment_revision',return_value='a'*40),patch.object(d,'main_revision') as tip,patch.object(d,'install_latest') as install,patch.object(d,'deploy') as publish:
+            d.starting_commit(self.config,False)
+        publish.assert_called_once_with(self.config);tip.assert_not_called();install.assert_not_called()
+
+    def test_latest_flag_and_fresh_runtime_install_the_main_tip(self):
+        (self.root/d.MANIFEST).parent.mkdir();(self.root/d.MANIFEST).write_text('{}')
+        for latest,manifest in ((True,True),(False,False)):
+            if not manifest:(self.root/d.MANIFEST).unlink()
+            with patch.object(d,'main_revision',return_value='b'*40),patch.object(d,'install_latest') as install:
+                self.assertEqual(d.starting_commit(self.config,latest),'b'*40)
+            install.assert_called_once_with(self.config,'b'*40)
+
+    def test_main_is_not_read_before_the_daily_update_time(self):
+        child=Child();clock=Mock()
+        clock.now.side_effect=[datetime(2026,11,5,12),datetime(2026,11,5,12,30),datetime(2026,11,5,13)]
+        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision') as tip,patch.object(d,'spawn_server',return_value=child),patch.object(d.time,'sleep',side_effect=[None,None,KeyboardInterrupt]):
+            self.assertEqual(d.follow_main(self.config,[]),130)
+        tip.assert_not_called()
+
+    def test_daily_check_runs_once_per_day_and_ignores_an_unchanged_tip(self):
+        child=Child();clock=Mock()
+        clock.now.side_effect=[datetime(2026,11,5,0,58),datetime(2026,11,5,0,59),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1)]
+        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',return_value='a'*40) as tip,patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',return_value=child),patch.object(d.time,'sleep',side_effect=[None,None,None,KeyboardInterrupt]):
+            self.assertEqual(d.follow_main(self.config,[]),130)
+        self.assertEqual(tip.call_count,1);install.assert_not_called()
 
     def test_update_replaces_once_and_unknown_git_keeps_serving(self):
         old,new=Child(),Child(0);tokens=[];installed=[]
@@ -115,7 +158,7 @@ class UpdateTests(unittest.TestCase):
                 else:
                     with self.assertRaises(SystemExit) as result:d.main()
                     self.assertEqual(result.exception.code,0)
-                    follow.assert_called_once_with(self.config,['--no-browser'],check=False)
+                    follow.assert_called_once_with(self.config,['--no-browser'],check=False,latest=False)
                     publish.assert_not_called();native.assert_not_called()
 
 
@@ -276,7 +319,7 @@ class CommittedUpdateTests(unittest.TestCase):
             def version(expected):
                 try:return (runtime/'served-version').read_text()==expected
                 except FileNotFoundError:return False
-            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03):
+            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03),patch.object(d,'next_update_time',return_value=datetime.min):
                 thread=Thread(target=run,daemon=True);thread.start()
                 try:
                     until(lambda:version('first'))

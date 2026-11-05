@@ -4,9 +4,10 @@ Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from t
 
 ## Automatic updates
 
-The registered Windows `backtest-web.cmd` starts the latest committed main and
-checks for new main commits every two seconds. A new commit automatically
-deploys and restarts the native server in the same terminal. Uncommitted saves
+The registered Windows `backtest-web.cmd` starts the installed revision. It checks
+committed main once a day at 01:00 local time. A new commit then deploys and
+restarts the native server in the same terminal. Restarting the launcher does not
+update; run `backtest-web.cmd --latest` to install the newest main commit now. Uncommitted saves
 and other branches do not trigger updates. Remote history is not fetched or pulled.
 Refresh the browser page after the server reports it is ready. Subsequent
 restarts do not open another tab.

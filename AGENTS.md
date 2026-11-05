@@ -34,7 +34,7 @@ installed readiness or real-cache coverage.
 Do long work on a branch or linked worktree. Integrate into `main` only with the
 user's authorization. Push, deployment, installed-runtime restart, downloads and
 live runtime, cache or durable-store access each need explicit authorization. A
-running supervisor publishes every new `main` commit. Before advancing or
+running supervisor publishes `main` at 01:00. Before advancing or
 rewriting `main`, check read-only process metadata for `tools/deploy.py --start`
 and native project servers. Preserve unrelated uncommitted files in the main
 checkout. Verify with private synthetic fixtures, never the live cache.
@@ -117,9 +117,9 @@ is the native Windows runtime, not a second repository. `python3 tools/deploy.py
 exports committed source there; uncommitted edits are excluded. A fresh
 standalone publication needs an explicit `--revision`. A valid pending
 publication selects its recorded commit for recovery. `--start` serves the
-latest committed `main` and restarts on each new commit. `--revision <commit>
+installed revision, updating to `main` at 01:00; `--latest` updates now. `--revision <commit>
 --start` fixes one launch. `--check` deploys and runs the installed Windows
-checks. The Windows `backtest-web.cmd` runs the same supervised flow through WSL.
+checks. Windows `backtest-web.cmd` runs the same flow through WSL.
 Local paths live in ignored `data/workspace.json`.
 
 Preserve Windows-owned raw data, databases, logs, environments, local builds and
@@ -357,17 +357,17 @@ batches stay serial. Workers watch the parent's lifetime. Checks:
 
 **Launcher and automatic updates.** `website/server/launcher.py` owns identity
 publication, control requests, the per-port startup lock and the lifetime lock.
-Never stop an unknown port owner. An unreachable endpoint never proves that the
+Never stop an unknown port owner. An unreachable endpoint does not prove the
 old server has finished; replacement waits up to 30 seconds. The default
 listener is `0.0.0.0:3000`. Open the browser only after preparation and binding.
-`tools/deploy.py --start` watches committed `refs/heads/main` every two seconds,
-resolves one exact commit, stages source before stopping the child and completes
+`tools/deploy.py --start` serves the installed revision. At 01:00 it reads
+`refs/heads/main` and, if changed, resolves one exact commit, stages source before stopping the child and completes
 pending publication first. Never force-kill a server or replace source on
 timeout. `backtest/runtime/diagnostics.py` writes per-process logs in
 `data/logs/`. Never log exception text, keys, provider URLs or response bodies.
 Checks: `tests/test_startup.py`, `tests/test_auto_update.py`,
 `tests/test_deployment.py` and `tests/test_diagnostics.py`, on WSL and native
-Windows. Use private repositories and runtimes for update checks.
+Windows. Use private repositories.
 
 **Saved library and queue.** `data/saved-backtests.sqlite`
 (`backtest/application/library.py`) and `data/backtest-queue.sqlite`

@@ -7,9 +7,10 @@ A standalone US stock backtest and interactive results website. Each January, bu
 Source development lives in WSL at `<wsl-checkout>`.
 The native Windows runtime is `<windows-runtime>`. Edit and commit in WSL.
 Start the native runtime with `python3 tools/deploy.py --start`, or run the
-installed `backtest-web.cmd` from Windows Terminal. Startup deploys the latest
-committed `main` and checks that branch every two seconds. A new commit causes
-verified deployment and a server restart. A pending publication resumes its
+installed `backtest-web.cmd` from Windows Terminal. Startup serves the installed
+revision and checks committed `main` once a day at 01:00 local time. A new commit
+then causes verified deployment and one server restart. Add `--latest` to install
+the newest `main` commit at launch. A pending publication resumes its
 recorded revision before a newer revision can be selected.
 
 Use `python3 tools/deploy.py --revision <commit> --start` to fix one launch to
