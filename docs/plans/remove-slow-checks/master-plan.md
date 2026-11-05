@@ -31,10 +31,11 @@ still open.
 
 1. Run-path re-hashes removed. Done (5c1fedf).
 2. Preparation identity and SQL copy. Done (6dbaa85).
-3. Calculation speed. The C JSON encoder, cached candidates per view and one
-   built-in query per scope are done (884983a, 0b0d749). Open: evaluate
-   formulas only for rows that can still be selected; decide on a values-only
-   evaluator over prepared inputs.
+3. Calculation speed. The C JSON encoder, cached candidates per view, one
+   built-in query per scope, formulas evaluated only for selectable rows, no
+   recompilation of in-process plans and cached statement histories are done
+   (884983a, 0b0d749, efe63cc). Open: decide on a values-only evaluator over
+   prepared inputs.
 4. Result storage. Selected-row explanations are done (10da620). Open: one
    compressed record per result, a one-transaction queue-to-library transfer,
    and no reader pins, temporary copies or byte budgets.
@@ -50,6 +51,12 @@ All on 5 November 2026, WSL.
 - Copy of the real raw cache, phase 4a code: cold research and daily build
   1,192 s. Research took 983 s, of which dated observations took 676 s and
   publication 82 s.
+- Same copy, two quarterly scopes of the user's random test strategy under
+  cProfile: 31 s before efe63cc, 9.0 s after. Before efe63cc the full test
+  failed on its first scope at the 16 MiB retained-lane ceiling.
+- Private 200-company fixture with a built-in ranking, a built-in and a
+  formula condition: annual run 32.2 s on main, 4.2 s at efe63cc, with
+  identical holdings.
 
 ## Known limits
 

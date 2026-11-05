@@ -245,6 +245,12 @@ they reach. Built-in `lanes` and `admission` records also cover selected rows
 only. The scope receipt still counts the complete prepared population. Older
 results keep every candidate's explanation and open unchanged.
 
+With a built-in ranking and filter-first order, formulas are evaluated only for
+rows that are admitted, have a ranking value and pass every built-in condition
+and bound. No other row can be selected, so holdings do not change. Admission
+and built-in lanes still cover every row, and the receipt's work counts include
+only the evaluated rows.
+
 The complete `evidence` attachment streams the original checksummed framed file,
 including its captured strategy and every explanation. Scalar `holdings`/`screen`
 CSV includes original values, units, direction and qualified links; retain its
