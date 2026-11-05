@@ -64,6 +64,13 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
         def __len__(self):
             return db.execute('SELECT count(DISTINCT symbol) FROM statements').fetchone()[0] if self.pool=='cached' else sum(1 for _ in self)
     populations=(Population('cached'),Population('legacy'))
+    complete=[]
+    def screened(check):
+        # Every screen date reads both complete pools; plain mappings in the
+        # same first-occurrence order are built once per view.
+        if not complete:
+            complete.extend(dict(population.items()) for population in populations)
+        return tuple(complete)
     def reports(symbol, pool):
         return [dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in populations[0 if pool=='cached' else 1].get(symbol,[])]
     def maximum(table):
@@ -83,6 +90,6 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
     return observation_inputs.ReadView(identity, db, validate, reports,
         lambda symbol, day, column, forward, slack: daily.price(db, symbol, day, column, forward, slack),
         expected=expected, max_history=MAX_HISTORY, max_record_bytes=MAX_RECORD_BYTES,
-        bounds=bounds, populations=lambda check: populations,
+        bounds=bounds, populations=screened,
         cached=lambda symbol: symbol in cached,
         session=lambda day: db.execute('SELECT 1 FROM sessions WHERE day=?', (str(day),)).fetchone() is not None)
