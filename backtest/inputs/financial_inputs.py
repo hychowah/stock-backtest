@@ -1,4 +1,5 @@
 """Annual statement assets and dated financial filter inputs. No network here."""
+import functools
 import hashlib
 import json
 
@@ -22,7 +23,12 @@ def observation_fields():
     ENDPOINTS remains the legacy validation/values contract. Semantic additions
     are inspected only after that unchanged asset admission has succeeded.
     """
-    parameters.policy_fingerprint()
+    return dict(_observation_fields())
+
+
+@functools.cache
+def _observation_fields():
+    # The loaded catalog cannot change in a running process.
     fields = {}
     for item in parameters.catalog(parameters.V3):
         if item['kind'] == 'direct' and item['id'].startswith('annual.'):

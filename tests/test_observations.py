@@ -342,24 +342,7 @@ class ProviderTests(unittest.TestCase):
                 obs.observe(obs.plan([self.request()], self.contexts(), dict(bytes=10000)), view)
             decode.assert_not_called()
 
-    def test_source_edit_during_observation_rejects_the_complete_block(self):
-        view = self.view()
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder)/'observations.py'
-            original = Path(obs.__file__).read_bytes()
-            path.write_bytes(original)
-            calls = 0
-            def changed():
-                nonlocal calls
-                calls += 1
-                if calls == 5:
-                    path.write_bytes(original+b'\n# changed private policy\n')
-            with patch.object(obs, '__file__', str(path)):
-                with self.assertRaises(obs.ObservationError) as caught:
-                    obs.observe(obs.plan([self.request()], self.contexts()), view, changed)
-                self.assertEqual(caught.exception.code, 'STALE_INPUT_GENERATION')
-
-    def test_cancellation_staleness_source_change_and_detachment(self):
+    def test_cancellation_staleness_and_detachment(self):
         view = self.view()
         plan = obs.plan([self.request()], self.contexts())
         with self.assertRaisesRegex(RuntimeError, 'cancel'):
@@ -371,8 +354,6 @@ class ProviderTests(unittest.TestCase):
             if count > 4: self.stale = True
         with self.assertRaisesRegex(ValueError, 'stale'): obs.observe(plan, view, stale_at_end)
         self.stale = False
-        with patch.object(obs, '_LOADED_POLICY', 'changed'):
-            with self.assertRaises(obs.ObservationError): obs.observe(plan, view)
         block = obs.observe(plan, view)
         before = block.to_json()
         view.close()

@@ -207,8 +207,5 @@ def unit(identity, name):
 
 
 def policy_fingerprint():
-    """Bind loaded meaning and detect source changes without financial work."""
-    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if current != _LOADED:
-        raise ValueError('Loaded semantic parameter source changed.')
-    return current
+    """Identify the loaded parameter meaning."""
+    return _LOADED

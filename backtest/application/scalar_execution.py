@@ -199,8 +199,6 @@ class Executor:
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
         if owner_scope is None: owner_scope = dict(kind='dated')
         role_sources=[self.capture['selection']['ranking']['source']]+[item['source'] for item in self.capture['selection']['conditions']]
-        if hashlib.sha256(Path(__file__).read_bytes()).hexdigest()!=_LOADED:
-            raise definitions.FormulaError('STALE_INPUT_GENERATION','','Loaded scalar execution source changed.')
         policy=selection.policy_fingerprint()
         receipt = dict(policy=dict(executor=_LOADED,selection=policy),id=identity, population='complete-prepared-scope', mode='latest' if latest else 'historical',
             pool=self.pool, date=str(entry), exit=str(exit_day) if exit_day is not None else None,
@@ -308,6 +306,4 @@ class Executor:
         self.sink(dict(type='selection',value=dict(scope=identity, selected=selected, requested=specification,
             unavailable_ranking=sum(candidate['values'].get('ranking') is None for candidate in candidates))))
         self.view.validate()
-        if hashlib.sha256(Path(__file__).read_bytes()).hexdigest()!=_LOADED or selection.policy_fingerprint()!=policy:
-            raise definitions.FormulaError('STALE_INPUT_GENERATION','','Scalar selection policy changed.')
         return output

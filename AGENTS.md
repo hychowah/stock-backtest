@@ -430,8 +430,8 @@ qualified scalar gate. Reference or provider support alone grants no application
 qualification. Eager scalar execution and numerical sample preview are
 unsupported. Derived `at` and `lookback` contexts use dated owner policy, even at
 an equal date. Preserve the 32-definition closure ceiling. Original scalar
-operations hold inputs through `backtest/inputs/operation_inputs.py`: a full
-fingerprint at entry and normal exit, one file status per step. Checks:
+operations hold inputs through `backtest/inputs/operation_inputs.py`: one daily
+fingerprint at entry, one file status per step, no row rescans. Checks:
 `tests/test_operation_inputs.py` and heavy `tests/test_original_long_window.py`.
 See
 [variable design](docs/plans/custom-variables/variable-design.md) and the

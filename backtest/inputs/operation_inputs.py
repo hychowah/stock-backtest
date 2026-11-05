@@ -1,20 +1,16 @@
 """Prepared inputs held unchanged for one Original scalar operation.
 
-held() connects the daily cache; that connection verifies the complete daily
-fingerprint once (raw input metadata, research content and price binding, bound
-engine source). Inside the context, require_unchanged() is the between-step
-freshness check. It costs one file-status read, whatever the cache size, and
-fails if the research database was rewritten or replaced since entry. A normal
-exit computes the complete fingerprint once more and compares it with the
-admitted one, so any change that fingerprint detects during the operation still
-fails it before the caller seals a result. Leaving by an exception skips that
-comparison and only closes connections.
+held() connects the daily cache; that connection checks the daily fingerprint
+once (raw input metadata, recorded research bindings, bound engine source).
+Inside the context, require_unchanged() is the between-step check. It costs one
+file-status read and fails if the research database was rewritten or replaced
+since entry. The caller holds cache ownership around held(), so no preparation
+or download can write the inputs during the operation.
 
-The caller holds cache ownership around held(). research() opens at most one
-read-only research connection, closed with the context.
+research() opens at most one read-only research connection, closed with the
+context.
 """
 from contextlib import contextmanager
-import json
 import os
 
 from backtest.inputs import daily, research
@@ -37,8 +33,6 @@ class HeldInputs:
     def __init__(self, db, checkpoint):
         self.db = db
         self._checkpoint = checkpoint
-        # daily.connect() has just proved that this stored binding equals fingerprint().
-        self._accepted = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
         self._research_status = _status(research.DATABASE)
         self._research = None
 
@@ -57,15 +51,13 @@ class HeldInputs:
 
 @contextmanager
 def held(*, checkpoint):
-    """Yield HeldInputs; compare the complete fingerprint again on normal exit."""
+    """Yield HeldInputs for one operation and close its connections."""
     db = daily.connect()
     inputs = None
     try:
         inputs = HeldInputs(db, checkpoint)
         yield inputs
         checkpoint()
-        if daily.fingerprint() != inputs._accepted:
-            raise ValueError(CHANGED)
     finally:
         if inputs is not None and inputs._research is not None:
             inputs._research.close()

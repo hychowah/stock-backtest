@@ -1,4 +1,4 @@
-"""Operation-held prepared inputs: cheap between-step checks, complete checks at the boundaries."""
+"""Operation-held prepared inputs: one fingerprint at entry, cheap between-step checks."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -69,31 +69,7 @@ class HeldInputsTests(unittest.TestCase):
                     with operation_inputs.held(checkpoint=lambda: None) as inputs:
                         change(); inputs.require_unchanged()
 
-    def test_raw_change_passes_steps_and_fails_the_normal_exit(self):
-        accepted = research.signature.return_value
-        self.addCleanup(setattr, research.signature, 'return_value', accepted)
-        reached = []
-        # The exit fingerprint fails through the research owner's stale-input check.
-        with self.assertRaisesRegex(ValueError, 'Cached inputs changed'):
-            with operation_inputs.held(checkpoint=lambda: None) as inputs:
-                research.signature.return_value = dict(accepted, edited=True)
-                inputs.require_unchanged()
-                reached.append('step')
-            reached.append('after')
-        self.assertEqual(reached, ['step'])
-
-    def test_different_exit_fingerprint_fails_the_normal_exit(self):
-        reached = []
-        changed = patch.object(daily, 'fingerprint', return_value=dict(changed=True))
-        with self.assertRaisesRegex(ValueError, 'changed during the operation'):
-            with operation_inputs.held(checkpoint=lambda: None) as inputs:
-                changed.start(); self.addCleanup(changed.stop)
-                inputs.require_unchanged()
-                reached.append('step')
-            reached.append('after')
-        self.assertEqual(reached, ['step'])
-
-    def test_cancellation_skips_the_exit_fingerprint_and_closes_connections(self):
+    def test_cancellation_closes_connections_after_one_fingerprint(self):
         def cancel(): raise backtest_control.Cancelled()
         fingerprints, _ = counted()
         with fingerprints as fingerprint, self.assertRaises(backtest_control.Cancelled):
@@ -105,7 +81,7 @@ class HeldInputsTests(unittest.TestCase):
 
 
 class OriginalScaleTests(unittest.TestCase):
-    def test_complete_input_checks_do_not_grow_with_schedule_length(self):
+    def test_input_checks_do_not_grow_with_schedule_length(self):
         with PreparedInputs(configure=history(4, 2023, 2026)):
             through = json.loads((research.RAW/'spy-div.json').read_bytes())[-1]['date']
             capture = long_window_capture().to_dict()
@@ -116,8 +92,8 @@ class OriginalScaleTests(unittest.TestCase):
                 fingerprints, contents = counted()
                 with self.subTest(mode=mode, periods=periods), fingerprints as fingerprint, contents as content:
                     result = Original().calculate_into(mode, options, io.BytesIO(), None, None)
-                    # Entry and exit fingerprints; research at both, daily copy once.
-                    self.assertEqual((fingerprint.call_count, content.call_count), (2, 3))
+                    # One entry fingerprint; no prepared row is rescanned.
+                    self.assertEqual((fingerprint.call_count, content.call_count), (1, 0))
                     if periods is not None:
                         self.assertEqual(result['manifest']['periods'], periods)
                         self.assertGreater(result['manifest']['holdings'], 0)

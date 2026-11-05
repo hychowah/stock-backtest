@@ -409,34 +409,6 @@ class EvaluationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'stale'):
                 self.run_formula()
 
-    def test_loaded_definition_reference_and_provider_policies_are_bound(self):
-        for owner, field in ((d, '_LOADED_POLICY'), (r, '_LOADED_REFERENCE'), (e, '_LOADED_EVALUATION'), (observations, '_LOADED_POLICY')):
-            with self.subTest(field=field), patch.object(owner, field, 'changed'):
-                with self.assertRaises((d.FormulaError, observations.ObservationError)):
-                    self.run_formula()
-        # The language owner detects edits even if it was imported before the
-        # reference owner. A later consumer cannot bless stale loaded source.
-        with tempfile.TemporaryDirectory() as folder:
-            private = Path(folder) / 'definitions.py'
-            private.write_bytes(Path(d.__file__).read_bytes())
-            original_policy = d.policy_fingerprint()
-            with patch.object(d, '__file__', str(private)):
-                self.assertEqual(d.policy_fingerprint(), original_policy)
-                private.write_bytes(private.read_bytes() + b'\n# changed private language\n')
-                self.error('STALE_INPUT_GENERATION', d.policy_fingerprint)
-                self.error('STALE_INPUT_GENERATION', r.policy_fingerprint)
-        with tempfile.TemporaryDirectory() as folder:
-            private = Path(folder) / 'reference.py'
-            private.write_bytes(Path(r.__file__).read_bytes())
-            original_encode = e._encode
-            def changed(value, maximum, checkpoint=lambda: None):
-                text = original_encode(value, maximum, checkpoint)
-                if isinstance(value, dict) and value.get('format') == 'formula-evaluation' and value['operations']:
-                    private.write_bytes(private.read_bytes() + b'\n# private source changed\n')
-                return text
-            with patch.object(r, '__file__', str(private)), patch.object(e, '_encode', side_effect=changed):
-                self.error('STALE_INPUT_GENERATION', self.run_formula)
-
 
 if __name__ == '__main__':
     unittest.main()

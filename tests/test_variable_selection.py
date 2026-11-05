@@ -224,11 +224,8 @@ class VariableSelectionTests(unittest.TestCase):
         with patch.object(s,'_encode',side_effect=cancel_final):
             with self.assertRaisesRegex(RuntimeError,'selection interrupted'):s.evaluate(plan,view)
 
-    def test_loaded_source_policy_and_generation_changes_abort(self):
+    def test_generation_change_aborts(self):
         program=expressions.program();plan=s.plan(program,self.roots(),specification(program));view=self.fixture.view()
-        for owner,attribute in ((s,'_LOADED_SELECTION'),(s.policy,'_LOADED_POLICY')):
-            with patch.object(owner,attribute,'changed'):
-                self.error('STALE_INPUT_GENERATION',s.evaluate,plan,view)
         original=r.evaluate
         def changed(*args):
             block=original(*args);view.identity='changed';return block

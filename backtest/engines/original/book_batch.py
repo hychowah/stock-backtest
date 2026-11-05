@@ -88,12 +88,9 @@ def open_reader(path,expected):
     try:
         db.execute('PRAGMA query_only=ON')
         db.execute('PRAGMA cache_size=-65536')
+        # The parent admitted this generation under cache ownership.
         if generation(db)!=expected:
             raise ValueError('The daily cache changed before a calculation worker started.')
-        if expected is not None:
-            import json
-            if json.loads(expected)!=daily.fingerprint():
-                raise ValueError('The daily cache is stale. Relaunch start.cmd to prepare it.')
         return db
     except BaseException:
         db.close();raise

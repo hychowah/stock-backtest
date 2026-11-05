@@ -1,9 +1,9 @@
 """Heavy tier: the Original-only long-window custom-variable workload.
 
 64 fictional companies, 1996-2026, the long-window capture and an annual
-custom schedule give 31 periods. The operation must complete with only its
-boundary input checks: two complete fingerprints and three complete content
-verifications. The receipt prints elapsed seconds; nothing asserts a time.
+custom schedule give 31 periods. The operation must complete with one entry
+fingerprint and no rescan of prepared rows. The receipt prints elapsed seconds;
+nothing asserts a time.
 Run the file directly to see the receipt; tests/run.py shows output only for a
 failed file.
 """
@@ -35,7 +35,7 @@ class LongWindowTests(unittest.TestCase):
                 seconds = time.perf_counter() - began
             self.assertEqual(result['manifest']['periods'], 31)
             self.assertGreater(result['manifest']['holdings'], 0)
-            self.assertEqual((fingerprint.call_count, content.call_count), (2, 3))
+            self.assertEqual((fingerprint.call_count, content.call_count), (1, 0))
         # The preparation fixture captures standard output until it closes.
         print('ORIGINAL_LONG_WINDOW_RECEIPT ' + json.dumps(dict(preparation_seconds=preparation,
             calculation_seconds=seconds, periods=result['manifest']['periods'],

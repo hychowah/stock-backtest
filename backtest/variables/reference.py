@@ -22,10 +22,7 @@ _LOADED_REFERENCE = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 def policy_fingerprint():
     """Bind independent arithmetic and shared loaded language/provider mechanics."""
-    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if current != _LOADED_REFERENCE:
-        raise definitions.FormulaError('STALE_INPUT_GENERATION', '', 'Loaded formula policy no longer matches its source.')
-    return dict(backend='reference-formulas', version=VERSION, reference=current,
+    return dict(backend='reference-formulas', version=VERSION, reference=_LOADED_REFERENCE,
                 evaluation=evaluation.policy_fingerprint(), definitions=definitions.policy_fingerprint(),
                 provider=observations.policy_fingerprint(), arithmetic=dict(evaluation._ARITHMETIC))
 

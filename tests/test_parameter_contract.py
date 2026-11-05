@@ -214,8 +214,6 @@ class ParameterTests(unittest.TestCase):
         old=d.policy_fingerprint()
         with patch.object(p,'policy_fingerprint',return_value='a'*64):
             self.assertNotEqual(d.policy_fingerprint(),old)
-        with patch.object(p,'_LOADED','changed'):
-            self.error('STALE_INPUT_GENERATION',d.policy_fingerprint)
         code='''import importlib.abc,sys
 class Block(importlib.abc.MetaPathFinder):
  def find_spec(self,name,*args):

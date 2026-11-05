@@ -362,7 +362,7 @@ class AnnualTransportTests(unittest.TestCase):
         with closing(sqlite3.connect(self.fixture.source)) as db:
             db.execute("UPDATE observation_metadata SET value='1' WHERE key='version'"); db.commit()
         with self.assertRaisesRegex(ValueError,'incompatible'):
-            research.prepared_observation_binding(self.fixture.source)
+            research.prepared_bindings(self.fixture.source)
         with self.assertRaisesRegex(ValueError,'incompatible'):
             daily.fingerprint(self.fixture.source)
 
@@ -372,8 +372,12 @@ class AnnualTransportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             file = Path(folder)/'parameters.py'
             file.write_bytes(Path(parameters.__file__).read_bytes()+b'\n# private semantic change\n')
+            # The binding is hashed once per process; a new process sees the edit.
+            self.addCleanup(source._policy_binding.cache_clear)
             with patch.object(parameters,'__file__',str(file)):
+                source._policy_binding.cache_clear()
                 self.assertNotEqual(source.policy_binding()['parameters.py'],policy['parameters.py'])
+            source._policy_binding.cache_clear()
         # Signature must include the actual semantic source as an independent
         # dependency, even when financial resolver source remains unchanged.
         actual_signature = self.fixture.real_signature

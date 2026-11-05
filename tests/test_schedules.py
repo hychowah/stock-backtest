@@ -32,9 +32,8 @@ class CalendarTests(unittest.TestCase):
     def test_daily_binding_and_connect_use_explicit_research_source(self):
         with tempfile.TemporaryDirectory() as folder:
             source=Path(folder)/'custom-research.sqlite';path=Path(folder)/'daily.sqlite'
-            with patch.object(research,'signature',return_value={'fixture':1}),patch.object(research,'prepared_price_binding',
-                    side_effect=lambda selected:'custom' if selected==source else 'default'), \
-                    patch.object(research,'prepared_observation_binding',return_value={'fixture':1}):
+            with patch.object(research,'signature',return_value={'fixture':1}),patch.object(research,'prepared_bindings',
+                    side_effect=lambda selected:('custom' if selected==source else 'default',{'fixture':1})):
                 inputs=daily.fingerprint(source)
                 with closing(sqlite3.connect(path)) as db:
                     db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
@@ -45,7 +44,7 @@ class CalendarTests(unittest.TestCase):
     def test_daily_fingerprint_tracks_portfolio_reducer(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'portfolio_results.py';path.write_text('# first')
-            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(research,'prepared_observation_binding',return_value={'fixture':1}),patch.object(portfolio_results,'__file__',str(path)):
+            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_bindings',return_value=('fixture',{'fixture':1})),patch.object(portfolio_results,'__file__',str(path)):
                 before=daily.fingerprint()
                 path.write_text('# changed portfolio source')
                 after=daily.fingerprint()
@@ -54,7 +53,7 @@ class CalendarTests(unittest.TestCase):
     def test_daily_fingerprint_tracks_calendar_source(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
-            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_price_binding',return_value='fixture'),patch.object(research,'prepared_observation_binding',return_value={'fixture':1}),patch.object(schedule_calendar,'__file__',str(path)):
+            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_bindings',return_value=('fixture',{'fixture':1})),patch.object(schedule_calendar,'__file__',str(path)):
                 before=daily.fingerprint()
                 path.write_text('# changed calendar source')
                 after=daily.fingerprint()
@@ -543,7 +542,7 @@ class RefreshTests(unittest.TestCase):
         refreshed,current=[record for record in diagnostics.records(folder) if record['event']=='prepare.daily']
         counts=refreshed['counts']
         self.assertEqual((refreshed['outcome'],refreshed['symbols'],counts['prices_copied'],counts['prices_parsed']),('refreshed',3,1,2))
-        self.assertIn('observation_identity_scans',counts)  # The copied observations are verified.
+        self.assertNotIn('observation_identity_scans',counts)  # Copied rows keep their recorded identity.
         self.assertEqual((refreshed['books_previous'],refreshed['books_kept'],refreshed['changed_from']),(6,6,'2015-08-03'))
         self.assertLessEqual({'admission','research','input_check','copy_research','prices','market','keep_books','publication'},refreshed['stages'].keys())
         self.assertEqual(current['outcome'],'current')

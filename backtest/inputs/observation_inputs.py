@@ -6,6 +6,7 @@ Root admission delegates to the existing financial policy. Formula and temporal
 observation semantics belong to the provider, not to this storage boundary.
 """
 from datetime import date
+import functools
 import hashlib
 import json
 import math
@@ -53,6 +54,12 @@ def _prepared_record(row):
 
 def policy_binding():
     """Bind the preparation and financial source that establishes these facts."""
+    return dict(_policy_binding())
+
+
+@functools.cache
+def _policy_binding():
+    # Hashed once per process: deployment restarts the server on source change.
     paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__),
              Path(rules.__file__), Path(measure_observations.__file__), Path(__file__).with_name('research.py'),
              Path(__file__).with_name('daily.py'), Path(parameters.__file__), Path(dated_observation_inputs.__file__))
@@ -225,8 +232,13 @@ def require(db, *, expected=None, verify_content=False, checkpoint=lambda: None)
 
 
 def copy(source, destination, checkpoint=lambda: None, *, max_record_bytes=None):
-    """Copy facts unchanged inside the caller's existing publication transaction."""
-    metadata = require(source, verify_content=True, checkpoint=checkpoint)
+    """Copy facts unchanged inside the caller's existing publication transaction.
+
+    The source's recorded metadata, including its content identity, travels with
+    the rows. SQLite copies them inside one transaction under cache ownership,
+    so neither side is rescanned.
+    """
+    metadata = require(source)
     for table, groups in (('observation_annual', 'symbol,endpoint'), ('observation_dated', 'symbol,endpoint')):
         for row in source.execute('SELECT count(*) FROM '+table+' GROUP BY '+groups):
             checkpoint()
@@ -240,7 +252,7 @@ def copy(source, destination, checkpoint=lambda: None, *, max_record_bytes=None)
             if max_record_bytes is not None and record_bytes(row) > max_record_bytes:
                 raise ValueError('Prepared observation record exceeds its byte bound.')
             destination.execute('INSERT INTO ' + table + ' VALUES(' + ','.join('?' * len(row)) + ')', tuple(row))
-    require(destination, expected=metadata, verify_content=True, checkpoint=checkpoint)
+    require(destination, expected=metadata)
     return metadata
 
 

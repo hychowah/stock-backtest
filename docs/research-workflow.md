@@ -813,8 +813,10 @@ queries. Their facts are detached. Individual records and endpoint histories
 keep the existing ceilings. Provider preflight charges source, calendar and
 row reads. Retained evidence counts against its byte limit. Company and dated
 reads check view lifetime; they do not rescan the whole generation. Operation
-entry and normal exit keep the complete freshness check; between them, Original
-checks one research-file status at each view boundary.
+entry checks the daily fingerprint once: raw file metadata and the recorded
+research metadata, not the prepared rows. Between steps, Original checks one
+research-file status at each view boundary. The exclusive cache lock keeps the
+prepared rows unchanged for the whole operation.
 
 The direct provider and callable reference evaluator support all 52 direct inputs
 plus operating margin, existing dated EV and Phase 10 reusable measure adapters.

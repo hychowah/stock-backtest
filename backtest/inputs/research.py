@@ -320,8 +320,23 @@ def prepared_price_binding(path=DATABASE):
     daily-cache checks bind to that validated prerequisite without rescanning it.
     """
     with closing(connect(path)) as db:
-        row=db.execute("SELECT value FROM metadata WHERE key='prices'").fetchone()
-        inventory=json.loads(row[0]) if row else None
+        return _price_binding(db)
+
+
+def prepared_bindings(path=DATABASE):
+    """Return the price and observation bindings from one connection.
+
+    The caller compares signature() itself, so this connection skips it. The
+    observation binding is the metadata, including the content identity that
+    preparation recorded; the app is the only writer and holds the cache lock.
+    """
+    with closing(connect(path, check=False)) as db:
+        return _price_binding(db), observation_inputs.require(db)
+
+
+def _price_binding(db):
+    row=db.execute("SELECT value FROM metadata WHERE key='prices'").fetchone()
+    inventory=json.loads(row[0]) if row else None
     if (not isinstance(inventory,dict) or any(
             not isinstance(name,str) or Path(name).name!=name or not name.endswith('.json')
             or not isinstance(stamp,list) or len(stamp)!=2
@@ -329,12 +344,6 @@ def prepared_price_binding(path=DATABASE):
             for name,stamp in inventory.items())):
         raise ValueError('Prepared price inventory is invalid. Run research.py prepare')
     return hashlib.sha256(json.dumps(inventory,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
-
-
-def prepared_observation_binding(path=DATABASE):
-    """Bind downstream storage to the accepted observation projection."""
-    with closing(connect(path)) as db:
-        return observation_inputs.require(db,verify_content=True)
 
 
 def connect(path=DATABASE, check=True, full_prices=False):

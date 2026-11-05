@@ -150,16 +150,19 @@ class ProjectionTests(unittest.TestCase):
                 (research.ROOT/name).write_bytes((source_folder/name).read_bytes())
             context.enter_context(patch.object(research, 'signature', side_effect=self.real_signature))
             self.prepare()
-            previous = research.prepared_observation_binding(self.source)
+            previous = research.prepared_bindings(self.source)[1]
             signature = research.signature()
             policy = research.ROOT/'daily.py'
             policy.write_bytes(policy.read_bytes() + b'\n# Changed private daily policy fixture.\n')
+            # The binding is hashed once per process; deployment restarts it.
+            self.addCleanup(observed._policy_binding.cache_clear)
+            observed._policy_binding.cache_clear()
             self.assertNotEqual(research.signature(), signature)
             with closing(sqlite3.connect(self.source)) as db:
                 with self.assertRaisesRegex(ValueError, 'stale'): observed.require(db)
             # Ordinary preparation must repair the rejected policy without force.
             research.prepare(self.source)
-            current = research.prepared_observation_binding(self.source)
+            current = research.prepared_bindings(self.source)[1]
             self.assertNotEqual(current['policy']['daily.py'], previous['policy']['daily.py'])
             self.prepare()
             with closing(daily.connect(self.path, self.source)) as db:

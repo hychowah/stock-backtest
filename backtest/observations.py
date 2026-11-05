@@ -253,18 +253,8 @@ def plan(requests, contexts, limits=None):
 
 
 def policy_fingerprint():
-    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if current != _LOADED_POLICY:
-        _fail('STALE_INPUT_GENERATION', '/', 'Loaded observation policy no longer matches its source.')
-    try:
-        semantic = parameters.policy_fingerprint()
-    except ValueError:
-        _fail('STALE_INPUT_GENERATION', '/', 'Loaded parameter semantics no longer match their source.')
-    try:
-        bridge = measure_observations.policy_fingerprint()
-    except ValueError:
-        _fail('STALE_INPUT_GENERATION', '/', 'Loaded measure observation policy no longer matches its source.')
-    return hashlib.sha256(encoded(dict(observations=current, parameters=semantic, bridge=bridge)).encode()).hexdigest()
+    return hashlib.sha256(encoded(dict(observations=_LOADED_POLICY, parameters=parameters.policy_fingerprint(),
+                                       bridge=measure_observations.policy_fingerprint())).encode()).hexdigest()
 
 
 def _report(row):

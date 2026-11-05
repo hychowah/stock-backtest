@@ -163,10 +163,6 @@ class AdmissionTests(unittest.TestCase):
         with patch.object(parameters,'policy_fingerprint',return_value='b'*64):
             self.assertNotEqual(d.policy_fingerprint(),first)
             self.assertNotEqual(observations.policy_fingerprint(),provider)
-        with patch.object(parameters,'_LOADED','changed'):
-            for call,error in ((d.policy_fingerprint,d.FormulaError),(observations.policy_fingerprint,observations.ObservationError)):
-                with self.assertRaises(error) as caught:call()
-                self.assertEqual(caught.exception.code,'STALE_INPUT_GENERATION')
         self.assertIsInstance(d.policy_fingerprint(),str)
         self.assertIsInstance(observations.policy_fingerprint(),str)
 

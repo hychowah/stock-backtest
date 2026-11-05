@@ -27,14 +27,14 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
     so the provider retains its original legacy-buffer admission policy.
     """
     freshness()
-    for table in ('observation_annual','observation_sources','observation_latest','observation_dated','observation_sessions','observation_measure_contexts'):
-        largest=db.execute('SELECT coalesce(max(length(CAST(evidence_json AS BLOB))),0) FROM '+table).fetchone()[0]
-        if largest>MAX_RECORD_BYTES:raise ValueError('Prepared observation record exceeds its byte bound.')
-    expected = observation_inputs.require(db, verify_content=True, checkpoint=checkpoint)
+    # Preparation bounds every record when it writes it; the caller's cache
+    # ownership keeps the rows unchanged, so the view reads metadata only.
+    expected = observation_inputs.require(db)
     row = db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()
     if row is None:
         raise ValueError('Admitted daily input identity is missing.')
-    binding = json.loads(row[0])
+    admitted = row[0]
+    binding = json.loads(admitted)
     identity = 'sqlite:' + hashlib.sha256(observation_inputs.encoded(dict(inputs=binding,adapter=_LOADED)).encode()).hexdigest()
     cached = daily.cached_symbols(db)
     class Population(Mapping):
@@ -69,10 +69,8 @@ def prepared_view(db, freshness, *, checkpoint=backtest_control.checkpoint):
         max_financial=maximum('financial_inputs'))
     def validate():
         checkpoint(); freshness()
-        if hashlib.sha256(Path(__file__).read_bytes()).hexdigest()!=_LOADED:
-            raise ValueError('Loaded SQLite observation adapter changed.')
         current = db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()
-        if current is None or json.loads(current[0]) != binding:
+        if current is None or current[0] != admitted:
             raise ValueError('Admitted daily input identity changed.')
     return observation_inputs.ReadView(identity, db, validate, reports,
         lambda symbol, day, column, forward, slack: daily.price(db, symbol, day, column, forward, slack),

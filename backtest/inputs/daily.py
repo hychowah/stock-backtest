@@ -48,10 +48,11 @@ def _engine_sources():
 
 def fingerprint(source=None):
     # Daily prices bind to the validated research price inventory. Changed
-    # prepared inputs refresh prices/books. Normal checks do not scan raw files.
+    # prepared inputs refresh prices/books. Raw files are checked by metadata
+    # once; prepared rows are identified by their recorded metadata, not rescanned.
+    prices,observations=r.prepared_bindings(source or r.DATABASE)
     return dict(version=VERSION, observation_version=observation_inputs.VERSION,
-                inputs=r.signature(),prices=r.prepared_price_binding(source or r.DATABASE),
-                observations=r.prepared_observation_binding(source or r.DATABASE),
+                inputs=r.signature(),prices=prices,observations=observations,
                 engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
 
 def connect(path=DATABASE,source=None):

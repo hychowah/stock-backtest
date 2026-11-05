@@ -156,15 +156,8 @@ def _encode(value, maximum, checkpoint=lambda: None):
 
 def policy_fingerprint():
     """Bind loaded selection, scalar ordering and reference/provider policies."""
-    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if current != _LOADED_SELECTION:
-        _fail('STALE_INPUT_GENERATION', '', 'Loaded scalar selection no longer matches its source.')
-    try:
-        scalar = policy.policy_fingerprint()
-    except policy.SelectionError:
-        _fail('STALE_INPUT_GENERATION', '', 'Loaded scalar ordering no longer matches its source.')
     return dict(backend='reference-scalar-selection', version=VERSION,
-                selection=current, scalar=scalar, reference=reference.policy_fingerprint())
+                selection=_LOADED_SELECTION, scalar=policy.policy_fingerprint(), reference=reference.policy_fingerprint())
 
 
 def _limits(limits):

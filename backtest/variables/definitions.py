@@ -46,15 +46,8 @@ def canonical(value):
 
 
 def policy_fingerprint():
-    """Identify this loaded language implementation, rejecting later source edits."""
-    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    if current != _LOADED_POLICY:
-        _fail('STALE_INPUT_GENERATION', '', 'Loaded formula language no longer matches its source.')
-    try:
-        semantic = parameters.policy_fingerprint()
-    except ValueError:
-        _fail('STALE_INPUT_GENERATION', '', 'Loaded parameter semantics no longer match their source.')
-    return hashlib.sha256(canonical(dict(definitions=current, parameters=semantic)).encode()).hexdigest()
+    """Identify this loaded language implementation."""
+    return hashlib.sha256(canonical(dict(definitions=_LOADED_POLICY, parameters=parameters.policy_fingerprint())).encode()).hexdigest()
 
 
 def _hash(document):
