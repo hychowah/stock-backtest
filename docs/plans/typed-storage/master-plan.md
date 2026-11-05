@@ -57,9 +57,6 @@ Measured on the copied real cache (`~/bench/ebitda-real`, WSL):
 - A scope (one screen date) costs about 0.15 s. A profile of 20 real scopes
   attributes most of it to admission candidates per date, scope-row reads,
   column evaluation of company facts, selection and writing.
-- A daily append has not been measured on the real copy. The dated evidence
-  stores each price row's position in its raw file, so a download that adds
-  rows at the top rewrites every stored day of that company.
 
 ## User decisions
 
@@ -289,34 +286,27 @@ current, real-copy parity holds, then ask the user to merge.
 T0, bench updated to this branch (code identical to main a7b13ac), WSL, 5
 November 2026:
 
-- Bench update: research current (0.8 s); the daily cache rebuilt because
-  `daily.py` changed: 191.6 s (copy of research tables 91.8 s, prices 97.1 s).
 - User test (see Bench): 557.9 s with all 1,326 books computed (8 workers),
   211.2 s with every book saved; result 78.1 MB.
-- 20 quarterly scopes of the user strategy (2013–2018, books computed, under
-  cProfile): 33.9 s; computing the 20 books 16.6 s; `Executor.select` 10.2 s
-  (0.51 s per scope), of which column evaluation 2.6 s and reference
-  explanations 3.0 s.
+- 20 quarterly scopes (2013–2018, books computed, cProfile): 33.9 s, of
+  which books 16.6 s and `Executor.select` 10.2 s.
 
 T1, fixtures (private edge-case fixture of the parity harness):
 
 - Column evaluator over typed facts against the reference over JSON, default
   scopes: 860 pairs, 28,251 roots, 542,682 outputs, 0 mismatches.
 - Storage parity, every typed row against its JSON row: 94,810 compared, 0
-  mismatches (stock days 89,157, Treasury days 1,774, SPY sessions 1,764,
-  annual rows 1,416, sources 162, latest admission 80, prepared lanes 456).
+  mismatches.
 - Full sweep, every January, latest and dated scope: 2,752 pairs, 95,546
   roots, 1,835,372 outputs, 0 mismatches.
 
 T2, fixtures:
 
-- Detail traces (`columns.explain`) against reference traces for the same
-  chunks, normalized by `~/bench/harness/traces.py` (values, dates, reasons,
-  digests, lookups; not identifiers): 542,682 traces, 895,491 operations,
-  1,586,316 members, 0 mismatches.
-- Whole results against main a7b13ac (`results.py`, holdings, summaries and
-  every explained lane of the Executor path, including dated book admission):
-  16 runs equal, 1,031 traces equal.
+- Detail traces against reference traces of the same chunks, normalized by
+  `traces.py`: 542,682 traces, 895,491 operations, 1,586,316 members, 0
+  mismatches.
+- Whole results against main a7b13ac (`results.py`: holdings, summaries,
+  explained lanes): 16 runs equal, 1,031 traces equal.
 
 T0, one-session append on the bench (2026-10-22 added to the 3,985 price files
 whose newest row was 2026-10-21, plus SPY and Treasury; pre-T1 code):
@@ -326,21 +316,48 @@ whose newest row was 2026-10-21, plus SPY and Treasury; pre-T1 code):
   publication 51; the baseline was reused), daily 250 s (copy of research
   tables 40, prices 89 with 3,985 parsed and 3,246 copied, kept books 116 with
   1,343 of 1,346 kept, publication 3).
-- Sizes after it: research 17.0 GB (`observation_dated` 14.5 GB,
-  `observation_annual` 1.9 GB, measure contexts 0.38 GB), daily 27.3 GB
-  (`observation_dated` copy 14.3 GB, `filter_values` 4.1 GB plus its index
-  3.9 GB, `observation_annual` 1.8 GB, `prices` 1.0 GB). The 33.7 GB research
-  file of a cold build holds the same rows; the rest is free pages.
-- User test after the append: 206.7 s (3 books recomputed).
+- Sizes after it: research 17.0 GB (`observation_dated` 14.5 GB), daily
+  27.3 GB (`observation_dated` copy 14.3 GB, `filter_values` 4.1 GB plus its
+  index 3.9 GB). A cold build's 33.7 GB research file adds free pages.
+- User test afterwards: 206.7 s (3 books recomputed).
 
-T3, fixtures: fast tier 91 files pass; heavy tier passes. Ported tests:
-`tests/test_columns.py` (27 tests, replaces the provider and reference
-evaluator tests), `test_prepared_facts.py`, `test_annual_observations.py`,
-`test_dated_observations.py`, `test_measure_observations.py`,
-`test_reusable_measures.py`, `test_variable_coverage.py`,
-`test_variable_selection.py` and others; dropped only checks of deleted
-mechanics (plan documents, provider work and byte bounds, JSON evidence rows,
-receipts, row shifting).
+T3, fixtures: the fast tier (91 files) and the heavy tier pass;
+`tests/test_columns.py` replaces the provider and reference evaluator tests.
+Only checks of deleted mechanics were dropped.
+
+T1 and T2, real copy (bench at the T2 code 8253395, schema 12 with JSON and
+typed tables, WSL, 5–6 November 2026):
+
+- Cold research and daily build 1,788 s (research 1,122 s; daily copy of
+  research tables 576 s, prices 88 s); research.sqlite 35.7 GB.
+- User test 528 s with all 1,326 books computed, 199 s with every book saved
+  (main: 558 s and 211 s); the printed result summary equals main's.
+- Storage parity (`storage.py`): 25,019,399 typed rows against their JSON rows,
+  0 mismatches (stock days 24,489,611, Treasury days 7,955, SPY sessions
+  8,004, annual rows 380,833, sources 28,926, latest admission 22,108,
+  prepared lanes 81,961).
+- Values and traces (`real.py --scopes 20 --formulas --formula-roots 64
+  --detail`): 880 pairs, 120,216 roots, 1,122,456 outputs, 0 mismatches, 0
+  errors; 1,122,456 traces, 2,005,344 operations, 3,603,214 members, 0
+  mismatches. Reference 868.8 s, column evaluator 133.0 s.
+- 20 quarterly scopes 2013–2018 under cProfile: 24.3 s (T0: 33.9 s).
+
+T3, real copy (bench at bf245df, research schema 13, daily cache 6; typed
+facts only):
+
+- Cold build 490 s: research 396 s (inputs 3, companies 172, dated facts 192,
+  metrics 2, commit 1, independent verification 21, publication 6), daily
+  93 s (copy of research tables 1, prices 90, publication 1).
+- research.sqlite 2.24 GB (`stock_days` 1.86 GB, `annual_facts` 0.13 GB);
+  schedules.sqlite 1.10 GB before books, 10.8 GB with 1,346 dated books
+  (`filter_values` 4.1 GB plus its index 3.9 GB, `prices` 1.0 GB). Bench copy
+  17 GB in total (about 61 GB before).
+- User test 508.5 s with all books computed, 183.0 s with every book saved.
+- Whole results against T2 (`~/bench/out/result_digest.py`: the recorded
+  random test, quarterly fixed dates 2013–2018, January 1996–2026 and latest;
+  holdings rows, summaries without timings and every explained lane
+  normalized by `traces.py`): all four equal, digests and full files
+  (40,320 + 600 + 917 + 30 rows; 201,600 + 3,000 + 4,585 + 150 lanes).
 
 ## Bench and tools
 
@@ -363,8 +380,6 @@ receipts, row shifting).
   copy, `results.py` whole results, `storage.py` typed against JSON rows,
   `storage_fixture.py` the same on the fixture). Point it at a checkout with `WT=`; use
   `TMPDIR=~/.cache/ebitda-ev-spread-tests/p0` and empty it afterwards.
-- Fixture comparisons against `main`: `~/bench/scripts/bench_shape.py` and
-  `parity.py` (run each with `REPO=<checkout>`).
 - Only one operation holds the bench's cache lock at a time; a second run
   waits.
 
@@ -380,16 +395,4 @@ receipts, row shifting).
 
 ## Next
 
-Session scope (coordinator, latest): T0 and T1, then stop for an independent
-review of T1. T2 (detail-mode explanations, commits 0d53e7c and 8253395) and
-T3 (JSON tables, provider and reference evaluator removed, commit 8de87fb)
-were already committed on this branch under an earlier scope note, before
-that change; the coordinator decides whether they stay or are redone after
-the review. No baseline file was changed in any commit.
-
-Still running for the T1 exit on the bench (T2 commit exported, schema 12,
-both JSON and typed tables): the user test twice, then `real.py --scopes 20
---formulas --formula-roots 64 --detail` and `storage.py` on the real copy,
-then the 20-scope profile. Record those numbers under Measurements.
-Next slice after the review: the single-source baseline (see User decisions),
-by a separate agent.
+Plan reshape after independent design review (orchestrator).
