@@ -108,7 +108,13 @@ Made (keep them):
   6. Update AGENTS.md's research-database paragraph and the architecture guide
      in the T4 commit.
 
-No decision is pending.
+No decision is pending. The single-source baseline (decision "D2 replaced")
+is the next slice after T1, done by a separate agent in this worktree after an
+independent review of T1. That slice owns `backtest/inputs/baseline.py`, the
+Baseline call sites in `research.py` (recover, through and the historical
+cutoff, publish, check_ready in connect and in the prior-database check),
+`tools/ops/deploy.py`, `tools/ops/offline_input_copy.py`,
+`tests/test_baseline.py` and the AGENTS.md research-database paragraph.
 
 ## Constraints
 
@@ -374,9 +380,16 @@ receipts, row shifting).
 
 ## Next
 
-Scope of this session: T0 to T4, each phase committed with its evidence; stop
-after T4 passes its exit. T0–T3 code is committed. The bench runs the T2
-commit (full research rebuild, user test twice), then `real.py --scopes 20
---formulas --detail` and `storage.py` (T1 and T2 real-copy exits); record the
-results here. Then update the bench to T3 and measure sizes, the cold build
-and the user test, and compare whole results with T2. Then T4.
+Session scope (coordinator, latest): T0 and T1, then stop for an independent
+review of T1. T2 (detail-mode explanations, commits 0d53e7c and 8253395) and
+T3 (JSON tables, provider and reference evaluator removed, commit 8de87fb)
+were already committed on this branch under an earlier scope note, before
+that change; the coordinator decides whether they stay or are redone after
+the review. No baseline file was changed in any commit.
+
+Still running for the T1 exit on the bench (T2 commit exported, schema 12,
+both JSON and typed tables): the user test twice, then `real.py --scopes 20
+--formulas --formula-roots 64 --detail` and `storage.py` on the real copy,
+then the 20-scope profile. Record those numbers under Measurements.
+Next slice after the review: the single-source baseline (see User decisions),
+by a separate agent.
