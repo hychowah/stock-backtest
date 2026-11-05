@@ -299,6 +299,18 @@ T1, fixtures (private edge-case fixture of the parity harness):
 - Storage parity, every typed row against its JSON row: 94,810 compared, 0
   mismatches (stock days 89,157, Treasury days 1,774, SPY sessions 1,764,
   annual rows 1,416, sources 162, latest admission 80, prepared lanes 456).
+- Full sweep, every January, latest and dated scope: 2,752 pairs, 95,546
+  roots, 1,835,372 outputs, 0 mismatches.
+
+T2, fixtures:
+
+- Detail traces (`columns.explain`) against reference traces for the same
+  chunks, normalized by `~/bench/harness/traces.py` (values, dates, reasons,
+  digests, lookups; not identifiers): 542,682 traces, 895,491 operations,
+  1,586,316 members, 0 mismatches.
+- Whole results against main a7b13ac (`results.py`, holdings, summaries and
+  every explained lane of the Executor path, including dated book admission):
+  16 runs equal, 1,031 traces equal.
 
 ## Bench and tools
 
@@ -339,10 +351,9 @@ T1, fixtures (private edge-case fixture of the parity harness):
 ## Next
 
 Scope of this session: T0 to T4, each phase committed with its evidence; stop
-after T4 passes its exit. T0 is running on the bench (bench updated to this
-branch, user test, then the one-session append). T1 code is committed (typed
-facts in `backtest/inputs/facts.py`, written beside the JSON tables, read by
-`columns.py`); fixture parity holds. Remaining T1 exit: update the bench to the
-T1 commit (full research rebuild), measure table sizes and the user test, run
-`real.py --scopes 20 --formulas` and `storage.py` on the copy. T2 (detail mode
-in `columns.py`) is drafted outside the commit.
+after T4 passes its exit. T1 and T2 code is committed; fixture parity holds for
+both. T0's one-session append is running on the bench (pre-T1 code). Then:
+restore the raw files, update the bench to the T2 commit (full research
+rebuild), measure table sizes and the user test, and run `real.py --scopes 20
+--formulas --detail` and `storage.py` on the copy (T1 and T2 real-copy exits).
+T3 is drafted in the worktree's ignored scratch folder.
