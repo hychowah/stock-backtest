@@ -5,11 +5,13 @@ credentials, provider URLs, response bodies, formulas or run identifiers, which
 are capabilities. Error chains retain types, OS codes and stack locations.
 Each server process owns its rotating files, including when ports run together.
 operation() records the duration, outcome, stages and counts of one operation.
+An operation that runs longer than PROGRESS_SECONDS also reports progress.
 """
 
 from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib
+import itertools
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -17,6 +19,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from threading import Event, Lock, Thread
 import time
 import uuid
 
@@ -34,8 +37,11 @@ LOGGER=logging.getLogger('backtest')
 LOGGER.setLevel(logging.INFO)
 LOGGER.propagate=False
 LOGGER.addHandler(logging.NullHandler())
+PROGRESS_SECONDS=60
+REPEAT_SECONDS=300
 _handler=None
 _operation=ContextVar('diagnostics_operation',default=None)
+_open={};_open_lock=Lock();_wake=Event();_watcher=None;_numbers=itertools.count(1)
 
 
 def _process_namespace():
@@ -138,6 +144,7 @@ def configure(directory=None):
     formatter.converter=time.gmtime
     handler.setFormatter(formatter)
     LOGGER.addHandler(handler);_handler=handler
+    _start_watcher()
     return Path(handler.baseFilename)
 
 
@@ -160,14 +167,18 @@ def operation(name):
     """Write one event when the operation ends, also as a function decorator.
 
     The event has the outcome, wall seconds, this thread's CPU seconds, stage
-    seconds and counts. An exception records only its type. The body can note
+    seconds and counts. op numbers the operation within this process, so
+    readers can match its progress lines. An exception records only its type. The body can note
     its own outcome. stage(), lap(), note() and count() add to the innermost
     open operation of the calling thread; outside one they do nothing. Stages
     are measured regions. They can overlap and need not add up to seconds.
     """
-    state=dict(fields={},stages={},counts={},started=time.perf_counter(),cpu=time.thread_time())
+    state=dict(name=name,op=next(_numbers),parent=_operation.get(),fields={},stages={},counts={},started=time.perf_counter(),
+               cpu=time.thread_time(),process=time.process_time(),last_step=None,stage=None,reported=None)
     state['lap']=state['started']
     token=_operation.set(state);outcome=None;error=None
+    with _open_lock:_open[id(state)]=state
+    _wake.set()
     try:yield
     except backtest_control.Cancelled:
         outcome='cancelled';raise
@@ -177,8 +188,14 @@ def operation(name):
         outcome='interrupted';raise
     finally:
         _operation.reset(token)
+        with _open_lock:del _open[id(state)]
+        parent=state['parent']
+        if parent is not None:
+            parent['inner_ended']=True
+            # A reported inner operation hands its progress trail to the outer one.
+            if state['reported'] is not None:parent['reported']=None
         fields=state['fields'];noted=fields.pop('outcome','completed')
-        record=dict(event=name,pid=os.getpid(),outcome=outcome or noted)
+        record=dict(event=name,pid=os.getpid(),op=state['op'],outcome=outcome or noted)
         if error:record['error']=error
         record.update(fields)
         record.update(seconds=round(time.perf_counter()-state['started'],3),
@@ -186,6 +203,7 @@ def operation(name):
             stages={key:round(value,3) for key,value in state['stages'].items()},counts=state['counts'])
         try:LOGGER.log(logging.WARNING if record['outcome']=='failed' else logging.INFO,json.dumps(record,ensure_ascii=True))
         except (TypeError,ValueError):warning('diagnostics.unserializable',operation=name)
+        _wake.set()
 
 
 @contextmanager
@@ -194,17 +212,25 @@ def stage(name):
     state=_operation.get()
     if state is None:
         yield;return
-    started=time.perf_counter()
+    started=time.perf_counter();outer=state['stage'];state['stage']=name
     try:yield
-    finally:state['stages'][name]=state['stages'].get(name,0.)+time.perf_counter()-started
+    finally:
+        state['stage']=outer
+        state['stages'][name]=state['stages'].get(name,0.)+time.perf_counter()-started
 
 
 def lap(name):
-    """Add the seconds since the operation start or previous lap to a stage."""
+    """Add the seconds since the operation start or previous lap to a stage.
+
+    A step of PROGRESS_SECONDS or more is also logged when it ends, unless an
+    inner operation ended in it: that operation's end line already shows it.
+    """
     state=_operation.get()
     if state is None:return
-    now=time.perf_counter()
-    state['stages'][name]=state['stages'].get(name,0.)+now-state['lap'];state['lap']=now
+    now=time.perf_counter();seconds=now-state['lap'];repeated=state.pop('inner_ended',False)
+    state['stages'][name]=state['stages'].get(name,0.)+seconds;state['lap']=now;state['last_step']=name
+    if seconds>=PROGRESS_SECONDS and not repeated:
+        event(state['name'],op=state['op'],state='step',step=name,step_seconds=round(seconds,1),seconds=round(now-state['started'],1))
 
 
 def note(**fields):
@@ -216,6 +242,50 @@ def note(**fields):
 def count(name,amount=1):
     state=_operation.get()
     if state is not None:state['counts'][name]=state['counts'].get(name,0)+amount
+
+
+def _start_watcher():
+    global _watcher
+    if _watcher is None:
+        _watcher=Thread(target=_watch,name='diagnostics-progress',daemon=True);_watcher.start()
+
+
+def _watch():
+    """Report open operations after PROGRESS_SECONDS, then every REPEAT_SECONDS.
+
+    A report also counts for the operations around the reporter, which it
+    names. An operation with an open inner operation waits PROGRESS_SECONDS
+    more, so a long inner operation reports for it; one made of short inner
+    operations then reports for itself. Operations wake the thread when they
+    start and end; it sleeps while no operation is open.
+    """
+    while True:
+        _wake.clear();now=time.perf_counter();wait=None
+        with _open_lock:states=list(_open.values())
+        outer={id(state['parent']) for state in states if state['parent'] is not None}
+        for state in states:
+            due=state['started']+PROGRESS_SECONDS if state['reported'] is None else state['reported']+REPEAT_SECONDS
+            if id(state) in outer:due+=PROGRESS_SECONDS
+            if due<=now:
+                # An ending operation leaves _open under this lock before its end line.
+                with _open_lock:
+                    if _open.get(id(state)) is state:_progress(state,now)
+                due=now+REPEAT_SECONDS
+            wait=due-now if wait is None else min(wait,due-now)
+        _wake.wait(wait)
+
+
+def _progress(state,now):
+    within=[];parent=state['parent']
+    while parent is not None:within.insert(0,parent['name']);parent['reported']=now;parent=parent['parent']
+    state['reported']=now
+    record=dict(op=state['op'],state='running',seconds=round(now-state['started'],1),
+                process_cpu_seconds=round(time.process_time()-state['process'],1))
+    if within:record['within']=within
+    if state['last_step']:record.update(last_step=state['last_step'],since_step_seconds=round(now-state['lap'],1))
+    if state['stage']:record['stage']=state['stage']
+    record['counts']=dict(state['counts'])
+    event(state['name'],**record)
 
 
 def warning(name,**context):

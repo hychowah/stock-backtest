@@ -1,8 +1,9 @@
-"""Summarize operation times, slow requests and failures in the development logs.
+"""Summarize unfinished operations, operation times, slow requests and failures in the development logs.
 
 Run from the project folder: python3 -m tools.ops.log_summary [--days N] [folder]
 The default folder is data/logs. Reading never changes or removes a log.
 Stage shares can overlap, so one operation's shares need not add up to 100%.
+An unfinished operation is still running, or its process stopped first.
 """
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -45,17 +46,45 @@ def stages(records, top):
     return ', '.join(f'{name} {seconds/total:.0%}' for name,seconds in ranked)
 
 
+def unfinished(events):
+    """The latest progress line of each operation that has no end line.
+
+    A process, its server start and the operation number identify an
+    operation: a later server can reuse a process ID and its log file.
+    """
+    latest={};starts={}
+    for record in events:
+        pid=record.get('pid')
+        if record['event']=='server.starting':
+            starts[pid]=starts.get(pid,0)+1;continue
+        key=(pid,starts.get(pid,0),record.get('op'))
+        if record.get('state') in ('running','step'):latest[key]=record
+        elif 'outcome' in record:latest.pop(key,None)
+    lines=[]
+    for (pid,_,_),record in sorted(latest.items(),key=lambda item:item[1]['time']):
+        parts=[f'{record["time"]}  {record["event"]}  pid {pid}  {duration(record["seconds"])} in']
+        if record.get('state')=='step':parts.append(f'step {record["step"]} ended after {duration(record["step_seconds"])}')
+        elif record.get('last_step'):parts.append(f'after step {record["last_step"]} ({duration(record["since_step_seconds"])} ago)')
+        if record.get('stage'):parts.append(f'in {record["stage"]}')
+        if record.get('within'):parts.append('within '+' > '.join(record['within']))
+        lines.append('  '.join(parts))
+    return lines
+
+
 def summarize(events, recent=8):
     lines=[]
+    running=unfinished(events)
+    if running:lines+=['Unfinished operations, latest progress line']+running+['']
     operations={}
     for record in events:
         if isinstance(record.get('seconds'),(int,float)) and 'outcome' in record:
             operations.setdefault(population(record),[]).append(record)
-    lines.append(f'{"Operation and outcome":<46}{"runs":>5}{"median":>9}{"p90":>9}{"max":>9}  main stages')
+    if not operations:lines.append('No timed operation has finished yet.')
+    else:lines.append(f'{"Operation and outcome":<46}{"runs":>5}{"median":>9}{"p90":>9}{"max":>9}  main stages')
     for name,records in sorted(operations.items()):
         seconds=[record['seconds'] for record in records]
         lines.append(f'{name:<46}{len(records):>5}{duration(statistics.median(seconds)):>9}{duration(percentile(seconds,.9)):>9}{duration(max(seconds)):>9}  {stages(records,3)}')
-    runs=sorted((record for record in events if record['event']=='backtest.run'),key=lambda record:record['time'])[-recent:]
+    runs=sorted((record for record in events if record['event']=='backtest.run' and 'outcome' in record),key=lambda record:record['time'])[-recent:]
     if runs:
         lines+=['',f'Latest {len(runs)} backtest runs']
         for record in reversed(runs):

@@ -185,6 +185,43 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(self.events('diagnostics.unserializable')[0]['operation'],'odd.example')
         self.assertNotIn('PRIVATE-OPERATION-CANARY',self.path.read_text())
 
+    def progress(self):
+        return [record for record in d.records(self.folder.name) if 'state' in record]
+
+    def test_long_operation_reports_progress_and_hands_over_to_its_outer_operation(self):
+        with patch.object(d,'PROGRESS_SECONDS',.3),patch.object(d,'REPEAT_SECONDS',.3):
+            with d.operation('quick.example'):pass
+            with d.operation('startup.example'):
+                with d.operation('prepare.example'):
+                    d.count('prices_parsed',3);d.lap('inputs')
+                    with d.stage('observation_identity'):time.sleep(1)
+                    d.lap('scan')
+                d.lap('prepare')  # The inner end line already covers this step.
+                time.sleep(.1)
+        *running,step,handover=self.progress()
+        # Only the innermost operation reports, naming the operations around it, then repeats.
+        self.assertGreaterEqual(len(running),2)
+        for line in running:
+            self.assertEqual({key:line[key] for key in ('event','state','within','last_step','stage','counts')},
+                             dict(event='prepare.example',state='running',within=['startup.example'],last_step='inputs',
+                                  stage='observation_identity',counts=dict(prices_parsed=3)))
+            self.assertIn('process_cpu_seconds',line)
+        self.assertEqual((step['event'],step['state'],step['step']),('prepare.example','step','scan'))
+        self.assertGreaterEqual(step['step_seconds'],.3)
+        self.assertEqual((handover['event'],handover['state'],handover['last_step']),('startup.example','running','prepare'))
+        ends=[record for record in d.records(self.folder.name) if 'outcome' in record]
+        self.assertEqual([record['event'] for record in ends],['quick.example','prepare.example','startup.example'])
+        self.assertEqual(handover['op'],ends[2]['op'])
+        self.assertEqual({line['op'] for line in running+[step]},{ends[1]['op']})
+
+    def test_outer_operation_of_short_inner_operations_reports_progress(self):
+        with patch.object(d,'PROGRESS_SECONDS',.3),patch.object(d,'REPEAT_SECONDS',60):
+            with d.operation('queue.example'):
+                for _ in range(40):
+                    with d.operation('backtest.example'):time.sleep(.03)
+        line,=self.progress()
+        self.assertEqual((line['event'],line['state']),('queue.example','running'))
+
     def test_slow_request_logs_route_and_status_without_identifiers_or_query(self):
         self.assertEqual(serve.route('/api/backtest-runs/'+'a'*32+'/evidence?token=PRIVATE'),'/api/backtest-runs/{id}/evidence')
         self.assertEqual(serve.route('/api/backtest-queue/1234'),'/api/backtest-queue/{id}')
@@ -204,7 +241,17 @@ class DiagnosticsTests(unittest.TestCase):
 
     def test_summary_groups_operations_with_stage_shares_slow_requests_and_failures(self):
         run=dict(event='backtest.run',pid=1,mode='random',strategy=False,pool='legacy',trials=24,periods=480,counts={})
-        lines=['2026-11-05T10:00:00Z INFO '+json.dumps(dict(run,outcome='completed',seconds=10.,stages=dict(observation_identity=4.,selection=3.))),
+        lines=['2026-11-05T09:59:00Z INFO '+json.dumps(dict(event='backtest.run',pid=1,op=1,state='running',seconds=60.,counts={})),
+               '2026-11-05T10:00:00Z INFO '+json.dumps(dict(run,op=1,outcome='completed',seconds=10.,stages=dict(observation_identity=4.,selection=3.))),
+               '2026-11-05T10:08:00Z INFO '+json.dumps(dict(event='prepare.research',pid=2,op=3,state='running',seconds=3600.,last_step='commit',
+                   since_step_seconds=420.,stage='observation_identity',within=['startup.prepare','prepare.daily'],counts={})),
+               # Two runs share a name: the end line of op 5 leaves op 4 unfinished.
+               '2026-11-05T10:09:00Z INFO '+json.dumps(dict(event='backtest.run',pid=3,op=4,state='step',step='companies',step_seconds=120.,seconds=600.)),
+               '2026-11-05T10:09:30Z INFO '+json.dumps(dict(event='backtest.run',pid=3,op=5,mode='latest',outcome='completed',seconds=1.,stages={},counts={})),
+               # A later server reuses pid 4: its operation 1 does not end the earlier one.
+               '2026-11-05T10:10:00Z INFO '+json.dumps(dict(event='data.job',pid=4,op=1,state='running',seconds=60.,counts={})),
+               '2026-11-05T10:11:00Z INFO '+json.dumps(dict(event='server.starting',pid=4)),
+               '2026-11-05T10:12:00Z INFO '+json.dumps(dict(event='data.job',pid=4,op=1,outcome='completed',seconds=5.,stages={},counts={})),
                '2026-11-05T10:05:00Z WARNING '+json.dumps(dict(run,outcome='failed',error='OSError',seconds=2.,stages=dict(selection=1.))),
                '2026-11-05T10:06:00Z INFO '+json.dumps(dict(event='http.slow',pid=1,method='GET',route='/api/backtests/{id}',status=200,seconds=1.5)),
                '2026-11-05T10:07:00Z ERROR '+json.dumps(dict(event='queue.test_failed',pid=1,errors=[dict(type='OSError',frames=[])])),
@@ -216,6 +263,15 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertIn('periods=480 trials=24',text)
         self.assertRegex(text,r'GET /api/backtests/\{id\} +1 +median 1\.50s')
         self.assertRegex(text,r'queue\.test_failed +OSError +1 +last 2026-11-05T10:07:00Z')
+        # A running line with a later end line is finished; one without is listed.
+        self.assertIn('2026-11-05T10:08:00Z  prepare.research  pid 2  3600.0s in  after step commit (420.0s ago)  in observation_identity'
+                      '  within startup.prepare > prepare.daily',text)
+        self.assertIn('2026-11-05T10:09:00Z  backtest.run  pid 3  600.0s in  step companies ended after 120.0s',text)
+        self.assertIn('2026-11-05T10:10:00Z  data.job  pid 4  60.0s in',text)
+        self.assertNotIn('backtest.run  pid 1',text)
+        only=dict(event='prepare.daily',pid=5,op=1,state='running',seconds=90.,counts={},time='2026-11-05T11:00:00Z',level='INFO')
+        self.assertEqual(log_summary.summarize([only])[1:],['2026-11-05T11:00:00Z  prepare.daily  pid 5  90.0s in','',
+                                                            'No timed operation has finished yet.'])
 
     def test_native_namespace_is_stable(self):
         # Exercise the real OS implementation despite the retention fixture.

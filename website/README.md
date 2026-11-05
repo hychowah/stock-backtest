@@ -219,7 +219,7 @@ and frequency. Leaving it unchecked draws fresh dates, without needing a number.
 
 ## Development diagnostics
 
-Each server process saves `data/logs/website-<namespace>-<pid>.log`. Startup and the data panel show the current path. The logs record safe error traces and one timing event per long operation; `python3 -m tools.ops.log_summary [--days N]` summarizes the times. Startup removes old logs. The [development log](../docs/architecture-guide/dist/index.html#development-log) section of the architecture guide lists the events, the omitted fields and the cleanup rules.
+Each server process saves `data/logs/website-<namespace>-<pid>.log`. Startup and the data panel show the current path. The logs record safe error traces, operation times and progress lines for operations longer than a minute; `python3 -m tools.ops.log_summary [--days N]` lists unfinished operations and summarizes the times. Startup removes old logs. The [development log](../docs/architecture-guide/dist/index.html#development-log) section of the architecture guide lists the events, the omitted fields and the cleanup rules.
 
 Windows file indexers can briefly lock cache files. Atomic JSON publication retries access or sharing errors up to eight times, with less than two seconds of total retry waits. Other file errors fail immediately. The existing cache owner remains held. Receipts still publish before their corresponding assets. Persistent failures keep the previous saved data and record the error location in the log.
 
