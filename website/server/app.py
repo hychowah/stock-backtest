@@ -96,6 +96,11 @@ class Handler(SimpleHTTPRequestHandler):
         if isinstance(code,int):self.response_status=int(code)
         super().log_request(code,size)
 
+    def log_message(self,format,*args):
+        # The stamped terminal already starts the line with the time.
+        message=format%args;table=getattr(self,'_control_char_table',None)
+        sys.stderr.write(f'{self.address_string()} {message.translate(table) if table else message}\n')
+
     def reply(self,status,payload):
         body=json.dumps(payload,allow_nan=False).encode()
         self.json_reply(status,body)
@@ -189,6 +194,7 @@ def main(*,arguments=None):
     parser.add_argument('--managed',action='store_true',help='Replace this project’s previous server and keep this terminal attached')
     args=parser.parse_args(arguments)
     started=time.perf_counter()
+    sys.stdout,sys.stderr=diagnostics.Stamped(sys.stdout),diagnostics.Stamped(sys.stderr)
     path=diagnostics.configure()
     print('Development log: '+diagnostics.relative_path(path) if path else 'Development log unavailable. Terminal logging remains active.',flush=True)
     diagnostics.event('server.starting',port=args.port,managed=args.managed)

@@ -412,6 +412,11 @@ def verify_installed(config):
     subprocess.run(['node', str(ROOT / 'tests/check-range.cjs'), local], check=True, cwd=ROOT)
 
 
+def say(message, *, error=False):
+    """Print one line that starts with the local time, like the server's terminal lines."""
+    print(time.strftime('%Y-%m-%d %H:%M:%S ') + message, file=sys.stderr if error else sys.stdout, flush=True)
+
+
 def follow_main(config, arguments, *, check=False):
     """Serve committed main and replace the child after each successful update.
 
@@ -427,7 +432,7 @@ def follow_main(config, arguments, *, check=False):
     if check:
         verify_installed(config)
     supervisor = uuid.uuid4().hex
-    print('Automatic updates on: watching committed main every 2 seconds. Ctrl+C stops this server.', flush=True)
+    say('Automatic updates on: watching committed main every 2 seconds. Ctrl+C stops this server.')
     child = spawn_server(config, arguments, supervisor)
     pending = None
     warned = None
@@ -443,13 +448,13 @@ def follow_main(config, arguments, *, check=False):
                 if child.poll() is not None:
                     return child.returncode
                 pending = latest
-                print('New main commit ' + pending[:12] + '; updating and restarting the website.', flush=True)
+                say('New main commit ' + pending[:12] + '; updating and restarting the website.')
             try:
                 install_latest(config, pending, before_publish=lambda: stop_child(config, child, supervisor))
             except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
                 notice = (pending, type(error).__name__)
                 if warned != notice:
-                    print('Website update could not finish (' + notice[1] + '). Retrying automatically; publication recovery is retained.', flush=True)
+                    say('Website update could not finish (' + notice[1] + '). Retrying automatically; publication recovery is retained.')
                     warned = notice
                 continue
             commit, pending, warned = pending, None, None
@@ -543,8 +548,8 @@ def deploy(config, revision=None, *, before_publish=None):
         raise
     else:
         shutil.rmtree(stage)
-    print('Deployed committed source ' + commit, flush=True)
-    print('Runtime: ' + config['runtime'], flush=True)
+    say('Deployed committed source ' + commit)
+    say('Runtime: ' + config['runtime'])
 
 
 def collect_report(config):
@@ -560,9 +565,9 @@ def collect_report(config):
         evidence = read_json(bundle / 'evidence.json')
         atomic_bytes(destination, content)
         write_json(ROOT / 'results/experiments' / ('runtime-baseline-' + evidence['report_sha256'][:12] + '.json'), evidence)
-        print('Collected the verified report and priced evidence for review and commit.')
+        say('Collected the verified report and priced evidence for review and commit.')
     else:
-        print('The reviewed source report already matches the runtime report.')
+        say('The reviewed source report already matches the runtime report.')
     shutil.rmtree(bundle)
 
 
@@ -610,9 +615,9 @@ def main():
             payload, manifest = unpack(stage)
             support(payload)
             publish(root, payload, manifest)
-            print('Verified native source publication: ' + manifest['commit'], flush=True)
+            say('Verified native source publication: ' + manifest['commit'])
             if (payload / REPORT).is_file() and not (root / REPORT).exists():
-                print('The runtime report is missing. Restore its verified database-bound report from revision evidence or backup before starting.', file=sys.stderr)
+                say('The runtime report is missing. Restore its verified database-bound report from revision evidence or backup before starting.', error=True)
         elif options.native_export:
             export_runtime_report(*options.native_export)
         elif options.native_launch:
@@ -638,7 +643,7 @@ def main():
     except KeyboardInterrupt:
         raise SystemExit(130)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-        print('Deployment stopped: ' + (str(error) if isinstance(error, (ValueError, RuntimeError)) else type(error).__name__), file=sys.stderr)
+        say('Deployment stopped: ' + (str(error) if isinstance(error, (ValueError, RuntimeError)) else type(error).__name__), error=True)
         raise SystemExit(1)
 
 

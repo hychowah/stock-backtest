@@ -1,5 +1,6 @@
 """Owned, fictional candidate service for actual browser qualification."""
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -40,8 +41,9 @@ class CandidateService:
                 if event is None:break
                 logs.append(event)
                 text=event.get('text','')
-                if text.startswith('Open http://127.0.0.1:'):
-                    self.port=int(text.split(':')[2].split()[0]);self.ready=True;return self
+                match=re.search(r'Open http://127\.0\.0\.1:(\d+)',text)
+                if match:
+                    self.port=int(match[1]);self.ready=True;return self
             raise AssertionError(logs)
         except BaseException:self.close();raise
 

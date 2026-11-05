@@ -222,6 +222,20 @@ class DiagnosticsTests(unittest.TestCase):
         line,=self.progress()
         self.assertEqual((line['event'],line['state']),('queue.example','running'))
 
+    def test_terminal_lines_start_with_the_local_time_once(self):
+        output=io.StringIO();terminal=d.Stamped(output)
+        with patch.object(d.time,'strftime',return_value='2026-11-05 10:58:12 '):
+            print('Prepared daily prices 200/6974',file=terminal)
+            terminal.write('two\nlines\n');terminal.write('partial ');terminal.write('line\n\n')
+        self.assertEqual(output.getvalue().splitlines(),
+            ['2026-11-05 10:58:12 Prepared daily prices 200/6974','2026-11-05 10:58:12 two','2026-11-05 10:58:12 lines',
+             '2026-11-05 10:58:12 partial line',''])
+        handler=object.__new__(serve.Handler);handler.client_address=('127.0.0.1',5000)
+        errors=io.StringIO()
+        with patch.object(serve.sys,'stderr',errors):handler.log_message('"%s" %s','GET /\x1b[31m HTTP/1.1',200)
+        # The request line drops its own date and still escapes control characters.
+        self.assertEqual(errors.getvalue(),'127.0.0.1 "GET /\\x1b[31m HTTP/1.1" 200\n')
+
     def test_slow_request_logs_route_and_status_without_identifiers_or_query(self):
         self.assertEqual(serve.route('/api/backtest-runs/'+'a'*32+'/evidence?token=PRIVATE'),'/api/backtest-runs/{id}/evidence')
         self.assertEqual(serve.route('/api/backtest-queue/1234'),'/api/backtest-queue/{id}')

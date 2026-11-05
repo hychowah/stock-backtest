@@ -158,6 +158,29 @@ def log_path():
     return Path(_handler.baseFilename) if _handler is not None else None
 
 
+class Stamped:
+    """A terminal stream whose lines start with the local date and time.
+
+    The log files keep UTC times. Child processes write to the terminal directly.
+    """
+    def __init__(self,stream):
+        self._stream=stream;self._line_start=True;self._lock=Lock()
+
+    def write(self,text):
+        with self._lock:
+            stamp=time.strftime('%Y-%m-%d %H:%M:%S ');pieces=[]
+            for number,part in enumerate(text.split('\n')):
+                if number:pieces.append('\n');self._line_start=True
+                if part:
+                    if self._line_start:pieces.append(stamp);self._line_start=False
+                    pieces.append(part)
+            self._stream.write(''.join(pieces))
+        return len(text)
+
+    def __getattr__(self,name):
+        return getattr(self._stream,name)
+
+
 def event(name,**context):
     LOGGER.info(json.dumps(dict(event=name,pid=os.getpid(),**context),ensure_ascii=True))
 

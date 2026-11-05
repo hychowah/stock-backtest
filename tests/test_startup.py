@@ -7,6 +7,7 @@ from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+import io
 import sys
 import errno
 import tempfile
@@ -30,6 +31,10 @@ class StartupTests(unittest.TestCase):
         self.context.enter_context(patch.object(serve.diagnostics,'configure',return_value=None))
         self.context.enter_context(patch.object(serve.diagnostics,'close'))
         self.context.enter_context(patch.object(serve.cache_assets,'source_problem',return_value=False))
+        # main() stamps the process streams; these private ones keep that inside each test.
+        self.stdout=io.StringIO()
+        self.context.enter_context(patch.object(sys,'stdout',self.stdout))
+        self.context.enter_context(patch.object(sys,'stderr',io.StringIO()))
 
     def test_prepare_then_build_when_stale(self):
         calls=[]
@@ -51,6 +56,9 @@ class StartupTests(unittest.TestCase):
             serve.main()
         self.assertEqual(calls,['prepare','bind','browser','serve'])
         server.server_close.assert_called_once()
+        lines=self.stdout.getvalue().splitlines()
+        self.assertTrue(lines)
+        for line in lines:self.assertRegex(line,r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \S')
 
     def test_missing_sources_open_recovery_panel_without_preparation(self):
         server=Mock();server.server_address=('127.0.0.1',3000)
