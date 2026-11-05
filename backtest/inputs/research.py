@@ -125,10 +125,14 @@ def price_sources():
 
 
 def calculation_sources():
-    """Source files whose content establishes prepared rows and their check."""
+    """Source files whose content establishes prepared rows and their check.
+
+    Download transport and the daily cache do not compute research rows, so
+    editing them does not force a research rebuild.
+    """
     here = Path(__file__)
-    return [Path(baseline.__file__), here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), here.with_name('legacy_downloads.py'), here.with_name('fmp_download.py'), Path(legacy.__file__), Path(revalue.__file__),
-            Path(financial_inputs.__file__), Path(observation_inputs.__file__), here.with_name('daily.py'),
+    return [Path(baseline.__file__), here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(legacy.__file__), Path(revalue.__file__),
+            Path(financial_inputs.__file__), Path(observation_inputs.__file__),
             Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__)]
 
 
@@ -688,7 +692,10 @@ def prepare(path=DATABASE, force=False):
         diagnostics.lap('measure_contexts')
         if prior is not None:
             prior.finish()
-        observation_inputs.finish(db,latest_day,backtest_control.checkpoint,scopes=scopes)
+        # Rows follow from the raw signature, each price file's bytes and the
+        # reuse scope (code, universe, metrics, financial inputs, SPY, Treasury).
+        observation_inputs.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,
+            scope=scope,prices={symbol:unit['content'] for symbol,unit in units.items()}))
         diagnostics.lap('observation_finish')
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end),
                               reuse=dict(scope=scope,symbols=units)).items():

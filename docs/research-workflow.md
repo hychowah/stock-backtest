@@ -89,7 +89,7 @@ The research tests cover availability dates, rank selection before future return
 
 ## Measured performance
 
-Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. The remaining time is mostly the content identity of all observation rows, the dated evidence of the new rows, and publication of the complete database file.
+Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. At that time a hash of every observation row took most of the remaining time. That hash is gone. A second WSL measurement on the same day used 150 fictional companies from 2000 to 2015. With every price file gaining one session, a startup took 28.0 seconds before the change and 14.4 seconds after it. The remaining time is mostly the moved dated evidence of every stored day, price parsing and publication of the complete database file.
 
 The full daily cycle was measured in the same workspace, with half of the companies unlisted and the Original engine. After one download, it ran `scripts/schedules.py prepare` and then a monthly schedule from 2010-01-01 to 2026-10-21 with 202 books. The cycle took 115 seconds with the previous source, which rebuilt both databases and recalculated every book. It took 59 seconds with the refresh, which kept every book. These timings do not describe the real cache or native Windows.
 
@@ -787,8 +787,13 @@ existing calendar-year buckets and can be older than 800 days.
 
 Observation evidence version 4 retains `observation_dated` and
 `observation_sessions` and adds prepared measure contexts and explicit scope identities. Research schema 11 and daily cache version 5
-require offline rebuilding of older observation projections. Their complete
-content identity, preparation policy and semantic source bind reuse. The new
+require offline rebuilding of older observation projections. Their content
+identity, preparation policy and semantic source bind reuse. The content
+identity hashes what determines the rows: the raw-file signature, each price
+file's content digest, the reuse scope and the scopes. Preparation does not
+hash the rows themselves, so an incremental build and a full rebuild of the
+same inputs record the same identity. The daily cache copies each observation
+table with one SQL statement. The new
 read-only `dated_observation_inputs.py` resolver also participates in freshness.
 Optional `raw/download-coverage.json` presence and metadata participate too.
 A matching current or previous SeriesAsset receipt identifies exact saved bytes.

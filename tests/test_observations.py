@@ -63,7 +63,8 @@ class ProviderTests(unittest.TestCase):
             valuation_price=[self.latest_date, 11.])
         source.store_latest(self.db, 'A', 'legacy', latest)
         source.store_latest(self.db, 'A', 'cached', latest)
-        metadata = source.finish(self.db, self.latest_date)
+        # Preparation derives the identity from its inputs; this fixture's inputs are its rows.
+        metadata = source.finish(self.db, self.latest_date, inputs=dict(annual=self.annual, latest=latest))
         def validate():
             if self.stale:
                 raise ValueError('Fixture attachment is stale.')
@@ -381,7 +382,7 @@ class PopulationAdmissionTests(unittest.TestCase):
             source.store_annual(self.db, 'A', financial.resolve_history(raw, 'A'))
         for pool in ('legacy', 'cached'):
             source.store_latest(self.db, 'A', pool, dict(admitted=True, root_date='2016-12-30'))
-        source.finish(self.db, '2016-12-30')
+        source.finish(self.db, '2016-12-30', inputs='fixture')
         self.db.execute('INSERT INTO metadata VALUES(?,?)',
                         ('daily_inputs', json.dumps(dict(inputs=dict(historical_through='2016-12-30')))))
         self.db.commit()

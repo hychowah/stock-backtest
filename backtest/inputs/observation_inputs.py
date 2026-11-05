@@ -16,7 +16,6 @@ import sqlite3
 from backtest.financial import books, rules
 from backtest import measure_observations
 from backtest.inputs import financial_inputs, dated_observation_inputs
-from backtest.runtime import diagnostics
 from backtest.variables import parameters
 
 VERSION = 4
@@ -62,7 +61,7 @@ def _policy_binding():
     # Hashed once per process: deployment restarts the server on source change.
     paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__),
              Path(rules.__file__), Path(measure_observations.__file__), Path(__file__).with_name('research.py'),
-             Path(__file__).with_name('daily.py'), Path(parameters.__file__), Path(dated_observation_inputs.__file__))
+             Path(parameters.__file__), Path(dated_observation_inputs.__file__))
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
@@ -104,97 +103,30 @@ def store_latest(db, symbol, pool, evidence):
                _prepared_record((symbol, pool, int(evidence['admitted']), encoded(evidence))))
 
 
-_CONTENT_COLUMNS = {
-    'observation_sources': ('symbol', 'endpoint', 'evidence_json'),
-    'observation_annual': ('symbol', 'endpoint', 'fiscal', 'evidence_json'),
-    'observation_latest': ('symbol', 'pool', 'admitted', 'evidence_json'),
-    'observation_dated': ('symbol', 'endpoint', 'day', 'evidence_json'),
-    'observation_sessions': ('day', 'evidence_json'),
-    'observation_measure_contexts': ('mode', 'pool', 'context_date', 'symbol', 'evidence_json'),
-}
+def finish(db, latest_date, *, inputs, scopes=None):
+    """Record the projection metadata in the caller's transaction.
 
-
-def _content_json_available(db):
-    try:
-        result = db.execute("SELECT json_array('probe')").fetchone()
-    except sqlite3.OperationalError as error:
-        if str(error) == 'no such function: json_array':
-            return False
-        raise
-    if result is None or result[0] != '["probe"]':
-        return False
-    # A connection-level replacement may agree on the probe but encode other
-    # rows differently. Use the ordinary encoder unless SQLite reports its
-    # built-in function and no application-defined replacement.
-    functions = [row for row in db.execute('PRAGMA function_list')
-                 if row[0].lower() == 'json_array']
-    return any(row[1] == 1 and row[4] == -1 for row in functions) and not any(
-        row[1] == 0 for row in functions)
-
-
-def _content_rows(db, table, order, json_available):
-    """Use native JSON only for exact known schemas and ASCII text/integer rows."""
-    if not json_available:
-        for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
-            yield None, row
-        return
-    columns = _CONTENT_COLUMNS[table]
-    schema = db.execute("SELECT type FROM sqlite_master WHERE name=?", (table,)).fetchone()
-    temporary = db.execute("SELECT type FROM sqlite_temp_master WHERE name=?", (table,)).fetchone()
-    info = db.execute(f'PRAGMA table_xinfo({table})').fetchall()
-    if (temporary is not None or schema is None or schema[0] != 'table'
-            or tuple(row[1] for row in info) != columns or any(row[6] != 0 for row in info)):
-        for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}'):
-            yield None, row
-        return
-    checks = []
-    for column in columns:
-        if table == 'observation_latest' and column == 'admitted':
-            checks.append(f"typeof({column}) IN ('integer','null')")
-        else:
-            checks.append(f"(typeof({column})='null' OR (typeof({column})='text' AND length(CAST({column} AS BLOB))=length({column})))")
-    expression = f"CASE WHEN {' AND '.join(checks)} THEN json_array({','.join(columns)}) END"
-    for row in db.execute(f'SELECT {expression}, * FROM {table} ORDER BY {order}'):
-        yield row[0], row[1:]
-
-
-def content_identity(db, checkpoint=lambda: None, *, scopes=None):
-    """Hash every row at each call; native encoding never caches freshness."""
-    diagnostics.count('observation_identity_scans')
-    digest = hashlib.sha256()
-    digest.update(('scopes\n' + encoded([] if scopes is None else scopes) + '\n').encode())
-    json_available = _content_json_available(db)
-    with diagnostics.stage('observation_identity'):
-        for table, order in (('observation_sources', 'symbol,endpoint'),
-                             ('observation_annual', 'symbol,endpoint,fiscal'),
-                             ('observation_latest', 'symbol,pool'),
-                             ('observation_dated', 'symbol,endpoint,day'),
-                             ('observation_sessions', 'day'),
-                             ('observation_measure_contexts', 'mode,pool,context_date,symbol')):
-            digest.update((table + '\n').encode())
-            for fast, row in _content_rows(db, table, order, json_available):
-                checkpoint()
-                text = encoded(tuple(row)) if fast is None else fast.replace('\x7f', '\\u007f')
-                digest.update((text + '\n').encode())
-    return digest.hexdigest()
-
-
-def finish(db, latest_date, checkpoint=lambda: None, *, scopes=None):
+    The content identity hashes what determines the rows (the caller's input
+    identity, the scopes and this policy), not the rows themselves. Rows are a
+    deterministic function of those inputs, so an incremental build and a full
+    rebuild of the same inputs record the same identity.
+    """
     scopes = [] if scopes is None else list(scopes)
     present = {(scope.get('mode'), scope.get('pool'), scope.get('context_date'))
                for scope in scopes if isinstance(scope, dict)}
     for pool in ('legacy', 'cached'):
         if ('latest', pool, str(latest_date)) not in present:
             scopes.append(dict(mode='latest', pool=pool, context_date=str(latest_date), book=0))
-    metadata = dict(version=VERSION, latest_date=str(latest_date), scopes=scopes,
-                    policy=policy_binding(), content=content_identity(db, checkpoint, scopes=scopes))
+    policy = policy_binding()
+    content = hashlib.sha256(encoded(dict(version=VERSION, inputs=inputs, scopes=scopes, policy=policy)).encode()).hexdigest()
+    metadata = dict(version=VERSION, latest_date=str(latest_date), scopes=scopes, policy=policy, content=content)
     db.executemany('INSERT INTO observation_metadata VALUES(?,?)',
                    ((key, encoded(value)) for key, value in metadata.items()))
     require(db, expected=metadata)
     return metadata
 
 
-def require(db, *, expected=None, verify_content=False, checkpoint=lambda: None):
+def require(db, *, expected=None):
     """Reject absent, incompatible or stale projections before observation work."""
     try:
         metadata = {row[0]: json.loads(row[1]) for row in db.execute('SELECT * FROM observation_metadata')}
@@ -224,34 +156,21 @@ def require(db, *, expected=None, verify_content=False, checkpoint=lambda: None)
                 raise ValueError()
         if any(('latest', pool, metadata['latest_date']) not in scope_keys for pool in ('legacy', 'cached')):
             raise ValueError()
-        if verify_content and content_identity(db, checkpoint, scopes=metadata['scopes']) != metadata['content']:
-            raise ValueError()
     except (sqlite3.Error, ValueError, TypeError, KeyError):
         raise ValueError('Observation inputs are missing, incompatible or stale. Retry offline preparation.') from None
     return metadata
 
 
-def copy(source, destination, checkpoint=lambda: None, *, max_record_bytes=None):
+def copy(source, destination, schema):
     """Copy facts unchanged inside the caller's existing publication transaction.
 
-    The source's recorded metadata, including its content identity, travels with
-    the rows. SQLite copies them inside one transaction under cache ownership,
-    so neither side is rescanned.
+    destination has the source database attached as schema. The recorded
+    metadata, including its content identity, travels with the rows; SQLite
+    copies each table in one statement, so neither side is rescanned.
     """
     metadata = require(source)
-    for table, groups in (('observation_annual', 'symbol,endpoint'), ('observation_dated', 'symbol,endpoint')):
-        for row in source.execute('SELECT count(*) FROM '+table+' GROUP BY '+groups):
-            checkpoint()
-            if row[0] > dated_observation_inputs.MAX_HISTORY:
-                raise ValueError('Prepared observation history exceeds its bound.')
-    if source.execute('SELECT count(*) FROM observation_sessions').fetchone()[0] > dated_observation_inputs.MAX_HISTORY:
-        raise ValueError('Prepared observation history exceeds its bound.')
     for table in TABLES:
-        for row in source.execute('SELECT * FROM ' + table):
-            checkpoint()
-            if max_record_bytes is not None and record_bytes(row) > max_record_bytes:
-                raise ValueError('Prepared observation record exceeds its byte bound.')
-            destination.execute('INSERT INTO ' + table + ' VALUES(' + ','.join('?' * len(row)) + ')', tuple(row))
+        destination.execute(f'INSERT INTO main.{table} SELECT * FROM {schema}.{table}')
     require(destination, expected=metadata)
     return metadata
 

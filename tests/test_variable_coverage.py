@@ -64,7 +64,7 @@ class CoverageTests(unittest.TestCase):
     def test_recorded_january_and_cancellation(self):
         scopes=[dict(mode='historical',pool=pool,context_date='2015-01-02',book=1) for pool in ('cached','legacy')]
         self.fixture.db.execute('DELETE FROM observation_metadata')
-        observation_inputs.finish(self.fixture.db,'2015-01-05',scopes=scopes)
+        observation_inputs.finish(self.fixture.db, '2015-01-05', inputs='fixture',scopes=scopes)
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
                 listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='historical' and x['pool']==pool)

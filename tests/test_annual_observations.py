@@ -141,7 +141,7 @@ class AnnualProviderTests(unittest.TestCase):
                 self.fixture.db.execute('INSERT INTO observation_annual VALUES(?,?,?,?)',
                     ('A', endpoint, fiscal, source.encoded(fields)))
         self.fixture.db.execute('DELETE FROM observation_metadata')
-        view._expected = source.finish(self.fixture.db, self.fixture.latest_date)
+        view._expected = source.finish(self.fixture.db, self.fixture.latest_date, inputs='fixture')
         view._bounds['max_annual'] += sum(map(len, self.extra.values()))
         return view
 
@@ -323,7 +323,7 @@ class AnnualTransportTests(unittest.TestCase):
         with closing(research.connect(self.fixture.source)) as original, \
              closing(daily.connect(self.fixture.path,self.fixture.source)) as copied:
             with sqlite_observations.prepared_view(copied,lambda:None) as sqlview:
-                self.assertEqual(source.require(original,verify_content=True)['version'],4)
+                self.assertEqual(source.require(original)['version'],4)
                 facts = sqlview.company('TEST','cached')
                 for endpoint, fields in ORACLE.items():
                     for field in fields:
@@ -351,10 +351,10 @@ class AnnualTransportTests(unittest.TestCase):
         self.fixture.prepare()
         with closing(sqlite3.connect(self.fixture.path)) as db:
             db.execute("UPDATE observation_metadata SET value='1' WHERE key='version'");db.commit()
-            with self.assertRaisesRegex(ValueError,'incompatible'): source.require(db,verify_content=True)
+            with self.assertRaisesRegex(ValueError,'incompatible'): source.require(db)
             with self.assertRaisesRegex(ValueError,'incompatible'): sqlite_observations.prepared_view(db,lambda:None)
             target = sqlite3.connect(':memory:'); self.addCleanup(target.close); target.executescript(source.SCHEMA)
-            with self.assertRaisesRegex(ValueError,'incompatible'): source.copy(db,target)
+            with self.assertRaisesRegex(ValueError,'incompatible'): source.copy(db,target,'research')
             self.assertEqual(target.execute('SELECT count(*) FROM observation_annual').fetchone()[0],0)
 
     def test_research_version_one_projection_blocks_downstream_fingerprints(self):
@@ -385,13 +385,10 @@ class AnnualTransportTests(unittest.TestCase):
             modules = (research, research.baseline, research.metrics, research.books, research.rules,
                 research.screening, research.selection, research.cache_assets, research.market,
                 research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs,source.measure_observations)
-            source_folder = Path(research.__file__).parent
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name
                 file.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module,'__file__',str(file)))
-            for name in ('legacy_downloads.py','fmp_download.py','daily.py'):
-                (research.ROOT/name).write_bytes((source_folder/name).read_bytes())
             before = actual_signature()
             file = Path(parameters.__file__); file.write_bytes(file.read_bytes()+b'\n# semantic change\n')
             self.assertNotEqual(actual_signature(),before)

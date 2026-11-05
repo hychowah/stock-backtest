@@ -267,7 +267,7 @@ class PopulationSelectionTests(unittest.TestCase):
                     statement=source.ReadView._statement(self.reports[symbol][0]),
                     valuation=dict(market_cap=150e6,enterprise_value=180e6,ebitda=54e6),
                     adjusted_price=['2015-01-05',10.],fiscal_price=['2014-06-30',10.],valuation_price=['2015-01-05',10.]))
-        metadata=source.finish(self.db,'2015-01-05')
+        metadata=source.finish(self.db, '2015-01-05', inputs='fixture')
         self.view=source.ReadView('private-population',self.db,lambda:None,
             lambda symbol,pool:[source.ReadView._statement(row) for row in self.reports.get(symbol,[])],
             lambda symbol,day,*args:(day,10.),expected=metadata,max_history=16384,max_record_bytes=4*1024*1024,

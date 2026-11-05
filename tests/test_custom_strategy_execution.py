@@ -98,7 +98,7 @@ class ExecutionTests(unittest.TestCase):
             for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
                 db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
             db.execute('DELETE FROM observation_metadata')
-            observation_inputs.finish(db, '2015-01-05', scopes=[
+            observation_inputs.finish(db, '2015-01-05', inputs='fixture', scopes=[
                 dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015)
                 for pool in ('legacy','cached')])
             db.commit()

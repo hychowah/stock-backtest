@@ -141,7 +141,6 @@ class PreparedReuseTests(unittest.TestCase):
         self.assertLessEqual({'inputs', 'companies', 'observations', 'metrics', 'measure_contexts', 'observation_finish',
                               'commit', 'verification', 'publication'}, full['stages'].keys())
         self.assertGreater(full['verified_holdings'], 0)
-        self.assertGreater(full['counts']['observation_identity_scans'], 0)
         self.assertEqual((incremental['verification'], incremental['companies_rebuilt'], incremental['companies_reused']), ('reused', 0, 3))
         self.assertEqual(current['outcome'], 'current')
 

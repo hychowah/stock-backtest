@@ -45,7 +45,7 @@ class Fixture:
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'legacy'))
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'cached'))
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(historical_through='2015-01-05')))))
-        observation_inputs.finish(self.db,'2015-01-05');self.db.commit()
+        observation_inputs.finish(self.db, '2015-01-05', inputs='fixture');self.db.commit()
     def view(self):return sqlite_observations.prepared_view(self.db,lambda:None)
     def capture(self, expression=None, *, pool='cached', direction='highest', order='filter_first', conditions=None, first=1,last=5):
         authored=language.entry(language.definition(expression or dict(op='parameter',id='annual.revenue'),'USD' if expression is None else 'scalar','usd' if expression is None else 'number'),'draft:ranking')
@@ -106,7 +106,7 @@ class ScalarTests(unittest.TestCase):
         self.assertTrue(any(r['type']=='admission' for r in records))
     def test_missing_only_active_source_excludes(self):
         self.fixture.db.execute("DELETE FROM observation_annual WHERE symbol='A0299'")
-        self.fixture.db.execute('DELETE FROM observation_metadata');observation_inputs.finish(self.fixture.db,'2015-01-05')
+        self.fixture.db.execute('DELETE FROM observation_metadata');observation_inputs.finish(self.fixture.db, '2015-01-05', inputs='fixture')
         stocks,_=self.fixture.select(self.fixture.capture())
         self.assertEqual(stocks[0]['symbol'],'A0298')
         stocks,_=self.fixture.select(self.fixture.capture(language.constant('1')))

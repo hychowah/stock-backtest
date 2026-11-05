@@ -173,7 +173,7 @@ class AuthoringHttpTests(ExistingHttp):
             from backtest.inputs import observation_inputs
             db.execute('DELETE FROM observation_metadata')
             scopes=[dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015) for pool in ('cached','legacy')]
-            observation_inputs.finish(db,'2015-01-05',scopes=scopes)
+            observation_inputs.finish(db, '2015-01-05', inputs='fixture',scopes=scopes)
             db.commit()
         def browser(value):
             process=subprocess.run(['node','-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));'],

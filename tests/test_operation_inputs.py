@@ -29,9 +29,8 @@ def long_window_capture():
 
 
 def counted():
-    """Count complete fingerprints and complete content verifications."""
-    return (patch.object(daily, 'fingerprint', wraps=daily.fingerprint),
-            patch.object(observation_inputs, 'content_identity', wraps=observation_inputs.content_identity))
+    """Count daily fingerprints."""
+    return patch.object(daily, 'fingerprint', wraps=daily.fingerprint)
 
 
 def closed(db):
@@ -71,7 +70,7 @@ class HeldInputsTests(unittest.TestCase):
 
     def test_cancellation_closes_connections_after_one_fingerprint(self):
         def cancel(): raise backtest_control.Cancelled()
-        fingerprints, _ = counted()
+        fingerprints = counted()
         with fingerprints as fingerprint, self.assertRaises(backtest_control.Cancelled):
             with operation_inputs.held(checkpoint=cancel) as inputs:
                 source = inputs.research(); db = inputs.db
@@ -89,11 +88,9 @@ class OriginalScaleTests(unittest.TestCase):
                     ('custom', dict(strategy=capture, start='2025-01-02', end=through, months=12), 2),
                     ('custom', dict(strategy=capture, start='2023-01-02', end=through, months=12), 4),
                     ('latest', dict(strategy=capture), None)]:
-                fingerprints, contents = counted()
-                with self.subTest(mode=mode, periods=periods), fingerprints as fingerprint, contents as content:
+                with self.subTest(mode=mode, periods=periods), counted() as fingerprint:
                     result = Original().calculate_into(mode, options, io.BytesIO(), None, None)
-                    # One entry fingerprint; no prepared row is rescanned.
-                    self.assertEqual((fingerprint.call_count, content.call_count), (1, 0))
+                    self.assertEqual(fingerprint.call_count, 1)
                     if periods is not None:
                         self.assertEqual(result['manifest']['periods'], periods)
                         self.assertGreater(result['manifest']['holdings'], 0)

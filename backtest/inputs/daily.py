@@ -102,16 +102,19 @@ def _code():
 
 
 def _copy_research(reference,db):
-    """Copy prepared research rows; return the identity of the undated book inputs."""
+    """Copy prepared research rows from the attached research schema.
+
+    Return the identity of the undated book inputs.
+    """
     digest=hashlib.sha256()
     for table in COPIED_TABLES:
-        rows=reference.execute('SELECT * FROM '+table).fetchall()
-        if rows:
-            db.executemany('INSERT INTO '+table+' VALUES('+','.join('?'*len(rows[0]))+')',rows)
+        db.execute(f'INSERT INTO main.{table} SELECT * FROM research.{table}')
         if table!='treasury10':
             digest.update(table.encode()+b'\n')
-            for row in rows:digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
-    observation_inputs.copy(reference,db,backtest_control.checkpoint, max_record_bytes=4*1024*1024)
+            for row in reference.execute('SELECT * FROM '+table):
+                backtest_control.checkpoint()
+                digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
+    observation_inputs.copy(reference,db,'research')
     return digest.hexdigest()
 
 
@@ -245,6 +248,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
         db.executescript(SCHEMA)
         if saved is not None:
             db.execute('ATTACH DATABASE ? AS old',(path.resolve().as_uri()+'?mode=ro',))
+        db.execute('ATTACH DATABASE ? AS research',(Path(source).resolve().as_uri()+'?mode=ro',))
         tables=_copy_research(reference,db)
         diagnostics.lap('copy_research')
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]

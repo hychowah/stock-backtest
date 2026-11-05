@@ -14,8 +14,8 @@ class PreparedMeasureTests(unittest.TestCase):
         self.addCleanup(db.close)
         db.executescript(source.SCHEMA)
         scopes = [dict(mode='latest', pool='cached', context_date='2020-01-02', book=0)]
-        metadata = source.finish(db, '2020-01-02', scopes=scopes)
-        self.assertEqual(source.require(db, verify_content=True), metadata)
+        metadata = source.finish(db, '2020-01-02', inputs='fixture', scopes=scopes)
+        self.assertEqual(source.require(db), metadata)
         root = dict(mode='latest', pool='cached')
         self.assertTrue(bridge.prepared_scope(metadata, root, dict(id='a', root='a', date='2020-01-02')))
         self.assertFalse(bridge.prepared_scope(metadata, root, dict(id='b', root='a', date='2020-01-02')))
@@ -26,24 +26,22 @@ class PreparedMeasureTests(unittest.TestCase):
         self.assertFalse(bridge.prepared_scope(metadata, prepared, dict(id='b', root='a', date='2020-01-02')))
         db.execute("UPDATE observation_metadata SET value='[]' WHERE key='scopes'")
         with self.assertRaises(ValueError):
-            source.require(db, verify_content=True)
+            source.require(db)
 
-    def test_projection_rejects_missing_latest_scope_even_with_matching_digest(self):
+    def test_projection_rejects_missing_latest_scope(self):
         db = sqlite3.connect(':memory:')
         self.addCleanup(db.close)
         db.executescript(source.SCHEMA)
-        metadata = source.finish(db, '2020-01-02', scopes=[])
+        metadata = source.finish(db, '2020-01-02', inputs='fixture', scopes=[])
         self.assertEqual({item['pool'] for item in metadata['scopes']}, {'cached','legacy'})
         scopes = [item for item in metadata['scopes'] if item['pool'] == 'cached']
         db.execute("UPDATE observation_metadata SET value=? WHERE key='scopes'", (source.encoded(scopes),))
-        digest = source.content_identity(db, scopes=scopes)
-        db.execute("UPDATE observation_metadata SET value=? WHERE key='content'", (source.encoded(digest),))
-        with self.assertRaises(ValueError): source.require(db, verify_content=True)
+        with self.assertRaises(ValueError): source.require(db)
         other = sqlite3.connect(':memory:')
         self.addCleanup(other.close)
         other.executescript(source.SCHEMA)
         with self.assertRaises(ValueError):
-            source.finish(other, '2020-01-02', scopes=[dict(mode='latest',pool='cached',context_date='2019-01-02',book=0)])
+            source.finish(other, '2020-01-02', inputs='fixture', scopes=[dict(mode='latest',pool='cached',context_date='2019-01-02',book=0)])
 
     def test_stored_components_and_missing_lanes(self):
         context = dict(reason=None, evidence=dict(snapshot=dict(market_cap=500.),
@@ -174,7 +172,7 @@ class PreparedTransportTests(unittest.TestCase):
         db = sqlite3.connect(fixture.path)
         db.row_factory = sqlite3.Row
         self.addCleanup(db.close)
-        metadata = source.require(db, verify_content=True)
+        metadata = source.require(db)
         original = sqlite3.connect(fixture.source)
         original.row_factory = sqlite3.Row
         self.addCleanup(original.close)
@@ -209,7 +207,7 @@ class PreparedTransportTests(unittest.TestCase):
         def refresh():
             old = source.require(db)
             db.execute('DELETE FROM observation_metadata')
-            return source.finish(db, old['latest_date'], scopes=old['scopes'])
+            return source.finish(db, old['latest_date'], inputs='fixture', scopes=old['scopes'])
         # A real admitted company has a context but no PE lane in the saved fixture.
         with sqlite_observations.prepared_view(db, lambda:None) as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
             result = observations.observe(plan, view).to_dict()['results'][0]
@@ -261,13 +259,11 @@ class PreparedTransportTests(unittest.TestCase):
         for action in (lambda:view.measure_context('historical','cached','2015-01-02','A'), lambda:view.broad_reports('A'), lambda:view.legacy_financial_history('A'), lambda:view.legacy_treasury(__import__('datetime').date(2015,1,2))):
             with self.assertRaisesRegex(ValueError,'closed'): action()
 
-    def test_missing_or_tampered_context_relation_is_operation_error(self):
+    def test_missing_context_relation_is_operation_error(self):
         db = sqlite3.connect(':memory:')
         self.addCleanup(db.close)
         db.executescript(source.SCHEMA)
-        source.finish(db,'2020-01-02')
-        db.execute("INSERT INTO observation_measure_contexts VALUES('latest','cached','2020-01-02','A','{}')")
-        with self.assertRaises(ValueError): source.require(db, verify_content=True)
+        source.finish(db, '2020-01-02', inputs='fixture')
         db.execute('DROP TABLE observation_measure_contexts')
         with self.assertRaises(ValueError): source.require(db)
 

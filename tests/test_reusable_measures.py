@@ -127,7 +127,7 @@ class InventoryExecution(unittest.TestCase):
         db.execute('INSERT INTO observation_measure_contexts VALUES(?,?,?,?,?)',
             ('historical', 'legacy', fixture.root_date, 'A', source.encoded(evidence)))
         db.execute('DELETE FROM observation_metadata')
-        metadata = source.finish(db, fixture.latest_date, scopes=[dict(mode='historical', pool='legacy',
+        metadata = source.finish(db, fixture.latest_date, inputs='fixture', scopes=[dict(mode='historical', pool='legacy',
             context_date=fixture.root_date, book=2015)])
         view._expected = metadata
         expected = dict(gross_profit=60., gross_margin=.6, operating_margin=.2, net_margin=.12,
@@ -171,7 +171,7 @@ class InventoryExecution(unittest.TestCase):
         evidence = dict(snapshot=dict(market_cap=123.), metrics=dict(ev_ebitda=[4., .25]), filters=dict(pe=9.))
         db.execute('INSERT INTO observation_measure_contexts VALUES(?,?,?,?,?)', ('historical', 'legacy', fixture.root_date, 'A', source.encoded(evidence)))
         db.execute('DELETE FROM observation_metadata')
-        view._expected = source.finish(db, fixture.latest_date, scopes=[dict(mode='historical', pool='legacy', context_date=fixture.root_date, book=2015)])
+        view._expected = source.finish(db, fixture.latest_date, inputs='fixture', scopes=[dict(mode='historical', pool='legacy', context_date=fixture.root_date, book=2015)])
         from backtest import observations
         contexts = fixture.contexts() + [dict(id='same', kind='at', parent='root', date=fixture.root_date),
             dict(fixture.contexts()[0], id='prepared', owner_scope=dict(kind='prepared', book=2015)),

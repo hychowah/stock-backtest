@@ -385,7 +385,7 @@ class PreparationTests(unittest.TestCase):
         db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
-        daily.observation_inputs.finish(db,'2015-01-02')
+        daily.observation_inputs.finish(db, '2015-01-02', inputs='fixture')
         db.commit();db.close()
         self.context.enter_context(patch.object(research,'RAW',raw))
         self.context.enter_context(patch.object(market,'RAW',raw))
@@ -440,7 +440,7 @@ class RefreshTests(unittest.TestCase):
             db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
             db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
         db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)")
-        daily.observation_inputs.finish(db,'2015-07-01')
+        daily.observation_inputs.finish(db, '2015-07-01', inputs='fixture')
         db.execute("INSERT INTO metadata VALUES('prices','{}')")
         db.commit();db.close()
         self.generation=0

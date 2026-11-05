@@ -134,15 +134,7 @@ class ResolutionTests(unittest.TestCase):
                 first.executescript(source.SCHEMA)
                 with patch.object(dated, 'MAX_RECORD_BYTES', exact):
                     source.store_dated(first, symbol, endpoint, facts)
-                    source.finish(first, '2015-01-02')
-                    # Every transport uses this same checked copy owner. An
-                    # accepted full record must survive each hop.
-                    for _ in range(2):
-                        copied = stack.enter_context(closing(sqlite3.connect(':memory:')))
-                        copied.executescript(source.SCHEMA)
-                        source.copy(first, copied, max_record_bytes=exact)
-                        self.assertIn(row, copied.execute('SELECT * FROM '+table).fetchall())
-                        first = copied
+                    self.assertIn(row, first.execute('SELECT * FROM '+table).fetchall())
                 rejected = stack.enter_context(closing(sqlite3.connect(':memory:')))
                 rejected.executescript(source.SCHEMA)
                 with patch.object(dated, 'MAX_RECORD_BYTES', exact-1), self.assertRaisesRegex(ValueError, 'byte bound'):
@@ -282,9 +274,6 @@ class TransportTests(unittest.TestCase):
         # Removing only own-stock exact row never carries its earlier row.
         self.db.execute("DELETE FROM observation_dated WHERE symbol='TEST' AND day='2015-01-02'")
         result=self.observe(view,['market.volume'])['results'][0];self.assertEqual(result['reason'],'MISSING_INPUT')
-        # This is a private borrowed SQLite fixture; content checking remains an
-        # admission concern and catches this explicit later mutation independently.
-        with self.assertRaisesRegex(ValueError,'stale'):source.require(self.db,verify_content=True)
 
     def test_treasury_latest_date_null_conflict_and_no_older_field_fallback(self):
         p=research.RAW/'treasury.json';rows=[r for r in json.loads(p.read_text()) if r['date'] not in ('2015-01-02','2015-10-20')];rows.extend([
@@ -332,13 +321,8 @@ class TransportTests(unittest.TestCase):
                 if operation['op']=='lookback' and identity=='market.volume':self.assertFalse(result['valid'])
                 else:self.assertTrue(result['valid']);self.assertEqual(result['value'],want)
 
-    def test_copy_cancellation_record_bounds_and_publication_preserve_previous(self):
+    def test_failed_publication_preserves_previous_and_versions_are_checked(self):
         self.view()
-        target=sqlite3.connect(':memory:');self.addCleanup(target.close);target.executescript(source.SCHEMA)
-        with self.assertRaisesRegex(RuntimeError,'cancel'):
-            source.copy(self.db,target,Mock(side_effect=RuntimeError('cancel')))
-        with self.assertRaisesRegex(ValueError,'byte bound'):
-            source.copy(self.db,target,max_record_bytes=20)
         before=self.owner.source.read_bytes()
         with patch.object(research.dated_observation_inputs,'shared',side_effect=RuntimeError('private dated failure')):
             with self.assertRaisesRegex(RuntimeError,'private dated failure'):research.prepare(self.owner.source,force=True)
@@ -380,8 +364,6 @@ class TransportTests(unittest.TestCase):
             self.db.execute('UPDATE observation_metadata SET value=? WHERE key=?',(json.dumps(version),'version'))
             with self.assertRaisesRegex(ValueError,'stale'):source.require(self.db)
         self.db.execute('UPDATE observation_metadata SET value=? WHERE key=?',('3','version'))
-        self.db.execute("UPDATE observation_dated SET evidence_json='{}' WHERE endpoint=?",(dated.TREASURY,))
-        with self.assertRaisesRegex(ValueError,'stale'):source.require(self.db,verify_content=True)
         self.db.execute('DROP TABLE observation_sessions')
         with self.assertRaisesRegex(ValueError,'stale'):source.require(self.db)
 

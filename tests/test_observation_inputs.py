@@ -97,8 +97,8 @@ class ProjectionTests(unittest.TestCase):
     def test_complete_chain_preserves_evidence_dates_and_latest_valuation(self):
         self.prepare()
         with closing(research.connect(self.source)) as original, closing(sqlite3.connect(self.path)) as copied:
-            first = observed.require(original, verify_content=True)
-            self.assertEqual(observed.require(copied, verify_content=True), first)
+            first = observed.require(original)
+            self.assertEqual(observed.require(copied), first)
             self.assertEqual(first['latest_date'], '2015-10-20')
             for table in observed.TABLES:
                 self.assertEqual([tuple(row) for row in original.execute('SELECT * FROM '+table)], copied.execute('SELECT * FROM '+table).fetchall())
@@ -126,19 +126,16 @@ class ProjectionTests(unittest.TestCase):
                         self.assertFalse(admitted); self.assertEqual(evidence['reason'], reason)
                     self.assertEqual(db.execute('SELECT count(*) FROM latest_snapshots').fetchone()[0], 0)
 
-    def test_projection_source_and_content_tampering_fail_closed(self):
+    def test_projection_source_change_and_missing_metadata_fail_closed(self):
         self.prepare()
         with closing(sqlite3.connect(self.path)) as db:
             expected = observed.require(db)
             with patch.object(observed, 'policy_binding', return_value={'changed': 'source'}):
                 with self.assertRaisesRegex(ValueError, 'stale'): observed.require(db)
-            db.execute("UPDATE observation_annual SET evidence_json='{}'")
-            with self.assertRaisesRegex(ValueError, 'stale'): observed.require(db, verify_content=True)
             db.execute('DELETE FROM observation_metadata')
             with self.assertRaisesRegex(ValueError, 'missing'): observed.require(db, expected=expected)
 
-    def test_daily_policy_change_rebuilds_research_before_downstream_preparation(self):
-        source_folder = Path(research.__file__).parent
+    def test_policy_change_rebuilds_research_before_downstream_preparation(self):
         with ExitStack() as context:
             for module in (research, research.baseline, research.metrics, research.books,
                            research.rules, research.screening, research.selection, research.cache_assets,
@@ -146,14 +143,12 @@ class ProjectionTests(unittest.TestCase):
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module, '__file__', str(path)))
-            for name in ('legacy_downloads.py', 'fmp_download.py', 'daily.py'):
-                (research.ROOT/name).write_bytes((source_folder/name).read_bytes())
             context.enter_context(patch.object(research, 'signature', side_effect=self.real_signature))
             self.prepare()
             previous = research.prepared_bindings(self.source)[1]
             signature = research.signature()
-            policy = research.ROOT/'daily.py'
-            policy.write_bytes(policy.read_bytes() + b'\n# Changed private daily policy fixture.\n')
+            policy = research.ROOT/'dated_observation_inputs.py'
+            policy.write_bytes(policy.read_bytes() + b'\n# Changed private policy fixture.\n')
             # The binding is hashed once per process; deployment restarts it.
             self.addCleanup(observed._policy_binding.cache_clear)
             observed._policy_binding.cache_clear()
@@ -163,10 +158,10 @@ class ProjectionTests(unittest.TestCase):
             # Ordinary preparation must repair the rejected policy without force.
             research.prepare(self.source)
             current = research.prepared_bindings(self.source)[1]
-            self.assertNotEqual(current['policy']['daily.py'], previous['policy']['daily.py'])
+            self.assertNotEqual(current['policy']['dated_observation_inputs.py'], previous['policy']['dated_observation_inputs.py'])
             self.prepare()
             with closing(daily.connect(self.path, self.source)) as db:
-                self.assertEqual(observed.require(db, verify_content=True), current)
+                self.assertEqual(observed.require(db), current)
 
     def test_daily_cancellation_preserves_previous_database(self):
         self.prepare(); before = self.path.read_bytes()
