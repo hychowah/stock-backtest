@@ -1,7 +1,11 @@
-"""Phase 9 annual evidence: independent inventory, endpoint joins and transport.
+"""Annual evidence: independent inventory, typed annual facts, endpoint joins and formulas.
 
 Synthetic files live in TemporaryDirectory (the source-bound runner places it
-outside the checkout). No expected legacy or Phase 8 immutable bytes are written.
+outside the checkout). No expected legacy immutable bytes are written.
+
+`Company` is a shared in-memory fixture: one SQLite database serves as the
+daily cache and the research facts of one company, A. `formulas`, `values`
+and `explained` evaluate checked programs with the column evaluator.
 """
 import sys
 from pathlib import Path
@@ -13,21 +17,24 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-from backtest import observations as provider
 from backtest.application import variable_authoring
-from backtest.inputs import financial_inputs as financial, observation_inputs as source
-from backtest.inputs import daily, research, sqlite_observations
-from backtest.variables import parameters
+from backtest.financial import rules
+from backtest.inputs import financial_inputs as financial, facts
+from backtest.inputs import daily, research
+from backtest.variables import columns, definitions, parameters
+from prepared_inputs_fixture import PreparedInputs
+import test_prepared_facts
+import test_variable_definitions as language
 from test_parameter_contract import ORACLE as DIRECT_ORACLE
 ORACLE = {endpoint: dict(fields) for endpoint, fields in DIRECT_ORACLE.items()
           if all(identity.startswith('annual.') for identity in fields.values())}
 ORACLE['income-statement'].update(ebit='annual.ebit', eps='annual.basic_eps', epsDiluted='annual.diluted_eps')
 ORACLE['balance-sheet-statement']['totalDebt'] = 'annual.total_debt'
 ORACLE['cash-flow-statement']['freeCashFlow'] = 'annual.free_cash_flow'
-import test_observations as provider_fixtures
-import test_observation_inputs as input_fixtures
+UNITS = {item['id']: item['unit'] for item in columns.catalog()}
+DISPLAYS = {'USD': 'usd', 'share': 'shares', 'USD/share': 'usd_per_share', 'scalar': 'number'}
 
 
 def annual_rows(fiscal='2014-06-30'):
@@ -43,6 +50,138 @@ def annual_rows(fiscal='2014-06-30'):
     return result
 
 
+def typed(resolution, symbol='A'):
+    """Write one annual resolution to typed facts; return {(endpoint, fiscal): {column: (value, reason)}}."""
+    with closing(sqlite3.connect(':memory:')) as db:
+        db.row_factory = sqlite3.Row
+        db.executescript(facts.SCHEMA)
+        facts.store_annual(db, symbol, resolution)
+        return {(row['endpoint'], row['fiscal']): {column: (row[column], row[column + '_reason'])
+                                                   for column, _, _ in facts.ANNUAL}
+                for row in db.execute('SELECT * FROM annual_facts')}
+
+
+# Formula helpers.
+
+def term(expression, unit='scalar', display=None, *, catalog=parameters.V3):
+    """One definition; catalog /3 uses version 3, earlier catalogs version 1."""
+    value = language.definition(expression, unit, display or DISPLAYS[unit])
+    value['parameter_catalog'] = catalog
+    if catalog == parameters.V3:
+        value['version'] = 3
+    return value
+
+
+def field(identity, *, wrap=None, count=None, stat='mean', catalog=parameters.V3):
+    """A definition that reads one parameter, optionally as an annual statistic or in a dated context."""
+    expression = (dict(op='parameter', id=identity) if count is None
+                  else dict(op='annual', stat=stat, count=count, parameter=identity))
+    if wrap is not None:
+        expression = dict(wrap, arg=expression)
+    return term(expression, UNITS[identity], catalog=catalog)
+
+
+def formulas(*values):
+    """Checked formulas whose roots are every given definition, in order."""
+    entries = [language.entry(value, f'draft:{index}') for index, value in enumerate(values)]
+    return columns.Formulas(definitions.validate(language.bundle(*entries, roots=[language.root(e) for e in entries])))
+
+
+def values(program, view, roots, checkpoint=lambda: None):
+    """[(value, reason) per output] per root, values-only."""
+    results = program.evaluate(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
+    return [[result[definition['variable_id'], definition['revision']][::2] for definition in program.outputs]
+            for result in results]
+
+
+def explained(program, view, roots):
+    return program.explain(roots, view, lambda: None, decisions=view.admit(roots))
+
+
+def root(symbol='A', pool='legacy', mode='historical', day='2015-01-02', **owner):
+    return dict(symbol=symbol, pool=pool, mode=mode, date=day, **owner)
+
+
+def state(value, reason=None):
+    return dict(value=value, valid=reason is None, reason=reason)
+
+
+def statement(fiscal, *, earnings_yield=.3, market_cap=150e6, enterprise=180e6, ebitda=None):
+    day = date.fromisoformat(fiscal)
+    return dict(fiscal=fiscal, known=str(day + rules.LAG), market_cap=market_cap, enterprise_value=enterprise,
+                ebitda=enterprise * earnings_yield if ebitda is None else ebitda, ebitda_yield=earnings_yield)
+
+
+class Company:
+    """One in-memory database as the daily cache and the research facts of company A.
+
+    Set the attributes, then call view(): it writes them and borrows a
+    facts.View. reports are statements rows; annual maps endpoint, fiscal date
+    and field to a resolved state; books maps (pool, book) to a stored January
+    row (market_cap, metrics, filters); scopes lists the prepared historical
+    scopes. Every report fiscal date, the root date and
+    the latest date have a price of 10. financials and treasury10 feed the
+    dated owner policy. Set stale to fail the view's freshness callback.
+    """
+
+    TABLES = ('companies', 'statements', 'prices', 'sessions', 'metadata', 'financial_inputs', 'treasury10',
+              'snapshots', 'screening_metrics', 'filter_values') + facts.TABLES
+
+    def __init__(self):
+        self.db = sqlite3.connect(':memory:')
+        self.db.row_factory = sqlite3.Row
+        self.db.executescript(daily.SCHEMA + facts.SCHEMA)
+        self.reports = [statement(f'{year}-06-30') for year in (2012, 2013, 2014)]
+        self.annual = {'income-statement': {f'{year}-06-30': dict(revenue=state(100.), operatingIncome=state(income))
+                                            for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}}
+        self.root_date, self.latest_date = '2015-01-02', '2015-01-05'
+        self.books, self.scopes, self.financials, self.treasury10 = {}, [], {}, []
+        self.stale = False
+
+    def close(self):
+        self.db.close()
+
+    def freshness(self):
+        if self.stale:
+            raise ValueError('Fixture attachment is stale.')
+
+    def view(self):
+        db = self.db
+        for table in self.TABLES:
+            db.execute('DELETE FROM ' + table)
+        db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology')")
+        db.executemany('INSERT INTO statements VALUES(?,?,?,?,?,?,?)', [
+            ('A', row['fiscal'], row['known'], row['market_cap'], row['enterprise_value'], row['ebitda'],
+             row['ebitda_yield']) for row in self.reports])
+        days = {row['fiscal'] for row in self.reports} | {self.root_date, self.latest_date}
+        db.executemany('INSERT INTO prices VALUES(?,?,?,?)', [('A', day, 10., 10.) for day in sorted(days)])
+        db.executemany('INSERT INTO sessions VALUES(?,?)', [(day, 100.) for day in sorted({self.root_date, self.latest_date})])
+        db.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
+            inputs=dict(historical_through=max(self.root_date, self.latest_date)))),))
+        db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',
+                       [('A', fiscal, json.dumps(values)) for fiscal, values in self.financials.items()])
+        db.executemany('INSERT INTO treasury10 VALUES(?,?)', self.treasury10)
+        facts.store_annual(db, 'A', dict(annual=self.annual, sources={
+            endpoint: dict(endpoint=endpoint, sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid')
+            for endpoint in self.annual}))
+        last = self.reports[-1]
+        for pool in ('legacy', 'cached'):
+            facts.store_latest(db, 'A', pool, dict(admitted=True, reason=None, candidate_rank=1,
+                statement=dict(fiscal=last['fiscal'], known=last['known']),
+                valuation=dict(market_cap=160e6, enterprise_value=190e6, ebitda=54e6)))
+        for (pool, book), row in self.books.items():
+            db.execute('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (pool, book, 'A', 1, last['fiscal'],
+                self.root_date, self.latest_date, row['market_cap'], 180e6, 54e6, .3, 3., .28, 0., 'Scheduled exit'))
+            db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
+                           [('historical', pool, book, 'A', metric, *pair) for metric, pair in row['metrics'].items()])
+            db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
+                           [('historical', pool, book, 'A', name, value) for name, value in row['filters'].items()])
+        scopes = list(self.scopes) + [dict(mode='latest', pool=pool, context_date=self.latest_date, book=0)
+                                      for pool in ('legacy', 'cached')]
+        facts.finish(db, self.latest_date, inputs='fixture', scopes=scopes)
+        return facts.prepared_view(db, db, self.freshness, checkpoint=lambda: None)
+
+
 class AnnualResolutionTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -55,18 +194,22 @@ class AnnualResolutionTests(unittest.TestCase):
             financial.publish(self.raw, 'A', endpoint, rows, self.ledger, self.raw/'coverage.json')
         return financial.resolve_history(self.raw, 'A')
 
-    def test_all_48_endpoint_fields_match_independent_oracle_and_units(self):
+    def test_all_53_endpoint_fields_match_independent_oracle_and_typed_columns(self):
         rows = annual_rows()
         resolved = self.publish(rows)
         expected = {identity: (endpoint, field) for endpoint, fields in ORACLE.items()
                     for field, identity in fields.items()}
         self.assertEqual(len(expected), 53)
         self.assertEqual(financial.observation_fields(), {endpoint: tuple(fields) for endpoint, fields in ORACLE.items()})
+        self.assertEqual({column: (endpoint, field) for column, endpoint, field in facts.ANNUAL},
+                         {identity.split('.', 1)[1]: place for identity, place in expected.items()})
+        stored = typed(resolved)
         for identity, (endpoint, field) in expected.items():
             state = resolved['annual'][endpoint]['2014-06-30'][field]
             self.assertTrue(state['valid'], identity)
             self.assertEqual(state['value'], rows[endpoint][0][field], identity)
-            self.assertEqual(state['rows'][0]['index'], 0)
+            self.assertEqual(stored[endpoint, '2014-06-30'][identity.split('.', 1)[1]],
+                             (rows[endpoint][0][field], None), identity)
             path = financial.asset_path(self.raw, 'A', endpoint)
             self.assertEqual(resolved['sources'][endpoint]['sha256'], hashlib.sha256(path.read_bytes()).hexdigest())
         # Extra fields cannot leak into the established values-only projection.
@@ -85,8 +228,8 @@ class AnnualResolutionTests(unittest.TestCase):
                 self.assertEqual(resolved['values'], {'2014-06-30': {'revenue': 100}})
                 state = resolved['annual']['income-statement']['2014-06-30']['costOfRevenue']
                 self.assertEqual((state['value'], state['valid'], state['reason']), (None, False, 'INVALID_INPUT'))
-                self.assertIsNone(state['rows'][0]['value'])
-                source.encoded(resolved)
+                row = typed(resolved)['income-statement', '2014-06-30']
+                self.assertEqual((row['cost_of_revenue'], row['revenue']), ((None, 'INVALID_INPUT'), (100, None)))
                 self.assertEqual(path.read_bytes(), before)
 
     def test_equal_null_conflicting_currency_and_missing_new_fields_are_independent(self):
@@ -101,16 +244,21 @@ class AnnualResolutionTests(unittest.TestCase):
         resolved = self.publish({'income-statement': rows + [rows[0]]})
         dates = resolved['annual']['income-statement']
         self.assertEqual(dates['2014-06-30']['costOfRevenue']['value'], -12)
-        self.assertEqual(len(dates['2014-06-30']['costOfRevenue']['rows']), 5)
         self.assertEqual(dates['2014-06-30']['interestIncome']['reason'], 'CONFLICTING_INPUT')
         self.assertEqual(dates['2013-06-30']['costOfRevenue']['reason'], 'NON_USD_INPUT')
         self.assertEqual(dates['2012-06-30']['costOfRevenue']['reason'], 'MISSING_INPUT')
         self.assertEqual(dates['2011-06-30']['costOfRevenue']['reason'], 'MISSING_INPUT')
+        stored = typed(resolved)
+        self.assertEqual([stored['income-statement', day]['cost_of_revenue'] for day in
+                          ('2014-06-30', '2013-06-30', '2012-06-30', '2011-06-30')],
+                         [(-12, None), (None, 'NON_USD_INPUT'), (None, 'MISSING_INPUT'), (None, 'MISSING_INPUT')])
+        self.assertEqual(stored['income-statement', '2014-06-30']['interest_income'], (None, 'CONFLICTING_INPUT'))
         again = self.publish({'income-statement': list(reversed(rows))})
         for fiscal in dates:
-            for field in dates[fiscal]:
-                self.assertEqual({k:v for k,v in dates[fiscal][field].items() if k != 'rows'},
-                                 {k:v for k,v in again['annual']['income-statement'][fiscal][field].items() if k != 'rows'})
+            for name in dates[fiscal]:
+                self.assertEqual({k: v for k, v in dates[fiscal][name].items() if k != 'rows'},
+                                 {k: v for k, v in again['annual']['income-statement'][fiscal][name].items() if k != 'rows'})
+        self.assertEqual(typed(again), stored)
 
     def test_same_name_cross_endpoint_fields_never_substitute_for_cash_flow(self):
         resolved = self.publish({'income-statement': [dict(date='2014-06-30', reportedCurrency='USD',
@@ -123,84 +271,78 @@ class AnnualResolutionTests(unittest.TestCase):
         self.assertEqual(resolved['annual']['cash-flow-statement']['2014-06-30']['depreciationAndAmortization']['value'], -6)
         self.assertEqual(resolved['annual']['balance-sheet-statement']['2014-06-30']['inventory']['value'], 5)
         self.assertEqual(resolved['sources']['income-statement']['endpoint'], 'income-statement')
+        stored = typed(resolved)
+        self.assertEqual(stored['income-statement', '2014-06-30']['depreciation_amortization'], (None, None))
+        self.assertEqual(stored['income-statement', '2014-06-30']['inventory'], (None, None))
+        self.assertEqual(stored['cash-flow-statement', '2014-06-30']['depreciation_amortization'], (-6, None))
+        self.assertEqual(stored['balance-sheet-statement', '2014-06-30']['inventory'], (5, None))
 
 
-class AnnualProviderTests(unittest.TestCase):
+class AnnualFormulaTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = provider_fixtures.ProviderTests('test_catalog_and_example_return_ingredients_without_formula_arithmetic')
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        self.extra = {}
+        self.company = Company()
+        self.addCleanup(self.company.close)
 
-    def view(self):
-        view = self.fixture.view()
-        for endpoint, dates in self.extra.items():
-            self.fixture.db.execute('INSERT INTO observation_sources VALUES(?,?,?)',
-                ('A', endpoint, source.encoded(dict(endpoint=endpoint, disposition='valid', sha256='c'*64))))
-            for fiscal, fields in dates.items():
-                self.fixture.db.execute('INSERT INTO observation_annual VALUES(?,?,?,?)',
-                    ('A', endpoint, fiscal, source.encoded(fields)))
-        self.fixture.db.execute('DELETE FROM observation_metadata')
-        view._expected = source.finish(self.fixture.db, self.fixture.latest_date, inputs='fixture')
-        view._bounds['max_annual'] += sum(map(len, self.extra.values()))
-        return view
-
-    def observe(self, requests, contexts=None, **limits):
-        return provider.observe(provider.plan(requests, contexts or self.fixture.contexts(), limits or None), self.view()).to_dict()
-
-    def request(self, identity, count=1, context='root'):
-        return self.fixture.request(identity, count, context, identity+':'+context)
-
-    def test_company_reads_do_not_repeat_whole_generation_admission(self):
-        view = self.view()
-        with patch.object(view, '_validate', side_effect=AssertionError('Whole-generation rescan')):
-            first = view.company('A', 'legacy')
+    def test_company_reads_are_cached_without_whole_generation_checks(self):
+        view = self.company.view()
+        wanted = {'income-statement': {'revenue'}}
+        queries = []
+        self.company.db.set_trace_callback(queries.append)
+        self.addCleanup(self.company.db.set_trace_callback, None)
+        with patch.object(view, 'validate', side_effect=AssertionError('Whole-generation rescan')):
+            first = view.company('A', 'legacy', wanted)
+            reads = len(queries)
             for _ in range(3):
-                self.assertEqual(view.company('A', 'legacy'), first)
-            self.assertEqual(view.company('A', 'cached')['annual'], first['annual'])
+                self.assertIs(view.company('A', 'legacy', wanted), first)
+            self.assertEqual(len(queries), reads)
+            self.assertEqual(view.company('A', 'cached', wanted)['annual'], first['annual'])
+        self.assertEqual(first['annual']['income-statement']['2013-06-30']['revenue'], state(100.))
         view.close()
         with self.assertRaisesRegex(ValueError, 'closed'):
-            view.company('A', 'legacy')
+            view.validate()
 
-    def test_multiple_company_pools_keep_fixed_observation_freshness_boundaries(self):
-        view = self.view()
-        freshness = Mock(wraps=view._validate)
-        view._validate = freshness
-        contexts = [dict(self.fixture.contexts()[0], id=pool, pool=pool)
-                    for pool in ('legacy', 'cached')]
+    def test_multiple_company_pools_keep_fixed_freshness_boundaries(self):
+        view = self.company.view()
+        program = formulas(field('annual.revenue'))
+        roots = [root(pool=pool) for pool in ('legacy', 'cached')]
         for count in (1, 2):
-            freshness.reset_mock()
-            roots = contexts[:count]
-            requests = [self.request('annual.revenue', context=root['id']) for root in roots]
-            with patch.object(view, 'company', wraps=view.company) as reads:
-                block = provider.observe(provider.plan(requests, roots), view).to_dict()
-            self.assertTrue(all(result['valid'] for result in block['results']))
+            with patch.object(view, 'validate', wraps=view.validate) as freshness, \
+                    patch.object(view, 'company', wraps=view.company) as reads:
+                results = values(program, view, roots[:count])
+            self.assertEqual(results, [[(100., None)]] * count)
             self.assertEqual(reads.call_count, count)
-            # Initial/final observation checks and initial/final admission checks
-            # remain authoritative, independent of the number of company reads.
-            self.assertEqual(freshness.call_count, 4)
-        self.fixture.stale = True
+            # Admission entry and exit checks stay authoritative, independent
+            # of the number of company reads.
+            self.assertEqual(freshness.call_count, 2)
+        self.company.stale = True
         with self.assertRaisesRegex(ValueError, 'stale'):
-            provider.observe(provider.plan(requests, roots), view)
+            values(program, view, roots)
 
-    def test_direct_all_field_mapping_values_units_receipts_and_legacy_catalog(self):
+    def test_direct_all_field_mapping_values_units_sources_and_legacy_catalog(self):
         rows = annual_rows()
         fiscal = '2014-06-30'
-        for endpoint, records in rows.items():
-            fields = {field: provider_fixtures.state(records[0][field]) for field in ORACLE[endpoint]}
-            if endpoint == 'income-statement': self.fixture.annual[fiscal] = fields
-            else: self.extra[endpoint] = {fiscal: fields}
-        ids = [identity for fields in ORACLE.values() for identity in fields.values()]
-        results = self.observe([self.request(identity) for identity in ids])['results']
-        self.assertEqual(len(provider.catalog()), 77)
-        self.assertEqual(len(results), 53)
-        for result, (endpoint, field) in zip(results, [(e,f) for e,fs in ORACLE.items() for f in fs]):
-            self.assertTrue(result['valid'], result['parameter'])
-            self.assertEqual(result['members'][0]['value'], rows[endpoint][0][field])
-            self.assertEqual(result['unit'], 'share' if field in ('weightedAverageShsOut','weightedAverageShsOutDil') else 'USD/share' if field in ('eps', 'epsDiluted') else 'USD')
-            self.assertEqual(result['members'][0]['fiscal_date'], fiscal)
-            self.assertEqual(result['members'][0]['evidence']['fields'][field]['rows'][0]['index'], 0)
-        self.assertEqual(variable_authoring.catalog()['parameters'], provider.catalog()[:4])
+        self.company.annual = {endpoint: {fiscal: {name: state(records[0][name]) for name in ORACLE[endpoint]}}
+                               for endpoint, records in rows.items()}
+        view = self.company.view()
+        places = [(endpoint, name, identity) for endpoint, fields in ORACLE.items() for name, identity in fields.items()]
+        self.assertEqual(len(places), 53)
+        self.assertEqual(len(columns.catalog()), 77)
+        for start in range(0, len(places), 16):
+            chunk = places[start:start + 16]
+            program = formulas(*[field(identity) for _, _, identity in chunk])
+            block = explained(program, view, [root()])
+            for result, observation, (endpoint, name, identity) in zip(
+                    block['results'], block['observations']['results'], chunk):
+                self.assertTrue(result['valid'], identity)
+                self.assertEqual(result['value'], rows[endpoint][0][name], identity)
+                self.assertEqual(observation['unit'], 'share' if name in ('weightedAverageShsOut', 'weightedAverageShsOutDil')
+                                 else 'USD/share' if name in ('eps', 'epsDiluted') else 'USD')
+                member = observation['members'][0]
+                self.assertEqual(member['fiscal_date'], fiscal)
+                self.assertEqual(member['evidence']['fields'], {name: state(rows[endpoint][0][name])})
+                self.assertEqual(member['evidence']['source'], dict(endpoint=endpoint,
+                    sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid'))
+        self.assertEqual(variable_authoring.catalog()['parameters'], columns.catalog()[:4])
         self.assertEqual([item['description'] for item in variable_authoring.catalog()['parameters']],
             ['Selected annual revenue', 'Selected annual operating income',
              'Operating income / positive revenue', 'Existing dated enterprise value'])
@@ -208,190 +350,181 @@ class AnnualProviderTests(unittest.TestCase):
                          parameters.units(parameters.V3)['share']['displays'])
 
     def test_exact_income_spine_preserves_missing_mismatched_newer_and_shifted_dates(self):
-        self.fixture.annual.pop('2013-06-30')
-        self.fixture.annual['2013-03-31'] = provider_fixtures.annual()
-        self.fixture.annual['2013-12-31'] = {'revenue': provider_fixtures.state(None, 'MISSING_INPUT')}
-        self.extra = {'balance-sheet-statement': {
-            '2012-06-30': {'inventory': provider_fixtures.state(-2)},
-            '2013-03-31': {'inventory': provider_fixtures.state(333)},
-            '2014-06-29': {'inventory': provider_fixtures.state(444)},
-            '2015-06-30': {'inventory': provider_fixtures.state(555)}}}
-        requests = [self.request('annual.revenue', 3), self.request('annual.inventory', 3),
-                    self.request('annual.capital_expenditure', 3)]
-        with patch.object(provider, '_periods', wraps=provider._periods) as periods:
-            results = self.observe(requests)['results']
-        self.assertEqual(periods.call_count, 1)
+        income = self.company.annual['income-statement']
+        income.pop('2013-06-30')
+        income['2013-03-31'] = dict(revenue=state(100.), operatingIncome=state(10.))
+        income['2013-12-31'] = {'revenue': state(None, 'MISSING_INPUT')}
+        self.company.annual['balance-sheet-statement'] = {
+            '2012-06-30': {'inventory': state(-2)},
+            '2013-03-31': {'inventory': state(333)},
+            '2014-06-29': {'inventory': state(444)},
+            '2015-06-30': {'inventory': state(555)}}
+        program = formulas(*[field(identity, count=3) for identity in
+                             ('annual.revenue', 'annual.inventory', 'annual.capital_expenditure')])
+        results = explained(program, self.company.view(), [root()])['observations']['results']
         self.assertEqual([[m['fiscal_date'] for m in r['members']] for r in results],
-                         [['2012-06-30','2013-12-31','2014-06-30']] * 3)
-        self.assertEqual([m['value'] for m in results[1]['members']], [-2,None,None])
-        self.assertEqual([m['reason'] for m in results[1]['members']], [None,'MISSING_INPUT','MISSING_INPUT'])
+                         [['2012-06-30', '2013-12-31', '2014-06-30']] * 3)
+        self.assertEqual([m['value'] for m in results[1]['members']], [-2, None, None])
+        self.assertEqual([m['reason'] for m in results[1]['members']], [None, 'MISSING_INPUT', 'MISSING_INPUT'])
         self.assertEqual(results[0]['members'][1]['reason'], 'MISSING_INPUT')
-        del self.fixture.annual['2013-12-31']; del self.fixture.annual['2013-03-31']
-        missing = self.observe([self.request('annual.inventory', 3)])['results'][0]['members'][1]
-        self.assertEqual((missing['fiscal_date'],missing['reason']), (None,'MISSING_FISCAL_YEAR'))
+        self.assertEqual([m['reason'] for m in results[2]['members']], ['MISSING_INPUT'] * 3)
+        del income['2013-12-31'], income['2013-03-31']
+        program = formulas(field('annual.inventory', count=3))
+        missing = explained(program, self.company.view(), [root()])['observations']['results'][0]['members'][1]
+        self.assertEqual((missing['fiscal_date'], missing['reason']), (None, 'MISSING_FISCAL_YEAR'))
 
     def test_cross_endpoint_lookback_ninety_day_and_800_day_policy(self):
-        fiscal = date(2023,12,31)
-        self.fixture.reports = [provider_fixtures.statement(str(fiscal))]
-        self.fixture.annual = {str(fiscal): provider_fixtures.annual()}
-        self.extra = {'cash-flow-statement': {str(fiscal): {'capitalExpenditure': provider_fixtures.state(-7)}}}
-        self.fixture.root_date = '2024-04-02'
-        contexts = self.fixture.contexts()+[
-            dict(id='equal',kind='at',parent='root',date=str(fiscal+timedelta(days=90))),
-            dict(id='after',kind='at',parent='root',date=str(fiscal+timedelta(days=91)))]
-        results = self.observe([self.request('annual.capital_expenditure',context=name) for name in ('equal','after')],contexts)['results']
-        self.assertEqual(results[0]['reason'], 'NO_ELIGIBLE_REPORT')
-        self.assertEqual(results[1]['members'][0]['value'], -7)
-        for age in (800,801):
-            self.fixture.root_date = str(fiscal+timedelta(days=age))
-            result = self.observe([self.request('annual.capital_expenditure')])['results'][0]
-            self.assertEqual(result['valid'], age == 800)
-        self.fixture.root_date = '2024-04-02'
-        contexts = [dict(self.fixture.contexts()[0], mode='latest',date=self.fixture.latest_date)]
+        fiscal = date(2023, 12, 31)
+        self.company.reports = [statement(str(fiscal))]
+        self.company.annual = {'income-statement': {str(fiscal): dict(revenue=state(100.), operatingIncome=state(10.))},
+                               'cash-flow-statement': {str(fiscal): {'capitalExpenditure': state(-7)}}}
+        self.company.root_date = '2024-04-02'
+        program = formulas(*[field('annual.capital_expenditure', wrap=dict(op='at', date=str(fiscal + timedelta(days=days))))
+                             for days in (90, 91)])
+        self.assertEqual(values(program, self.company.view(), [root(day=self.company.root_date)]),
+                         [[(None, 'NO_ELIGIBLE_REPORT'), (-7., None)]])
+        program = formulas(field('annual.capital_expenditure'))
+        for age in (800, 801):
+            self.company.root_date = str(fiscal + timedelta(days=age))
+            [[(value, reason)]] = values(program, self.company.view(), [root(day=self.company.root_date)])
+            self.assertEqual(reason is None, age == 800)
+        self.company.root_date = '2024-04-02'
         # A latest root reuses prepared admission, but its own context still
         # cannot observe a future annual report.
-        self.assertEqual(self.observe([self.request('annual.capital_expenditure')],contexts)['results'][0]['reason'], 'NO_ELIGIBLE_REPORT')
+        view = self.company.view()
+        self.assertEqual(values(program, view, [root(mode='latest', day=self.company.latest_date)]),
+                         [[(None, 'NO_ELIGIBLE_REPORT')]])
 
-    def test_preflight_counts_every_endpoint_before_company_reads(self):
-        self.extra = {'balance-sheet-statement': {f'{year}-06-30': {'inventory': provider_fixtures.state(1)} for year in (2012,2013,2014)},
-                      'cash-flow-statement': {f'{year}-06-30': {'capitalExpenditure': provider_fixtures.state(-1)} for year in (2012,2013,2014)}}
-        view = self.view()
-        self.assertEqual(view.bounds['max_annual'], 9)
-        bounds = view.bounds
-        exact = 2*(bounds['report_rows']+bounds['population'])+1+2*bounds['max_reports']+3*bounds['max_annual']+10
-        request = self.request('annual.inventory')
-        self.assertTrue(provider.observe(provider.plan([request],self.fixture.contexts(),{'rows':exact}),view).to_dict()['results'][0]['valid'])
-        with patch.object(view,'company',side_effect=AssertionError('No company read')):
-            with self.assertRaises(provider.ObservationError):
-                provider.observe(provider.plan([request],self.fixture.contexts(),{'rows':exact-1}),view)
+    def test_each_endpoint_history_is_bounded(self):
+        self.company.annual['cash-flow-statement'] = {f'{year}-06-30': {'capitalExpenditure': state(-1)}
+                                                      for year in (2010, 2011, 2012, 2013)}
+        view = self.company.view()
+        wanted = {'cash-flow-statement': {'capitalExpenditure'}}
+        with patch.object(facts, 'MAX_HISTORY', 3), self.assertRaisesRegex(ValueError, 'history exceeds'):
+            view.company('A', 'legacy', wanted)
+        self.assertEqual(len(view.company('A', 'cached', wanted)['annual']['cash-flow-statement']), 4)
 
-    def test_each_endpoint_history_record_and_total_company_bytes_are_bounded(self):
-        self.extra = {'cash-flow-statement': {f'{year}-06-30': {'capitalExpenditure': provider_fixtures.state(-1)} for year in (2010,2011,2012,2013)}}
-        view = self.view()
-        view.max_history = 3
-        with self.assertRaisesRegex(ValueError,'history exceeds'): view.company('A','legacy')
-        view.max_history = 16384
-        facts = view.company('A','legacy')
-        size = len(source.encoded(facts).encode())
-        self.assertEqual(view.company('A','legacy',budget={'bytes':size}),facts)
-        with self.assertRaisesRegex(ValueError,'byte bound'): view.company('A','legacy',budget={'bytes':size-1})
-        view.max_record_bytes = 10
-        with self.assertRaisesRegex(ValueError,'record exceeds'): view.company('A','legacy')
+    def test_unrequested_annual_fields_are_not_read(self):
+        self.company.annual['cash-flow-statement'] = {'2012-06-30': {'capitalExpenditure': state(-1)}}
+        view = self.company.view()
+        queries = []
+        self.company.db.set_trace_callback(queries.append)
+        self.addCleanup(self.company.db.set_trace_callback, None)
+        self.assertEqual(values(formulas(field('annual.revenue')), view, [root()]), [[(100., None)]])
+        reads = [sql for sql in queries if 'annual_facts' in sql]
+        self.assertTrue(reads)
+        self.assertFalse([sql for sql in queries if 'capital_expenditure' in sql or 'cash-flow' in sql])
+        self.assertFalse([sql for sql in reads if 'operating_income' in sql])
 
-    def test_unrequested_cash_flow_history_is_not_decoded(self):
-        self.extra = {'cash-flow-statement': {'2012-06-30': {'capitalExpenditure':
-            dict(provider_fixtures.state(-1), rows=[dict(index=index,sha256='d'*64) for index in range(1000)])}}}
-        view = self.view()
-        with patch.object(view,'_json',wraps=view._json) as decoded:
-            result = provider.observe(provider.plan([self.request('annual.revenue')],self.fixture.contexts(),{'bytes':10000}),view)
-            self.assertTrue(result.to_dict()['results'][0]['valid'])
-            self.assertFalse(any(len(call.args[0]) > 10000 for call in decoded.call_args_list))
-        # The projected byte budget excludes this field, but the independent
-        # original-record ceiling still applies to its complete source row.
-        view.max_record_bytes = 10000
-        with self.assertRaisesRegex(ValueError, 'history exceeds'):
-            provider.observe(provider.plan([self.request('annual.revenue')],self.fixture.contexts()), view)
-
-    def test_unknown_endpoint_and_cancellation_fail_the_complete_company(self):
-        self.extra = {'unrecognized-endpoint': {'2014-06-30': {}}}
-        view = self.view()
-        with self.assertRaisesRegex(ValueError,'history exceeds'): view.company('A','legacy')
-        self.extra = {'cash-flow-statement': {'2014-06-30': {'capitalExpenditure':provider_fixtures.state(-1)}}}
-        view = self.view()
+    def test_cancellation_fails_the_complete_evaluation(self):
+        view = self.company.view()
+        roots = [root()]
+        decisions = view.admit(roots)
         calls = 0
         def cancel():
             nonlocal calls
             calls += 1
-            if calls == 2: raise RuntimeError('private cancellation')
-        with self.assertRaisesRegex(RuntimeError,'private cancellation'):
-            view.company('A','legacy',checkpoint=cancel)
+            if calls == 2:
+                raise RuntimeError('private cancellation')
+        with self.assertRaisesRegex(RuntimeError, 'private cancellation'):
+            formulas(field('annual.revenue', count=3)).evaluate(roots, view, cancel, decisions=decisions)
+
+
+def publish_all(inputs):
+    """PreparedInputs configuration: one row per statement endpoint with every catalog field."""
+    for endpoint, rows in annual_rows().items():
+        financial.asset_path(research.RAW, 'TEST', endpoint).unlink(missing_ok=True)
+        financial.publish(research.RAW, 'TEST', endpoint, rows, {}, research.RAW/'coverage.json')
 
 
 class AnnualTransportTests(unittest.TestCase):
-    def setUp(self):
-        self.fixture = input_fixtures.ProjectionTests('test_complete_chain_preserves_evidence_dates_and_latest_valuation')
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        research.signature.return_value['historical_through'] = '2015-10-20'
-        self.rows = annual_rows()
-        for endpoint, rows in self.rows.items():
-            financial.asset_path(research.RAW,'TEST',endpoint).unlink(missing_ok=True)
-            financial.publish(research.RAW,'TEST',endpoint,rows,{},research.RAW/'coverage.json')
+    def prepared(self):
+        inputs = PreparedInputs(configure=publish_all)
+        self.addCleanup(inputs.close)
+        return inputs
 
-    def test_actual_research_and_daily_sqlite_share_all_endpoint_facts(self):
-        self.fixture.prepare()
-        with closing(research.connect(self.fixture.source)) as original, \
-             closing(daily.connect(self.fixture.path,self.fixture.source)) as copied:
-            with sqlite_observations.prepared_view(copied,lambda:None) as sqlview:
-                self.assertEqual(source.require(original)['version'],4)
-                facts = sqlview.company('TEST','cached')
-                for endpoint, fields in ORACLE.items():
-                    for field in fields:
-                        self.assertEqual(facts['annual'][endpoint]['2014-06-30'][field]['value'],self.rows[endpoint][0][field])
-                for table in source.TABLES:
-                    self.assertEqual([tuple(row) for row in original.execute('SELECT * FROM '+table)],
-                                     [tuple(row) for row in copied.execute('SELECT * FROM '+table)])
-                contexts = [dict(id='root',kind='root',symbol='TEST',pool='cached',mode='historical',date='2015-01-02'),
-                            dict(id='latest',kind='root',symbol='TEST',pool='cached',mode='latest',date='2015-10-20')]
-                requests = [dict(id=f'{context}:{identity}',parameter=identity,context=context,count=1)
-                    for context in ('root','latest') for fields in ORACLE.values() for identity in fields.values()]
-                sqlresults = provider.observe(provider.plan(requests,contexts),sqlview).to_dict()
-                self.assertTrue(all(result['valid'] for result in sqlresults['results']))
-                from backtest.variables import definitions, measures, reference
-                program = definitions.validate(measures.bundle(['ev_ebitda','ebitda_yield']))
-                root = dict(symbol='TEST',pool='cached',mode='historical',date='2015-01-02')
-                sqlresult = reference.evaluate(reference.plan(program, [root]), sqlview).to_dict()['results']
-                stored = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='historical' AND pool='cached' AND year=2015 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
-                self.assertEqual([item['value'] for item in sqlresult], list(stored))
-                detached = source.encoded(facts)
-            with self.assertRaisesRegex(ValueError,'closed'): sqlview.company('TEST','cached')
-            self.assertEqual(source.encoded(facts),detached)
+    def test_actual_preparation_writes_typed_facts_that_formulas_read(self):
+        inputs = self.prepared()
+        rows = annual_rows()
+        with closing(research.connect()) as original:
+            self.assertEqual(facts.require(original)['version'], facts.VERSION)
+            for endpoint, fields in ORACLE.items():
+                stored = original.execute('SELECT * FROM annual_facts WHERE symbol=? AND endpoint=? AND fiscal=?',
+                                          ('TEST', endpoint, '2014-06-30')).fetchone()
+                for name, identity in fields.items():
+                    column = identity.split('.', 1)[1]
+                    self.assertEqual((stored[column], stored[column + '_reason']), (rows[endpoint][0][name], None))
+                source = original.execute('SELECT sha256,disposition FROM fact_sources WHERE symbol=? AND endpoint=?',
+                                          ('TEST', endpoint)).fetchone()
+                path = financial.asset_path(research.RAW, 'TEST', endpoint)
+                self.assertEqual(tuple(source), (hashlib.sha256(path.read_bytes()).hexdigest(), 'valid'))
+            metrics = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='historical' "
+                                       "AND pool='cached' AND year=2015 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
+        places = [(endpoint, name, identity) for endpoint, fields in ORACLE.items() for name, identity in fields.items()]
+        roots = [root('TEST', 'cached'), root('TEST', 'cached', 'latest', '2015-10-20')]
+        with inputs.view() as view:
+            company = view.company('TEST', 'cached', {endpoint: set(fields) for endpoint, fields in ORACLE.items()})
+            for endpoint, name, _ in places:
+                self.assertEqual(company['annual'][endpoint]['2014-06-30'][name], state(rows[endpoint][0][name]))
+            for start in range(0, len(places), 16):
+                chunk = places[start:start + 16]
+                results = values(formulas(*[field(identity) for _, _, identity in chunk]), view, roots)
+                for result in results:
+                    self.assertEqual(result, [(rows[endpoint][0][name], None) for endpoint, name, _ in chunk])
+            from backtest.variables import measures
+            program = columns.Formulas(definitions.validate(measures.bundle(['ev_ebitda', 'ebitda_yield'])))
+            self.assertEqual(values(program, view, roots[:1]), [[(metrics[0], None), (metrics[1], None)]])
 
-    def test_version_one_is_rejected_by_daily_copy_and_borrowing(self):
-        self.fixture.prepare()
-        with closing(sqlite3.connect(self.fixture.path)) as db:
-            db.execute("UPDATE observation_metadata SET value='1' WHERE key='version'");db.commit()
-            with self.assertRaisesRegex(ValueError,'incompatible'): source.require(db)
-            with self.assertRaisesRegex(ValueError,'incompatible'): sqlite_observations.prepared_view(db,lambda:None)
-            target = sqlite3.connect(':memory:'); self.addCleanup(target.close); target.executescript(source.SCHEMA)
-            with self.assertRaisesRegex(ValueError,'incompatible'): source.copy(db,target,'research')
-            self.assertEqual(target.execute('SELECT count(*) FROM observation_annual').fetchone()[0],0)
+    def test_incompatible_facts_version_is_rejected_by_borrowing(self):
+        inputs = self.prepared()
+        with closing(sqlite3.connect(inputs.source)) as db:
+            db.execute("UPDATE fact_metadata SET value='2' WHERE key='version'")
+            db.commit()
+            with self.assertRaisesRegex(ValueError, 'incompatible'):
+                facts.require(db)
+            with self.assertRaisesRegex(ValueError, 'incompatible'):
+                facts.prepared_view(db, db, lambda: None, checkpoint=lambda: None)
 
-    def test_research_version_one_projection_blocks_downstream_fingerprints(self):
-        self.fixture.prepare()
-        with closing(sqlite3.connect(self.fixture.source)) as db:
-            db.execute("UPDATE observation_metadata SET value='1' WHERE key='version'"); db.commit()
-        with self.assertRaisesRegex(ValueError,'incompatible'):
-            research.prepared_bindings(self.fixture.source)
-        with self.assertRaisesRegex(ValueError,'incompatible'):
-            daily.fingerprint(self.fixture.source)
+    def test_research_incompatible_facts_block_downstream_fingerprints(self):
+        inputs = self.prepared()
+        with closing(sqlite3.connect(inputs.source)) as db:
+            db.execute("UPDATE fact_metadata SET value='0' WHERE key='version'")
+            db.commit()
+        with self.assertRaisesRegex(ValueError, 'incompatible'):
+            research.prepared_bindings(inputs.source)
+        with self.assertRaisesRegex(ValueError, 'incompatible'):
+            daily.fingerprint(inputs.source)
 
-    def test_semantic_source_changes_invalidate_research_and_observation_policy(self):
-        policy = source.policy_binding()
-        self.assertIn('parameters.py',policy)
+    def test_semantic_source_changes_invalidate_research_and_facts_policy(self):
+        fixture = test_prepared_facts.ProjectionTests('test_complete_chain_preserves_evidence_dates_and_latest_valuation')
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        policy = facts.policy_binding()
+        self.assertIn('parameters.py', policy)
         with tempfile.TemporaryDirectory() as folder:
             file = Path(folder)/'parameters.py'
             file.write_bytes(Path(parameters.__file__).read_bytes()+b'\n# private semantic change\n')
             # The binding is hashed once per process; a new process sees the edit.
-            self.addCleanup(source._policy_binding.cache_clear)
-            with patch.object(parameters,'__file__',str(file)):
-                source._policy_binding.cache_clear()
-                self.assertNotEqual(source.policy_binding()['parameters.py'],policy['parameters.py'])
-            source._policy_binding.cache_clear()
+            self.addCleanup(facts._policy_binding.cache_clear)
+            with patch.object(parameters, '__file__', str(file)):
+                facts._policy_binding.cache_clear()
+                self.assertNotEqual(facts.policy_binding()['parameters.py'], policy['parameters.py'])
+            facts._policy_binding.cache_clear()
         # Signature must include the actual semantic source as an independent
         # dependency, even when financial resolver source remains unchanged.
-        actual_signature = self.fixture.real_signature
+        from backtest import measure_observations
         with ExitStack() as context:
             modules = (research, research.baseline, research.metrics, research.books, research.rules,
                 research.screening, research.selection, research.cache_assets, research.market,
-                research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs,source.measure_observations,research.facts)
+                research.legacy, research.revalue, financial, parameters, measure_observations, facts)
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name
                 file.write_bytes(Path(module.__file__).read_bytes())
-                context.enter_context(patch.object(module,'__file__',str(file)))
-            before = actual_signature()
-            file = Path(parameters.__file__); file.write_bytes(file.read_bytes()+b'\n# semantic change\n')
-            self.assertNotEqual(actual_signature(),before)
+                context.enter_context(patch.object(module, '__file__', str(file)))
+            before = fixture.real_signature()
+            file = Path(parameters.__file__)
+            file.write_bytes(file.read_bytes()+b'\n# semantic change\n')
+            self.assertNotEqual(fixture.real_signature(), before)
 
 
 if __name__ == '__main__': unittest.main()

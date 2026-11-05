@@ -1,4 +1,4 @@
-"""Private source-evidence and prepared-copy contracts."""
+"""Annual resolution evidence and the typed prepared facts that research publishes."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import financial_inputs as financial, observation_inputs as observed
+from backtest.inputs import financial_inputs as financial, facts
 from backtest.inputs import daily, research
 import test_research as research_fixtures
 
@@ -97,18 +97,23 @@ class ProjectionTests(unittest.TestCase):
     def test_complete_chain_preserves_evidence_dates_and_latest_valuation(self):
         self.prepare()
         with closing(research.connect(self.source)) as original, closing(sqlite3.connect(self.path)) as copied:
-            first = observed.require(original)
-            self.assertEqual(observed.require(copied), first)
+            first = facts.require(original)
             self.assertEqual(first['latest_date'], '2015-10-20')
-            for table in observed.TABLES:
-                self.assertEqual([tuple(row) for row in original.execute('SELECT * FROM '+table)], copied.execute('SELECT * FROM '+table).fetchall())
-            evidence = json.loads(copied.execute("SELECT evidence_json FROM observation_annual WHERE fiscal='2014-06-30'").fetchone()[0])
-            self.assertIsNone(evidence['operatingIncome']['value'])
-            latest = json.loads(copied.execute("SELECT evidence_json FROM observation_latest WHERE pool='legacy'").fetchone()[0])
-            self.assertTrue(latest['admitted'])
-            self.assertEqual(latest['fiscal_price'], ['2014-06-30', 10])
-            self.assertEqual(latest['valuation_price'], ['2015-10-20', 22])
-            self.assertEqual(latest['valuation']['enterprise_value'], 270e6)
+            self.assertEqual(json.loads(copied.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])['facts'], first)
+            # The daily cache binds the facts; it holds no copy of them.
+            names = {row[0] for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            self.assertFalse(names & set(facts.TABLES))
+            self.assertFalse([name for name in names if name.startswith('observation_')])
+            row = original.execute("SELECT operating_income,operating_income_reason,revenue FROM annual_facts "
+                                   "WHERE symbol='TEST' AND fiscal='2014-06-30'").fetchone()
+            self.assertEqual(tuple(row), (None, 'MISSING_INPUT', 100e6))
+            latest = original.execute("SELECT admitted,reason,fiscal,market_cap,enterprise_value FROM latest_admission "
+                                      "WHERE symbol='TEST' AND pool='legacy'").fetchone()
+            self.assertEqual(tuple(latest)[:3], (1, None, '2014-06-30'))
+            self.assertEqual(latest['enterprise_value'], 270e6)
+            source = original.execute("SELECT sha256,disposition FROM fact_sources WHERE symbol='TEST' AND endpoint=?",
+                                      (facts.STOCK,)).fetchone()
+            self.assertEqual(source[0], hashlib.sha256((research.RAW/'px/TEST.json').read_bytes()).hexdigest())
 
     def test_latest_denials_keep_exact_session_and_listing_policy(self):
         for listed, exact, reason in ((False, True, 'NOT_LISTED'), (True, False, 'MISSING_PRICE')):
@@ -121,25 +126,27 @@ class ProjectionTests(unittest.TestCase):
                 path.write_text(json.dumps(prices))
                 research.prepare(self.source, force=True)
                 with closing(research.connect(self.source)) as db:
-                    for admitted, text in db.execute('SELECT admitted,evidence_json FROM observation_latest'):
-                        evidence = json.loads(text)
-                        self.assertFalse(admitted); self.assertEqual(evidence['reason'], reason)
+                    rows = db.execute('SELECT admitted,reason FROM latest_admission').fetchall()
+                    self.assertTrue(rows)
+                    self.assertEqual({tuple(row) for row in rows}, {(0, reason)})
                     self.assertEqual(db.execute('SELECT count(*) FROM latest_snapshots').fetchone()[0], 0)
 
     def test_projection_source_change_and_missing_metadata_fail_closed(self):
         self.prepare()
-        with closing(sqlite3.connect(self.path)) as db:
-            expected = observed.require(db)
-            with patch.object(observed, 'policy_binding', return_value={'changed': 'source'}):
-                with self.assertRaisesRegex(ValueError, 'stale'): observed.require(db)
-            db.execute('DELETE FROM observation_metadata')
-            with self.assertRaisesRegex(ValueError, 'missing'): observed.require(db, expected=expected)
+        with closing(sqlite3.connect(self.source)) as db:
+            expected = facts.require(db)
+            with patch.object(facts, 'policy_binding', return_value={'changed': 'source'}):
+                with self.assertRaisesRegex(ValueError, 'stale'): facts.require(db)
+            db.execute('DELETE FROM fact_metadata')
+            with self.assertRaisesRegex(ValueError, 'missing'): facts.require(db, expected=expected)
 
     def test_policy_change_rebuilds_research_before_downstream_preparation(self):
+        from backtest import measure_observations
         with ExitStack() as context:
             for module in (research, research.baseline, research.metrics, research.books,
                            research.rules, research.screening, research.selection, research.cache_assets,
-                           research.market, research.legacy, research.revalue, financial, observed, financial.parameters, research.dated_observation_inputs, observed.measure_observations, research.facts):
+                           research.market, research.legacy, research.revalue, financial, financial.parameters,
+                           measure_observations, facts):
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module, '__file__', str(path)))
@@ -147,21 +154,22 @@ class ProjectionTests(unittest.TestCase):
             self.prepare()
             previous = research.prepared_bindings(self.source)[1]
             signature = research.signature()
-            policy = research.ROOT/'dated_observation_inputs.py'
+            policy = research.ROOT/'facts.py'
             policy.write_bytes(policy.read_bytes() + b'\n# Changed private policy fixture.\n')
             # The binding is hashed once per process; deployment restarts it.
-            self.addCleanup(observed._policy_binding.cache_clear)
-            observed._policy_binding.cache_clear()
+            self.addCleanup(facts._policy_binding.cache_clear)
+            facts._policy_binding.cache_clear()
             self.assertNotEqual(research.signature(), signature)
             with closing(sqlite3.connect(self.source)) as db:
-                with self.assertRaisesRegex(ValueError, 'stale'): observed.require(db)
+                with self.assertRaisesRegex(ValueError, 'stale'): facts.require(db)
             # Ordinary preparation must repair the rejected policy without force.
             research.prepare(self.source)
             current = research.prepared_bindings(self.source)[1]
-            self.assertNotEqual(current['policy']['dated_observation_inputs.py'], previous['policy']['dated_observation_inputs.py'])
+            self.assertNotEqual(current['policy']['facts.py'], previous['policy']['facts.py'])
             self.prepare()
             with closing(daily.connect(self.path, self.source)) as db:
-                self.assertEqual(observed.require(db), current)
+                saved = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
+                self.assertEqual(saved['facts'], current)
 
     def test_daily_cancellation_preserves_previous_database(self):
         self.prepare(); before = self.path.read_bytes()

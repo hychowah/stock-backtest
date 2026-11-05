@@ -1,1 +1,1 @@
-"""Immutable formula definitions and their reference evaluator."""
+"""Immutable formula definitions, their library and the column evaluator."""

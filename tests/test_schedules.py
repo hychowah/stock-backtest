@@ -385,7 +385,6 @@ class PreparationTests(unittest.TestCase):
         db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
-        daily.observation_inputs.finish(db, '2015-01-02', inputs='fixture')
         db.commit();db.close()
         self.context.enter_context(patch.object(research,'RAW',raw))
         self.context.enter_context(patch.object(market,'RAW',raw))
@@ -423,7 +422,7 @@ class RefreshTests(unittest.TestCase):
     SESSIONS=['2015-01-02','2015-02-02','2015-03-02','2015-04-01','2015-05-01','2015-06-01','2015-07-01']
     OPTIONS=dict(start='2015-01-01',end='2015-07-01',months=1,rank_to=3,min_cap=0,min_ev=0)
     TABLES={'prices':'symbol,day','sessions':'day','treasuries':'day','companies':'symbol','statements':'symbol,fiscal',
-            'financial_inputs':'symbol,fiscal','treasury10':'day',**{t:'1' for t in daily.observation_inputs.TABLES}}
+            'financial_inputs':'symbol,fiscal','treasury10':'day'}
 
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
@@ -440,7 +439,6 @@ class RefreshTests(unittest.TestCase):
             db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
             db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
         db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)")
-        daily.observation_inputs.finish(db, '2015-07-01', inputs='fixture')
         db.execute("INSERT INTO metadata VALUES('prices','{}')")
         db.commit();db.close()
         self.generation=0

@@ -114,7 +114,7 @@ windowEvents.beforeprint();
 assert(closed.every(x => x.open));
 windowEvents.afterprint();
 assert(closed.every(x => !x.open));
-assert(html.includes('Original reference preview') && html.includes('Variable strategies run with Original in all four scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain Original preview, pinned choice and recorded producers');
+assert(html.includes('Original sample preview') && html.includes('Variable strategies run with Original in all four scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain Original preview, pinned choice and recorded producers');
 console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 12 setting combinations and print state.');
 
 
@@ -134,17 +134,17 @@ assert(html.includes('backtest/application/result_access.py') && html.includes('
 
 assert(html.includes("website/rendering/data.py") && html.includes("website/server/results.py") && html.includes("tools/ops/") && html.includes("tools/experiments/"), "Explain grouped website and operational source owners");
 
-assert(html.includes("backtest/observations.py") && html.includes("legacy top-250 buffer is formed before checking cached prices") && html.includes("Older annual history members do not inherit that age limit.") && html.includes("It calculates no average or formula.") && html.includes("Returned evidence remains readable after closure."), "Explain bounded admitted observations, temporal history, canonical values and detached evidence");
-assert(html.includes('the four-parameter point-in-time provider.') && !html.includes('The point-in-time provider is still pending.'), 'Keep provider source status consistent throughout the guide');
+assert(html.includes("backtest/variables/columns.py") && html.includes("legacy top-250 buffer is formed before checking cached prices") && html.includes("Older annual history members do not inherit that age limit.") && html.includes("It calculates no average or formula.") && html.includes("Returned evidence remains readable after closure."), "Explain bounded admitted observations, temporal history, canonical values and detached evidence");
+assert(html.includes('point-in-time formula evaluation.') && !html.includes('The point-in-time provider is still pending.'), 'Keep provider source status consistent throughout the guide');
 
 assert(html.includes('id="formula-program"') && html.includes('backtest/variables/definitions.py') && html.includes('References name exact content revisions.') && html.includes('A submitted decimal has at most 64 characters.') && html.includes('These capabilities are integrated into main.') && !html.includes('Phase 7 qualification is authorized.'), 'Explain immutable formula validation, identities, canonical units and fixed limits');
 
-assert(html.includes('backtest/variables/reference.py') && html.includes('aria-label="Reference formula execution"') && html.includes('Even a constant requires admission.') && html.includes('Missing multiplied by zero stays missing.') && html.includes('Freshness is checked after final encoding as well.'), 'Explain admitted reference scalar execution, missing propagation and final freshness');
-assert(html.includes('65,536 tasks') && html.includes('8,192 output slots') && html.includes('Retained encoded content uses at most 64 MiB.') && html.includes('These are content bounds, not a measure of process memory.'), 'Explain fixed evaluator count and encoded-content bounds without RSS claims');
+assert(html.includes('backtest/variables/columns.py') && html.includes('aria-label="Formula execution"') && html.includes('Even a constant requires admission.') && html.includes('Missing multiplied by zero stays missing.') && html.includes('Freshness is checked at each operation boundary.'), 'Explain admitted reference scalar execution, missing propagation and final freshness');
+assert(html.includes('Contexts nest at most 32 deep.') && html.includes('One explanation block fits one 8 MiB evidence record or is split in half') && html.includes('These are content bounds, not a measure of process memory.') && !html.includes('65,536 tasks'), 'Explain the evaluator bounds as encoded-content bounds without RSS claims');
 assert(!html.includes('Provider-backed scalar evaluation is its next slice.') && !html.includes('The next slice will bind it to the existing provider'), 'Keep evaluator status current throughout the guide');
 
 assert(html.includes('id="scalar-selection"') && html.includes('aria-label="Scalar selection"') && html.includes('backtest/selection.py') && html.includes('backtest/variables/selection.py') && html.includes('No hidden minimum yield applies to custom ranking.') && html.includes('Null candidate ranks come first.'), 'Explain scalar direction, admission and deterministic ties');
-assert(html.includes('Exact decimal conversion precedes binary64 comparison.') && html.includes('24 MiB output') && html.includes('96 MiB retained encoded content') && html.includes('Final encoding is followed by a freshness check.'), 'Explain canonical thresholds, bounded detached selection and lifetime checks');
+assert(html.includes('Exact decimal conversion precedes binary64 comparison.') && html.includes('at most 50 conditions and 8,192 candidates in a scope') && html.includes('The view checks freshness after each scope.') && !html.includes('96 MiB retained encoded content'), 'Explain canonical thresholds, bounded detached selection and lifetime checks');
 
 assert(html.includes('Legacy SQL and browser adapters keep stored ranking pairs') && html.includes('Unsupported experimental formula requests fail before readiness or financial execution') && html.includes('Legacy prepared populations do not inherit the callable candidate limit.'), 'Explain explicit legacy adapters, freshness and formula rejection');
 

@@ -15,10 +15,10 @@ from unittest.mock import patch
 
 from backtest import result_evidence, calendar_requests
 from backtest.application import original_calculations, jobs, queue, library as saved, strategy_requests as s, evidence_views
-from backtest.inputs import daily, research, observation_inputs
-from backtest.variables import definitions, reference
+from backtest.inputs import daily, facts, research
+from backtest.variables import definitions
 from backtest.runtime import backtest_control
-from test_scalar_execution import Fixture
+from test_scalar_execution import Fixture, scopes
 import test_strategy_requests as requests
 
 
@@ -69,14 +69,14 @@ class ExecutionTests(unittest.TestCase):
     def test_coverage_mid_evaluation_cancellation_closes_resources(self):
         from backtest.application import variable_coverage
         listing=self.calc.coverage();scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-        real=variable_coverage.reference.evaluate;calls=[]
-        def interrupt(plan,view,checkpoint):
+        real=variable_coverage.columns.Formulas.evaluate;calls=[]
+        def interrupt(formulas,roots,view,checkpoint,**keywords):
             def check():
                 calls.append(1)
                 if len(calls)==10:raise backtest_control.Cancelled()
                 checkpoint()
-            return real(plan,view,check)
-        with patch.object(variable_coverage.reference,'evaluate',side_effect=interrupt):
+            return real(formulas,roots,view,check,**keywords)
+        with patch.object(variable_coverage.columns.Formulas,'evaluate',interrupt):
             with self.assertRaises(backtest_control.Cancelled):
                 self.calc.coverage(self.capture.to_dict(),dict(scope,generation=listing['generation']))
         self.assertEqual(len(calls),10);self.assertFalse(self.opened);self.assertFalse(self.financial)
@@ -97,10 +97,8 @@ class ExecutionTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db:
             for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
                 db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
-            db.execute('DELETE FROM observation_metadata')
-            observation_inputs.finish(db, '2015-01-05', inputs='fixture', scopes=[
-                dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015)
-                for pool in ('legacy','cached')])
+            db.execute('DELETE FROM fact_metadata')
+            facts.finish(db, '2015-01-05', inputs='fixture', scopes=scopes(historical=[('2015-01-02',2015)]))
             db.commit()
         reader,_=self.run_result('january',dict(strategy=self.capture.to_dict(),first=2015,last=2015))
         self.assertEqual(reader.manifest['summary']['first'],2015)
@@ -148,9 +146,8 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(manager.snapshot('b'*32)['state'],'complete')
         with manager.display_evidence('b'*32,{}) as opened:self.assertEqual(opened.metadata['kind'],'latest')
     def test_job_failure_retains_ordered_formula_and_provider_diagnostics(self):
-        from backtest import observations
         manager=jobs.Jobs(self.calc,evidence_root=Path(self.folder.name)/'failed-jobs');self.addCleanup(manager.close)
-        errors=[formula_failure(),observations.ObservationError('STALE_INPUT_GENERATION','/inputs','Inputs changed.')]
+        errors=[formula_failure(),definitions.FormulaError('STALE_INPUT_GENERATION','/inputs','Inputs changed.')]
         for index,error in enumerate(errors):
             identifier=str(index)*32
             with patch.object(self.calc,'calculate_into',side_effect=error):

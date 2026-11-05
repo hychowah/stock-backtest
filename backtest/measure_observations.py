@@ -1,9 +1,11 @@
-"""Bounded bridge from observation contexts to existing financial owners.
+"""Bounded bridge from formula contexts to existing financial owners.
 
-Prepared scope membership is explicit. A missing company or lane never falls
-back to a recalculation. Other contexts use the dated owner policy. One resolved
-context can serve every requested lane in an observation operation.
+Prepared scope membership is explicit: a prepared January or latest root reads
+its stored book row (facts.View.prepared), and a missing row never falls back
+to a recalculation. Other contexts use the dated owner policy here. One
+resolved context serves every requested lane of that context.
 """
+import json
 import math
 from datetime import date
 from pathlib import Path
@@ -42,15 +44,6 @@ def prepared_scope(projection, root, context):
                and scope['context_date'] == context['date'] for scope in projection['scopes'])
 
 
-def prepared(inputs, root, context, checkpoint):
-    checkpoint()
-    evidence = inputs.measure_context(root['mode'], root['pool'],
-                                      context['date'], root['symbol'], checkpoint)
-    if evidence is None:
-        return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
-    return dict(reason=None, evidence=evidence)
-
-
 class _CheckedReports(list):
     def __init__(self, rows, checkpoint):
         super().__init__(rows)
@@ -82,8 +75,7 @@ def dated(inputs, root, context, anchor, checkpoint, *, budget):
         return dict(reason='LEGACY_MEASURE_UNAVAILABLE', evidence=dict(
             policy='dated-owner', valuation=valuation_evidence))
     reports = inputs.broad_reports(root['symbol'], checkpoint, budget=budget)
-    from backtest.inputs.observation_inputs import encoded
-    remaining = budget - len(encoded(reports).encode('utf-8'))
+    remaining = budget - len(json.dumps(reports, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8'))
     if remaining < 0:
         raise ValueError('Observation owner facts exceed their byte bound.')
     financials = inputs.legacy_financial_history(root['symbol'], checkpoint, budget=remaining)

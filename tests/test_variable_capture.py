@@ -1,4 +1,4 @@
-"""Atomic detached captures in private synthetic stores and provider fixtures."""
+"""Atomic detached captures in private synthetic stores and prepared-input fixtures."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from backtest.runtime import backtest_control
-from backtest.variables import definitions as d, library, reference as r, selection as s
+from backtest.variables import definitions as d, library
 from test_variable_definitions import definition, constant, entry, root, reference, binary
 
 
@@ -319,35 +319,34 @@ class CaptureTests(unittest.TestCase):
         self.assertLess(len(capture.to_json()), library.CAPTURE_BYTES)
 
     def test_actual_daily_evaluation_and_selection_remain_detached(self):
-        import test_observations as fixtures
-        from test_variable_selection import specification
-        fixture = fixtures.PopulationAdmissionTests('test_complete_population_buffer_order_and_uncached_names')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        symbol = 'CAPTURE'
-        fixture.db.execute('INSERT INTO companies VALUES(?,?,?,?)', (symbol, symbol, 'NYSE', 'Energy'))
-        fixture.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',
-            (symbol, '2014-06-30', '2014-09-28', 150e6, 180e6, 162e6, .9))
-        fixture.db.executemany('INSERT INTO prices VALUES(?,?,?,?)',
-            [(symbol, day, 10., 10.) for day in ('2014-06-30', '2015-01-02')])
-        fixture.db.commit()
+        from datetime import date
+        from backtest.application import scalar_execution, strategy_requests
+        import test_strategy_requests as requests
+        from test_scalar_execution import Fixture
+        fixture = Fixture(4)
+        self.addCleanup(fixture.db.close)
         ev = self.store.create('Captured EV', definition(dict(op='parameter', id='market.enterprise_value'), 'USD', 'usd'))
         capture = self.store.capture([root(ev)])
-        requests = [dict(symbol=symbol, pool='legacy', mode='historical', date='2015-01-02')]
-        inputs = fixture.view()
-        formula = r.evaluate(r.plan(capture.program, requests), inputs)
-        selected = s.evaluate(s.plan(capture.program, requests,
-            specification(capture.program)), inputs)
-        self.assertEqual(formula.to_dict()['results'][0]['value'], 180e6)
-        self.assertEqual(selected.to_dict()['scopes'][0]['selected'][0]['ranking_value'], 180e6)
-        formula_text, selection_text, capture_text = formula.to_json(), selected.to_json(), capture.to_json()
+        intent = requests.intent(requests.formula(ev), rank_to=1)
+        intent['pool'] = 'legacy'
+        strategy = strategy_requests.capture_strategy(intent, self.store)
+        roots = [dict(symbol='A0001', pool='legacy', mode='historical', date='2015-01-02')]
+        def run():
+            with fixture.view() as view:
+                formula = scalar_execution.preview(strategy, roots, view)
+                selected = scalar_execution.Executor(strategy, view, lambda record: None).select(
+                    fixture.db, 1, date(2015, 1, 2), date(2015, 1, 5))
+            return json.dumps(formula, sort_keys=True), json.dumps(selected, sort_keys=True)
+        formula_text, selection_text = run()
+        self.assertEqual(json.loads(formula_text)['evaluations'][0]['results'][0]['value'], 180e6)
+        self.assertEqual(json.loads(selection_text)[0]['ranking_value'], 180e6)
+        capture_text, strategy_text = capture.to_json(), strategy.to_json()
         changed = self.store.edit(ev['variable_id'], 1, definition(constant('3', 'USD'), 'USD', 'usd'))
         self.store.delete(changed['variable_id'], changed['version'])
         self.path.unlink()
-        self.assertEqual(formula.to_dict(), json.loads(formula_text))
-        self.assertEqual(selected.to_dict(), json.loads(selection_text))
+        self.assertEqual(run(), (formula_text, selection_text))
         self.assertEqual(library.require_capture(capture), json.loads(capture_text))
-
+        self.assertEqual(strategy_requests.require_strategy(strategy), json.loads(strategy_text))
 
 if __name__ == '__main__':
     unittest.main()

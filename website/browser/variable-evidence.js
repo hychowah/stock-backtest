@@ -30,7 +30,7 @@ const VariableEvidence=(()=>{
   }
   function preview(response){
     const samples=response.evaluations.flatMap(block=>block.results.map(result=>sample(block,result)));
-    return '<p>'+esc(response.producer?.label||'Original reference sample preview')+'</p>'+table(samples,samples.filter(item=>item.status==='Available').length+' of '+response.requested.length+' requested samples available. Availability among these requested samples only; this is not complete-pool coverage.')+'<details><summary>Advanced · complete preview JSON</summary><pre>'+esc(JSON.stringify(response,null,2))+'</pre></details>';
+    return '<p>'+esc(response.producer?.label||'Original sample preview')+'</p>'+table(samples,samples.filter(item=>item.status==='Available').length+' of '+response.requested.length+' requested samples available. Availability among these requested samples only; this is not complete-pool coverage.')+'<details><summary>Advanced · complete preview JSON</summary><pre>'+esc(JSON.stringify(response,null,2))+'</pre></details>';
   }
   function records(records,row,strategy){
     const labels=new Map((strategy.variables?.presentation||[]).map(item=>[item.variable_id+'@'+item.revision,item.name])),samples=[],stored=[];

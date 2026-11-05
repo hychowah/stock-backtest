@@ -89,7 +89,7 @@ The research tests cover availability dates, rank selection before future return
 
 ## Measured performance
 
-Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. At that time a hash of every observation row took most of the remaining time. That hash is gone. A second WSL measurement on the same day used 150 fictional companies from 2000 to 2015. With every price file gaining one session, a startup took 28.0 seconds before the change and 14.4 seconds after it. The remaining time is mostly the moved dated evidence of every stored day, price parsing and publication of the complete database file.
+Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. At that time a hash of every observation row took most of the remaining time. That hash is gone. A second WSL measurement on the same day used 150 fictional companies from 2000 to 2015. With every price file gaining one session, a startup took 28.0 seconds before the change and 14.4 seconds after it. At that time the remaining time was mostly the moved JSON dated evidence of every stored day, price parsing and publication of the complete database file. Research schema 13 stores typed days keyed by date and copies the unchanged ones instead.
 
 The full daily cycle was measured in the same workspace, with half of the companies unlisted and the Original engine. After one download, it ran `scripts/schedules.py prepare` and then a monthly schedule from 2010-01-01 to 2026-10-21 with 202 books. The cycle took 115 seconds with the previous source, which rebuilt both databases and recalculated every book. It took 59 seconds with the refresh, which kept every book. These timings do not describe the real cache or native Windows.
 
@@ -761,53 +761,56 @@ build and run browser parity checks. These checks use offline fixtures.
 
 Annual responses can contain repeated fiscal dates. Keep every returned row, including identical rows. A repair also retains distinct saved variants. Preparation uses a numerical input only when all nonmissing USD values for that endpoint and fiscal date agree. Conflicting inputs stay absent. Nulls do not replace known values. Response order does not select a revision.
 
-### Annual observation evidence on the feature branch
+### Typed prepared facts
 
-Phase 9 Slice 1 prepares all 48 direct annual inputs from the semantic catalog.
-Income, balance-sheet and cash-flow evidence retain their endpoint, exact fiscal
-date, saved asset hash and contributing row identities. All admitted dates stay
-visible, even when every requested field is unavailable. Boolean, malformed and
-nonfinite field values are unavailable. Finite signed amounts and zero stay valid.
-This evidence does not widen raw-response acceptance or the legacy financial
-values projection. Existing calculations and selections keep their inputs.
+Research preparation writes the inputs of custom-variable formulas as typed
+tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. Typed facts
+version 1 belongs to research schema 13; older caches rebuild. The daily cache
+does not copy them: Original reads them on the operation's research
+connection.
 
-The direct observation provider selects one income fiscal spine per dated
-context and history depth. The current period is the existing financial-policy
-report. Each earlier year uses its latest eligible income fiscal date. Balance
-sheets and cash flows join those exact dates. They cannot choose another date
-when a selected-period fact is missing. The strict 90-day availability rule and
-800-day current-anchor limit remain in force. Earlier history members keep the
-existing calendar-year buckets and can be older than 800 days.
+- `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason)`:
+  one row per company and saved price day.
+- `market_days(day, spy, month3, month3_reason, year10, year10_reason)`: `spy`
+  is set on a valid SPY session; a saved Treasury day has a value or a reason
+  for both fields.
+- `annual_facts(symbol, endpoint, fiscal, <field>, <field>_reason, ...)`: one row
+  per company, statement endpoint and fiscal date, with one value and one
+  reason column for each annual catalog field (parameter id without `annual.`).
+- `fact_sources(symbol, endpoint, sha256, disposition)`: the digest of each
+  annual, price, Treasury (`''`) and SPY (`''`) source file.
+- `latest_admission(symbol, pool, admitted, reason, candidate_rank, fiscal,
+  known, market_cap, enterprise_value, ebitda)`: every company's latest-root
+  decision, denials included.
+- `fact_metadata`: version, latest date, prepared scopes, policy and content
+  identity.
 
-Observation evidence version 4 retains `observation_dated` and
-`observation_sessions` and adds prepared measure contexts and explicit scope identities. Research schema 12 and daily cache version 5
-require offline rebuilding of older observation projections. Their content
-identity, preparation policy and semantic source bind reuse. The content
-identity hashes what determines the rows: the raw-file signature, each price
-file's content digest, the reuse scope and the scopes. Preparation does not
-hash the rows themselves, so an incremental build and a full rebuild of the
-same inputs record the same identity. The daily cache copies each observation
-table with one SQL statement. The new
-read-only `dated_observation_inputs.py` resolver also participates in freshness.
-Optional `raw/download-coverage.json` presence and metadata participate too.
-A matching current or previous SeriesAsset receipt identifies exact saved bytes.
-Missing or unbound receipts do not erase usable facts or prove a download.
-Daily storage copies the complete projection unchanged.
+A field is valid when its value is present; otherwise its reason column names
+the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
+`INVALID_INPUT`). Value columns have no declared type, so SQLite keeps the
+binary64 bits exactly, including -0.0, which a REAL column stores as the
+integer 0. Days are keyed by date, never by raw-file row. A download that
+prepends rows resolves only the new rows' days and copies every other typed
+day; a file with equal bytes copies its days and source. Prepared January and
+latest owner lanes are the stored book rows (`snapshots` or `latest_snapshots`,
+`screening_metrics`, `filter_values`), read in place; a missing row never falls
+back to a recalculation.
 
-Research schema 12 also writes typed facts beside this evidence, from the same
-resolutions (`backtest/inputs/facts.py`). `stock_days` holds one row per company
-and saved price day, `market_days` the valid SPY sessions and saved Treasury
-days, `annual_facts` one row per company, endpoint and fiscal date with a value
-and a reason column for each annual catalog field, `fact_sources` each source
-file's digest and disposition, and `latest_admission` the latest-root decision
-and valuation. Days are keyed by date, never by raw-file row, so a prepended
-download copies the earlier days unchanged. A field is valid when its value is
-present; otherwise its reason column names the provider reason. Value columns
-have no declared type, so SQLite keeps the binary64 bits exactly, including
--0.0. Prepared January and latest owner lanes are the stored book rows
-(`snapshots`, `screening_metrics`, `filter_values`). The daily cache does not
-copy the typed facts: the column evaluator reads them on the operation's
-research connection, while the reference evaluator reads the JSON evidence.
+Annual resolution (`financial_inputs.resolve_history`) keeps every admitted
+endpoint and fiscal date, even when every requested field is unavailable.
+Equal USD values agree. Conflicting values stay unavailable. A null does not
+replace a known value. Boolean, malformed and nonfinite values are unavailable;
+finite signed amounts and zero stay valid. This does not widen raw-response
+acceptance or the legacy financial values projection.
+
+The column evaluator (`backtest/variables/columns.py`) selects one income
+fiscal spine per dated context and history depth. The current period is the
+existing financial-policy report. Each earlier year uses its latest eligible
+income fiscal date. Balance sheets and cash flows join those exact dates. They
+cannot choose another date when a selected-period fact is missing. The strict
+90-day availability rule and 800-day current-anchor limit remain in force.
+Earlier history members keep the calendar-year buckets and can be older than
+800 days.
 
 Price and volume use the saved SPY session on or before the context, within seven
 calendar days. Each needs the stock's own field on that exact session. Price is
@@ -821,36 +824,37 @@ Null, invalid or conflicting latest fields do not borrow older field values.
 Dated inputs require no earlier annual anchor after root admission. Legacy
 financial valid-series and as-of behavior keep their existing meanings.
 
-Borrowed session, exact-row, as-of-row and source reads use indexed bounded
-queries. Their facts are detached. Individual records and endpoint histories
-keep the existing ceilings. Provider preflight charges source, calendar and
-row reads. Retained evidence counts against its byte limit. Company and dated
-reads check view lifetime; they do not rescan the whole generation. Operation
-entry checks the daily fingerprint once: the accepted raw-file signature and
-the recorded research metadata, not the prepared rows. Inspecting about 36,000
-raw files takes about 1.7 seconds on the real cache, so readers reuse the
-signature taken by preparation or after the last data-panel action. A hand edit
-to `raw/` needs a data-panel check before readers see it. Between steps, Original checks one
-research-file status at each view boundary. The exclusive cache lock keeps the
-prepared rows unchanged for the whole operation.
+The facts' content identity hashes what determines the rows: the raw-file
+signature, each price file's content digest, the reuse scope, the scopes and
+the preparation policy (`facts.py`, `financial_inputs.py`, `books.py`,
+`rules.py`, `measure_observations.py`, `research.py`, `parameters.py`).
+Preparation does not hash the rows themselves, so an incremental build and a
+full rebuild of the same inputs record the same identity. The daily cache binds
+that metadata. Operation entry checks the daily fingerprint once: the accepted
+raw-file signature and the recorded research metadata, not the prepared rows.
+Inspecting about 36,000 raw files takes about 1.7 seconds on the real cache, so
+readers reuse the signature taken by preparation or after the last data-panel
+action. A hand edit to `raw/` needs a data-panel check before readers see it.
+Between steps, Original checks one research-file status at each view boundary.
+The exclusive cache lock keeps the prepared rows unchanged for the whole
+operation. The borrowed view reads each company, day and source once.
 
-The direct provider and callable reference evaluator support all 52 direct inputs
-plus operating margin, existing dated EV and Phase 10 reusable measure adapters.
-The 33 named measures use immutable ordinary definitions and exact references.
-A prepared January or latest root consumes its stored owner lanes. A derived
-context uses dated owner policy, even at the root date. Missing prepared lanes
-never fall back to recalculation. Report EBITDA uses broad accepted report
-history. Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact
-endpoint dates. Only those named annual adapters support annual history.
-Projection 4, research schema 12 and daily cache 5 require incompatible caches
-to rebuild; durable records keep their formats. Version-3 authoring exposes all
-52 direct inputs, policy adapters and 33 exact measures. The original four-item
-catalog remains available for legacy definitions. `variables.selection.require_program()`
+The evaluator supports all 52 direct inputs plus operating margin, existing
+dated EV and the reusable measure adapters. The 33 named measures use immutable
+ordinary definitions and exact references. A prepared January or latest root
+consumes its stored owner lanes. A derived context uses dated owner policy,
+even at the root date. Report EBITDA uses broad accepted report history.
+Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
+dates. Only those named annual adapters support annual history. Typed facts 1,
+research schema 13 and daily cache 6 require incompatible caches to rebuild;
+durable records keep their formats. Version-3 authoring exposes all 52 direct
+inputs, policy adapters and 33 exact measures. The original four-item catalog
+remains available for legacy definitions. `variables.selection.require_program()`
 owns qualified scalar admission. Supported captures run through Original in
 Latest, January, fixed and random modes. Original sample preview and complete
 recorded January/latest coverage are separate operations. Eager scalar execution
-remains unsupported.
-Semantic restoration remains independent of execution qualification.
-Old definitions, captures, artifacts and durable records retain their bytes.
-Private synthetic tests establish source correctness, not native/live-cache
-coverage. No download, publication to main or running-server update is implied.
+remains unsupported. Semantic restoration remains independent of execution
+qualification. Old definitions, captures, artifacts and durable records retain
+their bytes. Private synthetic tests establish source correctness, not
+native/live-cache coverage. No download, publication to main or running-server
+update is implied.

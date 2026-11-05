@@ -247,10 +247,12 @@ evaluation, no library entry and no current catalog.
 
 ## Execution
 
-The Python reference evaluator, `backtest/variables/reference.py`, is the
-correctness authority. It evaluates in binary64 through the observation provider
-`backtest/observations.py`. The provider owns admission, report selection, annual
-alignment, EV and reasons. Neither reads raw files or SQL directly.
+The column evaluator, `backtest/variables/columns.py`, evaluates in binary64
+over the typed prepared facts that `backtest/inputs/facts.py` writes and reads.
+It owns report selection, annual alignment, dated lookups and reasons; the
+borrowed `facts.View` owns admission and entry valuation. The same code gives
+values-only results for complete scopes and explanation blocks for selected or
+sampled rows. It reads no raw files.
 
 | Path | Contract |
 |---|---|
@@ -258,7 +260,7 @@ alignment, EV and reasons. Neither reads raw files or SQL directly.
 | Experimental numerical engine | Deleted on 2026-11-05. The server refuses a request that names it |
 | Sample preview | Original only, 1–16 explicit company/date roots |
 | Eager scalar `calculate()` | Unsupported |
-| Coverage inspection | Original reference over a complete recorded January or latest scope |
+| Coverage inspection | Original over a complete recorded January or latest scope |
 
 Each backend declares its definition versions, parameters and operations.
 Unsupported work fails before execution. It never changes meaning or switches
@@ -271,13 +273,12 @@ and scope identity. The denominator is every snapshot row in the scope, before
 availability, ranking, filters and rank ranges. An empty scope reports zero and
 no percentage. Each output reports valid and unavailable counts and the first
 unavailable reason per row. `backtest/application/scalar_execution.py` owns the
-shared population reads, chunk planning and work reservations. An over-budget
-request fails with `WORK_LIMIT`. Inspection writes nothing and builds no new
-fixed or random books.
+shared population reads. Inspection writes nothing and builds no new fixed or
+random books.
 
-Observation projection 4, research schema 11 and daily cache 5 carry the
-evidence. Older derived caches must rebuild. Durable records and immutable
-artifacts keep their formats.
+Typed facts version 1, research schema 13 and daily cache 6 carry the inputs.
+Older derived caches must rebuild. Durable records and immutable artifacts keep
+their formats; old explanation blocks open unchanged.
 
 ## Editor
 

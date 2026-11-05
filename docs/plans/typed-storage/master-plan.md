@@ -312,6 +312,30 @@ T2, fixtures:
   every explained lane of the Executor path, including dated book admission):
   16 runs equal, 1,031 traces equal.
 
+T0, one-session append on the bench (2026-10-22 added to the 3,985 price files
+whose newest row was 2026-10-21, plus SPY and Treasury; pre-T1 code):
+
+- `daily.prepare()` 1,236 s: research 987 s (inputs 4, companies 167,
+  dated observations 565, measure contexts 1, prior-unit copies 195,
+  publication 51; the baseline was reused), daily 250 s (copy of research
+  tables 40, prices 89 with 3,985 parsed and 3,246 copied, kept books 116 with
+  1,343 of 1,346 kept, publication 3).
+- Sizes after it: research 17.0 GB (`observation_dated` 14.5 GB,
+  `observation_annual` 1.9 GB, measure contexts 0.38 GB), daily 27.3 GB
+  (`observation_dated` copy 14.3 GB, `filter_values` 4.1 GB plus its index
+  3.9 GB, `observation_annual` 1.8 GB, `prices` 1.0 GB). The 33.7 GB research
+  file of a cold build holds the same rows; the rest is free pages.
+- User test after the append: 206.7 s (3 books recomputed).
+
+T3, fixtures: fast tier 91 files pass; heavy tier passes. Ported tests:
+`tests/test_columns.py` (27 tests, replaces the provider and reference
+evaluator tests), `test_prepared_facts.py`, `test_annual_observations.py`,
+`test_dated_observations.py`, `test_measure_observations.py`,
+`test_reusable_measures.py`, `test_variable_coverage.py`,
+`test_variable_selection.py` and others; dropped only checks of deleted
+mechanics (plan documents, provider work and byte bounds, JSON evidence rows,
+receipts, row shifting).
+
 ## Bench and tools
 
 - Real-data copy: `~/bench/ebitda-real` (raw 4.2 GB, research 33.7 GB, daily
@@ -351,9 +375,8 @@ T2, fixtures:
 ## Next
 
 Scope of this session: T0 to T4, each phase committed with its evidence; stop
-after T4 passes its exit. T1 and T2 code is committed; fixture parity holds for
-both. T0's one-session append is running on the bench (pre-T1 code). Then:
-restore the raw files, update the bench to the T2 commit (full research
-rebuild), measure table sizes and the user test, and run `real.py --scopes 20
---formulas --detail` and `storage.py` on the copy (T1 and T2 real-copy exits).
-T3 is drafted in the worktree's ignored scratch folder.
+after T4 passes its exit. T0–T3 code is committed. The bench runs the T2
+commit (full research rebuild, user test twice), then `real.py --scopes 20
+--formulas --detail` and `storage.py` (T1 and T2 real-copy exits); record the
+results here. Then update the bench to T3 and measure sizes, the cold build
+and the user test, and compare whole results with T2. Then T4.

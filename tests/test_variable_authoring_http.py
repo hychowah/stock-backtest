@@ -170,10 +170,10 @@ class AuthoringHttpTests(ExistingHttp):
         with closing(sqlite3.connect(self.path)) as db:
             for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
                 db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
-            from backtest.inputs import observation_inputs
-            db.execute('DELETE FROM observation_metadata')
-            scopes=[dict(mode='historical',pool=pool,context_date='2015-01-02',book=2015) for pool in ('cached','legacy')]
-            observation_inputs.finish(db, '2015-01-05', inputs='fixture',scopes=scopes)
+            from backtest.inputs import facts
+            from test_scalar_execution import scopes
+            db.execute('DELETE FROM fact_metadata')
+            facts.finish(db, '2015-01-05', inputs='fixture',scopes=scopes(historical=[('2015-01-02',2015)]))
             db.commit()
         def browser(value):
             process=subprocess.run(['node','-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));'],

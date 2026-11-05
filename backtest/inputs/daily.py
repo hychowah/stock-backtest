@@ -15,11 +15,11 @@ from backtest.runtime import diagnostics
 from backtest import calendar as schedule_calendar
 from backtest import portfolio_results as portfolio_results
 from backtest.inputs import market
-from backtest.inputs import observation_inputs
+from backtest.inputs import facts
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 5
+VERSION = 6
 POOL_SCHEMA = '''
 CREATE TABLE IF NOT EXISTS period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
@@ -51,9 +51,9 @@ def fingerprint(source=None, *, accepted=False):
     # prepared inputs refresh prices/books. Prepared rows are identified by
     # their recorded metadata, not rescanned. Preparation inspects raw inputs
     # afresh; readers compare the accepted signature.
-    prices,observations=r.prepared_bindings(source or r.DATABASE)
-    return dict(version=VERSION, observation_version=observation_inputs.VERSION,
-                inputs=r.accepted_signature() if accepted else r.signature(),prices=prices,observations=observations,
+    prices,prepared=r.prepared_bindings(source or r.DATABASE)
+    return dict(version=VERSION, facts_version=facts.VERSION,
+                inputs=r.accepted_signature() if accepted else r.signature(),prices=prices,facts=prepared,
                 engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
 
 def connect(path=DATABASE,source=None):
@@ -115,7 +115,6 @@ def _copy_research(reference,db):
             for row in reference.execute('SELECT * FROM '+table):
                 backtest_control.checkpoint()
                 digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
-    observation_inputs.copy(reference,db,'research')
     return digest.hexdigest()
 
 

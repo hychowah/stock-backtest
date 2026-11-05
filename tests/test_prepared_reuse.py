@@ -71,11 +71,11 @@ class PreparedReuseTests(unittest.TestCase):
     def prepare(self, force=False, *, detail=False):
         """Return (independent engine runs, price files parsed by preparation).
 
-        detail adds the companies whose dated evidence was resolved in full,
-        those resolved only for new days and those resolved for source evidence.
+        detail adds the companies whose typed days were resolved in full and
+        those resolved only for their new days.
         """
-        state = dict(runs=0, inside=False, parsed=set(), full=set(), shifted=set(), source=set())
-        calculate, read_text, stock = r.revalue.calculate, Path.read_text, r.dated_observation_inputs.stock
+        state = dict(runs=0, inside=False, parsed=set(), full=set(), shifted=set())
+        calculate, read_text, stock = r.revalue.calculate, Path.read_text, r.facts.stock
         def reference(through):
             state.update(runs=state['runs'] + 1, inside=True)
             try:
@@ -87,15 +87,15 @@ class PreparedReuseTests(unittest.TestCase):
             if path.parent == self.raw / 'px' and not state['inside']:
                 state['parsed'].add(path.stem)
             return content
-        def resolve(raw, symbol, ledger, checkpoint, *, days=None):
+        def resolve(raw, symbol, checkpoint, *, days=None):
             if (raw / 'px' / f'{symbol}.json').exists():
-                state['full' if days is None else 'source' if days == () else 'shifted'].add(symbol)
-            return stock(raw, symbol, ledger, checkpoint, days=days)
+                state['full' if days is None else 'shifted'].add(symbol)
+            return stock(raw, symbol, checkpoint, days=days)
         with patch.object(r.revalue, 'calculate', side_effect=reference), patch.object(Path, 'read_text', read), \
-                patch.object(r.dated_observation_inputs, 'stock', side_effect=resolve):
+                patch.object(r.facts, 'stock', side_effect=resolve):
             r.prepare(self.path, force=force)
         result = state['runs'], sorted(state['parsed'])
-        return result + tuple(sorted(state[key]) for key in ('full', 'shifted', 'source')) if detail else result
+        return result + tuple(sorted(state[key]) for key in ('full', 'shifted')) if detail else result
 
     def dump(self):
         with closing(sqlite3.connect(self.path)) as db:
@@ -123,7 +123,7 @@ class PreparedReuseTests(unittest.TestCase):
         self.append_session('2015-12-01')
         # The unlisted company's unchanged file is not parsed or resolved; listed
         # files are parsed for latest roots. The verified baseline is reused.
-        self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], [], ['AAA', 'BBB'], []))
+        self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], [], ['AAA', 'BBB']))
         with closing(r.connect(self.path, full_prices=True)) as db:
             self.assertEqual([dict(row) for row in screening.historical(db, first=2014, last=2015, pool='cached')], before)
             self.assertEqual({row['price_date'] for row in screening.latest(db, pool='cached')}, {'2015-12-01'})
@@ -138,7 +138,7 @@ class PreparedReuseTests(unittest.TestCase):
         full, incremental, current = [record for record in diagnostics.records(folder) if record['event'] == 'prepare.research']
         self.assertEqual({key: full[key] for key in ('outcome', 'verification', 'companies', 'companies_rebuilt', 'companies_reused')},
                          dict(outcome='prepared', verification='independent', companies=3, companies_rebuilt=3, companies_reused=0))
-        self.assertLessEqual({'inputs', 'companies', 'observations', 'metrics', 'measure_contexts', 'observation_finish',
+        self.assertLessEqual({'inputs', 'companies', 'dated_facts', 'metrics', 'facts_finish',
                               'commit', 'verification', 'publication'}, full['stages'].keys())
         self.assertGreater(full['verified_holdings'], 0)
         self.assertEqual((incremental['verification'], incremental['companies_rebuilt'], incremental['companies_reused']), ('reused', 0, 3))
@@ -146,49 +146,27 @@ class PreparedReuseTests(unittest.TestCase):
 
     def test_prepended_rows_resolve_only_their_days(self):
         self.prepare()
-        # Two days in a row: shifted evidence is shifted again.
+        # Two days in a row: earlier typed days are copied again.
         for day in ('2015-12-01', '2015-12-02'):
             self.append_session(day)
-            self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], [], ['AAA', 'BBB'], []))
+            self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], [], ['AAA', 'BBB']))
             self.assert_full_rebuild_equal()
         # A second variant of a saved day recalculates that whole day. A row
         # without a usable date touches no day, but counts as history, so the
         # reference engine runs.
         self.edit('px/AAA.json', lambda value: value['div'].insert(0, dict(date='2015-12-02', adjClose=31)))
         self.edit('px/BBB.json', lambda value: value['div'].insert(0, dict(date='not a day', adjClose=1)))
-        self.assertEqual(self.prepare(detail=True), (1, ['AAA', 'BBB'], [], ['AAA', 'BBB'], []))
+        self.assertEqual(self.prepare(detail=True), (1, ['AAA', 'BBB'], [], ['AAA', 'BBB']))
         self.assert_full_rebuild_equal()
         # A row inserted between saved rows is not a prepend: resolve in full.
         self.edit('px/AAA.json', lambda value: value['div'].insert(3, dict(date='2015-11-30', adjClose=29)))
         self.assertEqual(self.prepare(detail=True)[2], ['AAA'])
         self.assert_full_rebuild_equal()
 
-    def test_moved_evidence_equals_fresh_encoding_or_is_refused(self):
-        dated = r.dated_observation_inputs
-        path = self.raw / 'px' / 'AAA.json'
-        before = dated.resolve(path, dated.STOCK, {}, stock=True)['dated']
-        def prepend_two(value):
-            for day in ('2016-01-01', '2016-01-02'):
-                value['div'].insert(0, dict(date=day, adjClose=9))
-        self.edit('px/AAA.json', prepend_two)
-        after = dated.resolve(path, dated.STOCK, {}, stock=True)['dated']
-        encoded = r.observation_inputs.encoded
-        for day, states in before.items():
-            self.assertEqual(dated.shifted(encoded(states), 2), encoded(after[day]))
-        # A retained-row layout without the expected next key is never moved.
-        self.assertIsNone(dated.shifted('{"rows":[{"index":0,"provider":"x","reported_currency":null}]}', 1))
-        self.assertEqual(dated.shifted('{"value":1}', 1), '{"value":1}')
-
-    def test_unmovable_evidence_resolves_the_file_in_full(self):
-        self.prepare()
-        self.append_session('2015-12-01')
-        with patch.object(r.dated_observation_inputs, 'shifted', return_value=None):
-            self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], ['AAA', 'BBB'], [], []))
-        self.assert_full_rebuild_equal()
-
-    def test_same_bytes_with_new_receipt_resolve_only_source_evidence(self):
+    def test_same_bytes_with_new_receipt_copy_every_typed_day(self):
         # A checked download window with no new rows rewrites equal bytes and
-        # extends the coverage receipt, as SeriesAsset.publish does.
+        # extends the coverage receipt, as SeriesAsset.publish does. Typed days
+        # and sources depend only on the bytes, so nothing is resolved again.
         path = self.raw / 'px' / 'CCC.json'
         digest = r.hashlib.sha256(path.read_bytes()).hexdigest()
         self.write('download-coverage.json', {'px/CCC.json': dict(sha256=digest, windows=[['2013-01-01', '2015-10-20']])})
@@ -196,11 +174,11 @@ class PreparedReuseTests(unittest.TestCase):
         self.write('px/CCC.json', json.loads(path.read_text()))
         self.assertEqual(r.hashlib.sha256(path.read_bytes()).hexdigest(), digest)
         self.write('download-coverage.json', {'px/CCC.json': dict(sha256=digest, windows=[['2013-01-01', '2015-12-01']])})
-        self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], [], [], ['CCC']))
+        self.assertEqual(self.prepare(detail=True), (0, ['AAA', 'BBB'], [], []))
         with closing(sqlite3.connect(self.path)) as db:
-            source = json.loads(db.execute("SELECT evidence_json FROM observation_sources WHERE symbol='CCC' AND endpoint=?",
-                                           (r.dated_observation_inputs.STOCK,)).fetchone()[0])
-        self.assertEqual(source['receipt']['windows'], [['2013-01-01', '2015-12-01']])
+            source = db.execute("SELECT sha256,disposition FROM fact_sources WHERE symbol='CCC' AND endpoint=?",
+                                (r.facts.STOCK,)).fetchone()
+        self.assertEqual(source, (digest, 'valid'))
         self.assert_full_rebuild_equal()
 
     def test_changed_history_recalculates_that_company_and_runs_reference(self):

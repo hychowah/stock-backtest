@@ -6,14 +6,13 @@ import unittest
 from unittest.mock import patch
 from backtest.application import variable_coverage as coverage, scalar_execution
 from backtest.variables import definitions
-from test_scalar_execution import Fixture
+from test_scalar_execution import Fixture, scopes as prepared_scopes
 import test_strategy_requests as requests
 import test_variable_definitions as language
 from backtest.application import strategy_requests
 from backtest.variables import library
-from backtest.inputs import observation_inputs
+from backtest.inputs import facts
 from backtest.runtime import backtest_control
-import json
 from backtest.application.original_calculations import Original
 from prepared_inputs_fixture import PreparedInputs, history
 
@@ -43,7 +42,8 @@ class CoverageTests(unittest.TestCase):
     def test_metadata_bound_before_observation(self):
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            with patch.object(scalar_execution,'MAX_METADATA_BYTES',8192),patch.object(coverage.reference,'evaluate',side_effect=AssertionError('observed')):
+            bound=scalar_execution._size(view.projection)-1
+            with patch.object(scalar_execution,'MAX_METADATA_BYTES',bound),patch.object(coverage.columns.Formulas,'evaluate',side_effect=AssertionError('observed')):
                 with self.assertRaises(definitions.FormulaError) as failure:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
                 self.assertEqual(failure.exception.code,'WORK_LIMIT')
     def test_repeated_output_counts_once_per_company(self):
@@ -60,9 +60,8 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],result['population'])
             with self.assertRaises(definitions.FormulaError):coverage.inspect(repeated,dict(scope,generation=listing['generation'],book=False),self.fixture.db,view)
     def test_recorded_january_and_cancellation(self):
-        scopes=[dict(mode='historical',pool=pool,context_date='2015-01-02',book=1) for pool in ('cached','legacy')]
-        self.fixture.db.execute('DELETE FROM observation_metadata')
-        observation_inputs.finish(self.fixture.db, '2015-01-05', inputs='fixture',scopes=scopes)
+        self.fixture.db.execute('DELETE FROM fact_metadata')
+        facts.finish(self.fixture.db, '2015-01-05', inputs='fixture',scopes=prepared_scopes(historical=[('2015-01-02',1)]))
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
                 listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='historical' and x['pool']==pool)
@@ -78,7 +77,7 @@ class CoverageTests(unittest.TestCase):
             try:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
             finally:self.fixture.db.set_trace_callback(None)
             self.assertFalse(any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','REPLACE','CREATE','DROP')) for s in statements))
-            leaves=[s for s in statements if 'FROM observation_annual' in s and 'LIMIT 0' not in s]
+            leaves=[s for s in statements if 'FROM annual_facts' in s]
             self.assertTrue(leaves,statements)
             self.assertTrue(all('symbol=' in s.lower() and 'limit ' in s.lower() for s in leaves),leaves)
     def test_distinct_outputs_share_a_dependency(self):
@@ -94,18 +93,15 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual({item['variable_id'] for item in result['outputs']},{'local:first','local:second'})
             self.assertTrue(all(item['valid']+item['unavailable']==4 for item in result['outputs']))
     def test_prepared_owner_missing_lanes_and_equal_date_derived_policy(self):
-        finish=observation_inputs.finish
+        finish=facts.finish
         def adversarial(db,*args,**kwargs):
-            for mode,pool,day,symbol,document in db.execute('SELECT mode,pool,context_date,symbol,evidence_json FROM observation_measure_contexts').fetchall():
-                evidence=json.loads(document)
-                if 'metrics' not in evidence:continue
-                if symbol=='Q0000':
-                    db.execute('DELETE FROM observation_measure_contexts WHERE mode=? AND pool=? AND context_date=? AND symbol=?',(mode,pool,day,symbol))
-                elif symbol=='Q0001':
-                    evidence['metrics'].pop('ev_ebitda',None)
-                    db.execute('UPDATE observation_measure_contexts SET evidence_json=? WHERE mode=? AND pool=? AND context_date=? AND symbol=?',(observation_inputs.encoded(evidence),mode,pool,day,symbol))
+            # Stored owner lanes: Q0000 keeps its book rows but loses every
+            # metric and filter; Q0001 loses only ev_ebitda.
+            for table in ('screening_metrics','filter_values'):
+                db.execute('DELETE FROM '+table+" WHERE symbol='Q0000'")
+            db.execute("DELETE FROM screening_metrics WHERE symbol='Q0001' AND metric='ev_ebitda'")
             return finish(db,*args,**kwargs)
-        with patch.object(observation_inputs,'finish',side_effect=adversarial):
+        with patch.object(facts,'finish',side_effect=adversarial):
             with PreparedInputs(configure=history(4,2015,2016)):
                 owner=Original()
                 listing=owner.coverage()
@@ -121,5 +117,7 @@ class CoverageTests(unittest.TestCase):
                         result=owner.coverage(capture.to_dict(),dict(scope,generation=listing['generation']))
                         self.assertEqual(result['population'],4)
                         self.assertEqual(result['outputs'][0]['unavailable'],expected,(mode,expression,result))
+                        if expected:
+                            self.assertEqual(result['outputs'][0]['reasons'],{'LEGACY_MEASURE_UNAVAILABLE':2})
 
 if __name__=='__main__':unittest.main()

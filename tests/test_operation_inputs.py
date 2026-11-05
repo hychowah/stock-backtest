@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from backtest.application import strategy_requests
 from backtest.application.original_calculations import Original
-from backtest.inputs import daily, observation_inputs, operation_inputs, research
+from backtest.inputs import daily, operation_inputs, research
 from backtest.runtime import backtest_control
 from prepared_inputs_fixture import PreparedInputs, history
 import test_strategy_requests as intent

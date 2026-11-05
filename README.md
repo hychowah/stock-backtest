@@ -93,7 +93,7 @@ current-source speed guarantee.
 
 Custom ranking and filtering variables are part of `main`. Formulas combine
 financial parameters with point-in-time measures and run with Original. Sample
-preview uses Original reference execution. Eager scalar execution is unsupported.
+preview uses Original. Eager scalar execution is unsupported.
 See the [custom-variable summary](docs/plans/custom-variables/master-plan.md).
 
 Records follow the [records policy](docs/records-policy.md).

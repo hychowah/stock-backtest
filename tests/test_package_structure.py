@@ -72,7 +72,7 @@ sys.path.insert(0,sys.argv[1])
 for name in ('website.server.app','backtest.application.original_calculations',
              'backtest.application.strategy_requests','backtest.application.scalar_execution',
              'backtest.application.scalar_runs','backtest.application.variable_coverage',
-             'backtest.inputs.research','backtest.inputs.sqlite_observations','backtest.scalar_result_evidence'):
+             'backtest.inputs.research','backtest.inputs.facts','backtest.scalar_result_evidence'):
     importlib.import_module(name)
 loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')]
 assert not loaded,loaded

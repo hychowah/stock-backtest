@@ -1,9 +1,11 @@
 """Complete prepared scopes to scalar selected books and detached explanations.
 
-Only this adapter combines captured source lanes. The provider retains admission
-and financial meanings; reference retains arithmetic. Chunking never ranks.
-One global scalar selection follows complete evaluation of the prepared scope.
-The caller owns admitted connections/view, cancellation and the evidence sink.
+Only this adapter combines captured source lanes. The borrowed view
+(backtest/inputs/facts.View) owns admission and financial meanings; the column
+evaluator (backtest/variables/columns.py) owns formula values and their
+explanations. One global scalar selection follows complete evaluation of the
+prepared scope. The caller owns the admitted connections and view,
+cancellation and the evidence sink.
 """
 from copy import deepcopy
 from decimal import Decimal
@@ -14,39 +16,21 @@ from pathlib import Path
 
 _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
-from backtest import observations, selection
+from backtest import selection
 from backtest.financial import books
 from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
-from backtest.variables import columns, definitions, library, reference, evaluation
+from backtest.variables import columns, definitions, library
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
-# Encoded-byte bound on coverage and plan metadata. Variable coverage checks the
-# recorded projection alone, then one scope's rows (twice) with its compiled
-# plans (Budget.reserve), then those plus the projection and reason tables.
-# _plans caps the compiled plans of each call: previews, coverage scopes and
-# selected-row explanations.
+# Encoded-byte bound on the recorded scope metadata that coverage returns.
 MAX_METADATA_BYTES = 256 * 1024 * 1024
 MAX_SCOPES = 16384
+MAX_PREVIEW_BYTES = 16 * 1024 * 1024
 
 
 def _size(value):
     return len(definitions.canonical(value).encode('ascii'))
-
-
-class Budget:
-    """Count planned tasks for receipts and bound one scope's retained metadata.
-
-    A whole run has no work ceiling: it fails late, after the work is done, and
-    a run can be stopped. Encoded output belongs to the sink.
-    """
-    def __init__(self):
-        self.metadata_bytes = MAX_METADATA_BYTES
-        self.tasks = 0
-    def reserve(self, plans, metadata):
-        if 2*_size(metadata) + sum(len(plan.document) for plan in plans) > self.metadata_bytes:
-            raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar scope metadata exceeds its byte bound.')
-        self.tasks += sum(len(plan.to_dict()['tasks']) for plan in plans)
 
 
 def scope_rows(db, *, pool, period=None):
@@ -74,71 +58,42 @@ def scope_rows(db, *, pool, period=None):
     return rows
 
 
-def _plans(program, roots, record_bytes, checkpoint):
-    """Compile every chunk before reading its observations; adapt temporal contexts."""
-    strategy_requests.require_formula_support(program, checkpoint=checkpoint)
-    plans = [];used=0
-    remaining = roots
-    while remaining:
-        checkpoint()
-        count = min(256, len(remaining))
-        while True:
-            try:
-                plan = evaluation.plan(program, remaining[:count],
-                    dict(output_bytes=min(evaluation.CEILINGS['output_bytes'], record_bytes - 4096)))
-                break
-            except definitions.FormulaError as error:
-                if error.code != 'WORK_LIMIT' or count == 1:
-                    raise
-                count = max(1, count // 2)
-        used+=len(plan.document)
-        if used>MAX_METADATA_BYTES:raise definitions.FormulaError('WORK_LIMIT','/execution','Compiled chunks exceed their aggregate encoded bound.')
-        plans.append(plan)
-        remaining = remaining[count:]
-    return plans
+def check_preview(capture, roots, *, checkpoint=backtest_control.checkpoint):
+    """Check a sample preview before financial ownership; return its program.
 
-
-def plan_preview(capture, roots, *, record_bytes=8 * 1024 * 1024,
-                 checkpoint=backtest_control.checkpoint):
-    """Evaluate only explicit bounded roots; this never certifies pool coverage."""
+    A preview evaluates 1–16 explicit company/date roots and never certifies
+    pool coverage.
+    """
     checked = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
     if type(roots) is not list or not 1 <= len(roots) <= 16:
         raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Preview needs 1–16 explicit company/date roots.')
     if checked['variables'] is None:
         raise definitions.FormulaError('INVALID_STRATEGY', '/preview', 'A formula preview requires captured formula roots.')
     program = library.VariableCapture(definitions.canonical(checked['variables'])).program
-    return _plans(program, roots, record_bytes, checkpoint)
+    strategy_requests.require_formula_support(program, checkpoint=checkpoint)
+    columns.require_roots(roots)
+    columns.Formulas(program).require_contexts(roots)
+    return program
 
 
-def evaluate_preview(plans, roots, view, *, checkpoint=backtest_control.checkpoint):
-    """Consume precompiled explicit requests; no complete-pool claim is made."""
-    blocks = []
-    used = 0
-    for plan in plans:
-        block = reference.evaluate(plan, view, checkpoint).to_dict()
-        used += _size(block)
-        if used > 16 * 1024 * 1024:
-            raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Complete preview exceeds its encoded byte ceiling.')
-        blocks.append(block)
-    return dict(population='explicit-request-scopes', requested=roots, evaluations=blocks)
+def preview(capture, roots, view, *, checkpoint=backtest_control.checkpoint):
+    """Check, then explain explicit roots; the composition of check_preview and evaluate_preview."""
+    return evaluate_preview(check_preview(capture, roots, checkpoint=checkpoint), roots, view, checkpoint=checkpoint)
 
 
-def preview(capture, roots, view, *, record_bytes=8 * 1024 * 1024, checkpoint=backtest_control.checkpoint):
-    """Callable composition of financial-free planning and bounded observation."""
-    return evaluate_preview(plan_preview(capture,roots,record_bytes=record_bytes,checkpoint=checkpoint),roots,view,checkpoint=checkpoint)
-
-
-def _plan_work(plans, bounds):
-    """Upper bound of the provider rows that evaluating plans inspects."""
-    inspected=0
-    for plan in plans:
-        compiled=plan.to_dict();dates={root['date'] for root in compiled['requests'] if root['mode']=='historical'}
-        inspected+=2*len(dates)*(bounds['report_rows']+bounds['population'])
-        annual=2*bounds['max_annual'] if observations.requires_annual_fields(compiled['provider']['requests']) else 0
-        inspected+=len(compiled['requests'])*(bounds['max_reports']+annual+11)
-        inspected+=4*len(compiled['provider']['contexts'])
-        inspected+=observations.additional_work_bound(compiled['provider']['requests'],compiled['provider']['contexts'],bounds)
-    return inspected
+def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkpoint):
+    """Explain explicit checked roots with the column evaluator; no complete-pool claim is made."""
+    for index, root in enumerate(roots):
+        scope = root.get('owner_scope')
+        if scope and scope['kind'] == 'prepared' and not any(
+                item['mode'] == root['mode'] and item['pool'] == root['pool'] and item['context_date'] == root['date']
+                and item['book'] == scope['book'] for item in view.projection['scopes']):
+            raise definitions.FormulaError('INVALID_SHAPE', '/requests/' + str(index) + '/owner_scope',
+                                           'Prepared owner scope does not match the admitted projection.')
+    block = columns.Formulas(program).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
+    if _size(block) > MAX_PREVIEW_BYTES:
+        raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Complete preview exceeds its encoded byte ceiling.')
+    return dict(population='explicit-request-scopes', requested=roots, evaluations=[block])
 
 
 def _scope(db, view, capture, period, entry, *, latest, owner_scope):
@@ -160,27 +115,6 @@ def _scope(db, view, capture, period, entry, *, latest, owner_scope):
     return rows,roots
 
 
-def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner_scope=None,
-               budget, checkpoint=backtest_control.checkpoint):
-    """Plan every root in one complete scope before observation. Chunking bounds evaluation resources and never changes membership, ranking or the meaning of a completed scope."""
-    checkpoint()
-    if program is not None:
-        strategy_requests.require_formula_support(program, checkpoint=checkpoint)
-    if owner_scope is None: owner_scope = dict(kind='dated')
-    rows,roots=_scope(db,view,capture,period,entry,latest=latest,owner_scope=owner_scope)
-    plans=_plans(program,roots,8 * 1024 * 1024,checkpoint) if program else []
-    bounds=view.bounds
-    inspected=2*len(rows)
-    sources=[capture['selection']['ranking']['source']]+[item['source'] for item in capture['selection']['conditions']]
-    inspected+=len(rows)*sum(source['kind']=='builtin' for source in sources)
-    if plans:
-        inspected+=_plan_work(plans,bounds)
-    else:
-        inspected+=(len(rows)+255)//256*(2*(bounds['report_rows']+bounds['population']) if not latest else 2*256)
-    budget.reserve(plans,rows)
-    return rows,roots,plans,inspected
-
-
 class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run.
 
@@ -191,7 +125,7 @@ class Executor:
     reasons but no step trace.
     """
     contract = 2
-    def __init__(self, capture, view, research, sink, *, record_bytes=8 * 1024 * 1024,
+    def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
                  checkpoint=backtest_control.checkpoint, explain=True):
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
@@ -201,16 +135,15 @@ class Executor:
         if self.program is not None:
             strategy_requests.require_formula_support(self.program, checkpoint=checkpoint)
         self.formulas = columns.Formulas(self.program) if self.program is not None else None
-        self.facts = columns.Facts(view, research)
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
     def _admit(self, rows, roots, entry, owner_scope, dated):
         """Admission decisions in row order.
 
-        Dated scopes apply ReadView.admit's rules (eligible report, legacy buffer,
+        Dated scopes apply the view's admission rules (eligible report, legacy buffer,
         cached prices, eligible valuation) and take the entry valuation from the
         book row: compute_period derived it with the same function and prices.
-        Other scopes use Facts.admit: typed latest admission, and the view's
+        Other scopes use the view's admission: typed latest admission, and
         complete-population admission for January scopes.
         """
         if dated:
@@ -227,7 +160,7 @@ class Executor:
                     admitted=reason is None, reason=reason, candidate_rank=rank, owner_scope=owner_scope,
                     valuation=None if reason else dict(market_cap=row['market_cap'], enterprise_value=row['enterprise_value'], ebitda=row['ebitda'])))
             return decisions
-        decisions = self.facts.admit(roots, self.checkpoint)
+        decisions = self.view.admit(roots, self.checkpoint)
         for decision in decisions:
             decision['owner_scope'] = owner_scope
         return decisions
@@ -311,7 +244,7 @@ class Executor:
             else:
                 needed = list(range(len(rows)))
             outputs = self.formulas.evaluate([roots[i] for i in needed], self.view, self.checkpoint,
-                                             decisions=[decisions[i] for i in needed], facts=self.facts)
+                                             decisions=[decisions[i] for i in needed])
             computed = dict(zip(needed, outputs))
             for i, output in computed.items():
                 for role in formula_roles:
@@ -341,7 +274,7 @@ class Executor:
             def explain(indices):
                 self.checkpoint()
                 block = self.formulas.explain([roots[i] for i in indices], self.view, self.checkpoint,
-                                              decisions=[decisions[i] for i in indices], facts=self.facts)
+                                              decisions=[decisions[i] for i in indices])
                 if _size(block) > self.record_bytes - 4096:
                     if len(indices) == 1:
                         raise definitions.FormulaError('WORK_LIMIT', '/execution',

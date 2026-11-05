@@ -16,7 +16,7 @@ import json
 import math
 import re
 
-from backtest import observations, selection
+from backtest import selection
 from backtest.financial import metrics
 from backtest.runtime import backtest_control
 from backtest.variables import definitions, library
@@ -45,8 +45,6 @@ def failure_details(error):
     """
     if isinstance(error, definitions.FormulaError):
         issues = error.to_dict()['errors']
-    elif isinstance(error, observations.ObservationError):
-        issues = [dict(code=error.code, path=error.path, message=str(error))]
     else:
         return None
     return dict(code=error.code, path=error.path, errors=issues)
@@ -433,7 +431,7 @@ def require_formula_support(program, engine='original', *, checkpoint=backtest_c
 def preview_engine(engine='original'):
     """Sample preview explicitly uses Original, independent of run selection."""
     if engine!='original':
-        _fail('UNSUPPORTED_CAPABILITY','/engine','Sample preview supports Original reference execution only.')
+        _fail('UNSUPPORTED_CAPABILITY','/engine','Sample preview supports Original execution only.')
     return engine
 
 

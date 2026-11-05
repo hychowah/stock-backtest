@@ -246,7 +246,7 @@ Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
 **Research database and baseline.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 12) from the raw cache. It compares the
+`data/research.sqlite` (research schema 13) from the raw cache. It compares the
 prepared baseline with `revalue.calculate(through)` at full precision. Both
 engines must agree on all years, ranks, symbols, dates, prices, valuations,
 returns and exit basis. Never bypass disagreement or relax the tolerance.
@@ -326,7 +326,7 @@ and `results/experiments/fmp-throughput-2026-10-23.json`. Do not present old
 timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
-daily SQLite cache (version 5) after research preparation. It prepares only the
+daily SQLite cache (version 6) after research preparation. It prepares only the
 requested pool and records completion in `period_pools` in the same transaction
 as the rows. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
@@ -413,15 +413,20 @@ published artifact, not the live form. Decode older saved records without
 rewriting them. Shutdown closes admission, drains readers and joins requests
 before source ownership ends. See [docs/evidence-views.md](docs/evidence-views.md).
 
-**Custom variables.** Reference evaluation covers definition versions 1–3 and
-catalogs `/1`–`/3`. New formulas use version 3 and catalog `/3`; old formulas
-need an explicit upgrade. `backtest/variables/selection.py` holds the single
-qualified scalar gate. Reference or provider support alone grants no application
-qualification. Eager scalar execution and numerical sample preview are
-unsupported. Derived `at` and `lookback` contexts use dated owner policy, even at
-an equal date. Preserve the 32-definition closure ceiling. Original scalar
-operations hold inputs through `backtest/inputs/operation_inputs.py`: one daily
-fingerprint at entry, one file status per step, no row rescans. Checks:
+**Custom variables.** `backtest/variables/columns.py` evaluates formulas of
+definition versions 1–3 and catalogs `/1`–`/3`, values only or explained, over the
+typed facts of `backtest/inputs/facts.py` (research only; the daily cache does
+not copy them). One code path computes the values and their explanations; the
+parity harness on the bench is the oracle for changes to it. New formulas use
+version 3 and catalog `/3`; old formulas need an explicit upgrade.
+`backtest/variables/selection.py` holds the single qualified scalar gate.
+Evaluator support alone grants no application qualification. Eager scalar
+execution and numerical sample preview are unsupported. Derived `at` and
+`lookback` contexts use dated owner policy, even at an equal date. Preserve the
+32-definition closure ceiling and signed zero in typed value columns. Original
+scalar operations hold inputs through `backtest/inputs/operation_inputs.py`: one
+daily fingerprint at entry, one file status per step, no row rescans. Checks:
+`tests/test_columns.py`, `tests/test_prepared_facts.py`,
 `tests/test_operation_inputs.py` and heavy `tests/test_original_long_window.py`.
 See
 [variable design](docs/plans/custom-variables/variable-design.md) and the

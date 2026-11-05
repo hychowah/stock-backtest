@@ -1,47 +1,69 @@
-"""Synthetic scope metadata and stored owner lane evidence."""
+"""Prepared scope metadata, owner lanes from stored books and the dated owner policy."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
+from contextlib import closing
+from datetime import date
+import json
 import sqlite3
 import unittest
+from unittest.mock import Mock, patch
 from backtest import measure_observations as bridge
-from backtest.inputs import observation_inputs as source
+from backtest.financial import books, metrics, rules
+from backtest.inputs import facts, research
+from prepared_inputs_fixture import PreparedInputs
+import test_annual_observations as annual
+from test_annual_observations import field, formulas, values, root
+
+
+def latest_scopes(day, pools=('cached', 'legacy')):
+    return [dict(mode='latest', pool=pool, context_date=day, book=0) for pool in pools]
 
 
 class PreparedMeasureTests(unittest.TestCase):
-    def test_scope_digest_and_empty_scope(self):
+    def facts_db(self):
         db = sqlite3.connect(':memory:')
         self.addCleanup(db.close)
-        db.executescript(source.SCHEMA)
-        scopes = [dict(mode='latest', pool='cached', context_date='2020-01-02', book=0)]
-        metadata = source.finish(db, '2020-01-02', inputs='fixture', scopes=scopes)
-        self.assertEqual(source.require(db), metadata)
+        db.executescript(facts.SCHEMA)
+        return db
+
+    def test_scope_identity_membership_and_empty_scope(self):
+        db = self.facts_db()
+        metadata = facts.finish(db, '2020-01-02', inputs='fixture', scopes=latest_scopes('2020-01-02'))
+        self.assertEqual(facts.require(db), metadata)
+        # The content identity follows the inputs and scopes, not the rows.
+        other = self.facts_db()
+        self.assertEqual(facts.finish(other, '2020-01-02', inputs='fixture', scopes=latest_scopes('2020-01-02'))['content'],
+                         metadata['content'])
+        changed = self.facts_db()
+        self.assertNotEqual(facts.finish(changed, '2020-01-02', inputs='changed', scopes=latest_scopes('2020-01-02'))['content'],
+                            metadata['content'])
         root = dict(mode='latest', pool='cached')
         self.assertTrue(bridge.prepared_scope(metadata, root, dict(id='a', root='a', date='2020-01-02')))
         self.assertFalse(bridge.prepared_scope(metadata, root, dict(id='b', root='a', date='2020-01-02')))
+        self.assertFalse(bridge.prepared_scope(metadata, root, dict(id='a', root='a', date='2020-01-01')))
         dated = dict(root, owner_scope=dict(kind='dated'))
         prepared = dict(root, owner_scope=dict(kind='prepared', book=0))
         self.assertFalse(bridge.prepared_scope(metadata, dated, dict(id='a', root='a', date='2020-01-02')))
         self.assertTrue(bridge.prepared_scope(metadata, prepared, dict(id='a', root='a', date='2020-01-02')))
         self.assertFalse(bridge.prepared_scope(metadata, prepared, dict(id='b', root='a', date='2020-01-02')))
-        db.execute("UPDATE observation_metadata SET value='[]' WHERE key='scopes'")
+        db.execute("UPDATE fact_metadata SET value='[]' WHERE key='scopes'")
         with self.assertRaises(ValueError):
-            source.require(db)
+            facts.require(db)
 
-    def test_projection_rejects_missing_latest_scope(self):
-        db = sqlite3.connect(':memory:')
-        self.addCleanup(db.close)
-        db.executescript(source.SCHEMA)
-        metadata = source.finish(db, '2020-01-02', inputs='fixture', scopes=[])
-        self.assertEqual({item['pool'] for item in metadata['scopes']}, {'cached','legacy'})
+    def test_projection_rejects_missing_moved_or_duplicate_latest_scope(self):
+        for scopes in (latest_scopes('2020-01-02', ('cached',)), latest_scopes('2019-01-02'),
+                       latest_scopes('2020-01-02') + latest_scopes('2020-01-02', ('cached',)),
+                       latest_scopes('2020-01-02') + [dict(mode='historical', pool='cached', context_date='2019-01-02', book=True)]):
+            with self.subTest(scopes=scopes), self.assertRaises(ValueError):
+                facts.finish(self.facts_db(), '2020-01-02', inputs='fixture', scopes=scopes)
+        db = self.facts_db()
+        metadata = facts.finish(db, '2020-01-02', inputs='fixture', scopes=latest_scopes('2020-01-02'))
+        self.assertEqual({item['pool'] for item in metadata['scopes']}, {'cached', 'legacy'})
         scopes = [item for item in metadata['scopes'] if item['pool'] == 'cached']
-        db.execute("UPDATE observation_metadata SET value=? WHERE key='scopes'", (source.encoded(scopes),))
-        with self.assertRaises(ValueError): source.require(db)
-        other = sqlite3.connect(':memory:')
-        self.addCleanup(other.close)
-        other.executescript(source.SCHEMA)
+        db.execute("UPDATE fact_metadata SET value=? WHERE key='scopes'", (facts.encoded(scopes),))
         with self.assertRaises(ValueError):
-            source.finish(other, '2020-01-02', inputs='fixture', scopes=[dict(mode='latest',pool='cached',context_date='2019-01-02',book=0)])
+            facts.require(db)
 
     def test_stored_components_and_missing_lanes(self):
         context = dict(reason=None, evidence=dict(snapshot=dict(market_cap=500.),
@@ -59,8 +81,6 @@ class PreparedMeasureTests(unittest.TestCase):
 
 class OwnerExtractionTests(unittest.TestCase):
     def test_snapshot_preserves_predecessor_and_lookup_order(self):
-        from datetime import date
-        from backtest.financial import books
         def predecessor(statement, entry_day, exit_day, lookup, bankruptcy):
             valuation = books.entry_valuation(statement, entry_day, lookup)
             if valuation is None: return None
@@ -112,9 +132,6 @@ class OwnerExtractionTests(unittest.TestCase):
         self.assertNotEqual(pair[1], 1. / pair[0])
 
     def test_dated_owner_parity_with_no_future_lookups(self):
-        from datetime import date
-        from unittest.mock import Mock, patch
-        from backtest.financial import books, metrics
         day = date(2020, 1, 2)
         anchor = dict(fiscal=date(2018, 12, 31), known=date(2019, 3, 31), market_cap=100., enterprise=150., ebitda=30., **{'yield': .2})
         reports = [dict(fiscal=f'{year}-12-31', ebitda=value) for year, value in ((2016, 10.), (2017, 20.), (2018, 30.))]
@@ -145,8 +162,6 @@ class OwnerExtractionTests(unittest.TestCase):
         self.assertEqual(missing['reason'], 'LEGACY_MEASURE_UNAVAILABLE')
 
     def test_entry_valuation_needs_no_holding_or_exit_prices(self):
-        from datetime import date
-        from backtest.financial import books
         statement=dict(fiscal=date(2014,6,30),market_cap=100e6,enterprise=150e6,**{'yield':.2})
         calls=[]
         def lookup(day,column,forward,slack):
@@ -158,143 +173,7 @@ class OwnerExtractionTests(unittest.TestCase):
         self.assertEqual(calls,[(statement['fiscal'],'price',False,7),(date(2015,1,2),'price',True,4)])
         self.assertEqual((fiscal,entry),((statement['fiscal'],10.),(date(2015,1,2),20.)))
 
-
-class PreparedTransportTests(unittest.TestCase):
-    def test_preparation_context_matches_final_stored_lanes(self):
-        import json
-        import test_observation_inputs as fixtures
-        from backtest.inputs import research, sqlite_observations
-        from backtest import observations
-        fixture = fixtures.ProjectionTests('test_complete_chain_preserves_evidence_dates_and_latest_valuation')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        fixture.prepare()
-        db = sqlite3.connect(fixture.path)
-        db.row_factory = sqlite3.Row
-        self.addCleanup(db.close)
-        metadata = source.require(db)
-        original = sqlite3.connect(fixture.source)
-        original.row_factory = sqlite3.Row
-        self.addCleanup(original.close)
-        for mode, date_ in (('historical','2015-01-02'), ('latest','2015-10-20')):
-            for pool in ('legacy','cached'):
-                self.assertTrue(any(scope['mode']==mode and scope['pool']==pool and scope['context_date']==date_ for scope in metadata['scopes']))
-                record = db.execute('SELECT evidence_json FROM observation_measure_contexts WHERE mode=? AND pool=? AND context_date=? AND symbol=?', (mode,pool,date_,'TEST')).fetchone()
-                self.assertIsNotNone(record)
-                evidence = json.loads(record[0])
-                scope = next(scope for scope in metadata['scopes'] if scope['mode']==mode and scope['pool']==pool and scope['context_date']==date_)
-                pairs = {row['metric']:[row['multiple'],row['yield_value']] for row in original.execute('SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?', (mode,pool,scope['book'],'TEST'))}
-                self.assertEqual(evidence['metrics'], pairs)
-                self.assertIn('lookups', evidence['valuation'])
-                self.assertIn('treasury_selected', evidence)
-                self.assertEqual(bridge.lane(dict(reason=None,evidence=evidence),'ev_ebitda')['value'], pairs['ev_ebitda'][0])
-
-    def test_real_prepared_view_missing_context_and_lane_never_fall_back(self):
-        from unittest.mock import patch
-        import test_observation_inputs as fixtures
-        from backtest.inputs import sqlite_observations, research
-        from backtest import observations
-        fixture = fixtures.ProjectionTests('test_complete_chain_preserves_evidence_dates_and_latest_valuation')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        research.signature.return_value['historical_through'] = '2015-10-20'
-        fixture.prepare()
-        db = sqlite3.connect(fixture.path)
-        db.row_factory = sqlite3.Row
-        self.addCleanup(db.close)
-        root = dict(id='r', kind='root', symbol='TEST', pool='cached', mode='historical', date='2015-01-02')
-        plan = observations.plan([dict(id='pe', parameter='owner.pe', context='r', count=1)], [root])
-        def refresh():
-            old = source.require(db)
-            db.execute('DELETE FROM observation_metadata')
-            return source.finish(db, old['latest_date'], inputs='fixture', scopes=old['scopes'])
-        # A real admitted company has a context but no PE lane in the saved fixture.
-        with sqlite_observations.prepared_view(db, lambda:None) as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
-            result = observations.observe(plan, view).to_dict()['results'][0]
-            self.assertEqual(result['reason'], 'LEGACY_MEASURE_UNAVAILABLE')
-        db.execute("DELETE FROM observation_measure_contexts WHERE mode='historical' AND pool='cached' AND context_date='2015-01-02' AND symbol='TEST'")
-        refresh()
-        # A freshly verified fixture represents a known scope lacking this company.
-        with sqlite_observations.prepared_view(db, lambda:None) as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
-            result = observations.observe(plan, view).to_dict()['results'][0]
-            self.assertEqual(result['reason'], 'PREPARED_MEASURE_CONTEXT_UNAVAILABLE')
-
-    def test_memoized_dated_context_and_fixed_boundary_validations(self):
-        from unittest.mock import patch
-        import test_reusable_measures as fixtures
-        from backtest import observations
-        fixture = fixtures.fixtures.ProviderTests('test_catalog_and_example_return_ingredients_without_formula_arithmetic')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        view = fixture.view()
-        fixture.db.executescript('CREATE TABLE financial_inputs(symbol TEXT, fiscal TEXT, values_json TEXT); CREATE TABLE treasury10(day TEXT, yield_percent REAL);')
-        roots = fixture.contexts()
-        requests = [fixture.request(parameter=name,identity=name.replace('.','_')) for name in ('owner.pe','owner.pb','owner.return_1y')]
-        with patch.object(bridge, 'dated', wraps=bridge.dated) as owner, patch.object(view, 'validate', wraps=view.validate) as validate:
-            observations.observe(observations.plan(requests, roots), view)
-        owner.assert_called_once()
-        # Provider entry, admission entry/final, and provider final only.
-        self.assertEqual(validate.call_count, 4)
-
-    def test_context_leaf_lifetime_record_bounds_and_cancellation(self):
-        import test_observations as fixtures
-        fixture = fixtures.ProviderTests('test_catalog_and_example_return_ingredients_without_formula_arithmetic')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        view = fixture.view()
-        fixture.db.executescript('CREATE TABLE financial_inputs(symbol TEXT, fiscal TEXT, values_json TEXT); CREATE TABLE treasury10(day TEXT, yield_percent REAL);')
-        fixture.db.execute("INSERT INTO financial_inputs VALUES('A','2014-06-30','{\"revenue\":100}')")
-        fixture.db.execute("INSERT INTO treasury10 VALUES('2014-12-31',2.0)")
-        self.assertEqual(view.legacy_financial_history('A')['2014-06-30']['revenue'],100)
-        with self.assertRaises(ValueError): view.legacy_financial_history('A', budget=1)
-        calls=[]
-        def cancelled():
-            calls.append(1)
-            raise RuntimeError('cancelled')
-        with self.assertRaisesRegex(RuntimeError,'cancelled'): view.broad_reports('A',cancelled)
-        view.max_record_bytes = 4
-        with self.assertRaises(ValueError): view.legacy_financial_history('A')
-        with self.assertRaises(ValueError): view.legacy_treasury(__import__('datetime').date(2015,1,2))
-        view.close()
-        for action in (lambda:view.measure_context('historical','cached','2015-01-02','A'), lambda:view.broad_reports('A'), lambda:view.legacy_financial_history('A'), lambda:view.legacy_treasury(__import__('datetime').date(2015,1,2))):
-            with self.assertRaisesRegex(ValueError,'closed'): action()
-
-    def test_missing_context_relation_is_operation_error(self):
-        db = sqlite3.connect(':memory:')
-        self.addCleanup(db.close)
-        db.executescript(source.SCHEMA)
-        source.finish(db, '2020-01-02', inputs='fixture')
-        db.execute('DROP TABLE observation_measure_contexts')
-        with self.assertRaises(ValueError): source.require(db)
-
-    def test_delayed_stock_entry_and_selected_treasury_dates(self):
-        import json
-        import test_observation_inputs as fixtures
-        from backtest.inputs import research
-        fixture = fixtures.ProjectionTests('test_complete_chain_preserves_evidence_dates_and_latest_valuation')
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
-        price = research.RAW/'px'/'TEST.json'
-        payload = json.loads(price.read_text())
-        payload['div'][1]['date'] = '2015-01-05'
-        price.write_text(json.dumps(payload))
-        (research.RAW/'treasury.json').write_text(json.dumps([
-            dict(date='2014-12-31', month3=2, year10=3),
-            dict(date='2015-01-03', month3=2, year10=9),
-            dict(date='2015-10-20', month3=2, year10=4)]))
-        fixture.prepare()
-        db = sqlite3.connect(fixture.source)
-        self.addCleanup(db.close)
-        payload = json.loads(db.execute("SELECT evidence_json FROM observation_measure_contexts WHERE mode='historical' AND pool='cached' AND symbol='TEST'").fetchone()[0])
-        self.assertEqual(payload['screen_date'], '2015-01-05')
-        self.assertEqual(payload['treasury_requested_date'], '2015-01-02')
-        self.assertEqual(payload['treasury_selected'], ['2014-12-31',3.])
-        self.assertEqual(payload['lookups'][0]['requested_date'], '2015-01-05')
-        self.assertEqual(payload['valuation']['lookups'][1]['requested_date'], '2015-01-02')
-
     def test_leap_day_trailing_and_legacy_treasury_asof(self):
-        from datetime import date
-        from unittest.mock import Mock
         view = Mock()
         day = date(2020,2,29)
         anchor = dict(fiscal=date(2018,12,31))
@@ -331,6 +210,126 @@ class PreparedTransportTests(unittest.TestCase):
         calls.clear()
         with self.assertRaisesRegex(RuntimeError,'owner scan'):
             bridge.detached({'a':[1,2]},cancel)
+
+
+class DatedOwnerTests(unittest.TestCase):
+    def setUp(self):
+        self.company = annual.Company()
+        self.addCleanup(self.company.close)
+        self.company.financials = {f'{year}-06-30': dict(revenue=100., operatingIncome=20., netIncome=10.,
+                                   totalStockholdersEquity=50., epsDiluted=year-2010.) for year in (2012, 2013, 2014)}
+        self.company.treasury10 = [('2014-12-31', 2.)]
+
+    def test_memoized_dated_context_and_fixed_boundary_validations(self):
+        view = self.company.view()
+        program = formulas(*[field(name) for name in ('owner.pe', 'owner.pb', 'owner.return_1y')])
+        with patch.object(bridge, 'dated', wraps=bridge.dated) as owner, \
+                patch.object(view, 'validate', wraps=view.validate) as validate:
+            [[pe, pb, trailing]] = values(program, view, [root(owner_scope=dict(kind='dated'))])
+        owner.assert_called_once()
+        self.assertEqual((pe, pb), ((15e6, None), (3e6, None)))
+        # No saved price a year before the root: the lane is unavailable, not recalculated.
+        self.assertEqual(trailing, (None, 'LEGACY_MEASURE_UNAVAILABLE'))
+        # Admission entry and exit only.
+        self.assertEqual(validate.call_count, 2)
+
+    def test_owner_leaf_reads_are_bounded_and_cancellable(self):
+        self.company.financials = {'2014-06-30': {'revenue': 100}}
+        view = self.company.view()
+        self.assertEqual(view.legacy_financial_history('A'), {'2014-06-30': {'revenue': 100}})
+        with self.assertRaisesRegex(ValueError, 'byte bound'):
+            view.legacy_financial_history('A', budget=1)
+        with patch.object(facts, 'MAX_HISTORY', 0), self.assertRaisesRegex(ValueError, 'history exceeds'):
+            view.legacy_financial_history('A')
+        self.assertEqual(len(view.broad_reports('A')), 3)
+        with self.assertRaisesRegex(ValueError, 'byte bound'):
+            view.broad_reports('A', budget=1)
+        def cancelled():
+            raise RuntimeError('cancelled')
+        with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+            view.broad_reports('A', cancelled)
+        with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+            view.legacy_treasury(date(2015, 1, 2), cancelled)
+        self.assertEqual(view.legacy_treasury(date(2015, 1, 2)), dict(day='2014-12-31', value=2.))
+        self.assertIsNone(view.legacy_treasury(date(2014, 12, 30)))
+
+
+class PreparedTransportTests(unittest.TestCase):
+    def prepared(self, configure=None):
+        inputs = PreparedInputs(configure=configure)
+        self.addCleanup(inputs.close)
+        return inputs
+
+    def test_prepared_owner_lanes_are_the_stored_book_rows(self):
+        with self.prepared().view() as view:
+            for mode, day in (('historical', '2015-01-02'), ('latest', '2015-10-20')):
+                for pool in ('legacy', 'cached'):
+                    scope = next(scope for scope in view.projection['scopes'] if scope['mode'] == mode
+                                 and scope['pool'] == pool and scope['context_date'] == day)
+                    key = (mode, pool, scope['book'], 'TEST')
+                    pairs = {row[0]: [row[1], row[2]] for row in view.db.execute(
+                        'SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
+                    stored = {row[0]: row[1] for row in view.db.execute(
+                        'SELECT field,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
+                    cap = view.db.execute('SELECT market_cap FROM latest_snapshots WHERE pool=? AND symbol=?', (pool, 'TEST')).fetchone() \
+                        if mode == 'latest' else view.db.execute('SELECT market_cap FROM snapshots WHERE pool=? AND year=? AND symbol=?',
+                                                                 (pool, scope['book'], 'TEST')).fetchone()
+                    self.assertTrue(pairs and stored)
+                    roots = [root('TEST', pool, mode, day)]
+                    [decision] = view.admit(roots)
+                    owner = view.prepared(decision, dict(id='root', root='root', date=day))
+                    self.assertEqual(owner, dict(reason=None, evidence=dict(snapshot=dict(market_cap=cap[0]),
+                                                                           metrics=pairs, filters=stored)))
+                    with patch.object(bridge, 'dated', side_effect=AssertionError('recalculated')):
+                        lanes = values(formulas(field('owner.ev_ebitda'), field('owner.ebitda_yield'),
+                                                field('owner.market_cap')), view, roots)
+                    self.assertEqual(lanes, [[(pairs['ev_ebitda'][0], None), (pairs['ev_ebitda'][1], None), (cap[0], None)]])
+
+    def test_real_prepared_view_missing_book_row_and_lane_never_fall_back(self):
+        inputs = self.prepared()
+        program = formulas(field('owner.pe'))
+        roots = [root('TEST', 'cached')]
+        # A real admitted company has a stored row but no PE lane in the saved fixture.
+        with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
+            self.assertEqual(values(program, view, roots), [[(None, 'LEGACY_MEASURE_UNAVAILABLE')]])
+        with closing(sqlite3.connect(inputs.source)) as db:
+            db.execute("DELETE FROM snapshots WHERE pool='cached' AND year=2015 AND symbol='TEST'")
+            db.commit()
+        # The prepared scope lacks this company's book row.
+        with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
+            self.assertEqual(view.admit(roots)[0]['admitted'], True)
+            self.assertEqual(values(program, view, roots), [[(None, 'PREPARED_MEASURE_CONTEXT_UNAVAILABLE')]])
+
+    def test_delayed_stock_entry_and_selected_treasury_dates(self):
+        def configure(inputs):
+            price = research.RAW/'px'/'TEST.json'
+            payload = json.loads(price.read_text())
+            payload['div'][1]['date'] = '2015-01-05'
+            price.write_text(json.dumps(payload))
+            (research.RAW/'treasury.json').write_text(json.dumps([
+                dict(date='2014-12-31', month3=2, year10=3),
+                dict(date='2015-01-03', month3=2, year10=9),
+                dict(date='2015-10-20', month3=2, year10=4)]))
+        day = date(2015, 1, 2)
+        with self.prepared(configure).view() as view:
+            # The stored January book bought at the delayed session.
+            self.assertEqual(view.db.execute("SELECT entry FROM snapshots WHERE pool='cached' AND year=2015 "
+                                             "AND symbol='TEST'").fetchone()[0], '2015-01-05')
+            [decision] = view.admit([root('TEST', 'cached', owner_scope=dict(kind='dated'))])
+            reports = [dict(row, fiscal=date.fromisoformat(row['fiscal']), known=date.fromisoformat(row['known']))
+                       for row in view.reports('TEST', 'cached')]
+            owner = bridge.dated(view, decision, dict(date=str(day)), rules.latest_statement(reports, day),
+                                 lambda: None, budget=1024 * 1024)
+        evidence = owner['evidence']
+        self.assertIsNone(owner['reason'])
+        # The dated owner reads the context date, never the later 9% day.
+        self.assertEqual(evidence['treasury'], dict(day='2014-12-31', value=3.))
+        lookups = evidence['valuation']['lookups']
+        self.assertEqual([item['requested_date'] for item in lookups], ['2014-06-30', '2015-01-02'])
+        self.assertEqual(lookups[1]['observation'], ['2015-01-05', 20.])
+        self.assertEqual(evidence['lookups'][0]['requested_date'], '2015-01-02')
+        self.assertTrue(all(item['requested_date'] <= str(day) for item in evidence['lookups']))
+
 
 if __name__ == '__main__':
     unittest.main()

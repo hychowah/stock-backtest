@@ -4,14 +4,13 @@ Raw edits and checked detached restoration are distinct. Exact submitted content
 wins over archive lookup. Unchanged captures are returned without a library or
 catalog read. No operation starts a calculation or owns financial resources.
 """
-from backtest import observations
 from backtest.runtime import backtest_control
-from backtest.variables import definitions, library, parameters, measures, selection
+from backtest.variables import columns, definitions, library, parameters, measures, selection
 from backtest.application import strategy_requests
 
 
 def catalog():
-    available = {item['id']: item for item in observations.catalog()}
+    available = {item['id']: item for item in columns.catalog()}
     admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
     expanded = parameters.catalog(parameters.V3)
     qualified=set(selection.QUALIFIED_PARAMETERS)

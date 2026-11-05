@@ -9,13 +9,22 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import daily, facts, observation_inputs, sqlite_observations
+from backtest.inputs import daily, facts
 from backtest.application import scalar_execution as x, strategy_requests as s
-from backtest.variables import definitions as d, library, reference
-from backtest import observations
+from backtest.variables import definitions as d, library
 import test_variable_definitions as language
 import test_strategy_requests as requests
-import test_observations as provider
+
+
+def state(value, reason=None):
+    return dict(value=value, valid=reason is None, reason=reason)
+
+
+def scopes(latest='2015-01-05', historical=()):
+    """Prepared scopes: the given January books and the latest date in both pools."""
+    return [dict(mode='historical', pool=pool, context_date=day, book=book) for day, book in historical
+            for pool in ('legacy', 'cached')] + [dict(mode='latest', pool=pool, context_date=latest, book=0)
+                                                 for pool in ('legacy', 'cached')]
 
 
 class Fixture:
@@ -34,22 +43,18 @@ class Fixture:
                 self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('historical',pool,1,symbol,'ev_ebitda',3.,.3))
                 self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('latest',pool,0,symbol,'ev_ebitda',3.,.3))
                 self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',('historical',pool,1,symbol,'profit_margin',i-150.))
-            annual=provider.annual(float(i+1),float(i+1)/10)
-            self.db.execute('INSERT INTO observation_annual VALUES(?,?,?,?)',(symbol,'income-statement','2014-06-30',observation_inputs.encoded(annual)))
+            annual=dict(revenue=state(float(i+1)),operatingIncome=state(float(i+1)/10))
             facts.store_annual(self.db,symbol,dict(sources={},annual={'income-statement':{'2014-06-30':annual}}))
-            state=dict(root_date='2015-01-05',admitted=True,reason=None,candidate_rank=i+1,
-                statement=observation_inputs.ReadView._statement(provider.statement('2014-06-30')),
-                valuation=dict(market_cap=150e6,enterprise_value=180e6,ebitda=54e6),
-                adjusted_price=['2015-01-05',10.],fiscal_price=['2014-06-30',10.],valuation_price=['2015-01-05',10.])
-            for pool in ('legacy','cached'):
-                observation_inputs.store_latest(self.db,symbol,pool,state);facts.store_latest(self.db,symbol,pool,state)
+            latest=dict(admitted=True,reason=None,candidate_rank=i+1,statement=dict(fiscal='2014-06-30',known='2014-09-28'),
+                valuation=dict(market_cap=150e6,enterprise_value=180e6,ebitda=54e6))
+            for pool in ('legacy','cached'):facts.store_latest(self.db,symbol,pool,latest)
         self.db.executemany('INSERT INTO sessions VALUES(?,?)',[('2015-01-02',100.),('2015-01-05',110.)])
         self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(1,'2015-01-02','2015-01-05',.1,.02,250,count))
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'legacy'))
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'cached'))
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(historical_through='2015-01-05')))))
-        observation_inputs.finish(self.db, '2015-01-05', inputs='fixture');self.db.commit()
-    def view(self):return sqlite_observations.prepared_view(self.db,lambda:None)
+        facts.finish(self.db, '2015-01-05', inputs='fixture', scopes=scopes());self.db.commit()
+    def view(self):return facts.prepared_view(self.db,self.db,lambda:None,checkpoint=lambda:None)
     def capture(self, expression=None, *, pool='cached', direction='highest', order='filter_first', conditions=None, first=1,last=5):
         authored=language.entry(language.definition(expression or dict(op='parameter',id='annual.revenue'),'USD' if expression is None else 'scalar','usd' if expression is None else 'number'),'draft:ranking')
         intent=requests.intent(requests.formula(authored),conditions,rank_from=first,rank_to=last,selection_order=order)
@@ -58,7 +63,7 @@ class Fixture:
     def select(self,capture, *, latest=False, record_bytes=8*1024**2):
         records=[]
         with self.view() as view:
-            result=x.Executor(capture,view,self.db,records.append,record_bytes=record_bytes).select(self.db,None if latest else 1,date(2015,1,5) if latest else date(2015,1,2),None if latest else date(2015,1,5),latest=latest)
+            result=x.Executor(capture,view,records.append,record_bytes=record_bytes).select(self.db,None if latest else 1,date(2015,1,5) if latest else date(2015,1,2),None if latest else date(2015,1,5),latest=latest)
         return result,records
 
 
@@ -95,7 +100,7 @@ class ScalarTests(unittest.TestCase):
         from backtest.application import scalar_runs
         class Writer:max_bytes=4*1024**2
         with self.fixture.view() as view:
-            executor=x.Executor(self.fixture.capture(),view,self.fixture.db,lambda record:None)
+            executor=x.Executor(self.fixture.capture(),view,lambda record:None)
             scalar_runs.check_size(Writer(),executor,100)
             with self.assertRaisesRegex(d.FormulaError,'about [0-9]+ MB of results'):
                 scalar_runs.check_size(Writer(),executor,10000)
@@ -103,7 +108,7 @@ class ScalarTests(unittest.TestCase):
         expected,_=self.fixture.select(self.fixture.capture())
         records=[]
         with self.fixture.view() as view:
-            stocks=x.Executor(self.fixture.capture(),view,self.fixture.db,records.append,explain=False).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+            stocks=x.Executor(self.fixture.capture(),view,records.append,explain=False).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
         self.assertEqual([h['symbol'] for h in stocks],[h['symbol'] for h in expected])
         self.assertFalse(any(r['type']=='evaluation' for r in records))
         lanes=[h['scalar_evidence']['lanes']['ranking'] for h in stocks]
@@ -139,9 +144,7 @@ class ScalarTests(unittest.TestCase):
         receipt=next(r['value'] for r in records if r['type']=='scope')
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],250)
     def test_missing_only_active_source_excludes(self):
-        self.fixture.db.execute("DELETE FROM observation_annual WHERE symbol='A0299'")
         self.fixture.db.execute("DELETE FROM annual_facts WHERE symbol='A0299'")
-        self.fixture.db.execute('DELETE FROM observation_metadata');observation_inputs.finish(self.fixture.db, '2015-01-05', inputs='fixture')
         stocks,_=self.fixture.select(self.fixture.capture())
         self.assertEqual(stocks[0]['symbol'],'A0298')
         stocks,_=self.fixture.select(self.fixture.capture(language.constant('1')))
@@ -176,17 +179,6 @@ class ScalarTests(unittest.TestCase):
         view.close()
     def test_small_record_limit_fails_explicitly(self):
         with self.assertRaises(d.FormulaError):self.fixture.select(self.fixture.capture(),record_bytes=100)
-    def test_temporal_contexts_shrink_chunks_below_256_companies(self):
-        roots=[dict(symbol=f'A{i:04d}',pool='cached',mode='historical',date='2015-01-02',owner_scope=dict(kind='dated')) for i in range(256)]
-        def widths(expression):
-            checked=s.require_strategy(self.fixture.capture(expression))
-            program=library.VariableCapture(d.canonical(checked['variables'])).program
-            return [len(plan.to_dict()['requests']) for plan in x._plans(program,roots,8*1024**2,lambda:None)]
-        self.assertEqual(widths(None),[256])
-        temporal=widths(dict(op='lookback',months=1,arg=dict(op='parameter',id='annual.operating_margin')))
-        self.assertGreater(len(temporal),1)
-        self.assertTrue(all(width<=128 for width in temporal))
-        self.assertEqual(sum(temporal),256)
     def test_entry_admission_and_missing_return_rows_have_distinct_scope_counts(self):
         self.fixture.db.execute("DELETE FROM snapshots WHERE symbol='A0299'")
         stocks,records=self.fixture.select(self.fixture.capture())
@@ -209,7 +201,7 @@ class ScalarTests(unittest.TestCase):
             if stopped:raise backtest_control.Cancelled()
         with self.fixture.view() as view:
             with self.assertRaises(backtest_control.Cancelled):
-                x.Executor(self.fixture.capture(),view,self.fixture.db,emit,checkpoint=check).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+                x.Executor(self.fixture.capture(),view,emit,checkpoint=check).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
         self.assertEqual(len(emitted),1)
         self.assertEqual(emitted[0]['type'],'evaluation')
 
@@ -217,7 +209,7 @@ class ScalarTests(unittest.TestCase):
         def stop():raise RuntimeError('cancelled')
         with self.fixture.view() as view:
             with self.assertRaisesRegex(RuntimeError,'cancelled'):
-                x.Executor(self.fixture.capture(),view,self.fixture.db,lambda row:None,checkpoint=stop).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+                x.Executor(self.fixture.capture(),view,lambda row:None,checkpoint=stop).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
 
 
 if __name__=='__main__':unittest.main()

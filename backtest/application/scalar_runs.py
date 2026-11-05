@@ -52,7 +52,7 @@ def execute(db, source, mode, options, writer, view, configuration, *, planned=N
     checked = strategy_requests.check_options(options, checkpoint=checkpoint)
     capture = strategy_requests.CapturedStrategy(strategy_requests._encode(checked,strategy_requests.STRATEGY_BYTES,checkpoint))
     # Random-date runs keep formula values and reasons, not step traces.
-    executor = scalar_execution.Executor(capture, view, source, writer.evidence, record_bytes=writer.record_bytes,
+    executor = scalar_execution.Executor(capture, view, writer.evidence, record_bytes=writer.record_bytes,
                                          checkpoint=checkpoint, explain=mode != 'random')
     requested = checked['selection']['rank_to']-checked['selection']['rank_from']+1
     diagnostics.note(pool=checked['pool'],conditions=len(checked['selection']['conditions']))

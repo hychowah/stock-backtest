@@ -1,10 +1,14 @@
-"""Complete recorded-scope inspection under a borrowed prepared view."""
+"""Complete recorded-scope inspection under a borrowed prepared view.
+
+Every snapshot row of one recorded January or latest scope is admitted and
+evaluated values-only by the column evaluator; counts are exact.
+"""
 import hashlib
 from datetime import date
 
 from backtest.application import scalar_execution, strategy_requests
 from backtest.runtime import backtest_control
-from backtest.variables import definitions, library, reference
+from backtest.variables import columns, definitions, library
 
 
 def scopes(source, view):
@@ -38,45 +42,31 @@ def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     program=library.VariableCapture(definitions.canonical(checked['variables'])).program
-    latest=scope['mode']=='latest';budget=scalar_execution.Budget()
-    rows,roots,plans,work=scalar_execution.plan_scope(source,view,program,checked,
-        None if latest else scope['book'],scope['context_date'],latest=latest,
-        owner_scope=dict(kind='prepared',book=scope['book']),budget=budget,checkpoint=checkpoint)
+    strategy_requests.require_formula_support(program, checkpoint=checkpoint)
+    latest=scope['mode']=='latest'
+    rows,roots=scalar_execution._scope(source,view,checked,None if latest else scope['book'],scope['context_date'],
+        latest=latest,owner_scope=dict(kind='prepared',book=scope['book']))
     outputs=[]; seen=set()
     for root in definitions.require_program(program)['bundle']['roots']:
         identity=root['variable_id'],root['revision']
         if identity in seen:continue
         seen.add(identity)
         outputs.append(dict(variable_id=root['variable_id'],revision=root['revision'],valid=0,unavailable=0,reasons={}))
-    # Reserve complete, bounded reason tables before observation. Every reason
-    # is a short provider-owned code; unexpected excess fails the whole request.
-    if (len(outputs)*64*128 + scalar_execution._size(rows)*2 + scalar_execution._size(view.projection)
-            + sum(len(plan.document) for plan in plans)>budget.metadata_bytes):
-        raise definitions.FormulaError('WORK_LIMIT','/coverage','Coverage output exceeds its reservation.')
     by_id={(item['variable_id'],item['revision']):item for item in outputs}
+    decisions=view.admit(roots,checkpoint)
     admitted=0;admission_reasons={}
-    for plan in plans:
-        checkpoint();block=reference.evaluate(plan,view,checkpoint).to_dict()
-        for item in block['observations']['roots']:
-            if item['admitted']:admitted+=1
-            else:
-                reason=item['reason'];admission_reasons[reason]=admission_reasons.get(reason,0)+1
-        delivered=set()
-        for result in block['results']:
-            key=result['request'],result['variable_id'],result['revision']
-            if key in delivered:continue
-            delivered.add(key)
-            output=by_id[result['variable_id'],result['revision']]
-            if result['valid']:output['valid']+=1
+    for decision in decisions:
+        if decision['admitted']:admitted+=1
+        else:admission_reasons[decision['reason']]=admission_reasons.get(decision['reason'],0)+1
+    for decision in decisions:decision['owner_scope']=dict(kind='prepared',book=scope['book'])
+    for values in columns.Formulas(program).evaluate(roots,view,checkpoint,decisions=decisions):
+        for key,(value,valid,reason) in values.items():
+            output=by_id[key]
+            if valid:output['valid']+=1
             else:
                 output['unavailable']+=1
-                reason=result['reason']
                 if reason!='ROOT_NOT_ADMITTED':output['reasons'][reason]=output['reasons'].get(reason,0)+1
-        for reasons in [admission_reasons]+[item['reasons'] for item in outputs]:
-            if len(reasons)>64 or any(type(key) is not str or len(key)>64 for key in reasons):
-                raise definitions.FormulaError('WORK_LIMIT','/coverage','Coverage reason table exceeds its reservation.')
     view.validate();checkpoint()
     return dict(generation=discovery['generation'],scope=exact,projection=view.projection,
         program=definitions.require_program(program)['bundle_revision'],population=len(rows),
-        provider_admitted=admitted,provider_unavailable=len(rows)-admitted,provider_reasons=admission_reasons,outputs=outputs,
-        work=dict(inspected_rows=work,tasks=budget.tasks))
+        provider_admitted=admitted,provider_unavailable=len(rows)-admitted,provider_reasons=admission_reasons,outputs=outputs)

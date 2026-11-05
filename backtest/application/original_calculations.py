@@ -129,24 +129,24 @@ class Original(Control):
         return dict(engines=[dict(id=self.engine,calendar=self.calendar_version)])
 
     def preview(self, capture, roots, *, admission='interactive', engine='original'):
-        """Explicit Original reference samples under ordinary input lifetime."""
+        """Explain explicit Original samples under ordinary input lifetime."""
         from backtest.application import scalar_execution, strategy_requests
-        from backtest.inputs import operation_inputs, sqlite_observations
+        from backtest.inputs import facts, operation_inputs
         options={'strategy':capture}
         strategy_requests.preview_engine(engine)
         strategy_requests.check_options(options)
-        plans=scalar_execution.plan_preview(strategy_requests.from_wire(capture),roots)
+        program=scalar_execution.check_preview(strategy_requests.from_wire(capture),roots)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                with sqlite_observations.prepared_view(inputs.db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
-                    value=scalar_execution.evaluate_preview(plans,roots,view,checkpoint=self._checkpoint)
-        return dict(value,producer=dict(engine='original',label='Original reference sample preview'))
+                with facts.prepared_view(inputs.db,inputs.research(),inputs.require_unchanged,checkpoint=self._checkpoint) as view:
+                    value=scalar_execution.evaluate_preview(program,roots,view,checkpoint=self._checkpoint)
+        return dict(value,producer=dict(engine='original',label='Original sample preview'))
 
     def coverage(self, capture=None, scope=None, *, admission='interactive'):
         """Discover or inspect recorded scopes under ordinary financial ownership."""
         from backtest.application import variable_coverage, strategy_requests
-        from backtest.inputs import operation_inputs, sqlite_observations
+        from backtest.inputs import facts, operation_inputs
         if capture is not None:
             strategy_requests.check_options({'strategy':capture})
             capture=strategy_requests.from_wire(capture)
@@ -154,10 +154,10 @@ class Original(Control):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
                 source=inputs.research()
-                with sqlite_observations.prepared_view(inputs.db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
+                with facts.prepared_view(inputs.db,source,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
                     value=(variable_coverage.scopes(source,view) if capture is None else
                            variable_coverage.inspect(capture,scope,source,view,checkpoint=self._checkpoint))
-        return dict(value,producer=dict(engine='original',label='Original reference coverage'))
+        return dict(value,producer=dict(engine='original',label='Original coverage'))
 
     @diagnostics.operation('backtest.run')
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
@@ -166,7 +166,7 @@ class Original(Control):
         diagnostics.note(mode=mode,admission=admission,strategy=True)
         import hashlib
         from backtest import scalar_result_evidence
-        from backtest.inputs import operation_inputs, sqlite_observations
+        from backtest.inputs import facts, operation_inputs
         from backtest.application import strategy_requests, scalar_runs
         self.preflight(options,planned=planned)
         options=strategy_requests.execution_options(mode,options,planned=planned,checkpoint=self._checkpoint)
@@ -181,7 +181,7 @@ class Original(Control):
                 db=inputs.db
                 # Formulas read typed facts on the research connection in every mode.
                 source=inputs.research()
-                with sqlite_observations.prepared_view(db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
+                with facts.prepared_view(db,source,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
                     metadata=dict(mode=mode,options=options,configuration=planned,input=view.identity,
                         projection=view.projection,producer=dict(engine='original',label='Original'))
                     def configured(value):

@@ -19,11 +19,11 @@ import time
 from backtest.financial import rules
 from backtest.inputs import market, cache_assets
 from backtest.engines.reference import legacy
-from backtest import screening, selection
+from backtest import measure_observations, screening, selection
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
-from backtest.inputs import observation_inputs, dated_observation_inputs, facts
+from backtest.inputs import facts
 from backtest.runtime import backtest_control
 from backtest.runtime import diagnostics
 from backtest.runtime import cache_access as cache_access
@@ -32,7 +32,7 @@ from backtest.inputs import baseline as baseline
 from backtest.paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -55,7 +55,7 @@ CREATE TABLE latest_snapshots (
  price_date TEXT, price REAL, market_cap REAL, enterprise_value REAL,
  ebitda_yield REAL, ev_ebitda REAL, spread REAL, PRIMARY KEY(pool,symbol));
 CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
-''' + observation_inputs.SCHEMA
+'''
 
 
 def _metadata_entries(directory, pattern):
@@ -153,9 +153,8 @@ def calculation_sources():
     """
     here = Path(__file__)
     return [Path(baseline.__file__), here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(legacy.__file__), Path(revalue.__file__),
-            Path(financial_inputs.__file__), Path(observation_inputs.__file__),
-            Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__),
-            Path(facts.__file__)]
+            Path(financial_inputs.__file__), Path(financial_inputs.parameters.__file__),
+            Path(measure_observations.__file__), Path(facts.__file__)]
 
 
 # Historical forward price lookups start at a January entry and reach at most
@@ -216,7 +215,7 @@ def _reuse_scope(through, horizon, treasury_rows):
     order of unsorted queries may change with either of them.
     """
     return _digest(dict(
-        version=SCHEMA_VERSION, observations=observation_inputs.VERSION, through=str(through),
+        version=SCHEMA_VERSION, facts=facts.VERSION, through=str(through),
         runtime=[platform.python_implementation(),platform.python_version(),sqlite3.sqlite_version],
         code=[_file_digest(path) for path in calculation_sources()],
         universe=_file_digest(RAW/'universe.json'), metrics=_file_digest(RAW/'metrics.jsonl'),
@@ -262,7 +261,7 @@ class _PriorUnits:
         for table in self.SPANS:
             for symbol,low,high,count in db.execute(f'SELECT symbol,min(rowid),max(rowid),count(*) FROM prior.{table} GROUP BY symbol'):
                 self.spans.setdefault(symbol,{})[table]=(low,high) if high-low+1==count else None
-        self.history,self.sources,self.dated=set(),set(),set()
+        self.history,self.dated=set(),set()
 
     def copy_history(self, symbol, digest):
         """Copy one company's historical rows when its readable prices are equal."""
@@ -291,50 +290,24 @@ class _PriorUnits:
         offset=len(rows)-known[0]
         return offset if _rows_digest(rows[offset:])==known[1] else None
 
-    def shifted(self, symbol, offset, days):
-        """Return the prior day evidence of moved rows, except days the new rows touch.
-
-        Return None when any stored day cannot be moved exactly.
-        """
-        moved=[]
-        for row in self.db.execute('SELECT * FROM prior.observation_dated WHERE symbol=? AND endpoint=?',
-                                   (symbol,dated_observation_inputs.STOCK)):
-            if row[2] in days:
-                continue
-            document=dated_observation_inputs.shifted(row[3],offset)
-            if document is None:
-                return None
-            moved.append(observation_inputs._prepared_record((row[0],row[1],row[2],document)))
-        return moved
-
     def copy_dated(self, symbol, unit):
-        """Batch the dated rows of equal bytes; return whether the source row is copied too.
+        """Batch the typed days and source of a price file with equal bytes; return whether it is copied.
 
-        Dated rows depend only on the file bytes. The source row also holds the
-        coverage receipt, so it is copied only when that receipt is unchanged.
-        Return None when the caller must resolve the file completely.
+        Dated facts depend only on the file bytes.
         """
         known=self.units.get(symbol)
         if known is None or known['content']!=unit['content']:
-            return None
-        self.dated.add(symbol)
-        if known['receipt']!=unit['receipt']:
             return False
-        self.sources.add(symbol)
+        self.dated.add(symbol)
         return True
 
     def finish(self):
-        """Copy batched observation units, commit and release the prior database."""
-        self.db.execute('CREATE TEMP TABLE reused(kind TEXT,symbol TEXT,PRIMARY KEY(kind,symbol)) WITHOUT ROWID')
-        self.db.executemany('INSERT INTO temp.reused VALUES(?,?)',[(kind,s) for kind,symbols in
-            (('history',self.history),('source',self.sources),('dated',self.dated)) for s in symbols])
-        self.db.execute("""INSERT INTO observation_measure_contexts SELECT * FROM prior.observation_measure_contexts
-                           WHERE mode='historical' AND symbol IN (SELECT symbol FROM temp.reused WHERE kind='history')""")
-        for table,kind in (('observation_sources','source'),('observation_dated','dated'),('fact_sources','source')):
-            self.db.execute(f"""INSERT INTO {table} SELECT * FROM prior.{table}
-                                WHERE endpoint=? AND symbol IN (SELECT symbol FROM temp.reused WHERE kind=?)""",
-                            (dated_observation_inputs.STOCK,kind))
-        self.db.execute("INSERT INTO stock_days SELECT * FROM prior.stock_days WHERE symbol IN (SELECT symbol FROM temp.reused WHERE kind='dated')")
+        """Copy batched typed days and sources, commit and release the prior database."""
+        self.db.execute('CREATE TEMP TABLE reused(symbol TEXT PRIMARY KEY) WITHOUT ROWID')
+        self.db.executemany('INSERT INTO temp.reused VALUES(?)',[(symbol,) for symbol in self.dated])
+        self.db.execute('INSERT INTO stock_days SELECT * FROM prior.stock_days WHERE symbol IN (SELECT symbol FROM temp.reused)')
+        self.db.execute('INSERT INTO fact_sources SELECT * FROM prior.fact_sources WHERE endpoint=? AND symbol IN (SELECT symbol FROM temp.reused)',
+                        (facts.STOCK,))
         self.db.commit()
         self.db.execute('DROP TABLE temp.reused')
         self.db.execute('DETACH DATABASE prior')
@@ -351,14 +324,14 @@ def prepared_price_binding(path=DATABASE):
 
 
 def prepared_bindings(path=DATABASE):
-    """Return the price and observation bindings from one connection.
+    """Return the price and typed-facts bindings from one connection.
 
     The caller compares signature() itself, so this connection skips it. The
-    observation binding is the metadata, including the content identity that
+    facts binding is the metadata, including the content identity that
     preparation recorded; the app is the only writer and holds the cache lock.
     """
     with closing(connect(path, check=False)) as db:
-        return _price_binding(db), observation_inputs.require(db)
+        return _price_binding(db), facts.require(db)
 
 
 def _price_binding(db):
@@ -421,14 +394,10 @@ def ten_year_yield(db, day):
     return row[0] if row else None
 
 
-def snapshot(statement, entry_day, exit_day, light, div, bankruptcy, lookup_evidence=None):
+def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
     def lookup(day,column,forward,slack):
         series=(light or div) if column=='price' else div
-        result=(after if forward else before)(series,day,slack)
-        if lookup_evidence is not None:
-            lookup_evidence.append(dict(requested_date=str(day),column=column,forward=forward,slack=slack,
-                observation=[str(result[0]),result[1]] if result else None))
-        return result
+        return (after if forward else before)(series,day,slack)
     return books.snapshot(statement,entry_day,exit_day,lookup,bankruptcy)
 
 
@@ -469,11 +438,6 @@ def prepare(path=DATABASE, force=False):
             print(f'Database already current ({time.perf_counter()-started:.2f}s); no JSON prices parsed.')
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
-    try:
-        ledger=cache_assets.read_json(RAW/'download-coverage.json',{})
-    except (ValueError, UnicodeDecodeError):
-        ledger={}
-    if not isinstance(ledger,dict):ledger={}
     universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
     # Reuse the current selection semantics, including the 250-name pre-price buffer.
     book={}
@@ -534,19 +498,16 @@ def prepare(path=DATABASE, force=False):
         treasury10_by_day={day:ten_year_yield(db,day) for day in {latest_day}|{p[0] for p in periods.values()}}
         db.executemany('INSERT INTO companies VALUES(?,?,?,?)',[(s,r.get('name') or 'Unavailable',r.get('exchange') or 'Unavailable',r.get('sector') or 'Unavailable') for s,r in universe.items()])
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
-        # Denials are first-class preparation facts. They cannot be mistaken for
-        # an old projection that never established latest-root admission.
+        # Denials are first-class preparation facts: every company and pool has
+        # a latest-root decision, with its reason.
         latest_admission={}
         for symbol,company in universe.items():
             for pool in ('cached','legacy'):
                 statement=latest_statements[pool].get(symbol)
-                candidate=latest_ranks.get(symbol)
-                latest_admission[(symbol,pool)]=dict(root_date=str(latest_day),
-                    listed=company.get('listed') is True,candidate_rank=candidate,
-                    candidate=statement is not None and (pool!='legacy' or candidate is not None),
+                latest_admission[(symbol,pool)]=dict(candidate_rank=latest_ranks.get(symbol),
                     admitted=False,reason='MISSING_PRICE' if statement is not None else 'NO_ELIGIBLE_REPORT',
-                    statement=None if statement is None else {key:str(value) if isinstance(value,date) else value for key,value in statement.items()},
-                    adjusted_price=None,fiscal_price=None,valuation_price=None,valuation=None)
+                    statement=None if statement is None else {key:str(statement[key]) for key in ('fiscal','known')},
+                    valuation=None)
                 if company.get('listed') is not True:
                     latest_admission[(symbol,pool)]['reason']='NOT_LISTED'
         for year,(entry,end,spy_return,treasury) in periods.items():
@@ -557,7 +518,6 @@ def prepare(path=DATABASE, force=False):
         cached_symbols=sorted(s for s in broad if market.cache_path_for(s).name in sources)
         total=reused=0
         for number,symbol in enumerate(cached_symbols,1):
-            valuation_evidence={}
             location=market.cache_path_for(symbol);name=location.name
             # File bytes, never the file stamp, decide reuse: downloads rewrite
             # checked files with equal bytes, and a copy can keep old stamps.
@@ -569,11 +529,11 @@ def prepare(path=DATABASE, force=False):
             rows=payload.get('div') if isinstance(payload,dict) else None
             unit=units[symbol]=dict(content=content,
                 history=prior.units[symbol]['history'] if unchanged else _bounded_digest(payload,horizon,'div'),
-                receipt=_digest(ledger.get('px/'+name)),
                 rows=prior.units[symbol]['rows'] if unchanged else [len(rows),_rows_digest(rows)] if isinstance(rows,list) else None)
             offset=None if unchanged or prior is None else prior.prepended(symbol,rows)
             if offset is not None:
-                shifts[symbol]=offset,{day for row in rows[:offset] if (day:=dated_observation_inputs.row_day(row)) is not None}
+                # Only the new rows' days are resolved; every other typed day is copied.
+                shifts[symbol]={day for row in rows[:offset] if (day:=facts.row_day(row)) is not None}
             if prior is not None and prior.copy_history(symbol,unit['history']):
                 reused+=1
             else:
@@ -597,15 +557,13 @@ def prepare(path=DATABASE, force=False):
                     statement=rules.latest_statement(statements,entry)
                     if statement is None:
                         continue
-                    valuation_lookups=[]
-                    row=snapshot(statement,entry,end,light,div,(year,symbol) in rules.BANKRUPT,valuation_lookups)
+                    row=snapshot(statement,entry,end,light,div,(year,symbol) in rules.BANKRUPT)
                     if row is None:
                         continue
                     fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,ret,status=row
                     # Original rescale rejects buy-date caps before ranking.
                     if not books.eligible(pool,cap,ev):
                         continue
-                    valuation_evidence[('historical',pool,str(entry),symbol)]=dict(lookups=valuation_lookups, statement={key:str(value) if isinstance(value,date) else value for key,value in statement.items()})
                     inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
                     if pool=='legacy':
                         fiscal_px=before(light or div,statement['fiscal'],7)
@@ -626,9 +584,6 @@ def prepare(path=DATABASE, force=False):
                     adjusted=before(div,latest_day,0)
                     fiscal_px=before(light or div,statement['fiscal'],7)
                     current_px=before(light or div,latest_day,0)
-                    evidence.update(adjusted_price=None if adjusted is None else [str(adjusted[0]),adjusted[1]],
-                        fiscal_price=None if fiscal_px is None else [str(fiscal_px[0]),fiscal_px[1]],
-                        valuation_price=None if current_px is None else [str(current_px[0]),current_px[1]])
                     if row is None:
                         if adjusted is not None and fiscal_px is not None and current_px is not None:
                             evidence['reason']='NONPOSITIVE_VALUATION'
@@ -638,19 +593,14 @@ def prepare(path=DATABASE, force=False):
                     if pool=='legacy' and (row[4]<rules.MIN_MARKET_CAP or row[5]<rules.MIN_EV):
                         evidence['reason']='POOL_INELIGIBLE';continue
                     evidence.update(admitted=True,reason=None)
-                    valuation_evidence[('latest',pool,str(latest_day),symbol)]=dict(lookups=[dict(requested_date=str(statement['fiscal']),column='price',forward=False,slack=7,observation=evidence['fiscal_price']),dict(requested_date=str(latest_day),column='price',forward=False,slack=0,observation=evidence['valuation_price']),dict(requested_date=str(latest_day),column='adjusted',forward=False,slack=0,observation=evidence['adjusted_price'])],statement=evidence['statement'])
                     db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
             resolved=financial_inputs.resolve_history(RAW,symbol)
             financial_history=resolved['values']
-            observation_inputs.store_annual(db,symbol,resolved)
             facts.store_annual(db,symbol,resolved)
             db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in financial_history.items()])
             history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
-            lookup_calls=[]
             def lookup(day,column,forward,slack):
-                result=(after if forward else before)(div,day,slack)
-                lookup_calls.append(dict(requested_date=str(day),column=column,forward=forward,slack=slack,observation=[str(result[0]),result[1]] if result else None))
-                return result
+                return (after if forward else before)(div,day,slack)
             for mode,table,day_key in [('historical','snapshots','entry'),('latest','latest_snapshots','price_date')]:
                 if mode=='historical' and symbol not in rebuilt:
                     continue
@@ -659,13 +609,7 @@ def prepare(path=DATABASE, force=False):
                     pairs=metrics.evaluate(observation,history)
                     screen_day=date.fromisoformat(saved[day_key])
                     treasury_day=periods[saved['year']][0] if mode=='historical' else latest_day
-                    lookup_calls.clear()
                     values=metrics.filter_values(observation,pairs,screen_day,lookup,financial_history,treasury10_by_day[treasury_day])
-                    scope_day=str(periods[saved['year']][0]) if mode=='historical' else str(latest_day)
-                    treasury_row=db.execute('SELECT day,yield_percent FROM treasury10 WHERE day<=? ORDER BY day DESC LIMIT 1',(str(treasury_day),)).fetchone()
-                    measure_evidence=dict(screen_date=str(screen_day), treasury_requested_date=str(treasury_day), treasury_selected=[treasury_row[0],treasury_row[1]] if treasury_row else None, lookups=list(lookup_calls), valuation=valuation_evidence[(mode,saved['pool'],scope_day,symbol)])
-                    db.execute('INSERT INTO observation_measure_contexts VALUES(?,?,?,?,?)',
-                        observation_inputs._prepared_record((mode,saved['pool'],scope_day,symbol,observation_inputs.encoded(observation_inputs.measure_observations.detached(measure_evidence)))))
                     db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
@@ -673,65 +617,36 @@ def prepare(path=DATABASE, force=False):
         diagnostics.lap('companies')
         diagnostics.note(companies=len(cached_symbols),companies_reused=reused,companies_rebuilt=len(rebuilt),snapshots_new=total)
         for symbol in sorted(set(broad)-set(cached_symbols)):
-            resolved=financial_inputs.resolve_history(RAW,symbol)
-            observation_inputs.store_annual(db,symbol,resolved)
-            facts.store_annual(db,symbol,resolved)
+            facts.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
         for (symbol,pool),evidence in latest_admission.items():
-            observation_inputs.store_latest(db,symbol,pool,evidence)
             facts.store_latest(db,symbol,pool,evidence)
         for symbol in sorted(broad):
             backtest_control.checkpoint()
-            copied=prior.copy_dated(symbol,units[symbol]) if symbol in units and prior is not None else None
-            if copied:
+            if symbol in units and prior is not None and prior.copy_dated(symbol,units[symbol]):
                 continue
-            # Equal bytes keep every day; prepended rows touch only their own days.
-            shift=shifts.get(symbol) if copied is None else None
-            moved=prior.shifted(symbol,*shift) if shift else None
-            days=() if copied is False else shift[1] if moved is not None else None
-            resolution=dated_observation_inputs.stock(RAW,symbol,ledger,backtest_control.checkpoint,days=days)
+            # Prepended rows touch only their own days: resolve those, copy the rest.
+            days=shifts.get(symbol)
+            resolution=facts.stock(RAW,symbol,backtest_control.checkpoint,days=days)
             if days is not None and resolution['source']['sha256']!=units[symbol]['content']:
                 raise ValueError('Dated observation source changed during preparation.')
-            observation_inputs.store_dated(db,symbol,dated_observation_inputs.STOCK,resolution,backtest_control.checkpoint)
             facts.store_stock(db,symbol,resolution)
-            if moved:
-                db.executemany('INSERT INTO observation_dated VALUES(?,?,?,?)',moved)
-            if moved is not None:
-                # Typed days have no file positions: copy every prior day the new rows do not touch.
-                facts.copy_stock(db,'prior',symbol,source=False,days=shift[1])
-        shared=dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint)
-        for endpoint,resolution in shared.items():
-            observation_inputs.store_dated(db,'',endpoint,resolution,backtest_control.checkpoint)
-        facts.store_market(db,shared)
-        diagnostics.lap('observations')
+            if days is not None:
+                facts.copy_stock(db,'prior',symbol,days=days)
+        facts.store_market(db,facts.shared(RAW,backtest_control.checkpoint))
+        diagnostics.lap('dated_facts')
         prepare_metrics(db)
         diagnostics.lap('metrics')
         scopes=[dict(mode='historical',pool=pool,context_date=str(period[0]),book=year)
                 for year,period in periods.items() for pool in ('legacy','cached')]
         scopes += [dict(mode='latest',pool=pool,context_date=str(latest_day),book=0)
                    for pool in ('legacy','cached')]
-        for mode,pool,scope_day,symbol,document in db.execute('SELECT * FROM observation_measure_contexts'):
-            backtest_control.checkpoint()
-            evidence=json.loads(document)
-            year=next(scope['book'] for scope in scopes if scope['mode']==mode and scope['pool']==pool and scope['context_date']==scope_day)
-            table='snapshots' if mode=='historical' else 'latest_snapshots'
-            saved=db.execute('SELECT * FROM '+table+' WHERE pool=? AND symbol=?'+(' AND year=?' if mode=='historical' else ''),
-                (pool,symbol,year) if mode=='historical' else (pool,symbol)).fetchone()
-            evidence['snapshot']=dict(saved)
-            evidence['metrics']={row['metric']:[row['multiple'],row['yield_value']] for row in db.execute(
-                'SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?',(mode,pool,year,symbol))}
-            evidence['filters']={row['field']:row['value'] for row in db.execute(
-                'SELECT field,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND symbol=?',(mode,pool,year,symbol))}
-            record=observation_inputs._prepared_record((mode,pool,scope_day,symbol,observation_inputs.encoded(observation_inputs.measure_observations.detached(evidence))))
-            db.execute('UPDATE observation_measure_contexts SET evidence_json=? WHERE mode=? AND pool=? AND context_date=? AND symbol=?',
-                (record[4],mode,pool,scope_day,symbol))
-        diagnostics.lap('measure_contexts')
         if prior is not None:
             prior.finish()
         # Rows follow from the raw signature, each price file's bytes and the
         # reuse scope (code, universe, metrics, financial inputs, SPY, Treasury).
-        observation_inputs.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,
+        facts.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,
             scope=scope,prices={symbol:unit['content'] for symbol,unit in units.items()}))
-        diagnostics.lap('observation_finish')
+        diagnostics.lap('facts_finish')
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end),
                               reuse=dict(scope=scope,symbols=units)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
