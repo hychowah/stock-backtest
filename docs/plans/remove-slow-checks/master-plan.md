@@ -24,6 +24,9 @@ still open.
 - The reference-engine comparison stays in preparation. It costs about 20
   seconds on the real cache and is the only check of the main engine against
   real data.
+- A custom-variable run has no run-wide task, inspected-row or scope ceiling.
+  Those ceilings failed the user's real 24-trial test in trial 11, after the
+  work was done. Each scope keeps a 256 MiB retained-metadata bound.
 - The three database hashes in baseline publication stay for now. Changing them
   changes the recovery journal format.
 

@@ -210,6 +210,17 @@ class ReadView:
             raise ValueError('Generation has no observation admission capability.')
         return json.loads(encoded(self._bounds))
 
+    def candidates(self, day, checkpoint=lambda: None):
+        """Return (statements by pool, legacy ranks) at one screen date, once per view."""
+        if self.closed:
+            raise ValueError('Observation input view is closed.')
+        if day not in self._candidates:
+            self._candidates[day] = books.candidates(self._populations(checkpoint), date.fromisoformat(day))
+        return self._candidates[day]
+
+    def is_cached(self, symbol):
+        return self._cached(symbol)
+
     def admit(self, roots, budget, checkpoint=lambda: None):
         """Admit roots against the complete original-order population.
 
@@ -235,9 +246,7 @@ class ReadView:
         by_day = {}
         for text in sorted(dates):
             checkpoint()
-            if text not in self._candidates:
-                self._candidates[text] = books.candidates(self._populations(checkpoint), date.fromisoformat(text))
-            by_day[text] = self._candidates[text]
+            by_day[text] = self.candidates(text, checkpoint)
         decisions, size = [], 0
         for root in roots:
             checkpoint()

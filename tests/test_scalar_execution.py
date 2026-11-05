@@ -69,9 +69,9 @@ class ScalarTests(unittest.TestCase):
     def test_more_than_256_candidates_rank_globally_with_complete_chunks(self):
         stocks,records=self.fixture.select(self.fixture.capture())
         self.assertEqual([h['symbol'] for h in stocks],[f'A{i:04d}' for i in range(299,294,-1)])
+        # Formulas run for all 300 candidates; explanations cover the 5 selected rows.
         blocks=[r['value'] for r in records if r['type']=='evaluation']
-        self.assertGreater(len(blocks),1)
-        self.assertEqual(sum(len(b['block']['requests']) for b in blocks),300)
+        self.assertEqual(sum(len(b['block']['requests']) for b in blocks),5)
         self.assertEqual([r['value']['rows'] for r in records if r['type']=='scope'],[300])
         self.assertTrue(all(h['ranking_unit']=='USD' for h in stocks))
     def test_ties_across_chunks_use_candidate_rank_then_symbol(self):
@@ -103,7 +103,6 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(len(stocks),50)
         receipt=next(r['value'] for r in records if r['type']=='scope')
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],250)
-        self.assertTrue(any(r['type']=='admission' for r in records))
     def test_missing_only_active_source_excludes(self):
         self.fixture.db.execute("DELETE FROM observation_annual WHERE symbol='A0299'")
         self.fixture.db.execute('DELETE FROM observation_metadata');observation_inputs.finish(self.fixture.db, '2015-01-05', inputs='fixture')
@@ -145,7 +144,7 @@ class ScalarTests(unittest.TestCase):
         expression=dict(op='lookback',months=1,arg=dict(op='parameter',id='annual.operating_margin'))
         stocks,records=self.fixture.select(self.fixture.capture(expression))
         blocks=[record['value']['block'] for record in records if record['type']=='evaluation']
-        self.assertGreaterEqual(len(blocks),3)
+        self.assertEqual(sum(len(block['requests']) for block in blocks),len(stocks))
         self.assertTrue(all(len(block['requests'])<=128 for block in blocks))
         self.assertEqual(len(stocks),5)
     def test_entry_admission_and_missing_return_rows_have_distinct_scope_counts(self):

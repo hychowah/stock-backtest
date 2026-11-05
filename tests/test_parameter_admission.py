@@ -123,11 +123,9 @@ class AdmissionTests(unittest.TestCase):
         cases=list(expanded_cases())
         for entries in (cases[0],cases[1],cases[-1]):
             sink=Mock()
-            executor=scalar_execution.Executor(capture(entries),Untouched(),sink)
             with patch.object(scalar_execution,'scope_rows',
                     side_effect=AssertionError('No prepared scope before admission')) as scope:
-                for latest in (False,True):
-                    self.error(lambda:executor.select(Untouched(),2015,'2015-01-02',latest=latest))
+                self.error(lambda:scalar_execution.Executor(capture(entries),Untouched(),sink))
                 scope.assert_not_called()
             sink.assert_not_called()
 
