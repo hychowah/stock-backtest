@@ -8,6 +8,7 @@ from backtest.inputs import research as r
 from backtest.financial import metrics as metrics
 from backtest.financial import books as financial_books
 from backtest.runtime import backtest_control as backtest_control
+from backtest.runtime import diagnostics
 from backtest import calendar as schedule_calendar
 from backtest import portfolio_results as portfolio_results
 
@@ -56,6 +57,7 @@ def compute_period(db,entry,exit_day,books,cached,pool):
 def prepare_period(db,entry,exit_day,books,cached,pool='legacy'):
     completed=daily.prepared_period(db,entry,exit_day,pool)
     if completed is not None:return completed
+    diagnostics.count('books_calculated')
     return daily.store_period(db,compute_period(db,entry,exit_day,books,cached,pool))
 
 def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None, **options):
@@ -102,12 +104,15 @@ def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=
         screening.validate_selection(**options)
     pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
     missing=any(daily.prepared_period(db,a,b,pool) is None for a,b in periods)
-    books=daily.histories(db) if missing else None
-    cached=daily.cached_symbols(db) if missing else set()
+    with diagnostics.stage('histories'):
+        books=daily.histories(db) if missing else None
+        cached=daily.cached_symbols(db) if missing else set()
     def select_period(entry,exit_day):
-        period_id=prepare_period(db,entry,exit_day,books,cached,pool)
-        stocks=(screening.select(db,period=(period_id,period_id),**options) if book_selection is None
-                else book_selection.select(db,period_id,entry,exit_day))
+        with diagnostics.stage('books'):
+            period_id=prepare_period(db,entry,exit_day,books,cached,pool)
+        with diagnostics.stage('selection'):
+            stocks=(screening.select(db,period=(period_id,period_id),**options) if book_selection is None
+                    else book_selection.select(db,period_id,entry,exit_day))
         spy=db.execute('SELECT spy FROM periods WHERE year=?',(period_id,)).fetchone()[0]
         return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:

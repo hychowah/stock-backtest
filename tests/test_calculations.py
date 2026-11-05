@@ -31,6 +31,7 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import cache_access as cache_access
+from backtest.runtime import diagnostics
 from backtest.engines.original import robustness as robustness
 from backtest.engines.original import schedules as schedules
 from website.server import app as serve
@@ -98,6 +99,41 @@ class CalculationTests(unittest.TestCase):
             self.assertIs(server.backtest_jobs.calculations,server.calculations)
             self.assertIs(server.backtest_queue.calculations,server.calculations)
         finally:server.server_close()
+
+    def test_runs_and_queue_tests_log_settings_stages_and_book_statistics(self):
+        folder=self.root/'logs';self.addCleanup(diagnostics.close);diagnostics.configure(folder)
+        self.service.calculate('custom',self.options,None,None)
+        self.service.calculate('random',dict(self.options,trials=2,seed=7),None,None)
+        store=backtest_queue.Store(self.root/'queue.sqlite')
+        store.enqueue(request(options=self.options))
+        queue=backtest_queue.Queue(store,calculations=self.service,library=backtest_queue.saved_backtests.Store(self.root/'saved-library.sqlite'))
+        with patch.object(self.service,'preflight',side_effect=backtest_queue.Busy('busy')):
+            queue._run(store.claim())
+        queue._run(store.claim())  # The requeued row now completes.
+        late=store.enqueue(request(options=self.options));validate=backtest_queue.artifacts.validate
+        def stop_after_calculation(snapshot):
+            # A Stop after the last checkpoint is stored, and logged, as cancelled.
+            store.change(late['id'],'stop',{'revision':store.get(late['id'])['revision']})
+            return validate(snapshot)
+        with patch.object(backtest_queue.artifacts,'validate',side_effect=stop_after_calculation):
+            queue._run(store.claim())
+        self.assertEqual(store.get(late['id'])['state'],'cancelled')
+        events=list(diagnostics.records(folder))
+        custom,random,busy,*queued=[record for record in events if record['event']=='backtest.run']
+        self.assertEqual((busy['admission'],busy['outcome'],busy['error']),('queue','failed','Busy'))
+        self.assertEqual({key:custom[key] for key in ('mode','admission','strategy','pool','outcome')},
+                         dict(mode='custom',admission='interactive',strategy=False,pool='legacy',outcome='completed'))
+        self.assertEqual(custom['periods'],8)
+        self.assertLessEqual({'admission','histories','books','selection'},custom['stages'].keys())
+        self.assertEqual(custom['counts'],dict(books_calculated=8))
+        self.assertEqual((random['mode'],random['trials']),('random',2))
+        self.assertIn('plan',random['stages'])
+        self.assertEqual(random['execution']['unique_books'],random['execution']['missing_books']+random['execution']['reused_books'])
+        self.assertEqual([(record['admission'],record['outcome']) for record in queued],[('queue','completed')]*2)
+        tested=[record for record in events if record['event']=='queue.test']
+        self.assertEqual([(record['outcome'],record.get('reason'),record['mode']) for record in tested],
+                         [('requeued','Busy','custom'),('completed',None,'custom'),('cancelled',None,'custom')])
+        self.assertIn('store',tested[1]['stages'])
 
     def test_original_results_record_producer_and_load_no_frozen_module(self):
         result=self.service.calculate('custom',dict(self.options,engine='original'),None,None)

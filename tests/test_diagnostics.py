@@ -1,11 +1,16 @@
-"""Persistent, bounded development logs with safe exception traces."""
+"""Persistent, bounded development logs with safe exception traces and timings."""
+from contextlib import redirect_stderr
 import errno
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from threading import Thread
 import time
 from types import SimpleNamespace
 import unittest
@@ -16,7 +21,9 @@ sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
+from backtest.runtime import backtest_control
 from backtest.runtime import diagnostics as d
+from tools.ops import log_summary
 from website.server import app as serve
 namespace_implementation=d._process_namespace
 
@@ -100,22 +107,115 @@ class DiagnosticsTests(unittest.TestCase):
             self.assertIsNotNone(d.configure(self.folder.name))
         self.assertTrue(locked.exists());self.assertFalse(other.exists())
 
-    def test_foreign_and_legacy_logs_are_preserved_without_pid_checks(self):
-        for name in ('website-123456.log','website-'+('b'*32)+'-123456.log.1'):
-            path=Path(self.folder.name)/name
-            path.write_bytes(b'old')
-            os.utime(path,(0,0))
-        with patch.object(d,'TOTAL_BYTES',0),patch.object(d,'_process_running') as running:
-            d.cleanup(self.folder.name)
+    def test_foreign_and_legacy_logs_are_pruned_by_age_only_without_pid_checks(self):
+        folder=Path(self.folder.name);foreign='website-'+('b'*32)
+        for name,age in [('website-123456.log',15),(foreign+'-123456.log.1',15),
+                         ('website-123457.log',1),(foreign+'-123457.log',1)]:
+            path=folder/name;path.write_bytes(b'old')
+            stamp=time.time()-age*86400;os.utime(path,(stamp,stamp))
+        # A Linux reboot starts a new namespace; its old logs still expire.
+        with patch.object(d,'TOTAL_BYTES',0),patch.object(d,'MAX_FILES',0),patch.object(d,'_process_running') as running:
+            d.cleanup(folder)
             self.assertTrue(all(call.args==(os.getpid(),) for call in running.call_args_list))
-        self.assertEqual(len(list(Path(self.folder.name).glob('*.log*'))),3)
+        self.assertEqual(sorted(path.name for path in folder.glob('*.log*')),
+                         sorted([self.path.name,'website-123457.log',foreign+'-123457.log']))
 
-    def test_unknown_namespace_preserves_all_logs(self):
+    def test_recent_age_only_logs_do_not_use_the_namespace_targets(self):
+        stopped=self.saved_log('website-123456.log',1)
+        for number in range(3):
+            path=Path(self.folder.name)/f'website-{"b"*32}-12346{number}.log';path.write_bytes(b'x')
+        # Three recent previous-boot logs must not force out a fresh crash log.
+        with patch.object(d,'MAX_FILES',2),patch.object(d,'_process_running',side_effect=lambda pid:pid==os.getpid()):
+            d.cleanup(self.folder.name)
+        self.assertTrue(stopped.exists())
+        self.assertEqual(len(list(Path(self.folder.name).glob('*.log*'))),5)
+
+    def test_unknown_namespace_prunes_by_age_only(self):
         old=self.saved_log('website-123456.log',30)
-        with patch.object(d,'_process_namespace',return_value=None),patch.object(d,'_process_running') as running:
+        recent=self.saved_log('website-123457.log',1)
+        with patch.object(d,'_process_namespace',return_value=None),patch.object(d,'TOTAL_BYTES',0),\
+                patch.object(d,'_process_running') as running:
             d.cleanup(self.folder.name)
             running.assert_not_called()
-        self.assertTrue(old.exists())
+        self.assertFalse(old.exists());self.assertTrue(recent.exists())
+
+    def test_cleanup_file_count_target_removes_oldest_stopped_logs(self):
+        logs=[self.saved_log(f'website-12345{number}.log',5-number) for number in range(4)]
+        with patch.object(d,'MAX_FILES',3),patch.object(d,'_process_running',side_effect=lambda pid:pid in (123450,os.getpid())):
+            d.cleanup(self.folder.name)
+        # Five files with this process's log: the running oldest stays, the next two go.
+        self.assertEqual([path.exists() for path in logs],[True,False,False,True])
+        self.assertTrue(self.path.exists())
+
+    def events(self,name):
+        return [record for record in d.records(self.folder.name) if record['event']==name]
+
+    def test_operation_records_outcome_time_stages_counts_and_notes(self):
+        with d.operation('prepare.example'):
+            d.note(force=False)
+            with d.stage('books'):time.sleep(.01)
+            with d.stage('books'):pass
+            d.lap('inputs');d.count('books_calculated');d.count('books_calculated',2)
+            d.note(outcome='current',companies=3)
+        # Outside an operation the helpers do nothing.
+        with d.stage('books'):d.lap('inputs');d.note(companies=4);d.count('books_calculated')
+        record,=self.events('prepare.example')
+        self.assertEqual((record['outcome'],record['force'],record['companies'],record['level']),('current',False,3,'INFO'))
+        self.assertEqual(record['counts'],{'books_calculated':3})
+        self.assertEqual(set(record['stages']),{'books','inputs'})
+        self.assertGreaterEqual(record['stages']['books'],.01)
+        self.assertGreaterEqual(record['seconds'],record['stages']['inputs'])
+        self.assertGreaterEqual(record['cpu_seconds'],0)
+
+    def test_operation_failure_keeps_only_the_error_type_and_operations_nest(self):
+        @d.operation('outer.example')
+        def outer():
+            with d.operation('inner.example'):d.count('inner')
+            d.count('outer')
+            raise RuntimeError('PRIVATE-OPERATION-CANARY')
+        with self.assertRaises(RuntimeError):outer()
+        with self.assertRaises(backtest_control.Cancelled):
+            with d.operation('cancelled.example'):
+                d.note(outcome='prepared');raise backtest_control.Cancelled()
+        with d.operation('odd.example'):d.note(value=object())
+        inner,=self.events('inner.example');failed,=self.events('outer.example');cancelled,=self.events('cancelled.example')
+        self.assertEqual((inner['outcome'],inner['counts']),('completed',{'inner':1}))
+        self.assertEqual((failed['outcome'],failed['error'],failed['level'],failed['counts']),('failed','RuntimeError','WARNING',{'outer':1}))
+        self.assertEqual(cancelled['outcome'],'cancelled')
+        self.assertEqual(self.events('diagnostics.unserializable')[0]['operation'],'odd.example')
+        self.assertNotIn('PRIVATE-OPERATION-CANARY',self.path.read_text())
+
+    def test_slow_request_logs_route_and_status_without_identifiers_or_query(self):
+        self.assertEqual(serve.route('/api/backtest-runs/'+'a'*32+'/evidence?token=PRIVATE'),'/api/backtest-runs/{id}/evidence')
+        self.assertEqual(serve.route('/api/backtest-queue/1234'),'/api/backtest-queue/{id}')
+        self.assertEqual(serve.route('/data.html?x=1'),'/data.html')
+        self.assertEqual(serve.route('http://host/private'),'{other}')
+        server=ThreadingHTTPServer(('127.0.0.1',0),serve.Handler);server.daemon_threads=False
+        thread=Thread(target=server.serve_forever);thread.start()
+        # Joining the handler threads keeps the threshold patch active until they log.
+        with patch.object(serve,'SLOW_REQUEST_SECONDS',0),redirect_stderr(io.StringIO()):
+            try:
+                connection=HTTPConnection('127.0.0.1',server.server_address[1],timeout=10)
+                connection.request('GET','/api/launcher');connection.getresponse().read();connection.close()
+            finally:
+                server.shutdown();server.server_close();thread.join()
+        record,=self.events('http.slow')
+        self.assertEqual((record['method'],record['route'],record['status']),('GET','/api/launcher',404))
+
+    def test_summary_groups_operations_with_stage_shares_slow_requests_and_failures(self):
+        run=dict(event='backtest.run',pid=1,mode='random',strategy=False,pool='legacy',trials=24,periods=480,counts={})
+        lines=['2026-11-05T10:00:00Z INFO '+json.dumps(dict(run,outcome='completed',seconds=10.,stages=dict(observation_identity=4.,selection=3.))),
+               '2026-11-05T10:05:00Z WARNING '+json.dumps(dict(run,outcome='failed',error='OSError',seconds=2.,stages=dict(selection=1.))),
+               '2026-11-05T10:06:00Z INFO '+json.dumps(dict(event='http.slow',pid=1,method='GET',route='/api/backtests/{id}',status=200,seconds=1.5)),
+               '2026-11-05T10:07:00Z ERROR '+json.dumps(dict(event='queue.test_failed',pid=1,errors=[dict(type='OSError',frames=[])])),
+               'not an event line']
+        (Path(self.folder.name)/f'website-{self.namespace}-123.log').write_text('\n'.join(lines)+'\n')
+        text='\n'.join(log_summary.summarize(list(d.records(self.folder.name))))
+        self.assertRegex(text,r'backtest\.run random legacy completed +1 +10\.0s .*observation_identity 40%, selection 30%')
+        self.assertRegex(text,r'backtest\.run random legacy failed +1 +2\.00s .*selection 50%')
+        self.assertIn('periods=480 trials=24',text)
+        self.assertRegex(text,r'GET /api/backtests/\{id\} +1 +median 1\.50s')
+        self.assertRegex(text,r'queue\.test_failed +OSError +1 +last 2026-11-05T10:07:00Z')
 
     def test_native_namespace_is_stable(self):
         # Exercise the real OS implementation despite the retention fixture.

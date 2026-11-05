@@ -15,6 +15,7 @@ import sqlite3
 from backtest.financial import books, rules
 from backtest import measure_observations
 from backtest.inputs import financial_inputs, dated_observation_inputs
+from backtest.runtime import diagnostics
 from backtest.variables import parameters
 
 VERSION = 4
@@ -152,20 +153,22 @@ def _content_rows(db, table, order, json_available):
 
 def content_identity(db, checkpoint=lambda: None, *, scopes=None):
     """Hash every row at each call; native encoding never caches freshness."""
+    diagnostics.count('observation_identity_scans')
     digest = hashlib.sha256()
     digest.update(('scopes\n' + encoded([] if scopes is None else scopes) + '\n').encode())
     json_available = _content_json_available(db)
-    for table, order in (('observation_sources', 'symbol,endpoint'),
-                         ('observation_annual', 'symbol,endpoint,fiscal'),
-                         ('observation_latest', 'symbol,pool'),
-                         ('observation_dated', 'symbol,endpoint,day'),
-                         ('observation_sessions', 'day'),
-                         ('observation_measure_contexts', 'mode,pool,context_date,symbol')):
-        digest.update((table + '\n').encode())
-        for fast, row in _content_rows(db, table, order, json_available):
-            checkpoint()
-            text = encoded(tuple(row)) if fast is None else fast.replace('\x7f', '\\u007f')
-            digest.update((text + '\n').encode())
+    with diagnostics.stage('observation_identity'):
+        for table, order in (('observation_sources', 'symbol,endpoint'),
+                             ('observation_annual', 'symbol,endpoint,fiscal'),
+                             ('observation_latest', 'symbol,pool'),
+                             ('observation_dated', 'symbol,endpoint,day'),
+                             ('observation_sessions', 'day'),
+                             ('observation_measure_contexts', 'mode,pool,context_date,symbol')):
+            digest.update((table + '\n').encode())
+            for fast, row in _content_rows(db, table, order, json_available):
+                checkpoint()
+                text = encoded(tuple(row)) if fast is None else fast.replace('\x7f', '\\u007f')
+                digest.update((text + '\n').encode())
     return digest.hexdigest()
 
 

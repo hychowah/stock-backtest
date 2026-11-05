@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from datetime import date
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import cache_access as cache_access
+from backtest.runtime import diagnostics
 from backtest.engines.original import robustness as robustness
 from backtest.engines.original import schedules as schedules
 from backtest import calendar_requests as calendar_requests
@@ -32,24 +33,26 @@ class Original(Control):
     def _financial(self,admission,progress):
         # Queue waiting repeats admission only, never an execution that began.
         waiting=False
-        while True:
-            self._checkpoint()
-            ownership=cache_access.access(timeout=.25 if admission=='queue' else 30)
-            try:ownership.__enter__()
-            except cache_access.Contention:
-                if admission!='queue':raise
-                if not waiting:
-                    if progress:progress(dict(type='waiting',message='Waiting for another backtest or data operation.'))
-                    waiting=True
-                self.closed.wait(.1)
-                continue
-            break
+        with diagnostics.stage('admission'):
+            while True:
+                self._checkpoint()
+                ownership=cache_access.access(timeout=.25 if admission=='queue' else 30)
+                try:ownership.__enter__()
+                except cache_access.Contention:
+                    if admission!='queue':raise
+                    if not waiting:
+                        if progress:progress(dict(type='waiting',message='Waiting for another backtest or data operation.'))
+                        waiting=True
+                    self.closed.wait(.1)
+                    continue
+                break
         try:
             self._checkpoint()
             if waiting and progress:progress(None)
             yield
         finally:ownership.__exit__(None,None,None)
 
+    @diagnostics.operation('backtest.run')
     def calculate(self,mode,options,progress,configuration,*,planned=None,
                   admission='interactive',details=True):
         """Calculate once, with complete random holdings unless summary is requested.
@@ -58,6 +61,7 @@ class Original(Control):
         waits cancellably through contention. Neither policy retries an engine
         error. Configuration is published before random work, under ownership.
         """
+        diagnostics.note(mode=mode,admission=admission,strategy=False)
         self.preflight(options,planned=planned)
         if 'strategy' in options:
             raise ValueError('Captured scalar strategies require the bounded result reader.')
@@ -73,21 +77,27 @@ class Original(Control):
             try:
                 db.execute('PRAGMA cache_size=-131072')
                 if mode=='random':
-                    sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
-                    if planned is None:
-                        planned=calendar_requests.plan(sessions,options,checkpoint=self._checkpoint) if 'calendar' in options else robustness.plan(db,**options)
-                    else:
-                        calendar_requests.validate_submitted(options,planned)
-                        planned=calendar_requests.validate_plan(sessions,planned,checkpoint=self._checkpoint)
-                    screening.validate_selection(**planned['options'])
+                    with diagnostics.stage('plan'):
+                        sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+                        if planned is None:
+                            planned=calendar_requests.plan(sessions,options,checkpoint=self._checkpoint) if 'calendar' in options else robustness.plan(db,**options)
+                        else:
+                            calendar_requests.validate_submitted(options,planned)
+                            planned=calendar_requests.validate_plan(sessions,planned,checkpoint=self._checkpoint)
+                        screening.validate_selection(**planned['options'])
                     if configuration:configuration(planned)
                     captured=[]
                     result=robustness.run(db,planned,progress=progress,
                         capture=(lambda number,trial:captured.append(trial)) if details else None)
                     if details:result['trial_results']=captured
+                    diagnostics.note(trials=len(result['trials']),periods=sum(row['periods'] for row in result['trials']),
+                                     execution=result['execution'])
                 else:
                     evaluate=schedules.backtest_calendar if 'calendar' in options else schedules.backtest_dates if 'dates' in options else schedules.backtest
                     result=evaluate(db,**options)
+                    diagnostics.note(periods=len(result['periods']))
+                # Note the pool only after the run has validated and used it.
+                diagnostics.note(pool=options.get('pool','legacy'))
                 backtest_control.checkpoint()
             finally:db.close()
         result['producer']=dict(engine=self.engine,label=ENGINES[self.engine])
@@ -149,9 +159,11 @@ class Original(Control):
                            variable_coverage.inspect(capture,scope,source,view,checkpoint=self._checkpoint))
         return dict(value,producer=dict(engine='original',label='Original reference coverage'))
 
+    @diagnostics.operation('backtest.run')
     def calculate_into(self, mode, options, destination, progress, configuration, *, planned=None,
                        admission='interactive', max_bytes=256*1024**2, piece_bytes=1024*1024, record_bytes=8*1024*1024):
         """Stream scalar codec 2; publish only after the ordinary financial owner closes."""
+        diagnostics.note(mode=mode,admission=admission,strategy=True)
         import hashlib
         from backtest import scalar_result_evidence
         from backtest.inputs import operation_inputs, sqlite_observations
@@ -176,8 +188,9 @@ class Original(Control):
                         if configuration:configuration(value)
                     # Random plan must be known before the immutable header.
                     if mode=='random' and planned is None:
-                        sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
-                        planned=calendar_requests.plan(sessions,financial,checkpoint=self._checkpoint)
+                        with diagnostics.stage('plan'):
+                            sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+                            planned=calendar_requests.plan(sessions,financial,checkpoint=self._checkpoint)
                         metadata['configuration']=planned
                     writer=scalar_result_evidence.Writer(destination,trials=trials,metadata=metadata,max_bytes=max_bytes,
                         piece_bytes=piece_bytes,record_bytes=record_bytes,checkpoint=self._checkpoint)
@@ -185,9 +198,11 @@ class Original(Control):
                         progress=progress,checkpoint=self._checkpoint)
                     view.validate()
         # Sealing runs after financial handles and ownership have closed.
-        manifest=writer.finish(summary)
-        destination.flush();destination.seek(0)
-        digest=hashlib.sha256();size=0
-        for part in iter(lambda:destination.read(65536),b''):
-            self._checkpoint();digest.update(part);size+=len(part)
+        with diagnostics.stage('seal'):
+            manifest=writer.finish(summary)
+            destination.flush();destination.seek(0)
+            digest=hashlib.sha256();size=0
+            for part in iter(lambda:destination.read(65536),b''):
+                self._checkpoint();digest.update(part);size+=len(part)
+        diagnostics.note(evidence_bytes=size)
         return dict(manifest=manifest,transfer=dict(bytes=size,sha256=digest.hexdigest()))

@@ -25,6 +25,7 @@ from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
 from backtest.inputs import observation_inputs, dated_observation_inputs
 from backtest.runtime import backtest_control
+from backtest.runtime import diagnostics
 from backtest.runtime import cache_access as cache_access
 from backtest.engines.reference import revalue as revalue
 from backtest.inputs import baseline as baseline
@@ -413,8 +414,10 @@ def latest_snapshot(statement, day, light, div):
 
 
 @cache_access.exclusive
+@diagnostics.operation('prepare.research')
 def prepare(path=DATABASE, force=False):
     started=time.perf_counter()
+    diagnostics.note(force=force)
     path=Path(path)
     owner=baseline.Baseline(RESULTS,path)
     owner.recover()
@@ -426,7 +429,7 @@ def prepare(path=DATABASE, force=False):
         else:
             db.close()
             print(f'Database already current ({time.perf_counter()-started:.2f}s); no JSON prices parsed.')
-            return
+            diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
     try:
         ledger=cache_assets.read_json(RAW/'download-coverage.json',{})
@@ -473,6 +476,7 @@ def prepare(path=DATABASE, force=False):
     latest_statements,latest_ranks=books.candidates(tuple({s:rows for s,rows in pool.items() if s in active} for pool in (broad,book)),latest_day)
     latest_meta=dict(asof=str(latest_day),active_universe=len(active),eligible_financials=len(latest_statements['cached']),legacy_candidates=len(latest_ranks))
     latest_treasury=market.asof_yield(yields,latest_day)
+    diagnostics.lap('inputs')
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
     if temporary.exists():
@@ -627,6 +631,8 @@ def prepare(path=DATABASE, force=False):
                         [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
                 print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} new January snapshots; {reused:,} companies reused',flush=True)
+        diagnostics.lap('companies')
+        diagnostics.note(companies=len(cached_symbols),companies_reused=reused,companies_rebuilt=len(rebuilt),snapshots_new=total)
         for symbol in sorted(set(broad)-set(cached_symbols)):
             observation_inputs.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
         for (symbol,pool),evidence in latest_admission.items():
@@ -648,7 +654,9 @@ def prepare(path=DATABASE, force=False):
                 db.executemany('INSERT INTO observation_dated VALUES(?,?,?,?)',moved)
         for endpoint,resolution in dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint).items():
             observation_inputs.store_dated(db,'',endpoint,resolution,backtest_control.checkpoint)
+        diagnostics.lap('observations')
         prepare_metrics(db)
+        diagnostics.lap('metrics')
         scopes=[dict(mode='historical',pool=pool,context_date=str(period[0]),book=year)
                 for year,period in periods.items() for pool in ('legacy','cached')]
         scopes += [dict(mode='latest',pool=pool,context_date=str(latest_day),book=0)
@@ -668,9 +676,11 @@ def prepare(path=DATABASE, force=False):
             record=observation_inputs._prepared_record((mode,pool,scope_day,symbol,observation_inputs.encoded(observation_inputs.measure_observations.detached(evidence))))
             db.execute('UPDATE observation_measure_contexts SET evidence_json=? WHERE mode=? AND pool=? AND context_date=? AND symbol=?',
                 (record[4],mode,pool,scope_day,symbol))
+        diagnostics.lap('measure_contexts')
         if prior is not None:
             prior.finish()
         observation_inputs.finish(db,latest_day,backtest_control.checkpoint,scopes=scopes)
+        diagnostics.lap('observation_finish')
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end),
                               reuse=dict(scope=scope,symbols=units)).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
@@ -678,22 +688,29 @@ def prepare(path=DATABASE, force=False):
         if inputs!=signature() or sources!=price_sources():
             raise ValueError('Inputs changed during preparation; retry.')
         db.commit()
+        diagnostics.lap('commit')
         # The independent engine already agreed on these exact historical
         # inputs when every company unit was copied and the copied baseline is
         # the published one. Any recalculated or removed unit is checked again.
         result=prepared_baseline(db) if prior is not None and not rebuilt and prior.units.keys()==units.keys() else None
         if result is not None and json.loads(json.dumps(result))==prior.baseline:
             print('Historical inputs unchanged; the verified January baseline was reused.',flush=True)
+            diagnostics.note(verification='reused')
         else:
+            diagnostics.note(verification='independent')
             result=verify_reference(db)
+        diagnostics.lap('verification')
+        diagnostics.note(verified_years=len(result['years']),verified_holdings=sum(len(year['holdings']) for year in result['years']))
         if inputs!=signature() or sources!=price_sources():
             raise ValueError('Inputs changed during baseline verification; retry.')
         db.close()
         owner.publish(temporary,result)
+        diagnostics.lap('publication')
     except BaseException:
         db.close()
         temporary.unlink(missing_ok=True)
         raise
+    diagnostics.note(outcome='prepared',database_bytes=path.stat().st_size)
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
 
 

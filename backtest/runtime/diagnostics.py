@@ -1,10 +1,14 @@
 """Persistent local diagnostics without exception messages, source or locals.
 
-Callers supply controlled operational context, never credentials, provider URLs
-or response bodies. Error chains retain types, OS codes and stack locations.
+Callers supply controlled operational context: names, enums and numbers, never
+credentials, provider URLs, response bodies, formulas or run identifiers, which
+are capabilities. Error chains retain types, OS codes and stack locations.
 Each server process owns its rotating files, including when ports run together.
+operation() records the duration, outcome, stages and counts of one operation.
 """
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import hashlib
 import json
 import logging
@@ -17,20 +21,25 @@ import time
 import uuid
 
 from backtest.paths import ROOT
+from backtest.runtime import backtest_control
 
 MAX_BYTES=5*1024*1024
 BACKUPS=2
 RETENTION_DAYS=14
 TOTAL_BYTES=100*1024*1024
+MAX_FILES=50
+DIRECTORY=ROOT/'data'/'logs'
+LOG_NAME=re.compile(r'website-(?:([0-9a-f]{32})-)?([1-9][0-9]*)\.log(?:\.[1-9][0-9]*)?')
 LOGGER=logging.getLogger('backtest')
 LOGGER.setLevel(logging.INFO)
 LOGGER.propagate=False
 LOGGER.addHandler(logging.NullHandler())
 _handler=None
+_operation=ContextVar('diagnostics_operation',default=None)
 
 
 def _process_namespace():
-    """Identify the host PID namespace; unknown ownership is never pruned.
+    """Identify the host PID namespace; logs of unknown ownership age out only.
 
     Linux boot identity prevents reuse of a PID namespace inode across boots.
     Windows PIDs belong to the machine, not to an individual login session.
@@ -74,33 +83,37 @@ def _process_running(pid):
 
 
 def cleanup(directory):
-    """Prune stopped-process logs by age, then oldest first by total size.
+    """Prune logs by age, then oldest first by total size and file count.
 
-    Active and inaccessible files can leave the directory above the size target.
-    Only logs from the current process namespace are eligible. Legacy and
-    foreign-namespace logs are preserved and count toward total size. Cleanup failures must not block startup.
+    A stopped process's log in the current namespace is pruned by any rule.
+    The size and count targets cover only these logs. Legacy, foreign-namespace
+    and unknown-namespace logs have no checkable PID: only age prunes them,
+    after RETENTION_DAYS without a write. A Linux reboot starts a new
+    namespace. Active and inaccessible files can leave the current namespace
+    above its targets. Cleanup failures must not block startup.
     """
     try:paths=list(Path(directory).iterdir())
     except OSError:return
     namespace=_process_namespace()
-    entries=[];total=0
+    entries=[];total=count=0
     for path in paths:
-        match=re.fullmatch(r'website-(?:([0-9a-f]{32})-)?([1-9][0-9]*)\.log(?:\.[1-9][0-9]*)?',path.name)
+        match=LOG_NAME.fullmatch(path.name)
         if not match:continue
         try:
             if path.is_symlink() or not path.is_file():continue
             stat=path.stat()
         except OSError:continue
-        total+=stat.st_size
-        entries.append((stat.st_mtime,path,stat.st_size,int(match[2]),match[1]))
+        local=namespace is not None and match[1]==namespace
+        if local:total+=stat.st_size;count+=1
+        entries.append((stat.st_mtime,path,stat.st_size,int(match[2]),local))
     cutoff=time.time()-RETENTION_DAYS*86400
-    for modified,path,size,pid,owner in sorted(entries):
-        if namespace is None or owner!=namespace:continue
-        if modified>=cutoff and total<=TOTAL_BYTES:continue
-        if _process_running(pid):continue
+    for modified,path,size,pid,local in sorted(entries):
+        if not local:
+            if modified>=cutoff:continue
+        elif (modified>=cutoff and total<=TOTAL_BYTES and count<=MAX_FILES) or _process_running(pid):continue
         try:path.unlink()
         except OSError:continue
-        total-=size
+        if local:total-=size;count-=1
 
 
 def relative_path(path):
@@ -114,7 +127,7 @@ def configure(directory=None):
     """Open a process-owned log; unavailable logging must not stop the server."""
     global _handler
     close()
-    directory=Path(directory) if directory is not None else ROOT/'data'/'logs'
+    directory=Path(directory) if directory is not None else DIRECTORY
     try:
         directory.mkdir(parents=True,exist_ok=True)
         cleanup(directory)
@@ -142,8 +155,96 @@ def event(name,**context):
     LOGGER.info(json.dumps(dict(event=name,pid=os.getpid(),**context),ensure_ascii=True))
 
 
+@contextmanager
+def operation(name):
+    """Write one event when the operation ends, also as a function decorator.
+
+    The event has the outcome, wall seconds, this thread's CPU seconds, stage
+    seconds and counts. An exception records only its type. The body can note
+    its own outcome. stage(), lap(), note() and count() add to the innermost
+    open operation of the calling thread; outside one they do nothing. Stages
+    are measured regions. They can overlap and need not add up to seconds.
+    """
+    state=dict(fields={},stages={},counts={},started=time.perf_counter(),cpu=time.thread_time())
+    state['lap']=state['started']
+    token=_operation.set(state);outcome=None;error=None
+    try:yield
+    except backtest_control.Cancelled:
+        outcome='cancelled';raise
+    except Exception as caught:
+        outcome='failed';error=type(caught).__name__;raise
+    except BaseException:
+        outcome='interrupted';raise
+    finally:
+        _operation.reset(token)
+        fields=state['fields'];noted=fields.pop('outcome','completed')
+        record=dict(event=name,pid=os.getpid(),outcome=outcome or noted)
+        if error:record['error']=error
+        record.update(fields)
+        record.update(seconds=round(time.perf_counter()-state['started'],3),
+            cpu_seconds=round(time.thread_time()-state['cpu'],3),
+            stages={key:round(value,3) for key,value in state['stages'].items()},counts=state['counts'])
+        try:LOGGER.log(logging.WARNING if record['outcome']=='failed' else logging.INFO,json.dumps(record,ensure_ascii=True))
+        except (TypeError,ValueError):warning('diagnostics.unserializable',operation=name)
+
+
+@contextmanager
+def stage(name):
+    """Add the seconds spent in this block to the current operation's stage."""
+    state=_operation.get()
+    if state is None:
+        yield;return
+    started=time.perf_counter()
+    try:yield
+    finally:state['stages'][name]=state['stages'].get(name,0.)+time.perf_counter()-started
+
+
+def lap(name):
+    """Add the seconds since the operation start or previous lap to a stage."""
+    state=_operation.get()
+    if state is None:return
+    now=time.perf_counter()
+    state['stages'][name]=state['stages'].get(name,0.)+now-state['lap'];state['lap']=now
+
+
+def note(**fields):
+    """Set controlled fields, including outcome, on the current operation."""
+    state=_operation.get()
+    if state is not None:state['fields'].update(fields)
+
+
+def count(name,amount=1):
+    state=_operation.get()
+    if state is not None:state['counts'][name]=state['counts'].get(name,0)+amount
+
+
 def warning(name,**context):
     LOGGER.warning(json.dumps(dict(event=name,pid=os.getpid(),**context),ensure_ascii=True))
+
+
+def records(directory=None):
+    """Yield the saved events of every log in directory, oldest file first.
+
+    Each event gains its line's UTC time and level. Unreadable files and lines
+    that are not events are skipped. Reading never changes a log.
+    """
+    directory=Path(directory) if directory is not None else DIRECTORY
+    try:paths=list(directory.iterdir())
+    except OSError:return
+    saved=[]
+    for path in paths:
+        try:
+            if LOG_NAME.fullmatch(path.name) and path.is_file():saved.append((path.stat().st_mtime,path))
+        except OSError:continue
+    for _,path in sorted(saved):
+        try:lines=path.read_text(encoding='utf-8',errors='replace').splitlines()
+        except OSError:continue
+        for line in lines:
+            stamp,level,text=(line.split(' ',2)+['',''])[:3]
+            try:record=json.loads(text)
+            except ValueError:continue
+            if isinstance(record,dict) and isinstance(record.get('event'),str):
+                yield dict(record,time=stamp,level=level)
 
 
 def failure(name,error,**context):

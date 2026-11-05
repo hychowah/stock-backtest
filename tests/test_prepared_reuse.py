@@ -17,7 +17,7 @@ from backtest.engines.reference import legacy
 from backtest.financial import rules
 from backtest.inputs import market
 from backtest.inputs import research as r
-from backtest.runtime import cache_access
+from backtest.runtime import cache_access, diagnostics
 
 PRICES = {  # newest first, as SeriesAsset saves them
     'AAA': [('2015-10-20', 16), ('2015-06-30', 15), ('2015-01-02', 14), ('2014-06-30', 13), ('2014-01-02', 12), ('2013-06-28', 10)],
@@ -128,6 +128,22 @@ class PreparedReuseTests(unittest.TestCase):
             self.assertEqual([dict(row) for row in screening.historical(db, first=2014, last=2015, pool='cached')], before)
             self.assertEqual({row['price_date'] for row in screening.latest(db, pool='cached')}, {'2015-12-01'})
         self.assert_full_rebuild_equal()
+
+    def test_preparation_logs_phases_reuse_and_verification(self):
+        folder = self.path.parent.parent / 'logs'
+        self.addCleanup(diagnostics.close); diagnostics.configure(folder)
+        self.prepare()
+        self.append_session('2015-12-01'); self.prepare()
+        self.prepare()
+        full, incremental, current = [record for record in diagnostics.records(folder) if record['event'] == 'prepare.research']
+        self.assertEqual({key: full[key] for key in ('outcome', 'verification', 'companies', 'companies_rebuilt', 'companies_reused')},
+                         dict(outcome='prepared', verification='independent', companies=3, companies_rebuilt=3, companies_reused=0))
+        self.assertLessEqual({'inputs', 'companies', 'observations', 'metrics', 'measure_contexts', 'observation_finish',
+                              'commit', 'verification', 'publication'}, full['stages'].keys())
+        self.assertGreater(full['verified_holdings'], 0)
+        self.assertGreater(full['counts']['observation_identity_scans'], 0)
+        self.assertEqual((incremental['verification'], incremental['companies_rebuilt'], incremental['companies_reused']), ('reused', 0, 3))
+        self.assertEqual(current['outcome'], 'current')
 
     def test_prepended_rows_resolve_only_their_days(self):
         self.prepare()

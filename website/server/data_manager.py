@@ -343,15 +343,17 @@ class Jobs:
             self.thread.start()
         return self.snapshot()
 
+    @diagnostics.operation('data.job')
     def work(self,action,o):
         diagnostics.event('data.started',action=action,scope=o['scope'],start=o['start'],end=o['end'],datasets=o['datasets'],symbol_count=len(o['symbols']))
+        diagnostics.note(action=action)
         try:
             # Audit and replacement share the same lock as custom backtests.
             # Waiting for it ends promptly on Cancel.
             deadline=time.monotonic()+30
             while True:
                 if self.cancel.is_set():
-                    diagnostics.event('data.cancelled',action=action)
+                    diagnostics.note(outcome='cancelled')
                     self.emit(message='Cancelled before data admission.');return
                 ownership=cache_access.access(timeout=.25)
                 try:ownership.__enter__()
@@ -359,28 +361,32 @@ class Jobs:
                     if time.monotonic()>=deadline:raise
                     continue
                 break
+            diagnostics.lap('admission')
             try:
                 self.stop()
                 if action=='rebuild':
                     self.emit(message='Preparing January and custom-date databases…')
                     daily.prepare();self.stop()
+                    diagnostics.lap('prepare')
                     self.emit(message='Rebuilding the website…')
                     subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    diagnostics.lap('website_build')
                     self.rebuilt=True
                     report=inspect(o,self.emit,self.stop)
                 elif action=='download':
                     try:report=download(o,self.emit,self.stop)
                     finally:self.rebuilt=False
                 else:report=inspect(o,self.emit,self.stop)
+                diagnostics.lap('download' if action=='download' else 'inspect')
                 with self.lock:self.report=report
                 self.emit(warning=' '.join(report.get('warnings',[])))
                 self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
-                diagnostics.event('data.completed',action=action)
             finally:ownership.__exit__(None,None,None)
         except (Cancelled,backtest_control.Cancelled):
-            diagnostics.event('data.cancelled',action=action)
+            diagnostics.note(outcome='cancelled')
             self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
         except (ValueError,FileNotFoundError) as error:
+            diagnostics.note(outcome='failed',error=type(error).__name__)
             diagnostics.failure('data.failed',error,action=action)
             # Only our validation errors are suitable for the UI. Provider URLs
             # and subprocess traces must never reach a status response.
@@ -389,6 +395,7 @@ class Jobs:
             else:message=str(error)
             self.emit(error=message,message='Data job failed. Existing completed files were kept.')
         except Exception as error:
+            diagnostics.note(outcome='failed',error=type(error).__name__)
             diagnostics.failure('data.failed',error,action=action)
             self.emit(error='Data operation failed. Check the development log below for details, then retry.',message='Data job failed. Existing completed files were kept.')
         finally:self.emit(running=False)

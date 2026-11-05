@@ -10,6 +10,7 @@ import these canonical owners.
 | `tools.ops.offline_input_copy` | Exact-byte private input materialization; no command entry |
 | `tools.ops.prepared_input_coverage` | Read-only prepared-input coverage; no command entry |
 | `tools.ops.list_stops`, `tools.ops.classify_stops` | Retained stop inspection commands |
+| `tools.ops.log_summary` | Read-only summary of logged operation times, slow requests and failures; run as a module |
 | `tools.experiments.parallel_comparison` | Scoped private comparison and its fixed child |
 | `tools.experiments.probe*`, `download_one`, `fetch_bulk` | Retained API acquisition experiments |
 

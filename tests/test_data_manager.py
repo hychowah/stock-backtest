@@ -507,6 +507,9 @@ class CacheTests(unittest.TestCase):
         content=path.read_text()
         self.assertIn('data.failed',content);self.assertIn('RuntimeError',content)
         self.assertIn('data_manager.py',content)
+        job,=[record for record in d.diagnostics.records(self.root/'logs') if record['event']=='data.job']
+        self.assertEqual((job['action'],job['outcome'],job['error']),('check','failed','RuntimeError'))
+        self.assertIn('admission',job['stages'])
         self.assertNotIn('PRIVATE-CANARY',content);self.assertNotIn('https:',content)
 
 

@@ -404,7 +404,9 @@ class Store:
         """Retain new scalar failure details in the existing error column.
 
         Metadata exposes the original text plus additive diagnostics. Old error
-        strings and records are neither migrated nor rewritten.
+        strings and records are neither migrated nor rewritten. Return the
+        state written: an explicit Stop turns it into cancelled. An exact retry
+        of an archived or reserved completion writes nothing and returns complete.
         """
         packed=zlib.compress(encode(snapshot).encode(),3) if snapshot is not None else None
         cagr=artifacts.information(snapshot)['cagr'] if snapshot else None
@@ -412,12 +414,13 @@ class Store:
             current=self.row(db,identifier)['state']
             transfer=db.execute('SELECT * FROM transfers WHERE job_id=?',(identifier,)).fetchone()
             if current=='archived' or transfer and transfer['state']=='reserved':
-                if state=='complete' and snapshot is not None and transfer['completion']==self.completion_identity(snapshot):return
+                if state=='complete' and snapshot is not None and transfer['completion']==self.completion_identity(snapshot):return 'complete'
                 raise Conflict('Completed result differs from the original snapshot.')
             if current=='stopping':state='cancelled';packed=None;cagr=None
             stored_error=SCALAR_FAILURE+encode(dict(error=error,**diagnostic)) if state=='failed' and diagnostic else error
             db.execute('UPDATE jobs SET state=?,snapshot=?,cagr=?,error=?,finished=?,revision=revision+1 WHERE id=?',
                        (state,packed,cagr,stored_error,now() if state!='queued' else None,identifier))
+        return state
 
 
 class Queue:
@@ -474,9 +477,14 @@ class Queue:
                 diagnostics.failure('queue.transfer_failed',error)
                 self.store.transfer_failed(identifier,'retry')
 
+    @diagnostics.operation('queue.test')
     def _run(self,job):
         identifier=job['id'];last_check=last_progress=0.;cancelled=False
         spec=json.loads(job['spec']);options=dict(spec['options'])
+        diagnostics.note(mode=spec['mode'],strategy='strategy' in options)
+        def stored(state):
+            # An explicit Stop can turn any requested state into cancelled.
+            diagnostics.note(outcome=dict(complete='completed',archived='completed',queued='requeued').get(state,state))
         if spec['mode']=='random':options['seed']=job['seed']
         def stopped():
             nonlocal last_check,cancelled
@@ -507,8 +515,8 @@ class Queue:
                             result=reader.manifest['summary'],catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
                         # Publication checks committed Stop intent under its own
                         # writer. A spill can block another reader in this thread.
-                        with backtest_control.cancel_when(self.stopping.is_set):
-                            self.store.finish_evidence(identifier,snapshot,reader)
+                        with backtest_control.cancel_when(self.stopping.is_set),diagnostics.stage('store'):
+                            stored(self.store.finish_evidence(identifier,snapshot,reader)['state'])
                 return
             with backtest_control.cancel_when(stopped):
                 result=self.calculations.calculate(spec['mode'],options,progress,lambda value:self.store.progress(identifier,'configuration',value),
@@ -517,17 +525,20 @@ class Queue:
                 backtest_control.checkpoint()
             snapshot=dict(version=2,kind=spec['mode'],settings=dict(mode=spec['mode'],**spec['options']),
                           result=result,catalog=spec['catalog'],presentation=spec['presentation'],captured_at=now())
-            artifacts.validate(snapshot)
-            self.store.finish(identifier,'complete',snapshot=snapshot)
+            with diagnostics.stage('store'):
+                artifacts.validate(snapshot)
+                stored(self.store.finish(identifier,'complete',snapshot=snapshot))
         except backtest_control.Cancelled:
-            self.store.finish(identifier,'queued' if self.stopping.is_set() else 'cancelled')
-        except (Unavailable,Busy):
-            self.store.finish(identifier,'queued')
+            stored(self.store.finish(identifier,'queued' if self.stopping.is_set() else 'cancelled'))
+        except (Unavailable,Busy) as error:
+            diagnostics.note(reason=type(error).__name__)
+            stored(self.store.finish(identifier,'queued'))
         except Exception as error:
+            diagnostics.note(error=type(error).__name__)
             diagnostics.failure('queue.test_failed',error)
             message=str(error) if isinstance(error,(ValueError,TypeError)) else 'Test failed. Check the server development log.'
             diagnostic=strategy_requests.failure_details(error) if 'strategy' in options else None
-            self.store.finish(identifier,'failed',error=message,**({'diagnostic':diagnostic} if diagnostic else {}))
+            stored(self.store.finish(identifier,'failed',error=message,**({'diagnostic':diagnostic} if diagnostic else {})))
         finally:
             if entry is not None:self.evidence.discard(entry)
 

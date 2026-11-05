@@ -23,6 +23,7 @@ from backtest.engines.original import schedules
 from backtest.inputs import daily
 from backtest import calendar_requests as calendar_requests
 from backtest.runtime import backtest_control as backtest_control
+from backtest.runtime import diagnostics
 
 DEFAULT_WORKERS=4
 MIN_PARALLEL_BOOKS=64
@@ -192,14 +193,15 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
                 # stock rows in Python memory. The temporary file is never a cache.
                 with tempfile.SpooledTemporaryFile(max_size=8*1024**2) as staged:
                     for key in missing:
-                        waiting=time.perf_counter();book=next(results)
+                        waiting=time.perf_counter()
+                        with diagnostics.stage('book_calculation'):book=next(results)
                         stats['calculation_wait_seconds']+=time.perf_counter()-waiting
                         if (book['entry'],book['exit'],book['pool'])!=key:
                             raise ValueError('A calculation returned a different dated book.')
                         pickle.dump(book,staged,protocol=pickle.HIGHEST_PROTOCOL)
                         calculated+=1;notice()
                     staged.seek(0);writing=time.perf_counter()
-                    with db:
+                    with diagnostics.stage('book_write'),db:
                         # Take the writer lock only after the whole trial is
                         # calculated. A second server may have saved a shared book.
                         if not db.in_transaction:db.execute('BEGIN IMMEDIATE')

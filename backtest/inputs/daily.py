@@ -11,6 +11,7 @@ from backtest.inputs import research as r
 from backtest.runtime import cache_access as cache_access
 from backtest.financial import books as financial_books
 from backtest.runtime import backtest_control as backtest_control
+from backtest.runtime import diagnostics
 from backtest import calendar as schedule_calendar
 from backtest import portfolio_results as portfolio_results
 from backtest.inputs import market
@@ -162,7 +163,9 @@ def _prices(db,symbols,saved,code):
         if same_code and old is not None and old['content']==content:
             db.execute('INSERT INTO prices SELECT * FROM old.prices WHERE symbol=?',(symbol,))
             units[symbol]=old
+            diagnostics.count('prices_copied')
         else:
+            diagnostics.count('prices_parsed')
             rows=_price_rows(json.loads(data))
             db.executemany('INSERT INTO prices VALUES(?,?,?,?)',[(symbol,*row) for row in rows])
             units[symbol]=dict(content=content,last=rows[-1][0] if rows else None,digest=_digest(rows))
@@ -191,8 +194,10 @@ def _keep_books(db,since):
     A book reads no price, session or yield after max(exit, entry+FORWARD_REACH).
     None keeps every book.
     """
-    kept=[(year,) for year,entry,exit_day in db.execute('SELECT year,entry,exit FROM old.periods')
+    previous=db.execute('SELECT year,entry,exit FROM old.periods').fetchall()
+    kept=[(year,) for year,entry,exit_day in previous
           if since is None or max(date.fromisoformat(exit_day),date.fromisoformat(entry)+financial_books.FORWARD_REACH)<date.fromisoformat(since)]
+    diagnostics.note(books_previous=len(previous),books_kept=len(kept),changed_from=since)
     if not kept:return
     db.execute('CREATE TEMP TABLE kept_periods(year INTEGER PRIMARY KEY)')
     db.executemany('INSERT INTO temp.kept_periods VALUES(?)',kept)
@@ -203,6 +208,7 @@ def _keep_books(db,since):
     db.execute('DROP TABLE temp.kept_periods')
 
 
+@diagnostics.operation('prepare.daily')
 @cache_access.exclusive
 def prepare(path=DATABASE, source=r.DATABASE):
     """Parse changed raw prices only; keep the previous cache if publication fails.
@@ -212,10 +218,12 @@ def prepare(path=DATABASE, source=r.DATABASE):
     input. The result matches a full build of the same inputs plus those books.
     """
     started=time.perf_counter()
+    diagnostics.lap('admission')
     path=Path(path)
     # The public daily-cache command owns its prerequisite too. Users never
     # need to discover and run the dependency chain themselves.
     r.prepare(source)
+    diagnostics.lap('research')
     inputs=fingerprint(source)
     reference=r.connect(source,full_prices=True)
     saved=None
@@ -224,7 +232,9 @@ def prepare(path=DATABASE, source=r.DATABASE):
         # every observation row without a new freshness question.
         current,saved=_previous(path)
         if current==inputs:
-            reference.close();print('Daily cache already current; no prices parsed.');return
+            reference.close();print('Daily cache already current; no prices parsed.')
+            diagnostics.note(outcome='current');return
+    diagnostics.lap('input_check')
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
     temporary.unlink(missing_ok=True)
@@ -235,15 +245,19 @@ def prepare(path=DATABASE, source=r.DATABASE):
         if saved is not None:
             db.execute('ATTACH DATABASE ? AS old',(path.resolve().as_uri()+'?mode=ro',))
         tables=_copy_research(reference,db)
+        diagnostics.lap('copy_research')
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
         code=_code()
         units,earliest=_prices(db,symbols,saved,code)
+        diagnostics.lap('prices')
         db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')])
         db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None])
+        diagnostics.lap('market')
         books=_digest(dict(tables=tables,symbols=symbols))
         if saved is not None and code['books']==saved['code']['books'] and books==saved['books']:
             earliest+=[day for table in ('sessions','treasuries','treasury10') if (day:=_dated_change(db,table)) is not None]
             _keep_books(db,min(earliest) if earliest else None)
+            diagnostics.lap('keep_books')
         if inputs!=fingerprint(source):
             raise ValueError('Inputs changed during daily preparation; retry.')
         evidence=dict(version=VERSION,code=code,books=books,prices=units)
@@ -254,6 +268,8 @@ def prepare(path=DATABASE, source=r.DATABASE):
     except BaseException:
         db.close();reference.close();temporary.unlink(missing_ok=True);raise
     action='refreshed' if saved is not None else 'prepared'
+    diagnostics.lap('publication')
+    diagnostics.note(outcome=action,symbols=len(symbols),database_bytes=path.stat().st_size)
     print(f'Daily cache {path.stat().st_size/1e6:.1f} MB {action} in {time.perf_counter()-started:.1f}s',flush=True)
 
 def price(db,symbol,day,column,forward=False,slack=None):

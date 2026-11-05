@@ -7,7 +7,7 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily, research
-from backtest.runtime import cache_access
+from backtest.runtime import cache_access, diagnostics
 from backtest.financial import rules, books as financial_books, metrics
 from backtest import calendar as schedule_calendar, portfolio_results
 from datetime import date, timedelta
@@ -535,6 +535,18 @@ class RefreshTests(unittest.TestCase):
             with patch.object(s,'compute_period',side_effect=AssertionError('Kept books must be reused')):
                 self.assertEqual(s.backtest(cache,**self.OPTIONS)['periods'],self.books)
         self.assert_matches_full_build(self.saved)
+
+    def test_refresh_logs_copied_and_parsed_prices_and_kept_books(self):
+        folder=self.root/'logs';self.addCleanup(diagnostics.close);diagnostics.configure(folder)
+        self.append();self.refresh()
+        daily.prepare(self.path,self.source)
+        refreshed,current=[record for record in diagnostics.records(folder) if record['event']=='prepare.daily']
+        counts=refreshed['counts']
+        self.assertEqual((refreshed['outcome'],refreshed['symbols'],counts['prices_copied'],counts['prices_parsed']),('refreshed',3,1,2))
+        self.assertIn('observation_identity_scans',counts)  # The copied observations are verified.
+        self.assertEqual((refreshed['books_previous'],refreshed['books_kept'],refreshed['changed_from']),(6,6,'2015-08-03'))
+        self.assertLessEqual({'admission','research','input_check','copy_research','prices','market','keep_books','publication'},refreshed['stages'].keys())
+        self.assertEqual(current['outcome'],'current')
 
     def test_historical_edit_drops_only_books_that_can_read_it(self):
         path=self.raw/'px'/'A.json';payload=json.loads(path.read_text())
