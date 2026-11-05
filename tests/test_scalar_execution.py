@@ -74,6 +74,19 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(sum(len(b['block']['requests']) for b in blocks),5)
         self.assertEqual([r['value']['rows'] for r in records if r['type']=='scope'],[300])
         self.assertTrue(all(h['ranking_unit']=='USD' for h in stocks))
+    def test_explanation_chunk_refused_by_provider_is_split(self):
+        expected,_=self.fixture.select(self.fixture.capture())
+        original=x.reference.evaluate
+        def bounded(plan,view,checkpoint=lambda:None):
+            if len(plan.to_dict()['requests'])>1:
+                raise x.observations.ObservationError('WORK_LIMIT','/limits/bytes','Observation facts and result exceed their byte bound.')
+            return original(plan,view,checkpoint)
+        with patch.object(x.reference,'evaluate',side_effect=bounded):
+            stocks,records=self.fixture.select(self.fixture.capture())
+        self.assertEqual([h['symbol'] for h in stocks],[h['symbol'] for h in expected])
+        blocks=[r['value'] for r in records if r['type']=='evaluation']
+        self.assertEqual(([b['chunk'] for b in blocks],[len(b['block']['requests']) for b in blocks]),(list(range(5)),[1]*5))
+        self.assertTrue(all(lane['chunk']<5 and lane['request']==0 for h in stocks for lane in h['scalar_evidence']['lanes'].values()))
     def test_ties_across_chunks_use_candidate_rank_then_symbol(self):
         stocks,records=self.fixture.select(self.fixture.capture(language.constant('-1'),first=253,last=258))
         self.assertEqual([h['symbol'] for h in stocks],[f'A{i:04d}' for i in range(252,258)])

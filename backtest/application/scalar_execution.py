@@ -344,17 +344,29 @@ class Executor:
         if formula_roles and chosen:
             # Explain the selected rows with the reference evaluator. Its values
             # must equal the column values the selection used.
-            plans = _plans(self.program, [roots[i] for i in chosen], self.record_bytes, self.checkpoint,
-                           self.evaluation_limits, self.metadata_bytes, self.engine)
-            offset = 0
-            for chunk, plan in enumerate(plans):
-                self.checkpoint()
-                block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
+            def explain(indices):
+                # The provider bounds each chunk's facts; owner lanes in dated
+                # scopes can exceed it, so a refused chunk is split in half.
+                plans = _plans(self.program, [roots[i] for i in indices], self.record_bytes, self.checkpoint,
+                               self.evaluation_limits, self.metadata_bytes, self.engine)
+                for plan in plans:
+                    self.checkpoint()
+                    width = len(plan.to_dict()['requests'])
+                    group, indices = indices[:width], indices[width:]
+                    try:
+                        block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
+                    except (observations.ObservationError, definitions.FormulaError) as error:
+                        if error.code != 'WORK_LIMIT' or len(group) == 1:
+                            raise
+                        yield from explain(group[:len(group)//2]); yield from explain(group[len(group)//2:])
+                        continue
+                    yield group, block
+            for chunk, (group, block) in enumerate(explain(chosen)):
                 # The result header carries the projection once; the block keeps its content hash.
                 block['identity'] = dict(block['identity'], projection=block['identity']['projection']['content'])
                 records.append(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
                 for item in block['results']:
-                    position = chosen[offset + item['request']]
+                    position = group[item['request']]
                     for role in formula_roles:
                         source = role_sources[role]
                         if (source['variable_id'], source['revision']) != (item['variable_id'], item['revision']):
@@ -366,7 +378,6 @@ class Executor:
                         references[position][lane_of(role)] = dict(scope=identity, chunk=chunk, request=item['request'],
                             variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
                             valid=item['valid'], reason=item['reason'])
-                offset += len(plan.to_dict()['requests'])
         records.append(dict(type='scope', value=receipt))
         for index in chosen:
             lanes = []
