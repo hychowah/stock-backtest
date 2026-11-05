@@ -225,13 +225,15 @@ class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run.
 
     Formulas are evaluated values-only (variables/columns.py) for the rows that
-    can still be selected. The reference evaluator then explains the selected
-    rows only, and its values must equal the column values. Prefixes qualify
-    independent trial scopes.
+    can still be selected. With explain, the reference evaluator then traces
+    the selected rows only, and its values must equal the column values.
+    Without it (random-date runs), selected rows keep their formula values and
+    reasons but no step trace. Prefixes qualify independent trial scopes.
     """
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
-                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, metadata_bytes=None, engine='original'):
+                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, metadata_bytes=None, engine='original',
+                 explain=True):
         self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
         if (type(self.metadata_bytes) is not int or not 0<self.metadata_bytes<=MAX_METADATA_BYTES
                 or type(scope_prefix) is not str or len(scope_prefix)>64):
@@ -243,7 +245,7 @@ class Executor:
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
-        self.number = 0
+        self.number = 0; self.explain = explain
         self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
         if self.program is not None:
             strategy_requests.require_formula_support(self.program, engine, checkpoint=checkpoint)
@@ -376,7 +378,16 @@ class Executor:
         chosen = [item['index'] for item in selected['selected']]
         references = {index: {} for index in chosen}
         records = []
-        if formula_roles and chosen:
+        if formula_roles and chosen and not self.explain:
+            # Values and reasons only; the definitions name each lane's unit.
+            outputs = {(item['variable_id'], item['revision']): item for item in self.formulas.projection['definitions']}
+            for index in chosen:
+                for role in formula_roles:
+                    source = role_sources[role]; key = (source['variable_id'], source['revision'])
+                    value, valid, reason = computed[index][key]
+                    references[index][lane_of(role)] = dict(scope=identity, variable_id=key[0], revision=key[1],
+                        value=value, valid=valid, reason=reason, unit=outputs[key]['unit'], display=outputs[key]['display'])
+        elif formula_roles and chosen:
             # Explain the selected rows with the reference evaluator. Its values
             # must equal the column values the selection used.
             def explain(indices):

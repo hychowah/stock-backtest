@@ -95,6 +95,16 @@ class ScalarTests(unittest.TestCase):
             scalar_runs.check_size(Writer(),executor,100)
             with self.assertRaisesRegex(d.FormulaError,'about [0-9]+ MB of results'):
                 scalar_runs.check_size(Writer(),executor,10000)
+    def test_random_runs_keep_formula_values_without_traces(self):
+        expected,_=self.fixture.select(self.fixture.capture())
+        records=[]
+        with self.fixture.view() as view:
+            stocks=x.Executor(self.fixture.capture(),view,records.append,explain=False).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+        self.assertEqual([h['symbol'] for h in stocks],[h['symbol'] for h in expected])
+        self.assertFalse(any(r['type']=='evaluation' for r in records))
+        lanes=[h['scalar_evidence']['lanes']['ranking'] for h in stocks]
+        self.assertEqual([lane['value'] for lane in lanes],[h['ranking_value'] for h in expected])
+        self.assertTrue(all('chunk' not in lane and lane['unit']=='USD' for lane in lanes))
     def test_ties_across_chunks_use_candidate_rank_then_symbol(self):
         stocks,records=self.fixture.select(self.fixture.capture(language.constant('-1'),first=253,last=258))
         self.assertEqual([h['symbol'] for h in stocks],[f'A{i:04d}' for i in range(252,258)])

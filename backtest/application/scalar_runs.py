@@ -37,7 +37,7 @@ def check_size(writer, executor, periods):
     selection = executor.capture['selection']
     ranks = selection['rank_to'] - selection['rank_from'] + 1
     trace = 0
-    if executor.formulas is not None:
+    if executor.formulas is not None and executor.explain:
         nodes = executor.formulas.projection['nodes']
         members = sum(node.get('count', 1) for node in nodes if node['op'] in ('parameter', 'annual'))
         trace = 300 + 350 * len(nodes) + 600 * members
@@ -51,7 +51,9 @@ def check_size(writer, executor, periods):
 def execute(db, source, mode, options, writer, view, configuration, *, planned=None, progress=None, checkpoint=lambda:None):
     checked = strategy_requests.check_options(options, checkpoint=checkpoint)
     capture = strategy_requests.CapturedStrategy(strategy_requests._encode(checked,strategy_requests.STRATEGY_BYTES,checkpoint))
-    executor = scalar_execution.Executor(capture, view, writer.evidence, record_bytes=writer.record_bytes, checkpoint=checkpoint)
+    # Random-date runs keep formula values and reasons, not step traces.
+    executor = scalar_execution.Executor(capture, view, writer.evidence, record_bytes=writer.record_bytes,
+                                         checkpoint=checkpoint, explain=mode != 'random')
     requested = checked['selection']['rank_to']-checked['selection']['rank_from']+1
     diagnostics.note(pool=checked['pool'],conditions=len(checked['selection']['conditions']))
     sink = TrialSink(writer, requested)

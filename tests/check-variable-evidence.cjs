@@ -20,4 +20,6 @@ assert(primary.includes('Original margin &lt;label&gt;'));assert(primary.include
 context.records[1].scope='scope2';html=vm.runInContext('VariableEvidence.records(records,row,strategy)',context);assert(html.includes('no matching calculation block'));
 context.strategy.builtins=[{id:'filter:pe',label:'Submitted P/E',display:'multiple'}];context.row.scalar_evidence.lanes={ranking:{source:{kind:'builtin',id:'filter:pe'},canonical:12,stored:12,unit:'scalar',valid:true}};
 html=vm.runInContext('VariableEvidence.records(records,row,strategy)',context);assert(html.includes('Submitted P/E'));assert(html.includes('12×'));assert(html.includes('original stored value 12'));
+context.row.scalar_evidence.lanes={ranking:{scope:'scope1',...exact,value:.25,valid:true,reason:null,unit:'scalar',display:'percent'},c0:{scope:'scope1',...exact,value:null,valid:false,reason:'ZERO_DENOMINATOR',unit:'scalar',display:'percent'}};
+html=vm.runInContext('VariableEvidence.records(records,row,strategy)',context);assert(html.includes('25%'));assert(html.includes('ZERO_DENOMINATOR'));assert(html.includes('random-date results keep values, not step traces'));
 console.log('Passed: readable detached preview counts/values/reasons/fiscal/known dates, recorded operations, exact scope/chunk/request trace selection, original built-in labels and optional complete JSON.');

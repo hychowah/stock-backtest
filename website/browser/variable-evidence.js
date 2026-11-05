@@ -40,6 +40,9 @@ const VariableEvidence=(()=>{
         if(ref.source){
           const descriptor=strategy.builtins.find(item=>item.id===ref.source.id);
           stored.push(label+' · '+(descriptor?.label||ref.source.id)+' · '+(ref.valid?value(ref.canonical,ref.unit,descriptor?.display):reason(ref.reason))+' · original stored value '+String(ref.stored)+' · '+ref.unit);
+        }else if(ref.chunk===undefined){
+          // Random-date results keep each formula value and reason, not its steps.
+          stored.push(label+' · '+(labels.get(ref.variable_id+'@'+ref.revision)||ref.variable_id)+' · '+(ref.valid?value(ref.value,ref.unit,ref.display):reason(ref.reason))+' · random-date results keep values, not step traces');
         }else for(const record of records){
           if(record.scope!==ref.scope||record.chunk!==ref.chunk||!record.block)continue;
           const result=record.block.results.find(item=>item.request===ref.request&&item.variable_id===ref.variable_id&&item.revision===ref.revision&&item.evidence.operation===ref.evidence.operation);

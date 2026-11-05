@@ -238,12 +238,15 @@ use the existing bounded cursor pages. Trial/period/holding operations retain
 their shape for historical scalar results. Scope/chunk-qualified links identify
 the original explanation records. Latest has screen rows and no trial.
 
-New scalar results keep explanations for the selected rows only. Each
-evaluation chunk keeps its whole request list, so links stay valid, plus the
-results of selected rows and the operations, observations, contexts and roots
-they reach. Built-in `lanes` and `admission` records also cover selected rows
-only. The scope receipt still counts the complete prepared population. Older
-results keep every candidate's explanation and open unchanged.
+New scalar results explain the selected rows only. In fixed-date and latest
+runs the reference evaluator traces those rows, and its values must equal the
+column evaluator's values. A trace keeps values, validity, reasons, fiscal and
+known dates, lookups and the source file and its digest. It drops raw row
+positions, per-row hashes and repeated report statements. Random-date runs keep
+each selected row's formula value, unit and reason without a step trace. Each
+holding carries its stored lane values; no separate `lanes` or `admission`
+record repeats them. The scope receipt still counts the complete prepared
+population. Older results keep their explanations and open unchanged.
 
 With a built-in ranking and filter-first order, formulas are evaluated only for
 rows that are admitted, have a ranking value and pass every built-in condition
