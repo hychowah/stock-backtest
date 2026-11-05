@@ -11,8 +11,9 @@ const entry={...exact,name:'Saved source',version:1,favourite:false,deleted:fals
 const capture={program:{bundle:{definitions:[{...exact,definition}]},definitions:[{...exact,unit:'scalar',display:'number'}]},presentation:[{...exact,name:entry.name}]};
 let revision=3,draftSettings=null,draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,authoredFailure=false,captureWait=null,coverageWait=null,previewCount=0,conflict=false,patchFailure=null,useWire=false,lastWireValidation=null;
 const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null,wire=wireOrigin?JSON.parse(fs.readFileSync(0,'utf8')):null;
+const timers=new Map();let timerId=0;
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
-const context=vm.createContext({console,document,AbortController,VariableEvidence:{preview:value=>{assert.equal(value.population,'explicit-request-scopes');return '<p>3 requested samples; not complete-pool coverage</p>';}},crypto:require('node:crypto').webcrypto,Uint8Array,fetch:async(url,options={})=>{
+const context=vm.createContext({console,document,AbortController,setTimeout:callback=>{timers.set(++timerId,callback);return timerId;},clearTimeout:id=>timers.delete(id),VariableEvidence:{preview:value=>{assert.equal(value.population,'explicit-request-scopes');return '<p>3 requested samples; not complete-pool coverage</p>';}},crypto:require('node:crypto').webcrypto,Uint8Array,fetch:async(url,options={})=>{
  const body=options.body?JSON.parse(options.body):null;calls.push({url,body,signal:options.signal});
  if(useWire){
   if(options.body)assert(Buffer.byteLength(options.body)<=256*1024);
@@ -37,6 +38,9 @@ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 const event=(id,type,target=node(id))=>node(id).handlers[type]({target,stopPropagation(){}});
 const click=id=>{event(id,'click');return tick();};
+// Run the debounced automatic check, as a pause after typing would.
+const flush=()=>{for(const [id,callback] of [...timers]){timers.delete(id);callback();}};
+const check=async()=>{flush();await tick();await tick();};
 context.draft={read:()=>({revision,settings:draftSettings,detached:draftDetached}),patch:(change,expected)=>{if(patchFailure)throw Error(patchFailure);assert.equal(expected,revision,'Stale picker apply');applied.push(structuredClone(change));revision++;}};
 run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
 (async()=>{
@@ -73,7 +77,8 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  event('variable-picker','click',{dataset:{library:exact.variable_id,revision:exact.revision},closest(){return this;}});await tick();await tick();
  assert.deepEqual(current().right,{op:'ref',...exact});assert.equal(current().left.right.value,'2.50');
  operate('undo');assert.equal(current().right.id,'annual.revenue');operate('redo');
- await click('variable-validate');assert(calls.at(-1).body.submitted.some(item=>item.variable_id===exact.variable_id&&item.revision===exact.revision));
+ assert.equal(node('variable-check').dataset.state,'pending');
+ await check();assert.equal(node('variable-check').dataset.state,'ready');assert(calls.at(-1).body.submitted.some(item=>item.variable_id===exact.variable_id&&item.revision===exact.revision));
  const expression={op:'div',left:{op:'mul',left:{op:'parameter',id:'annual.revenue'},right:{op:'annual',stat:'mean',count:3,parameter:'annual.operating_margin'}},right:{op:'parameter',id:'market.enterprise_value'}};
  // Advanced JSON remains local before validation, so even malformed numeric
  // fields must be escaped when the real visual renderer displays them.
@@ -82,17 +87,18 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  }
  node('variable-json').value=JSON.stringify(expression);await click('variable-accept-json');
  assert.deepEqual(JSON.parse(node('variable-json').value),expression);assert(node('variable-equation').innerHTML.includes('aria-label="Numerator"'));assert(node('variable-equation').innerHTML.includes('aria-label="Denominator"'));
- await click('variable-validate');assert.deepEqual(calls.at(-1).body.definition.expression,expression);assert(node('variable-explanation').textContent.includes(exact.revision));
- node('variable-display').value='multiple';event('variable-display','change');assert(!node('variable-explanation').textContent.includes(exact.revision));assert(node('variable-explanation').textContent.includes('need validation'));
+ await check();assert.deepEqual(calls.at(-1).body.definition.expression,expression);assert.equal(node('variable-check').dataset.state,'ready');assert(node('variable-explanation').textContent.includes('Results shown as'));
+ node('variable-display').value='multiple';event('variable-display','change');assert.equal(node('variable-check').dataset.state,'pending');assert(!node('variable-explanation').textContent.includes('Results shown as'));
  // A late validation cannot relabel new edits as checked.
- let release;validationWait=()=>new Promise(resolve=>release=resolve);event('variable-validate','click');await tick();
- node('variable-name').value='Newer local name';event('variable-name','input');release();validationWait=null;await tick();assert(!node('variable-explanation').textContent.includes(exact.revision));
+ let release;validationWait=()=>new Promise(resolve=>release=resolve);flush();await tick();
+ node('variable-name').value='Newer local name';event('variable-name','input');release();validationWait=null;await tick();assert.equal(node('variable-check').dataset.state,'pending');assert(!node('variable-explanation').textContent.includes('Results shown as'));
  node('variable-preview-symbols').value=Array(17).fill('A').join(',');await click('variable-preview');assert.equal(previewCount,0);assert(node('variable-errors').textContent.includes('1–16'));
  node('variable-preview-symbols').value='A0000,A0001,UNKNOWN';node('variable-preview-mode').value='historical';await click('variable-preview');await tick();
  assert.equal(previewCount,1);assert.equal(calls.at(-1).body.engine,'original');assert.equal(calls.at(-1).body.roots.length,3);assert.deepEqual(Object.keys(calls.at(-1).body.roots[0]).sort(),['date','mode','pool','symbol']);assert(node('variable-preview-result').innerHTML.includes('not complete-pool coverage'));
  // Exact library selection remains explicit. Save conflict preserves raw text.
  const pick={dataset:{library:exact.variable_id,revision:exact.revision},closest(){return this;}};
- event('variable-picker','click',pick);await tick();assert.equal(applied.length,0);assert(node('variable-selected').textContent.includes(exact.revision));
+ event('variable-picker','click',pick);await tick();assert.equal(applied.length,0);assert.equal(node('variable-selected').textContent,'Saved in My variables');assert(node('variable-selected').title.includes(exact.revision));
+ assert.equal(node('variable-save').textContent,'Save changes');assert.equal(node('variable-save-new').hidden,false);assert.equal(node('variable-favourite').hidden,false);
  assert.equal(pickerParameterCount(),ownerCatalog.parameters.length,'Loading v1 must refresh choices without a search');assert.equal(measureDisabled(),true);
  await click('variable-start-new');assert.equal(pickerParameterCount(),ownerCatalog.expanded_parameters.length,'New v3 must restore expanded choices');assert.equal(measureDisabled(),false);
  event('variable-picker','click',pick);await tick();assert.equal(pickerParameterCount(),ownerCatalog.parameters.length);assert.equal(measureDisabled(),true);
@@ -101,10 +107,10 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  // An acknowledged save cannot overwrite edits made while publication waits.
  saveWait=()=>new Promise(resolve=>release=resolve);event('variable-save','click');await tick();
  node('variable-name').value='Edited while saving';event('variable-name','input');release();saveWait=null;await tick();await tick();assert.equal(node('variable-name').value,'Edited while saving');assert(node('variable-message').textContent.includes('newer local edits'));
- await click('variable-favourite');assert.equal(node('variable-favourite').textContent,'Remove favourite');
+ await click('variable-favourite');assert.equal(node('variable-favourite').textContent,'★ Remove from favourites');
  await click('variable-apply');assert.equal(applied.length,1);assert.equal(applied[0].source.revision,exact.revision);assert(!node('variable-dialog').open);assert.equal(document.activeElement.id,'opener');
  await run("VariableWorkspace.open('condition')");event('variable-dialog','cancel');assert.equal(document.activeElement.id,'opener');
- await run("VariableWorkspace.open('ranking')");authoredWait=()=>new Promise(resolve=>release=resolve);event('variable-picker','click',pick);await tick();await click('variable-start-new');release();authoredWait=null;await tick();assert(node('variable-selected').textContent.includes('Unsaved local variable'));
+ await run("VariableWorkspace.open('ranking')");authoredWait=()=>new Promise(resolve=>release=resolve);event('variable-picker','click',pick);await tick();await click('variable-start-new');release();authoredWait=null;await tick();assert.equal(node('variable-selected').textContent,'New variable · not saved');
  // Ordinary edits also fence a pending replacement read, without closing or
  // replacing the editor session. Validate reads the retained local model.
  for(const field of ['name','expression']){
@@ -112,16 +118,16 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
   authoredWait=()=>new Promise(resolve=>release=resolve);event('variable-picker','click',pick);await tick();
   if(field==='name'){node('variable-name').value='Name edited during read';event('variable-name','input');}
   else event('variable-tree','input',{dataset:{path:'',field:'value'},value:'9'});
-  release();authoredWait=null;await tick();await click('variable-validate');
+  release();authoredWait=null;await tick();await check();
   if(field==='name')assert.equal(calls.at(-1).body.name,'Name edited during read');
   else assert.equal(calls.at(-1).body.definition.expression.value,'9');
-  assert(node('variable-selected').textContent.includes('Unsaved local variable'));
+  assert.equal(node('variable-selected').textContent,'New variable · not saved');
  }
  revision++;const builtin={dataset:{builtin:'filter:pe'},closest(){return this;}};event('variable-picker','click',builtin);await tick();assert.equal(applied.length,1);assert(node('variable-dialog').open);assert(node('variable-errors').textContent.includes('Stale picker apply'));
  // A restored exact source opens from checked captured content, with no archive.
  emptyLibrary=true;draftSettings={strategy:{selection:{ranking:{source:{kind:'formula',...exact}},conditions:[]}}};draftDetached=[capture];
  const authoredBefore=calls.filter(call=>call.url.endsWith('/authored')).length;
- await run("VariableWorkspace.open('ranking')");assert.equal(node('variable-name').value,'Original detached name');assert(node('variable-selected').textContent.includes('Captured exact selection'));assert(node('variable-favourite').disabled);assert.equal(calls.filter(call=>call.url.endsWith('/authored')).length,authoredBefore);
+ await run("VariableWorkspace.open('ranking')");assert.equal(node('variable-name').value,'Original detached name');assert.equal(node('variable-selected').textContent,'Used by this strategy · not in My variables');assert(node('variable-favourite').disabled);assert.equal(calls.filter(call=>call.url.endsWith('/authored')).length,authoredBefore);
  assert.deepEqual(JSON.parse(node('variable-json').value),definition.expression);await click('variable-apply');assert.equal(applied.length,2);assert.equal(applied.at(-1).source.revision,exact.revision);
  // Inspection must be fenced before validation or capture can yield.
  draftSettings=null;draftDetached=[];
@@ -158,7 +164,7 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  for(const destination of ['ranking','condition',0]){
   await run('VariableWorkspace.open('+JSON.stringify(destination)+')');
   const before=current(),count=applied.length;operate('source');
-  assert.equal(node('variable-apply').textContent,destination==='ranking'?'Apply to ranking':'Apply to filter');
+  assert.equal(node('variable-apply').textContent,{ranking:'Use for ranking',condition:'Add as filter',0:'Update filter 1'}[destination]);
   if(destination==='ranking')revision++;else patchFailure='Finish editing the held draft first';
   await click('variable-apply');patchFailure=null;
   assert.equal(applied.length,count);assert(node('variable-dialog').open);
@@ -185,6 +191,30 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  let validationRelease;validationWait=()=>new Promise(resolve=>validationRelease=resolve);
  event('variable-apply','click');await tick();operate('source');validationRelease();validationWait=null;await tick();await tick();
  assert.equal(applied.at(-1).role,'ranking');assert(!node('variable-dialog').open);
+ // An unfinished formula says what is missing and asks the service nothing.
+ await run("VariableWorkspace.open('ranking')");await check();
+ assert.equal(node('variable-check').dataset.state,'ready');assert.equal(node('variable-save').textContent,'Save to My variables');assert.equal(node('variable-save-new').hidden,true);assert.equal(node('variable-favourite').hidden,true);
+ operate('div');assert.equal(node('variable-check').dataset.state,'incomplete');const beforeEmpty=calls.length;await check();assert.equal(calls.length,beforeEmpty);
+ const emptyApply=applied.length;await click('variable-apply');assert.equal(applied.length,emptyApply);assert(node('variable-errors').textContent.includes('empty box'));
+ parameter('annual.revenue');assert.equal(node('variable-check').dataset.state,'pending');
+ // A closed dialog never checks in the background.
+ event('variable-close','click');const beforeClosed=calls.length;await check();assert.equal(calls.length,beforeClosed);
+ // List choices become exact checked sources for one filter row.
+ if(!wire){
+  emptyLibrary=false;const listed=await run('VariableWorkspace.sources()');
+  assert.equal(listed.library.length,1);assert(listed.parameters.length>0);assert(listed.parameters.every(item=>item.kind!=='adapter'));assert.equal(listed.measures.length,ownerCatalog.measures.length);
+  const choose=async choice=>{context.choice=choice;await run('VariableWorkspace.useSource(0,choice,draft.read().revision)');return applied.at(-1);};
+  let chosen=await choose({kind:'parameter',id:'annual.revenue',label:'Revenue'});
+  assert.equal(calls.at(-1).body.variable_id,'local:annual.revenue');assert.deepEqual(calls.at(-1).body.definition.output,{unit:'USD',display:'usd_million'});assert.deepEqual(calls.at(-1).body.definition.expression,{op:'parameter',id:'annual.revenue'});
+  assert.equal(chosen.role,0);assert.equal(chosen.source.kind,'formula');assert.equal(chosen.source.variable_id,'local:annual.revenue');
+  const measure=ownerCatalog.measures.find(item=>item.id==='gross_margin');
+  chosen=await choose({kind:'measure',id:'gross_margin'});
+  assert.equal(calls.at(-1).body.variable_id,measure.root.variable_id);assert.equal(calls.at(-1).body.name,measure.name);assert(!calls.at(-1).body.submitted.some(item=>item.variable_id===measure.root.variable_id));
+  chosen=await choose({kind:'library',...exact});
+  assert(calls.at(-2).url.endsWith('/authored'));assert.equal(calls.at(-1).body.variable_id,exact.variable_id);assert.equal(chosen.source.revision,exact.revision);
+  context.stale=context.draft.read().revision-1;
+  await assert.rejects(run("VariableWorkspace.useSource(0,{kind:'parameter',id:'annual.revenue'},stale)"),/Stale picker apply/);
+ }
  if(wire){
   useWire=true;draftSettings={strategy:{selection:{ranking:{source:wire.shared.editor_source},conditions:[]},variables:wire.shared.editor_expected.capture}};draftDetached=[];
   await run("VariableWorkspace.open('ranking')");
@@ -195,9 +225,9 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
    event('variable-tree','click',{dataset:{reference:paths[i]}});
    const source=wire.shared.references[i].source;event('variable-picker','click',{dataset:{library:source.variable_id,revision:source.revision},closest(){return this;}});await tick();await tick();
   }
-  await click('variable-validate');const deadline=Date.now()+10000;while(!lastWireValidation&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));assert(lastWireValidation?.capture,JSON.stringify(lastWireValidation));assert.deepEqual(lastWireValidation,wire.shared.editor_expected);
+  await check();const deadline=Date.now()+10000;while(!lastWireValidation&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,5));assert(lastWireValidation?.capture,JSON.stringify(lastWireValidation));assert.deepEqual(lastWireValidation,wire.shared.editor_expected);
   assert.equal(calls.at(-1).body.submitted.length,9);assert.equal(calls.at(-1).body.labels.length,9);assert(!('detached' in calls.at(-1).body));
  }
  assert(!calls.some(call=>call.url.includes('/api/backtest-')));assert.equal(errors.length,0);
- console.log('Passed: editable equation composition, term selection, parameter insertion, exact decimal edits, removal, undo/redo, tree/JSON round trip, grouping, stale validation, exact picker, explicit bounded preview, optimistic conflict, save race, favourite, apply and keyboard focus; no jobs.');
+ console.log('Passed: automatic checks, empty-term guidance, plain save state, direct list sources, editable equation composition, term selection, parameter insertion, exact decimal edits, removal, undo/redo, tree/JSON round trip, grouping, stale validation, exact picker, explicit bounded preview, optimistic conflict, save race, favourite, apply and keyboard focus; no jobs.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

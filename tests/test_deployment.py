@@ -243,7 +243,7 @@ class DeploymentRevisionTests(unittest.TestCase):
 
     def test_native_parser_forwards_explicit_revision_and_default_has_no_head(self):
         deploy.write_json(self.root / deploy.CONFIG, self.config)
-        for selection, expected in (([], []), (['--revision', 'HEAD'], ['--revision', 'HEAD'])):
+        for selection, expected in (([], []), (['--revision', 'HEAD'], ['--revision', 'HEAD']), (['--latest'], ['--latest'])):
             with self.subTest(selection=selection), patch.object(deploy, 'ROOT', self.root), \
                     patch.object(sys, 'argv', ['deploy.py', '--native-launch', *selection, '--no-browser']), \
                     patch.object(deploy.subprocess, 'call', return_value=0) as call, self.assertRaises(SystemExit) as result:

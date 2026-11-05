@@ -6,7 +6,7 @@ const embedded=html.match(/<script id="screening-data" type="application\/json">
 const prepared=JSON.parse(embedded),screener=require('../website/browser/screener.js');
 const latestDate=prepared.latest.metadata.asof;
 const latestCount=limit=>screener.latestScreen(prepared,{rank_to:limit}).stocks.length;
-function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:false,open:false,disabled:false,handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){}});return els.get(id)}
+function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:false,open:false,disabled:false,handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){},focus(){},closest(){return this}});return els.get(id)}
 const stats=[el('s0'),el('s1'),el('s2')],notes=[el('n0'),el('n1'),el('n2')];
 const details=Array.from({length:31},(_,i)=>el('holdings-'+(1996+i)));
 const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:s=>s==='.stat strong'?stats:s==='.stat small'?notes:s==='.holding-years details'?details:[]};
@@ -209,8 +209,8 @@ ctx.otherCopy=otherCopy;run('copySavedBacktestSettings(otherCopy);syncCatalogCon
 assert(el('ranking-metric').innerHTML.includes('Other saved valuation'));
 assert(!el('ranking-metric').innerHTML.includes('Saved valuation label'));
 assert(el('filter-conditions').innerHTML.includes('Other saved cap'));
-assert(/value="retired_filter" selected disabled>Archived threshold — unavailable/.test(el('filter-conditions').innerHTML));
-assert(/value="unknown_filter" selected disabled>unknown_filter — unavailable/.test(el('filter-conditions').innerHTML));
+assert(el('filter-conditions').innerHTML.includes('value="Archived threshold — unavailable"'));
+assert(el('filter-conditions').innerHTML.includes('value="unknown_filter — unavailable"'));
 assert.equal(run('currentSettings().filters[1].field'),'retired_filter');
 assert.strictEqual(run('currentArtifact()'),beforeJanuaryCopy);
 assert.equal(run('metricLabel("ev_ebitda")'),beforeJanuaryCopy.catalog.metrics.ev_ebitda.label);
@@ -464,16 +464,20 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
 
 run("resetFilters();switchMode('latest')");
 el('add-filter').handlers.click();
+assert(el('filter-conditions').innerHTML.includes('id="filter-search-new"'));assert.equal(run('readOptions().filters.length'),0);
+const builtinChoices=run('filterChoices().groups[0].options');
 for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','operating_yield_spread_3y','peg','roe','current_ratio','interest_coverage','debt_equity']) {
- const option=el('filter-conditions').innerHTML.match(new RegExp('<option[^>]*value="'+field+'"[^>]*>'));
- assert(option,'Missing financial filter '+field);assert.equal(option[0].includes('disabled'),!prepared.filter_catalog[field].available);
+ const option=builtinChoices.find(item=>item.value.field===field);
+ assert(option,'Missing financial filter '+field);assert.equal(option.disabled,!prepared.filter_catalog[field].available);
 }
+run("chooseFilter('new',{kind:'builtin',field:'return_1y',label:'1-year trailing return (%)'})");
+assert.equal(run('pendingFilter'),false);assert.equal(run('StrategyDraft.isScalar()'),false);
 assert.throws(()=>run('readOptions()'),/Enter a value/);
 el('filter-conditions').handlers.input({target:{dataset:{index:'0',key:'value'},value:'0'}});
 assert.equal(run('readOptions().filters[0].value'),0);
 run('applyRange()');
 assert(run("ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>screeningData.filter_values['latest:'+ResultArtifacts.forView(LATEST_VIEW).result.options.pool+':0:'+h.symbol].return_1y>0)"));
-el('filter-conditions').handlers.click({target:{dataset:{remove:'0'}}});
+el('remove-filter-0').dataset={remove:'0'};el('filter-conditions').handlers.click({target:el('remove-filter-0')});
 assert.equal(run('readOptions().filters.length'),0);
 console.log('Passed: add/edit/remove filter controls and numeric thresholds.');
 

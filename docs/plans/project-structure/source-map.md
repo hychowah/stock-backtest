@@ -12,7 +12,7 @@ on 2026-11-05.
 | Original dated calculations and retained independent reference | `backtest/engines/original/`, `backtest/engines/reference/` |
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
 | Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
-| Strategy draft, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
+| Strategy draft, the single filter list, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `filter-picker.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
 | Shared variable editor/picker, detached readable traces and financial-free authoring | `website/browser/variable-workspace.js`, `variable-evidence.js`, `backtest/application/variable_authoring.py`, `website/server/variables.py` |
 | Durable variable revisions, metadata and exact formula resolution | `backtest/variables/library.py`, `backtest/variables/definitions.py` |
 | Plain browser assets and standalone HTML fragments | `website/browser/` |
@@ -58,7 +58,8 @@ contracts. These modules own the feature.
   evidence. `variable_coverage.py` reduces recorded-scope coverage.
   `variable_authoring.py` serves authoring without financial work.
 - `website/server/variables.py` adapts the HTTP routes. `website/browser/range.js`
-  (`StrategyDraft`) owns the draft. `variable-workspace.js` is the shared editor.
+  (`StrategyDraft`) owns the draft and the filter rows. `filter-picker.js` searches
+  and chooses filter sources. `variable-workspace.js` is the shared editor.
   `evidence-results.js` and `variable-evidence.js` present stored results and
   readable traces without calculating.
 

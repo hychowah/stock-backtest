@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime
 from threading import Thread
 import unittest
 from unittest.mock import Mock, patch
@@ -19,6 +20,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import tools.ops.deploy as d
 from website import runtime_access
+next_update_time=d.next_update_time
 class Child:
     def __init__(self,code=None):self.returncode=code;self.waits=[]
     def poll(self):return self.returncode
@@ -34,6 +36,7 @@ class UpdateTests(unittest.TestCase):
         self.root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
         self.config=dict(runtime=str(self.root),python=sys.executable,source='/fixture/source',distro='Fixture')
         self.context.enter_context(patch.object(d,'linux_path',side_effect=Path))
+        self.due=self.context.enter_context(patch.object(d,'next_update_time',return_value=datetime.min))
 
     def test_main_poll_uses_committed_branch_and_bounds_git_wait(self):
         with patch.object(d.subprocess,'check_output',return_value=b'a'*40+b'\n') as git:
@@ -43,6 +46,40 @@ class UpdateTests(unittest.TestCase):
         for failure in (OSError(),subprocess.CalledProcessError(1,['git']),subprocess.TimeoutExpired(['git'],5)):
             with patch.object(d.subprocess,'check_output',side_effect=failure):self.assertIsNone(d.main_revision())
         with patch.object(d.subprocess,'check_output',return_value=b'not-a-commit'):self.assertIsNone(d.main_revision())
+
+    def test_update_time_is_the_next_one_am(self):
+        self.assertEqual(next_update_time(datetime(2026,11,5,0,59)),datetime(2026,11,5,1,0))
+        self.assertEqual(next_update_time(datetime(2026,11,5,1,0)),datetime(2026,11,6,1,0))
+        self.assertEqual(next_update_time(datetime(2026,11,5,23,30)),datetime(2026,11,6,1,0))
+        self.assertEqual(next_update_time(datetime(2026,12,31,12,0)),datetime(2027,1,1,1,0))
+
+    def test_starting_commit_serves_installed_unless_latest_or_fresh(self):
+        data=self.root/'data';data.mkdir()
+        for name,latest,manifest,journal,installs,recovers in (
+                ('plain',False,True,False,False,False),('journal',False,True,True,False,True),
+                ('latest',True,True,False,True,False),('fresh',False,False,False,True,False)):
+            with self.subTest(name):
+                for file,present in ((d.MANIFEST,manifest),(d.PENDING,journal)):
+                    (self.root/file).unlink(missing_ok=True)
+                    if present:(self.root/file).write_text('{}')
+                with patch.object(d,'deployment_revision',return_value='a'*40),patch.object(d,'main_revision',return_value='b'*40),patch.object(d,'install_latest') as install,patch.object(d,'deploy') as publish:
+                    self.assertEqual(d.starting_commit(self.config,latest),'b'*40 if installs else 'a'*40)
+                self.assertEqual(install.called,installs);self.assertEqual(publish.called,recovers)
+
+    def run_days(self,times,tip):
+        """Follow with a scripted local clock; return how often main was read and installed."""
+        clock=Mock();clock.now.side_effect=times
+        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',side_effect=tip) as read,patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',return_value=Child()),patch.object(d.time,'sleep',side_effect=[None]*(len(times)-1)+[KeyboardInterrupt]):
+            self.assertEqual(d.follow_main(self.config,[]),130)
+        return read.call_count,install.called
+
+    def test_main_is_read_once_after_one_am_and_not_before(self):
+        times=[datetime(2026,11,5,0,58),datetime(2026,11,5,0,59),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1)]
+        self.assertEqual(self.run_days(times,['a'*40]),(1,False))
+
+    def test_unreadable_main_is_retried_instead_of_skipping_the_day(self):
+        times=[datetime(2026,11,5,0,58),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1),datetime(2026,11,5,1,2)]
+        self.assertEqual(self.run_days(times,[None,'a'*40]),(2,False))
 
     def test_update_replaces_once_and_unknown_git_keeps_serving(self):
         old,new=Child(),Child(0);tokens=[];installed=[]
@@ -106,6 +143,14 @@ class UpdateTests(unittest.TestCase):
         self.assertIn(d.SUPERVISOR_ENV,run.call_args.kwargs['env']['WSLENV'].split(':'))
         self.assertNotIn('stdout',run.call_args.kwargs)
 
+    def test_latest_requires_start_and_conflicts_with_revision(self):
+        with patch.object(d.os,'name','posix'),patch.object(d,'configuration',return_value=self.config),patch.object(d,'follow_main',return_value=0) as follow:
+            with patch.object(sys,'argv',['deploy.py','--start','--latest','--no-browser']),self.assertRaises(SystemExit):d.main()
+            follow.assert_called_once_with(self.config,['--no-browser'],check=False,latest=True)
+            for arguments in (['--latest'],['--start','--latest','--revision','a'*40]):
+                with patch.object(sys,'argv',['deploy.py',*arguments]),patch.object(sys,'stderr'),self.assertRaises(SystemExit) as result:d.main()
+                self.assertEqual(result.exception.code,2)
+
     def test_start_defaults_to_following_main_and_explicit_revision_is_fixed(self):
         for selection in ([],['--revision','a'*40]):
             with patch.object(sys,'argv',['deploy.py','--start','--no-browser',*selection]),patch.object(d.os,'name','posix'),patch.object(d,'configuration',return_value=self.config),patch.object(d,'follow_main',return_value=0) as follow,patch.object(d,'deploy') as publish,patch.object(d,'native') as native:
@@ -115,7 +160,7 @@ class UpdateTests(unittest.TestCase):
                 else:
                     with self.assertRaises(SystemExit) as result:d.main()
                     self.assertEqual(result.exception.code,0)
-                    follow.assert_called_once_with(self.config,['--no-browser'],check=False)
+                    follow.assert_called_once_with(self.config,['--no-browser'],check=False,latest=False)
                     publish.assert_not_called();native.assert_not_called()
 
 
@@ -276,7 +321,7 @@ class CommittedUpdateTests(unittest.TestCase):
             def version(expected):
                 try:return (runtime/'served-version').read_text()==expected
                 except FileNotFoundError:return False
-            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03):
+            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03),patch.object(d,'next_update_time',return_value=datetime.min):
                 thread=Thread(target=run,daemon=True);thread.start()
                 try:
                     until(lambda:version('first'))
