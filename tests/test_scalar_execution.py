@@ -9,7 +9,7 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import daily, observation_inputs, sqlite_observations
+from backtest.inputs import daily, facts, observation_inputs, sqlite_observations
 from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d, library, reference
 from backtest import observations
@@ -21,7 +21,8 @@ import test_observations as provider
 class Fixture:
     def __init__(self, count=300):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.db.executescript(daily.SCHEMA)
+        # One database serves as the daily cache and the research facts.
+        self.db.executescript(daily.SCHEMA+facts.SCHEMA)
         for i in range(count):
             symbol=f'A{i:04d}'
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Technology'))
@@ -35,11 +36,13 @@ class Fixture:
                 self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',('historical',pool,1,symbol,'profit_margin',i-150.))
             annual=provider.annual(float(i+1),float(i+1)/10)
             self.db.execute('INSERT INTO observation_annual VALUES(?,?,?,?)',(symbol,'income-statement','2014-06-30',observation_inputs.encoded(annual)))
+            facts.store_annual(self.db,symbol,dict(sources={},annual={'income-statement':{'2014-06-30':annual}}))
             state=dict(root_date='2015-01-05',admitted=True,reason=None,candidate_rank=i+1,
                 statement=observation_inputs.ReadView._statement(provider.statement('2014-06-30')),
                 valuation=dict(market_cap=150e6,enterprise_value=180e6,ebitda=54e6),
                 adjusted_price=['2015-01-05',10.],fiscal_price=['2014-06-30',10.],valuation_price=['2015-01-05',10.])
-            for pool in ('legacy','cached'):observation_inputs.store_latest(self.db,symbol,pool,state)
+            for pool in ('legacy','cached'):
+                observation_inputs.store_latest(self.db,symbol,pool,state);facts.store_latest(self.db,symbol,pool,state)
         self.db.executemany('INSERT INTO sessions VALUES(?,?)',[('2015-01-02',100.),('2015-01-05',110.)])
         self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(1,'2015-01-02','2015-01-05',.1,.02,250,count))
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'legacy'))
@@ -55,7 +58,7 @@ class Fixture:
     def select(self,capture, *, latest=False, record_bytes=8*1024**2):
         records=[]
         with self.view() as view:
-            result=x.Executor(capture,view,records.append,record_bytes=record_bytes).select(self.db,None if latest else 1,date(2015,1,5) if latest else date(2015,1,2),None if latest else date(2015,1,5),latest=latest)
+            result=x.Executor(capture,view,self.db,records.append,record_bytes=record_bytes).select(self.db,None if latest else 1,date(2015,1,5) if latest else date(2015,1,2),None if latest else date(2015,1,5),latest=latest)
         return result,records
 
 
@@ -91,7 +94,7 @@ class ScalarTests(unittest.TestCase):
         from backtest.application import scalar_runs
         class Writer:max_bytes=4*1024**2
         with self.fixture.view() as view:
-            executor=x.Executor(self.fixture.capture(),view,lambda record:None)
+            executor=x.Executor(self.fixture.capture(),view,self.fixture.db,lambda record:None)
             scalar_runs.check_size(Writer(),executor,100)
             with self.assertRaisesRegex(d.FormulaError,'about [0-9]+ MB of results'):
                 scalar_runs.check_size(Writer(),executor,10000)
@@ -99,7 +102,7 @@ class ScalarTests(unittest.TestCase):
         expected,_=self.fixture.select(self.fixture.capture())
         records=[]
         with self.fixture.view() as view:
-            stocks=x.Executor(self.fixture.capture(),view,records.append,explain=False).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+            stocks=x.Executor(self.fixture.capture(),view,self.fixture.db,records.append,explain=False).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
         self.assertEqual([h['symbol'] for h in stocks],[h['symbol'] for h in expected])
         self.assertFalse(any(r['type']=='evaluation' for r in records))
         lanes=[h['scalar_evidence']['lanes']['ranking'] for h in stocks]
@@ -136,6 +139,7 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],250)
     def test_missing_only_active_source_excludes(self):
         self.fixture.db.execute("DELETE FROM observation_annual WHERE symbol='A0299'")
+        self.fixture.db.execute("DELETE FROM annual_facts WHERE symbol='A0299'")
         self.fixture.db.execute('DELETE FROM observation_metadata');observation_inputs.finish(self.fixture.db, '2015-01-05', inputs='fixture')
         stocks,_=self.fixture.select(self.fixture.capture())
         self.assertEqual(stocks[0]['symbol'],'A0298')
@@ -204,7 +208,7 @@ class ScalarTests(unittest.TestCase):
             if stopped:raise backtest_control.Cancelled()
         with self.fixture.view() as view:
             with self.assertRaises(backtest_control.Cancelled):
-                x.Executor(self.fixture.capture(),view,emit,checkpoint=check).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+                x.Executor(self.fixture.capture(),view,self.fixture.db,emit,checkpoint=check).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
         self.assertEqual(len(emitted),1)
         self.assertEqual(emitted[0]['type'],'evaluation')
 
@@ -212,7 +216,7 @@ class ScalarTests(unittest.TestCase):
         def stop():raise RuntimeError('cancelled')
         with self.fixture.view() as view:
             with self.assertRaisesRegex(RuntimeError,'cancelled'):
-                x.Executor(self.fixture.capture(),view,lambda row:None,checkpoint=stop).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
+                x.Executor(self.fixture.capture(),view,self.fixture.db,lambda row:None,checkpoint=stop).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
 
 
 if __name__=='__main__':unittest.main()

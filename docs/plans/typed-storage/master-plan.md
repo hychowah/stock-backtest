@@ -148,6 +148,32 @@ No decision is pending.
   `dated_observation_inputs.py` and the storage half of
   `measure_observations.py`. Financial policy stays in `backtest/financial/`.
 
+As built in T1 (deviations from the sketch above, with reasons):
+
+- `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason)`:
+  one reason column per field, because a day can have a valid price and an
+  invalid volume. No `price` column: valuation lookups keep the daily
+  `prices` table, whose rules (positive bars, last value per day) differ from
+  the observation rules (conflicting rows are unavailable).
+- `market_days(day, spy, month3, month3_reason, year10, year10_reason)`:
+  `spy` is set only on a valid SPY session; a Treasury day has a value or a
+  reason for both fields.
+- `annual_facts` column names are the parameter ids without `annual.`, plus
+  `<name>_reason`.
+- `fact_sources(symbol, endpoint, sha256, disposition)` holds annual, price,
+  Treasury and SPY sources in one table (Explain keeps the digest of dated
+  members too). The endpoint and symbol name the file.
+- `latest_admission(symbol, pool, admitted, reason, candidate_rank, fiscal,
+  known, market_cap, enterprise_value, ebitda)`.
+- Prepared owner lanes need no new table: the JSON measure contexts were
+  copies of the stored January and latest book rows (`snapshots` or
+  `latest_snapshots`, `screening_metrics`, `filter_values`), which are read in
+  place.
+- Value columns have no declared type: a REAL column stores -0.0 as the
+  integer 0 and would change signed-zero results.
+- The typed facts live only in `research.sqlite`. Original opens its research
+  connection in every mode and `columns.Facts(view, research)` reads them.
+
 ### In-place daily update
 
 - A download that adds only days after the canonical report's Through date
@@ -252,6 +278,28 @@ current, real-copy parity holds, then ask the user to merge.
 - Admission candidates per date (`books.candidates` over every company) and
   scope-row reads. Measure first; change only with identical results.
 
+## Measurements
+
+T0, bench updated to this branch (code identical to main a7b13ac), WSL, 5
+November 2026:
+
+- Bench update: research current (0.8 s); the daily cache rebuilt because
+  `daily.py` changed: 191.6 s (copy of research tables 91.8 s, prices 97.1 s).
+- User test (see Bench): 557.9 s with all 1,326 books computed (8 workers),
+  211.2 s with every book saved; result 78.1 MB.
+- 20 quarterly scopes of the user strategy (2013–2018, books computed, under
+  cProfile): 33.9 s; computing the 20 books 16.6 s; `Executor.select` 10.2 s
+  (0.51 s per scope), of which column evaluation 2.6 s and reference
+  explanations 3.0 s.
+
+T1, fixtures (private edge-case fixture of the parity harness):
+
+- Column evaluator over typed facts against the reference over JSON, default
+  scopes: 860 pairs, 28,251 roots, 542,682 outputs, 0 mismatches.
+- Storage parity, every typed row against its JSON row: 94,810 compared, 0
+  mismatches (stock days 89,157, Treasury days 1,774, SPY sessions 1,764,
+  annual rows 1,416, sources 162, latest admission 80, prepared lanes 456).
+
 ## Bench and tools
 
 - Real-data copy: `~/bench/ebitda-real` (raw 4.2 GB, research 33.7 GB, daily
@@ -270,7 +318,8 @@ current, real-copy parity holds, then ask the user to merge.
 - Profiles: `~/bench/scripts/profile_real_scope.py` (20 quarterly scopes,
   cProfile into `~/bench/out/`), `evidence_sizes.py`, `table_sizes.py`.
 - Parity harness: `~/bench/harness/` (`parity.py` fixtures, `real.py` real
-  copy, `results.py` whole results). Point it at a checkout with `WT=`; use
+  copy, `results.py` whole results, `storage.py` typed against JSON rows,
+  `storage_fixture.py` the same on the fixture). Point it at a checkout with `WT=`; use
   `TMPDIR=~/.cache/ebitda-ev-spread-tests/p0` and empty it afterwards.
 - Fixture comparisons against `main`: `~/bench/scripts/bench_shape.py` and
   `parity.py` (run each with `REPO=<checkout>`).
@@ -291,6 +340,9 @@ current, real-copy parity holds, then ask the user to merge.
 
 Scope of this session: T0 to T4, each phase committed with its evidence; stop
 after T4 passes its exit. T0 is running on the bench (bench updated to this
-branch, user test, then the one-session append). T1 is in progress: typed
-facts in `backtest/inputs/facts.py`, written by research preparation beside the
-JSON tables, read by `columns.py`.
+branch, user test, then the one-session append). T1 code is committed (typed
+facts in `backtest/inputs/facts.py`, written beside the JSON tables, read by
+`columns.py`); fixture parity holds. Remaining T1 exit: update the bench to the
+T1 commit (full research rebuild), measure table sizes and the user test, run
+`real.py --scopes 20 --formulas` and `storage.py` on the copy. T2 (detail mode
+in `columns.py`) is drafted outside the commit.

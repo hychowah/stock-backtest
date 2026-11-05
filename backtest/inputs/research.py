@@ -23,7 +23,7 @@ from backtest import screening, selection
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
-from backtest.inputs import observation_inputs, dated_observation_inputs
+from backtest.inputs import observation_inputs, dated_observation_inputs, facts
 from backtest.runtime import backtest_control
 from backtest.runtime import diagnostics
 from backtest.runtime import cache_access as cache_access
@@ -32,7 +32,7 @@ from backtest.inputs import baseline as baseline
 from backtest.paths import ROOT, RAW, RESULTS
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -154,7 +154,8 @@ def calculation_sources():
     here = Path(__file__)
     return [Path(baseline.__file__), here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(legacy.__file__), Path(revalue.__file__),
             Path(financial_inputs.__file__), Path(observation_inputs.__file__),
-            Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__)]
+            Path(financial_inputs.parameters.__file__), Path(dated_observation_inputs.__file__), Path(observation_inputs.measure_observations.__file__),
+            Path(facts.__file__)]
 
 
 # Historical forward price lookups start at a January entry and reach at most
@@ -329,10 +330,11 @@ class _PriorUnits:
             (('history',self.history),('source',self.sources),('dated',self.dated)) for s in symbols])
         self.db.execute("""INSERT INTO observation_measure_contexts SELECT * FROM prior.observation_measure_contexts
                            WHERE mode='historical' AND symbol IN (SELECT symbol FROM temp.reused WHERE kind='history')""")
-        for table,kind in (('observation_sources','source'),('observation_dated','dated')):
+        for table,kind in (('observation_sources','source'),('observation_dated','dated'),('fact_sources','source')):
             self.db.execute(f"""INSERT INTO {table} SELECT * FROM prior.{table}
                                 WHERE endpoint=? AND symbol IN (SELECT symbol FROM temp.reused WHERE kind=?)""",
                             (dated_observation_inputs.STOCK,kind))
+        self.db.execute("INSERT INTO stock_days SELECT * FROM prior.stock_days WHERE symbol IN (SELECT symbol FROM temp.reused WHERE kind='dated')")
         self.db.commit()
         self.db.execute('DROP TABLE temp.reused')
         self.db.execute('DETACH DATABASE prior')
@@ -520,7 +522,7 @@ def prepare(path=DATABASE, force=False):
     db=sqlite3.connect(temporary.resolve().as_uri(),uri=True)
     db.row_factory=sqlite3.Row
     try:
-        db.executescript(SCHEMA)
+        db.executescript(SCHEMA+facts.SCHEMA)
         # A company unit whose inputs are unchanged is copied from the published,
         # verified database. A forced preparation always recalculates.
         prior=None if force else _PriorUnits.open(db,path,owner,scope)
@@ -641,6 +643,7 @@ def prepare(path=DATABASE, force=False):
             resolved=financial_inputs.resolve_history(RAW,symbol)
             financial_history=resolved['values']
             observation_inputs.store_annual(db,symbol,resolved)
+            facts.store_annual(db,symbol,resolved)
             db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in financial_history.items()])
             history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
             lookup_calls=[]
@@ -670,9 +673,12 @@ def prepare(path=DATABASE, force=False):
         diagnostics.lap('companies')
         diagnostics.note(companies=len(cached_symbols),companies_reused=reused,companies_rebuilt=len(rebuilt),snapshots_new=total)
         for symbol in sorted(set(broad)-set(cached_symbols)):
-            observation_inputs.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
+            resolved=financial_inputs.resolve_history(RAW,symbol)
+            observation_inputs.store_annual(db,symbol,resolved)
+            facts.store_annual(db,symbol,resolved)
         for (symbol,pool),evidence in latest_admission.items():
             observation_inputs.store_latest(db,symbol,pool,evidence)
+            facts.store_latest(db,symbol,pool,evidence)
         for symbol in sorted(broad):
             backtest_control.checkpoint()
             copied=prior.copy_dated(symbol,units[symbol]) if symbol in units and prior is not None else None
@@ -686,10 +692,16 @@ def prepare(path=DATABASE, force=False):
             if days is not None and resolution['source']['sha256']!=units[symbol]['content']:
                 raise ValueError('Dated observation source changed during preparation.')
             observation_inputs.store_dated(db,symbol,dated_observation_inputs.STOCK,resolution,backtest_control.checkpoint)
+            facts.store_stock(db,symbol,resolution)
             if moved:
                 db.executemany('INSERT INTO observation_dated VALUES(?,?,?,?)',moved)
-        for endpoint,resolution in dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint).items():
+            if moved is not None:
+                # Typed days have no file positions: copy every prior day the new rows do not touch.
+                facts.copy_stock(db,'prior',symbol,source=False,days=shift[1])
+        shared=dated_observation_inputs.shared(RAW,ledger,backtest_control.checkpoint)
+        for endpoint,resolution in shared.items():
             observation_inputs.store_dated(db,'',endpoint,resolution,backtest_control.checkpoint)
+        facts.store_market(db,shared)
         diagnostics.lap('observations')
         prepare_metrics(db)
         diagnostics.lap('metrics')

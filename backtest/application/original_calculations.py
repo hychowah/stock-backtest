@@ -179,7 +179,8 @@ class Original(Control):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
                 db=inputs.db
-                source=inputs.research() if mode in ('latest','january') else None
+                # Formulas read typed facts on the research connection in every mode.
+                source=inputs.research()
                 with sqlite_observations.prepared_view(db,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
                     metadata=dict(mode=mode,options=options,configuration=planned,input=view.identity,
                         projection=view.projection,producer=dict(engine='original',label='Original'))

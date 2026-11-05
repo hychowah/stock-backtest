@@ -780,7 +780,7 @@ when a selected-period fact is missing. The strict 90-day availability rule and
 existing calendar-year buckets and can be older than 800 days.
 
 Observation evidence version 4 retains `observation_dated` and
-`observation_sessions` and adds prepared measure contexts and explicit scope identities. Research schema 11 and daily cache version 5
+`observation_sessions` and adds prepared measure contexts and explicit scope identities. Research schema 12 and daily cache version 5
 require offline rebuilding of older observation projections. Their content
 identity, preparation policy and semantic source bind reuse. The content
 identity hashes what determines the rows: the raw-file signature, each price
@@ -793,6 +793,21 @@ Optional `raw/download-coverage.json` presence and metadata participate too.
 A matching current or previous SeriesAsset receipt identifies exact saved bytes.
 Missing or unbound receipts do not erase usable facts or prove a download.
 Daily storage copies the complete projection unchanged.
+
+Research schema 12 also writes typed facts beside this evidence, from the same
+resolutions (`backtest/inputs/facts.py`). `stock_days` holds one row per company
+and saved price day, `market_days` the valid SPY sessions and saved Treasury
+days, `annual_facts` one row per company, endpoint and fiscal date with a value
+and a reason column for each annual catalog field, `fact_sources` each source
+file's digest and disposition, and `latest_admission` the latest-root decision
+and valuation. Days are keyed by date, never by raw-file row, so a prepended
+download copies the earlier days unchanged. A field is valid when its value is
+present; otherwise its reason column names the provider reason. Value columns
+have no declared type, so SQLite keeps the binary64 bits exactly, including
+-0.0. Prepared January and latest owner lanes are the stored book rows
+(`snapshots`, `screening_metrics`, `filter_values`). The daily cache does not
+copy the typed facts: the column evaluator reads them on the operation's
+research connection, while the reference evaluator reads the JSON evidence.
 
 Price and volume use the saved SPY session on or before the context, within seven
 calendar days. Each needs the stock's own field on that exact session. Price is
@@ -827,7 +842,7 @@ context uses dated owner policy, even at the root date. Missing prepared lanes
 never fall back to recalculation. Report EBITDA uses broad accepted report
 history. Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact
 endpoint dates. Only those named annual adapters support annual history.
-Projection 4, research schema 11 and daily cache 5 require incompatible caches
+Projection 4, research schema 12 and daily cache 5 require incompatible caches
 to rebuild; durable records keep their formats. Version-3 authoring exposes all
 52 direct inputs, policy adapters and 33 exact measures. The original four-item
 catalog remains available for legacy definitions. `variables.selection.require_program()`

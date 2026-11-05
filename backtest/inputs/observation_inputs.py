@@ -61,7 +61,7 @@ def _policy_binding():
     # Hashed once per process: deployment restarts the server on source change.
     paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__),
              Path(rules.__file__), Path(measure_observations.__file__), Path(__file__).with_name('research.py'),
-             Path(parameters.__file__), Path(dated_observation_inputs.__file__))
+             Path(parameters.__file__), Path(dated_observation_inputs.__file__), Path(__file__).with_name('facts.py'))
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 

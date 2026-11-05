@@ -229,7 +229,7 @@ class Executor:
     reasons but no step trace.
     """
     contract = 2
-    def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
+    def __init__(self, capture, view, research, sink, *, record_bytes=8 * 1024 * 1024,
                  checkpoint=backtest_control.checkpoint, explain=True):
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
@@ -239,7 +239,7 @@ class Executor:
         if self.program is not None:
             strategy_requests.require_formula_support(self.program, checkpoint=checkpoint)
         self.formulas = columns.Formulas(self.program) if self.program is not None else None
-        self.facts = columns.Facts(view)
+        self.facts = columns.Facts(view, research)
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
     def _admit(self, rows, roots, entry, owner_scope, dated):
@@ -248,7 +248,8 @@ class Executor:
         Dated scopes apply ReadView.admit's rules (eligible report, legacy buffer,
         cached prices, eligible valuation) and take the entry valuation from the
         book row: compute_period derived it with the same function and prices.
-        Other scopes ask the view, as the reference provider does.
+        Other scopes use Facts.admit: typed latest admission, and the view's
+        complete-population admission for January scopes.
         """
         if dated:
             statements, ranks = self.view.candidates(str(entry), self.checkpoint)
@@ -264,13 +265,9 @@ class Executor:
                     admitted=reason is None, reason=reason, candidate_rank=rank, owner_scope=owner_scope,
                     valuation=None if reason else dict(market_cap=row['market_cap'], enterprise_value=row['enterprise_value'], ebitda=row['ebitda'])))
             return decisions
-        decisions = []
-        for first in range(0, len(roots), 256):
-            group = [dict(id='r' + str(i), **root) for i, root in enumerate(roots[first:first+256])]
-            budget = dict(rows=2*(self.view.bounds['report_rows']+self.view.bounds['population']), bytes=16*1024*1024)
-            for decision in self.view.admit(group, budget, self.checkpoint):
-                decision['owner_scope'] = owner_scope
-                decisions.append(decision)
+        decisions = self.facts.admit(roots, self.checkpoint)
+        for decision in decisions:
+            decision['owner_scope'] = owner_scope
         return decisions
 
     def select(self, db, period, entry, exit_day=None, *, latest=False, owner_scope=None):

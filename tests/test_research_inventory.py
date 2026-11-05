@@ -23,7 +23,7 @@ from backtest.inputs import research as r
 def original_signature():
     paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
     paths += [r.RAW/'px',Path(r.baseline.__file__),Path(r.__file__),Path(r.metrics.__file__),Path(r.books.__file__),Path(r.rules.__file__),Path(r.screening.__file__),Path(r.selection.__file__),Path(r.cache_assets.__file__),Path(r.market.__file__),Path(r.legacy.__file__),Path(r.revalue.__file__)]
-    paths += [Path(r.financial_inputs.__file__),Path(r.observation_inputs.__file__),Path(r.financial_inputs.parameters.__file__),Path(r.dated_observation_inputs.__file__),Path(r.observation_inputs.measure_observations.__file__)]
+    paths += [Path(r.financial_inputs.__file__),Path(r.observation_inputs.__file__),Path(r.financial_inputs.parameters.__file__),Path(r.dated_observation_inputs.__file__),Path(r.observation_inputs.measure_observations.__file__),Path(r.facts.__file__)]
     if (r.RAW/'download-coverage.json').exists():paths.append(r.RAW/'download-coverage.json')
     paths += sorted((r.RAW/'financial-inputs').glob('*/*.json'))
     return dict({p.relative_to(r.ROOT).as_posix():['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths},historical_through=str(r.baseline.cutoff((r.RESULTS/'summary-exits.txt').read_text(encoding='utf8'))))
@@ -37,7 +37,7 @@ def prior_signature():
     """Pre-projection-repair boundary: collect metadata before building keys."""
     paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
     paths += [r.RAW/'px',r.Path(r.baseline.__file__),r.Path(r.__file__),r.Path(r.metrics.__file__),r.Path(r.books.__file__),r.Path(r.rules.__file__),r.Path(r.screening.__file__),r.Path(r.selection.__file__),r.Path(r.cache_assets.__file__),r.Path(r.market.__file__),r.Path(r.legacy.__file__),r.Path(r.revalue.__file__)]
-    paths += [r.Path(r.financial_inputs.__file__),r.Path(r.observation_inputs.__file__),r.Path(r.financial_inputs.parameters.__file__),r.Path(r.dated_observation_inputs.__file__),r.Path(r.observation_inputs.measure_observations.__file__)]
+    paths += [r.Path(r.financial_inputs.__file__),r.Path(r.observation_inputs.__file__),r.Path(r.financial_inputs.parameters.__file__),r.Path(r.dated_observation_inputs.__file__),r.Path(r.observation_inputs.measure_observations.__file__),r.Path(r.facts.__file__)]
     entries=[(p,p.stat()) for p in paths]
     if (r.RAW/'download-coverage.json').exists():entries.append((r.RAW/'download-coverage.json',(r.RAW/'download-coverage.json').stat()))
     entries += r._metadata_entries(r.RAW/'financial-inputs','*/*.json')
@@ -52,7 +52,7 @@ class InventoryTests(unittest.TestCase):
         self.px.mkdir(parents=True);(self.financial/'income').mkdir(parents=True);(self.root/'results').mkdir()
         for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(self.raw/n).write_text('[]')
         (self.root/'results/summary-exits.txt').write_text('Through 2026-10-20\n')
-        for module,name in ((r,'research.py'),(r.metrics,'metrics.py'),(r.books,'books.py'),(r.rules,'rules.py'),(r.screening,'screening.py'),(r.selection,'selection.py'),(r.cache_assets,'cache_assets.py'),(r.financial_inputs,'financial_inputs.py'),(r.observation_inputs,'observation_inputs.py'),(r.market,'market.py'),(r.legacy,'legacy.py'),(r.revalue,'revalue.py'),(r.baseline,'baseline.py'),(r.financial_inputs.parameters,'parameters.py'),(r.dated_observation_inputs,'dated_observation_inputs.py'),(r.observation_inputs.measure_observations,'measure_observations.py')):
+        for module,name in ((r,'research.py'),(r.metrics,'metrics.py'),(r.books,'books.py'),(r.rules,'rules.py'),(r.screening,'screening.py'),(r.selection,'selection.py'),(r.cache_assets,'cache_assets.py'),(r.financial_inputs,'financial_inputs.py'),(r.observation_inputs,'observation_inputs.py'),(r.market,'market.py'),(r.legacy,'legacy.py'),(r.revalue,'revalue.py'),(r.baseline,'baseline.py'),(r.financial_inputs.parameters,'parameters.py'),(r.dated_observation_inputs,'dated_observation_inputs.py'),(r.observation_inputs.measure_observations,'measure_observations.py'),(r.facts,'facts.py')):
             p=self.root/name;p.write_text('source');self.context.enter_context(patch.object(module,'__file__',str(p)))
         for name,value in (('ROOT',self.root),('RAW',self.raw),('RESULTS',self.root/'results')):self.context.enter_context(patch.object(r,name,value))
         for p in (self.px/'A.json',self.px/'z.json',self.financial/'income/A.json'):p.write_text('[]')

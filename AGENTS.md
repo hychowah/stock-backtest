@@ -246,7 +246,7 @@ Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
 **Research database and baseline.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 11) from the raw cache. It compares the
+`data/research.sqlite` (research schema 12) from the raw cache. It compares the
 prepared baseline with `revalue.calculate(through)` at full precision. Both
 engines must agree on all years, ranks, symbols, dates, prices, valuations,
 returns and exit basis. Never bypass disagreement or relax the tolerance.

@@ -125,7 +125,7 @@ class AdmissionTests(unittest.TestCase):
             sink=Mock()
             with patch.object(scalar_execution,'scope_rows',
                     side_effect=AssertionError('No prepared scope before admission')) as scope:
-                self.error(lambda:scalar_execution.Executor(capture(entries),Untouched(),sink))
+                self.error(lambda:scalar_execution.Executor(capture(entries),Untouched(),Untouched(),sink))
                 scope.assert_not_called()
             sink.assert_not_called()
 

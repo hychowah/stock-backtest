@@ -384,7 +384,7 @@ class AnnualTransportTests(unittest.TestCase):
         with ExitStack() as context:
             modules = (research, research.baseline, research.metrics, research.books, research.rules,
                 research.screening, research.selection, research.cache_assets, research.market,
-                research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs,source.measure_observations)
+                research.legacy,research.revalue,financial,source,parameters,research.dated_observation_inputs,source.measure_observations,research.facts)
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name
                 file.write_bytes(Path(module.__file__).read_bytes())

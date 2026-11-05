@@ -7,15 +7,16 @@ It builds no plan document and keeps no per-candidate evidence, so one scope of
 thousands of rows evaluates in milliseconds. Explanations of selected rows still
 come from the reference evaluator, which also cross-checks these values.
 
-A Facts object caches decoded company facts for one borrowed view. The view's
-generation cannot change while it is open.
+A Facts object reads the typed prepared facts (backtest/inputs/facts.py) on the
+operation's research connection and caches them for one borrowed view. The
+view still owns historical admission, entry valuation and dated owner measures.
+Neither database can change while the view is open.
 """
 from datetime import date
-import json
 import math
 
 from backtest import measure_observations, observations
-from backtest.inputs import dated_observation_inputs as dated_inputs
+from backtest.inputs import dated_observation_inputs as dated_inputs, facts as typed
 from backtest.variables import definitions
 
 _OWNER_BYTES = 16 * 1024 * 1024
@@ -26,11 +27,20 @@ def _fail(code, path, message):
 
 
 class Facts:
-    """Decoded prepared facts of one borrowed view, read once per company."""
+    """Typed prepared facts of one borrowed view, read once per company or day."""
 
-    def __init__(self, view):
-        self.view = view
-        self._companies, self._sessions, self._dated = {}, {}, {}
+    def __init__(self, view, research):
+        self.view, self.db = view, research
+        self.projection = view.projection
+        self._books = {(scope['mode'], scope['pool'], scope['context_date']): scope['book']
+                       for scope in self.projection['scopes']}
+        self._companies, self._reports, self._sessions, self._stock, self._treasury = {}, {}, {}, {}, {}
+
+    def reports(self, symbol, pool):
+        key = symbol, pool
+        if key not in self._reports:
+            self._reports[key] = typed.reports(self.db, symbol, pool)
+        return self._reports[key]
 
     def company(self, symbol, pool, requirements):
         """Return observe()'s company facts: reports and requested annual states.
@@ -41,39 +51,80 @@ class Facts:
         key = symbol, pool
         cached = self._companies.get(key)
         if cached is None:
-            cached = self._companies[key] = dict(reports=self.view._reports(symbol, pool), annual={},
-                                                 sources={}, loaded={})
+            cached = self._companies[key] = dict(reports=self.reports(symbol, pool), annual={}, sources={}, loaded={})
         annual, loaded = cached['annual'], cached['loaded']
         wanted = dict(requirements)
         if wanted:
             wanted.setdefault('income-statement', set())
-        db = self.view._db
         for endpoint, fields in wanted.items():
             missing = sorted(set(fields) - loaded.get(endpoint, set())) if endpoint in loaded else sorted(fields)
             if endpoint in loaded and not missing:
                 continue
             states = annual.setdefault(endpoint, {})
-            projection = ','.join('json_extract(evidence_json, ?)' for _ in missing)
-            sql = ('SELECT fiscal' + (',' + projection if projection else '') +
-                   ' FROM observation_annual WHERE symbol=? AND endpoint=? ORDER BY fiscal')
-            for row in db.execute(sql, tuple('$."' + field + '"' for field in missing) + (symbol, endpoint)):
-                values = states.setdefault(row[0], {})
-                for field, value in zip(missing, row[1:]):
-                    if value is not None:
-                        values[field] = json.loads(value)
+            for fiscal, values in typed.annual(self.db, symbol, endpoint, missing).items():
+                states.setdefault(fiscal, {}).update(values)
             loaded.setdefault(endpoint, set()).update(missing)
         return cached
 
     def session(self, day):
         if day not in self._sessions:
-            self._sessions[day] = self.view.session_backward(day, 7)
+            self._sessions[day] = typed.session(self.db, day, 7)
         return self._sessions[day]
 
-    def dated(self, symbol, endpoint, day, asof):
-        key = symbol, endpoint, day, asof
-        if key not in self._dated:
-            self._dated[key] = self.view.dated(symbol, endpoint, day, asof=asof)
-        return self._dated[key]
+    def stock(self, symbol, day):
+        key = symbol, day
+        if key not in self._stock:
+            self._stock[key] = typed.stock_day(self.db, symbol, day)
+        return self._stock[key]
+
+    def treasury(self, day):
+        if day not in self._treasury:
+            self._treasury[day] = typed.treasury(self.db, day)
+        return self._treasury[day]
+
+    def prepared(self, decision, context):
+        """Owner values of the stored book row in a prepared scope, as measure_observations.prepared."""
+        owner = decision.get('owner_scope')
+        book = owner['book'] if owner is not None else self._books[decision['mode'], decision['pool'], context['date']]
+        lanes = typed.prepared_lanes(self.db, decision['mode'], decision['pool'], book, decision['symbol'])
+        if lanes is None:
+            return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
+        return dict(reason=None, evidence=lanes)
+
+    def admit(self, roots, checkpoint):
+        """Admission decisions in root order, as ReadView.admit gives them.
+
+        Latest roots read the typed latest admission. Historical roots use the
+        view's complete-population admission, 256 roots per call.
+        """
+        self.view.validate()
+        decisions = [None] * len(roots)
+        historical = [(index, root) for index, root in enumerate(roots) if root['mode'] == 'historical']
+        bounds = self.view.bounds
+        for first in range(0, len(historical), 256):
+            group = historical[first:first + 256]
+            budget = dict(rows=2 * (bounds['report_rows'] + bounds['population']), bytes=16 * 1024 * 1024)
+            requests = [dict(id='r' + str(index), **root) for index, root in group]
+            for (index, _), decision in zip(group, self.view.admit(requests, budget, checkpoint)):
+                decisions[index] = decision
+        for index, root in enumerate(roots):
+            if root['mode'] == 'historical':
+                continue
+            checkpoint()
+            if root['mode'] != 'latest' or root['date'] != self.projection['latest_date']:
+                raise ValueError('Latest observation root does not match prepared admission.')
+            decision = dict(root='r' + str(index), symbol=root['symbol'], pool=root['pool'], mode='latest',
+                            date=root['date'], admitted=False, reason=None, candidate_rank=None,
+                            statement=None, valuation=None)
+            row = typed.latest_admission(self.db, root['symbol'], root['pool'])
+            if row is None:
+                if self.db.execute('SELECT 1 FROM companies WHERE symbol=?', (root['symbol'],)).fetchone():
+                    raise ValueError('Prepared latest-root admission is missing.')
+                decision['reason'] = 'UNKNOWN_COMPANY'
+            else:
+                decision.update(row)
+            decisions[index] = decision
+        return decisions
 
 
 class Formulas:
@@ -215,10 +266,11 @@ class Formulas:
         members, reason = [], None
         if parameter in observations._DATED:
             members = [self._dated(parameter, root['symbol'], day, facts)]
-        elif parameter.startswith('owner.') and measure_observations.prepared_scope(view.projection, decision, context):
+        elif parameter.startswith('owner.') and measure_observations.prepared_scope(facts.projection, decision, context):
             owner = state.setdefault('owner', {})
             if context_key not in owner:
-                owner[context_key] = measure_observations.prepared(view, decision, context, checkpoint)
+                checkpoint()
+                owner[context_key] = facts.prepared(decision, context)
             members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1], checkpoint)]
         elif parameter == 'market.enterprise_value' and is_root:
             members = [dict(value=decision['valuation']['enterprise_value'], valid=True, reason=None)]
@@ -229,7 +281,7 @@ class Formulas:
             anchor, reason = state['anchors'][context_key]
             if anchor is not None:
                 if parameter == 'annual.report_ebitda':
-                    members = observations._report_ebitda(view._reports(root['symbol'], 'cached'), anchor,
+                    members = observations._report_ebitda(facts.reports(root['symbol'], 'cached'), anchor,
                                                           node['count'], checkpoint)
                 elif parameter.startswith('owner.'):
                     owner = state.setdefault('owner', {})
@@ -256,12 +308,16 @@ class Formulas:
         source = observations._DATED[parameter]
         endpoint, field = source['endpoint'], source['field']
         treasury = endpoint == dated_inputs.TREASURY
-        session = None if treasury else facts.session(day)
-        selected = day if treasury else date.fromisoformat(session['day']) if session else None
-        row = facts.dated('' if treasury else symbol, endpoint, selected, treasury) if selected is not None else None
-        value_state = row['evidence'].get(field) if row else None
-        reason = (value_state['reason'] if value_state else 'MISSING_INPUT' if treasury or session else 'MISSING_SESSION')
-        value = value_state['value'] if value_state and value_state['valid'] else None
+        if treasury:
+            row = facts.treasury(day)
+            state = row[1].get(field) if row else None
+            reason = state['reason'] if state else 'MISSING_INPUT'
+        else:
+            session = facts.session(day)
+            row = facts.stock(symbol, date.fromisoformat(session)) if session else None
+            state = row.get(field) if row else None
+            reason = state['reason'] if state else 'MISSING_INPUT' if session else 'MISSING_SESSION'
+        value = state['value'] if state and state['valid'] else None
         if value is not None and treasury:
             value /= 100
         return dict(value=value, valid=reason is None, reason=reason)
