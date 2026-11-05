@@ -280,6 +280,21 @@ class Executor:
         receipt.pop('provider_admitted')
         emit(dict(type='scope', value=receipt))
         mode = 'latest' if latest else 'historical'; year = 0 if latest else period
+        # One query per built-in source for the whole scope; the primary keys
+        # make each symbol's value unique, as the former per-row lookups read.
+        builtin_values = {}
+        for role, source in enumerate(role_sources):
+            if source['kind'] != 'builtin':
+                continue
+            storage = self.descriptors[source['id']]['storage']
+            if storage['kind'] == 'metric':
+                column = 'yield_value' if storage['component'] == 'yield' else 'multiple'
+                query = db.execute('SELECT symbol,' + column + ' FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND metric=?',
+                    (mode,self.pool,year,storage['metric']))
+            else:
+                query = db.execute('SELECT symbol,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND field=?',
+                    (mode,self.pool,year,storage['field']))
+            builtin_values[role] = dict(query.fetchall())
         for index, row in enumerate(rows):
             self.checkpoint()
             lanes = []
@@ -287,14 +302,7 @@ class Executor:
                 if source['kind'] != 'builtin':
                     continue
                 descriptor = self.descriptors[source['id']]; storage = descriptor['storage']
-                if storage['kind'] == 'metric':
-                    column = 'yield_value' if storage['component'] == 'yield' else 'multiple'
-                    result = db.execute('SELECT ' + column + ' FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=? AND metric=?',
-                        (mode,self.pool,year,row['symbol'],storage['metric'])).fetchone()
-                else:
-                    result = db.execute('SELECT value FROM filter_values WHERE mode=? AND pool=? AND year=? AND symbol=? AND field=?',
-                        (mode,self.pool,year,row['symbol'],storage['field'])).fetchone()
-                stored = result[0] if result else None
+                stored = builtin_values[role].get(row['symbol'])
                 canonical = float(Decimal(str(stored)).scaleb(storage['scale'])) if stored is not None else None
                 valid = type(stored) in (int,float) and math.isfinite(stored) and canonical is not None and math.isfinite(canonical)
                 lane = 'ranking' if role == 0 else 'c' + str(role-1)
