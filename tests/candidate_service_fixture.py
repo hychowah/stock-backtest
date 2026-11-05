@@ -7,8 +7,7 @@ from unittest.mock import patch
 
 
 def forbid_calculations(context):
-    """Install only after any intentional evidence production has finished."""
-    from unittest.mock import patch
+    """Refuse calculation, so a stored result can open without one."""
     from backtest.application.original_calculations import Original
     context.enter_context(patch.object(Original,'calculate',side_effect=AssertionError('Stored result requested calculation')))
 
@@ -38,30 +37,12 @@ def main():
         original=serve_app.Server
         def server(*args,**kwargs):
             value=original(*args,**kwargs)
-            if scenario=='evidence':
-                serve=value.serve_forever
-                def serve_evidence():
-                    from evidence_browser_fixture import seed
-                    try:seed(value,source)
-                    except BaseException:
-                        import traceback
-                        (source/'data/evidence-fixture-failure.txt').write_text(traceback.format_exc(),encoding='utf-8')
-                        raise
-                    forbid_calculations(context)
-                    serve()
-                value.serve_forever=serve_evidence
             def stop():
                 if sys.stdin.readline()=='close\n':value.shutdown()
             Thread(target=stop,name='fixture-stop',daemon=True).start()
             return value
         context.enter_context(patch.object(serve_app,'Server',side_effect=server))
-        if scenario=='ordinary-evidence':
-            from evidence_browser_fixture import forbid_read_dependencies
-            forbid_read_dependencies(context,serve_app)
-        if scenario=='evidence':
-            context.enter_context(patch.object(serve_app.backtest_queue.Queue,'start',return_value=None))
-        if scenario not in ('workflow','ordinary-workflow','evidence'):
-            forbid_calculations(context)
+        forbid_calculations(context)
         serve_app.main(arguments=['--host','127.0.0.1','--port','0','--no-browser'])
 
 

@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 from backtest import observations as obs
 from backtest.financial import books, rules
 from backtest.inputs import financial_inputs as financial, observation_inputs as source, daily, sqlite_observations
-from numerical_fixture import SyntheticDailyFixture
+from daily_fixture import SyntheticDailyFixture
 from prepared_inputs_fixture import PreparedInputs
 
 

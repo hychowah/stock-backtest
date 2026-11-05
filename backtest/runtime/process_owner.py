@@ -1,8 +1,9 @@
-"""Contain one experimental process and all of its descendants.
+"""Contain one owned child process and all of its descendants.
 
-Windows uses an owned Job Object. POSIX uses a new process session for tests.
-The child waits for GO before attachment or creating workers. Native shutdown waits for job emptiness. Linux confirms cooperative session
-closure and known descendants only; session escape prevention is unsupported.
+Test fixtures use it for private services and browsers. Windows uses an owned
+Job Object. POSIX uses a new process session. The child waits for GO before it
+starts work. Native shutdown waits for job emptiness. Linux confirms cooperative
+session closure and known descendants only; session escape prevention is unsupported.
 """
 import ctypes
 from contextlib import suppress
@@ -611,64 +612,3 @@ def windows_processes(*, include_pids=None):
         finally:
             kernel.CloseHandle(handle)
     return result
-
-
-def process_metrics():
-    """Current process working set and OS high water, not a memory limit."""
-    from pathlib import Path
-    import sys
-    if os.name != 'nt':
-        import resource
-        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        result = dict(peak_working_set_bytes=int(peak*(1 if sys.platform == 'darwin' else 1024)))
-        path = Path('/proc/self/status')
-        if path.exists():
-            rows = dict(line.split(':',1) for line in path.read_text().splitlines() if ':' in line)
-            result.update(sampled_working_set_bytes=int(rows['VmRSS'].split()[0])*1024,
-                          sampled_threads=int(rows['Threads']))
-        return result
-    from ctypes import wintypes as w
-    class Memory(ctypes.Structure):
-        _fields_ = [('cb',w.DWORD),('faults',w.DWORD)]+[(name,ctypes.c_size_t) for name in
-            ('peak_working','working','peak_paged','paged','peak_nonpaged','nonpaged','pagefile','peak_pagefile','private')]
-    kernel = ctypes.WinDLL('kernel32',use_last_error=True)
-    psapi = ctypes.WinDLL('psapi',use_last_error=True)
-    kernel.GetCurrentProcess.restype = w.HANDLE
-    psapi.GetProcessMemoryInfo.argtypes = [w.HANDLE,ctypes.POINTER(Memory),w.DWORD]
-    values = Memory(); values.cb = ctypes.sizeof(values)
-    if not psapi.GetProcessMemoryInfo(kernel.GetCurrentProcess(),ctypes.byref(values),values.cb):
-        raise ctypes.WinError(ctypes.get_last_error())
-    result = dict(sampled_working_set_bytes=values.working,peak_working_set_bytes=values.peak_working)
-    rows = windows_processes(include_pids=[os.getpid()])
-    if str(os.getpid()) in rows: result['sampled_threads'] = rows[str(os.getpid())]['threads']
-    return result
-
-
-
-def close_own_session(timeout=5.):
-    """Close ordinary Linux descendants when the process owner has died.
-
-    Only a verified session leader can call this. Session escape prevention is
-    unsupported. The caller retains its source/financial handles throughout.
-    """
-    if os.name == 'nt': return
-    from pathlib import Path
-    identity = os.getpid()
-    if os.getsid(0) != identity or os.getpgrp() != identity or not Path('/proc').is_dir():
-        raise RuntimeError('Numerical child does not own a verifiable Linux session.')
-    deadline = time.monotonic()+timeout
-    while True:
-        members=[]
-        for path in Path('/proc').glob('[0-9]*/stat'):
-            try:
-                row=path.read_text().rsplit(')',1)[1].split()
-                pid=int(path.parent.name)
-                if pid != identity and int(row[3]) == identity and row[0] != 'Z': members.append(pid)
-            except (FileNotFoundError,ProcessLookupError): continue
-        if not members: return
-        for pid in members:
-            with suppress(ProcessLookupError): os.kill(pid,signal.SIGKILL)
-        with suppress(ChildProcessError):
-            while os.waitpid(-1,os.WNOHANG)[0]: pass
-        if time.monotonic()>deadline: raise TimeoutError('Numerical descendants have not closed.')
-        time.sleep(.01)

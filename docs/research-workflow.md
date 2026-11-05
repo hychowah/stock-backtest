@@ -182,9 +182,7 @@ version-1 calendars with 1–104 weeks or 1–24 months.
 dated results. It owns equal weights, signed contributions, compounding and
 common-window cash. It reads no files. The
 [financial result contract](portfolio-results.md) preserves complete holding
-rows and existing application envelopes. An offline numerical diagnostic uses
-the same reducer after complete-book calculation and unchanged SQL selection.
-This diagnostic does not route website requests to a new engine.
+rows and existing application envelopes.
 `data/schedules.sqlite` is ignored. It is replaced atomically when inputs or
 calculation code change, and preparation refreshes it from the previous cache
 (below). Repeated preparation validates source freshness without
@@ -349,14 +347,9 @@ cache contention and exact random-date recovery.
 
 ### Random independent rebalances
 
-The offline numerical diagnostic now has separate completed-trial checkpoints.
-It uses the same ordered summary and capture consumer as the ordinary driver.
 The website runs these requests on Original, which keeps ordinary saved-book
-recovery. The frozen experimental engine kept generation-bound checkpoints; the
-website no longer runs it.
-Checkpoint retention applies only to derived calculations. Saved-library and
-completed queue snapshots remain readable after current input changes. See the
-[checkpoint contract](trial-checkpoints.md) for identity and retention rules.
+recovery. Saved-library and completed queue snapshots remain readable after
+current input changes.
 
 `backtest/engines/original/robustness.py` owns the random-date application adapter, fresh-seed
 policy and distribution summaries. It uses `backtest/calendar.py` to
@@ -798,8 +791,7 @@ read-only `dated_observation_inputs.py` resolver also participates in freshness.
 Optional `raw/download-coverage.json` presence and metadata participate too.
 A matching current or previous SeriesAsset receipt identifies exact saved bytes.
 Missing or unbound receipts do not erase usable facts or prove a download.
-Daily and immutable numerical storage copy the complete projection unchanged.
-Numerical temporal version 1, arrays and worker references keep their formats.
+Daily storage copies the complete projection unchanged.
 
 Price and volume use the saved SPY session on or before the context, within seven
 calendar days. Each needs the stock's own field on that exact session. Price is

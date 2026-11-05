@@ -4,10 +4,9 @@ The source can plan fixed and random dates for 1–104 calendar weeks or 1–24
 calendar months. `backtest/calendar.py` owns these rules. It uses only
 the Python standard library. It reads no files and calculates no portfolios.
 
-Legacy standalone planners accept 1, 3, 6, 12 and 24 months. Both normal
-website engines accept versioned week/month requests through the shared
-calendar-request owner. Original stays the default. The isolated numerical preview also retains its
-versioned request support. Custom controls follow the selected engine capability.
+Legacy standalone planners accept 1, 3, 6, 12 and 24 months. Original accepts
+versioned week/month requests through the shared calendar-request owner.
+Custom controls follow the server's engine capability.
 This source change does not update the installed server. SQL selection and
 financial rules remain in their existing owners.
 
@@ -112,22 +111,15 @@ validation. Jobs, queues, saved results and batch workers keep their interfaces.
 
 Weekly calendar dates can be supplied to the existing explicit-date evaluator.
 That evaluator still returns legacy monthly metadata, including its default
-`months=12`. CB-09 shares its portfolio reducer with an offline numerical
-diagnostic. The separate [financial result contract](portfolio-results.md)
+`months=12`. The separate [financial result contract](portfolio-results.md)
 keeps complete holdings and financial fields without adding a version to
 existing application payloads. This verifies date/financial separation. It
-does not change the ordinary engine. The isolated preview uses the canonical
-metadata described below.
+does not change the ordinary engine.
 
 The daily-cache engine fingerprint includes `backtest/calendar.py` and the
-CB-09 `backtest/portfolio_results.py` reducer. Its existing
-capture and generation validators include the same dependency. A changed source
-requires ordinary offline preparation. There is no new identity mechanism or
-database schema version. Private source exports already include Python modules.
-The existing policy identity hashes the complete `schedules.py` source. Its
-hash changes with these adapters even though financial expressions do not.
-Existing numerical artifacts therefore need ordinary offline preparation and
-export. Artifact, temporal and factor versions stay unchanged.
+`backtest/portfolio_results.py` reducer. A changed source requires ordinary
+offline preparation. There is no new identity mechanism or database schema
+version. Private source exports already include Python modules.
 
 `tests/fixtures/schedule-calendar-legacy-v1.json` contains compact expectations
 derived from the unchanged pre-change capture. It records the capture's base
@@ -144,11 +136,6 @@ reuse, interruption and completed-trial recovery. Native and WSL qualification
 results belong to the CB-08 phase record. This document makes no new speed or
 production-capacity claim.
 
-
-CB-11's explicit runtime also uses `robustness.plan` over the immutable sessions
-in its private SQL workspace. It adds no calendar planner or website control.
-The recorded-plan, default-seed, explicit-date and result-envelope contracts stay
-the same. Runtime use retains financial ownership across all reused jobs.
 
 ## Website requests and stored snapshots
 
@@ -174,7 +161,7 @@ Original stored settings, labels and version-1/version-2 snapshots stay intact.
 The capability endpoint is `/api/backtest-capabilities`. The normal app returns
 an `engines` list. The list names only Original, with `calendar:1`. The submitted `options.engine` is recorded.
 Omission means Original. Submission and execution refuse an engine that the
-server does not run, such as the frozen experimental engine. Browser replay keeps its engine
+server does not run, such as the deleted experimental engine. Browser replay keeps its engine
 separate from the financial plan and checks the recorded choice. A live selector
 change cannot alter the recorded producer of an existing result. Direct-file pages cannot run
 dated calculations.
@@ -193,8 +180,7 @@ keeps its original headers and remains unidentified. See the
 
 Original accepts version-1 fixed and random requests.
 `backtest/calendar_requests.py` owns decoding, exact recorded-plan matching and
-saved-session validation. Original and the frozen experimental engine import
-this canonical owner.
+saved-session validation. Original imports this canonical owner.
 Original's explicit `schedules.backtest_calendar` operation uses the existing
 book evaluator and reducer. The legacy `backtest`, `backtest_dates` and
 `robustness.plan` interfaces retain their accepted arguments and serialized

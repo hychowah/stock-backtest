@@ -94,7 +94,7 @@ class TierRunnerTests(unittest.TestCase):
         spec.loader.exec_module(self.runner)
         for name in self.runner.HEAVY:
             self.write(name, f'print("ran {name}")\n')
-        for name in self.runner.FROZEN | self.runner.NOT_ENTRIES:
+        for name in self.runner.NOT_ENTRIES:
             self.write(name, 'process.exit(1);\n' if name.endswith('.cjs') else 'raise SystemExit(1)\n')
         self.write('test_ok.py', OK)
         self.write('test_broken.py', BROKEN)
@@ -117,11 +117,10 @@ class TierRunnerTests(unittest.TestCase):
         self.assertRegex(done.stdout, r'(?m)^FAIL .*  test_broken\.py$')
         self.assertRegex(done.stdout, r'(?m)^line 99$')
         self.assertNotRegex(done.stdout, r'(?m)^line 0$')
-        for name in self.runner.HEAVY | self.runner.FROZEN | self.runner.NOT_ENTRIES:
+        for name in self.runner.HEAVY | self.runner.NOT_ENTRIES:
             self.assertNotIn(name, done.stdout)
         self.assertIn('2 passed, 1 failed', done.stdout)
         self.assertIn(f'Not run: {len(self.runner.HEAVY)} heavy files.', done.stdout)
-        self.assertIn(f'Frozen, never run: {len(self.runner.FROZEN)} files.', done.stdout)
         self.assertEqual(list(self.runs.iterdir()), [])
 
     def test_heavy_tier_runs_only_heavy_entries(self):
@@ -156,16 +155,16 @@ class TierRunnerTests(unittest.TestCase):
         self.assertEqual(len(re.findall(rf'(?m)^open {re.escape(str(registration))} \(pid \d+\)$', done.stdout)), 1)
         self.assertEqual(registration.read_text(encoding='utf-8'), '{}')
 
-    def test_all_tiers_never_run_frozen_files(self):
+    def test_all_tiers_never_run_non_entries(self):
         done = self.run_tier('--tier', 'all')
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         passed = set(re.findall(r'(?m)^PASS .*  (\S+)$', done.stdout))
         self.assertEqual(passed, set(self.runner.HEAVY) | {'test_ok.py', 'check-ok.cjs'})
-        for name in self.runner.FROZEN:
+        for name in self.runner.NOT_ENTRIES:
             self.assertNotIn(name, done.stdout)
 
     def test_stale_table_name_stops_the_run_before_any_file(self):
-        stale = sorted(self.runner.FROZEN)[0]
+        stale = sorted(self.runner.NOT_ENTRIES)[0]
         (self.tests / stale).unlink()
         done = self.run_tier()
         self.assertNotEqual(done.returncode, 0)
@@ -173,13 +172,13 @@ class TierRunnerTests(unittest.TestCase):
         self.assertNotIn('PASS', done.stdout)
 
     def test_name_in_two_tables_stops_the_run_before_any_file(self):
-        twice = sorted(self.runner.FROZEN)[0]
+        twice = sorted(self.runner.NOT_ENTRIES)[0]
         copy = self.tests / 'run.py'
         copy.write_text(copy.read_text(encoding='utf-8').replace(
             'CAP_SECONDS = ', f'HEAVY = HEAVY | {{{twice!r}}}\nCAP_SECONDS = ', 1), encoding='utf-8')
         done = self.run_tier()
         self.assertNotEqual(done.returncode, 0)
-        self.assertIn(f'in HEAVY and FROZEN: {twice}', done.stderr)
+        self.assertIn(f'in HEAVY and NOT_ENTRIES: {twice}', done.stderr)
         self.assertNotRegex(done.stdout, r'(?m)^(PASS|FAIL|TIMEOUT) ')
 
     @unittest.skipUnless(os.name == 'posix', 'POSIX signals')

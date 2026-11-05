@@ -1,9 +1,8 @@
 # Bounded financial evidence format 1
 
 This format preserves complete evidence without collecting all output in memory.
-It is a building block for CB-14 capacity work. The preview still uses its eager
-result protocol and existing limits. Offline numerical production and version-2
-derived checkpoints now use the codec. Additive read routes connect
+The preview still uses its eager result protocol and existing limits. Additive
+read routes connect
 [snapshot version 3](durable-evidence.md) through [acquired readers](evidence-views.md).
 Automatic calculation and queue execution remain eager; their snapshots remain versions 1/2.
 
@@ -19,7 +18,7 @@ writer = Writer(stream, trials=1, metadata=original_metadata,
                 max_bytes=declared_output_ceiling)
 writer.start_trial(1)
 summary = portfolio_results.evaluate_into(pairs, select_period, writer.period)
-# A numerical adapter can add its original options/calendar/seconds here.
+# The caller can add its original options/calendar/seconds here.
 writer.end_trial(summary)
 manifest = writer.finish(original_batch_summary)
 
@@ -83,7 +82,6 @@ pinned bytes.
 record limit because its holdings have separate records. `view.copy_into(sink)`
 forwards complete periods and returns the original scalar summary. These methods
 do not retain earlier periods. They do not validate financial arithmetic.
-Checkpoint recovery additionally uses the shared financial reducer.
 
 `SingleTrialWriter(stream, number=37, max_bytes=..., piece_bytes=...,
 record_bytes=...)` writes one standalone sealed trial. Send complete periods to
@@ -93,24 +91,14 @@ This reuses the batch writer's framing, bounds and structural validation.
 Standalone bytes are a sealed trial range, not a completed batch for `Reader`.
 The stream remains caller-owned. Failure makes the writer unusable.
 
-`backtest/engines/numerical/trial.py` binds this range to a detached recorded trial and
-the existing calculation-binding identity. Its descriptor includes the actual
-trial number, specification digest, byte range, byte digest and all three codec
-limits. `open_artifact` accepts an already opened stream and a trusted expected
-specification. It checks exact bytes, dates, settings and financial arithmetic.
-It accepts no producer path. The validated view can feed `save_from(37, view)`.
-Sealing proves calculation, not checkpoint commitment or application completion.
-
 The caller declares the total ceiling. Piece and record ceilings retain the
 format's existing 1 MiB and 8 MiB maxima. These codec limits bound decoding and
 encoded records. They are not hardware recommendations or total process-memory
-limits. CB-19C owns pool-wide resource admission and task-owned scratch files.
+limits.
 
 Sealing a trial does not complete its batch. A cancelled or failed batch has no
 final manifest. Existing owners control publication after successful completion
-and required resource closure. A checkpoint can retain a sealed completed trial
-even when a later output callback fails. Its trial is separate from the failed
-batch. See the [checkpoint contract](trial-checkpoints.md).
+and required resource closure.
 
 ## Records and completeness
 
@@ -165,27 +153,17 @@ evaluator retains its current complete candidate book separately. Checks run
 before each record and physical piece. The caller can use those checks for
 cancellation and prospective safety limits. Partial writes stay incomplete.
 
-## Remaining integration
+## Temporary Jobs evidence
 
-The [capacity design](plans/compiled-backtest/master-plan.md)
-now has an explicit dormant runtime transfer and temporary Jobs owner. It
-adds explicit queue/library persistence in increment 4. Increment 5 connects
-ResultArtifacts, bounded inspection and complete HTTP attachments. The producer
-operation remains explicit; automatic submission and queue execution stay eager. Full application capacity is not qualified by these private operations. Existing Session preflight, 64 MiB IPC
-and snapshot limits remain. G03 and G06 remain failed. No default-engine or launcher change follows.
-
-## Explicit runtime and temporary Jobs evidence
-
-CB-14 increment 3 adds a dormant `calculate_into` operation to Session, runtime
-and Candidate. `Jobs.start_evidence` calls this operation. Existing `start`,
+`Jobs.start_evidence` calls Original's `calculate_into` operation. Original
+writes the evidence in process. Existing `start`,
 eager calculations, queue calls, legacy endpoints and browser routes keep their
 complete-result contracts and admission limits. The new operation has no capture
 parameter. Complete-trial observers still receive original complete trials.
 
-The child first writes one bounded readable spool. Sealed trial views remain
-available for checkpoint retention. After completion,
-`backtest/application/evidence_transfer.py` copies its exact bytes through one
-64 KiB binary slot. Each transfer has a fresh identity, length and SHA-256. Each piece binds sequence, offset, length and hash. The parent
+The deleted experimental child wrote one bounded readable spool. Then
+`backtest/application/evidence_transfer.py` copied its exact bytes through one
+64 KiB binary slot. The protocol stays in source and its tests. Each transfer has a fresh identity, length and SHA-256. Each piece binds sequence, offset, length and hash. The parent
 acknowledges that identity and sequence after a successful write and slot closure.
 The child waits before replacing the slot. Final acknowledgement follows exact
 saved-byte verification and complete codec validation. Missing, corrupt, duplicate,
@@ -199,7 +177,7 @@ truncation and changed content. Staged plans have a separate 16 MiB encoded boun
 The complete decoded plan remains in memory for existing calendar/binding APIs.
 The 8 MiB codec metadata-record bound still applies independently. These are
 finite limits, not arbitrary-size plan support. Complete plan and submitted
-settings validation precede checkpoint lookup and calculation. Dates are never
+settings validation precede calculation. Dates are never
 resampled. Eager requests retain their 1 MiB bound; eager payloads retain 64 MiB.
 Original configuration callbacks still receive the complete plan.
 
@@ -207,9 +185,7 @@ Existing Jobs owns its private temporary workspace through `backtest.application
 It reserves both producer and receiver evidence ceilings, two staged-plan ceilings
 when a plan is supplied, and two 64 KiB slot buffers. The aggregate default is
 1 GiB of charged temporary evidence/input storage. It is a private dormant
-accounting policy, not a filesystem quota or accepted workflow budget. Runtime
-request, statistics and bounded callback files remain separate. SQLite checkpoint
-pages and journals remain under the checkpoint owner's separate accounting.
+accounting policy, not a filesystem quota or accepted workflow budget.
 
 While receiving, the whole reservation remains charged. On success, Jobs checks
 the copied bytes and codec again, then publishes its own immutable completed

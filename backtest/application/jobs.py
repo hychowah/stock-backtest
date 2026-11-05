@@ -121,7 +121,7 @@ class Jobs:
 
     @contextmanager
     def open_evidence(self,identifier):
-        """Pin immutable complete evidence independently of numerical resources."""
+        """Pin immutable complete evidence independently of calculation resources."""
         with self.lock:
             self.snapshot(identifier)
             run=self.runs[identifier]

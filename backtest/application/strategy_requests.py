@@ -52,26 +52,6 @@ def failure_details(error):
     return dict(code=error.code, path=error.path, errors=issues)
 
 
-def restore_failure(value):
-    """Check a trusted child's bounded scalar failure before exposing diagnostics.
-
-    This restores the existing safe issue projection. It accepts no arbitrary
-    exception attributes, provider response, path lookup or executable payload.
-    """
-    if (type(value) is not dict or set(value)!={'code','path','errors'}
-            or type(value['errors']) is not list or not value['errors']):
-        raise ValueError('Malformed numerical scalar failure.')
-    _encode(value,REQUEST_BYTES)
-    for issue in value['errors']:
-        if (type(issue) is not dict or set(issue)!={'code','path','message'}
-                or any(type(issue[k]) is not str for k in ('code','path','message'))
-                or not re.fullmatch(r'[A-Z_]{1,64}',issue['code'])):
-            raise ValueError('Malformed numerical scalar issue.')
-    if (value['code'],value['path'])!=(value['errors'][0]['code'],value['errors'][0]['path']):
-        raise ValueError('Numerical scalar primary issue differs.')
-    return definitions.FormulaError(errors=value['errors'])
-
-
 def _shape(value, required, optional=(), path=''):
     if type(value) is not dict or not set(required) <= set(value) or set(value) - set(required) - set(optional):
         _fail('INVALID_STRATEGY', path, 'Fields do not match the declared strategy shape.')
@@ -441,16 +421,13 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
 def require_formula_support(program, engine='original', *, checkpoint=backtest_control.checkpoint):
     """Check the pinned backend before readiness or financial access.
 
-    Only frozen experimental-engine code passes 'experimental'; Original's
-    preflight refuses that engine before it calls check_options.
+    Only Original runs formulas. Original's preflight refuses another engine
+    before it calls check_options; a direct call that names one fails here.
     """
-    if engine == 'experimental':
-        from backtest.engines.numerical import formula_capabilities as admission
-    elif engine == 'original':
-        from backtest.variables import selection as admission
-    else:
+    if engine != 'original':
         _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Unsupported calculation engine.')
-    return admission.require_program(program, checkpoint=checkpoint)
+    from backtest.variables import selection
+    return selection.require_program(program, checkpoint=checkpoint)
 
 
 def preview_engine(engine='original'):

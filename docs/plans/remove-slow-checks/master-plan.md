@@ -44,8 +44,8 @@ still open.
    (3234c3f); the single-pass evidence encoder (de5927e). Open: admission
    candidates per date (about 0.1 s per scope), the reference explanation
    (about 0.13 s per scope), P3 typed storage and the in-place daily update,
-   P4 deletion of the frozen engine and the old reference evaluator. P4 needs
-   the user's direct confirmation in this session.
+   P4 deletion of the old reference evaluator. The user confirmed the frozen
+   engine deletion on 2026-11-05; its source and tests are deleted.
 4. Result storage. Selected-row explanations, slim explanation records and a
    size check before the run are done (10da620, 6308c6a). Open: one
    compressed record per result, a one-transaction queue-to-library transfer,
@@ -85,7 +85,6 @@ All on 5 November 2026, WSL.
 - Dated observation evidence stores file row positions. A daily download that
   adds rows at the top of a file rewrites every stored day of that company.
 - The first deployment of this work rebuilds the prepared caches once.
-- Frozen numerical source still names removed observation functions.
 
 ## Next
 

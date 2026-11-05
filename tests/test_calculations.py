@@ -37,7 +37,6 @@ from backtest.engines.original import schedules as schedules
 from website.server import app as serve
 from test_queue import request
 import test_robustness as fixtures
-from test_package_structure import FROZEN_SOURCE
 
 
 def financial_result(value):
@@ -135,11 +134,10 @@ class CalculationTests(unittest.TestCase):
                          [('requeued','Busy','custom'),('completed',None,'custom'),('cancelled',None,'custom')])
         self.assertIn('store',tested[1]['stages'])
 
-    def test_original_results_record_producer_and_load_no_frozen_module(self):
+    def test_original_results_record_producer_and_load_no_numerical_package(self):
         result=self.service.calculate('custom',dict(self.options,engine='original'),None,None)
         self.assertEqual(result['producer'],dict(engine='original',label='Original'))
-        loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')
-                or any(name==frozen or name.startswith(frozen+'.') for frozen in FROZEN_SOURCE)]
+        loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')]
         self.assertEqual(loaded,[])
 
     def test_queue_leaves_rows_of_other_engines_waiting_until_edited(self):

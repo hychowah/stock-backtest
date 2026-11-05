@@ -2,7 +2,7 @@
 
 Status: complete
 
-Frozen: the website does not offer the experimental engine and has no Prepare action (AGENTS.md, Engines).
+Deleted: the experimental engine source, its tests and the comparison runner were deleted on 2026-11-05. The website runs only Original.
 
 ## Outcome
 
@@ -88,15 +88,8 @@ restarted no installed server.
   agree with Original at zero difference (tolerance `1e-12`). Zero numerical
   work is not zero latency.
 
-## Where the current contracts live
+## Where the records live
 
-- [Current execution ownership](../../numerical-generations.md#current-execution-ownership-cb-19g),
-  [worker attachment](../../numerical-generations.md#exact-generation-worker-attachment-cb-19a),
-  [persistent trial workers](../../numerical-generations.md#persistent-trial-workers-cb-19c),
-  [ordered coordinator](../../numerical-generations.md#ordered-random-coordinator-cb-19d)
-  and [candidate boundary](../../numerical-generations.md#complete-period-comparison-cb-19e).
-- [Parallel checkpoint coordination](../../trial-checkpoints.md#parallel-ordered-coordination-cb-19d).
-- [Selected preparation](../../candidate-startup.md#environment-and-command).
 - [Architecture guide](../../architecture-guide/dist/index.html).
 - F evidence: [README](../../../results/experiments/parallel-comparison-2026-11-01/README.md),
   [decision](../../../results/experiments/parallel-comparison-2026-11-01/decision.json),
@@ -107,15 +100,12 @@ restarted no installed server.
   [backend decision](../../../results/experiments/parallel-qualification-2026-11-01/profiles-decision.json),
   [final qualification](../../../results/experiments/parallel-qualification-2026-11-01/final-qualification.json),
   [final comparison](../../../results/experiments/parallel-qualification-2026-11-01/final-comparison.json).
-- Source: `backtest/engines/numerical/` (`execution.py`, `trial.py`,
-  `trial_pool.py`, `trial_worker.py`, `random.py`, `session.py`,
-  `generation.py`, `candidates.py`). Comparison runner:
-  `tools/experiments/parallel_comparison.py`.
+- Source: deleted on 2026-11-05. It lived in `backtest/engines/numerical/`;
+  the comparison runner lived in `tools/experiments/`.
 
 ## Known limits and open items
 
-- This is source only. Installed readiness and installed latency are not
-  established. Deployment needs separate authorization.
+- Installed readiness and installed latency were never established.
 - The evidence is finite: one Windows machine, two workloads, an unflushed file
   cache. It proves no global optimum or sustained speed.
 - A fresh experimental request is only modestly faster than Original (F: 61.46 s

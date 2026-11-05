@@ -39,13 +39,3 @@ def record_build():
     temporary=STAMP.with_suffix('.tmp')
     temporary.write_text(json.dumps(inputs(),sort_keys=True))
     temporary.replace(STAMP)
-
-
-def ensure_presentation():
-    """Complete the presentation build under the caller's financial ownership."""
-    if current_build():return
-    import subprocess
-    import sys
-    subprocess.run([sys.executable,'-X','utf8',str(ROOT/'build.py'),
-                    '--cache-owned'],cwd=ROOT.parent,check=True,
-                   stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

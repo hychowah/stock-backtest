@@ -2,7 +2,7 @@
 
 Status: complete
 
-The experimental engine is frozen: the website does not offer it and has no Prepare action (AGENTS.md, Engines).
+The experimental engine was deleted on 2026-11-05. The website runs only Original.
 
 ## Outcome
 
@@ -14,8 +14,8 @@ library with immutable revisions and favourites. Runs, queued tests and saved
 results capture the complete formula bundle. They reopen without evaluation.
 
 Original runs custom strategies in Latest, January, fixed and random modes, and
-owns sample preview. The experimental engine that also ran these modes is now
-frozen; the website does not run it. Coverage inspection reports complete counts and
+owns sample preview. The experimental engine that also ran these modes was
+deleted on 2026-11-05. Coverage inspection reports complete counts and
 missing reasons for a recorded January or latest scope. The source is integrated
 into `main`. The program did not publish it or qualify an installed runtime.
 
@@ -48,8 +48,8 @@ The design contract is in [variable design](variable-design.md).
   `/3`. Old formulas need an explicit upgrade. Stored rounding, old immutable
   bytes, queue records and durable formats are unchanged.
 - **One correctness authority.** The Python reference evaluator defines results.
-  The numerical engine compiles supported programs behind the same scalar
-  boundary. Unsupported work fails before execution, with no fallback.
+  The deleted numerical engine compiled supported programs behind the same
+  scalar boundary. Unsupported work fails before execution, with no fallback.
 - **One qualification gate.** `backtest/variables/selection.py` admits a fixed
   77-ID inventory. Catalog recognition, provider support or compiler support
   alone grants no application qualification.

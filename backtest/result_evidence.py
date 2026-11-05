@@ -16,7 +16,7 @@ plus scalar encoder temporaries. The reducer retains its current book separately
 The caller declares a total byte ceiling and controls publication and cleanup.
 A failed writer is unusable; its incomplete output must never be published.
 
-Numerical diagnostics and derived checkpoints use this codec. The legacy codec-1 writer/reader and eager admission retain their meaning.
+The legacy codec-1 writer/reader and eager admission retain their meaning.
 open_reader() also dispatches the separate scalar codec 2; its application
 artifact version and durable container belong to their application owners.
 """

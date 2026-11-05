@@ -11,7 +11,6 @@ import these canonical owners.
 | `tools.ops.prepared_input_coverage` | Read-only prepared-input coverage; no command entry |
 | `tools.ops.list_stops`, `tools.ops.classify_stops` | Retained stop inspection commands |
 | `tools.ops.log_summary` | Read-only summary of unfinished operations, operation times, slow requests and failures; run as a module |
-| `tools.experiments.parallel_comparison` | Scoped private comparison and its fixed child |
 | `tools.experiments.probe*`, `download_one`, `fetch_bulk` | Retained API acquisition experiments |
 
 The thin entries in `tools/` are `deploy.py`, `probe.py`, `download_one.py` and
@@ -19,8 +18,7 @@ The thin entries in `tools/` are `deploy.py`, `probe.py`, `download_one.py` and
 `tools/experiments/probe_list.py` and `probe_span.py` as modules, for example
 `python3 -m tools.experiments.probe_list`. `scripts/list_stops.py` and
 `scripts/classify_stops.py` also remain commands. Private workers and library modules have no forwarding
-entries. Numerical policy, decisions, process ownership and the Numba
-implementation belong to `backtest`, not to tools.
+entries.
 
 The deployment entry also supports an old running controller. That controller
 extracts only `tools/deploy.py` from its selected commit. The entry verifies the
@@ -34,14 +32,6 @@ acquisition generally requires `~/.grok/secrets/fmp_api_key`. Offline fixtures
 need neither credentials nor network access. Do not run acquisition to recompute
 saved results or rebuild the website. Use `scripts/revalue.py` and
 `website/build.py`. SPY and Treasury downloads belong to the data panel.
-
-## Engine comparison
-
-`tools/experiments/parallel_comparison.py` compares Original with the
-experimental engine on a private copy of prepared inputs. The engine is frozen;
-see the [faster engine summary](../docs/plans/compiled-backtest/master-plan.md)
-and the [parallel backtest summary](../docs/plans/parallel-backtest/master-plan.md)
-for its decisions and measured results.
 
 ## WSL deployment
 

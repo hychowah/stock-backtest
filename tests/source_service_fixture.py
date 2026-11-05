@@ -60,9 +60,6 @@ class FictionalWorkspace:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, target)
                 self.sources[relative.as_posix()] = sha(target)
-        dependency_file = ROOT / 'requirements-numerical.txt'
-        shutil.copy2(dependency_file, self.source / dependency_file.name)
-        self.sources[dependency_file.name] = sha(self.source / dependency_file.name)
         self._generate()
         self.inputs = self.input_inventory()
         write(self.root / 'specification.json', dict(specification=SPEC, allowances=ALLOWANCES,

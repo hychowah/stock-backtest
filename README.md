@@ -86,11 +86,10 @@ It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
 The website runs only the **Original** engine. The experimental (Numba) engine
-is frozen in source: the website does not offer it, and the server refuses a
-request that names it. Saved results from the experimental engine stay readable
-with their producer label. The [frozen engine notes](docs/candidate-startup.md)
-and the [faster engine summary](docs/plans/compiled-backtest/master-plan.md)
-record its decisions and measured speeds. Historical timings are not a
+was deleted from source on 5 November 2026. The server refuses a request that
+names it. Saved results from the experimental engine stay readable with their
+producer label. The [faster engine summary](docs/plans/compiled-backtest/master-plan.md)
+records its decisions and measured speeds. Historical timings are not a
 current-source speed guarantee.
 
 Custom ranking and filtering variables are part of `main`. Formulas combine

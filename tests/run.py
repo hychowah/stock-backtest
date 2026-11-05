@@ -5,9 +5,8 @@
 Entries are tests/test_*.py and tests/check-*.cjs. An entry is fast unless the
 tables below name it, so a new test file joins the everyday gate. The fast
 tier (default) gates every commit; the heavy tier holds slow qualification
-workloads. No tier runs the files that FROZEN names (AGENTS.md, Tests). The
-interpreter that runs this file runs every Python entry; .cjs entries need
-node.
+workloads. The interpreter that runs this file runs every Python entry; .cjs
+entries need node.
 
 Each file runs in a new process group, with TMPDIR, TEMP and TMP set to a
 private run folder under ~/.cache/ebitda-ev-spread-tests/. That place is on
@@ -48,62 +47,6 @@ RUNS = Path.home() / '.cache' / 'ebitda-ev-spread-tests'
 # that does not exist, or a name in two tables, stops the run. Adding a name to
 # HEAVY accepts a slow workload and needs the user's agreement.
 HEAVY = frozenset({'test_original_long_window.py'})
-# Tests of the frozen experimental engine (AGENTS.md, Tests). No tier runs
-# them, and they need tmp/numerical-venv. No live test file imports one of
-# them or a frozen source module directly; tests/test_package_structure.py
-# scans the test files' imports. Run one directly when unfreezing; it may have
-# drifted from live interfaces.
-FROZEN = frozenset({
-    'check-checkpoint-snapshots.cjs',
-    'test_bounded_runtime.py',
-    'test_bounded_trials.py',
-    'test_candidate_calculations.py',
-    'test_candidate_calendar_recovery.py',
-    'test_evidence_browser.py',
-    'test_guarded_numerical_entries.py',
-    'test_input_engine_ownership.py',
-    'test_legacy_selection_replay.py',
-    'test_numerical_books.py',
-    'test_numerical_calendar.py',
-    'test_numerical_delegated.py',
-    'test_numerical_dependencies.py',
-    'test_numerical_execution.py',
-    'test_numerical_expanded_admission.py',
-    'test_numerical_factors.py',
-    'test_numerical_formulas.py',
-    'test_numerical_generation.py',
-    'test_numerical_generation_hosts.py',
-    'test_numerical_history.py',
-    'test_numerical_matrix.py',
-    'test_numerical_numba_books.py',
-    'test_numerical_portfolios.py',
-    'test_numerical_preparation.py',
-    'test_numerical_profiles.py',
-    'test_numerical_publication.py',
-    'test_numerical_random.py',
-    'test_numerical_readiness.py',
-    'test_numerical_runtime.py',
-    'test_numerical_scalar.py',
-    'test_numerical_scalar_capabilities.py',
-    'test_numerical_scalar_measurements.py',
-    'test_numerical_scalar_native.py',
-    'test_numerical_scalar_process.py',
-    'test_numerical_scalar_qualification.py',
-    'test_numerical_temporal.py',
-    'test_numerical_trial.py',
-    'test_numerical_trial_pool.py',
-    'test_numerical_trials.py',
-    'test_numerical_worker_control.py',
-    'test_operating_spread_engine.py',
-    'test_opt_in_readiness.py',
-    'test_parallel_comparison.py',
-    'test_phase11_candidate.py',
-    'test_phase11_compiled_operations.py',
-    'test_phase11_measurements.py',
-    'test_scalar_admission.py',
-    'test_trial_checkpoints.py',
-    'test_website_engine_alignment.py',
-})
 # Files that match the entry patterns but are not standalone entries.
 NOT_ENTRIES = frozenset({
     'check-screener.cjs',  # run by check_screener.py with SQL expectations
@@ -192,11 +135,11 @@ class Result:
 
 def select(tier):
     """Return the entries of a tier in start order and how many entries the
-    tier leaves out. Frozen files and non-entries are never entries. First,
-    stop if a table names a missing file or a file is in two tables."""
+    tier leaves out. Non-entries are never entries. First, stop if a table
+    names a missing file or a file is in two tables."""
     names = {path.name for pattern in ('test_*.py', 'check-*.cjs') for path in TESTS.glob(pattern)}
-    tables = (('HEAVY', HEAVY), ('FROZEN', FROZEN), ('NOT_ENTRIES', NOT_ENTRIES))
-    listed = HEAVY | FROZEN | NOT_ENTRIES
+    tables = (('HEAVY', HEAVY), ('NOT_ENTRIES', NOT_ENTRIES))
+    listed = HEAVY | NOT_ENTRIES
     missing = sorted(listed - names)
     owners = {name: [table for table, members in tables if name in members] for name in sorted(listed)}
     twice = {name: found for name, found in owners.items() if len(found) > 1}
@@ -205,7 +148,7 @@ def select(tier):
         lines += [f'  not found: {name}' for name in missing]
         lines += [f"  in {' and '.join(found)}: {name}" for name, found in twice.items()]
         raise SystemExit('\n'.join(lines))
-    entries = [Entry(TESTS / name, 'heavy' if name in HEAVY else 'fast') for name in names - FROZEN - NOT_ENTRIES]
+    entries = [Entry(TESTS / name, 'heavy' if name in HEAVY else 'fast') for name in names - NOT_ENTRIES]
     chosen = [entry for entry in entries if tier in ('all', entry.tier)]
     # Heavy files start first, so with --jobs above 1 their long caps overlap the rest.
     chosen.sort(key=lambda entry: (entry.tier != 'heavy', entry.path.name))
@@ -399,7 +342,6 @@ def main(argv=None):
     summary = f'{args.tier} tier: {len(results) - len(failed)} passed, {len(failed)} failed in {elapsed:.1f} s.'
     if left_out:
         summary += f" Not run: {left_out} {'heavy' if args.tier == 'fast' else 'fast'} files."
-    summary += f' Frozen, never run: {len(FROZEN)} files.'
     if interrupted:
         summary += f' Interrupted; {len(entries) - len(results)} files did not finish.'
     print(summary)

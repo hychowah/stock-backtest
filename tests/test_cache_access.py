@@ -72,30 +72,6 @@ class AccessTests(unittest.TestCase):
                 self.assertEqual(self.probe(),0)
 
 
-@unittest.skipUnless(sys.platform=='win32','Native LockFileEx reader-gate verification.')
-class NativeReaderGateTests(unittest.TestCase):
-    def test_multiple_readers_exclude_retirement_and_exclusive_excludes_attach(self):
-        with tempfile.TemporaryDirectory() as folder,ExitStack() as handles:
-            path=Path(folder)/'mapping-gate.lock';path.write_bytes(b'0')
-            first=handles.enter_context(path.open('rb',buffering=0))
-            second=handles.enter_context(path.open('rb',buffering=0))
-            exclusive=handles.enter_context(path.open('r+b',buffering=0))
-            release_first=access._windows_reader_lock(first,False)
-            release_second=access._windows_reader_lock(second,False)
-            try:
-                with self.assertRaises(BlockingIOError):access._windows_reader_lock(exclusive,True)
-                release_first();release_first=None
-                with self.assertRaises(BlockingIOError):access._windows_reader_lock(exclusive,True)
-            finally:
-                if release_first is not None:release_first()
-                release_second()
-            release_exclusive=access._windows_reader_lock(exclusive,True)
-            try:
-                with self.assertRaises(BlockingIOError):access._windows_reader_lock(first,False)
-            finally:release_exclusive()
-            access._windows_reader_lock(first,False)()
-
-
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='probe':
         try:

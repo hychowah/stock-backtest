@@ -59,8 +59,8 @@ dates. Saved results and user data survive. A missing Git observation keeps the
 current server. A failed update retries automatically; pending journals stay in
 place for recovery. A staging failure leaves the old server serving.
 
-The experimental engine is frozen. The installed website neither prepares nor
-runs it; see the [frozen engine notes](candidate-startup.md).
+The experimental engine was deleted from source. The installed website neither
+prepares nor runs it.
 
 For an already-installed revision without contacting WSL, run native Python directly:
 
@@ -81,7 +81,7 @@ Source publication and native server execution share a lock. A deployment stops 
 | SQLite databases, process identities, locks and logs under `data/` | Windows runtime |
 | Current verified `results/summary-exits.txt` and baseline history | Windows runtime |
 | Built local page under `website/local/` | Windows runtime |
-| Native environments and frozen-engine caches | Windows runtime; create them for Windows |
+| Native environments and leftover experimental-engine caches | Windows runtime; create them for Windows |
 | Deployment hashes and commit identity | Windows `data/deployment.json` |
 
 Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. The canonical report is special: after initial installation, deployment never replaces it. Its exact content must remain bound to the prepared research database.
@@ -131,10 +131,9 @@ The user architecture guide describes the current split.
 
 ## Engine comparison runs
 
-The earlier WSL benchmark harness was removed. Its decisions and measured
-results are recorded in the [faster engine summary](plans/compiled-backtest/master-plan.md).
-`tools/experiments/parallel_comparison.py` is the only retained comparison
-runner. `tools/ops/offline_input_copy.py` first copies the saved inputs and the
+The benchmark harness and the engine comparison runner were deleted with the
+experimental engine. Their decisions and measured results are recorded in the
+[faster engine summary](plans/compiled-backtest/master-plan.md).
+`tools/ops/offline_input_copy.py` still copies the saved inputs and the
 canonical report into a private root. It refuses while a server or data job
-holds ownership. Preparation and both engines then run on that copy. The runner
-never uses the live cache or the stable service.
+holds ownership.

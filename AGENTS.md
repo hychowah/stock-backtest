@@ -14,8 +14,8 @@ describe the current system. An active multi-session plan lives in
 `docs/plans/<initiative>/`, with working notes in `phases/phase-NN/working/`.
 Close out a finished initiative: keep its summary and decisions, delete the rest.
 Logs, timings, raw benchmark output and new experiment or probe code stay in
-ignored `tmp/`. `tools/experiments/` holds only the retained comparison runner
-and API probes listed in `tools/README.md`. An experiment that must survive
+ignored `tmp/`. `tools/experiments/` holds only the API probes listed in
+`tools/README.md`. An experiment that must survive
 becomes a phase of an active plan. Put slice
 evidence, audit findings and their dispositions in the commit message. Before
 every commit, run `python3 tests/check_records.py` in the WSL source checkout. Do
@@ -26,8 +26,8 @@ not commit if it fails. After changing the check, run
 
 Only `docs/plans/remove-slow-checks/` is active. Summaries give the outcome,
 key decisions and known limits. Original is the only engine the website runs.
-The experimental (Numba) engine is frozen in source (see Engines); the benchmark
-harness and the Rust backend were removed.
+The experimental (Numba) engine was deleted on 2026-11-05 (see Engines); the
+benchmark harness and the Rust backend were removed earlier.
 Custom variables are integrated into `main`. Source work does not establish
 installed readiness or real-cache coverage.
 
@@ -41,8 +41,8 @@ checkout. Verify with private synthetic fixtures, never the live cache.
 
 When two lines of work touch the same contract, agree which branch owns it
 before editing. Shared contracts are calculation rules, engine interfaces,
-prepared schemas, freshness checks, worker and lock ownership, and the engine
-comparison runner. Keep edits to shared files narrow. Avoid broad refactors,
+prepared schemas, freshness checks, and worker and lock ownership. Keep edits
+to shared files narrow. Avoid broad refactors,
 renames and formatting changes in these areas.
 
 ## Standing engineering rules
@@ -68,7 +68,7 @@ renames and formatting changes in these areas.
 ## Tests
 
 `tests/run.py` runs each `tests/test_*.py` and `tests/check-*.cjs` file in its
-own process. It skips the files that `FROZEN` and `NOT_ENTRIES` name.
+own process. It skips the files that `NOT_ENTRIES` names.
 `check-range.cjs` and `check_screener.py` still run after `website/build.py`.
 `--tier` picks fast (default), heavy (`HEAVY`) or all. Eight files run at
 once; `--jobs` overrides it. Tests reaching cache-coordinated code patch
@@ -77,11 +77,8 @@ file that touches the checkout's `data/` beyond reading `workspace.json`. Its
 docstring describes the isolation. Every tier needs only `python3` and Node.js:
 `python3 tests/run.py`.
 
-`FROZEN` names the tests of the frozen experimental engine (see Engines). No
-tier runs them, and no live test file imports one or frozen source directly.
-`tests/test_package_structure.py` checks test imports, the server entry and
-Original. Frozen tests need `tmp/numerical-venv` in the main checkout. Run one
-directly only to unfreeze the engine; it may have drifted.
+`tests/test_package_structure.py` checks that the server entry and Original
+load no numerical package.
 
 - Before every commit, run the fast tier in the WSL source checkout. Do not
   commit if it fails. It takes under a minute. Give it a tool timeout of at
@@ -212,8 +209,8 @@ calling it a bankruptcy.
 
 Documented commands live in `scripts/`. Financial policy, screening, calendars
 and portfolio results live in `backtest/`; `backtest/paths.py` resolves paths.
-Operational tools are in `tools/ops/`; `tools/experiments/` keeps the
-Original-versus-experimental comparison runner and the FMP API probes. Current reports are in `results/`, older reports in
+Operational tools are in `tools/ops/`; `tools/experiments/` keeps the FMP API
+probes. Current reports are in `results/`, older reports in
 `results/legacy/`, stop analyses in `results/stops/` and small cited experiment
 summaries in `results/experiments/`. The website source lives in `website/`.
 
@@ -404,15 +401,9 @@ request and plan policy; preserve legacy planner hashes. Normal startup needs
 no numerical packages. Checks: `tests/test_calculations.py`,
 `tests/test_backtest_jobs.py` and `tests/test_package_structure.py`.
 
-The experimental (Numba) engine is frozen. Frozen source:
-`backtest/engines/numerical/`, `backtest/application/calculations.py`,
-`candidate_calculations.py` and `preparation.py`, `scripts/numerical_generation.py`
-and `requirements-numerical.txt`. No live module imports it;
-`tools/experiments/` may. Edit frozen source only to keep it importable. Its
-tests are in `FROZEN` (see Tests). Existing `data/numerical/` and
-`data/numerical-preparation.json` stay on the runtime; nothing live reads them.
-See [docs/candidate-startup.md](docs/candidate-startup.md) and
-[docs/numerical-generations.md](docs/numerical-generations.md).
+The experimental (Numba) engine, its tests and the comparison runner were
+deleted on 2026-11-05. Leftover `data/numerical/` and
+`data/numerical-preparation.json` on the runtime are unused.
 
 **Result access.** `backtest/application/result_access.py` owns acquired results,
 with 16 display readers and 32 request pins. Stored operations never prepare or

@@ -1,7 +1,6 @@
-"""Package boundaries, query-free validation and the frozen-code boundary."""
+"""Package boundaries, query-free validation and optional-package isolation."""
 from copy import deepcopy
 import ast
-import importlib.util
 import inspect
 from pathlib import Path
 import sqlite3
@@ -18,10 +17,6 @@ from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 from backtest.financial import metrics
-
-# Frozen experimental-engine source (AGENTS.md, Tests). Live tests never import it.
-FROZEN_SOURCE=('backtest.engines.numerical','backtest.application.calculations',
-               'backtest.application.candidate_calculations','backtest.application.preparation')
 
 
 class PackageTests(unittest.TestCase):
@@ -68,39 +63,9 @@ assert not any(name=='backtest' or name.startswith('backtest.') for name in sys.
         result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
 
-    def test_live_tests_never_import_frozen_code(self):
-        """A live test entry and every test module it reaches, at any import
-        level, import no frozen source and no file that tests/run.py FROZEN names."""
-        spec=importlib.util.spec_from_file_location('tier_table',ROOT/'tests'/'run.py')
-        runner=importlib.util.module_from_spec(spec);spec.loader.exec_module(runner)
-        tests=ROOT/'tests'
-        frozen_tests={name.removesuffix('.py') for name in runner.FROZEN}
-        def frozen(module):
-            return module in frozen_tests or any(module==name or module.startswith(name+'.') for name in FROZEN_SOURCE)
-        def imports(name):
-            """Yield each imported module with the names its statement binds."""
-            for node in ast.walk(ast.parse((tests/(name+'.py')).read_text(encoding='utf-8'))):
-                if isinstance(node,ast.Import):
-                    for alias in node.names:yield alias.name,[]
-                elif isinstance(node,ast.ImportFrom) and node.module and not node.level:
-                    yield node.module,[node.module+'.'+alias.name for alias in node.names]
-        problems=[]
-        for path in sorted(tests.glob('test_*.py')):
-            if path.name in runner.FROZEN|runner.NOT_ENTRIES:continue
-            pending,seen=[[path.stem]],set()
-            while pending:
-                chain=pending.pop()
-                if chain[-1] in seen:continue
-                seen.add(chain[-1])
-                for module,names in imports(chain[-1]):
-                    found=[name for name in [module,*names] if frozen(name)]
-                    if found:problems.append(' > '.join(chain+[found[0]]))
-                    elif (tests/(module+'.py')).is_file():pending.append(chain+[module])
-        self.assertEqual(problems,[])
-
-    def test_server_and_original_imports_load_no_frozen_or_numerical_module(self):
+    def test_server_and_original_imports_load_no_numerical_package(self):
         """The server entry and every module Original imports, including its
-        lazy imports, load no frozen source and no numerical package."""
+        lazy imports, load no numerical package."""
         code="""
 import importlib,sys
 sys.path.insert(0,sys.argv[1])
@@ -109,13 +74,11 @@ for name in ('website.server.app','backtest.application.original_calculations',
              'backtest.application.scalar_runs','backtest.application.variable_coverage',
              'backtest.inputs.research','backtest.inputs.sqlite_observations','backtest.scalar_result_evidence'):
     importlib.import_module(name)
-frozen=tuple(sys.argv[2:])
-loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')
-        or any(name==item or name.startswith(item+'.') for item in frozen)]
+loaded=[name for name in sys.modules if name.split('.')[0] in ('numpy','numba','llvmlite')]
 assert not loaded,loaded
 """
         with tempfile.TemporaryDirectory() as folder:
-            result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT),*FROZEN_SOURCE],
+            result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],
                                   cwd=folder,capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stderr)
 

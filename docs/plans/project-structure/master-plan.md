@@ -10,8 +10,8 @@ request shape or durable record format.
 
 - `backtest/` is an importable package. `financial/` owns rules, books and
   metrics. `inputs/` owns raw assets, preparation, daily storage and baseline
-  publication. `engines/original`, `engines/numerical` and `engines/reference`
-  own calculation. `application/` owns calculation selection, jobs, queue,
+  publication. `engines/original` and `engines/reference` own calculation;
+  `engines/numerical` was deleted on 2026-11-05. `application/` owns calculation selection, jobs, queue,
   library, preparation and result access. `runtime/` owns cache coordination,
   cancellation, diagnostics and process support. Shared modules at the package
   root own screening, calendars, calendar requests, portfolio results, the
@@ -66,11 +66,9 @@ initializers execute no operations. Later custom-variable work added
   valuation needs no exit price. A comparison of 512 synthetic snapshot cases
   against the Phase 1 baseline matched exactly, including missing observations,
   stopped exits and bankruptcy.
-- **Preparation is an application operation.**
-  `backtest/application/preparation.py` takes an optional
-  `ensure_presentation` callback. The website supplies it. It runs after
-  verified child closure, under financial ownership, before the ready report.
-  A callback failure cannot publish readiness.
+- **Preparation was an application operation.** The experimental engine's
+  preparation ran a website callback after verified child closure, under
+  financial ownership. That code was deleted on 2026-11-05.
 - **Engine errors are mapped by the adapter.** Numerical `InputsUnavailable`
   becomes application `Unavailable` only after confirmed retirement, including
   after delayed closure. Engines do not import jobs.

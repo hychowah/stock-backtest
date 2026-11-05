@@ -348,14 +348,14 @@ dated, random and variable-strategy runs use Original on the local service.
 January and latest screens keep their shared prepared paths. Normal startup and
 rebuild need no numerical packages.
 
-The experimental (Numba) engine is frozen in source. The server refuses a
+The experimental (Numba) engine was deleted from source. The server refuses a
 request that names it with `UNSUPPORTED_CAPABILITY` at `/engine`. A restored
 test that names it keeps that engine and shows the engine choice, so the user
 can choose Original. A waiting queued test that names it stays waiting until
 the user edits or deletes it. Replay keeps the recorded engine. Manage backtest
 data has no experimental preparation action. New results and CSVs identify
 their recorded producer; older evidence stays unidentified. Opening stored
-evidence does not calculate. See the [frozen engine notes](../docs/candidate-startup.md).
+evidence does not calculate.
 
 ## Source owners
 

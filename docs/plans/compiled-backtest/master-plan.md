@@ -2,7 +2,7 @@
 
 Status: complete
 
-Frozen: the website does not offer the experimental engine and has no Prepare action (AGENTS.md, Engines).
+Deleted: the experimental engine source, its tests and the comparison runner were deleted on 2026-11-05. The website runs only Original.
 
 ## Outcome
 
@@ -86,10 +86,7 @@ the current worker policy and provider choice.
 
 ## Where the current contracts live
 
-- [Numerical generations](../../numerical-generations.md) and
-  [experimental preparation](../../candidate-startup.md)
-- [Completed-trial checkpoints](../../trial-checkpoints.md),
-  [dated result contract](../../portfolio-results.md) and
+- [Dated result contract](../../portfolio-results.md) and
   [schedule calendar](../../schedule-calendar.md)
 - [Bounded evidence format](../../result-evidence.md),
   [durable snapshots](../../durable-evidence.md) and
@@ -110,12 +107,10 @@ the current worker policy and provider choice.
   the 256 MiB eager result estimate: 100 annual trials (ranks 1–50), 24 annual
   trials (ranks 1–100) and 24 or 100 weekly trials. Holding records alone need
   about 655 MB for 24 weekly trials and 2.73 GB for 100.
-- Installed readiness is not established. The frozen engine has no Prepare
-  action. Publication needs separate authorization.
 - Version-3 durable evidence needs current readers. Source from before version 3
   is not a safe rollback target.
 - The scan does not detect a same-size edit with a restored timestamp.
 - The cached pool is not the full universe. Its extra holdings had no manual
   bankruptcy review.
-- The benchmark harness was later removed. `tools/experiments/parallel_comparison.py`
-  is the only retained comparison runner.
+- The benchmark harness was later removed. The comparison runner was deleted
+  with the engine.

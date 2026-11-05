@@ -214,33 +214,3 @@ def daily():
         db=daily.connect()
         try:yield db
         finally:db.close()
-
-
-def _windows_reader_lock(handle, exclusive):
-    """Own one nonblocking byte region; return a retained release closure."""
-    import ctypes
-    from ctypes import wintypes
-    import msvcrt
-
-    class Overlapped(ctypes.Structure):
-        _fields_ = [('internal', ctypes.c_size_t), ('internal_high', ctypes.c_size_t),
-                    ('offset', wintypes.DWORD), ('offset_high', wintypes.DWORD),
-                    ('event', wintypes.HANDLE)]
-
-    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-    lock = kernel.LockFileEx
-    lock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
-                     wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(Overlapped)]
-    lock.restype = wintypes.BOOL
-    unlock = kernel.UnlockFileEx
-    unlock.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
-                       wintypes.DWORD, ctypes.POINTER(Overlapped)]
-    unlock.restype = wintypes.BOOL
-    native = wintypes.HANDLE(msvcrt.get_osfhandle(handle.fileno()))
-    region = Overlapped()
-    if not lock(native, 1 | (2 if exclusive else 0), 0, 1, 0, ctypes.byref(region)):
-        error = ctypes.get_last_error()
-        if error in (32, 33, 997):
-            raise BlockingIOError(errno.EAGAIN, 'Numerical reader gate is held.')
-        raise ctypes.WinError(error)
-    return lambda: unlock(native, 0, 1, 0, ctypes.byref(region))

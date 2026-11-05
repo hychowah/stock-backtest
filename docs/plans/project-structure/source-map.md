@@ -1,7 +1,7 @@
 # Current source owners
 
-This map lists the current source owners. Rows marked frozen belong to the
-frozen experimental engine (AGENTS.md, Engines).
+This map lists the current source owners. The experimental engine was deleted
+on 2026-11-05.
 
 | Concern | Current owner |
 |---|---|
@@ -10,7 +10,6 @@ frozen experimental engine (AGENTS.md, Engines).
 | Shared calendar requests and portfolio result reduction | `backtest/calendar.py`, `calendar_requests.py`, `portfolio_results.py` |
 | Full annual responses, fiscal histories, cache receipts and prepared inputs | `backtest/inputs/` |
 | Original dated calculations and retained independent reference | `backtest/engines/original/`, `backtest/engines/reference/` |
-| Frozen: numerical calculation, immutable input attachments and their preparation | `backtest/engines/numerical/`, `backtest/application/calculations.py`, `candidate_calculations.py`, `preparation.py`, `scripts/numerical_generation.py` |
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
 | Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
 | Strategy draft, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
@@ -21,12 +20,11 @@ frozen experimental engine (AGENTS.md, Engines).
 | Server lifetime and grouped calculation, stored-result and data HTTP adapters | `website/server/` |
 | Stable build command and source-owning startup entries | `website/build.py`, `serve.py`, `runtime_access.py` |
 | Maintained operational implementations | `tools/ops/` |
-| Retained comparison runner and API probes | `tools/experiments/` |
+| Retained API probes | `tools/experiments/` |
 | Documented executable commands | `scripts/`, retained thin `tools/*.py` entries, Windows command files |
 
 No production backtest library imports website or tools. Website code calls the
 application and input owners. Package initializers execute no operations.
-No live module imports frozen source.
 
 ## Custom variables
 
@@ -63,8 +61,6 @@ contracts. These modules own the feature.
   (`StrategyDraft`) owns the draft. `variable-workspace.js` is the shared editor.
   `evidence-results.js` and `variable-evidence.js` present stored results and
   readable traces without calculating.
-- Frozen: `backtest/engines/numerical/formulas.py`, `scalar.py` and
-  `formula_capabilities.py` hold the numerical lowering and admission subset.
 
 `backtest/financial/metrics.py` and `backtest/screening.py` keep the built-in
 pair and threshold contracts. They are not a general variable abstraction.
