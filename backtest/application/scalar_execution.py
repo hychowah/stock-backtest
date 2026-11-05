@@ -49,9 +49,11 @@ class Budget:
         self.tasks += sum(len(plan.to_dict()['tasks']) for plan in plans); self.rows += inspected_rows
 
 
-def scope_rows(db, *, pool, period=None, metadata_bytes=None):
-    """Read one complete prepared snapshot scope without metric-availability joins."""
-    maximum=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
+def scope_rows(db, *, pool, period=None):
+    """Read one complete prepared snapshot scope without metric-availability joins.
+
+    MAX_CANDIDATES bounds the rows; a scope of that size retains a few MB.
+    """
     table = 'snapshots' if period is not None else 'latest_snapshots'
     args = [pool]
     where = 's.pool=?'
@@ -60,7 +62,7 @@ def scope_rows(db, *, pool, period=None, metadata_bytes=None):
     cursor = db.execute('SELECT s.*,c.name,c.sector,c.exchange,c.symbol AS _company_symbol FROM ' + table +
         ' s LEFT JOIN companies c USING(symbol) WHERE ' + where + ' ORDER BY s.rowid', args)
     names = [item[0] for item in cursor.description]
-    rows = [];used=0
+    rows = []
     for row in cursor:
         backtest_control.checkpoint()
         if len(rows) == MAX_CANDIDATES:
@@ -68,11 +70,7 @@ def scope_rows(db, *, pool, period=None, metadata_bytes=None):
         detached=dict(zip(names,row))
         if detached.pop('_company_symbol') is None:
             raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.')
-        used+=_size(detached)+1
-        if used>maximum:raise definitions.FormulaError('WORK_LIMIT','/population','Complete pool metadata exceeds its byte ceiling.')
         rows.append(detached)
-    if _size(rows) > maximum:
-        raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool metadata exceeds its byte ceiling.')
     return rows
 
 
@@ -144,7 +142,7 @@ def _plan_work(plans, bounds):
     return inspected
 
 
-def _scope(db, view, capture, period, entry, *, latest, owner_scope, metadata_bytes=None):
+def _scope(db, view, capture, period, entry, *, latest, owner_scope):
     """Return one complete prepared scope's rows and roots after checking its owner scope."""
     if (type(owner_scope) is not dict or not (owner_scope == {'kind':'dated'} or
             (set(owner_scope) == {'kind','book'} and owner_scope['kind'] == 'prepared'
@@ -156,7 +154,7 @@ def _scope(db, view, capture, period, entry, *, latest, owner_scope, metadata_by
             and item['context_date'] == str(entry) and item['book'] == owner_scope['book']
             for item in view.projection['scopes'])):
         raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
-    rows=scope_rows(db,pool=pool,period=None if latest else period,metadata_bytes=metadata_bytes)
+    rows=scope_rows(db,pool=pool,period=None if latest else period)
     if len({row['symbol'] for row in rows}) != len(rows):
         raise definitions.FormulaError('INVALID_SHAPE','/population','Prepared scope contains duplicate companies.')
     roots=[dict(symbol=row['symbol'],pool=pool,mode='latest' if latest else 'historical',date=str(entry),owner_scope=owner_scope) for row in rows]
@@ -171,7 +169,7 @@ def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner
     if program is not None:
         strategy_requests.require_formula_support(program, engine, checkpoint=checkpoint)
     if owner_scope is None: owner_scope = dict(kind='dated')
-    rows,roots=_scope(db,view,capture,period,entry,latest=latest,owner_scope=owner_scope,metadata_bytes=metadata_bytes)
+    rows,roots=_scope(db,view,capture,period,entry,latest=latest,owner_scope=owner_scope)
     plans=_plans(program,roots,record_bytes,checkpoint,limits,metadata_bytes,engine) if program else []
     bounds=view.bounds
     inspected=2*len(rows)
@@ -287,8 +285,7 @@ class Executor:
     def select(self, db, period, entry, exit_day=None, *, latest=False, owner_scope=None):
         self.checkpoint()
         if owner_scope is None: owner_scope = dict(kind='dated')
-        rows, roots = _scope(db, self.view, self.capture, period, entry, latest=latest,
-                             owner_scope=owner_scope, metadata_bytes=self.metadata_bytes)
+        rows, roots = _scope(db, self.view, self.capture, period, entry, latest=latest, owner_scope=owner_scope)
         self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
         specification = deepcopy(self.capture['selection'])
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
