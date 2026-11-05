@@ -170,7 +170,7 @@ assert(html.includes('id="variable-workspace"') && html.includes('id="variable-a
 
 assert(html.includes('id="strategy-capture"') && html.includes('backtest/application/strategy_requests.py') && html.includes('192 KiB') && html.includes('256 KiB') && html.includes('There is no hidden minimum-yield condition.') && html.includes('Submission equality includes the complete payload and presentation.') && html.includes('capture_submitted()'), 'Explain captured strategy intent, detached restoration, comparison meanings, application bounds and unsaved capture');
 
-assert(html.includes('id="scalar-execution"') && html.includes('Scalar execution and immutable evidence') && html.includes('16,777,216 planned tasks') && html.includes('zero trials and zero periods') && html.includes('Download complete evidence') && html.includes('backtest/scalar_result_evidence.py'), 'Explain scalar Original execution, independent formats, complete scope/bounds, Latest and detached exports');
+assert(html.includes('id="scalar-execution"') && html.includes('Scalar execution and immutable evidence') && html.includes('no task, inspected-row or scope ceiling') && html.includes('zero trials and zero periods') && html.includes('Download complete evidence') && html.includes('backtest/scalar_result_evidence.py'), 'Explain scalar Original execution, independent formats, complete scope/bounds, Latest and detached exports');
 
 assert(!html.includes('Automatic producers remain eager.') && !html.includes('Automatic calculation submission and queue execution remain eager.'), 'Keep legacy and scalar producer descriptions distinct');
 

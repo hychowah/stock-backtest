@@ -40,11 +40,9 @@ class CoverageTests(unittest.TestCase):
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='legacy')
             with self.assertRaises(definitions.FormulaError):coverage.inspect(self.fixture.capture(pool='legacy'),dict(scope,generation=listing['generation']),self.fixture.db,view)
-    def test_work_bound_before_observation(self):
+    def test_metadata_bound_before_observation(self):
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            with patch.object(scalar_execution,'MAX_INSPECTED_ROWS',1),patch.object(coverage.reference,'evaluate',side_effect=AssertionError('observed')):
-                with self.assertRaises(definitions.FormulaError):coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
             with patch.object(scalar_execution,'MAX_METADATA_BYTES',8192),patch.object(coverage.reference,'evaluate',side_effect=AssertionError('observed')):
                 with self.assertRaises(definitions.FormulaError) as failure:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
                 self.assertEqual(failure.exception.code,'WORK_LIMIT')

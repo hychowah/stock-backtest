@@ -139,10 +139,8 @@ class ScalarTests(unittest.TestCase):
         self.fixture.db.execute("UPDATE metadata SET value='{}' WHERE key='daily_inputs'")
         with self.assertRaises(ValueError):view.validate()
         view.close()
-    def test_small_record_limit_and_aggregate_limit_fail_explicitly(self):
+    def test_small_record_limit_fails_explicitly(self):
         with self.assertRaises(d.FormulaError):self.fixture.select(self.fixture.capture(),record_bytes=100)
-        with patch.object(x,'MAX_TASKS',1):
-            with self.assertRaises(d.FormulaError):self.fixture.select(self.fixture.capture())
     def test_temporal_contexts_shrink_chunks_below_256_companies(self):
         expression=dict(op='lookback',months=1,arg=dict(op='parameter',id='annual.operating_margin'))
         stocks,records=self.fixture.select(self.fixture.capture(expression))
@@ -175,14 +173,6 @@ class ScalarTests(unittest.TestCase):
                 x.Executor(self.fixture.capture(),view,emit,checkpoint=check).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
         self.assertEqual(len(emitted),1)
         self.assertEqual(emitted[0]['type'],'evaluation')
-
-    def test_inspected_row_budget_rejects_before_any_observation(self):
-        records=[]
-        with self.fixture.view() as view, patch.object(x,'MAX_INSPECTED_ROWS',1), patch.object(x.reference,'evaluate',side_effect=AssertionError('No observations')):
-            with self.assertRaises(d.FormulaError) as caught:
-                x.Executor(self.fixture.capture(),view,records.append).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
-        self.assertEqual(caught.exception.code,'WORK_LIMIT')
-        self.assertEqual(records,[])
 
     def test_cancellation_reaches_chunk_evaluation(self):
         def stop():raise RuntimeError('cancelled')

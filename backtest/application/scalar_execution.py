@@ -23,9 +23,7 @@ MAX_CANDIDATES = selection.MAX_CANDIDATES
 # Retained per-scope rows and lane references. 16 MiB failed a real cached-pool
 # scope with four built-in lanes and one formula; MAX_CANDIDATES bounds the rows.
 MAX_METADATA_BYTES = 256 * 1024 * 1024
-MAX_TASKS = 16 * 1024 * 1024
 MAX_SCOPES = 16384
-MAX_INSPECTED_ROWS = 2**31
 
 
 def _size(value):
@@ -33,24 +31,21 @@ def _size(value):
 
 
 class Budget:
-    """Aggregate planned work and scalar metadata; encoded output belongs to sink."""
-    def __init__(self, *, trials=1, metadata_bytes=None):
+    """Count planned work for receipts and bound one scope's retained metadata.
+
+    A whole run has no work ceiling: it fails late, after the work is done, and
+    a run can be stopped. Encoded output belongs to the sink.
+    """
+    def __init__(self, *, metadata_bytes=None):
         self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
-        self.trials=trials
-        self.tasks = self.scopes = self.rows = 0
+        self.tasks = self.rows = 0
     def reserve(self, plans, metadata, inspected_rows):
-        tasks = sum(len(plan.to_dict()['tasks']) for plan in plans)
-        if (self.scopes + 1 > MAX_SCOPES//self.trials or self.tasks + tasks > MAX_TASKS//self.trials
-                or self.rows + inspected_rows > MAX_INSPECTED_ROWS//self.trials
-                or 2*_size(metadata) + sum(len(plan.document) for plan in plans) > self.metadata_bytes):
-            raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar execution exceeds its aggregate work or scope bound.')
-        self.tasks += tasks; self.scopes += 1; self.rows += inspected_rows
+        if 2*_size(metadata) + sum(len(plan.document) for plan in plans) > self.metadata_bytes:
+            raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar scope metadata exceeds its byte bound.')
+        self.extend(plans, inspected_rows)
     def extend(self, plans, inspected_rows):
-        """Add plans compiled after their scope's reservation."""
-        tasks = sum(len(plan.to_dict()['tasks']) for plan in plans)
-        if self.tasks + tasks > MAX_TASKS//self.trials or self.rows + inspected_rows > MAX_INSPECTED_ROWS//self.trials:
-            raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar execution exceeds its aggregate work or scope bound.')
-        self.tasks += tasks; self.rows += inspected_rows
+        """Count plans, including those compiled after their scope's reservation."""
+        self.tasks += sum(len(plan.to_dict()['tasks']) for plan in plans); self.rows += inspected_rows
 
 
 def scope_rows(db, *, pool, period=None, metadata_bytes=None):
@@ -212,12 +207,11 @@ class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run."""
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
-                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, aggregate_trials=1, metadata_bytes=None, engine='original'):
+                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, metadata_bytes=None, engine='original'):
         # The arithmetic callable consumes checked plans; the provider and global
         # selection keep their meanings. Prefixes qualify independent trial scopes.
         self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
-        if (type(aggregate_trials) is not int or not 1<=aggregate_trials<=100
-                or type(self.metadata_bytes) is not int or not 0<self.metadata_bytes<=MAX_METADATA_BYTES
+        if (type(self.metadata_bytes) is not int or not 0<self.metadata_bytes<=MAX_METADATA_BYTES
                 or type(scope_prefix) is not str or len(scope_prefix)>64):
             raise definitions.FormulaError('WORK_LIMIT','/execution','Invalid scalar execution reservation.')
         self.evaluate = evaluate or reference.evaluate
@@ -227,7 +221,7 @@ class Executor:
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
-        self.budget = Budget(trials=aggregate_trials,metadata_bytes=self.metadata_bytes); self.number = 0
+        self.budget = Budget(metadata_bytes=self.metadata_bytes); self.number = 0
         self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 
