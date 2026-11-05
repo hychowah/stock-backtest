@@ -226,22 +226,16 @@ class Writer:
                 self.peak_piece_bytes = max(self.peak_piece_bytes,len(data))
                 buffer.clear()
 
-            encoder = json.JSONEncoder(allow_nan=False,separators=(',',':'))
-            for token in encoder.iterencode(record):
-                # iterencode can return an entire escaped string scalar. Slice
-                # it before byte encoding; the separate scalar/record cap is
-                # still needed to bound the encoder's own string temporary.
-                for offset in range(0,len(token),self.piece_bytes):
-                    data = token[offset:offset+self.piece_bytes].encode('ascii')
-                    record_size += len(data)
-                    if record_size > self.record_bytes:
-                        raise ValueError('Evidence exceeds its record byte bound.')
-                    record_digest.update(data)
-                    position = 0
-                    while position < len(data):
-                        if len(buffer) == self.piece_bytes: piece(0)
-                        count = min(self.piece_bytes-len(buffer),len(data)-position)
-                        buffer.extend(data[position:position+count]); position += count
+            # The C encoder writes the same ASCII bytes as the incremental one.
+            # Pieces fill at fixed byte boundaries, so the frames are unchanged.
+            data = json.dumps(record, allow_nan=False, separators=(',',':')).encode('ascii')
+            record_size = len(data)
+            if record_size > self.record_bytes:
+                raise ValueError('Evidence exceeds its record byte bound.')
+            record_digest.update(data)
+            for offset in range(0, len(data), self.piece_bytes):
+                if len(buffer) == self.piece_bytes: piece(0)
+                buffer.extend(data[offset:offset+self.piece_bytes])
             piece(1)
             self.peak_record_bytes = max(self.peak_record_bytes,record_size)
             if record['type'] != 'complete': self._digest.update(record_digest.digest())
