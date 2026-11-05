@@ -181,50 +181,12 @@ def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner
     return rows,roots,plans,inspected
 
 
-def _dates(report):
-    return None if report is None else {key: report.get(key) for key in ('fiscal', 'known')}
-
-
-def _slim_member(member):
-    """Keep values, dates, reasons, the file and its digest; drop raw row positions and row hashes."""
-    evidence = member.get('evidence')
-    if isinstance(evidence, dict):
-        slim = {key: evidence[key] for key in ('known_date', 'availability_model', 'lookup_policy', 'lookups',
-                                               'session', 'field', 'conversion', 'policy', 'source', 'key',
-                                               'stored', 'reason') if key in evidence}
-        if isinstance(slim.get('source'), dict):
-            slim['source'] = {key: slim['source'][key] for key in ('endpoint', 'sha256', 'disposition') if key in slim['source']}
-        if 'fields' in evidence:
-            slim['fields'] = {name: None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
-                              for name, state in evidence['fields'].items()}
-        if 'state' in evidence:
-            state = evidence['state']
-            slim['state'] = None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
-        if 'report' in evidence:
-            slim['report'] = _dates(evidence['report'])
-        member = dict(member, evidence=slim)
-    return member
-
-
-def _slim_block(block):
-    """Shrink one explanation block; the trace shape the viewer reads is unchanged."""
-    observations = block['observations']
-    results = [dict(item, anchor_report=_dates(item.get('anchor_report')),
-                    members=[_slim_member(member) for member in item['members']])
-               for item in observations['results']]
-    roots = [{key: root[key] for key in root if key not in ('admission_evidence', 'statement')}
-             for root in observations['roots']]
-    # The result header carries the projection once; the block keeps its content hash.
-    identity = dict(block['identity'], projection=block['identity']['projection']['content'])
-    return dict(block, identity=identity, observations=dict(observations, results=results, roots=roots))
-
-
 class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run.
 
     Formulas are evaluated values-only (variables/columns.py) for the rows that
-    can still be selected. With explain, the reference evaluator then traces
-    the selected rows only, and its values must equal the column values.
+    can still be selected. With explain, the same evaluator then traces the
+    selected rows only: inputs, dates, reasons, source digests and operations.
     Without it (random-date runs), selected rows keep their formula values and
     reasons but no step trace.
     """
@@ -374,26 +336,20 @@ class Executor:
                     references[index][lane_of(role)] = dict(scope=identity, variable_id=key[0], revision=key[1],
                         value=value, valid=valid, reason=reason, unit=outputs[key]['unit'], display=outputs[key]['display'])
         elif formula_roles and chosen:
-            # Explain the selected rows with the reference evaluator. Its values
-            # must equal the column values the selection used.
+            # Explain the selected rows with the column evaluator's detail
+            # mode. A block larger than one evidence record is split in half.
             def explain(indices):
-                # The provider bounds each chunk's facts; owner lanes in dated
-                # scopes can exceed it, so a refused chunk is split in half.
-                plans = _plans(self.program, [roots[i] for i in indices], self.record_bytes, self.checkpoint)
-                for plan in plans:
-                    self.checkpoint()
-                    width = len(plan.to_dict()['requests'])
-                    group, indices = indices[:width], indices[width:]
-                    try:
-                        block = reference.evaluate(plan, self.view, self.checkpoint).to_dict()
-                    except (observations.ObservationError, definitions.FormulaError) as error:
-                        if error.code != 'WORK_LIMIT' or len(group) == 1:
-                            raise
-                        yield from explain(group[:len(group)//2]); yield from explain(group[len(group)//2:])
-                        continue
-                    yield group, block
+                self.checkpoint()
+                block = self.formulas.explain([roots[i] for i in indices], self.view, self.checkpoint,
+                                              decisions=[decisions[i] for i in indices], facts=self.facts)
+                if _size(block) > self.record_bytes - 4096:
+                    if len(indices) == 1:
+                        raise definitions.FormulaError('WORK_LIMIT', '/execution',
+                            'One explained row exceeds the evidence record bound.')
+                    yield from explain(indices[:len(indices)//2]); yield from explain(indices[len(indices)//2:])
+                    return
+                yield indices, block
             for chunk, (group, block) in enumerate(explain(chosen)):
-                block = _slim_block(block)
                 records.append(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
                 for item in block['results']:
                     position = group[item['request']]
@@ -401,10 +357,6 @@ class Executor:
                         source = role_sources[role]
                         if (source['variable_id'], source['revision']) != (item['variable_id'], item['revision']):
                             continue
-                        column = computed[position][(item['variable_id'], item['revision'])]
-                        explained = (item['value'] if item['valid'] else None, item['valid'], item['reason'])
-                        if (column[1], column[2]) != explained[1:] or (column[1] and column[0].hex() != float(explained[0]).hex()):
-                            raise RuntimeError('Column and reference formula values differ for ' + rows[position]['symbol'] + '.')
                         references[position][lane_of(role)] = dict(scope=identity, chunk=chunk, request=item['request'],
                             variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
                             valid=item['valid'], reason=item['reason'])

@@ -77,19 +77,20 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(sum(len(b['block']['requests']) for b in blocks),5)
         self.assertEqual([r['value']['rows'] for r in records if r['type']=='scope'],[300])
         self.assertTrue(all(h['ranking_unit']=='USD' for h in stocks))
-    def test_explanation_chunk_refused_by_provider_is_split(self):
-        expected,_=self.fixture.select(self.fixture.capture())
-        original=x.reference.evaluate
-        def bounded(plan,view,checkpoint=lambda:None):
-            if len(plan.to_dict()['requests'])>1:
-                raise x.observations.ObservationError('WORK_LIMIT','/limits/bytes','Observation facts and result exceed their byte bound.')
-            return original(plan,view,checkpoint)
-        with patch.object(x.reference,'evaluate',side_effect=bounded):
-            stocks,records=self.fixture.select(self.fixture.capture())
+    def test_explanation_larger_than_one_record_is_split(self):
+        expected,records=self.fixture.select(self.fixture.capture())
+        whole=[r['value']['block'] for r in records if r['type']=='evaluation']
+        self.assertEqual([len(b['requests']) for b in whole],[5])
+        limit=len(d.canonical(whole[0]))+4096-1
+        stocks,records=self.fixture.select(self.fixture.capture(),record_bytes=limit)
         self.assertEqual([h['symbol'] for h in stocks],[h['symbol'] for h in expected])
         blocks=[r['value'] for r in records if r['type']=='evaluation']
-        self.assertEqual(([b['chunk'] for b in blocks],[len(b['block']['requests']) for b in blocks]),(list(range(5)),[1]*5))
-        self.assertTrue(all(lane['chunk']<5 and lane['request']==0 for h in stocks for lane in h['scalar_evidence']['lanes'].values()))
+        self.assertEqual(([b['chunk'] for b in blocks],[len(b['block']['requests']) for b in blocks]),([0,1],[2,3]))
+        self.assertTrue(all(len(d.canonical(b['block']))<=limit-4096 for b in blocks))
+        lanes=[h['scalar_evidence']['lanes']['ranking'] for h in stocks]
+        self.assertEqual([(lane['chunk'],lane['request']) for lane in lanes],[(0,0),(0,1),(1,0),(1,1),(1,2)])
+        with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture(),record_bytes=4096+64)
+        self.assertEqual(failure.exception.code,'WORK_LIMIT')
     def test_result_size_is_checked_before_work(self):
         from backtest.application import scalar_runs
         class Writer:max_bytes=4*1024**2

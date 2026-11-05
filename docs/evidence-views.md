@@ -239,10 +239,13 @@ their shape for historical scalar results. Scope/chunk-qualified links identify
 the original explanation records. Latest has screen rows and no trial.
 
 New scalar results explain the selected rows only. In January, latest and
-fixed-date runs the reference evaluator traces those rows, and its values must
-equal the column evaluator's values. A trace keeps values, validity, reasons,
-fiscal and known dates, lookups and the source file and its digest. It drops raw row
-positions, per-row hashes and repeated report statements. Random-date runs keep
+fixed-date runs the column evaluator's detail mode traces those rows: the same
+code that computed the values that ranked them. A trace keeps values, validity,
+reasons, fiscal, known and observation dates, the session day, lookups and the
+source file and its digest. It drops raw row positions, per-row hashes and
+repeated report statements. A trace block larger than one evidence record is
+split in half. Older results keep their reference-evaluator explanations, which
+open unchanged in the same viewer. Random-date runs keep
 each selected row's formula value, unit and reason without a step trace. Each
 holding carries its stored lane values; no separate `lanes` or `admission`
 record repeats them. The scope receipt still counts the complete prepared

@@ -205,6 +205,13 @@ def treasury(db, day):
     return None if row is None else (row[0], _states(month3=row[1:3], year10=row[3:5]))
 
 
+def source(db, symbol, endpoint):
+    """Return {endpoint, sha256, disposition} of one source file, or None."""
+    row = db.execute('SELECT sha256,disposition FROM fact_sources WHERE symbol=? AND endpoint=?',
+                     (symbol, endpoint)).fetchone()
+    return None if row is None else dict(endpoint=endpoint, sha256=row[0], disposition=row[1])
+
+
 def latest_admission(db, symbol, pool):
     """Return the prepared latest-root decision fields, or None for an unknown company."""
     row = db.execute('SELECT admitted,reason,candidate_rank,fiscal,known,market_cap,enterprise_value,ebitda '

@@ -13,13 +13,16 @@ view still owns historical admission, entry valuation and dated owner measures.
 Neither database can change while the view is open.
 """
 from datetime import date
+import hashlib
 import math
+from pathlib import Path
 
 from backtest import measure_observations, observations
 from backtest.inputs import dated_observation_inputs as dated_inputs, facts as typed
 from backtest.variables import definitions
 
 _OWNER_BYTES = 16 * 1024 * 1024
+_LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _fail(code, path, message):
@@ -35,6 +38,7 @@ class Facts:
         self._books = {(scope['mode'], scope['pool'], scope['context_date']): scope['book']
                        for scope in self.projection['scopes']}
         self._companies, self._reports, self._sessions, self._stock, self._treasury = {}, {}, {}, {}, {}
+        self._sources = {}
 
     def reports(self, symbol, pool):
         key = symbol, pool
@@ -52,7 +56,7 @@ class Facts:
         cached = self._companies.get(key)
         if cached is None:
             cached = self._companies[key] = dict(reports=self.reports(symbol, pool), annual={}, sources={}, loaded={})
-        annual, loaded = cached['annual'], cached['loaded']
+        annual, loaded, sources = cached['annual'], cached['loaded'], cached['sources']
         wanted = dict(requirements)
         if wanted:
             wanted.setdefault('income-statement', set())
@@ -64,6 +68,8 @@ class Facts:
             for fiscal, values in typed.annual(self.db, symbol, endpoint, missing).items():
                 states.setdefault(fiscal, {}).update(values)
             loaded.setdefault(endpoint, set()).update(missing)
+            if endpoint not in sources:
+                sources[endpoint] = self.source(symbol, endpoint)
         return cached
 
     def session(self, day):
@@ -81,6 +87,13 @@ class Facts:
         if day not in self._treasury:
             self._treasury[day] = typed.treasury(self.db, day)
         return self._treasury[day]
+
+    def source(self, symbol, endpoint):
+        """The source file's digest and disposition, as explanations keep them."""
+        key = symbol, endpoint
+        if key not in self._sources:
+            self._sources[key] = typed.source(self.db, symbol, endpoint)
+        return self._sources[key]
 
     def prepared(self, decision, context):
         """Owner values of the stored book row in a prepared scope, as measure_observations.prepared."""
@@ -127,8 +140,63 @@ class Facts:
         return decisions
 
 
+def _slim(evidence):
+    """Keep values, dates, reasons, the source file and its digest; drop raw row positions and row hashes."""
+    if not isinstance(evidence, dict):
+        return evidence
+    slim = {key: evidence[key] for key in ('known_date', 'availability_model', 'lookup_policy', 'lookups',
+                                           'session', 'field', 'conversion', 'policy', 'source', 'key',
+                                           'stored', 'reason') if key in evidence}
+    if isinstance(slim.get('source'), dict):
+        slim['source'] = {key: slim['source'][key] for key in ('endpoint', 'sha256', 'disposition') if key in slim['source']}
+    if 'stored' in slim:
+        slim['stored'] = measure_observations.detached(slim['stored'])
+    if 'fields' in evidence:
+        slim['fields'] = {name: None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
+                          for name, state in evidence['fields'].items()}
+    if 'state' in evidence:
+        state = evidence['state']
+        slim['state'] = None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
+    if 'report' in evidence:
+        slim['report'] = _dates(evidence['report'])
+    return slim
+
+
+def _dates(report):
+    return None if report is None else {key: str(report[key]) for key in ('fiscal', 'known')}
+
+
+class _Trace:
+    """One explained chunk, numbered as the evaluation plan numbered it.
+
+    Root contexts come first, one per distinct root, then derived contexts,
+    observations and operations in evaluation order.
+    """
+
+    def __init__(self):
+        self.contexts, self.roots, self.observations, self.operations, self.results = [], [], [], [], []
+
+    def root(self, root, decision):
+        identity = 'c' + str(len(self.contexts))
+        context = dict(id=identity, root=identity, date=root['date'])
+        if 'owner_scope' in root:
+            context['owner_scope'] = root['owner_scope']
+        self.contexts.append(context)
+        admission = {key: decision.get(key) for key in ('symbol', 'pool', 'mode', 'date', 'admitted', 'reason',
+                                                         'candidate_rank', 'valuation')}
+        if 'owner_scope' in root:
+            admission['owner_scope'] = root['owner_scope']
+        self.roots.append(dict(root=identity, **admission))
+        return identity
+
+    def context(self, root, day):
+        identity = 'c' + str(len(self.contexts))
+        self.contexts.append(dict(id=identity, root=root, date=day))
+        return identity
+
+
 class Formulas:
-    """One checked program, evaluated values-only over ordered roots."""
+    """One checked program, evaluated values-only over ordered roots, or explained in detail."""
 
     def __init__(self, program):
         self.projection = definitions.require_program(program)
@@ -152,18 +220,52 @@ class Formulas:
         """
         return [self._root(root, decision, view, facts, checkpoint) for root, decision in zip(roots, decisions)]
 
-    def _root(self, root, decision, view, facts, checkpoint):
+    def explain(self, roots, view, checkpoint, *, decisions, facts):
+        """Return one detached evaluation block that explains the roots.
+
+        The block has the shape website/browser/variable-evidence.js reads:
+        requests, program, observations (roots, contexts, results with members,
+        dates, reasons and source digests), operations and results. Its values
+        are the values-only evaluator's, computed by the same code.
+        """
+        trace, states = _Trace(), {}
+        for root, decision in zip(roots, decisions):
+            key = definitions.canonical(root)
+            if key not in states:
+                states[key] = dict(id=trace.root(root, decision))
+        for index, (root, decision) in enumerate(zip(roots, decisions)):
+            entry = states[definitions.canonical(root)]
+            if 'state' not in entry:
+                entry['state'] = self._root(root, decision, view, facts, checkpoint, trace=trace, identity=entry['id'])[1]
+            state = entry['state']
+            for definition in self.outputs:
+                task = state['ids'][definition['root'], ('root',)]
+                value, reason = state['tasks'][definition['root'], ('root',)]
+                trace.results.append(dict(request=index, root=entry['id'], variable_id=definition['variable_id'],
+                    revision=definition['revision'], unit=definition['unit'], display=definition['display'],
+                    value=value, valid=reason is None, reason=reason, evidence=dict(operation=task, admission=entry['id'])))
+        identity = dict(evaluator='columns', policy=policy_fingerprint(), bundle=self.projection['bundle_revision'],
+                        generation=view.identity, projection=facts.projection['content'])
+        return dict(format='formula-evaluation', version=1, program=self.projection, requests=list(roots),
+                    identity=identity, observations=dict(format='parameter-observations', version=1,
+                        generation=view.identity, projection=facts.projection['content'], roots=trace.roots,
+                        contexts=trace.contexts, results=trace.observations),
+                    operations=trace.operations, results=trace.results)
+
+    def _root(self, root, decision, view, facts, checkpoint, *, trace=None, identity=None):
         checkpoint()
         decision = dict(decision, owner_scope=root['owner_scope']) if 'owner_scope' in root else decision
         root_context = dict(id='root', root='root', date=root['date'])
         if 'owner_scope' in root:
             root_context['owner_scope'] = root['owner_scope']
         state = dict(tasks={}, observations={}, contexts={('root',): root_context}, anchors={})
+        if trace is not None:
+            state.update(trace=trace, root=identity, ids={}, context_ids={('root',): identity}, observation_ids={})
         result = {}
         for definition in self.outputs:
             outcome = self._task(definition['root'], ('root',), 1, root, decision, view, facts, state, checkpoint)
             result[(definition['variable_id'], definition['revision'])] = (outcome[0], outcome[1] is None, outcome[1])
-        return result
+        return (result, state) if trace is not None else result
 
     def _context(self, parent, node, state, depth):
         field = 'date' if node['op'] == 'at' else 'months'
@@ -181,6 +283,8 @@ class Formulas:
             if day > parent_day:
                 _fail('FUTURE_DATE', node['path'] + '/' + field, 'An observation date exceeds its parent date.')
             state['contexts'][key] = dict(id=key, root='root', date=str(day))
+            if 'trace' in state:
+                state['context_ids'][key] = state['trace'].context(state['root'], str(day))
         return key
 
     def _task(self, identity, context, depth, root, decision, view, facts, state, checkpoint):
@@ -190,16 +294,14 @@ class Formulas:
             return state['tasks'][key]
         node = self.nodes[identity]
         op = node['op']
-        operands = []
+        keys = []
         if op in ('add', 'sub', 'mul', 'div', 'positive_div'):
-            operands = [self._task(node[side], context, depth, root, decision, view, facts, state, checkpoint)
-                        for side in ('left', 'right')]
+            keys = [(node[side], context, depth) for side in ('left', 'right')]
         elif op in ('neg', 'ref'):
-            operands = [self._task(node['target'] if op == 'ref' else node['arg'], context, depth,
-                                   root, decision, view, facts, state, checkpoint)]
+            keys = [(node['target'] if op == 'ref' else node['arg'], context, depth)]
         elif op in ('at', 'lookback'):
-            child = self._context(context, node, state, depth + 1)
-            operands = [self._task(node['arg'], child, depth + 1, root, decision, view, facts, state, checkpoint)]
+            keys = [(node['arg'], self._context(context, node, state, depth + 1), depth + 1)]
+        operands = [self._task(*item, root, decision, view, facts, state, checkpoint) for item in keys]
         values = [item[0] for item in operands]
         reason = next((item[1] for item in operands if item[1] is not None), None)
         value = None
@@ -252,7 +354,33 @@ class Formulas:
         if value is not None and not math.isfinite(value):
             value, reason = None, 'NONFINITE_RESULT'
         state['tasks'][key] = value, reason
+        if 'trace' in state:
+            self._operation(key, node, [state['ids'][item[:2]] for item in keys], values, value, reason,
+                            root, decision, state)
         return value, reason
+
+    @staticmethod
+    def _operation(key, node, operands, values, value, reason, root, decision, state):
+        """Record one operation as the evaluation block lists it."""
+        trace = state['trace']
+        identity = state['ids'][key] = 't' + str(len(trace.operations))
+        item = dict(id=identity, node=node['id'], context=state['context_ids'][key[1]], operation=node['op'],
+                    path=node['path'], operands=operands, inputs=values, value=value, valid=reason is None, reason=reason)
+        if node['op'] in ('parameter', 'annual'):
+            observation = (key[1], node['parameter'], node['count'])
+            if observation not in state['observation_ids']:
+                # An unadmitted root observes nothing; its request still has a record.
+                state['observation_ids'][observation] = 'o' + str(len(trace.observations))
+                trace.observations.append(dict(id=state['observation_ids'][observation], parameter=node['parameter'],
+                    context=item['context'], root=state['root'], unit=observations._CATALOG[node['parameter']][0],
+                    anchor=None, anchor_report=None, candidate_rank=decision['candidate_rank'], members=[],
+                    valid=False, reason='ROOT_NOT_ADMITTED'))
+            item['observation'] = state['observation_ids'][observation]
+        if node['op'] == 'div':
+            item['denominator_rule'] = 'signed nonzero'
+        elif node['op'] == 'positive_div':
+            item['denominator_rule'] = 'positive'
+        trace.operations.append(item)
 
     def _observation(self, node, context_key, root, decision, view, facts, state, checkpoint):
         """Return (members, reason) as observe() reports one request."""
@@ -263,9 +391,10 @@ class Formulas:
         parameter = node['parameter']
         day = date.fromisoformat(context['date'])
         is_root = context_key == ('root',)
-        members, reason = [], None
+        detail = 'trace' in state
+        members, reason, anchor = [], None, None
         if parameter in observations._DATED:
-            members = [self._dated(parameter, root['symbol'], day, facts)]
+            members = [self._dated(parameter, root['symbol'], day, facts, detail)]
         elif parameter.startswith('owner.') and measure_observations.prepared_scope(facts.projection, decision, context):
             owner = state.setdefault('owner', {})
             if context_key not in owner:
@@ -274,6 +403,21 @@ class Formulas:
             members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1], checkpoint)]
         elif parameter == 'market.enterprise_value' and is_root:
             members = [dict(value=decision['valuation']['enterprise_value'], valid=True, reason=None)]
+            if detail:
+                # The root's statement and admission evidence; a dated book row
+                # repeats the entry valuation lookups that admitted it.
+                statement = decision.get('statement')
+                if statement is None:
+                    anchor = observations._anchor(facts.company(root['symbol'], root['pool'], self.requirements), day)[0]
+                else:
+                    anchor = observations._report(_dates(statement))
+                evidence = decision.get('admission_evidence')
+                if evidence is None and statement is None:
+                    evidence = view.entry(root['symbol'], anchor, day)[1]
+                elif evidence is None:
+                    evidence = dict(reason=decision['reason'])
+                members[0].update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year,
+                                  evidence=evidence)
         else:
             company = facts.company(root['symbol'], root['pool'], self.requirements)
             if context_key not in state['anchors']:
@@ -296,28 +440,59 @@ class Formulas:
                     valuation, evidence = view.entry(root['symbol'], anchor, day)
                     members = [dict(value=valuation['enterprise_value'] if valuation else None,
                                     valid=valuation is not None, reason=evidence['reason'])]
+                    if detail:
+                        members[0].update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year,
+                                          evidence=evidence)
+                if detail and parameter.startswith('owner.'):
+                    members[0].update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year)
+        if detail and parameter.startswith('owner.') and anchor is None and members:
+            members[0].update(fiscal_date=None, fiscal_year=None)
         if members:
             reason = next((member['reason'] for member in members if not member['valid']), None)
         elif reason is None:
             reason = 'ROOT_NOT_ADMITTED' if not decision['admitted'] else None
         state['observations'][key] = members, reason
+        if detail:
+            trace = state['trace']
+            state['observation_ids'][key] = 'o' + str(len(trace.observations))
+            trace.observations.append(dict(id=state['observation_ids'][key], parameter=parameter,
+                context=state['context_ids'][context_key], root=state['root'], unit=observations._CATALOG[parameter][0],
+                anchor=None if anchor is None else str(anchor['fiscal']), anchor_report=_dates(anchor),
+                candidate_rank=decision['candidate_rank'],
+                members=[dict(member, evidence=_slim(member.get('evidence'))) for member in members],
+                valid=bool(members) and reason is None, reason=reason))
         return members, reason
 
     @staticmethod
-    def _dated(parameter, symbol, day, facts):
+    def _dated(parameter, symbol, day, facts, detail=False):
         source = observations._DATED[parameter]
         endpoint, field = source['endpoint'], source['field']
         treasury = endpoint == dated_inputs.TREASURY
+        session = None
         if treasury:
             row = facts.treasury(day)
+            observed = row[0] if row else None
             state = row[1].get(field) if row else None
             reason = state['reason'] if state else 'MISSING_INPUT'
         else:
             session = facts.session(day)
+            observed = session
             row = facts.stock(symbol, date.fromisoformat(session)) if session else None
             state = row.get(field) if row else None
             reason = state['reason'] if state else 'MISSING_INPUT' if session else 'MISSING_SESSION'
         value = state['value'] if state and state['valid'] else None
         if value is not None and treasury:
             value /= 100
-        return dict(value=value, valid=reason is None, reason=reason)
+        member = dict(value=value, valid=reason is None, reason=reason)
+        if detail:
+            member.update(fiscal_date=None, fiscal_year=None, observation_date=observed, evidence=dict(
+                source=facts.source('' if treasury else symbol, endpoint),
+                session=None if session is None else dict(day=session), field=field, state=state,
+                lookup_policy='latest-source-date' if treasury else 'exact-own-stock-at-backward-spy-session-within-seven-days',
+                conversion='provider-percent-divided-by-100' if treasury else 'identity'))
+        return member
+
+
+def policy_fingerprint():
+    """Identify the loaded column evaluator and its observation policy."""
+    return _LOADED
