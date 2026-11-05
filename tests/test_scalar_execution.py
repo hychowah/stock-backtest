@@ -87,6 +87,14 @@ class ScalarTests(unittest.TestCase):
         blocks=[r['value'] for r in records if r['type']=='evaluation']
         self.assertEqual(([b['chunk'] for b in blocks],[len(b['block']['requests']) for b in blocks]),(list(range(5)),[1]*5))
         self.assertTrue(all(lane['chunk']<5 and lane['request']==0 for h in stocks for lane in h['scalar_evidence']['lanes'].values()))
+    def test_result_size_is_checked_before_work(self):
+        from backtest.application import scalar_runs
+        class Writer:max_bytes=4*1024**2
+        with self.fixture.view() as view:
+            executor=x.Executor(self.fixture.capture(),view,lambda record:None)
+            scalar_runs.check_size(Writer(),executor,100)
+            with self.assertRaisesRegex(d.FormulaError,'about [0-9]+ MB of results'):
+                scalar_runs.check_size(Writer(),executor,10000)
     def test_ties_across_chunks_use_candidate_rank_then_symbol(self):
         stocks,records=self.fixture.select(self.fixture.capture(language.constant('-1'),first=253,last=258))
         self.assertEqual([h['symbol'] for h in stocks],[f'A{i:04d}' for i in range(252,258)])

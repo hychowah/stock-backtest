@@ -185,6 +185,44 @@ def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner
     return rows,roots,plans,inspected
 
 
+def _dates(report):
+    return None if report is None else {key: report.get(key) for key in ('fiscal', 'known')}
+
+
+def _slim_member(member):
+    """Keep values, dates, reasons, the file and its digest; drop raw row positions and row hashes."""
+    evidence = member.get('evidence')
+    if isinstance(evidence, dict):
+        slim = {key: evidence[key] for key in ('known_date', 'availability_model', 'lookup_policy', 'lookups',
+                                               'session', 'field', 'conversion', 'policy', 'source', 'key',
+                                               'stored', 'reason') if key in evidence}
+        if isinstance(slim.get('source'), dict):
+            slim['source'] = {key: slim['source'][key] for key in ('endpoint', 'sha256', 'disposition') if key in slim['source']}
+        if 'fields' in evidence:
+            slim['fields'] = {name: None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
+                              for name, state in evidence['fields'].items()}
+        if 'state' in evidence:
+            state = evidence['state']
+            slim['state'] = None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
+        if 'report' in evidence:
+            slim['report'] = _dates(evidence['report'])
+        member = dict(member, evidence=slim)
+    return member
+
+
+def _slim_block(block):
+    """Shrink one explanation block; the trace shape the viewer reads is unchanged."""
+    observations = block['observations']
+    results = [dict(item, anchor_report=_dates(item.get('anchor_report')),
+                    members=[_slim_member(member) for member in item['members']])
+               for item in observations['results']]
+    roots = [{key: root[key] for key in root if key not in ('admission_evidence', 'statement')}
+             for root in observations['roots']]
+    # The result header carries the projection once; the block keeps its content hash.
+    identity = dict(block['identity'], projection=block['identity']['projection']['content'])
+    return dict(block, identity=identity, observations=dict(observations, results=results, roots=roots))
+
+
 class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run.
 
@@ -362,8 +400,7 @@ class Executor:
                         continue
                     yield group, block
             for chunk, (group, block) in enumerate(explain(chosen)):
-                # The result header carries the projection once; the block keeps its content hash.
-                block['identity'] = dict(block['identity'], projection=block['identity']['projection']['content'])
+                block = _slim_block(block)
                 records.append(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
                 for item in block['results']:
                     position = group[item['request']]
@@ -379,12 +416,10 @@ class Executor:
                             variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
                             valid=item['valid'], reason=item['reason'])
         records.append(dict(type='scope', value=receipt))
+        # Each holding carries its stored lane values; no separate lanes record repeats them.
         for index in chosen:
-            lanes = []
             for role in stored:
-                refs = builtin(role, rows[index]['symbol'])[1]
-                references[index][lane_of(role)] = refs; lanes.append(dict(lane=lane_of(role), **refs))
-            if lanes:records.append(dict(type='lanes', value=dict(scope=identity, symbol=rows[index]['symbol'], lanes=lanes)))
+                references[index][lane_of(role)] = builtin(role, rows[index]['symbol'])[1]
         output = []
         ranking_source = specification['ranking']['source']
         if ranking_source['kind'] == 'builtin':
