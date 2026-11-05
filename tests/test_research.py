@@ -213,6 +213,8 @@ class ResearchTests(unittest.TestCase):
             path=Path(tmp)/'research.sqlite'
             db=sqlite3.connect(path);db.executescript(r.SCHEMA)
             db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v)) for k,v in dict(version=r.SCHEMA_VERSION,inputs={'a':1},prices={'b':2}).items()]);db.commit();db.close()
+            # Readers compare the accepted signature; a data action refreshes it.
+            r.forget_signature()
             with patch.object(r,'signature',return_value={'a':1}),patch.object(r,'price_sources',return_value={'b':2}):
                 db=r.connect(path)
                 with self.assertRaises(sqlite3.OperationalError):db.execute('DELETE FROM metadata')
@@ -222,7 +224,10 @@ class ResearchTests(unittest.TestCase):
             with patch.object(r,'signature',return_value={'a':1}),patch.object(r,'price_sources',return_value={'b':3}):
                 with self.assertRaisesRegex(ValueError,'changed'):r.connect(path,full_prices=True)
             with patch.object(r,'signature',return_value={'a':3}):
+                r.connect(path).close()  # A hand edit is not seen before a data action.
+                r.forget_signature()
                 with self.assertRaisesRegex(ValueError,'changed'):r.connect(path)
+            r.forget_signature()
 
 
 class PreparationTests(unittest.TestCase):

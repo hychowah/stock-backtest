@@ -46,13 +46,14 @@ def _engine_sources():
             Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
 
 
-def fingerprint(source=None):
+def fingerprint(source=None, *, accepted=False):
     # Daily prices bind to the validated research price inventory. Changed
-    # prepared inputs refresh prices/books. Raw files are checked by metadata
-    # once; prepared rows are identified by their recorded metadata, not rescanned.
+    # prepared inputs refresh prices/books. Prepared rows are identified by
+    # their recorded metadata, not rescanned. Preparation inspects raw inputs
+    # afresh; readers compare the accepted signature.
     prices,observations=r.prepared_bindings(source or r.DATABASE)
     return dict(version=VERSION, observation_version=observation_inputs.VERSION,
-                inputs=r.signature(),prices=prices,observations=observations,
+                inputs=r.accepted_signature() if accepted else r.signature(),prices=prices,observations=observations,
                 engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
 
 def connect(path=DATABASE,source=None):
@@ -64,7 +65,7 @@ def connect(path=DATABASE,source=None):
     db.row_factory=sqlite3.Row
     try:
         saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-        if saved!=fingerprint(source):
+        if saved!=fingerprint(source, accepted=True):
             raise ValueError('Daily cache changed. Run: python3 scripts/schedules.py prepare')
     except Exception:
         db.close();raise

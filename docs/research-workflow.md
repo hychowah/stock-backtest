@@ -818,8 +818,11 @@ queries. Their facts are detached. Individual records and endpoint histories
 keep the existing ceilings. Provider preflight charges source, calendar and
 row reads. Retained evidence counts against its byte limit. Company and dated
 reads check view lifetime; they do not rescan the whole generation. Operation
-entry checks the daily fingerprint once: raw file metadata and the recorded
-research metadata, not the prepared rows. Between steps, Original checks one
+entry checks the daily fingerprint once: the accepted raw-file signature and
+the recorded research metadata, not the prepared rows. Inspecting about 36,000
+raw files takes about 1.7 seconds on the real cache, so readers reuse the
+signature taken by preparation or after the last data-panel action. A hand edit
+to `raw/` needs a data-panel check before readers see it. Between steps, Original checks one
 research-file status at each view boundary. The exclusive cache lock keeps the
 prepared rows unchanged for the whole operation.
 

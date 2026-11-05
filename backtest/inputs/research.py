@@ -85,6 +85,27 @@ def _metadata_entries(directory, pattern):
             for path in paths]
 
 
+_accepted = {}
+
+
+def accepted_signature():
+    """Return the raw-input signature that ordinary readers compare against.
+
+    signature() inspects about 36,000 files on the real cache. Readers reuse
+    the value taken at startup, by preparation and after each data-panel
+    action, so a hand edit to raw/ needs a data-panel check before readers see it.
+    """
+    key = str(RAW), str(ROOT)
+    if key not in _accepted:
+        _accepted.clear(); _accepted[key] = signature()
+    return _accepted[key]
+
+
+def forget_signature():
+    """Make the next reader inspect raw inputs again."""
+    _accepted.clear()
+
+
 def signature():
     """Return the current ordered input signature and report cutoff.
 
@@ -361,7 +382,7 @@ def connect(path=DATABASE, check=True, full_prices=False):
         meta={r['key']:json.loads(r['value']) for r in db.execute("SELECT * FROM metadata WHERE key IN ('version','inputs','prices')")}
         if meta.get('version') != SCHEMA_VERSION:
             raise ValueError('Database version changed; run research.py prepare')
-        if check and (meta.get('inputs')!=signature() or (full_prices and meta.get('prices')!=price_sources())):
+        if check and (meta.get('inputs')!=accepted_signature() or (full_prices and meta.get('prices')!=price_sources())):
             raise ValueError('Cached inputs changed. Run: python3 scripts/research.py prepare')
     except Exception:
         db.close()
@@ -434,6 +455,8 @@ def prepare(path=DATABASE, force=False):
     path=Path(path)
     owner=baseline.Baseline(RESULTS,path)
     owner.recover()
+    # Preparation is a data action: its readers inspect raw inputs afresh.
+    forget_signature()
     if path.exists() and not force:
         try:
             db=connect(path,full_prices=True)

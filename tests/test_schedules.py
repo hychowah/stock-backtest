@@ -447,7 +447,7 @@ class RefreshTests(unittest.TestCase):
         for owner,key,value in [(research,'RAW',raw),(market,'RAW',raw)]:
             self.context.enter_context(patch.object(owner,key,value))
         self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(daily,'fingerprint',side_effect=lambda source=None:{'fixture':self.generation}))
+        self.context.enter_context(patch.object(daily,'fingerprint',side_effect=lambda source=None,**kw:{'fixture':self.generation}))
         self.context.enter_context(patch.object(research,'prepare'))
         self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
         self.context.enter_context(redirect_stdout(io.StringIO()))

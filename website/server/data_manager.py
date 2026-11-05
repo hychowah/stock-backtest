@@ -381,7 +381,10 @@ class Jobs:
                 with self.lock:self.report=report
                 self.emit(warning=' '.join(report.get('warnings',[])))
                 self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
-            finally:ownership.__exit__(None,None,None)
+            finally:
+                # Readers compare raw inputs again after every data action.
+                r.forget_signature()
+                ownership.__exit__(None,None,None)
         except (Cancelled,backtest_control.Cancelled):
             diagnostics.note(outcome='cancelled')
             self.emit(message='Cancelled. Completed downloads were kept. Retry to continue.')
