@@ -80,8 +80,7 @@ def _day(value):
 
 class _Order:
     """Structural completeness only; financial arithmetic stays in the reducer."""
-    def __init__(self, first_trial=1):
-        self.first_trial = first_trial
+    def __init__(self):
         self.header = self.footer = None
         self.trials = self.periods = self.holdings = self.records = 0
         self.active_trial = self.active_period = False
@@ -110,7 +109,7 @@ class _Order:
             self.header = record
         elif kind == 'trial':
             if (self.active_trial or self.trials >= self.header['trials']
-                    or type(record['number']) is not int or record['number'] != self.first_trial+self.trials):
+                    or type(record['number']) is not int or record['number'] != 1+self.trials):
                 raise ValueError('Evidence trials must be contiguous and ordered.')
             self.active_trial = True
             self.trial_periods = 0
@@ -185,7 +184,7 @@ class Writer:
             result_contract=portfolio_results.CONTRACT_VERSION,trials=trials,metadata=metadata))
 
     def _initialize(self,stream,max_bytes,piece_bytes,record_bytes,checkpoint):
-        """Shared physical writer state; standalone trials omit the batch header."""
+        """Physical writer state shared with the scalar codec's writer."""
         _limits(max_bytes,piece_bytes,record_bytes)
         if stream.tell() != 0 or stream.seek(0,2) != 0:
             raise ValueError('Evidence output must be empty.')
@@ -195,7 +194,6 @@ class Writer:
         self.bytes_written = self.peak_piece_bytes = self.peak_record_bytes = 0
         self.failed = False
         self._order, self._digest = _Order(), hashlib.sha256()
-        self._trial_start = self._trial_digest = None
 
     def _write(self, record):
         if self.failed or self._order.footer is not None:
@@ -220,8 +218,6 @@ class Writer:
                 for part in (header,data,checksum):
                     if self.stream.write(part) != len(part):
                         raise OSError('Evidence stream write was incomplete.')
-                if self._trial_digest is not None:
-                    for part in (header,data,checksum):self._trial_digest.update(part)
                 self.bytes_written += size
                 self.peak_piece_bytes = max(self.peak_piece_bytes,len(data))
                 buffer.clear()
@@ -243,13 +239,7 @@ class Writer:
             self.failed = True
             raise
 
-    @property
-    def expected_trials(self):return self._order.header['trials']
-
     def start_trial(self, number):
-        self.stream.seek(self.bytes_written)
-        self._trial_start = self.bytes_written
-        self._trial_digest = hashlib.sha256()
         self._write(dict(type='trial',number=number))
 
     def period(self, value):
@@ -268,11 +258,6 @@ class Writer:
 
     def end_trial(self, summary):
         self._write(dict(type='end_trial',periods=self._order.trial_periods,summary=summary))
-        # The writer already checked every record. Sealing must remain usable
-        # with write-only streams; traversal later requires readable pinned bytes.
-        view=TrialView._from_writer(self,summary)
-        self._trial_digest = None
-        return view
 
     def finish(self, summary):
         """Bind original batch metadata and return the completed manifest."""
@@ -281,51 +266,6 @@ class Writer:
             sha256=self._digest.hexdigest(),summary=summary)
         self._write(manifest)
         return deepcopy(manifest)
-
-
-class SingleTrialWriter:
-    """Seal one actual recorded trial using the existing TrialView encoding.
-
-    The caller owns the empty binary stream. finish() returns a sealed view,
-    not a batch manifest or committed checkpoint. No placeholder trials, batch
-    header or completion record are written. On any failure discard the bytes.
-    """
-    def __init__(self,stream,*,number,max_bytes,piece_bytes=MAX_PIECE_BYTES,
-                 record_bytes=MAX_RECORD_BYTES,checkpoint=None):
-        if type(number) is not int or not 1<=number<=100:
-            raise ValueError('Invalid sealed trial number.')
-        self._writer=object.__new__(Writer)
-        self._writer._initialize(stream,max_bytes,piece_bytes,record_bytes,checkpoint)
-        self._writer._order=_Order(first_trial=number)
-        self._writer._order.accept(dict(type='header',format_version=FORMAT_VERSION,
-            result_contract=portfolio_results.CONTRACT_VERSION,trials=1,metadata={}),None)
-        self._finished=False
-        self._writer.start_trial(number)
-
-    @property
-    def failed(self):return self._writer.failed
-
-    @failed.setter
-    def failed(self,value):self._writer.failed=value
-
-    @property
-    def bytes_written(self):return self._writer.bytes_written
-
-    @property
-    def peak_piece_bytes(self):return self._writer.peak_piece_bytes
-
-    @property
-    def peak_record_bytes(self):return self._writer.peak_record_bytes
-
-    def period(self,value):
-        if self._finished:raise ValueError('Single-trial evidence is already sealed.')
-        self._writer.period(value)
-
-    def finish(self,summary):
-        if self._finished:raise ValueError('Single-trial evidence is already sealed.')
-        view=self._writer.end_trial(summary)
-        self._finished=True
-        return view
 
 
 def _object(pairs):
@@ -436,32 +376,6 @@ class Reader:
             yield record
         if order.footer is None:raise ValueError('Evidence ended before completion.')
 
-    def trials(self):
-        """Yield sealed trial views while retaining no earlier trial evidence."""
-        for _ in self._records():pass
-        start=None
-        for record,_,left,right in _physical_records(self.stream,0,self.max_bytes,
-                self.piece_bytes,self.record_bytes,self.checkpoint):
-            if record['type']=='trial':start=left;number=record['number']
-            elif record['type']=='end_trial':
-                sha=_range_digest(self.stream,start,right,self.checkpoint)
-                yield TrialView(self.stream,start=start,end=right,sha256=sha,number=number,
-                    piece_bytes=self.piece_bytes,record_bytes=self.record_bytes,checkpoint=self.checkpoint)
-                self.stream.seek(right)
-
-
-def _range_digest(stream,start,end,checkpoint):
-    position=stream.tell();stream.seek(start);digest=hashlib.sha256()
-    try:
-        remaining=end-start
-        while remaining:
-            if checkpoint is not None:checkpoint()
-            data=stream.read(min(65536,remaining))
-            if not data:raise ValueError('Truncated trial evidence.')
-            digest.update(data);remaining-=len(data)
-        return digest.hexdigest()
-    finally:stream.seek(position)
-
 
 def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,observe=None,physical=None,validate_values=True):
     """Decode bounded physical records; owners supply structural validation."""
@@ -495,72 +409,6 @@ def _physical_records(stream,start,end,piece_bytes,record_bytes,checkpoint,obser
         yield record,digest.digest(),left,position
         left=position;buffer.clear();digest=hashlib.sha256()
     if buffer:raise ValueError('Evidence ended before completion.')
-
-
-class TrialView:
-    """A sealed range of caller-owned evidence, independent of batch completion.
-
-    Preserve its bytes through reading. Traversal retains bounded records and
-    the current complete period. This object owns no path or financial resource.
-    Append operations cannot change its range. A changed range fails validation.
-    """
-    def __init__(self,stream,*,start,end,sha256,number,piece_bytes=MAX_PIECE_BYTES,
-                 record_bytes=MAX_RECORD_BYTES,checkpoint=None):
-        _limits(end-start,piece_bytes,record_bytes)
-        if type(number) is not int or not 1<=number<=100:raise ValueError('Invalid sealed trial number.')
-        self.stream,self.start,self.end,self.sha256=stream,start,end,sha256
-        self.number,self.piece_bytes,self.record_bytes=number,piece_bytes,record_bytes
-        self.checkpoint=checkpoint
-        self._summary=None;self.period_count=0
-        for record in self.records():
-            if record['type']=='end_trial':
-                self._summary=record['summary'];self.period_count=record['periods']
-
-    @classmethod
-    def _from_writer(cls,writer,summary):
-        view=object.__new__(cls)
-        view.stream,view.start,view.end=writer.stream,writer._trial_start,writer.bytes_written
-        view.sha256=writer._trial_digest.hexdigest()
-        view.number=writer._order.first_trial+writer._order.trials-1
-        view.piece_bytes,view.record_bytes=writer.piece_bytes,writer.record_bytes
-        view.checkpoint=writer.checkpoint
-        view._summary=deepcopy(summary);view.period_count=writer._order.trial_periods
-        return view
-
-    @property
-    def summary(self):return deepcopy(self._summary)
-
-    def records(self):
-        if _range_digest(self.stream,self.start,self.end,self.checkpoint)!=self.sha256:
-            raise ValueError('Sealed trial evidence changed.')
-        order=_Order()
-        order.accept(dict(type='header',format_version=FORMAT_VERSION,
-            result_contract=portfolio_results.CONTRACT_VERSION,trials=1,metadata={}),None)
-        for record,_,_,_ in _physical_records(self.stream,self.start,self.end,
-                self.piece_bytes,self.record_bytes,self.checkpoint):
-            if record['type'] in ('header','complete'):raise ValueError('Invalid sealed trial record.')
-            checked=record
-            if record['type']=='trial':
-                if type(record['number']) is not int or record['number']!=self.number:raise ValueError('Sealed trial number differs.')
-                checked=dict(record,number=1)
-            order.accept(checked,None)
-            yield record
-        if order.trials!=1 or order.active_trial or order.active_period:
-            raise ValueError('Sealed trial ended before completion.')
-
-    def periods(self):
-        period=None
-        for record in self.records():
-            kind=record['type']
-            if kind=='period':period=dict(record['value'],holdings=[])
-            elif kind=='holding':period['holdings'].append(record['value'])
-            elif kind=='end_period':
-                yield period
-                period=None
-
-    def copy_into(self,emit_period):
-        for period in self.periods():emit_period(period)
-        return self.summary
 
 
 def open_reader(stream, *, max_bytes, piece_bytes=MAX_PIECE_BYTES, record_bytes=MAX_RECORD_BYTES, checkpoint=None):

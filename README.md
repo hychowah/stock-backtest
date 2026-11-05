@@ -84,11 +84,11 @@ For an explanation of the program, open the [plain-language architecture guide](
 It is a separate static website. It works offline and includes diagrams, setting
 examples, a file map and the measured speed comparisons.
 
-The website runs only the **Original** engine. The experimental (Numba) engine
-was deleted from source on 5 November 2026. The server refuses a request that
-names it. Saved results from the experimental engine stay readable with their
-producer label. The [faster engine summary](docs/plans/compiled-backtest/master-plan.md)
-records its decisions and measured speeds. Historical timings are not a
+The website runs only the **Original** engine. The source has no experimental
+(Numba) engine. The server refuses a request that names it. Saved results from
+the experimental engine stay readable with their producer label. The
+[faster engine summary](docs/plans/compiled-backtest/master-plan.md) records its
+decisions and measured speeds. Historical timings are not a
 current-source speed guarantee.
 
 Custom ranking and filtering variables are part of `main`. Formulas combine
@@ -141,7 +141,7 @@ results/
 raw/                 Reusable universe, financial metrics, prices, SPY, Treasury data
   px/                One price-history file per stock
   archive/           Unused bulk downloads and exploratory responses
-tools/              Deployment, operations, retained API probes and comparison runner
+tools/              Deployment, operations and retained API probes
 tests/              Calculation and path checks
 docs/               Methodology, assumptions, and limitations
 ```

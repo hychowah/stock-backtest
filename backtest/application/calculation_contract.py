@@ -17,8 +17,8 @@ class Unavailable(ValueError):
 
 
 # Every engine id that a request or a stored record can name, with its label.
-# 'experimental' is frozen: records keep it and displays label it, but no live
-# owner runs it (AGENTS.md, Engines).
+# The experimental engine is deleted: records keep its id and displays label
+# it, but no live owner runs it (AGENTS.md, Engines).
 ENGINES={'original':'Original','experimental':'New engine — experimental'}
 
 

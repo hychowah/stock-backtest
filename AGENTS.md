@@ -24,10 +24,10 @@ not commit if it fails. After changing the check, run
 
 ## Current state and authorization
 
-Only `docs/plans/remove-slow-checks/` is active. Summaries give the outcome,
-key decisions and known limits. Original is the only engine the website runs.
-The experimental (Numba) engine was deleted on 2026-11-05 (see Engines); the
-benchmark harness and the Rust backend were removed earlier.
+All initiatives in `docs/plans/` are complete. Their summaries give the
+outcome, key decisions and known limits. Original is the only engine the
+website runs. The source has no experimental (Numba) engine, benchmark
+harness, engine comparison runner or Rust backend (see Engines).
 Custom variables are integrated into `main`. Source work does not establish
 installed readiness or real-cache coverage.
 
@@ -401,9 +401,8 @@ request and plan policy; preserve legacy planner hashes. Normal startup needs
 no numerical packages. Checks: `tests/test_calculations.py`,
 `tests/test_backtest_jobs.py` and `tests/test_package_structure.py`.
 
-The experimental (Numba) engine, its tests and the comparison runner were
-deleted on 2026-11-05. Leftover `data/numerical/` and
-`data/numerical-preparation.json` on the runtime are unused.
+Existing `data/numerical/` and `data/numerical-preparation.json` stay on the
+runtime; no source reads them.
 
 **Result access.** `backtest/application/result_access.py` owns acquired results,
 with 16 display readers and 32 request pins. Stored operations never prepare or

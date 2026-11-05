@@ -62,8 +62,8 @@ dates. Saved results and user data survive. A missing Git observation keeps the
 current server. A failed update retries automatically; pending journals stay in
 place for recovery. A staging failure leaves the old server serving.
 
-The experimental engine was deleted from source. The installed website neither
-prepares nor runs it.
+The source has no experimental engine. The website neither prepares nor runs
+it.
 
 For an already-installed revision without contacting WSL, run native Python directly:
 
@@ -132,11 +132,11 @@ The original folder keeps its source, history and saved data. Its old `backtest-
 
 The user architecture guide describes the current split.
 
-## Engine comparison runs
+## Private input copies
 
-The benchmark harness and the engine comparison runner were deleted with the
-experimental engine. Their decisions and measured results are recorded in the
-[faster engine summary](plans/compiled-backtest/master-plan.md).
-`tools/ops/offline_input_copy.py` still copies the saved inputs and the
-canonical report into a private root. It refuses while a server or data job
-holds ownership.
+`tools/ops/offline_input_copy.py` copies the saved raw inputs and the canonical
+report into a new private root. It has no command entry. It defers while a
+server, data job or pending publication holds ownership. A copy without its
+completion marker is unusable. The
+[faster engine summary](plans/compiled-backtest/master-plan.md) records the
+engine decisions and measured results.

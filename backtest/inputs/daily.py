@@ -233,8 +233,8 @@ def prepare(path=DATABASE, source=r.DATABASE):
     reference=r.connect(source,full_prices=True)
     saved=None
     if path.exists():
-        # inputs is this operation's fingerprint; recomputing it would rescan
-        # every observation row without a new freshness question.
+        # Compare the saved fingerprint with this operation's own. connect()
+        # would compute it again and ask no new freshness question.
         current,saved=_previous(path)
         if current==inputs:
             reference.close();print('Daily cache already current; no prices parsed.')

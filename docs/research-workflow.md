@@ -421,10 +421,11 @@ generate a new seed by default.
 On native Windows Python 3.12, 100 full-history annual random-date trials took
 103.4 seconds with one worker, 62.0 with two, 40.9 with four, and 33.2 with eight.
 A fresh serial requested-pool control took 133.3 seconds, matching the earlier
-133.1-second measurement. Four workers are the automatic default. The final applied implementation,
+133.1-second measurement. A four-worker run of the applied implementation,
 including forced-shutdown worker cleanup, took 43.2 seconds (about 3.1× faster
-than the serial control). Eight workers saved another 7.7 seconds while
-doubling the processes. Cached replays took about 5.6 seconds.
+than the serial control). Cached replays took about 5.6 seconds. These timings
+do not measure the current automatic policy of up to eight workers for at least
+16 missing books, or the once-per-worker financial decoding.
 
 All 100 complete holding/result digests and aggregate outcomes matched the saved
 reference exactly for every variant. Each batch prepared the same 3,082 unique

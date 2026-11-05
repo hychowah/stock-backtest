@@ -4,7 +4,6 @@ Application artifact 4 and financial contract 2 are independently allocated.
 Owners retain streams and all lifetime/resource charges. No input/library access
 is required to read, copy or export a completed scalar result.
 """
-from copy import deepcopy
 import hashlib
 
 from backtest import result_evidence as framing, portfolio_results
@@ -122,10 +121,6 @@ class Writer(framing.Writer):
         self._write(record)
     def screen(self, row):
         self._write(dict(type='screen',value=row))
-    def end_trial(self, summary):
-        self._write(dict(type='end_trial',periods=self._order.trial_periods,summary=summary))
-        self._trial_digest = None
-        return None
 
 
 class Reader(framing.Reader):
@@ -142,70 +137,4 @@ class Reader(framing.Reader):
             else:digest.update(raw_digest)
             yield record
         if order.footer is None:raise ValueError('Scalar evidence ended before completion.')
-    def trials(self):
-        raise ValueError('Scalar trials use bounded application record readers.')
 
-
-class SingleTrialWriter:
-    """Seal one scalar trial, including every explanation, without a batch header.
-
-    Metadata contains the complete immutable strategy. The caller owns the empty
-    stream and its reservation. A finished view is provisional until committed.
-    """
-    def __init__(self,stream,*,number,metadata,max_bytes,piece_bytes=framing.MAX_PIECE_BYTES,
-                 record_bytes=framing.MAX_RECORD_BYTES,checkpoint=None):
-        if type(number) is not int or not 1<=number<=100:raise ValueError('Invalid scalar trial number.')
-        self._writer=object.__new__(Writer)
-        self._writer._initialize(stream,max_bytes,piece_bytes,record_bytes,checkpoint)
-        self._writer._order=Order(first_trial=number)
-        self._writer._order.accept(dict(type='header',format_version=2,result_contract=2,
-            trials=1,metadata=metadata),None)
-        self.metadata=deepcopy(metadata)
-        self.record_bytes=record_bytes
-        self._finished=False
-        self._writer.start_trial(number)
-
-    @property
-    def failed(self):return self._writer.failed
-    @failed.setter
-    def failed(self,value):self._writer.failed=value
-    def evidence(self,record):self._writer.evidence(record)
-    def period(self,value):self._writer.period(value)
-    def finish(self,summary):
-        if self._finished:raise ValueError('Scalar trial is already sealed.')
-        self._writer._write(dict(type='end_trial',periods=self._writer._order.trial_periods,summary=summary))
-        view=TrialView._from_writer(self._writer,summary)
-        self._writer._trial_digest=None
-        view.metadata=deepcopy(self.metadata)
-        self._finished=True
-        return view
-
-
-class TrialView(framing.TrialView):
-    """A caller-owned scalar trial range with complete immutable explanations."""
-    codec=2
-    def __init__(self,*args,metadata,**kwargs):
-        self.metadata=deepcopy(metadata)
-        super().__init__(*args,**kwargs)
-
-    def records(self):
-        if framing._range_digest(self.stream,self.start,self.end,self.checkpoint)!=self.sha256:
-            raise ValueError('Sealed scalar trial evidence changed.')
-        order=Order(first_trial=self.number)
-        order.accept(dict(type='header',format_version=2,result_contract=2,trials=1,
-            metadata=self.metadata),None)
-        for record,_,_,_ in framing._physical_records(self.stream,self.start,self.end,
-                self.piece_bytes,self.record_bytes,self.checkpoint):
-            if record['type'] in ('header','complete'):raise ValueError('Invalid sealed scalar trial record.')
-            order.accept(record,None)
-            yield record
-        if order.trials!=1 or order.active_trial or order.active_period or order.scope is not None:
-            raise ValueError('Sealed scalar trial ended before completion.')
-
-    def replay_into(self,writer):
-        """Copy original record contents; only outer physical framing is rebuilt."""
-        if writer._order.header['format_version']!=2:
-            raise ValueError('Scalar trial requires a scalar evidence destination.')
-        for record in self.records():
-            if record['type'] not in ('trial','end_trial'):writer._write(record)
-        return self.summary

@@ -64,39 +64,14 @@ validation, so those checks are not repeated. Fields, insertion order, numeric
 types and signed zero are unchanged. The caller must preserve immutable bytes
 throughout traversal. This is not protection against a concurrent hostile writer.
 `evidence_views` selects this operation for pages and CSV traversal. Initial
-construction, ordinary `records()` and sealed-trial validation stay unchanged.
-
-## Sealed trial views
-
-`writer.end_trial(summary)` returns a `TrialView` before batch completion.
-It binds the original trial number, byte range, physical SHA-256, period counts
-and scalar summary. Later appends do not change its range. `Reader.trials()`
-provides the same views over an already completed batch. A view owns no file.
-The caller must preserve its bytes through each operation. Use one traversal
-at a time for each stream. Writer appends restore their own stream position.
-Writing alone still supports write-only files. View traversal requires readable
-pinned bytes.
-
-`view.records()` validates the sealed range and yields bounded records.
-`view.periods()` assembles one complete period at a time. A period can exceed a
-record limit because its holdings have separate records. `view.copy_into(sink)`
-forwards complete periods and returns the original scalar summary. These methods
-do not retain earlier periods. They do not validate financial arithmetic.
-
-`SingleTrialWriter(stream, number=37, max_bytes=..., piece_bytes=...,
-record_bytes=...)` writes one standalone sealed trial. Send complete periods to
-`period`, then call `finish(summary)` to obtain its `TrialView`. The actual
-recorded number stays 37. No preceding trials or batch header are fabricated.
-This reuses the batch writer's framing, bounds and structural validation.
-Standalone bytes are a sealed trial range, not a completed batch for `Reader`.
-The stream remains caller-owned. Failure makes the writer unusable.
+construction and ordinary `records()` stay unchanged.
 
 The caller declares the total ceiling. Piece and record ceilings retain the
 format's existing 1 MiB and 8 MiB maxima. These codec limits bound decoding and
 encoded records. They are not hardware recommendations or total process-memory
 limits.
 
-Sealing a trial does not complete its batch. A cancelled or failed batch has no
+Ending a trial does not complete its batch. A cancelled or failed batch has no
 final manifest. Existing owners control publication after successful completion
 and required resource closure.
 
@@ -161,16 +136,8 @@ eager calculations, queue calls, legacy endpoints and browser routes keep their
 complete-result contracts and admission limits. The new operation has no capture
 parameter. Complete-trial observers still receive original complete trials.
 
-The deleted experimental child wrote one bounded readable spool. Then
-`backtest/application/evidence_transfer.py` copied its exact bytes through one
-64 KiB binary slot. The protocol stays in source and its tests. Each transfer has a fresh identity, length and SHA-256. Each piece binds sequence, offset, length and hash. The parent
-acknowledges that identity and sequence after a successful write and slot closure.
-The child waits before replacing the slot. Final acknowledgement follows exact
-saved-byte verification and complete codec validation. Missing, corrupt, duplicate,
-reordered or interrupted transfers cannot publish a job result. Stop and callback
-failures retain the existing runtime retirement proof and original error.
-
-Recorded plans use a fixed runtime-owned file. Its versioned reference contains
+`backtest/application/evidence_transfer.py` stages recorded plans in a fixed
+runtime-owned file. Its versioned reference contains
 length, hash and file identity; it accepts no path. Serialization uses bounded
 buffers. Reading rejects links, replacement, duplicate keys, nonfinite numbers,
 truncation and changed content. Staged plans have a separate 16 MiB encoded bound.
@@ -182,13 +149,13 @@ resampled. Eager requests retain their 1 MiB bound; eager payloads retain 64 MiB
 Original configuration callbacks still receive the complete plan.
 
 Existing Jobs owns its private temporary workspace through `backtest.application.temporary_evidence`.
-It reserves both producer and receiver evidence ceilings, two staged-plan ceilings
-when a plan is supplied, and two 64 KiB slot buffers. The aggregate default is
+It reserves twice the evidence ceiling, two staged-plan ceilings when a plan is
+supplied, and two 64 KiB buffers. The aggregate default is
 1 GiB of charged temporary evidence/input storage. It is a private dormant
 accounting policy, not a filesystem quota or accepted workflow budget.
 
-While receiving, the whole reservation remains charged. On success, Jobs checks
-the copied bytes and codec again, then publishes its own immutable completed
+While Original writes, the whole reservation remains charged. On success, Jobs
+checks the written bytes and codec again, then publishes its own immutable completed
 file. It removes staged inputs and charges actual surviving bytes. Failed input
 cleanup remains charged. Completed results have the existing four-run and
 24-hour retention. Admission exhaustion preserves earlier completed results.

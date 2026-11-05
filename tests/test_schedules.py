@@ -542,7 +542,6 @@ class RefreshTests(unittest.TestCase):
         refreshed,current=[record for record in diagnostics.records(folder) if record['event']=='prepare.daily']
         counts=refreshed['counts']
         self.assertEqual((refreshed['outcome'],refreshed['symbols'],counts['prices_copied'],counts['prices_parsed']),('refreshed',3,1,2))
-        self.assertNotIn('observation_identity_scans',counts)  # Copied rows keep their recorded identity.
         self.assertEqual((refreshed['books_previous'],refreshed['books_kept'],refreshed['changed_from']),(6,6,'2015-08-03'))
         self.assertLessEqual({'admission','research','input_check','copy_research','prices','market','keep_books','publication'},refreshed['stages'].keys())
         self.assertEqual(current['outcome'],'current')

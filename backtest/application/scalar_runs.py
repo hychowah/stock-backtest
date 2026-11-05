@@ -2,7 +2,7 @@
 
 The caller owns admitted connections, borrowed observation view and output writer.
 Calendar sampling, trial book publication and portfolio arithmetic remain delegated
-owners. This module never owns a library lookup or a numerical attachment.
+owners. This module never owns a library lookup.
 """
 from datetime import date
 import time

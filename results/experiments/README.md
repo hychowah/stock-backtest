@@ -4,8 +4,7 @@ These summaries are separate from the canonical `results/summary-exits.txt`.
 Each one keeps its original settings. Old timings are historical measurements,
 not current-source speed guarantees. Raw logs, holdings and benchmark output
 stay in ignored `tmp/` under the [records policy](../../docs/records-policy.md).
-The benchmark harness that produced them was removed. The comparison runner
-was deleted with the experimental engine on 2026-11-05.
+The source has no benchmark harness or engine comparison runner.
 
 ## Original engine speed work
 
@@ -23,9 +22,10 @@ status and trial outcome exactly.
 - Applied requested-pool engine: all 100 trials in 133.1 seconds.
 - Upfront planning with one short read transaction per book: 103.4, 62.0, 40.9
   and 33.2 seconds with 1, 2, 4 and 8 workers. A rejected autocommit-read
-  prototype took 261.4, 178.6, 163.3 and 155.0 seconds. Four workers are the
-  default. The final four-worker run took 43.2 seconds, including worker cleanup
-  after forced parent termination.
+  prototype took 261.4, 178.6, 163.3 and 155.0 seconds. A four-worker run of
+  the applied code took 43.2 seconds, including worker cleanup after forced
+  parent termination. No run here measures the current default of up to eight
+  workers for at least 16 missing books.
 - `performance.json`: local preparation, query and build timings for the
   research database.
 

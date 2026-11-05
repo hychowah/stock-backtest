@@ -115,7 +115,7 @@ class Original(Control):
         if engine!=self.engine:
             from backtest.variables.definitions import FormulaError
             raise FormulaError('UNSUPPORTED_CAPABILITY','/engine',
-                ENGINES[engine]+' is frozen and cannot run. Choose Original to run this test.')
+                'The experimental engine is not available. Choose Original to run this test.')
         strategy_requests.check_options(options)
         if planned is not None:strategy_requests.validate_recorded(options,planned)
         return self.engine

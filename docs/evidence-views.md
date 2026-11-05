@@ -238,10 +238,10 @@ use the existing bounded cursor pages. Trial/period/holding operations retain
 their shape for historical scalar results. Scope/chunk-qualified links identify
 the original explanation records. Latest has screen rows and no trial.
 
-New scalar results explain the selected rows only. In fixed-date and latest
-runs the reference evaluator traces those rows, and its values must equal the
-column evaluator's values. A trace keeps values, validity, reasons, fiscal and
-known dates, lookups and the source file and its digest. It drops raw row
+New scalar results explain the selected rows only. In January, latest and
+fixed-date runs the reference evaluator traces those rows, and its values must
+equal the column evaluator's values. A trace keeps values, validity, reasons,
+fiscal and known dates, lookups and the source file and its digest. It drops raw row
 positions, per-row hashes and repeated report statements. Random-date runs keep
 each selected row's formula value, unit and reason without a step trace. Each
 holding carries its stored lane values; no separate `lanes` or `admission`
@@ -251,8 +251,7 @@ population. Older results keep their explanations and open unchanged.
 With a built-in ranking and filter-first order, formulas are evaluated only for
 rows that are admitted, have a ranking value and pass every built-in condition
 and bound. No other row can be selected, so holdings do not change. Admission
-and built-in lanes still cover every row, and the receipt's work counts include
-only the evaluated rows.
+and built-in lanes still cover every row.
 
 The complete `evidence` attachment streams the original checksummed framed file,
 including its captured strategy and every explanation. Scalar `holdings`/`screen`

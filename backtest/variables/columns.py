@@ -93,19 +93,12 @@ class Formulas:
                 elif node['parameter'] == 'annual.operating_margin':
                     self.requirements.setdefault('income-statement', set()).update(('operatingIncome', 'revenue'))
 
-    def evaluate(self, roots, view, checkpoint=lambda: None, *, decisions=None, facts=None):
+    def evaluate(self, roots, view, checkpoint, *, decisions, facts):
         """Return one {(variable_id, revision): (value, valid, reason)} per root.
 
-        decisions are the roots' admission decisions in order; without them the
-        view admits every root, as observe() does.
+        decisions are the roots' admission decisions in order. facts caches the
+        view's decoded company facts across calls.
         """
-        facts = facts or Facts(view)
-        if decisions is None:
-            decisions = []
-            for first in range(0, len(roots), 256):
-                group = [dict(id='r' + str(i), **root) for i, root in enumerate(roots[first:first + 256])]
-                budget = dict(rows=2 * (view.bounds['report_rows'] + view.bounds['population']), bytes=16 * 1024 * 1024)
-                decisions.extend(view.admit(group, budget, checkpoint))
         return [self._root(root, decision, view, facts, checkpoint) for root, decision in zip(roots, decisions)]
 
     def _root(self, root, decision, view, facts, checkpoint):
@@ -272,8 +265,3 @@ class Formulas:
         if value is not None and treasury:
             value /= 100
         return dict(value=value, valid=reason is None, reason=reason)
-
-
-def evaluate(program, roots, view, checkpoint=lambda: None, *, decisions=None, facts=None):
-    """Evaluate program values-only; see Formulas.evaluate."""
-    return Formulas(program).evaluate(roots, view, checkpoint, decisions=decisions, facts=facts)

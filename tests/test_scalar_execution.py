@@ -66,7 +66,7 @@ class ScalarTests(unittest.TestCase):
         self.fixture.db.execute("DELETE FROM companies WHERE symbol='A0000'")
         with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture())
         self.assertEqual(failure.exception.path,'/population')
-    def test_more_than_256_candidates_rank_globally_with_complete_chunks(self):
+    def test_more_than_256_candidates_rank_globally_and_explain_only_selected_rows(self):
         stocks,records=self.fixture.select(self.fixture.capture())
         self.assertEqual([h['symbol'] for h in stocks],[f'A{i:04d}' for i in range(299,294,-1)])
         # Formulas run for all 300 candidates; explanations cover the 5 selected rows.
@@ -172,12 +172,16 @@ class ScalarTests(unittest.TestCase):
     def test_small_record_limit_fails_explicitly(self):
         with self.assertRaises(d.FormulaError):self.fixture.select(self.fixture.capture(),record_bytes=100)
     def test_temporal_contexts_shrink_chunks_below_256_companies(self):
-        expression=dict(op='lookback',months=1,arg=dict(op='parameter',id='annual.operating_margin'))
-        stocks,records=self.fixture.select(self.fixture.capture(expression))
-        blocks=[record['value']['block'] for record in records if record['type']=='evaluation']
-        self.assertEqual(sum(len(block['requests']) for block in blocks),len(stocks))
-        self.assertTrue(all(len(block['requests'])<=128 for block in blocks))
-        self.assertEqual(len(stocks),5)
+        roots=[dict(symbol=f'A{i:04d}',pool='cached',mode='historical',date='2015-01-02',owner_scope=dict(kind='dated')) for i in range(256)]
+        def widths(expression):
+            checked=s.require_strategy(self.fixture.capture(expression))
+            program=library.VariableCapture(d.canonical(checked['variables'])).program
+            return [len(plan.to_dict()['requests']) for plan in x._plans(program,roots,8*1024**2,lambda:None)]
+        self.assertEqual(widths(None),[256])
+        temporal=widths(dict(op='lookback',months=1,arg=dict(op='parameter',id='annual.operating_margin')))
+        self.assertGreater(len(temporal),1)
+        self.assertTrue(all(width<=128 for width in temporal))
+        self.assertEqual(sum(temporal),256)
     def test_entry_admission_and_missing_return_rows_have_distinct_scope_counts(self):
         self.fixture.db.execute("DELETE FROM snapshots WHERE symbol='A0299'")
         stocks,records=self.fixture.select(self.fixture.capture())

@@ -21,8 +21,11 @@ from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library, reference, evaluation
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
-# Retained per-scope rows and lane references. 16 MiB failed a real cached-pool
-# scope with four built-in lanes and one formula; MAX_CANDIDATES bounds the rows.
+# Encoded-byte bound on coverage and plan metadata. Variable coverage checks the
+# recorded projection alone, then one scope's rows (twice) with its compiled
+# plans (Budget.reserve), then those plus the projection and reason tables.
+# _plans caps the compiled plans of each call: previews, coverage scopes and
+# selected-row explanations.
 MAX_METADATA_BYTES = 256 * 1024 * 1024
 MAX_SCOPES = 16384
 
@@ -32,21 +35,18 @@ def _size(value):
 
 
 class Budget:
-    """Count planned work for receipts and bound one scope's retained metadata.
+    """Count planned tasks for receipts and bound one scope's retained metadata.
 
     A whole run has no work ceiling: it fails late, after the work is done, and
     a run can be stopped. Encoded output belongs to the sink.
     """
-    def __init__(self, *, metadata_bytes=None):
-        self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
-        self.tasks = self.rows = 0
-    def reserve(self, plans, metadata, inspected_rows):
+    def __init__(self):
+        self.metadata_bytes = MAX_METADATA_BYTES
+        self.tasks = 0
+    def reserve(self, plans, metadata):
         if 2*_size(metadata) + sum(len(plan.document) for plan in plans) > self.metadata_bytes:
             raise definitions.FormulaError('WORK_LIMIT', '/execution', 'Scalar scope metadata exceeds its byte bound.')
-        self.extend(plans, inspected_rows)
-    def extend(self, plans, inspected_rows):
-        """Count plans, including those compiled after their scope's reservation."""
-        self.tasks += sum(len(plan.to_dict()['tasks']) for plan in plans); self.rows += inspected_rows
+        self.tasks += sum(len(plan.to_dict()['tasks']) for plan in plans)
 
 
 def scope_rows(db, *, pool, period=None):
@@ -74,10 +74,9 @@ def scope_rows(db, *, pool, period=None):
     return rows
 
 
-def _plans(program, roots, record_bytes, checkpoint, limits=None, metadata_bytes=None, engine='original'):
+def _plans(program, roots, record_bytes, checkpoint):
     """Compile every chunk before reading its observations; adapt temporal contexts."""
-    strategy_requests.require_formula_support(program, engine, checkpoint=checkpoint)
-    maximum=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
+    strategy_requests.require_formula_support(program, checkpoint=checkpoint)
     plans = [];used=0
     remaining = roots
     while remaining:
@@ -86,14 +85,14 @@ def _plans(program, roots, record_bytes, checkpoint, limits=None, metadata_bytes
         while True:
             try:
                 plan = evaluation.plan(program, remaining[:count],
-                    dict(limits or {}, output_bytes=min(evaluation.CEILINGS['output_bytes'], record_bytes - 4096)))
+                    dict(output_bytes=min(evaluation.CEILINGS['output_bytes'], record_bytes - 4096)))
                 break
             except definitions.FormulaError as error:
                 if error.code != 'WORK_LIMIT' or count == 1:
                     raise
                 count = max(1, count // 2)
         used+=len(plan.document)
-        if used>maximum:raise definitions.FormulaError('WORK_LIMIT','/execution','Compiled chunks exceed their aggregate encoded bound.')
+        if used>MAX_METADATA_BYTES:raise definitions.FormulaError('WORK_LIMIT','/execution','Compiled chunks exceed their aggregate encoded bound.')
         plans.append(plan)
         remaining = remaining[count:]
     return plans
@@ -162,15 +161,14 @@ def _scope(db, view, capture, period, entry, *, latest, owner_scope):
 
 
 def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner_scope=None,
-               budget, record_bytes=8 * 1024 * 1024, checkpoint=backtest_control.checkpoint,
-               limits=None, metadata_bytes=None, engine='original'):
+               budget, checkpoint=backtest_control.checkpoint):
     """Plan every root in one complete scope before observation. Chunking bounds evaluation resources and never changes membership, ranking or the meaning of a completed scope."""
     checkpoint()
     if program is not None:
-        strategy_requests.require_formula_support(program, engine, checkpoint=checkpoint)
+        strategy_requests.require_formula_support(program, checkpoint=checkpoint)
     if owner_scope is None: owner_scope = dict(kind='dated')
     rows,roots=_scope(db,view,capture,period,entry,latest=latest,owner_scope=owner_scope)
-    plans=_plans(program,roots,record_bytes,checkpoint,limits,metadata_bytes,engine) if program else []
+    plans=_plans(program,roots,8 * 1024 * 1024,checkpoint) if program else []
     bounds=view.bounds
     inspected=2*len(rows)
     sources=[capture['selection']['ranking']['source']]+[item['source'] for item in capture['selection']['conditions']]
@@ -179,7 +177,7 @@ def plan_scope(db, view, program, capture, period, entry, *, latest=False, owner
         inspected+=_plan_work(plans,bounds)
     else:
         inspected+=(len(rows)+255)//256*(2*(bounds['report_rows']+bounds['population']) if not latest else 2*256)
-    budget.reserve(plans,rows,inspected)
+    budget.reserve(plans,rows)
     return rows,roots,plans,inspected
 
 
@@ -228,27 +226,18 @@ class Executor:
     can still be selected. With explain, the reference evaluator then traces
     the selected rows only, and its values must equal the column values.
     Without it (random-date runs), selected rows keep their formula values and
-    reasons but no step trace. Prefixes qualify independent trial scopes.
+    reasons but no step trace.
     """
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
-                 checkpoint=backtest_control.checkpoint, evaluate=None, scope_prefix='', evaluation_limits=None, metadata_bytes=None, engine='original',
-                 explain=True):
-        self.metadata_bytes=MAX_METADATA_BYTES if metadata_bytes is None else metadata_bytes
-        if (type(self.metadata_bytes) is not int or not 0<self.metadata_bytes<=MAX_METADATA_BYTES
-                or type(scope_prefix) is not str or len(scope_prefix)>64):
-            raise definitions.FormulaError('WORK_LIMIT','/execution','Invalid scalar execution reservation.')
-        self.evaluate = evaluate or reference.evaluate
-        self.engine = engine
-        self.scope_prefix = scope_prefix
-        self.evaluation_limits = evaluation_limits
+                 checkpoint=backtest_control.checkpoint, explain=True):
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
         self.number = 0; self.explain = explain
         self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
         if self.program is not None:
-            strategy_requests.require_formula_support(self.program, engine, checkpoint=checkpoint)
+            strategy_requests.require_formula_support(self.program, checkpoint=checkpoint)
         self.formulas = columns.Formulas(self.program) if self.program is not None else None
         self.facts = columns.Facts(view)
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
@@ -288,7 +277,7 @@ class Executor:
         self.checkpoint()
         if owner_scope is None: owner_scope = dict(kind='dated')
         rows, roots = _scope(db, self.view, self.capture, period, entry, latest=latest, owner_scope=owner_scope)
-        self.number += 1; identity = self.scope_prefix + 'scope:' + str(self.number)
+        self.number += 1; identity = 'scope:' + str(self.number)
         specification = deepcopy(self.capture['selection'])
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
         lane_of = lambda role: 'ranking' if role == 0 else 'c' + str(role - 1)
@@ -393,14 +382,13 @@ class Executor:
             def explain(indices):
                 # The provider bounds each chunk's facts; owner lanes in dated
                 # scopes can exceed it, so a refused chunk is split in half.
-                plans = _plans(self.program, [roots[i] for i in indices], self.record_bytes, self.checkpoint,
-                               self.evaluation_limits, self.metadata_bytes, self.engine)
+                plans = _plans(self.program, [roots[i] for i in indices], self.record_bytes, self.checkpoint)
                 for plan in plans:
                     self.checkpoint()
                     width = len(plan.to_dict()['requests'])
                     group, indices = indices[:width], indices[width:]
                     try:
-                        block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
+                        block = reference.evaluate(plan, self.view, self.checkpoint).to_dict()
                     except (observations.ObservationError, definitions.FormulaError) as error:
                         if error.code != 'WORK_LIMIT' or len(group) == 1:
                             raise

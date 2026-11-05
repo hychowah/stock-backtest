@@ -56,7 +56,7 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(self.owner.measurements()['active_readers'],2)
             self.owner.discard(entry)
             self.assertTrue((entry['path']/'completed.evidence').exists())
-            self.assertEqual(len(list(first.trials())),1)
+            self.assertEqual(sum(r['type']=='trial' for r in first.records()),1)
             self.assertGreater(self.owner.measurements()['retained_bytes'],0)
             with self.assertRaises(ValueError):
                 with self.owner.reader(entry):pass
@@ -87,7 +87,7 @@ class WorkspaceTests(unittest.TestCase):
         with self.owner.reader(entry) as reader:
             def close():entered.set();self.owner.close();done.set()
             thread=Thread(target=close);thread.start();self.assertTrue(entered.wait(1))
-            time.sleep(.02);self.assertFalse(done.is_set());self.assertTrue(list(reader.trials()))
+            time.sleep(.02);self.assertFalse(done.is_set());self.assertTrue(list(reader.records()))
         thread.join(2);self.assertTrue(done.is_set())
         other=job_evidence.Workspace(self.root,max_bytes=1024**2);self.owner=other;self.addCleanup(other.close)
         entry=self.reserve();self.publish(entry)

@@ -1,7 +1,6 @@
 # Current source owners
 
-This map lists the current source owners. The experimental engine was deleted
-on 2026-11-05.
+This map lists the current source owners.
 
 | Concern | Current owner |
 |---|---|
@@ -48,14 +47,17 @@ contracts. These modules own the feature.
   identities, unit inference and resolved dependency programs.
 - `backtest/variables/reference.py` and `evaluation.py`: bounded context plans,
   independent Python binary64 arithmetic and detached operation evidence.
+- `backtest/variables/columns.py`: values-only formula evaluation for scalar
+  selection. It keeps the reference rules and arithmetic and records no trace.
 - `backtest/selection.py`: pure finite-scalar ranking and conditions.
   `backtest/variables/selection.py`: the qualified reference-backed selection gate.
 - `backtest/variables/library.py`: the durable variable repository in
   `data/variable-library.sqlite`, with capture and checked restore.
 - `backtest/application/strategy_requests.py`: complete immutable strategy intent.
-  `scalar_execution.py` plans prepared scopes. `scalar_runs.py` shares the
-  Original schedule seam. `backtest/scalar_result_evidence.py` encodes scalar
-  evidence. `variable_coverage.py` reduces recorded-scope coverage.
+  `scalar_execution.py` reads complete prepared scopes, selects once and,
+  outside random-date runs, explains the selected rows. `scalar_runs.py` shares
+  the Original schedule seam. `backtest/scalar_result_evidence.py` encodes
+  scalar evidence. `variable_coverage.py` reduces recorded-scope coverage.
   `variable_authoring.py` serves authoring without financial work.
 - `website/server/variables.py` adapts the HTTP routes. `website/browser/range.js`
   (`StrategyDraft`) owns the draft and the filter rows. `filter-picker.js` searches
