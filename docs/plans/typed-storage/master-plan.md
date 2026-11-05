@@ -75,18 +75,40 @@ Made (keep them):
 - The reference-engine comparison of the January baseline stays in
   preparation.
 - No parallel trials for now; 8 book workers.
+- **D1 (2026-11-05), "D1: delete".** After parity, delete the old reference
+  evaluator. Fixed-date, January and latest runs get their explanations
+  (traces) from the column evaluator, and the live cross-check ends. The
+  parity harness stays as the oracle for the change. T3 therefore also
+  deletes `observations.py` and the reference evaluator.
+- **D2 replaced (2026-11-05), "yes, you need to do that".** The research
+  database is the only source of truth. The report/database publication
+  journal is removed (T4):
+  1. A full build still writes a temporary file and publishes it with one
+     atomic `os.replace`. A latest-only daily update changes `research.sqlite`
+     in place in one SQLite transaction. Both are crash-safe without a journal.
+  2. `results/summary-exits.txt` is an output rendered from the database's
+     verified baseline after each change, with an atomic small-file write. If
+     the machine stops before it is written, the next preparation renders it
+     again. Its bytes stay identical when nothing changed.
+  3. The historical cutoff 2026-10-21 becomes a fixed setting instead of
+     `cutoff(report text)` in `research.prepare`.
+  4. Delete `data/research.sqlite.publication.json`, `report.pending` and
+     `research.pending`, the three full-database SHA-256 hashes,
+     `Baseline.recover` and the `baseline_report_sha` check in `check_ready`
+     on every connect. A journal left on the runtime by older source means: do
+     a full build from raw, then remove the journal and its pending files. Add
+     no other reader for the old format.
+  5. Keep the independent `revalue.calculate` agreement whenever a historical
+     unit changes; the per-company reuse rule that tells new days from old-date
+     gap fills (a gap fill changes old books, so it takes the full path); and,
+     when the report text changes, the previous report and the changed-years
+     audit in `results/baseline-history/<generation>/` plus the
+     `baseline_revision` metadata. Existing history folders stay verbatim.
+     `data/deployment.pending.json` is a separate journal and stays.
+  6. Update AGENTS.md's research-database paragraph and the architecture guide
+     in the T4 commit.
 
-Pending (ask the user before the phase that needs it):
-
-- **D1 (before T2).** The old reference evaluator reads the JSON observation
-  tables. Either delete it after parity, so the column evaluator produces the
-  fixed-date traces itself and the live cross-check ends (the earlier approved
-  plan), or port it to the typed tables to keep an independent check (more
-  code). Recommend delete after parity, keeping the parity harness as the
-  oracle for the change.
-- **D2 (before T4).** Whether a latest-only daily update may skip the canonical
-  report publication journal when no historical unit changes (recommended: yes;
-  the report cannot change then).
+No decision is pending.
 
 ## Constraints
 
@@ -175,16 +197,15 @@ current, real-copy parity holds, then ask the user to merge.
   strategy on 20 scopes and the formula set on 64 rows per scope).
 - Exit: harness 0 mismatches; tests pass; scope time measured.
 
-### T2. Explanations from the column evaluator (needs D1)
+### T2. Explanations from the column evaluator (D1 = delete)
 
 - Add a detail mode to `columns.py` that records, for selected rows only, the
   inputs, dates, reasons, source file and digest, and the operations, in the
   `evaluation` block shape that `website/browser/variable-evidence.js` reads
   (`requests`, `program.nodes`, `observations.results/roots/contexts`,
   `operations`, `results`).
-- If D1 = delete: fixed-date, January and latest runs use the detail mode; the
-  reference evaluator leaves the run path. If D1 = port: keep the reference as
-  the cross-check over typed facts.
+- Fixed-date, January and latest runs use the detail mode; the reference
+  evaluator leaves the run path and the live cross-check ends.
 - Exit: viewer checks pass; on fixtures and the real copy the detail traces
   carry the same values, dates and reasons as the reference traces.
 
@@ -195,22 +216,27 @@ current, real-copy parity holds, then ask the user to merge.
 - Drop `observation_*` tables from both databases; delete
   `observation_inputs.py`, `sqlite_observations.py`,
   `dated_observation_inputs.py`, the storage parts of
-  `measure_observations.py` and, if D1 = delete, `observations.py`,
-  `variables/evaluation.py` and `variables/reference.py`. Move preview and
-  coverage (`scalar_execution.preview`, `variable_coverage.py`) to the column
+  `measure_observations.py`, `observations.py`, `variables/evaluation.py` and
+  `variables/reference.py`. Move preview and coverage
+  (`scalar_execution.preview`, `variable_coverage.py`) to the column
   evaluator. Keep small arithmetic golden tests.
 - Exit: database sizes measured; cold build time measured; tests pass.
 
-### T4. In-place daily update (needs D2)
+### T4. In-place daily update and single-source baseline
 
 - Implement the latest-only path above in `research.py` and `daily.py`, inside
   the existing cache ownership. Keep the full-build path for historical
   changes. Keep crash safety: one transaction per database; a failed update
   leaves the previous state.
+- Remove the report/database publication journal as decision "D2 replaced"
+  describes: render `results/summary-exits.txt` from the database's verified
+  baseline, fix the historical cutoff as a setting, and treat a leftover
+  journal as a request for a full build.
 - Exit: on the real copy a one-session append completes in about a minute and
   equals a full rebuild of the same inputs (table-by-table comparison of
-  everything except identities); `tests/test_prepared_reuse.py` and
-  `tests/test_schedules.py` cover the path.
+  everything except identities); `tests/test_prepared_reuse.py`,
+  `tests/test_schedules.py` and `tests/test_baseline.py` cover the paths; an
+  interrupted update and a leftover journal are tested.
 
 ### T5. Compact books
 
@@ -263,5 +289,8 @@ current, real-copy parity holds, then ask the user to merge.
 
 ## Next
 
-Start T0: update the bench to this branch, measure a daily append and record
-the numbers here. Ask the user for D1 before starting T2.
+Scope of this session: T0 to T4, each phase committed with its evidence; stop
+after T4 passes its exit. T0 is running on the bench (bench updated to this
+branch, user test, then the one-session append). T1 is in progress: typed
+facts in `backtest/inputs/facts.py`, written by research preparation beside the
+JSON tables, read by `columns.py`.
