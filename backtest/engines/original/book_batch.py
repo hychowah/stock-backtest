@@ -25,11 +25,12 @@ from backtest import calendar_requests as calendar_requests
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
 
-DEFAULT_WORKERS=4
-MIN_PARALLEL_BOOKS=64
+DEFAULT_WORKERS=8
+MIN_PARALLEL_BOOKS=16
 _reader=None
 _books=None
 _cached=None
+_financials={}
 
 
 def generation(db):
@@ -111,10 +112,10 @@ def initialize_worker(path,expected):
 
 
 def calculate(key):
-    return calculate_book(_reader,key,_books,_cached)
+    return calculate_book(_reader,key,_books,_cached,_financials)
 
 
-def calculate_book(db,key,books,cached):
+def calculate_book(db,key,books,cached,financials=None):
     """One short read transaction per book, released before any parent write.
 
     Autocommit otherwise acquires a file read lock for every price lookup, which
@@ -125,7 +126,7 @@ def calculate_book(db,key,books,cached):
     owned=not db.in_transaction
     if owned:db.execute('BEGIN')
     try:
-        return schedules.compute_period(db,date.fromisoformat(entry),date.fromisoformat(exit_day),books,cached,pool)
+        return schedules.compute_period(db,date.fromisoformat(entry),date.fromisoformat(exit_day),books,cached,pool,financials)
     finally:
         if owned:db.rollback()
 
@@ -136,8 +137,8 @@ def calculations(db,jobs,workers,on_wait):
     if not jobs:
         yield iter(());return
     if workers==1:
-        books=daily.histories(db);cached=daily.cached_symbols(db)
-        yield (calculate_book(db,key,books,cached) for key in jobs)
+        books=daily.histories(db);cached=daily.cached_symbols(db);financials={}
+        yield (calculate_book(db,key,books,cached,financials) for key in jobs)
         return
     executor=ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn'),
                                  initializer=initialize_worker,initargs=(database_path(db),generation(db)))

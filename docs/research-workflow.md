@@ -387,7 +387,7 @@ native Windows lock operations. The reader releases it before returning the book
 no reader holds a transaction across multiple books. Only the parent saves books, using `schedules.store_period` in short write
 transactions. New books for a whole trial are staged before its atomic commit;
 large trials spill to a temporary file. No calculation holds the writer lock.
-The automatic policy uses up to four workers for at least 64 missing books,
+The automatic policy uses up to eight workers for at least 16 missing books,
 bounded by CPU count. Smaller batches stay serial. Workers monitor parent lifetime
 and exit if the launcher is forcibly closed. Cached-only batches launch no processes. Each individual trial commits its books,
 so a disconnected/stopped batch can be repeated with the same seed and reuse

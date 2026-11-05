@@ -77,7 +77,7 @@ class BookBatchTests(unittest.TestCase):
         self.assertGreaterEqual(len(b.plan(db,config)['jobs']),b.MIN_PARALLEL_BOOKS)
         result=r.run(db,config)
         self.assertEqual(result['completed'],40)
-        self.assertEqual(result['execution']['workers'],min(4,os.cpu_count() or 1))
+        self.assertEqual(result['execution']['workers'],min(b.DEFAULT_WORKERS,os.cpu_count() or 1))
 
     def test_spawn_matches_serial_holdings_both_pools_and_metrics(self):
         db,path=self.file_copy()

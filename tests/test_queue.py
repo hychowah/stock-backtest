@@ -25,7 +25,7 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import backtest_control as backtest_control
 from backtest.application import original_calculations, queue as queue
 from backtest.runtime import cache_access as cache_access
-from backtest.engines.original import schedules as schedules
+from backtest.engines.original import schedules as schedules, book_batch
 from website.server import app as serve
 import test_robustness as fixtures
 
@@ -233,6 +233,8 @@ class ConsumerTests(unittest.TestCase):
             while not self.release.wait(.01):backtest_control.checkpoint()
             return original(*args,**kwargs)
         self.context.enter_context(patch.object(schedules,'compute_period',side_effect=compute))
+        # Spawned book workers cannot see this patch; keep calculation in this process.
+        self.context.enter_context(patch.object(book_batch,'MIN_PARALLEL_BOOKS',10**9))
         self.store=queue.Store(self.folder/'queue.sqlite');self.consumer=queue.Queue(self.store,library=queue.saved_backtests.Store((self.store).path.with_name('saved-library.sqlite')))
         self.addCleanup(self.finish)
 

@@ -350,6 +350,8 @@ class Executor:
             for chunk, plan in enumerate(plans):
                 self.checkpoint()
                 block = self.evaluate(plan, self.view, self.checkpoint).to_dict()
+                # The result header carries the projection once; the block keeps its content hash.
+                block['identity'] = dict(block['identity'], projection=block['identity']['projection']['content'])
                 records.append(dict(type='evaluation', value=dict(scope=identity, chunk=chunk, block=block)))
                 for item in block['results']:
                     position = chosen[offset + item['request']]

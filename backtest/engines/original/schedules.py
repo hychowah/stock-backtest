@@ -21,8 +21,13 @@ def schedule(start, end, months, sessions):
     return schedule_calendar.SessionCalendar(sessions).fixed(
         configuration,checkpoint=backtest_control.checkpoint)
 
-def compute_period(db,entry,exit_day,books,cached,pool):
-    """Calculate a dated pool without writes; workers share this financial path."""
+def compute_period(db,entry,exit_day,books,cached,pool,financials=None):
+    """Calculate a dated pool without writes; workers share this financial path.
+
+    financials caches each company's decoded financial inputs across the books
+    of one operation; the daily generation cannot change while it is open.
+    """
+    financials={} if financials is None else financials
     broad,legacy=books
     statements,ranks=financial_books.candidates(books,entry)
     existing=db.execute('SELECT spy,treasury FROM periods WHERE entry=? AND exit=?',(str(entry),str(exit_day))).fetchone()
@@ -47,18 +52,20 @@ def compute_period(db,entry,exit_day,books,cached,pool):
         snapshots.append((symbol,ranks.get(symbol),fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,financial_books.yield_spread(yield_value,treasury),ret,status))
         history=[dict(row,fiscal=str(row['fiscal']),known=str(row['known'])) for row in broad[symbol]]
         evaluated=metrics.evaluate(observation,history)
-        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup,{record[0]:json.loads(record[1]) for record in db.execute('SELECT fiscal,values_json FROM financial_inputs WHERE symbol=?',(symbol,))},treasury10).items())
+        if symbol not in financials:
+            financials[symbol]={record[0]:json.loads(record[1]) for record in db.execute('SELECT fiscal,values_json FROM financial_inputs WHERE symbol=?',(symbol,))}
+        filter_rows.extend((symbol,key,value) for key,value in metrics.filter_values(observation,evaluated,entry,lookup,financials[symbol],treasury10).items())
         for metric,(multiple,yield_value) in evaluated.items():
             pairs.append((symbol,metric,multiple,yield_value))
     return dict(entry=str(entry),exit=str(exit_day),pool=pool,
                 period=(str(entry),str(exit_day),spy_return,treasury,len(ranks),len(statements['cached'])),
                 snapshots=snapshots,metrics=pairs,filters=filter_rows)
 
-def prepare_period(db,entry,exit_day,books,cached,pool='legacy'):
+def prepare_period(db,entry,exit_day,books,cached,pool='legacy',financials=None):
     completed=daily.prepared_period(db,entry,exit_day,pool)
     if completed is not None:return completed
     diagnostics.count('books_calculated')
-    return daily.store_period(db,compute_period(db,entry,exit_day,books,cached,pool))
+    return daily.store_period(db,compute_period(db,entry,exit_day,books,cached,pool,financials))
 
 def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Regular schedules and random-date batches share one book evaluator."""
@@ -107,9 +114,10 @@ def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=
     with diagnostics.stage('histories'):
         books=daily.histories(db) if missing else None
         cached=daily.cached_symbols(db) if missing else set()
+    financials={}
     def select_period(entry,exit_day):
         with diagnostics.stage('books'):
-            period_id=prepare_period(db,entry,exit_day,books,cached,pool)
+            period_id=prepare_period(db,entry,exit_day,books,cached,pool,financials)
         with diagnostics.stage('selection'):
             stocks=(screening.select(db,period=(period_id,period_id),**options) if book_selection is None
                     else book_selection.select(db,period_id,entry,exit_day))

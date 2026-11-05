@@ -25,7 +25,7 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.runtime import backtest_control as control
 from backtest.application import jobs as backtest_jobs
 from backtest.runtime import cache_access as cache_access
-from backtest.engines.original import schedules as schedules, robustness
+from backtest.engines.original import schedules as schedules, robustness, book_batch
 from website.server import app as serve
 import test_robustness as fixtures
 
@@ -55,6 +55,8 @@ class JobTests(unittest.TestCase):
             while not self.release.wait(.01):control.checkpoint()
             return result
         self.context.enter_context(patch.object(schedules,'compute_period',side_effect=compute))
+        # Spawned book workers cannot see this patch; keep calculation in this process.
+        self.context.enter_context(patch.object(book_batch,'MIN_PARALLEL_BOOKS',10**9))
         class Handler(serve.Handler):
             def log_message(self,*args):pass
         self.server=serve.Server(('127.0.0.1',0),Handler)

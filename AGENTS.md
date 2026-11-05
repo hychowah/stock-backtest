@@ -350,7 +350,7 @@ distributions. Average trial CAGR is not one portfolio return; percentiles are
 not confidence intervals. Commit per trial so a retry reuses books. An omitted
 seed is generated server-side and recorded. `book_batch.py` plans unique missing
 books. Read-only workers calculate and only the parent stores, with one read
-transaction per book. Use up to four workers for 64 or more missing books; small
+transaction per book. Use up to eight workers for 16 or more missing books; small
 batches stay serial. Workers watch the parent's lifetime. Checks:
 `tests/test_robustness.py`, `node tests/check-robustness.cjs` and
 `tests/test_book_batch.py` (also native Windows spawn).
