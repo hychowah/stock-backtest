@@ -37,7 +37,10 @@ keeps 1,376 of 1,378 dated books.
 P4 (688602e; schemas unchanged; the new book identity recomputes every book
 once): cold build 168 s (research 165); user test 301.0/85.0 s. With books
 saved, 107 → 63 ms per date over 1,344 dates (143.8 s before, same quiet
-machine); the selection stage 139.9 → 81.1 s.
+machine); the selection stage 139.9 → 81.1 s. P4c (a6095e6; its `facts.py`
+edit rebuilds research and recomputes every book once): cold build 160 s
+(research 157); user test 299.4 s (book writes 145.0, calculation wait 54.1,
+selection 75.0) and 84.6 s (selection 80.7), 63 ms per date.
 
 What remains (P4 profile of the user test with books saved, 85 s; time per
 date, share, the change it needs and its estimated gain):
@@ -58,6 +61,11 @@ date, share, the change it needs and its estimated gain):
    although 30 rows are output. Read the selection fields for every row and
    full rows for the selected only; about 6 s.
 5. Result writing, 2 ms (3%; 78 MB per run): small.
+
+The P4c profile of the same run keeps this order (ms per date, cumulative,
+overlapping): formulas 11.1 (`_anchor` 4.5), `selection.select` 11.5, stored
+condition checks 11.7 (prefilter and select), lanes 7.9, Executor loops 7.4
+(the lane rule 2.6 of it), scope rows 7.1, writing 2.2.
 
 - First-run books (user test with books computed, 301 s): book writes 147 s
   (about 84 million rows, 86% of them in `book_filters`),
@@ -240,17 +248,8 @@ books and updates the book cache in place, and P3c3 fixed the review findings.
   the before profile, went with the values-only rule.
 - Signed zero: a stored REAL lane cannot hold -0.0, so a -0.0 owner value
   would read as 0.0. No formula output changed (below).
-- Evidence (bench, against 21843d0): the four digests equal. Records differ
-  only in identities (input, projection, policy fingerprints, hashes),
-  timings, book ids (`prepared_period`, latest `owner_scope.book`) and, in
-  600 explained dated roots, `owner_scope` `dated` → `prepared` with the book
-  id. Fixture harness: 16 runs, 15 equal; `owner-legacy/latest` differs only
-  in its 32 report-date fields. Real copy, 22 scopes (20 dated in both pools,
-  and latest), 64 rows each: 37,544 admission rows and 1,161,856 formula-set
-  values equal (float.hex, validity, reason), 0 signed-zero changes, owner
-  explanations equal. Dev check 0 differences; the website build,
-  `check_screener.py`, `check-range.cjs`, `check-contributions.cjs` and
-  `check_paths.py` pass.
+- Evidence: P4's bench files were lost; P4c re-ran the comparison against
+  21843d0, with P4's code included (below).
 
 ### P4c. Review cleanup (done)
 
@@ -273,6 +272,19 @@ no wrong results.
   (30 before; about 3 ms each): preflight, `execution_options`, `scalar_runs`
   and the recorded-plan checks, and `Executor.__init__`.
 - `facts.legacy_annual` has a LIMIT bound (`MAX_HISTORY` × endpoints).
+- Evidence (bench, a6095e6 against an exported 21843d0 copy; files kept in
+  `~/bench/out/p4c-*`): the four digests equal. The 34 differing record
+  fields are identities (input, projection, policy and executor
+  fingerprints), hashes, timings, transfer bytes and, in 600 explained dated
+  roots (requests, contexts, roots), `owner_scope` `dated` → `prepared` with
+  the book id (+27,000 bytes). Dev check 0 differences. Fixture harness: 16
+  runs, 15 equal; `owner-legacy/latest` differs only in 32 report-date
+  fields (8 roots × 4; P4's deviation). Real copy: 22 scopes (per pool, 10
+  evenly spaced stored dated books and the open book) × 64 rows, 43 programs
+  with 826 outputs per root, less one 18-output program that both sides
+  refuse in the 1997 legacy scope (FUTURE_DATE): 1,161,856 values, 37,605
+  admission rows (every stored row) and 47,872 explained owner results equal;
+  0 signed-zero changes. The website build and its four checks pass.
 
 ### P5 and later (only if the user continues)
 
@@ -307,7 +319,9 @@ review and the P3 review at 1e3596d (P3c1 scope items 1–6).
 - Digests: `python3 ~/bench/out/result_digest.py OUT.json` from the bench
   folder.
 - Harness: `~/bench/harness/` with `WT=` and a private `TMPDIR`, emptied
-  afterwards; `results.py compare --oracle <export> --candidate <WT>` runs.
+  afterwards; `results.py compare --oracle <export> --candidate <WT>` runs;
+  `results.py files` compares saved worker outputs. `~/bench/out/p4c_scopes.py`
+  (real-copy formula set) and `p4c_records.py` (record diff) keep an oracle.
 
 ## Risks
 
