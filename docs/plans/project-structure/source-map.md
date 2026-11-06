@@ -32,7 +32,7 @@ contracts. These modules own the feature.
 
 - `backtest/inputs/facts.py`: the typed facts in `research.sqlite`, the saved-file
   resolver and the borrowed `View` (admission, entry valuation, typed reads and
-  stored January and latest owner lanes).
+  stored latest owner lanes).
 - `backtest/inputs/operation_inputs.py`: one Original scalar operation's daily
   and research connections.
 - `backtest/measure_observations.py` and `backtest/variables/measures.py`:

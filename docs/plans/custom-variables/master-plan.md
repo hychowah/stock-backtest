@@ -13,10 +13,10 @@ CAGR, and fixed-date or lookback contexts. Saved variables live in a durable
 library with immutable revisions and favourites. Runs, queued tests and saved
 results capture the complete formula bundle. They reopen without evaluation.
 
-Original runs custom strategies in Latest, January, fixed and random modes, and
-owns sample preview. The experimental engine that also ran these modes was
+Original runs custom strategies in Latest, fixed and random modes, and owns
+sample preview. The experimental engine that also ran these modes was
 deleted on 2026-11-05. Coverage inspection reports complete counts and
-missing reasons for a recorded January or latest scope. The source is integrated
+missing reasons for a recorded latest scope. The source is integrated
 into `main`. The program did not publish it or qualify an installed runtime.
 
 The design contract is in [variable design](variable-design.md).
@@ -34,8 +34,8 @@ The design contract is in [variable design](variable-design.md).
   availability-before-date and 800-day anchor limit apply at every observation.
   The full requested history is required. A newer report never fills a missing
   value. Missing, conflicting and nonfinite facts are unavailable with a reason.
-- **Context ownership.** A root in a recorded January or latest scope reads
-  stored owner lanes. Derived `at` and `lookback` contexts use dated owner
+- **Context ownership.** A latest root reads the stored latest owner lanes;
+  every other root uses dated owner policy. Derived `at` and `lookback` contexts use dated owner
   policy, even at an equal date. A missing prepared company or lane never falls
   back to another calculation.
 - **Legacy settings keep stored comparison scale (Phase 4).** The Phase 1

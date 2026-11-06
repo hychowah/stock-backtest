@@ -17,7 +17,7 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`, read through `facts.View`), T2
 (detail-mode explanations, D1), T3 (JSON observation tables and reference
-evaluator deleted) and P1.
+evaluator deleted), P1 and P2a.
 
 Bench, research schema 13, daily cache 6, P1 code (6367bef; the four digests
 equal T3, which equal T2):
@@ -30,6 +30,16 @@ equal T3, which equal T2):
 - User test 474.3 s with books computed and 180.8 s with books saved: about
   140 ms per date over 1,326 dates. The formula arithmetic is well under 1 ms
   of it.
+
+P2a (67e0e5f, idle bench): the dev check finds 0 differences from
+`revalue.calculate(2026-10-21)` over 31 books and 1,550 holdings (also on P1
+code); the frozen report differs only in its 2026 row (marked 2026-10-20), and
+with `--through 2026-10-20` nothing differs. Random, custom and latest
+digests equal P1; the fixed-run digest equals e48c97a. Evidence is 4.8 KB
+smaller (2 recorded scopes, not 64). Cold build 483 s: research 394 s
+(companies 171, dated facts 190, verification 21), daily 89 s. Sizes as P1.
+User test 484.2 s computed, 181.7 s saved. e48c97a ran beside test jobs
+(508 s; 540/209 s), so P1 is the timing baseline: no measurable change.
 
 ## Decisions
 
@@ -118,12 +128,12 @@ ledger. Leftovers and stale docs are fixed.
 It precedes P3 because it deletes what P3 would merge. Two slices, one fresh
 agent each. Re-check every dependency by grep first.
 
-#### P2a. Dev check and readers (done, e48c97a and the reader commit)
+#### P2a. Dev check and readers (done, e48c97a and 67e0e5f)
 
 - Dev check: `backtest/engines/reference/check.py` holds the moved
   `baseline.agree` and the dated-run adapter (one Original custom run, 12
   months from 1 January 1996, legacy pool, `ev_ebitda` ranks 1–50, default
-  floors). `books.py` names it. Step-1 result: see Measurements.
+  floors). `books.py` names it. Step 1: see Starting point.
 - Readers removed: the January mode (`require_mode` refuses it at `/mode` in
   the run route, `jobs._start` and `calculate_into`), `scalar_runs.prepared`,
   the browser January view and static year sections, the January pools and
@@ -371,4 +381,4 @@ Reviews of 8de87fb (A design, B implementation), 227cdd1 and 4db98dc.
 
 ## Next
 
-P2a.
+P2b after the independent review of P2a.

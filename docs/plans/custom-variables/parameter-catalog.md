@@ -9,10 +9,10 @@ owners as execution. The [close-out summary](master-plan.md) owns the completion
 status and limits. A catalog entry does not establish installed readiness or
 observed coverage.
 
-Captured programs run through Original in Latest, January, fixed and random
-modes. Catalog `/3` contains 77 IDs. A capture retains the 32-definition
+Captured programs run through Original in Latest, fixed and random modes; a
+January request is refused. Catalog `/3` contains 77 IDs. A capture retains the 32-definition
 ceiling. Eager scalar execution remains unsupported. Inspection evaluates complete recorded
-January/latest scopes with their generation, denominator and unavailable reasons.
+latest scopes with their generation, denominator and unavailable reasons.
 These source capabilities establish no installed readiness or live-cache coverage.
 
 This inventory maps documented fields from existing FMP routes. Include an input

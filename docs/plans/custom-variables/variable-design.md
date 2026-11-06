@@ -108,8 +108,8 @@ supported. A three-month lookback is not a quarterly statement.
 
 Context ownership is strict:
 
-- A root in a recorded January or latest scope reads that scope's stored owner
-  lanes.
+- A latest root reads the stored latest owner lanes. Every other root, January
+  sessions included, uses dated owner policy.
 - Derived `at` and `lookback` contexts use dated owner policy, even when their
   date equals the root date.
 - A missing prepared company or lane is unavailable. It never falls back to
@@ -258,11 +258,11 @@ sampled rows. It reads no raw files.
 
 | Path | Contract |
 |---|---|
-| Original | Default. Latest, January, fixed and random scalar modes; sample preview |
+| Original | Default. Latest, fixed and random scalar modes; sample preview. A January request is refused at `/mode` |
 | Experimental numerical engine | Deleted on 2026-11-05. The server refuses a request that names it |
 | Sample preview | Original only, 1–16 explicit company/date roots |
 | Eager scalar `calculate()` | Unsupported |
-| Coverage inspection | Original over a complete recorded January or latest scope |
+| Coverage inspection | Original over a complete recorded latest scope |
 
 Each backend declares its definition versions, parameters and operations.
 Unsupported work fails before execution. It never changes meaning or switches
@@ -270,7 +270,7 @@ engine. Old Latest and January settings without an engine mean Original. The
 producer label comes only from recorded evidence.
 
 `backtest/application/variable_coverage.py` owns coverage. It discovers recorded
-January and latest scopes, including empty ones, and requires an exact generation
+latest scopes, including empty ones, and requires an exact generation
 and scope identity. The denominator is every snapshot row in the scope, before
 availability, ranking, filters and rank ranges. An empty scope reports zero and
 no percentage. Each output reports valid and unavailable counts and the first
@@ -310,4 +310,4 @@ Quarterly and TTM data need a separate history-provider capability with download
 controls, availability policy and validation. The formula language should not
 need redesign for them. Custom formulas run through the local service. Offline
 standalone formula execution needs a measured input-size and browser-performance
-decision first. Standalone January and latest built-in screening stay available.
+decision first. Standalone latest built-in screening stays available.
