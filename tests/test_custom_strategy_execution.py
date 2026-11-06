@@ -18,7 +18,7 @@ from backtest.application import original_calculations, jobs, queue, library as 
 from backtest.inputs import daily, facts, research
 from backtest.variables import definitions
 from backtest.runtime import backtest_control
-from test_scalar_execution import Fixture, scopes
+from test_scalar_execution import Fixture
 import test_strategy_requests as requests
 
 
@@ -90,20 +90,16 @@ class ExecutionTests(unittest.TestCase):
         reader,_=self.run_result()
         self.assertEqual(reader.manifest['trials'],1)
         self.assertEqual(len(list(evidence_views.holdings(reader,1,1))),5)
-    def test_actual_latest_and_january_keep_distinct_evidence(self):
+    def test_actual_latest_evidence_and_a_january_request_is_refused(self):
         reader,_=self.run_result('latest',dict(strategy=self.capture.to_dict()))
         self.assertEqual(reader.metadata['mode'],'latest')
         self.assertEqual(reader.manifest['trials'],0)
-        with closing(sqlite3.connect(self.path)) as db:
-            for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
-                db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
-            db.execute('DELETE FROM fact_metadata')
-            facts.finish(db, '2015-01-05', inputs='fixture', scopes=scopes(historical=[('2015-01-02',2015)]))
-            db.commit()
-        reader,_=self.run_result('january',dict(strategy=self.capture.to_dict(),first=2015,last=2015))
-        self.assertEqual(reader.manifest['summary']['first'],2015)
-        self.assertEqual(reader.manifest['summary']['last'],2015)
-        self.assertEqual(list(evidence_views.periods(reader,1))[0]['value']['exit'],'2015-01-05')
+        # January is refused before admission or any input work; it is never converted.
+        with self.assertRaises(definitions.FormulaError) as failure:
+            self.run_result('january',dict(strategy=self.capture.to_dict(),first=2015,last=2015))
+        self.assertEqual((failure.exception.code,failure.exception.path),('UNSUPPORTED_CAPABILITY','/mode'))
+        self.assertIn('January backtests were removed',str(failure.exception))
+        self.assertFalse(self.financial);self.assertFalse(self.opened)
     def test_actual_random_seed_plan_and_recorded_replay_are_identical(self):
         options=self.options(trials=2,seed=0)
         reader,configs=self.run_result('random',options)

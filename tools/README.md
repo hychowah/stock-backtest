@@ -8,7 +8,7 @@ import these canonical owners.
 | --- | --- |
 | `tools.ops.deploy` | Verified committed-source publication and native update supervision |
 | `tools.ops.offline_input_copy` | Exact-byte private input materialization; no command entry |
-| `tools.ops.prepared_input_coverage` | Read-only prepared-input coverage; no command entry |
+| `tools.ops.prepared_input_coverage` | Read-only prepared-input coverage (version 2: no January book counts); no command entry |
 | `tools.ops.list_stops`, `tools.ops.classify_stops` | Retained stop inspection commands |
 | `tools.ops.log_summary` | Read-only summary of unfinished operations, operation times, slow requests and failures; run as a module |
 | `tools.experiments.probe*`, `download_one`, `fetch_bulk` | Retained API acquisition experiments |
@@ -36,6 +36,5 @@ saved results or rebuild the website. Use `scripts/revalue.py` and
 ## WSL deployment
 
 `deploy.py` publishes a committed source revision from the WSL checkout to the
-registered native Windows runtime. It also starts that runtime, dispatches
-saved-data checks, and explicitly collects a verified report revision. It does
-not download market data. See [workspace commands](../docs/workspaces.md).
+registered native Windows runtime. It also starts that runtime and dispatches
+saved-data checks. It does not download market data. See [workspace commands](../docs/workspaces.md).

@@ -54,8 +54,7 @@ with runtime_access.ownership(root,timeout=0):
  assert r.rules.FIRST_YEAR==1996 and r.rules.LAST_YEAR==2026
  r.prepare();daily.prepare()
  result=coverage.report()
- assert len(result['years'])==31 and all(y['prepared_period'] for y in result['years'])
- assert all(y['pools']['legacy']['selected_holdings']==1 for y in result['years'])
+ assert result['version']==2 and result['financial_symbols']==result['accepted_price_files']
  assert result['daily_books']==dict(periods=0,snapshots=0,period_pools=0)
  with closing(r.connect(full_prices=True)) as db:
   baseline=json.loads(db.execute("SELECT value FROM metadata WHERE key='baseline_result'").fetchone()[0])
@@ -65,7 +64,7 @@ with runtime_access.ownership(root,timeout=0):
   previous=r.RESULTS/audit['summary']['audit'];previous=previous.parent/'previous-snapshot.json'
   assert json.loads(previous.read_bytes()) is None
  assert str(r.baseline.cutoff((root/'results/summary-exits.txt').read_text()))=='2026-10-20'
- out.write_text(json.dumps(dict(status='prepared',years=31,holdings=31,through=result['through'],module_origins=True,daily_books=result['daily_books'])))
+ out.write_text(json.dumps(dict(status='prepared',years=31,holdings=31,through=baseline['through'],module_origins=True,daily_books=result['daily_books'])))
 '''
 
 STOP=r'''

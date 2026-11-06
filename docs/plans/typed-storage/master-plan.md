@@ -118,75 +118,49 @@ ledger. Leftovers and stale docs are fixed.
 It precedes P3 because it deletes what P3 would merge. Two slices, one fresh
 agent each. Re-check every dependency by grep first.
 
-#### P2a. Dev check and readers
+#### P2a. Dev check and readers (done, e48c97a and the reader commit)
 
-1. Measure on P1 code: the dev-check run's digest, compared with
-   `revalue.calculate` and the frozen report. Exit days match by construction
-   (`SessionCalendar.fixed`: inner exits are the next entries). Name each
-   difference; candidates are duplicate price days and `revalue` skipping a
-   holding without replacement when its start price is missing. Never change
-   dated results to match.
-2. One repo dev check, `backtest/engines/reference/check.py`: it takes
-   `baseline.agree` (field lists, 1e-12 tolerance) and adds the dated-run
-   adapter next to `revalue`. The bench harness only calls it. The `books.py`
-   docstring says that a book-policy change must pass it.
-3. Remove every January reader:
-   - Modes: `'january'` leaves `SCALAR_MODES` and `execution_options` (the
-     clear refusal for a stale tab or an API client); `scalar_runs.prepared`
-     and the `range.js` January view go. No January queue row can exist:
-     `QueueStore.specification` admits only custom and random.
-   - Saved January results of versions 1–2: `ResultArtifacts.decode` projects
-     `result.years` into dated `periods` at read time (labelled by book year
-     where no period dates exist) and never rewrites the record. They render in
-     the dated view, like version-4 January results. Then delete `renderJanuary`, `renderContributions`, `januaryPresentation`,
-     `selectedHoldings`, `draw`/`drawMarketCaps` if only January uses them,
-     `#backtest-view`, the year controls, `__DATA__`, `holdingsData`,
-     `attribution.py`, `load_holdings` and the static year sections. Move
-     `contributionPie` into `contributions.js` (`schedule.js` and
-     `evidence-results.js` use it).
-   - The January pools in `website/rendering/data.py`, the January exports and
-     report provenance in `build.py`, `screener.js` historical selection and
-     their parity checks.
-   - January prepared scopes: the historical branch of `View.prepared`, the
-     prepared-historical checks in `scalar_execution._scope` and
-     `evaluate_preview`, the no-owner lookup in
-     `measure_observations.prepared_scope`, the historical scopes passed to
-     `facts.finish`, `variable_coverage.py`, and the scope UI and hints in
-     `variable-workspace.js` and `.html`.
-   - The `historical_through` cutoff and its readers (`facts.View.bounds`,
-     `View.admit`); the saved SPY sessions bound historical preview roots.
-   - Startup: `cache_assets.source_problem` (recovery mode for a missing
-     report) and the `derived_status` row "Canonical January reference report".
-   - Data panel: the baseline audit (`data_manager.py`, `data.html`,
-     `data-panel.js`); the default scope and end date per answer (b), which
-     replace the `baseline` scope, `target_symbols` January candidate sets,
-     the `rules.ASOF` default and `value="2026-10-21"`. Check what dated books
-     need.
-   - Deployment: `--collect-report`; the REPORT special cases in `managed()`,
-     `unpack()`, the fresh-install copy and the missing-report warning; the
-     `runtime-baseline-*` rule in `check_records.py`.
-   - The January `research.py screen` and `status` output and the January and
-     report parts of `tools/ops/prepared_input_coverage.py`.
-   - Text: `template.html` (January option, `#historical-help`, footer),
-     `schedule.js`, `queue.html`, `website/README.md`, `tools/README.md`.
-
-Visible changes to report: until P3, coverage lists only latest scopes;
-previews on January sessions use the dated owner policy, not stored lanes.
-
-Owns: every file named above and its tests, including `test_records_check.py`.
-
-Exit: the protocol checks, heavy tier included; tests that saved January
-results of every version open in the dated view without calculation, that a
-January request is refused, and that latest screener parity holds. Real copy:
-the four digests equal P1; the dev-check comparison recorded.
+- Dev check: `backtest/engines/reference/check.py` holds the moved
+  `baseline.agree` and the dated-run adapter (one Original custom run, 12
+  months from 1 January 1996, legacy pool, `ev_ebitda` ranks 1–50, default
+  floors). `books.py` names it. Step-1 result: see Measurements.
+- Readers removed: the January mode (`require_mode` refuses it at `/mode` in
+  the run route, `jobs._start` and `calculate_into`), `scalar_runs.prepared`,
+  the browser January view and static year sections, the January pools and
+  exports, `screener.js` historical selection, `attribution.py`, the January
+  prepared scopes and `historical_through` readers, the missing-report
+  recovery and report row, the baseline audit, the `baseline` data scope
+  (default: cached-price stocks through today), `--collect-report` with
+  `--native-export`, the `runtime-baseline-*` rule, `research.py screen` and
+  the January status table, and the January and report parts of the coverage
+  tool (version 2). `ResultArtifacts.decode` projects saved January results of
+  versions 1–2 into dated periods; a repeated save sends the stored record.
+- Deviations (code over plan): deployment keeps its REPORT special cases,
+  because the writer still rewrites the runtime report and a managed REPORT
+  would then stop deployment; they move to P2b. A latest root without an owner
+  scope keeps the stored latest lanes; every other root uses the dated owner
+  policy. The page embeds sector and exchange choices from all companies,
+  because latest companies lack the `Unavailable` sector that dated runs can
+  use. `check.py` stays out of `calculation_sources` (verbatim move). Opening
+  Historical backtest no longer auto-runs a server backtest.
+- Unlisted readers: the bench harness `january:<year>` scope (removed);
+  `offline_input_copy.py` copies the report and `research.connect` checks its
+  binding, both for the writer (P2b).
+- Visible changes: coverage lists only latest scopes until P3; previews on
+  January sessions use the dated owner policy; Historical backtest opens
+  without a run; the data panel defaults to cached-price stocks through today
+  and has no baseline audit; saved January results open in the dated view
+  with a notice; the build writes no `returns.csv`, `holdings.csv` or
+  `valuations.json`.
 
 #### P2b. Writer, reuse and study constants
 
 - The writer: the January loop in `research.prepare` (January `snapshots`,
   `baseline_prices`, `periods`, `baseline_periods`, January `filter_values`
   and `screening_metrics`), `verify_reference`, `prepared_baseline`,
-  `screening.historical`, `backtest/inputs/baseline.py` and the report in
-  `signature()`.
+  `screening.historical`, `backtest/inputs/baseline.py`, the report in
+  `signature()`, the deploy REPORT special cases, the report copy in
+  `offline_input_copy.py` and the binding check in `research.connect`.
 - All research reuse, per answer (a): `_PriorUnits`, `_reuse_scope`,
   `_rows_digest`, `_bounded_digest`, `REUSE_MARGIN`, `prepended`, `shifts`,
   `facts.copy_stock`. A one-line cleanup removes
@@ -206,7 +180,7 @@ the four digests equal P1; the dev-check comparison recorded.
   `FIRST_YEAR`) becomes one constant in `rules.py`.
 - Rewrite the AGENTS study sections ("What the test does" to "How to
   continue", "Research database and baseline", "Website screening",
-  "Selection order", the `--collect-report` text) and the guide. Keep the
+  "Selection order") and the guide. Keep the
   financial rules that dated and latest books use.
 
 Owns: `research.py`, `baseline.py`, `screening.py`, `daily.py`, `facts.py`

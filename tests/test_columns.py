@@ -259,14 +259,13 @@ class ColumnTests(unittest.TestCase):
             self.error('INVALID_SHAPE', columns.require_roots, roots)
         self.error('INVALID_DATE', columns.require_roots, [dict(root, date='20150102')])
 
-    def test_admission_refuses_roots_outside_prepared_dates_and_changed_facts(self):
+    def test_admission_refuses_roots_outside_saved_sessions_and_changed_facts(self):
         for changed in (dict(date='2015-01-03'), dict(date='1995-01-02'), dict(mode='latest')):
             with self.subTest(changed=changed), self.company.view() as view, self.assertRaises(ValueError):
                 view.admit([self.root(**changed)])
-        self.company.through = '2014-12-31'
         with self.company.view() as view:
             with self.assertRaisesRegex(ValueError, 'outside saved'):
-                view.admit([self.root()])
+                view.admit([self.root(date='2015-01-03')])
             self.assertTrue(view.admit([self.latest()])[0]['admitted'])
             view.db.execute('DELETE FROM latest_admission')
             with self.assertRaisesRegex(ValueError, 'admission is missing'):

@@ -24,7 +24,7 @@ from backtest.variables import definitions, library
 STRATEGY_BYTES = 192 * 1024
 REQUEST_BYTES = 256 * 1024
 MAX_CONDITIONS = 50
-SCALAR_MODES = ('latest', 'january', 'custom', 'random')  # bounded captured-strategy execution
+SCALAR_MODES = ('latest', 'custom', 'random')  # bounded captured-strategy execution
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,160}\Z')
 _SELECTION_FIELDS = {'ranking', 'conditions', 'rank_from', 'rank_to', 'selection_order'}
 _BOUND_DEFAULTS = dict(min_cap=100e6, max_cap=None, min_ev=50e6, sector=None, exchange=None)
@@ -399,7 +399,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
     engine=options.get('engine','original')
     if type(engine) is not str or engine not in ('original','experimental'):
         _fail('UNSUPPORTED_CAPABILITY','/engine','Choose a supported calculation engine without changing the captured strategy.')
-    if set(options)-{'strategy','engine','start','end','months','calendar','dates','trials','seed','first','last'}:
+    if set(options)-{'strategy','engine','start','end','months','calendar','dates','trials','seed'}:
         _fail('INVALID_STRATEGY','','Unknown custom calculation option.')
     if _OVERLAP.intersection(options):
         _fail('INVALID_STRATEGY', '', 'Use one captured strategy without duplicate selection settings.')
@@ -434,13 +434,25 @@ def preview_engine(engine='original'):
     return engine
 
 
+def require_mode(mode):
+    """Refuse the removed January mode before any option check.
+
+    A stale browser tab or an API client may still send it. The request is
+    refused, never converted to a dated schedule.
+    """
+    if mode == 'january':
+        _fail('UNSUPPORTED_CAPABILITY', '/mode', 'January backtests were removed. '
+              'Run a custom schedule every 12 months from 1 January instead.')
+    return mode
+
+
 def execution_options(mode,options,*,planned=None,checkpoint=backtest_control.checkpoint):
     """Normalize one scalar mode before opening financial resources."""
     options=canonical_options(options,checkpoint=checkpoint)
     if check_options(options,checkpoint=checkpoint) is None:
         raise ValueError('Bounded scalar execution requires a captured strategy.')
     if mode not in SCALAR_MODES:raise ValueError('Unsupported scalar mode.')
-    allowed={'strategy','engine'}|({'first','last'} if mode=='january' else set() if mode=='latest' else
+    allowed={'strategy','engine'}|(set() if mode=='latest' else
         {'start','end','months','calendar','dates'} if mode=='custom' else {'start','end','months','calendar','trials','seed'})
     if set(options)-allowed:raise ValueError('Unknown option for the scalar execution mode.')
     if planned is not None:

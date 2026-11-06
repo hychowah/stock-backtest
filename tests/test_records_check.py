@@ -99,9 +99,10 @@ class RecordsCheck(unittest.TestCase):
         self.write('results/experiments/raw.json', b'0' * (64 * 1024 + 1))
         self.write('results/experiments/runtime-baseline-0123456789ab.json', b'0' * (64 * 1024 + 1))
         found = self.problems()
-        self.assertEqual(len(found), 2)
+        self.assertEqual(len(found), 3)
         self.assertIn('text summaries only', ' | '.join(found))
         self.assertIn('raw.json', ' | '.join(found))
+        self.assertIn('runtime-baseline-0123456789ab.json', ' | '.join(found))
 
     def test_untracked_path_and_broken_link(self):
         self.plan('active')

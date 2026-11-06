@@ -512,57 +512,6 @@ class DeploymentTests(unittest.TestCase):
                 with self.assertRaises(ValueError):entry.native_bootstrap(['--native-publish',str(stage),str(self.root)])
                 self.assertFalse((stage/'operations-helper.py').exists())
 
-    def test_report_export_requires_database_binding(self):
-        content = b'Through 2026-10-21\n'
-        (self.root / 'results').mkdir()
-        (self.root / deploy.REPORT).write_bytes(content)
-        (self.root / 'data').mkdir()
-        with closing(sqlite3.connect(self.root / 'data/research.sqlite')) as db:
-            with db:
-                db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
-                db.executemany('INSERT INTO metadata VALUES(?,?)', [
-                    ('baseline_report_sha', json.dumps(hashlib.sha256(content).hexdigest())),
-                    ('baseline_result', json.dumps(dict(through='2026-10-21', years=[])))])
-        bundle = self.stage / 'report'
-        with patch.object(deploy, 'support'):
-            deploy.export_runtime_report(self.root, bundle)
-        self.assertEqual((bundle / 'summary-exits.txt').read_bytes(), content)
-        (self.root / deploy.REPORT).write_bytes(b'changed')
-        with self.assertRaises(ValueError), patch.object(deploy, 'support'):
-            deploy.export_runtime_report(self.root, bundle)
-
-    def test_report_export_owns_source_before_financial_imports(self):
-        scripts = self.root / 'backtest'/'inputs'
-        scripts.mkdir(parents=True)
-        (self.root/'backtest/__init__.py').write_text('')
-        (scripts/'__init__.py').write_text('')
-        website = self.root/'website'; website.mkdir()
-        (website/'__init__.py').write_text('')
-        shutil.copy2(ROOT/'website/runtime_access.py', website/'runtime_access.py')
-        marker = self.root / 'financial-import'
-        (scripts / 'baseline.py').write_text('from pathlib import Path\n'
-                'Path(__file__).resolve().parents[2].joinpath("financial-import").write_text("yes")\n'
-                'raise RuntimeError("import probe finished")\n')
-        code = ('import sys;sys.path.insert(0,sys.argv[1]);from tools.ops import deploy;'
-                'deploy.export_runtime_report(sys.argv[3],sys.argv[4])')
-        child = None
-        try:
-            with runtime_access.ownership(self.root, exclusive=True):
-                child = subprocess.Popen([sys.executable, '-B', '-c', code, str(ROOT),
-                                          str(ROOT / 'website'), str(self.root), str(self.stage / 'report')],
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                import time
-                time.sleep(.2)
-                self.assertFalse(marker.exists())
-                self.assertIsNone(child.poll())
-            child.communicate(timeout=10)
-            self.assertNotEqual(child.returncode, 0)
-            self.assertTrue(marker.exists())
-        finally:
-            if child and child.poll() is None:
-                child.kill()
-                child.communicate()
-
     def test_shared_readers_exclude_writer_and_release_on_process_exit(self):
         code = ('import sys;sys.path.insert(0,sys.argv[1]);import runtime_access;'
                 'owner=runtime_access.ownership(sys.argv[2]);owner.__enter__();'

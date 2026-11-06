@@ -71,7 +71,7 @@ const EvidenceResults=(()=>{
         }while(true);
       });
       if(!valid(state)||state.period!==period||state.stockSequence!==sequence)return;
-      node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions use all '+group.count+' selected stocks; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
+      node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+ReturnContributions.pie(group.gain_slices,group.gains,1)+ReturnContributions.pie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions use all '+group.count+' selected stocks; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
     }catch(error){if(state.period===period&&state.stockSequence===sequence)readError(state,error);}
   }
   async function storedPeriods(state,cursor=0){
@@ -161,7 +161,7 @@ const EvidenceResults=(()=>{
     if(artifact.kind==='latest'){
       const state={artifact,trial:0,reader:ResultArtifacts.reader(artifact),stockSequence:0};bounded=state;
       node('latest-view').hidden=true;node('custom-view').hidden=true;void screenPage(state);
-    }else{node('custom-view').hidden=false;if(artifact.kind==='january')node('backtest-view').hidden=true;void storedRender(artifact,trial);}
+    }else{node('custom-view').hidden=false;void storedRender(artifact,trial);}
   }
   function init(){
     node('schedule-period-back').addEventListener('click',()=>{if(bounded?.page)void storedPeriods(bounded,Math.max(0,bounded.page.cursor-64));});

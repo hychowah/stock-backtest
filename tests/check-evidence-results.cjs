@@ -12,7 +12,7 @@ const summary={start:period.entry,end:period.exit,cagr:.2,spy_cagr:.03,growth:1.
 let screenWait=null,explanationWait=null,explanationFailure=false,release=null,currentId='1'.repeat(32),robust=0;
 const context=vm.createContext({console,document:{getElementById:node,createElement:()=>({click(){downloads.push({href:this.href,download:this.download});}})},
  Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,money:v=>String(v),metricLabel:()=>{throw Error('Scalar presentation must use captured meaning');},
- CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},contributionPie:()=>'',
+ CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},
  RobustnessView:{init(){},render(){robust++;}},VariableEvidence:{records:()=>'<p>Detached selected trace</p>'},
  fetch:async(url)=>{
   urls.push(url);assert(url.startsWith('/api/backtest-runs/'));
@@ -80,7 +80,7 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  // eager and bounded custom results. January controls always use January.
  for(const retained of [null,2,3]){
   if(retained){const old=artifact('custom',retained,'7'.repeat(32));old.result={...summary,options:{metric:'ev_ebitda'},periods:[{...period,holdings:[holding]}]};context.old=old;run('ResultArtifacts.publish(old)');}
-  await show(artifact('january',4,'4'.repeat(32)));assert(node('backtest-view').hidden);assert.equal(node('custom-view').hidden,false);assert(node('schedule-stock-body').innerHTML.includes('10%'));assert.equal(node('schedule-explanation-head').hidden,false);assert(node('schedule-dates').textContent.includes('January books'));
+  await show(artifact('january',4,'4'.repeat(32)));assert.equal(node('custom-view').hidden,false);assert(node('schedule-stock-body').innerHTML.includes('10%'));assert.equal(node('schedule-explanation-head').hidden,false);assert(node('schedule-dates').textContent.includes('January books'));
   node('schedule-period').value='2';node('schedule-period').handlers.change();await tick();await tick();assert(node('schedule-stock-body').innerHTML.includes('SECOND'));assert(!node('schedule-stock-body').innerHTML.includes('FIRST'));
   for(const kind of ['holdings','returns']){node('schedule-download-'+kind).handlers.click();assert.equal(downloads.at(-1).href,'/api/backtest-runs/'+'4'.repeat(32)+'/reader/export/'+kind+'/1');}
  }
@@ -93,6 +93,22 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  context.artifact=artifact('random',4,'5'.repeat(32));run('ScheduleView.show(ResultArtifacts.publish(artifact))');await tick();assert.equal(robust,1);assert(node('schedule-results').hidden);
  // The same extracted presenter still accepts codec1/artifact3.
  context.metricLabel=()=> 'Retained EV/EBITDA';await show(artifact('custom',3,'6'.repeat(32)));assert.equal(node('schedule-explanation-head').hidden,true);assert(node('schedule-stock-body').innerHTML.includes('10.00'));assert(!node('schedule-stock-body').innerHTML.includes('data-stored-explain'));
+ // A saved version-1 January result opens in the same dated view, from its
+ // stored rows, without any request.
+ const before=urls.length;
+ context.saved={version:1,kind:'january',settings:{mode:'january',first:2015,last:2016,metric:'ev_ebitda',rank_from:1,rank_to:50},
+  result:{options:{first:2015,last:2016,metric:'ev_ebitda',rank_from:1,rank_to:50},first:'2015-01-02',end:'2016-10-20',growth:1.1,spy_growth:1.02,cagr:.05,spy_cagr:.01,short_years:[],empty_years:[],
+   years:[{year:2015,names:1,portfolio:.1,spy:.02,holdings:[{...holding,symbol:'JAN15'}]},{year:2016,names:1,portfolio:0,spy:0,holdings:[{...holding,symbol:'JAN16',return_value:0}]}]},
+  catalog:{metrics:{},filters:{}},context:{notes:[]}};
+ run('ScheduleView.show(ResultArtifacts.publish(ResultArtifacts.decode(saved)))');await tick();
+ // Only the replaced bounded display is released; nothing is read or calculated.
+ assert(urls.slice(before).every(url=>url.endsWith('/reader')));assert.equal(node('schedule-results').hidden,false);assert.equal(node('robustness-results').hidden,true);
+ assert.equal(node('schedule-dates').textContent,'2015-01-02 → 2016-10-20 · January books');
+ assert(node('schedule-rows').innerHTML.includes('<td>2015-01-02</td><td>2016</td><td>1</td>'));
+ assert(node('schedule-rows').innerHTML.includes('<td>2016</td><td>2016-10-20</td>'));
+ assert(node('schedule-stock-body').innerHTML.includes('JAN16'));assert(!node('schedule-coverage').textContent.includes('Computed in'));
+ node('schedule-period').value='0';node('schedule-period').handlers.change();assert(node('schedule-stock-body').innerHTML.includes('JAN15'));
+ assert(node('schedule-attribution').innerHTML.includes('Top 10 contributors'));
  assert(!urls.some(url=>url.includes('/variables')||url.includes('/catalog')));
- console.log('Passed: bounded scalar latest/January/random presentation, immutable producer labels across legacy replacement/saved reopening/current selector changes, page replacement fencing, selected explanations, complete download capabilities and unchanged artifact3 presentation.');
+ console.log('Passed: bounded scalar latest/January/random presentation, saved version-1 January results in the dated view without requests, immutable producer labels across legacy replacement/saved reopening/current selector changes, page replacement fencing, selected explanations, complete download capabilities and unchanged artifact3 presentation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

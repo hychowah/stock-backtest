@@ -83,8 +83,8 @@ they do not authenticate a hostile writer that replaces data and hashes.
 
 Application metadata contains version, kind, submitted settings, scalar result
 summary, catalog, presentation, captured time and any original extension fields.
-The current producer supports custom and random dated evidence. January results
-retain their eager snapshots. Metadata settings agree with the original evidence
+The current producer supports custom and random dated evidence. Saved January
+results retain their eager snapshots and open in the dated view. Metadata settings agree with the original evidence
 header. Omitted random seeds retain their submitted meaning; the full recorded
 plan preserves the generated seed. Metadata result agrees exactly with the
 original footer. No empty `periods` or `trial_results` array is fabricated.

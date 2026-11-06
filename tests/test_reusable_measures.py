@@ -78,17 +78,17 @@ class InventoryExecution(unittest.TestCase):
             'income-statement': {'2014-06-30': {k: state(v) for k, v in income.items()}},
             'balance-sheet-statement': {'2014-06-30': {k: state(v) for k, v in dict(totalDebt=70., cashAndCashEquivalents=10., totalCurrentAssets=80., totalCurrentLiabilities=30., totalStockholdersEquity=90., goodwill=8., intangibleAssets=7., totalAssets=200.).items()}},
             'cash-flow-statement': {'2014-06-30': {k: state(v) for k, v in dict(freeCashFlow=14., operatingCashFlow=20., capitalExpenditure=-9.).items()}}}
-        self.company.books['legacy', 2015] = dict(market_cap=200.,
+        self.company.books['legacy'] = dict(market_cap=200.,
             metrics=dict(ev_ebitda=[4., .25000000000000006], ev_ebitda_3y=[5., .2]),
             filters=dict(profit_margin=12., pe=8., pb=2., fcf_yield=7., price_fcf=9., peg=1.5,
                 roe=10., current_ratio=2., interest_coverage=3., debt_equity=.7,
                 return_1y=15., return_3y=25., operating_yield_spread_3y=4.))
-        self.company.scopes = [dict(mode='historical', pool='legacy', context_date=self.company.root_date, book=2015)]
         view = self.company.view()
+        latest = root(mode='latest', day=self.company.latest_date)
         expected = dict(gross_profit=60., gross_margin=.6, operating_margin=.2, net_margin=.12,
             ebit=17., ebitda=54e6, free_cash_flow=14., operating_cash_flow_plus_capex=11.,
             total_debt=70., net_debt=60., working_capital=50., tangible_book_equity=75.,
-            market_cap=200., enterprise_value=180e6, basic_eps=2., diluted_eps=1.5,
+            market_cap=200., enterprise_value=190e6, basic_eps=2., diluted_eps=1.5,
             price_sales=2., debt_assets=.35, pe=8., pb=2., fcf_yield=.07, price_fcf=9.,
             peg=1.5, roe=.1, current_ratio=2., interest_coverage=3., debt_equity=.7,
             return_1y=.15, return_3y=.25, ev_ebitda=4., ev_ebitda_3y=5.,
@@ -104,17 +104,19 @@ class InventoryExecution(unittest.TestCase):
                 bundle['roots'] = [lang.root(outer)]
                 program = annual.columns.Formulas(d.validate(bundle))
                 with patch.object(annual.columns.measure_observations, 'dated', side_effect=AssertionError('recalculated')):
-                    self.assertEqual(values(program, view, [root()]), [[(expected[key], None)]])
+                    self.assertEqual(values(program, view, [latest]), [[(expected[key], None)]])
 
     def test_derived_equal_date_uses_owner_and_never_exit(self):
         self.company.financials = {f'{year}-06-30': dict(revenue=100., operatingIncome=20., netIncome=10.,
             totalStockholdersEquity=50., epsDiluted=year-2010.) for year in (2012, 2013, 2014)}
         self.company.treasury10 = [('2015-01-01', 2.)]
-        self.company.books['legacy', 2015] = dict(market_cap=123., metrics=dict(ev_ebitda=[4., .25]), filters=dict(pe=9.))
-        self.company.scopes = [dict(mode='historical', pool='legacy', context_date=self.company.root_date, book=2015)]
+        self.company.books['legacy'] = dict(market_cap=123., metrics=dict(ev_ebitda=[4., .25]), filters=dict(pe=9.))
         view = self.company.view()
-        same = formulas(field('owner.pe', wrap=dict(op='at', date=self.company.root_date)))
-        roots = [root(), root(owner_scope=dict(kind='prepared', book=2015)), root(owner_scope=dict(kind='dated'))]
+        day = self.company.latest_date
+        same = formulas(field('owner.pe', wrap=dict(op='at', date=day)))
+        latest = root(mode='latest', day=day)
+        roots = [latest, root(mode='latest', day=day, owner_scope=dict(kind='prepared', book=0)),
+                 root(mode='latest', day=day, owner_scope=dict(kind='dated'))]
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper, \
                 patch.object(view, 'lookup', wraps=view.lookup) as lookup:
             results = values(formulas(field('owner.pe')), view, roots) + values(same, view, roots[:1])
@@ -122,7 +124,9 @@ class InventoryExecution(unittest.TestCase):
         self.assertEqual(helper.call_count, 2)
         backward = [call.args[1] for call in lookup.call_args_list if not call.args[3]]
         self.assertTrue(backward)
-        self.assertTrue(all(day <= date.fromisoformat(self.company.root_date) for day in backward))
+        self.assertTrue(all(day <= date.fromisoformat(self.company.latest_date) for day in backward))
+        # A historical root has no stored owner book: it uses the dated owner policy.
+        self.assertEqual(values(formulas(field('owner.pe')), view, [root()]), [[(15e6, None)]])
 
     def test_report_ebitda_history_uses_broad_spine_and_missing_year(self):
         self.company.reports = [statement('2016-12-31', ebitda=1.), statement('2017-03-31', ebitda=2.),

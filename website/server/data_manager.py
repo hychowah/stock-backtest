@@ -14,14 +14,13 @@ import time
 from backtest.inputs import financial_inputs as financial_inputs
 from backtest.inputs import cache_assets as cache_assets
 from backtest.runtime import cache_access as cache_access
-from backtest.inputs.cache_assets import read_json, write_json, series
+from backtest.inputs.cache_assets import read_json, write_json
 
 from backtest.inputs import daily
 from backtest.inputs import research as r
 from backtest.financial import rules
 from backtest.inputs import market, fmp_download
 from backtest.runtime import diagnostics as diagnostics
-from backtest.inputs import baseline as baseline
 from backtest.runtime import backtest_control as backtest_control
 
 ROOT=r.ROOT
@@ -37,14 +36,15 @@ Cancelled=fmp_download.Cancelled
 
 
 def options(request):
+    """Default: the companies with cached prices, through the latest available day."""
     if set(request)-{'scope','symbols','start','end','datasets'}:
         raise ValueError('Unknown data option.')
     start=date.fromisoformat(request.get('start','1995-01-01'))
-    end=date.fromisoformat(request.get('end',str(rules.ASOF)))
+    end=date.fromisoformat(request.get('end',str(date.today())))
     if not date(1990,1,1)<=start<=end<=date.today():
         raise ValueError('Choose dates from 1990 through today, with start before end.')
-    scope=request.get('scope','baseline')
-    if scope not in ('baseline','cached','financials','symbols'):
+    scope=request.get('scope','cached')
+    if scope not in ('cached','financials','symbols'):
         raise ValueError('Choose a valid stock group.')
     symbols=request.get('symbols','')
     if not isinstance(symbols,str):raise ValueError('Enter stock symbols as text.')
@@ -83,48 +83,23 @@ def target_symbols(o,universe,records):
         return o['symbols']
     if o['scope']=='cached':
         return sorted(s for s in universe if market.cache_path_for(s).exists())
-    broad=r.books.statements(records,universe)
-    if o['scope']=='financials':return sorted(broad)
-    pools=r.books.pools(broad)
-    spy=series(read_json(RAW/'spy-div.json',[]),'adjClose')
-    sessions=[date.fromisoformat(row['date'][:10]) for row in spy]
-    selected=set()
-    for year in range(rules.FIRST_YEAR,rules.LAST_YEAR+1):
-        entry=market.session_on_or_after(sessions,date(year,1,1))
-        if entry and entry<=rules.ASOF:
-            _,ranks=r.books.candidates(pools,entry);selected.update(ranks)
-    # Include the current saved-session candidate set without changing history.
-    if sessions:
-        active={s:rows for s,rows in pools[1].items() if universe[s].get('listed') is True}
-        _,ranks=r.books.candidates((active,active),sessions[-1]);selected.update(ranks)
-    return sorted(selected)
+    return sorted(r.books.statements(records,universe))
 
 
 def derived_status():
     result=[]
-    for name,path,open_db in [('January and latest database',r.DATABASE,r.connect),('Custom-date database',daily.DATABASE,daily.connect)]:
+    for name,path,open_db in [('Research database',r.DATABASE,r.connect),('Custom-date database',daily.DATABASE,daily.connect)]:
         state='missing'
         if path.exists():
             try:
                 db=open_db();db.close();state='current'
             except (ValueError,OSError,sqlite3.Error):state='needs rebuild'
         result.append(dict(name=name,state=state,bytes=path.stat().st_size if path.exists() else 0))
-    reference=ROOT/'results'/'summary-exits.txt'
-    result.append(dict(name='Canonical January reference report',state='saved' if reference.exists() else 'missing — restore from backup',bytes=reference.stat().st_size if reference.exists() else 0))
     from website.rendering.state import current_build
     try:current=current_build()
     except OSError:current=False
     result.append(dict(name='Website build',state='current' if current else 'needs rebuild',bytes=0))
     return result
-
-
-def baseline_audit():
-    """Return the last committed revision for the check report and JSON export."""
-    try:
-        db=r.connect(check=False)
-    except (ValueError,OSError,sqlite3.Error):return None
-    try:return baseline.Baseline(r.RESULTS,r.DATABASE).audit(db)
-    finally:db.close()
 
 
 def price_warning(name,days):
@@ -138,8 +113,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
     try:universe=universe_rows()
     except (ValueError,TypeError):universe={};issues.append('US stock universe is invalid. Select universe for repair.')
     records,invalid=financial_records()
-    try:targets=target_symbols(o,universe,records)
-    except json.JSONDecodeError:targets=[];issues.append('SPY JSON is invalid. Select SPY for repair.')
+    targets=target_symbols(o,universe,records)
     ledger=read_json(COVERAGE,{})
     start,end=map(date.fromisoformat,(o['start'],o['end']))
     missing=[s for s in universe if s not in records]
@@ -170,7 +144,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         if i%50==0 or i==len(targets):emit(message=f'Checked stock prices {i}/{len(targets)}',completed=i,total=len(targets))
     return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=fmp_download.KEY_PATH.is_file() and fmp_download.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
-                target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),baseline=baseline_audit(),
+                target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),
                 missing_ratio_inputs=fundamental_missing, unavailable_metrics=[])
 
 
@@ -308,8 +282,6 @@ def _download(o,emit,stop,client):
     if market:download_series(market,o,ledger,emit,stop,client)
     if 'prices' in selected:
         if not universe or not records:raise ValueError('Download the universe and annual financials before stock prices.')
-        if o['scope']=='baseline' and not series(read_json(RAW/'spy-div.json',[]),'adjClose'):
-            raise ValueError('Download SPY prices before the original candidate set.')
         targets=target_symbols(o,universe,records)
         download_series([(None,'adjClose','historical-price-eod/dividend-adjusted',symbol) for symbol in targets],o,ledger,emit,stop,client)
     return inspect(o,emit,stop)
@@ -365,7 +337,7 @@ class Jobs:
             try:
                 self.stop()
                 if action=='rebuild':
-                    self.emit(message='Preparing January and custom-date databases…')
+                    self.emit(message='Preparing research and custom-date databases…')
                     daily.prepare();self.stop()
                     diagnostics.lap('prepare')
                     self.emit(message='Rebuilding the website…')

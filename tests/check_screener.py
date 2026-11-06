@@ -1,4 +1,4 @@
-"""Compare browser filtering with independent queries against prepared SQLite."""
+"""Compare browser latest-screen filtering with independent queries against prepared SQLite."""
 
 import sys as _package_sys
 from pathlib import Path as _PackagePath
@@ -17,25 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from backtest.inputs import research as research
 
-CASES = [
-    dict(first=2015,last=2020,filters=[dict(field='pe',op='lt',value=20)]),
-    dict(first=2015,last=2020,pool='cached',filters=[dict(field='roe',op='gt',value=10),dict(field='debt_equity',op='lt',value=1)]),
-    dict(first=2015, last=2020),
-    dict(first=2015, last=2020, rank_to=100),
-    dict(first=2015, last=2020, rank_from=10, rank_to=20),
-    dict(first=2015, last=2020, pool='cached', min_cap=500e6, max_cap=5e9, min_yield=.15, rank_to=100),
-    dict(first=2015, last=2020, pool='cached', sector='Technology', exchange='NASDAQ', max_multiple=8, rank_to=10),
-    dict(first=2015, last=2020, sector='No matching sector'),
-    dict(first=1996, last=1996, rank_to=100),
-    dict(first=2026, last=2026, rank_from=10, rank_to=10),
-    dict(first=2015,last=2020,pool='cached',metric='ev_ebitda_3y',max_multiple=8),
-    dict(first=2015,last=2020,pool='cached',filters=[dict(field='return_1y',op='gt',value=-10),dict(field='return_3y',op='lt',value=100),dict(field='ev_ebitda',op='lt',value=10)]),
-    dict(first=2015,last=2020,filters=[dict(field='market_cap',op='gt',value=500),dict(field='market_cap',op='lt',value=500)]),
-    dict(first=2015,last=2020,pool='cached',filters=[dict(field='operating_yield_spread_3y',op='gt',value=5)]),
-    dict(first=2015,last=2020,filters=[dict(field='operating_yield_spread_3y',op='lt',value=0)]),
-]
-CASES += [dict(options,selection_order='rank_first') for options in CASES]
-
 def main():
     db = research.connect()
     try:
@@ -44,7 +25,7 @@ def main():
         latest_cases.append(dict(pool='cached',filters=[dict(field='return_1y',op='gt',value=-10),dict(field='return_3y',op='lt',value=100)]))
         latest_cases.append(dict(pool='cached',filters=[dict(field='operating_yield_spread_3y',op='gt',value=5)]))
         latest_cases += [dict(options,selection_order='rank_first') for options in latest_cases]
-        expected = dict(historical=[screening.historical(db, **options) for options in CASES],latest=[screening.latest(db,**options) for options in latest_cases])
+        expected = dict(latest=[screening.latest(db,**options) for options in latest_cases])
     finally:
         db.close()
     with tempfile.TemporaryDirectory() as folder:

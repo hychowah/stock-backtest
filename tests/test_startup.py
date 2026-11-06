@@ -107,7 +107,7 @@ class BuildStateTests(unittest.TestCase):
         (root/'data').mkdir();(root/'data'/'research.sqlite').write_bytes(b'database')
         (self.website/'browser').mkdir()
         self.source=self.website/'browser/range.js';self.source.write_bytes(b'const n=1;\r\n')
-        for name in ('index.html','returns.csv','holdings.csv','valuations.json','latest-picks.csv','data.html'):
+        for name in ('index.html','latest-picks.csv','data.html'):
             (self.website/'local'/name).write_text('output')
         self.context.enter_context(patch.object(build_state,'ROOT',self.website))
         self.context.enter_context(patch.object(build_state,'LOCAL_OUTPUT',self.website/'local'))
@@ -155,9 +155,9 @@ class BuildStateTests(unittest.TestCase):
         self.source.write_text('const n=2;');self.assertFalse(build_state.current_build())
 
     def test_missing_artifacts_and_malformed_stamp(self):
-        build_state.record_build();(self.website/'local'/'holdings.csv').unlink()
+        build_state.record_build();(self.website/'local'/'latest-picks.csv').unlink()
         self.assertFalse(build_state.current_build())
-        (self.website/'local'/'holdings.csv').write_text('output')
+        (self.website/'local'/'latest-picks.csv').write_text('output')
         build_state.STAMP.write_text('bad JSON');self.assertFalse(build_state.current_build())
 
 

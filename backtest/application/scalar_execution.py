@@ -76,12 +76,14 @@ def check_preview(capture, roots, *, checkpoint=backtest_control.checkpoint):
 
 
 def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkpoint):
-    """Explain explicit checked roots with the column evaluator; no complete-pool claim is made."""
+    """Explain explicit checked roots with the column evaluator; no complete-pool claim is made.
+
+    Only a latest root has a stored owner book (book 0); its date is checked by
+    the view's latest admission.
+    """
     for index, root in enumerate(roots):
         scope = root.get('owner_scope')
-        if scope and scope['kind'] == 'prepared' and not any(
-                item['mode'] == root['mode'] and item['pool'] == root['pool'] and item['context_date'] == root['date']
-                and item['book'] == scope['book'] for item in view.projection['scopes']):
+        if scope and scope['kind'] == 'prepared' and (root['mode'] != 'latest' or scope['book'] != 0):
             raise definitions.FormulaError('INVALID_SHAPE', '/requests/' + str(index) + '/owner_scope',
                                            'Prepared owner scope does not match the admitted projection.')
     block = columns.Formulas(program).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
@@ -91,15 +93,18 @@ def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkp
 
 
 def _scope(db, view, capture, period, entry, *, latest, owner_scope):
-    """Return one complete prepared scope's rows and roots after checking its owner scope."""
+    """Return one complete prepared scope's rows and roots after checking its owner scope.
+
+    A prepared owner scope names the stored latest book (book 0). A dated
+    owner scope reads the dated owner lanes.
+    """
     if (type(owner_scope) is not dict or not (owner_scope == {'kind':'dated'} or
             (set(owner_scope) == {'kind','book'} and owner_scope['kind'] == 'prepared'
              and type(owner_scope['book']) is int and owner_scope['book'] >= 0))):
         raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Invalid owner scope.')
     pool=capture['pool']
-    if owner_scope['kind'] == 'prepared' and (owner_scope['book'] != (0 if latest else period) or not any(
-            item['mode'] == ('latest' if latest else 'historical') and item['pool'] == pool
-            and item['context_date'] == str(entry) and item['book'] == owner_scope['book']
+    if owner_scope['kind'] == 'prepared' and (not latest or owner_scope['book'] != 0 or not any(
+            item['mode'] == 'latest' and item['pool'] == pool and item['context_date'] == str(entry) and item['book'] == 0
             for item in view.projection['scopes'])):
         raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
     rows=scope_rows(db,pool=pool,period=None if latest else period)
@@ -136,8 +141,7 @@ class Executor:
         Dated scopes apply the view's admission rules (eligible report, legacy buffer,
         cached prices, eligible valuation) and take the entry valuation from the
         book row: compute_period derived it with the same function and prices.
-        Other scopes use the view's admission: typed latest admission, and
-        complete-population admission for January scopes.
+        The latest scope uses the view's typed latest admission.
         """
         if dated:
             statements, ranks = self.view.candidates(str(entry), self.checkpoint)
@@ -167,7 +171,7 @@ class Executor:
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
         lane_of = lambda role: 'ranking' if role == 0 else 'c' + str(role - 1)
         mode = 'latest' if latest else 'historical'; year = 0 if latest else period
-        decisions = self._admit(rows, roots, entry, owner_scope, not latest and owner_scope == {'kind': 'dated'})
+        decisions = self._admit(rows, roots, entry, owner_scope, not latest)
         admitted = sum(decision['admitted'] for decision in decisions)
         receipt = dict(policy=dict(executor=_LOADED,selection=selection.policy_fingerprint()),id=identity,
             population='complete-prepared-scope', mode=mode, pool=self.pool, date=str(entry),

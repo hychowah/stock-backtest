@@ -2,7 +2,8 @@
    renderers and persistence receive the same settings, numbers and display meaning. */
 const ResultArtifacts=(()=>{
   const views=new Map(),readers=new Map(),acquisitions=new Map();let revision=0;
-  const view=kind=>kind==='random'?'custom':kind;
+  // A latest screen has its own view; every other result opens in the dated view.
+  const view=kind=>kind==='latest'?'latest':'custom';
   const signature=settings=>JSON.stringify(settings,(_key,value)=>typeof value==='number'&&!Number.isFinite(value)?String(value):value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
   function freeze(value){
     if(value&&typeof value==='object'&&!Object.isFrozen(value)){
@@ -15,15 +16,28 @@ const ResultArtifacts=(()=>{
     const notes=new Map((context.notes||[]).map(row=>[row[0],row[1]]));
     return {coverage:notes.get('screen-coverage')||'',notice:{text:notes.get('screen-status')||'',severity:(context.notes||[]).find(row=>row[0]==='screen-status')?.[2]?.includes('warning')?'warning':'info'},rangeNote:notes.get('range-note')||'',periodLabel:context.pill||''};
   }
+  // A saved January result of version 1 or 2 holds book years. It opens in the
+  // dated view: the years become periods at read time. No period dates were
+  // stored, so inner boundaries carry the book year. The stored record itself
+  // is never rewritten; a repeated save sends it unchanged.
+  function januaryPeriods(result){
+    const years=result.years,last=years.length-1;
+    const periods=years.map((y,i)=>({entry:i===0?result.first:String(y.year),exit:i===last?result.end:String(years[i+1].year),
+      names:y.names,portfolio:y.portfolio,spy:y.spy,
+      holdings:y.holdings.map(h=>({...h,weight:1/y.names,contribution_pp:h.return_value/y.names*100}))}));
+    const {years:_years,first:_first,short_years:_short,empty_years:_empty,...summary}=result;
+    return {...summary,start:result.first,periods,coverage:'Saved January result: each book runs from the first January session to the next.'};
+  }
   function decode(snapshot){
     if(!snapshot||![1,2,3,4].includes(snapshot.version)||!['latest','january','custom','random'].includes(snapshot.kind)||!snapshot.settings||!snapshot.result)throw Error('Unsupported saved backtest format.');
     if(snapshot.version===3||snapshot.version===4){
       if((snapshot.version===3&&!['custom','random'].includes(snapshot.kind))||!/^([a-f0-9]{32})$/.test(snapshot.evidence?.id)||snapshot.evidence.format_version!==(snapshot.version===4?2:1)||!Number.isInteger(snapshot.evidence.trials)||(snapshot.kind==='latest'?snapshot.evidence.trials!==0:snapshot.evidence.trials<1)||!Number.isInteger(snapshot.evidence.periods)||!Number.isInteger(snapshot.evidence.holdings))throw Error('Unsupported saved backtest format.');
       return freeze({...snapshot});
     }
-    return freeze({version:2,kind:snapshot.kind,settings:snapshot.settings,result:snapshot.result,
+    const january=snapshot.kind==='january'&&Array.isArray(snapshot.result.years);
+    return freeze({version:2,kind:snapshot.kind,settings:snapshot.settings,result:january?januaryPeriods(snapshot.result):snapshot.result,
       catalog:snapshot.catalog||{metrics:{},filters:{}},presentation:snapshot.version===1?legacyPresentation(snapshot.context):snapshot.presentation||{},
-      captured_at:snapshot.captured_at||null});
+      captured_at:snapshot.captured_at||null,...(january||snapshot.record?{record:snapshot.record||JSON.parse(JSON.stringify(snapshot))}:{})});
   }
   function create(settings,result,catalog,presentation){
     const copy=value=>JSON.parse(JSON.stringify(value));
@@ -145,6 +159,6 @@ const ResultArtifacts=(()=>{
     const suffix=display==='percent'?'%':display==='percentage_points'?' pp':display==='usd_million'?' USD million':display==='usd'?' USD':display==='multiple'?'×':'';
     return Number(scaled.toPrecision(8)).toString()+suffix;
   }
-  return {create,decode,publish,matches,reader,use,release,opening,current,scalarValue,forView:key=>views.get(key)};
+  return {create,decode,publish,matches,reader,use,release,opening,current,scalarValue,view,forView:key=>views.get(key)};
 })();
 if(typeof module!=='undefined')module.exports=ResultArtifacts;

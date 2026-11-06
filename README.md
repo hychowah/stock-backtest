@@ -26,10 +26,11 @@ few minutes. The Windows command keeps the server attached to the terminal on `0
 The server also saves development logs in `data/logs/`. The terminal and data panel show the current file. Logs keep safe error traces and operation times, never API keys, provider URLs, response bodies or exception text. Startup removes old logs. Run `python3 -m tools.ops.log_summary` to see where the time goes. The [development log](docs/architecture-guide/dist/index.html#development-log) section of the architecture guide has the details.
 
 The website opens with Latest stock picks. Switch to Historical backtest for
-January books or custom trade dates with monthly, quarterly, half-yearly or
-yearly rebalancing. `python3 website/build.py --snapshot` writes an untracked
-portable export to `website/dist/`. Open its `index.html` directly for the saved
-latest and January views; custom schedules use the local service.
+custom trade dates with monthly, quarterly, half-yearly or yearly rebalancing; a
+January study is a 12-month schedule from 1 January. Saved January results open
+in that dated view without calculation. `python3 website/build.py --snapshot`
+writes an untracked portable export to `website/dist/`. Open its `index.html`
+directly for the saved latest view; backtests use the local service.
 
 Custom and random-date backtests run on the server. Locking your phone,
 refreshing, or closing the page does not stop them. Reopen the same address in
@@ -39,7 +40,7 @@ last 24 hours, up to four recent runs, until the server exits. Use **Save displa
 backtest** to keep a completed result in the library.
 
 Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
-tests. From latest or January mode, the first click opens custom-date settings
+tests. From latest mode, the first click opens the dated backtest settings
 and turns off Auto-run without starting a test. Set your parameters, then select
 **Add to queue** again. Use **View queue** to see the list below the strategy
 controls. Change parameters and add another test. Edit, hold, reorder
@@ -110,13 +111,13 @@ dispatches the full saved-data checks to Windows.
 # Prepare the local database once (no downloads)
 python3 scripts/research.py prepare
 
-# Run a fast screen; change --top, years, or filters freely
-python3 scripts/research.py screen --top 100
+# Show the database size and latest price coverage
+python3 scripts/research.py status
 
-# Rebuild ignored local output from prepared holdings
+# Rebuild ignored local output from the prepared latest screen
 python3 website/build.py
 
-# Check year/rank filtering and performance calculations (requires Node.js)
+# Check rank filtering and result presentation (requires Node.js)
 node tests/check-range.cjs
 python3 tests/check_screener.py
 

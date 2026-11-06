@@ -59,9 +59,9 @@ class AdapterTests(unittest.TestCase):
 const fs=require('fs'),assert=require('assert'),engine=require(process.argv[1]);
 const p=JSON.parse(fs.readFileSync(0,'utf8')),answer={};
 if(p.cases)answer.cases=p.cases.map(o=>{
- const saved=JSON.stringify(o),h=engine.screen(p.dataset,{first:2015,last:2016,...o}),l=engine.latestScreen(p.dataset,o);
+ const saved=JSON.stringify(o),l=engine.latestScreen(p.dataset,o);
  assert.equal(JSON.stringify(o),saved);
- return {historical:h.years.map(y=>y.holdings.map(x=>[x.symbol,x.rank,x.metric_multiple,x.metric_yield])),latest:l.stocks.map(x=>[x.symbol,x.rank,x.metric_multiple,x.metric_yield]),matches:l.matches,growth:h.growth,cagr:h.cagr,empty:h.empty_years};
+ return {latest:l.stocks.map(x=>[x.symbol,x.rank,x.metric_multiple,x.metric_yield]),matches:l.matches};
 });
 if(p.scalar)answer.scalar=p.scalar.map(c=>engine.selectValues(c.rows,c.specification));
 process.stdout.write(JSON.stringify(answer));
@@ -111,7 +111,6 @@ process.stdout.write(JSON.stringify(answer));
         for options,result in zip(cases,actual):
             expected=self.expected(options)
             self.assertEqual(self.sql(options),[expected,expected],options)
-            self.assertEqual(result['historical'],[expected,expected],options)
             self.assertEqual(self.sql(options,True),expected,options)
             self.assertEqual(result['latest'],expected,options)
             if options['selection_order']=='rank_first':self.assertEqual(result['matches'],len(expected))
@@ -134,7 +133,6 @@ process.stdout.write(JSON.stringify(answer));
         self.assertEqual(self.sql(options,True),expected)
         result=self.browser(dict(dataset=self.dataset(),cases=[options]))['cases'][0]
         self.assertEqual(result['latest'],expected)
-        self.assertEqual(result['historical'],[expected,expected])
 
     def test_maximum_legacy_predicates_and_long_metadata_remain_accepted(self):
         filters=[dict(field='pe',op='gt',value=0.)]*50
@@ -164,12 +162,6 @@ process.stdout.write(JSON.stringify(answer));
         actual=self.browser(dict(dataset=self.dataset(),cases=[options]))['cases'][0]
         self.assertEqual(actual['latest'],[['A',1,17.,.4]])
         self.assertEqual(actual['matches'],8206)
-
-    def test_empty_years_keep_unavailable_full_period_growth(self):
-        options=dict(filters=[dict(field='pe',op='gt',value=1000.)])
-        actual=self.browser(dict(dataset=self.dataset(),cases=[options]))['cases'][0]
-        self.assertEqual(self.sql(options),[[],[]]);self.assertEqual(actual['historical'],[[],[]])
-        self.assertEqual(actual['empty'],[2015,2016]);self.assertIsNone(actual['growth']);self.assertIsNone(actual['cagr'])
 
     def test_browser_scalar_lanes_match_python_both_directions_and_orders(self):
         rows=[dict(symbol=symbol,candidate_rank=rank,values=dict(x=value,y=gate)) for symbol,rank,value,gate in

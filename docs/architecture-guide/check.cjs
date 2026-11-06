@@ -15,7 +15,8 @@ assert(!/<(?:link|img|script)\b[^>]*(?:src|href)=["']https?:/i.test(html), 'Guid
 assert(html.includes('Shared in-memory data was only a benchmark prototype. That prototype was later removed.') && html.includes('The requested-pool change is now in the source.'), 'Source and removed-prototype status must be clear');
 assert(html.includes('Financial ratios use annual statement inputs.') && html.includes('All conditions must pass before ranking.'), 'Explain annual ratio inputs');
 assert(html.includes('WSL source') && html.includes('Windows runtime') && html.includes('tools/deploy.py') && html.includes('deployment.pending.json'), 'Explain source deployment and interrupted publication');
-assert(html.includes('server/app.py') && html.includes('runtime_access.py') && html.includes('--collect-report'), 'Explain native ownership and verified report collection');
+assert(html.includes('server/app.py') && html.includes('runtime_access.py') && !html.includes('--collect-report') && html.includes('The tracked report is a frozen record.'), 'Explain native ownership and the frozen report');
+assert(!html.includes('data-mode="january"') && html.includes('there is no January mode') && html.includes('A saved January result opens in the dated view.') && html.includes('at <code>/mode</code>'), 'Explain the removed January mode, saved January results and the refusal');
 assert(html.includes('checks main once a day at 01:00') && html.includes('website-update-stop-') && html.includes('without automatic updates'), 'Explain automatic main updates, owned cleanup and fixed launches');
 assert(html.includes('backtest/application/jobs.py') && html.includes('backtest-runs.js') && html.includes('/api/backtest-runs/*') && html.includes('24 hours, up to four recent runs') && html.includes('same browser storage'), 'Explain server-owned runs, reconnection and temporary result limits');
 assert(html.includes('CB-13A') && html.includes('Callers no longer prehold financial ownership.') && html.includes('Late request bodies cannot begin calculation.'), 'Explain shared application admission and ordinary routing');
@@ -56,7 +57,7 @@ class Element {
   replaceChildren() { this.children = []; this.textContent = ''; }
 }
 const stages = Array.from({length: 4}, (_, i) => new Element({stage: String(i)}));
-const modes = ['january', 'latest', 'custom', 'random'].map(mode => new Element({mode}));
+const modes = ['latest', 'custom', 'random'].map(mode => new Element({mode}));
 const panels = modes.map(button => Object.assign(new Element(), {id: 'mode-' + button.dataset.mode}));
 const detail = new Element();
 const title = new Element();
@@ -114,7 +115,7 @@ windowEvents.beforeprint();
 assert(closed.every(x => x.open));
 windowEvents.afterprint();
 assert(closed.every(x => !x.open));
-assert(html.includes('Original sample preview') && html.includes('Variable strategies run with Original in all four scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain Original preview, pinned choice and recorded producers');
+assert(html.includes('Original sample preview') && html.includes('Variable strategies run with Original in all three scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain Original preview, pinned choice and recorded producers');
 console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 12 setting combinations and print state.');
 
 

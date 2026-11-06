@@ -1,7 +1,7 @@
 """Complete recorded-scope inspection under a borrowed prepared view.
 
-Every snapshot row of one recorded January or latest scope is admitted and
-evaluated values-only by the column evaluator; counts are exact.
+Every snapshot row of one recorded latest scope is admitted and evaluated
+values-only by the column evaluator; counts are exact.
 """
 import hashlib
 from datetime import date
@@ -27,7 +27,7 @@ def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint
     if (type(scope) is not dict or set(scope)!={'generation','mode','pool','context_date','book'}
             or type(scope['generation']) is not str or len(scope['generation'])!=64
             or any(c not in '0123456789abcdef' for c in scope['generation'])
-            or scope['mode'] not in ('historical','latest') or scope['pool'] not in ('legacy','cached')
+            or scope['mode']!='latest' or scope['pool'] not in ('legacy','cached')
             or type(scope['book']) is not int or scope['book']<0 or type(scope['context_date']) is not str):
         raise definitions.FormulaError('INVALID_SHAPE','/scope','An exact discovered generation and scope are required.')
     try:
@@ -42,9 +42,8 @@ def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     program=library.VariableCapture(definitions.canonical(checked['variables'])).program
-    latest=scope['mode']=='latest'
-    rows,roots=scalar_execution._scope(source,view,checked,None if latest else scope['book'],scope['context_date'],
-        latest=latest,owner_scope=dict(kind='prepared',book=scope['book']))
+    rows,roots=scalar_execution._scope(source,view,checked,None,scope['context_date'],
+        latest=True,owner_scope=dict(kind='prepared',book=scope['book']))
     outputs=[]; seen=set()
     for root in definitions.require_program(program)['bundle']['roots']:
         identity=root['variable_id'],root['revision']

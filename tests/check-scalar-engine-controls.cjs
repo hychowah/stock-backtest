@@ -20,12 +20,12 @@ const engine=context.module.exports;
  }
  // A restored draft keeps its recorded engine; the choice appears so the user can pick Original.
  node('backtest-engine').value='experimental';node('backtest-engine').events.change();
- for(const mode of ['latest','january','custom','random']){
+ for(const mode of ['latest','custom','random']){
   current={mode,scalar:true};engine.sync();assert(!node('engine-controls').hidden);
   assert.match(node('engine-status').textContent,/New engine — experimental cannot run on this server\. Choose Original/);
   assert.equal(engine.fields().engine,'experimental');
  }
- current={mode:'january',scalar:false};engine.sync();assert(node('engine-controls').hidden);
+ current={mode:'latest',scalar:false};engine.sync();assert(node('engine-controls').hidden);
  current={mode:'custom',scalar:false};engine.sync();assert(!node('engine-controls').hidden);
  node('backtest-engine').value='original';node('backtest-engine').events.change();
  assert(node('engine-controls').hidden);assert.equal(node('engine-status').textContent,'');

@@ -17,8 +17,8 @@ A field is valid when its value is present; otherwise its reason column names
 the provider reason. A saved day or fiscal date always has a value or a reason
 for each of its endpoint's fields. Value columns have no declared type, so
 SQLite keeps the binary64 bits exactly, including -0.0, which a REAL column
-stores as the integer 0. Prepared owner lanes are the stored January and latest
-books (snapshots, screening_metrics, filter_values); they are read in place.
+stores as the integer 0. Prepared owner lanes are the stored latest book
+(latest_snapshots, screening_metrics, filter_values); they are read in place.
 
 A View borrows the operation's daily and research connections. The caller's
 cache ownership keeps both unchanged while the view is open.
@@ -294,7 +294,7 @@ def require(db, *, expected=None):
         keys = set()
         for scope in metadata['scopes']:
             if (type(scope) is not dict or set(scope) != {'mode', 'pool', 'context_date', 'book'}
-                    or scope['mode'] not in ('historical', 'latest') or scope['pool'] not in ('legacy', 'cached')
+                    or scope['mode'] != 'latest' or scope['pool'] not in ('legacy', 'cached')
                     or type(scope['book']) is not int
                     or str(date.fromisoformat(scope['context_date'])) != scope['context_date']):
                 raise ValueError()
@@ -322,8 +322,8 @@ class View:
     """Borrowed daily cache and research facts of one operation; close it before either connection.
 
     The daily cache supplies reports, prices, financial inputs and saved
-    sessions; research supplies the typed facts and the stored January and
-    latest books. Each company, day and source is read once per view: neither
+    sessions; research supplies the typed facts and the stored latest book.
+    Each company, day and source is read once per view: neither
     database can change while it is open. validate() is the operation's
     boundary check: the freshness callback, the admitted daily identity and
     the facts metadata.
@@ -345,10 +345,7 @@ class View:
         if any(len(rows) > MAX_HISTORY for rows in broad.values()):
             raise ValueError('Prepared observation history exceeds its bound.')
         self._pools = dict(cached=broad, legacy=legacy)
-        self._bounds = dict(historical_through=binding.get('inputs', {}).get('historical_through'),
-                            latest_date=self._expected['latest_date'], population=len(broad))
-        self._books = {(scope['mode'], scope['pool'], scope['context_date']): scope['book']
-                       for scope in self._expected['scopes']}
+        self._bounds = dict(latest_date=self._expected['latest_date'], population=len(broad))
         self._candidates, self._reports, self._companies = {}, {}, {}
         self._sessions, self._stock, self._treasury, self._sources = {}, {}, {}, {}
         self.closed = False
@@ -411,10 +408,11 @@ class View:
     def admit(self, roots, checkpoint=lambda: None):
         """Admission decisions in root order.
 
-        Historical roots use the complete-population candidates of their date:
-        the legacy buffer precedes cached-price membership, so asking for fewer
-        companies cannot promote one. Latest roots read the typed latest
-        admission. Earlier contexts reuse these decisions.
+        Historical roots, on a saved SPY session from FIRST_YEAR, use the
+        complete-population candidates of their date: the legacy buffer precedes
+        cached-price membership, so asking for fewer companies cannot promote
+        one. Latest roots read the typed latest admission. Earlier contexts
+        reuse these decisions.
         """
         self._open()
         self.validate()
@@ -440,9 +438,8 @@ class View:
                                     statement=None if fiscal is None else dict(fiscal=fiscal, known=known),
                                     valuation=None if cap is None else dict(market_cap=cap, enterprise_value=ev, ebitda=ebitda))
             else:
-                through = self._bounds['historical_through']
-                if (root['mode'] != 'historical' or not isinstance(through, str) or day.year < rules.FIRST_YEAR
-                        or str(day) > through or self._db.execute('SELECT 1 FROM sessions WHERE day=?', (str(day),)).fetchone() is None):
+                if (root['mode'] != 'historical' or day.year < rules.FIRST_YEAR
+                        or self._db.execute('SELECT 1 FROM sessions WHERE day=?', (str(day),)).fetchone() is None):
                     raise ValueError('Historical observation root is outside saved screen dates.')
                 selected, ranks = self.candidates(root['date'], checkpoint)
                 statement, rank = selected[pool].get(symbol), ranks.get(symbol)
@@ -604,24 +601,19 @@ class View:
             self._sources[key] = None if row is None else dict(endpoint=endpoint, sha256=row[0], disposition=row[1])
         return self._sources[key]
 
-    def prepared(self, decision, context):
-        """Owner values of the stored January or latest book row in a prepared scope.
+    def prepared(self, decision):
+        """Owner values of the stored latest book row of a latest root.
 
         A missing row is unavailable; it never falls back to a recalculation.
         """
         self._open()
-        owner = decision.get('owner_scope')
-        mode, pool, symbol = decision['mode'], decision['pool'], decision['symbol']
-        book = owner['book'] if owner is not None else self._books[mode, pool, context['date']]
-        if mode == 'latest':
-            row = self.db.execute('SELECT market_cap FROM latest_snapshots WHERE pool=? AND symbol=?', (pool, symbol)).fetchone()
-            book = 0
-        else:
-            row = self.db.execute('SELECT market_cap FROM snapshots WHERE pool=? AND year=? AND symbol=?',
-                                  (pool, book, symbol)).fetchone()
+        pool, symbol = decision['pool'], decision['symbol']
+        if decision['mode'] != 'latest':
+            raise ValueError('Only a latest root has a stored owner book.')
+        row = self.db.execute('SELECT market_cap FROM latest_snapshots WHERE pool=? AND symbol=?', (pool, symbol)).fetchone()
         if row is None:
             return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
-        key = (mode, pool, book, symbol)
+        key = ('latest', pool, 0, symbol)
         metrics = {metric: [multiple, value] for metric, multiple, value in self.db.execute(
             'SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
         filters = {field: value for field, value in self.db.execute(

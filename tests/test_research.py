@@ -303,7 +303,7 @@ class PreparationTests(unittest.TestCase):
         from website.rendering import data as dataset
         with patch.object(dataset,'connect',side_effect=lambda:r.connect(self.path)):
             prepared=dataset.load_screening_data()
-        historical=[];latest=[];cases=[]
+        latest=[];cases=[]
         with closing(r.connect(self.path)) as db:
             saved=[dict(row) for row in db.execute("SELECT * FROM filter_values WHERE field='operating_yield_spread_3y'")]
             self.assertEqual(len(saved),4)
@@ -311,21 +311,18 @@ class PreparationTests(unittest.TestCase):
                 self.assertAlmostEqual(row['value'],5 if row['mode']=='historical' else 100*20e6/270e6-4)
             for pool in ('legacy','cached'):
                 for op,value in [('gt',4),('lt',4),('gt',5),('lt',5),('gt',0)]:
-                    options=dict(first=2015,last=2015,pool=pool,filters=[dict(field='operating_yield_spread_3y',op=op,value=value)])
+                    options=dict(pool=pool,filters=[dict(field='operating_yield_spread_3y',op=op,value=value)])
                     cases.append(options)
-                    historical.append([[h['symbol'],h['rank']] for h in screening.historical(db,**options)])
-                    latest.append([[h['symbol'],h['rank']] for h in screening.latest(db,**{k:v for k,v in options.items() if k not in ('first','last')})])
+                    latest.append([[h['symbol'],h['rank']] for h in screening.latest(db,**options)])
         code="""
 const fs=require('fs'),assert=require('assert'),engine=require(process.argv[1]);
-const {dataset,cases,historical,latest}=JSON.parse(fs.readFileSync(0,'utf8'));
+const {dataset,cases,latest}=JSON.parse(fs.readFileSync(0,'utf8'));
 for(let i=0;i<cases.length;i++){
- const rows=engine.screen(dataset,cases[i]).years.flatMap(y=>y.holdings);
- assert.deepStrictEqual(rows.map(h=>[h.symbol,h.rank]),historical[i]);
  assert.deepStrictEqual(engine.latestScreen(dataset,cases[i]).stocks.map(h=>[h.symbol,h.rank]),latest[i]);
 }
 """
         subprocess.run(['node','-e',code,str(root/'website'/'browser'/'screener.js')],
-                       input=json.dumps(dict(dataset=prepared,cases=cases,historical=historical,latest=latest)),text=True,check=True)
+                       input=json.dumps(dict(dataset=prepared,cases=cases,latest=latest)),text=True,check=True)
         # Missing Treasury inputs omit this filter, while ordinary picks remain.
         (r.RAW/'treasury.json').write_text('[{"date":"2015-01-02","month3":2}]')
         r.prepare(self.path,force=True)

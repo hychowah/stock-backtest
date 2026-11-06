@@ -291,7 +291,7 @@ const VariableWorkspace=(()=>{
   async function discoverCoverage(){
     coverageAbort?.abort();coverageAbort=new AbortController();const number=++coverageVersion,local=generation;
     const value=await coverageCall('scopes',{},coverageAbort.signal);if(number!==coverageVersion||local!==generation)return;
-    coverageScopes=value;node('variable-coverage-scope').innerHTML=value.scopes.map((s,i)=>`<option value="${i}">${esc(s.mode)} · ${esc(s.context_date)} · ${esc(s.pool)} · book ${esc(s.book)}</option>`).join('');
+    coverageScopes=value;node('variable-coverage-scope').innerHTML=value.scopes.map((s,i)=>`<option value="${i}">${esc(s.mode)} · ${esc(s.context_date)} · ${esc(s.pool)}</option>`).join('');
     node('variable-coverage-result').textContent='Select a recorded scope to inspect.';
   }
   async function inspectCoverage(){
@@ -305,7 +305,7 @@ const VariableWorkspace=(()=>{
       const prepared=await request('/capture',{intent:{format:'strategy-intent',version:1,selection:{ranking:{source:{kind:'formula',...checked.root},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:selected.pool,bounds:{}},detached:[checked.capture]});
       if(!current())return;
       const value=await coverageCall('inspect',{strategy:prepared.strategy,scope:{generation:discoveredGeneration,...selected}},controller.signal);if(!current())return;
-      node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}, book ${value.scope.book}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Provider admission: ${value.provider_admitted} admitted, ${value.provider_unavailable} unavailable; reasons ${JSON.stringify(value.provider_reasons)}. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
+      node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Provider admission: ${value.provider_admitted} admitted, ${value.provider_unavailable} unavailable; reasons ${JSON.stringify(value.provider_reasons)}. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
     }catch(failure){if(current())throw failure;}
   }
   // The page's filter list offers the same sources as the picker. Policy

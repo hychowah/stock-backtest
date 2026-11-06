@@ -80,8 +80,6 @@ needs it. Move each decision from a design into a decision record.
   number and its settings in the commit message.
 - `results/experiments/` holds only small text summaries that a standing
   document cites: `.md`, `.json`, `.csv` or `.txt` files of at most 64 KB.
-  Reviewed `runtime-baseline-*.json` evidence from `tools/deploy.py
-  --collect-report` has no size cap.
 - Generated website output stays untracked. `website/local/` and the portable
   `website/dist/` export are both ignored.
 

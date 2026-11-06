@@ -634,10 +634,7 @@ def prepare(path=DATABASE, force=False):
         diagnostics.lap('dated_facts')
         prepare_metrics(db)
         diagnostics.lap('metrics')
-        scopes=[dict(mode='historical',pool=pool,context_date=str(period[0]),book=year)
-                for year,period in periods.items() for pool in ('legacy','cached')]
-        scopes += [dict(mode='latest',pool=pool,context_date=str(latest_day),book=0)
-                   for pool in ('legacy','cached')]
+        scopes=[dict(mode='latest',pool=pool,context_date=str(latest_day),book=0) for pool in ('legacy','cached')]
         if prior is not None:
             prior.finish()
         # Rows follow from the raw signature, each price file's bytes and the
@@ -734,62 +731,18 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--database',type=Path,default=DATABASE)
     commands=parser.add_subparsers(dest='command',required=True)
-    p=commands.add_parser('prepare',help='Prepare January snapshots from saved JSON; never downloads')
+    p=commands.add_parser('prepare',help='Prepare the research database from saved JSON; never downloads')
     p.add_argument('--force',action='store_true')
-    p=commands.add_parser('screen',help='Run a fast parameterized January backtest')
-    p.add_argument('--first',type=int,default=1996);p.add_argument('--last',type=int,default=2026)
-    p.add_argument('--rank-from',type=int,default=1);p.add_argument('--rank-to',type=int,default=50)
-    p.add_argument('--top',type=int,help='Shortcut for ranks 1 through N')
-    p.add_argument('--selection-order',choices=['filter_first','rank_first'],default='filter_first')
-    p.add_argument('--metric',choices=list(metrics.METRICS),default=metrics.DEFAULT_METRIC)
-    p.add_argument('--pool',choices=['legacy','cached'],default='legacy')
-    p.add_argument('--min-cap',type=float,default=100e6);p.add_argument('--max-cap',type=float)
-    p.add_argument('--min-ev',type=float,default=50e6);p.add_argument('--min-yield',type=float,default=0.)
-    p.add_argument('--max-multiple',type=float);p.add_argument('--sector');p.add_argument('--exchange')
-    p.add_argument('--output',type=Path,help='Optional JSON result path; the current report is never overwritten')
-    commands.add_parser('status',help='Show database size and price-coverage limits')
+    commands.add_parser('status',help='Show database size and latest price coverage')
     args=parser.parse_args()
     if args.command=='prepare':
         prepare(args.database,args.force);return
-    started=time.perf_counter()
-    with connect(args.database) as db:
-        if args.command=='status':
-            print(f'Database: {args.database.stat().st_size/1e6:.1f} MB')
-            print('year,eligible_financials,price_valued_cached,legacy_price_valued')
-            for p in db.execute('SELECT * FROM periods ORDER BY year'):
-                counts={row[0]:row[1] for row in db.execute('SELECT pool,COUNT(*) FROM snapshots WHERE year=? GROUP BY pool',(p['year'],))}
-                print(f"{p['year']},{p['cached_candidates']},{counts.get('cached',0)},{counts.get('legacy',0)}")
-            return
-        options={k:getattr(args,k) for k in ['first','last','rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','selection_order']}
-        if args.top is not None:
-            options.update(rank_from=1,rank_to=args.top)
-        rows=screening.historical(db,**options)
-        grouped=aggregate(rows)
-        periods={r['year']:dict(r) for r in db.execute('SELECT * FROM periods')}
-        print('year,names,strategy,spy,median_market_cap,last_price_exits')
-        wealth=spy_wealth=1.
-        for year in range(args.first,args.last+1):
-            if year not in periods:
-                continue
-            g=grouped.get(year)
-            if not g:
-                print(f'{year},0,NA,NA,NA,0');continue
-            wealth*=1+g['portfolio'];spy_wealth*=1+periods[year]['spy']
-            stops=sum(r['status']=='Last available price' for r in g['holdings'])
-            print(f"{year},{len(g['holdings'])},{g['portfolio']:.4%},{periods[year]['spy']:.4%},{g['median_market_cap']:.0f},{stops}")
-        requested=options['rank_to']-options['rank_from']+1
-        incomplete=[y for y in periods if args.first<=y<=args.last and len(grouped.get(y,{}).get('holdings',[]))!=requested]
-        print(f'Growth of $1 over populated books: strategy ${wealth:.4f}; SPY ${spy_wealth:.4f}')
-        print(f'Query and validation time: {time.perf_counter()-started:.3f}s')
-        print('Coverage: '+('original 250-candidate buffer; report-compatible selection.' if args.pool=='legacy' else 'cached-price companies only; not the full universe. Sector/exchange are cached metadata, not historical classifications.'))
-        if incomplete:
-            print('Insufficient matching names in: '+', '.join(map(str,incomplete)))
-        print('Early exits outside the original top 50 have not received the prior manual bankruptcy review.')
-        if args.output:
-            if args.output.resolve()==(RESULTS/'summary-exits.txt').resolve():
-                raise ValueError('Choose a separate experiment output; the reference report is preserved.')
-            args.output.parent.mkdir(parents=True,exist_ok=True)
-            args.output.write_text(json.dumps(dict(parameters=options,years=grouped,periods=periods,incomplete_years=incomplete),indent=2))
+    with closing(connect(args.database)) as db:
+        latest=json.loads(db.execute("SELECT value FROM metadata WHERE key='latest'").fetchone()[0])
+        counts=dict(db.execute('SELECT pool,COUNT(*) FROM latest_snapshots GROUP BY pool').fetchall())
+    print(f'Database: {args.database.stat().st_size/1e6:.1f} MB')
+    print(f"Latest session {latest['asof']}: {latest['eligible_financials']} active names with eligible financials; "
+          f"{counts.get('cached',0)} valued with cached prices, {counts.get('legacy',0)} in the original candidate set.")
 
 
 if __name__=='__main__':

@@ -1,6 +1,6 @@
 # Fast local screening and backtesting
 
-Normal research should query prepared January snapshots instead of reparsing daily JSON price files. The embedded SQLite engine is included in Python; no database server, package installation, API key, or network connection is required. The engine can later be replaced with DuckDB if larger analytical datasets warrant it; this project does not currently depend on DuckDB or Parquet.
+Normal research should query the prepared databases instead of reparsing daily JSON price files. The embedded SQLite engine is included in Python; no database server, package installation, API key, or network connection is required. The engine can later be replaced with DuckDB if larger analytical datasets warrant it; this project does not currently depend on DuckDB or Parquet.
 
 ## Prepare once
 
@@ -29,38 +29,20 @@ Preparation stores historical observations and a separate latest-session valuati
 
 It reuses the existing 90-day lag and 800-day report-age rule. A report must become available strictly before the buy date, matching the original code. Entry EV is reconstructed using the dividend-adjusted price and report net debt, with the same limitations as the original backtest. Reported financials may contain later vendor revisions: the 90-day rule is an availability assumption, not proof of a true point-in-time vendor archive.
 
-## Change parameters in seconds
+## Inspect the prepared database
 
 ```bash
-# Original top 50: reproduce the existing selection
-python3 scripts/research.py screen
-
-# Top 100, with the same original 250-name candidate buffer
-python3 scripts/research.py screen --top 100
-
-# Ranks 10–20 for six January books
-python3 scripts/research.py screen --first 2015 --last 2020 --rank-from 10 --rank-to 20
-
-# Apply new filters to the wider prepared set with cached prices
-python3 scripts/research.py screen --pool cached --min-cap 500000000 --max-cap 5000000000 --min-yield 0.15 --top 100
-
-# Other available filters, individually or in combination
-python3 scripts/research.py screen --pool cached --min-ev 100000000 --max-multiple 8 --sector Technology --exchange NASDAQ
-
-# Save a separate experiment, without overwriting the original report
-python3 scripts/research.py screen --top 100 --output tmp/top100.json
-
-# Inspect how much of the universe can be valued from the cached prices
+# Database size and the latest session's price coverage
 python3 scripts/research.py status
 ```
 
-Caps and EV are in nominal USD; minimum yield is a fraction (`0.15` means 15%). Sector and exchange filters match the cached text exactly. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). Use `--selection-order rank_first` to select the requested ranks before applying user filters. Stocks are selected each January and equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
+The January `screen` command was removed with the January mode. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). **Rank first, then filter** selects the requested ranks before applying user filters. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
 `legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: all pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides. This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
-`cached` considers all available positive-EV USD reports for companies with cached price files. Its report selection can differ from the original pool because the original report-level size filters are not applied. It cannot claim to be the full 11,000-company universe. The status command reports financial eligibility and price-valued observations by year. Acquiring missing prices is a separate, explicit task.
+`cached` considers all available positive-EV USD reports for companies with cached price files. Its report selection can differ from the original pool because the original report-level size filters are not applied. It cannot claim to be the full 11,000-company universe. The status command reports the latest session's eligible financials and price-valued names. Acquiring missing prices is a separate, explicit task.
 
-If a filter leaves fewer names than requested, the result states which years are short. A year with no names is printed as `NA`; cumulative wealth covers only populated books and must not be treated as an uninterrupted invested strategy. SPY is compounded over those same populated books. Stock returns are full precision; no commissions or cash interest after an early exit are included. Expanded selections may include early stops outside the original 37-name review, so their default last-price exits have not received the prior manual bankruptcy investigation.
+Expanded selections may include early stops outside the original 37-name review, so their default last-price exits have not received the prior manual bankruptcy investigation.
 
 ## Website
 
@@ -68,11 +50,11 @@ If a filter leaves fewer names than requested, the result states which years are
 python3 website/build.py
 ```
 
-Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the tracked `website/dist/` snapshot unchanged. Refresh that portable snapshot only with `python3 website/build.py --snapshot`. Review its generated files and `snapshot.json` cutoffs and source hashes before committing. Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable snapshot instead.
+Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the tracked `website/dist/` snapshot unchanged. Refresh that portable snapshot only with `python3 website/build.py --snapshot`. Review its generated files and the `snapshot.json` latest date and source hashes before committing. Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable snapshot instead.
 
-The website builder queries the prepared database and embeds both historical and latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for the year-based results. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange, pool and year filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Year and rank changes also apply the entered filters. Charts, stock lists, market-cap medians, statistics and CSV exports reflect the selection. Each year also has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). No backend or hosting service is required. See `website/README.md` for units and controls. Unlike the CLI populated-book summary, browser strategy CAGR and cumulative growth are unavailable if any selected year has no matching stocks; SPY remains for the full selected period.
+The website builder queries the prepared database and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. Strategy CAGR and cumulative growth are unavailable if any period has no matching stocks; SPY remains for the full selected period.
 
-The original `backtest/engines/reference/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; pass `--top`.
+The original `backtest/engines/reference/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; choose the ranks in the strategy builder.
 
 ## Checks
 
@@ -81,11 +63,10 @@ python3 tests/test_research.py
 python3 tests/check_paths.py
 node tests/check-range.cjs
 node tests/check-contributions.cjs
-python3 tests/test_attribution.py
 python3 tests/check_screener.py
 ```
 
-The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation compares every historical year with the independent engine. `python3 tests/test_baseline.py` checks changed prices, holding-level mismatches, latest-only updates, interrupted publication, recovery receipts and Windows sharing locks. Website tests check year/rank and screen controls using a simulated DOM, and compare browser picks against SQLite across historical and latest configurations, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
+The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation compares every historical year with the independent engine. `python3 tests/test_baseline.py` checks changed prices, holding-level mismatches, latest-only updates, interrupted publication, recovery receipts and Windows sharing locks. Website tests check rank and screen controls and the saved-January dated view using a simulated DOM, and compare browser latest picks against SQLite, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
 
 ## Measured performance
 
@@ -105,7 +86,7 @@ Historical preparation is capped at the saved canonical report's Through date (a
 
 ### Select a ranking metric
 
-Both website modes and `research.py screen --metric ev_ebitda_3y` support
+Latest screens and dated books support
 current EV divided by three-year average EBITDA. The denominator is the arithmetic mean of positive annual
 EBITDA for three consecutive fiscal calendar years ending
 at the selected report. EV is valued at the screening date.
@@ -149,11 +130,10 @@ python3 website/serve.py
 The launcher prepares stale research and daily caches in dependency order,
 rebuilds changed website sources and opens the browser automatically. Unchanged
 outputs are reused. `--no-browser` suppresses browser opening.
-Select **Historical backtest**, choose **Custom trade
-date and frequency**, enter a starting date and final mark date, and choose
-monthly, quarterly, half-yearly or yearly. The original January view and latest
-picks still work by opening the HTML directly; custom schedules need the local
-service because daily histories are kept out of the embedded page.
+Select **Historical backtest**, enter a starting date and final mark date, and
+choose monthly, quarterly, half-yearly or yearly. Latest picks still work by
+opening the HTML directly; custom schedules need the local service because
+daily histories are kept out of the embedded page.
 
 Each target is anchored to the original starting calendar day. Invalid month
 ends clamp to that month's last day; holidays/weekends roll forward to the next
@@ -444,7 +424,7 @@ rejected variant, not the applied implementation. The production cache was uncha
 
 ### Selection order
 
-**Selection order** applies to January, latest, fixed and random-date views.
+**Selection order** applies to latest, fixed and random-date views.
 The default is **Filter first, then rank**. All user conditions pass first.
 Rank the matches and take the requested inclusive range.
 
@@ -459,7 +439,7 @@ Pool membership, financial eligibility, usable prices and available selected
 ranking metrics still precede both orders. The original pool's 250-name buffer
 and preparation floors remain. Missing threshold values fail only their own
 conditions. Tie order stays yield descending, candidate rank ascending with
-nulls first, then symbol ascending. Each January year ranks independently.
+nulls first, then symbol ascending. Each dated book ranks independently.
 
 Both orders reuse the same prepared records and dated books. Changing this
 setting needs no data download or new dated-book calculation. Source installation
@@ -566,9 +546,10 @@ filters = [{"field": "operating_yield_spread_3y", "op": "gt", "value": 5}]
 Open **Manage backtest data** from the strategy builder, or open `/data.html`
 on the local service. The panel checks the universe, annual financials, stock
 prices, SPY, Treasury yields, prepared databases and website build. Select the
-original candidate sets, existing price-cache stocks, all eligible financial
-stocks, or up to 200 specific symbols. Choose a price-history range. Include
-prior prices for report-date valuation and trailing returns.
+existing price-cache stocks (the default, which dated books need), all eligible
+financial stocks, or up to 200 specific symbols. Choose a price-history range;
+the default ends on the latest available day, today. Include prior prices for
+report-date valuation and trailing returns.
 
 **Check data** reads saved files. It makes no provider request and does not read
 the API key. Reports show actual first and last dates, record counts, missing
@@ -615,7 +596,7 @@ never its value or provider request URLs. Downloads can require a paid provider
 subscription. Opening the panel never starts a download.
 
 **Rebuild prepared data + website** runs research preparation, daily preparation,
-and the website build without network requests. Two independent engines must agree before a changed January reference is published. Export the revision from the data panel to inspect its evidence. Historical dates do not advance with latest prices. Open the
+and the website build without network requests. Preparation still checks the stored January reference books with the independent engine; a disagreement stops publication. No page reads those books. Open the
 strategy page after rebuilding to load the new embedded data.
 
 `website/server/data_manager.py` owns the inventory and background job. The local
@@ -791,10 +772,10 @@ the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
 binary64 bits exactly, including -0.0, which a REAL column stores as the
 integer 0. Days are keyed by date, never by raw-file row. A download that
 prepends rows resolves only the new rows' days and copies every other typed
-day; a file with equal bytes copies its days and source. Prepared January and
-latest owner lanes are the stored book rows (`snapshots` or `latest_snapshots`,
-`screening_metrics`, `filter_values`), read in place; a missing row never falls
-back to a recalculation.
+day; a file with equal bytes copies its days and source. Prepared latest owner
+lanes are the stored latest book rows (`latest_snapshots`, `screening_metrics`,
+`filter_values`), read in place; a missing row never falls back to a
+recalculation.
 
 Annual resolution (`financial_inputs.resolve_history`) keeps every admitted
 endpoint and fiscal date, even when every requested field is unavailable.
@@ -842,9 +823,9 @@ operation. The borrowed view reads each company, day and source once.
 
 The evaluator supports all 52 direct inputs plus operating margin, existing
 dated EV and the reusable measure adapters. The 33 named measures use immutable
-ordinary definitions and exact references. A prepared January or latest root
-consumes its stored owner lanes. A derived context uses dated owner policy,
-even at the root date. Report EBITDA uses broad accepted report history.
+ordinary definitions and exact references. A latest root consumes its stored
+latest owner lanes. Every other root, January sessions included, and every
+derived context use dated owner policy, even at the root date. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
 dates. Only those named annual adapters support annual history. Typed facts 1,
 research schema 13 and daily cache 6 require incompatible caches to rebuild;
@@ -853,8 +834,8 @@ inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,
 `definitions.require_program()`, is the one formula gate, and the one evaluator
 implements the whole language. Restored captures run through Original in
-Latest, January, fixed and random modes. Original sample preview and complete
-recorded January/latest coverage are separate operations. Eager scalar execution
+latest, fixed and random modes; a January request is refused. Original sample
+preview and complete recorded latest coverage are separate operations. Eager scalar execution
 remains unsupported. Old definitions, captures, artifacts and durable records
 retain their bytes. Private synthetic tests establish source correctness, not
 native/live-cache coverage. No download, publication to main or running-server

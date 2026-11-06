@@ -15,8 +15,8 @@ One income fiscal spine selects annual periods before any endpoint join;
 other endpoints join those exact dates. Price and volume use the stock's own
 saved row at the SPY session on or before the context, within seven days.
 Treasury uses the latest saved day on or before the context and divides
-provider percent by 100. A prepared January or latest root reads its stored
-owner lanes; a derived context uses dated owner policy. Arithmetic is binary64
+provider percent by 100. A latest root reads its stored latest owner lanes;
+other roots and derived contexts use dated owner policy. Arithmetic is binary64
 in tree order; mean adds oldest first; min/max keep the oldest equal member;
 growth and CAGR need a positive first (and, for CAGR, last) member; the first
 unavailable operand's reason wins; a nonfinite result is unavailable.
@@ -480,11 +480,11 @@ class Formulas:
         members, reason, anchor = [], None, None
         if parameter in _DATED:
             members = [self._dated(parameter, root['symbol'], day, view, detail)]
-        elif parameter.startswith('owner.') and measure_observations.prepared_scope(view.projection, decision, context):
+        elif parameter.startswith('owner.') and measure_observations.prepared_scope(decision, context):
             owner = state.setdefault('owner', {})
             if context_key not in owner:
                 checkpoint()
-                owner[context_key] = view.prepared(decision, context)
+                owner[context_key] = view.prepared(decision)
             members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1], checkpoint)]
         elif parameter == 'market.enterprise_value' and is_root:
             members = [dict(value=decision['valuation']['enterprise_value'], valid=True, reason=None)]

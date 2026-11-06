@@ -28,7 +28,7 @@ context.ResultArtifacts.decode=require('../website/browser/result-artifacts.js')
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-runs.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context),copy=value=>JSON.parse(JSON.stringify(value)),tick=()=>new Promise(resolve=>setImmediate(resolve));
 for(const [key,id] of Object.entries({selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'}))node(id).value=defaults[key]===null?'':String(key==='min_cap'||key==='min_ev'?defaults[key]/1e6:defaults[key]);
-node('rank-from').value='3';node('rank-to').value='12';node('from-year').value='2015';node('to-year').value='2015';node('schedule-kind').value='custom';node('date-testing').value='single';
+node('rank-from').value='3';node('rank-to').value='12';node('date-testing').value='single';
 const exact={kind:'formula',variable_id:'variable:archived',revision:'sha256:'+'a'.repeat(64)};
 const detached={presentation:[{...exact,name:'Original submitted label'}],program:{bundle:{definitions:[{...exact,definition:{expression:{op:'constant',value:'1',unit:'scalar'},output:{unit:'scalar',display:'percent'}}}]},definitions:[{...exact,unit:'scalar',display:'percent'}]}};
 context.source=exact;context.detached=detached;context.authored=detached.program.bundle.definitions;
@@ -66,10 +66,18 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  // Null size floors restore exactly; the normal captured path handles old/deleted sources.
  context.settings.strategy.bounds.min_cap=null;context.settings.strategy.bounds.min_ev=null;
  run('StrategyDraft.restore(settings)');assert.equal(node('min-cap').value,'');assert.equal(run('StrategyDraft.read().settings.strategy.bounds.min_cap'),null);
- for(const mode of ['latest','january','custom','random']){
-  context.settings={...context.settings,mode,engine:'experimental',first:2015,last:2015,trials:1,seed:42};run('StrategyDraft.restore(settings)');
+ for(const mode of ['latest','custom','random']){
+  context.settings={...context.settings,mode,engine:'experimental',trials:1,seed:42};run('StrategyDraft.restore(settings)');
   const value=await run('StrategyDraft.prepareSubmission()');assert.equal(value.mode,mode);assert.equal(value.engine,'experimental');assert.equal(node('backtest-engine').value,'experimental');assert.equal(value.strategy.selection.ranking.source.revision,exact.revision);
  }
+ // Saved January settings restore the strategy for a dated run. Their book
+ // years never become a calendar, and no January submission is prepared.
+ let calendarRestores=0;const restoreCalendar=context.CalendarSettings.restore;context.CalendarSettings.restore=()=>{calendarRestores++;};
+ node('date-testing').value='single';context.january={...context.settings,mode:'january',first:2015,last:2015};delete context.january.trials;delete context.january.seed;
+ run('StrategyDraft.restore(january)');
+ const january=await run('StrategyDraft.prepareSubmission()');assert.equal(january.mode,'custom');assert.equal(calendarRestores,0);
+ assert(!('first' in january)&&!('last' in january));assert.equal(january.strategy.selection.ranking.source.revision,exact.revision);
+ context.CalendarSettings.restore=restoreCalendar;
  // Copying a detached scalar result keeps exact captured content editable.
  const copiedSettings={...context.settings,engine:'experimental'};
  context.savedCopy={version:4,kind:'random',settings:copiedSettings,result:{configuration:{seed:321}},catalog:{metrics:{},filters:{}},evidence:{id:'a'.repeat(32),format_version:2,trials:1,periods:1,holdings:1}};
@@ -99,7 +107,7 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  for(let i=0;i<30;i++)run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.read().detached.length'),1);
  if(wire){
-  useWire=true;context.settings={mode:'january',first:2015,last:2015,strategy:wire.large};run('StrategyDraft.restore(settings)');
+  useWire=true;context.settings={mode:'latest',strategy:wire.large};run('StrategyDraft.restore(settings)');
   const restored=await run('StrategyDraft.prepareSubmission()');assert.deepEqual(copy(restored.strategy),wire.large);assert(!('detached' in requests.at(-1)));assert('original' in requests.at(-1));
   run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
   const changed=await run('StrategyDraft.prepareSubmission()');assert(!('original' in requests.at(-1)));assert(!('detached' in requests.at(-1)));assert.equal(requests.at(-1).submitted.length,1);assert.equal(changed.strategy.selection.ranking.direction,'lowest');assert.deepEqual(copy(changed.strategy.variables.presentation),wire.large.variables.presentation);

@@ -166,7 +166,7 @@ const BacktestQueue=(()=>{
     if(node('strategy-form').reportValidity&&!node('strategy-form').reportValidity())throw Error('Complete the highlighted strategy settings before adding this test.');
     const submittedName=node('queue-name').value.trim();
     const settings=callbacks.prepareSubmission?await callbacks.prepareSubmission():callbacks.settings();
-    if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest → Custom trade date and frequency to queue a fixed or random-date test.');
+    if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest to queue a fixed or random-date test.');
     const {mode,...options}=settings;
     return {mode,options,catalog:callbacks.catalog(),presentation:callbacks.presentation(settings),name:submittedName||title(settings).slice(0,120)};
   }

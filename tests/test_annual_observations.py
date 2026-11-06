@@ -117,9 +117,8 @@ class Company:
 
     Set the attributes, then call view(): it writes them and borrows a
     facts.View. reports are statements rows; annual maps endpoint, fiscal date
-    and field to a resolved state; books maps (pool, book) to a stored January
-    row (market_cap, metrics, filters); scopes lists the prepared historical
-    scopes. Every report fiscal date, the root date and
+    and field to a resolved state; books maps a pool to its stored latest book
+    row (market_cap, metrics, filters). Every report fiscal date, the root date and
     the latest date have a price of 10. financials and treasury10 feed the
     dated owner policy. Set stale to fail the view's freshness callback.
     """
@@ -132,7 +131,7 @@ class Company:
         self.annual = {'income-statement': {f'{year}-06-30': dict(revenue=state(100.), operatingIncome=state(income))
                                             for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}}
         self.root_date, self.latest_date = '2015-01-02', '2015-01-05'
-        self.books, self.scopes, self.financials, self.treasury10 = {}, [], {}, []
+        self.books, self.financials, self.treasury10 = {}, {}, []
         self.stale = False
 
     def close(self):
@@ -166,15 +165,14 @@ class Company:
             facts.store_latest(db, 'A', pool, dict(admitted=True, reason=None, candidate_rank=1,
                 statement=dict(fiscal=last['fiscal'], known=last['known']),
                 valuation=dict(market_cap=160e6, enterprise_value=190e6, ebitda=54e6)))
-        for (pool, book), row in self.books.items():
-            db.execute('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (pool, book, 'A', 1, last['fiscal'],
-                self.root_date, self.latest_date, row['market_cap'], 180e6, 54e6, .3, 3., .28, 0., 'Scheduled exit'))
+        for pool, row in self.books.items():
+            db.execute('INSERT INTO latest_snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (pool, 'A', 1, last['fiscal'],
+                last['known'], self.latest_date, 10., row['market_cap'], 190e6, .3, 3., .28))
             db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
-                           [('historical', pool, book, 'A', metric, *pair) for metric, pair in row['metrics'].items()])
+                           [('latest', pool, 0, 'A', metric, *pair) for metric, pair in row['metrics'].items()])
             db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                           [('historical', pool, book, 'A', name, value) for name, value in row['filters'].items()])
-        scopes = list(self.scopes) + [dict(mode='latest', pool=pool, context_date=self.latest_date, book=0)
-                                      for pool in ('legacy', 'cached')]
+                           [('latest', pool, 0, 'A', name, value) for name, value in row['filters'].items()])
+        scopes = [dict(mode='latest', pool=pool, context_date=self.latest_date, book=0) for pool in ('legacy', 'cached')]
         facts.finish(db, self.latest_date, inputs='fixture', scopes=scopes)
         return facts.View(db, db, self.freshness, lambda: None)
 

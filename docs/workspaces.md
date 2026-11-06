@@ -106,15 +106,11 @@ This republishes the retained revision (or an explicitly selected revision), run
 
 The WSL checkout contains source and synthetic test fixtures, not another full raw cache. For example, `python3 tests/test_deployment.py` runs there. The saved-data `tests/check_paths.py` belongs in the Windows runtime and is included in `--check`. Linux and Windows environments and native binaries are separate.
 
-## Collect a verified report revision
+## The canonical report
 
-After a Windows data-panel rebuild changes the canonical report:
-
-```bash
-python3 tools/deploy.py --collect-report
-```
-
-This checks the Windows report/database hash binding under source and financial ownership. It exports the report and priced baseline evidence. It then updates the source report and creates a reviewable evidence file under `results/experiments/` when the report differs. Uncommitted source-report edits are preserved and cause collection to stop. Review and smart-commit the collected revision. Ordinary deployment still leaves the active Windows report alone.
+The tracked `results/summary-exits.txt` is a frozen record. Nothing collects a
+runtime report into source. Ordinary deployment leaves the active Windows report
+alone, and a fresh runtime receives a copy of the tracked report.
 
 Raw data remains outside Git. Back it up separately. Baseline revision history remains in the Windows runtime.
 

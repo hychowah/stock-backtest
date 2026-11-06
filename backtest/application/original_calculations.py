@@ -168,6 +168,7 @@ class Original(Control):
         from backtest import scalar_result_evidence
         from backtest.inputs import facts, operation_inputs
         from backtest.application import strategy_requests, scalar_runs
+        strategy_requests.require_mode(mode)
         self.preflight(options,planned=planned)
         options=strategy_requests.execution_options(mode,options,planned=planned,checkpoint=self._checkpoint)
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')

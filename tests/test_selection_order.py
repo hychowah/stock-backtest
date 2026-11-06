@@ -70,7 +70,7 @@ class SelectionOrderTests(unittest.TestCase):
         self.assertEqual([(h['year'],h['symbol'],h['rank']) for h in rows],[(2015,'B',2),(2016,'B',2)])
         self.assertEqual(self.ids(screening.latest,rank_from=2,rank_to=3,selection_order='rank_first'),[('B',2),('C',3)])
 
-    def test_browser_sql_parity_in_both_modes_pools_orders_and_ranges(self):
+    def test_browser_sql_latest_parity_in_both_pools_orders_and_ranges(self):
         def copy_connection():
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
             self.db.backup(db);return db
@@ -82,13 +82,11 @@ class SelectionOrderTests(unittest.TestCase):
                 for conditions in ({},{'min_cap':150e6},{'sector':'Technology'},{'filters':[dict(field='pe',op='lt',value=11)]},{'filters':[dict(field='pe',op='lt',value=10)]}):
                     for first,last in ((1,1),(1,2),(2,3),(3,4)):
                         options=dict(pool=pool,selection_order=order,rank_from=first,rank_to=last,**conditions)
-                        cases.append(dict(options=options,historical=self.ids(screening.historical,**options),latest=self.ids(screening.latest,**options)))
+                        cases.append(dict(options=options,latest=self.ids(screening.latest,**options)))
         code="""
 const assert=require('assert'),fs=require('fs'),engine=require(process.argv[1]);
 const {dataset,cases}=JSON.parse(fs.readFileSync(0,'utf8'));
 for(const c of cases){
- const historical=engine.screen(dataset,{...c.options,first:2015,last:2015});
- assert.deepStrictEqual(historical.years[0].holdings.map(h=>[h.symbol,h.rank]),c.historical);
  const latest=engine.latestScreen(dataset,c.options);
  assert.deepStrictEqual(latest.stocks.map(h=>[h.symbol,h.rank]),c.latest);
  if(c.options.selection_order==='rank_first')assert.equal(latest.matches,latest.stocks.length);

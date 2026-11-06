@@ -31,7 +31,6 @@ class CacheTests(unittest.TestCase):
         self.context.enter_context(patch.object(d,'ROOT',self.root))
         self.context.enter_context(patch.object(d,'COVERAGE',self.raw/'download-coverage.json'))
         self.context.enter_context(patch.object(d,'derived_status',return_value=[]))
-        self.context.enter_context(patch.object(d,'baseline_audit',return_value=None))
         self.context.enter_context(patch.object(fmp_download,'KEY_PATH',self.root/'absent-key'))
         self.context.enter_context(patch.object(d.cache_access,'access',side_effect=lambda timeout=30:nullcontext()))
         self.context.enter_context(patch('urllib.request.urlopen',side_effect=AssertionError('Unexpected request')))
@@ -432,6 +431,13 @@ class CacheTests(unittest.TestCase):
         with patch.object(d,'request_json',return_value=[]):d.download(self.o,self.emit,self.stop)
         self.assertEqual((self.raw/'archive/metrics.jsonl.before-data-repair').read_text(),'broken\n')
         self.assertEqual(d.financial_records()[1],0)
+
+    def test_default_scope_is_cached_prices_through_today(self):
+        default=d.options({})
+        self.assertEqual((default['scope'],default['start'],default['end']),('cached','1995-01-01',str(date.today())))
+        (self.raw/'px'/'A.json').write_text('{}')
+        self.assertEqual(d.target_symbols(default,d.universe_rows(),{}),['A'])
+        with self.assertRaisesRegex(ValueError,'stock group'):d.options(dict(scope='baseline'))
 
     def test_invalid_symbol_and_option_validation(self):
         for request in [dict(scope='symbols',symbols='../secret'),dict(scope='symbols',symbols=''),dict(start='2021-01-01',end='2020-01-01'),dict(datasets=[]),dict(arbitrary_path='/tmp')]:

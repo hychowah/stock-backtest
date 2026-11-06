@@ -8,7 +8,7 @@ let deferred=false,holdingCount=180;
 const summary={start:'2015-01-02',end:'2015-05-01',months:1,options:{rank_to:180},cagr:.1,spy_cagr:.05,growth:1.1,coverage:'Original coverage',seconds:0};
 const holdings=Array.from({length:180},(_,i)=>({rank:i+1,symbol:'S'+String(i).padStart(3,'0'),name:'Original',return_value:(i%7-3)/100,metric_multiple:3,market_cap:1e8,enterprise_value:2e8,contribution_pp:(i%7-3)/180}));
 const response=value=>({ok:true,headers:{get:()=>null},json:async()=>value});
-const ctx=vm.createContext({document,console,AbortController,Uint8Array,crypto:require('crypto').webcrypto,CalendarSettings:{init(){},label:()=> 'Monthly'},metricLabel:()=> 'Original metric',money:String,contributionPie:()=> '',RobustnessView:{init(){},render(){}},fetch:async(url,options={})=>{
+const ctx=vm.createContext({document,console,AbortController,Uint8Array,crypto:require('crypto').webcrypto,CalendarSettings:{init(){},label:()=> 'Monthly'},metricLabel:()=> 'Original metric',money:String,RobustnessView:{init(){},render(){}},fetch:async(url,options={})=>{
   requests.push([url,options.method]);
   if(options.method==='DELETE')return response({released:true});
   const parts=url.split('/'),id=parts[3],op=parts[6],trial=+parts[7];

@@ -232,11 +232,10 @@ def financial_record(symbol: str, payload: object) -> dict:
 
 
 
-def source_problem(raw=None, root=None):
+def source_problem(raw=None):
     """Inspect essential saved inputs without preparation or network access."""
-    from backtest.paths import RAW, ROOT
+    from backtest.paths import RAW
     raw=RAW if raw is None else raw
-    root=ROOT if root is None else root
     for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):
         path=raw/name
         if not path.is_file() or not path.stat().st_size:return True
@@ -246,4 +245,4 @@ def source_problem(raw=None, root=None):
         for file,field in [('spy-div.json','adjClose'),('treasury.json','month3')]:
             if not series(read_json(raw/file,[]),field):return True
     except (ValueError,OSError):return True
-    return not (root/'results'/'summary-exits.txt').is_file() or not any((raw/'px').glob('*.json'))
+    return not any((raw/'px').glob('*.json'))

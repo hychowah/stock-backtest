@@ -121,8 +121,7 @@ Local paths live in ignored `data/workspace.json`.
 
 Preserve Windows-owned raw data, databases, logs, environments, local builds and
 the verified canonical report. Do not edit runtime source or copy these assets
-back into WSL. `--collect-report` collects a database-bound report and priced
-evidence for review. The WSL checkout has source and synthetic fixtures, not a
+back into WSL. The WSL checkout has source and synthetic fixtures, not a
 second raw cache. Run real-cache preparation and `tests/check_paths.py` with
 native Windows Python.
 
@@ -257,28 +256,30 @@ evidence and recoverable report/database publication. Verified changes update th
 canonical report without advancing its Through date. Previous reports stay
 verbatim under ignored `results/baseline-history/`. First-run unavailable prices
 stay null. An unfinished `data/research.sqlite.publication.json` blocks readers.
-Use `scripts/research.py screen` flags for experiments instead of editing `HOLD`.
-The `legacy` pool keeps the original 250-candidate pre-price screen with the
+No website, screen or tool reads the January books; the development check
+`backtest/engines/reference/check.py` compares a 12-month dated run with
+`revalue` on a real-data copy. The `legacy` pool keeps the original 250-candidate pre-price screen with the
 current exit rule. The `cached` pool covers cached-price companies only; report
 missing coverage and unreviewed early stops. Checks: `tests/test_baseline.py`
 (also native Windows), `tests/test_research.py` and
 `tests/test_prepared_reuse.py`. See
 [docs/research-workflow.md](docs/research-workflow.md).
 
-**Website screening.** `website/rendering/data.py` embeds both prepared pools.
-`website/browser/screener.js` must match SQL selection in
-`backtest/inputs/research.py` in both modes and pools. Latest mode uses the
-latest cached SPY session, an exact-session adjusted price and cached
-`listed=True`. It never reuses stopped prices and stores no future return.
-`screening.latest()` and `StockScreener.latestScreen()` must agree. Historical
-preparation is bounded by the canonical report's Through date; latest
-preparation can advance independently. Keep the static top-50 fallback and the
-baseline exports. Show short or empty years. Do not calculate a full-period CAGR
-when any selected year is empty. Top contributors are the first
-`min(10, selected count)` stocks by signed contribution, ties by symbol. Gain and
-loss pies are normalized separately and never show negative slices. Checks:
-`python3 tests/check_screener.py` after building, `node tests/check-range.cjs`,
-`node tests/check-contributions.cjs` and `python3 tests/test_attribution.py`.
+**Website screening.** `website/rendering/data.py` embeds the latest screen of
+both prepared pools. `website/browser/screener.js` must match
+`screening.latest()` in both pools. Latest mode uses the latest cached SPY
+session, an exact-session adjusted price and cached `listed=True`. It never
+reuses stopped prices and stores no future return. Every other test is a dated
+backtest on the local service; there is no January mode. A January request is
+refused at `/mode`, never converted. Saved January results (versions 1–2) open
+in the dated view: `ResultArtifacts.decode` projects their book years into
+periods at read time and never rewrites the record. Show short or empty
+periods. Do not calculate a full-period CAGR when any period is empty. Top
+contributors are the first `min(10, selected count)` stocks by signed
+contribution, ties by symbol. Gain and loss pies are normalized separately and
+never show negative slices. Checks: `python3 tests/check_screener.py` after
+building, `node tests/check-range.cjs`, `node tests/check-contributions.cjs`
+and `node tests/check-result-artifacts.cjs`.
 
 **Selection order.** `filter_first` is the default. `rank_first` takes the
 inclusive rank range from the prepared pool before user filters, keeps original
@@ -333,8 +334,8 @@ to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
 Reuse `screening.select` and `metrics.evaluate`; never duplicate formulas. Label
 dated period returns, not annual returns. Daily inputs bind accepted research
 content, policy and price inventory; older caches rebuild and refreshes keep
-only unaffected books. A root in a recorded
-January or latest scope reads that scope's stored owner lanes. Check
+only unaffected books. A latest root reads the stored latest owner lanes;
+every other root uses the dated owner policy. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).
 

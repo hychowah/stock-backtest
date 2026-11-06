@@ -78,6 +78,7 @@ def backtest_run_request(self):
             def invalid(value):raise ValueError('Backtest values must be finite.')
             request=json.loads(self.rfile.read(length),parse_constant=invalid)
             if not isinstance(request,dict):raise ValueError('Expected backtest options.')
+            strategy_requests.require_mode(request.get('mode'))
             if not jobs.accepted(identifier):
                 # Refuse an engine this server does not run before any strategy check.
                 if not require_calculation(self,request.get('options'),planned=request.get('planned')):return

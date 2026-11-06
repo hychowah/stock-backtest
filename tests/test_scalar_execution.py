@@ -25,11 +25,9 @@ def state(value, reason=None):
     return dict(value=value, valid=reason is None, reason=reason)
 
 
-def scopes(latest='2015-01-05', historical=()):
-    """Prepared scopes: the given January books and the latest date in both pools."""
-    return [dict(mode='historical', pool=pool, context_date=day, book=book) for day, book in historical
-            for pool in ('legacy', 'cached')] + [dict(mode='latest', pool=pool, context_date=latest, book=0)
-                                                 for pool in ('legacy', 'cached')]
+def scopes(latest='2015-01-05'):
+    """Prepared scopes: the latest date in both pools."""
+    return [dict(mode='latest', pool=pool, context_date=latest, book=0) for pool in ('legacy', 'cached')]
 
 
 class Fixture:

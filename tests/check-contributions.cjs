@@ -1,5 +1,5 @@
 const assert=require('assert');
-const {analyze}=require('../website/browser/contributions.js');
+const {analyze,pie}=require('../website/browser/contributions.js');
 const stock=(symbol,return_value)=>({symbol,name:symbol+' Company',return_value});
 const close=(a,b)=>assert(Math.abs(a-b)<1e-12,`${a} != ${b}`);
 const inputs=[stock('A',.5),stock('B',.4),stock('C',.3),stock('D',.2),stock('E',.1),stock('F',0),stock('G',-.1),stock('H',-.2),stock('I',-.3),stock('J',-.4)];
@@ -30,3 +30,10 @@ assert.equal(zero.top[0].symbol,'A');assert.equal(zero.gain_slices.length,0);ass
 assert.equal(analyze([]).top_count,0);
 close(analyze([stock('BANKRUPT',-1),stock('GAIN',.2)]).losses,.5);
 console.log('Passed: top-10 stock limit, signed ranking, equal weights, gain/loss reconciliation, deterministic ties, empty/zero/all-loss books, and no input mutation.');
+// Gains and losses pies are normalized separately and never show negative slices.
+const gainPie=pie(mixed.gain_slices,mixed.gains,1),lossPie=pie(mixed.loss_slices,mixed.losses,-1);
+assert(gainPie.includes('<h4>Gains</h4>')&&gainPie.includes('conic-gradient(')&&gainPie.includes('A · 33.3% · +5.00 pp'));
+assert(lossPie.includes('<h4>Losses</h4>')&&lossPie.includes('J · 40.0% · -4.00 pp')&&!/· -\d/.test(lossPie.replace(/· -\d+\.\d+ pp/g,'')));
+assert(pie([],0,1).includes('No gains this year.')&&!pie([],0,1).includes('conic-gradient'));
+assert(pie([{label:'<b>',value:1,contribution:1,other:false}],1,1).includes('&lt;b&gt;'));
+console.log('Passed: gain and loss pies, separate normalization, empty pies and escaped labels.');

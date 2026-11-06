@@ -14,7 +14,6 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -300,33 +299,6 @@ def publish(root, payload, manifest):
     return manifest
 
 
-def export_runtime_report(root, destination):
-    """Export a database-bound report and priced evidence, never runtime code."""
-    root, destination = Path(root), Path(destination)
-    support(root)
-    runtime_access = support_module('website.runtime_access')
-    with runtime_access.ownership(root):
-        from backtest.inputs import baseline as baseline
-        with cache_ownership(root):
-            db = sqlite3.connect((root / 'data/research.sqlite').resolve().as_uri() + '?mode=ro', uri=True)
-            try:
-                owner = baseline.Baseline(root / 'results', root / 'data/research.sqlite')
-                owner.check_ready(db)
-                report_sha = db.execute("SELECT value FROM metadata WHERE key='baseline_report_sha'").fetchone()
-                result = db.execute("SELECT value FROM metadata WHERE key='baseline_result'").fetchone()
-                if not report_sha or not result:
-                    raise ValueError('The runtime has no verified priced baseline evidence.')
-                content = (root / REPORT).read_bytes()
-                if hashlib.sha256(content).hexdigest() != json.loads(report_sha[0]):
-                    raise ValueError('The report changed during export.')
-                destination.mkdir(parents=True, exist_ok=True)
-                atomic_bytes(destination / 'summary-exits.txt', content)
-                write_json(destination / 'evidence.json', dict(report_sha256=json.loads(report_sha[0]),
-                           deployment=read_json(root / MANIFEST), baseline=json.loads(result[0])))
-            finally:
-                db.close()
-
-
 def git_command(*arguments):
     return ['/usr/bin/git', '--git-dir=' + str(ROOT / '.git-local'), '--work-tree=' + str(ROOT), *arguments]
 
@@ -585,25 +557,6 @@ def deploy(config, revision=None, *, before_publish=None):
     say('Runtime: ' + config['runtime'])
 
 
-def collect_report(config):
-    runtime = linux_path(config['runtime'])
-    bundle = runtime / '.deployment' / ('report-' + uuid.uuid4().hex)
-    native(config, config['runtime'] + '/tools/deploy.py', '--native-export', config['runtime'], windows_path(bundle))
-    content = (bundle / 'summary-exits.txt').read_bytes()
-    destination = ROOT / REPORT
-    current = destination.read_bytes()
-    if current not in (git('show', 'HEAD:' + REPORT), content):
-        raise ValueError('The source report has uncommitted edits; exported runtime evidence was retained.')
-    if content != current:
-        evidence = read_json(bundle / 'evidence.json')
-        atomic_bytes(destination, content)
-        write_json(ROOT / 'results/experiments' / ('runtime-baseline-' + evidence['report_sha256'][:12] + '.json'), evidence)
-        say('Collected the verified report and priced evidence for review and commit.')
-    else:
-        say('The reviewed source report already matches the runtime report.')
-    shutil.rmtree(bundle)
-
-
 def native_launch(arguments, revision=None, latest=False):
     config = read_json(ROOT / CONFIG)
     if config:
@@ -638,10 +591,8 @@ def main():
     parser.add_argument('--revision', help='Select a committed revision; with --start, freeze this launch instead of following main')
     parser.add_argument('--start', action='store_true', help='Serve the installed revision and update to committed main daily at 01:00; --revision freezes the launch')
     parser.add_argument('--latest', action='store_true', help='With --start, install the latest committed main now instead of the installed revision')
-    parser.add_argument('--collect-report', action='store_true', help='Collect a verified Windows report revision for review')
     parser.add_argument('--check', action='store_true', help='Deploy, then check installed native Windows paths and lifecycle')
     parser.add_argument('--native-publish', nargs=2, help=argparse.SUPPRESS)
-    parser.add_argument('--native-export', nargs=2, help=argparse.SUPPRESS)
     parser.add_argument('--native-launch', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--native-check', action='store_true', help=argparse.SUPPRESS)
     options, server_arguments = parser.parse_known_args()
@@ -654,8 +605,6 @@ def main():
             say('Verified native source publication: ' + manifest['commit'])
             if (payload / REPORT).is_file() and not (root / REPORT).exists():
                 say('The runtime report is missing. Restore its verified database-bound report from revision evidence or backup before starting.', error=True)
-        elif options.native_export:
-            export_runtime_report(*options.native_export)
         elif options.native_launch:
             raise SystemExit(native_launch(server_arguments, options.revision, options.latest))
         elif options.native_check:
@@ -664,20 +613,17 @@ def main():
             if os.name == 'nt':
                 raise ValueError('Run deployment from the authoritative WSL source checkout.')
             config = configuration()
-            if options.collect_report:
-                collect_report(config)
-            else:
-                if server_arguments and not options.start:
-                    parser.error('Server arguments require --start.')
-                if options.latest and (not options.start or options.revision is not None):
-                    parser.error('--latest requires --start and cannot be combined with --revision.')
-                if options.start and options.revision is None:
-                    raise SystemExit(follow_main(config, server_arguments, check=options.check, latest=options.latest))
-                deploy(config, options.revision)
-                if options.check:
-                    verify_installed(config)
-                if options.start:
-                    native(config, config['runtime'] + '/website/serve.py', '--managed', *server_arguments)
+            if server_arguments and not options.start:
+                parser.error('Server arguments require --start.')
+            if options.latest and (not options.start or options.revision is not None):
+                parser.error('--latest requires --start and cannot be combined with --revision.')
+            if options.start and options.revision is None:
+                raise SystemExit(follow_main(config, server_arguments, check=options.check, latest=options.latest))
+            deploy(config, options.revision)
+            if options.check:
+                verify_installed(config)
+            if options.start:
+                native(config, config['runtime'] + '/website/serve.py', '--managed', *server_arguments)
     except KeyboardInterrupt:
         raise SystemExit(130)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:

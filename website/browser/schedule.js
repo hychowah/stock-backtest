@@ -66,19 +66,19 @@ const ScheduleView=(()=>{
     node('schedule-multiple-head').textContent=metric+' (×)';
     node('schedule-stock-body').innerHTML=period.holdings.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
     const group=ReturnContributions.analyze(period.holdings);
-    node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+contributionPie(group.gain_slices,group.gains,1)+contributionPie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions are stock return divided by actual stock count; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
+    node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+ReturnContributions.pie(group.gain_slices,group.gains,1)+ReturnContributions.pie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions are stock return divided by actual stock count; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
   }
   function render(){
     const result=displayedResult();
     if(!result)return;
     node('schedule-results').hidden=false;
-    node('schedule-dates').textContent=result.start+' → '+result.end+' · '+CalendarSettings.label(result);
+    node('schedule-dates').textContent=result.start+' → '+result.end+' · '+(ResultArtifacts.forView('custom').kind==='january'?'January books':CalendarSettings.label(result));
     node('schedule-cagr').textContent=format(result.cagr);
     node('schedule-spy-cagr').textContent=format(result.spy_cagr);
     node('schedule-growth').textContent=result.growth===null?'—':'$'+result.growth.toFixed(2);
     const requested=(result.options.rank_to??50)-(result.options.rank_from??1)+1;
     const short=result.periods.filter(p=>p.names<requested).length,empty=result.periods.filter(p=>p.names===0).length;
-    node('schedule-coverage').textContent=result.coverage+' '+StockScreener.selectionDescription(result.options)+' '+short+' short periods; '+empty+' empty periods. '+(empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+result.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(result.cash_days?' Both strategy and paired SPY hold cash until '+result.first_trade+' ('+result.cash_days+' days); CAGR uses the common window.':'');
+    node('schedule-coverage').textContent=result.coverage+' '+StockScreener.selectionDescription(result.options)+' '+short+' short periods; '+empty+' empty periods. '+(empty?'Full-period strategy growth and CAGR unavailable. ':'')+(Number.isFinite(result.seconds)?'Computed in '+result.seconds.toFixed(2)+'s; repeated periods reuse prepared books.':'')+(result.cash_days?' Both strategy and paired SPY hold cash until '+result.first_trade+' ('+result.cash_days+' days); CAGR uses the common window.':'');
     chart(result.periods);
     node('schedule-rows').innerHTML=result.periods.map(p=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
@@ -115,7 +115,7 @@ const ScheduleView=(()=>{
     const number=++requestNumber,body=run.options,random=run.mode==='random',isCurrent=ResultArtifacts.opening();
     activeRun=run;
     node('screen-error').textContent='';
-    node('schedule-progress-detail').textContent=['latest','january'].includes(run.mode)?(run.mode==='latest'?'Screening latest cached close with submitted variables.':body.first+' → '+body.last+' January books with submitted variables.'):CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
+    node('schedule-progress-detail').textContent=run.mode==='latest'?'Screening latest cached close with submitted variables.':CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
     node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
     startBusy();
     startedAt=run.submitted;

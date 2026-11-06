@@ -1,8 +1,9 @@
 """Bounded bridge from formula contexts to existing financial owners.
 
-Prepared scope membership is explicit: a prepared January or latest root reads
-its stored book row (facts.View.prepared), and a missing row never falls back
-to a recalculation. Other contexts use the dated owner policy here. One
+Prepared scope membership is explicit: a latest root, or a root with a prepared
+owner scope, reads its stored latest book row (facts.View.prepared), and a
+missing row never falls back to a recalculation. Other contexts use the dated
+owner policy here. One
 resolved context serves every requested lane of that context.
 """
 import json
@@ -27,14 +28,13 @@ def detached(value, checkpoint=lambda: None):
     return value
 
 
-def prepared_scope(projection, root, context):
+def prepared_scope(root, context):
     if context['id'] != context['root']:
         return False
     owner = root.get('owner_scope')
     if owner is not None:
         return owner['kind'] == 'prepared'
-    return any(scope['mode'] == root['mode'] and scope['pool'] == root['pool']
-               and scope['context_date'] == context['date'] for scope in projection['scopes'])
+    return root['mode'] == 'latest'
 
 
 class _CheckedReports(list):

@@ -167,14 +167,6 @@ class AuthoringHttpTests(ExistingHttp):
         self.assertFalse(self.manager.runs);self.assertFalse(self.server.variable_store.path.exists())
 
     def test_real_javascript_json_roundtrip_preview_submission_retry_and_queue(self):
-        with closing(sqlite3.connect(self.path)) as db:
-            for table,column in [('snapshots','year'),('periods','year'),('screening_metrics','year'),('filter_values','year'),('period_pools','period_id')]:
-                db.execute('UPDATE '+table+' SET '+column+'=2015 WHERE '+column+'=1')
-            from backtest.inputs import facts
-            from test_scalar_execution import scopes
-            db.execute('DELETE FROM fact_metadata')
-            facts.finish(db, '2015-01-05', inputs='fixture',scopes=scopes(historical=[('2015-01-02',2015)]))
-            db.commit()
         def browser(value):
             process=subprocess.run(['node','-e','let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));'],
                 input=json.dumps(value),text=True,capture_output=True,check=True)
@@ -186,9 +178,14 @@ class AuthoringHttpTests(ExistingHttp):
         wire=browser(prepared['strategy']);self.assertIs(type(wire['bounds']['min_cap']),int)
         status,body,_=self.request('/api/variable-preview',browser(dict(strategy=wire,roots=[dict(symbol='A0000',pool='legacy',mode='historical',date='2015-01-02')])))
         self.assertEqual(status,200,body);self.assertFalse(self.manager.runs)
-        for index,mode in enumerate(('latest','january','custom','random')):
+        # A stale tab or an API client that still sends January is refused, never converted.
+        payload=browser(dict(mode='january',options=dict(strategy=wire,first=2015,last=2015)))
+        status,body,_=self.request('/api/backtest-runs/'+'9'*32,payload)
+        body=json.loads(body)
+        self.assertEqual((status,body['code'],body['path']),(400,'UNSUPPORTED_CAPABILITY','/mode'),body)
+        self.assertIn('January backtests were removed',body['error']);self.assertFalse(self.manager.runs)
+        for index,mode in enumerate(('latest','custom','random')):
             options=dict(strategy=wire)
-            if mode=='january':options.update(first=2015,last=2015)
             if mode in ('custom','random'):options.update(start='2015-01-02',end='2015-01-05',months=12)
             if mode=='random':options.update(trials=1,seed=42)
             identifier=str(index+1)*32;payload=browser(dict(mode=mode,options=options))

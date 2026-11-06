@@ -7,125 +7,36 @@ const prepared=JSON.parse(embedded),screener=require('../website/browser/screene
 const latestDate=prepared.latest.metadata.asof;
 const latestCount=limit=>screener.latestScreen(prepared,{rank_to:limit}).stocks.length;
 function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:false,open:false,disabled:false,handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){},focus(){},closest(){return this}});return els.get(id)}
-const stats=[el('s0'),el('s1'),el('s2')],notes=[el('n0'),el('n1'),el('n2')];
-const details=Array.from({length:31},(_,i)=>el('holdings-'+(1996+i)));
-const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:s=>s==='.stat strong'?stats:s==='.stat small'?notes:s==='.holding-years details'?details:[]};
+const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:()=>[]};
 el('screening-data').textContent=embedded;
 const timers=new Map(),storage=new Map();let timerId=0;
 const ctx=vm.createContext({document,console,Date,Math,AbortController,crypto:require('crypto').webcrypto,Uint8Array,setTimeout,clearTimeout,localStorage:{get length(){return storage.size},key:index=>[...storage.keys()][index],getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},setInterval(fn){timers.set(++timerId,fn);return timerId},clearInterval(id){timers.delete(id)}});
 for(const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g))vm.runInContext(m[1],ctx);
 const run=code=>vm.runInContext(code,ctx);
-run('const LATEST_VIEW="latest",JANUARY_VIEW="january"');
+run('const LATEST_VIEW="latest"');
 assert.equal(run('screeningMode'),'latest');
 assert.equal(el('selection-order').value,'filter_first');
-assert.equal(el('latest-view').hidden,false);assert.equal(el('backtest-view').hidden,true);
+assert.equal(el('latest-view').hidden,false);assert.equal(el('custom-view').hidden,true);assert.equal(el('schedule-controls').hidden,true);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.asof'),latestDate);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),latestCount(50));
+for(const [id,key] of [['sector-filter','sector'],['exchange-filter','exchange']])
+ for(const value of prepared.choices[key])assert(el(id).innerHTML.includes('value="'+value.replace(/&/g,'&amp;')+'"'),id+' '+value);
+assert(!('screen' in screener)&&!('pools' in prepared)&&!('periods' in prepared),'No January selection engine or January pools remain.');
+assert(!html.includes('backtest-view')&&!html.includes('holdings-1996')&&!html.includes('schedule-kind'));
+// Opening the dated view starts nothing; it shows the schedule controls.
 run("switchMode('backtest')");
-assert.equal(run('data.length'),30);
-assert.equal(el('from-year').value,'1996');
-el('from-year').value='2015';el('to-year').value='2020';run('applyRange()');
-assert.equal(run('data.length'),6);
-assert.equal((el('chart').innerHTML.match(/class="bar"/g)||[]).length,12);
-assert.equal((el('market-cap-chart').innerHTML.match(/<rect /g)||[]).length,6);
-assert.equal((el('rows').innerHTML.match(/<tr>/g)||[]).length,6);
-assert.equal(details.filter(d=>!d.hidden).length,6);
-// Check the selected period's actual exit for both real and fictional calendars.
-assert(el('range-note').textContent.includes(prepared.periods['2020'].exit));
-const independent=run('data.reduce((v,d)=>v*(1+d.portfolio),1)');
-assert.equal(stats[2].textContent,'$'+independent.toFixed(2));
-el('from-year').value='2026';el('to-year').value='2020';run("applyRange('from')");assert.equal(run('data.length'),1);assert(el('range-note').textContent.includes('partial'));
-el('from-year').value='1999';el('to-year').value='1996';run("applyRange('to')");assert.equal(run('data[0].year'),1996);assert.equal(run('data.length'),1);
-el('reset-range').handlers.click();assert.equal(run('data.length'),30);
-console.log('Passed: 2015–2020 charts, tables, holdings, compounding, period dates, single-year ranges, reversed bounds, partial 2026, and reset.');
-const cached=JSON.parse(fs.readFileSync(require('path').join(output,'valuations.json'),'utf8'));
-el('from-year').value='2015';el('to-year').value='2020';
-el('rank-from').value='10';el('rank-to').value='20';run('applyRange()');
-for(let year=2015;year<=2020;year++){
-  const stocks=cached[year].holdings.filter(h=>h.rank>=10&&h.rank<=20);
-  assert.equal(stocks.length,11);
-  const mean=stocks.reduce((s,h)=>s+h.return_value,0)/11;
-  assert(Math.abs(run(`data.find(d=>d.year===${year}).portfolio`)-mean)<1e-12);
-  const caps=stocks.map(h=>h.market_cap).sort((a,b)=>a-b);
-  assert.equal(run(`medianMarketCap(${year})`),caps[5]);
-  run(`renderStockTable(${year})`);
-  assert.equal((el('holding-body-'+year).innerHTML.match(/<tr>/g)||[]).length,11);
-  assert(el('holding-body-'+year).innerHTML.includes(stocks[0].symbol));
-  assert(el('holding-summary-'+year).textContent.includes('11 stocks'));
-  assert.equal(run(`data.find(d=>d.year===${year}).spy`),run(`screeningData.periods[${year}].spy`));
-}
-const growth=Object.entries(cached).filter(([y])=>+y>=2015&&+y<=2020).reduce((w,[,g])=>w*(1+g.holdings.filter(h=>h.rank>=10&&h.rank<=20).reduce((s,h)=>s+h.return_value,0)/11),1);
-assert.equal(stats[2].textContent,'$'+growth.toFixed(2));
-el('rank-from').value='50';run("applyRange('rank-from')");assert.equal(el('rank-to').value,'50');
-assert.equal(run('selectedHoldings(2015).length'),1);
-el('rank-to').value='1';run("applyRange('rank-to')");assert.equal(el('rank-from').value,'1');
-assert.equal(run('selectedHoldings(2015).length'),1);
-el('reset-ranks').handlers.click();
-assert.equal(run('selectedHoldings(2015).length'),50);
-const caps=cached[2015].holdings.map(h=>h.market_cap).sort((a,b)=>a-b);
-assert.equal(run('medianMarketCap(2015)'),(caps[24]+caps[25])/2);
-console.log('Passed: ranks 10–20 independent annual means, medians, compounded wealth, visible stocks, unchanged SPY, single ranks, reversed bounds, and all-50 reset.');
-
-// Exercise real input controls and error/empty-result presentation.
-const topCount=year=>screener.screen(prepared,{first:year,last:year,rank_to:100}).years[0].names;
-el('top100').handlers.click();assert.equal(run('selectedHoldings(2015).length'),topCount(2015));
-el('stock-pool').value='cached';el('min-cap').value='500';el('max-cap').value='5000';el('min-yield').value='15';
-el('strategy-form').handlers.submit({preventDefault(){}});
-assert.equal(el('screen-error').textContent,'');
-assert(run('selectedHoldings(2015).every(h=>h.market_cap>=500e6 && h.market_cap<=5e9 && h.ebitda_yield>=.15)'));
-el('min-cap').value='6000';run('applyRange()');assert(el('screen-error').textContent.includes('Maximum market cap'));
-el('reset-strategy').handlers.click();assert.equal(run('selectedHoldings(2015).length'),50);
-el('sector-filter').value='No matching sector';run('applyRange()');
-assert.equal(run('selectedHoldings(2015).length'),0);assert.equal(stats[0].textContent,'—');assert.equal(stats[2].textContent,'—');
-assert(el('screen-status').textContent.includes('No matches'));
-assert(!el('chart').innerHTML.includes('NaN'));assert(!el('market-cap-chart').innerHTML.includes('NaN'));
-run('renderStockTable(2015)');assert(el('holding-body-2015').innerHTML.includes('No stocks match'));
-el('reset-strategy').handlers.click();el('from-year').value='1996';el('to-year').value='1996';el('top100').handlers.click();
-const firstYearCount=topCount(1996);
-assert(firstYearCount>0&&firstYearCount<100,'Fixture needs a nonempty underfilled first year');
-assert.equal(run('selectedHoldings(1996).length'),firstYearCount);assert(el('screen-status').textContent.includes('Fewer than 100'));
-console.log('Passed: strategy controls, top 100, cap/yield filters, invalid-input recovery, reset, empty-state rendering, and insufficient coverage.');
-// CSV download links must export the active strategy rather than baseline files.
+assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);assert.equal(el('schedule-controls').hidden,false);
+assert.equal(el('run-screen').textContent,'Run backtest');assert.equal(run('ScheduleView.isRunning()'),false);assert.equal(el('screen-error').textContent,'');
+assert.equal(run('ResultArtifacts.forView("custom")'),undefined);
+run("switchMode('latest')");
+console.log('Passed: default latest mode, embedded sector/exchange choices, no January engine or pools, and the dated view opening without a run.');
+// CSV downloads use the displayed result.
 let savedCsv='',downloadName='';
 ctx.Blob=class{constructor(parts){this.parts=parts;}};
 ctx.URL={createObjectURL(blob){savedCsv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}};
 document.createElement=()=>({click(){downloadName=this.download;}});
-el('download-holdings').handlers.click({preventDefault(){}});
-assert.equal(downloadName,'holdings-1996-1996.csv');
-assert.equal(savedCsv.split('\r\n').length,firstYearCount+1);
-assert(savedCsv.includes('"year","rank","symbol"'));
-el('download-returns').handlers.click({preventDefault(){}});
-assert.equal(downloadName,'returns-1996-1996.csv');
-assert.equal(savedCsv.split('\r\n').length,2);
-assert(savedCsv.includes(`"1996","${firstYearCount}"`));
-console.log('Passed: downloaded CSV files use selected years, ranks, and stock counts.');
-// The most recent selected year opens with return attribution, and filters refresh it.
-assert.equal(el('holding-year').value,'1996');
-assert.equal(el('holdings-1996').open,true);
-assert(el('contributions-1996').innerHTML.includes('Top 10 contributors · 10 stocks'));
-assert(el('contributions-1996').innerHTML.includes('conic-gradient('));
-assert(!el('contributions-1996').innerHTML.includes('NaN'));
-assert(savedCsv.includes('"median_market_cap"'));
-el('download-holdings').handlers.click({preventDefault(){}});
-assert(savedCsv.includes('"weight","contribution_pp"'));
-el('from-year').value='2015';el('to-year').value='2020';el('reset-ranks').handlers.click();
-assert.equal(el('holding-year').value,'2020');assert.equal(el('holdings-2020').open,true);
-assert(el('contributions-2020').innerHTML.includes('Top 10 contributors · 10 stocks'));
-for(let year=2015;year<=2020;year++){
- const group=run(`ReturnContributions.analyze(selectedHoldings(${year}))`);
- assert(Math.abs(group.net-run(`data.find(y=>y.year===${year}).portfolio`))<1e-12);
- assert.equal(group.top.length,10);
-}
-el('holding-year').value='2015';el('holding-year').handlers.change();
-assert.equal(el('holdings-2015').open,true);assert(el('contributions-2015').innerHTML.includes('2015 return contributions'));
-el('sector-filter').value='No matching sector';run('applyRange()');
-assert(el('contributions-2015').innerHTML.includes('No selected stocks'));
-console.log('Passed: per-year contribution charts, latest-year opening, top-10 stock counts, reconciliation, year switching, CSV fields, and empty results.');
-
-// Latest view applies the same controls to exact latest-date valuations.
-el('reset-strategy').handlers.click();el('mode-latest').handlers.click();
-assert.equal(el('latest-view').hidden,false);assert.equal(el('backtest-view').hidden,true);
-assert.equal(el('year-controls').hidden,true);assert.equal(el('run-screen').textContent,'Screen latest');
+assert.equal(el('latest-view').hidden,false);assert.equal(el('custom-view').hidden,true);
+assert.equal(el('run-screen').textContent,'Screen latest');
 assert.equal(el('latest-date').textContent,latestDate);
 assert.equal((el('latest-body').innerHTML.match(/<tr>/g)||[]).length,Math.max(1,latestCount(50)));
 assert(run("ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>h.price_date===screeningData.latest.metadata.asof && !('return_value' in h))"));
@@ -133,6 +44,7 @@ el('top100').handlers.click();assert.equal(run('ResultArtifacts.forView(LATEST_V
 el('stock-pool').value='cached';el('min-cap').value='500';el('max-cap').value='5000';
 el('strategy-form').handlers.submit({preventDefault(){}});
 assert(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>h.market_cap>=500e6 && h.market_cap<=5e9)'));
+el('min-cap').value='6000';run('applyRange()');assert(el('screen-error').textContent.includes('Maximum market cap'));el('min-cap').value='500';run('applyRange()');assert.equal(el('screen-error').textContent,'');
 el('download-latest').handlers.click({preventDefault(){}});
 assert.equal(downloadName,`latest-picks-${latestDate}.csv`);
 assert(savedCsv.includes('"price_date"'));assert(!savedCsv.includes('return_value'));
@@ -140,9 +52,9 @@ el('sector-filter').value='No matching sector';run('applyRange()');
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),0);assert(el('latest-body').innerHTML.includes('No stocks match'));
 assert.equal(el('latest-median-cap').textContent,'—');
 el('reset-strategy').handlers.click();el('mode-backtest').handlers.click();
-assert.equal(el('backtest-view').hidden,false);assert.equal(el('latest-view').hidden,true);
-assert.equal(el('year-controls').hidden,false);assert.equal(el('run-screen').textContent,'Run backtest');
-console.log('Passed: default latest mode, exact-date picks, shared filters and ranks, current CSV, empty latest screen, and switching back to historical results.');
+assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);
+assert.equal(el('run-screen').textContent,'Run backtest');
+console.log('Passed: exact-date picks, shared filters and ranks, invalid-input recovery, current CSV, empty latest screen, and switching to the dated view.');
 el('ranking-metric').value='ev_ebitda_3y';el('stock-pool').value='cached';run("switchMode('latest')");
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.metric'),'ev_ebitda_3y');
 assert(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length')>0);
@@ -150,107 +62,74 @@ assert(el('strategy-heading').textContent.includes('3-year average'));
 assert(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>h.metric_multiple>0)'));
 el('download-latest').handlers.click({preventDefault(){}});
 assert(savedCsv.includes('ev_ebitda_3y'));assert(savedCsv.includes('metric_multiple'));
-run("switchMode('backtest')");
-assert.equal(run('ResultArtifacts.forView(JANUARY_VIEW).result.options.metric'),'ev_ebitda_3y');
 el('reset-strategy').handlers.click();
-assert.equal(run('ResultArtifacts.forView(JANUARY_VIEW).result.options.metric'),'ev_ebitda');
-console.log('Passed: metric selection in both modes and reset to default.');
+assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.metric'),'ev_ebitda');
+console.log('Passed: metric selection and reset to default.');
 // Manual mode keeps results and exports tied to the last successful settings.
 el('auto-run').checked=false;el('auto-run').handlers.change();
 assert.equal(storage.get('backtest-auto-run'),'false');
-const beforeManual=run('ResultArtifacts.forView(JANUARY_VIEW).result');
-el('top100').handlers.click();assert.equal(run('ResultArtifacts.forView(JANUARY_VIEW).result'),beforeManual);
+const beforeManual=run('ResultArtifacts.forView(LATEST_VIEW).result');
+el('top100').handlers.click();assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result'),beforeManual);
 assert(el('results-state').textContent.includes('do not match'));
-assert.equal(el('backtest-view').attributes['data-results-stale'],'true');
+assert.equal(el('latest-view').attributes['data-results-stale'],'true');
 el('reset-ranks').handlers.click();assert(el('results-state').textContent.includes('match the current settings'));
 el('rank-to').value='25';el('strategy-form').handlers.input({target:el('rank-to')});
 assert(el('results-state').textContent.includes('do not match'));
 el('strategy-form').handlers.submit({preventDefault(){}});
-assert.equal(run('ResultArtifacts.forView(JANUARY_VIEW).result.options.rank_to'),25);
+assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.rank_to'),25);
 assert(el('results-state').textContent.includes('Results match'));
-run("switchMode('latest')");
-const oldLatest=run('ResultArtifacts.forView(LATEST_VIEW).result');
-el('top100').handlers.click();assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result'),oldLatest);
-assert(el('results-state').textContent.includes('do not match'));
-el('strategy-form').handlers.submit({preventDefault(){}});
-assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.rank_to'),100);assert(el('results-state').textContent.includes('Results match'));
-run("switchMode('backtest')");
 el('rank-to').value='50';el('reset-ranks').handlers.click();
 el('auto-run').checked=true;el('auto-run').handlers.change();
-assert.equal(run('ResultArtifacts.forView(JANUARY_VIEW).result.options.rank_to'),50);
+assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.options.rank_to'),50);
 console.log('Passed: manual multi-setting edits, dirty notice, restoring settings, explicit submit and re-enabling auto-run.');
-// A saved January result reopens from its own stock rows without selection.
-const savedJanuary=JSON.parse(run('JSON.stringify(currentArtifact())'));
-delete savedJanuary.settings.selection_order;delete savedJanuary.result.options.selection_order;
-savedJanuary.result.years[0].holdings[0].symbol='SAVED_ONLY';
-savedJanuary.catalog.metrics.ev_ebitda.label='Saved valuation label';
-savedJanuary.catalog.filters.market_cap.label='Saved cap threshold';
-savedJanuary.settings.filters=[{field:'market_cap',op:'gt',value:0}];
-savedJanuary.result.options.filters=savedJanuary.settings.filters;
-savedJanuary.version=1;savedJanuary.context={notes:[['screen-coverage','Saved coverage','hint'],['screen-status','Saved warning','screen-message warning'],['range-note','Saved range','hint']],pill:'Saved period'};
-delete savedJanuary.presentation;ctx.savedJanuary=savedJanuary;
-// Copy loads editable settings without selecting stocks or publishing a result.
-const beforeJanuaryCopy=run('currentArtifact()'),beforeCopyBytes=JSON.stringify(savedJanuary);
-el('auto-run').checked=true;el('rank-to').value='7';
-run("const selectBeforeCopy=StockScreener.screen;StockScreener.screen=()=>{throw Error('Copy must not calculate')};copySavedBacktestSettings(savedJanuary);StockScreener.screen=selectBeforeCopy");
-assert.equal(el('rank-to').value,String(savedJanuary.settings.rank_to));
-assert.equal(el('selection-order').value,'filter_first');assert.equal(el('auto-run').checked,false);
-assert.equal(storage.get('backtest-auto-run'),'false');assert.strictEqual(run('currentArtifact()'),beforeJanuaryCopy);
-assert.equal(JSON.stringify(savedJanuary),beforeCopyBytes);
-assert(el('ranking-metric').innerHTML.includes('Saved valuation label'));
-assert(el('filter-conditions').innerHTML.includes('Saved cap threshold'));
-assert.equal(run('metricLabel("ev_ebitda")'),beforeJanuaryCopy.catalog.metrics.ev_ebitda.label);
-const otherCopy=JSON.parse(JSON.stringify(savedJanuary));
-otherCopy.catalog.metrics.ev_ebitda.label='Other saved valuation';
-otherCopy.catalog.filters.market_cap.label='Other saved cap';
-otherCopy.catalog.filters.retired_filter={label:'Archived threshold',available:true};
-otherCopy.settings.filters=[{field:'market_cap',op:'gt',value:123},{field:'retired_filter',op:'lt',value:7},{field:'unknown_filter',op:'gt',value:2}];
-ctx.otherCopy=otherCopy;run('copySavedBacktestSettings(otherCopy);syncCatalogControls();renderConditions()');
-assert(el('ranking-metric').innerHTML.includes('Other saved valuation'));
-assert(!el('ranking-metric').innerHTML.includes('Saved valuation label'));
-assert(el('filter-conditions').innerHTML.includes('Other saved cap'));
-assert(el('filter-conditions').innerHTML.includes('value="Archived threshold — unavailable"'));
-assert(el('filter-conditions').innerHTML.includes('value="unknown_filter — unavailable"'));
-assert.equal(run('currentSettings().filters[1].field'),'retired_filter');
-assert.strictEqual(run('currentArtifact()'),beforeJanuaryCopy);
-assert.equal(run('metricLabel("ev_ebitda")'),beforeJanuaryCopy.catalog.metrics.ev_ebitda.label);
-ctx.freshPublication=JSON.parse(JSON.stringify(beforeJanuaryCopy));
-run('publishResult(freshPublication)');
-assert(el('ranking-metric').innerHTML.includes('Other saved valuation'));
-assert.equal(el('strategy-heading').textContent,'Lowest Other saved valuation');
-el('ranking-metric').value='ev_ebitda_3y';run('settingsChanged(undefined,false)');
-assert.equal(el('strategy-heading').textContent,'Lowest '+run('StrategyDraft.catalog().metrics.ev_ebitda_3y.label'));
-el('ranking-metric').value='ev_ebitda';run('settingsChanged(undefined,false)');
-el('auto-run').checked=false;el('rank-to').value='7';
-run("const selectBeforeRestore=StockScreener.screen;StockScreener.screen=()=>{throw Error('Saved results must not rerun')};restoreSavedBacktest(savedJanuary);StockScreener.screen=selectBeforeRestore");
-assert.equal(el('rank-to').value,String(savedJanuary.settings.rank_to));
-assert.equal(el('selection-order').value,'filter_first');
-assert(el('ranking-metric').innerHTML.includes('Saved valuation label'));
-assert(el('filter-conditions').innerHTML.includes('Saved cap threshold'));
+// A saved version-1 January result opens in the dated view from its own
+// stock rows, without selection or calculation, and its record is unchanged.
+const bookStocks=JSON.parse(run('JSON.stringify(ResultArtifacts.forView(LATEST_VIEW).result.stocks.slice(0,3))'));
+assert.equal(bookStocks.length,3,'The latest screen needs three stocks for the saved January fixture.');
+const bookHoldings=bookStocks.map((h,i)=>({...h,year:2015,rank:i+1,entry:'2015-01-02',exit:'2016-01-04',return_value:[.5,.25,-.1][i],status:'Scheduled exit'}));
+bookHoldings[0].symbol='SAVED_ONLY';
+const savedSettings={mode:'january',first:2015,last:2016,rank_from:1,rank_to:7,pool:'legacy',metric:'ev_ebitda',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:[{field:'market_cap',op:'gt',value:0}]};
+const savedJanuary={version:1,kind:'january',settings:savedSettings,captured_at:'2026-10-26T00:00:00Z',
+ result:{options:{...savedSettings},years:[{year:2015,names:3,portfolio:(.5+.25-.1)/3,spy:.1,median_market_cap:null,holdings:bookHoldings},{year:2016,names:0,portfolio:null,spy:.05,median_market_cap:null,holdings:[]}],
+  first:'2015-01-02',end:'2016-10-20',growth:null,spy_growth:1.155,cagr:null,spy_cagr:.08,short_years:[2015,2016],empty_years:[2016]},
+ catalog:{metrics:{...prepared.metrics,ev_ebitda:{...prepared.metrics.ev_ebitda,label:'Saved valuation label'}},filters:{...prepared.filter_catalog,market_cap:{...prepared.filter_catalog.market_cap,label:'Saved cap threshold'}}},
+ context:{notes:[['screen-coverage','Saved coverage','hint'],['screen-status','Saved warning','screen-message warning'],['range-note','Saved range','hint']],pill:'Saved period'}};
+ctx.savedJanuary=savedJanuary;const savedBytes=JSON.stringify(savedJanuary);
+run("switchMode('backtest')");
+const tradeStart=el('trade-start').value,beforeCopy=run('currentArtifact()');
+el('auto-run').checked=true;el('rank-to').value='3';
+ctx.fetch=()=>{throw Error('Saved results must not calculate')};
+run('copySavedBacktestSettings(savedJanuary)');
+assert.equal(el('rank-to').value,'7');assert.equal(el('selection-order').value,'filter_first');assert.equal(el('auto-run').checked,false);
+assert.equal(storage.get('backtest-auto-run'),'false');assert.strictEqual(run('currentArtifact()'),beforeCopy);
+assert(el('ranking-metric').innerHTML.includes('Saved valuation label'));assert(el('filter-conditions').innerHTML.includes('Saved cap threshold'));
+assert.equal(el('trade-start').value,tradeStart,'January book years never become a calendar.');
+run('restoreSavedBacktest(savedJanuary)');
+const opened=run('currentArtifact()');assert.equal(opened.kind,'january');assert.equal(opened.version,2);assert.equal(opened.captured_at,savedJanuary.captured_at);
+assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);
+assert.equal(el('schedule-dates').textContent,'2015-01-02 → 2016-10-20 · January books');
+assert(el('schedule-rows').innerHTML.includes('<td>2015-01-02</td><td>2016</td><td>3</td>'));
+assert(el('schedule-rows').innerHTML.includes('<td>2016</td><td>2016-10-20</td><td>0</td>'));
+assert(el('schedule-message').textContent.includes('No calculation'));
 assert.equal(el('screen-status').textContent,'Saved warning');assert(el('screen-status').className.includes('warning'));
 assert.equal(el('screen-coverage').textContent,'Saved coverage');
-assert.equal(run('currentArtifact().version'),2);assert.equal(run('currentArtifact().captured_at'),savedJanuary.captured_at);
-assert(!run('JSON.stringify(currentArtifact())').includes('screen-status'));
-run("switchMode('latest');switchMode('backtest')");
-assert(el('ranking-metric').innerHTML.includes('Saved valuation label'));assert.equal(el('screen-status').textContent,'Saved warning');
-assert(el('results-state').textContent.includes('Results match'));
-run('renderStockTable(ResultArtifacts.forView(JANUARY_VIEW).result.years[0].year)');
-assert(el('holding-body-'+savedJanuary.result.years[0].year).innerHTML.includes('SAVED_ONLY'));
-el('download-holdings').handlers.click({preventDefault(){}});assert(savedCsv.includes('SAVED_ONLY'));
-const savedRankFirst=JSON.parse(JSON.stringify(savedJanuary));
+assert(el('results-state').textContent.includes('Saved January result shown without calculation'));
+el('schedule-period').value='0';el('schedule-period').handlers.change();assert(el('schedule-stock-body').innerHTML.includes('SAVED_ONLY'));
+assert(el('schedule-attribution').innerHTML.includes('Top 10 contributors'));
+el('schedule-download-holdings').handlers.click();assert(savedCsv.includes('SAVED_ONLY'));assert(savedCsv.includes('"period_start"'));
+run("switchMode('latest');switchMode('backtest')");assert.strictEqual(run('currentArtifact()'),opened);
+assert.equal(JSON.stringify(savedJanuary),savedBytes);assert(!run('JSON.stringify({...currentArtifact(),record:null})').includes('screen-status'));assert.equal(run('JSON.stringify(currentArtifact().record)'),savedBytes);
+const savedRankFirst=JSON.parse(savedBytes);
 savedRankFirst.settings.selection_order='rank_first';savedRankFirst.result.options.selection_order='rank_first';
-ctx.savedRankFirst=savedRankFirst;
-run("const selectBeforeOrderRestore=StockScreener.screen;StockScreener.screen=()=>{throw Error('Do not recalculate stored rank-first results')};restoreSavedBacktest(savedRankFirst);StockScreener.screen=selectBeforeOrderRestore");
-assert.equal(el('selection-order').value,'rank_first');assert(el('results-state').textContent.includes('Results match'));
-el('selection-order').value='filter_first';run('settingsChanged(undefined,false)');
-assert(el('results-state').textContent.includes('do not match'));assert.equal(run('currentArtifact().settings.selection_order'),'rank_first');
-el('auto-run').checked=true;run('filterConditions=[];applyRange()');
-console.log('Passed: saved January settings, exact stored stocks/returns and CSV restore without rerunning.');
+ctx.savedRankFirst=savedRankFirst;run('restoreSavedBacktest(savedRankFirst)');
+assert.equal(el('selection-order').value,'rank_first');assert.equal(run('currentArtifact().settings.selection_order'),'rank_first');
+el('selection-order').value='filter_first';el('rank-from').value='1';el('rank-to').value='50';el('auto-run').checked=true;run('filterConditions=[];settingsChanged(undefined,false)');
+console.log('Passed: a saved January result restores its strategy and opens its exact stored stocks, returns and CSV in the dated view without calculation.');
 
-// Custom schedules use explicit dates and period results, never January charts.
+// Custom schedules use explicit dates and period results.
 (async()=>{
- const selected=JSON.parse(run('JSON.stringify(ResultArtifacts.forView(JANUARY_VIEW).result.years.find(y=>y.holdings.length))'));
- const period={entry:'2015-03-16',exit:'2015-06-15',names:selected.names,holdings:selected.holdings.map(h=>({...h,contribution_pp:h.return_value/selected.names*100})),portfolio:selected.portfolio,spy:selected.spy};
+ const selected={holdings:bookHoldings.map(h=>({...h,entry:'2015-03-16',exit:'2015-06-15'}))};
+ const period={entry:'2015-03-16',exit:'2015-06-15',names:3,holdings:selected.holdings.map(h=>({...h,contribution_pp:h.return_value/3*100})),portfolio:(.5+.25-.1)/3,spy:.02};
  const fixture={periods:[period],start:period.entry,end:period.exit,months:3,options:{metric:'ev_ebitda',rank_from:1,rank_to:50},growth:1+period.portfolio,spy_growth:1+period.spy,cagr:.1,spy_cagr:.05,seconds:.03,coverage:'Fixture coverage'};
  const completed=result=>({ok:true,json:async()=>({state:'complete',result})});
  let request,resolveResponse,requests=0,fakeNow=0;
@@ -258,9 +137,9 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
  ctx.location={protocol:'http:'};ctx.fetch=(url,options)=>{requests++;const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};return new Promise(resolve=>resolveResponse=resolve);};
  const preDisabled=el('already-disabled');preDisabled.disabled=true;
  el('strategy-form').querySelectorAll=()=>[el('trade-start'),el('rebalance-months'),el('stock-pool'),preDisabled];
- el('schedule-kind').value='custom';el('trade-start').value='2015-03-15';el('trade-end').value='2015-06-15';el('rebalance-months').value='3';
+ el('trade-start').value='2015-03-15';el('trade-end').value='2015-06-15';el('rebalance-months').value='3';
  run("screeningMode='backtest';setModeVisibility()");
- assert.equal(el('backtest-view').hidden,true);assert.equal(el('custom-view').hidden,false);assert.equal(el('year-controls').hidden,true);
+ assert.equal(el('custom-view').hidden,false);
  run("filterConditions=[{field:'market_cap',op:'gt',value:'0'}]");
  const pending=run('ScheduleView.run(readOptions())');
  assert.equal(el('schedule-progress').hidden,false);assert.equal(el('run-screen').disabled,true);
@@ -446,8 +325,8 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
    }
    return {ok:true,json:async()=>({limit:100,paused:true,records:queueRows})};
  };
- for(const entry of ['latest','backtest']){
-   run(`switchMode('${entry}')`);el('schedule-kind').value='january';run('setModeVisibility()');
+ for(const entry of ['latest']){
+   run(`switchMode('${entry}')`);
    el('auto-run').checked=true;
    await el('queue-add').handlers.click();
    assert.equal(run('currentSettings().mode'),'custom');assert.equal(el('auto-run').checked,false);
@@ -460,7 +339,7 @@ console.log('Passed: saved January settings, exact stored stocks/returns and CSV
  assert.equal(queueRows[0].options.selection_order,'rank_first');
  assert.equal(el('queue-add').textContent,'Add to queue');
  queueRows=[];await run('BacktestQueue.refresh()');
- console.log('Passed: Add to queue opens manual setup from latest/January without calculation, then submits the chosen settings to the queue.');
+ console.log('Passed: Add to queue opens manual setup from latest without calculation, then submits the chosen settings to the queue.');
 
 run("resetFilters();switchMode('latest')");
 el('add-filter').handlers.click();
@@ -482,7 +361,7 @@ assert.equal(run('readOptions().filters.length'),0);
 console.log('Passed: add/edit/remove filter controls and numeric thresholds.');
 
 // Shared prepared views are independent of the selected dated executor.
-let sharedLatest,sharedJanuary;
+let sharedLatest;
 for(const engine of ['original','experimental']){
  el('backtest-engine').value=engine;el('auto-run').checked=false;
  run("switchMode('latest');applyRange()");
@@ -490,12 +369,7 @@ for(const engine of ['original','experimental']){
  assert(!('engine' in latest.settings));assert(!('producer' in latest.result));
  const latestValues=JSON.stringify(latest.result);
  if(sharedLatest)assert.equal(latestValues,sharedLatest);else sharedLatest=latestValues;
- el('schedule-kind').value='january';run("switchMode('backtest');applyRange()");
- const january=run("ResultArtifacts.forView('january')");
- assert(!('engine' in january.settings));assert(!('producer' in january.result));
- const januaryValues=JSON.stringify(january.result);
- if(sharedJanuary)assert.equal(januaryValues,sharedJanuary);else sharedJanuary=januaryValues;
 }
-console.log('Passed: Latest/January remain identical shared prepared views in both engine contexts, without invented producer metadata.');
+console.log('Passed: Latest remains an identical shared prepared view in both engine contexts, without invented producer metadata.');
 
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -22,8 +22,6 @@ SUMMARY_MAX_WORDS = 1000
 CONTRACT_MAX_WORDS = 3000
 JSON_MAX_BYTES = 64 * 1024
 EXPERIMENT_TYPES = ('.md', '.json', '.csv', '.txt')
-# `tools/deploy.py --collect-report` writes reviewed priced evidence here.
-COLLECTED_EVIDENCE = re.compile(r'results/experiments/runtime-baseline-[0-9a-f]{12}\.json\Z')
 INITIATIVE = re.compile(r'docs/plans/([^/]+)/(.+)\Z')
 PHASE = r'phases/phase-\d{2}/'
 # (shape name, pattern relative to the initiative, word limit, allowed when complete)
@@ -138,7 +136,7 @@ def check_experiments(root, files, problems):
             problems.append(f'{path}: results/experiments holds text summaries only. Keep raw output in tmp/.')
             continue
         size = (Path(root) / path).stat().st_size
-        if size > JSON_MAX_BYTES and not COLLECTED_EVIDENCE.match(path):
+        if size > JSON_MAX_BYTES:
             problems.append(f'{path}: {size} bytes exceeds {JSON_MAX_BYTES}. Summarize it; keep raw output in tmp/.')
 
 

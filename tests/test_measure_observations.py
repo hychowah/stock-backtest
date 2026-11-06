@@ -39,14 +39,15 @@ class PreparedMeasureTests(unittest.TestCase):
         self.assertNotEqual(facts.finish(changed, '2020-01-02', inputs='changed', scopes=latest_scopes('2020-01-02'))['content'],
                             metadata['content'])
         root = dict(mode='latest', pool='cached')
-        self.assertTrue(bridge.prepared_scope(metadata, root, dict(id='a', root='a', date='2020-01-02')))
-        self.assertFalse(bridge.prepared_scope(metadata, root, dict(id='b', root='a', date='2020-01-02')))
-        self.assertFalse(bridge.prepared_scope(metadata, root, dict(id='a', root='a', date='2020-01-01')))
+        self.assertTrue(bridge.prepared_scope(root, dict(id='a', root='a', date='2020-01-02')))
+        self.assertFalse(bridge.prepared_scope(root, dict(id='b', root='a', date='2020-01-02')))
+        # A historical root has no stored owner book, on any date.
+        self.assertFalse(bridge.prepared_scope(dict(mode='historical', pool='cached'), dict(id='a', root='a', date='2020-01-02')))
         dated = dict(root, owner_scope=dict(kind='dated'))
         prepared = dict(root, owner_scope=dict(kind='prepared', book=0))
-        self.assertFalse(bridge.prepared_scope(metadata, dated, dict(id='a', root='a', date='2020-01-02')))
-        self.assertTrue(bridge.prepared_scope(metadata, prepared, dict(id='a', root='a', date='2020-01-02')))
-        self.assertFalse(bridge.prepared_scope(metadata, prepared, dict(id='b', root='a', date='2020-01-02')))
+        self.assertFalse(bridge.prepared_scope(dated, dict(id='a', root='a', date='2020-01-02')))
+        self.assertTrue(bridge.prepared_scope(prepared, dict(id='a', root='a', date='2020-01-02')))
+        self.assertFalse(bridge.prepared_scope(prepared, dict(id='b', root='a', date='2020-01-02')))
         db.execute("UPDATE fact_metadata SET value='[]' WHERE key='scopes'")
         with self.assertRaises(ValueError):
             facts.require(db)
@@ -262,7 +263,8 @@ class PreparedTransportTests(unittest.TestCase):
 
     def test_prepared_owner_lanes_are_the_stored_book_rows(self):
         with self.prepared().view() as view:
-            for mode, day in (('historical', '2015-01-02'), ('latest', '2015-10-20')):
+            self.assertEqual({scope['mode'] for scope in view.projection['scopes']}, {'latest'})
+            for mode, day in (('latest', '2015-10-20'),):
                 for pool in ('legacy', 'cached'):
                     scope = next(scope for scope in view.projection['scopes'] if scope['mode'] == mode
                                  and scope['pool'] == pool and scope['context_date'] == day)
@@ -271,13 +273,11 @@ class PreparedTransportTests(unittest.TestCase):
                         'SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
                     stored = {row[0]: row[1] for row in view.db.execute(
                         'SELECT field,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
-                    cap = view.db.execute('SELECT market_cap FROM latest_snapshots WHERE pool=? AND symbol=?', (pool, 'TEST')).fetchone() \
-                        if mode == 'latest' else view.db.execute('SELECT market_cap FROM snapshots WHERE pool=? AND year=? AND symbol=?',
-                                                                 (pool, scope['book'], 'TEST')).fetchone()
+                    cap = view.db.execute('SELECT market_cap FROM latest_snapshots WHERE pool=? AND symbol=?', (pool, 'TEST')).fetchone()
                     self.assertTrue(pairs and stored)
                     roots = [root('TEST', pool, mode, day)]
                     [decision] = view.admit(roots)
-                    owner = view.prepared(decision, dict(id='root', root='root', date=day))
+                    owner = view.prepared(decision)
                     self.assertEqual(owner, dict(reason=None, evidence=dict(snapshot=dict(market_cap=cap[0]),
                                                                            metrics=pairs, filters=stored)))
                     with patch.object(bridge, 'dated', side_effect=AssertionError('recalculated')):
@@ -288,12 +288,12 @@ class PreparedTransportTests(unittest.TestCase):
     def test_real_prepared_view_missing_book_row_and_lane_never_fall_back(self):
         inputs = self.prepared()
         program = formulas(field('owner.pe'))
-        roots = [root('TEST', 'cached')]
+        roots = [root('TEST', 'cached', 'latest', '2015-10-20')]
         # A real admitted company has a stored row but no PE lane in the saved fixture.
         with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
             self.assertEqual(values(program, view, roots), [[(None, 'LEGACY_MEASURE_UNAVAILABLE')]])
         with closing(sqlite3.connect(inputs.source)) as db:
-            db.execute("DELETE FROM snapshots WHERE pool='cached' AND year=2015 AND symbol='TEST'")
+            db.execute("DELETE FROM latest_snapshots WHERE pool='cached' AND symbol='TEST'")
             db.commit()
         # The prepared scope lacks this company's book row.
         with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):

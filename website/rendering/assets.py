@@ -33,14 +33,11 @@ def styles():
     return '\n'.join(read(name) for name in STYLE_NAMES)
 
 
-def scripts(screening_data,holdings):
+def scripts(screening_data):
     packed=json.dumps(screening_data,separators=(',', ':')).replace('<',chr(92)+'u003c')
     result='<script id="screening-data" type="application/json">'+packed+'</script>'
     for name in SCRIPT_NAMES:
-        source=read(name)
-        if name=='range.js':
-            source='const holdingsData='+json.dumps(holdings).replace('<',chr(92)+'u003c')+';'+source
-        result+='<script>'+source+'</script>'
+        result+='<script>'+read(name)+'</script>'
     return result
 
 

@@ -145,7 +145,8 @@ const SavedBacktests=(()=>{
     if(!complete(snapshot)||isRunning())return;
     const name=node('saved-name').value.trim()||defaultName(snapshot);
     // Serialize before awaiting: a new run or changed settings cannot change this save.
-    const body=JSON.stringify([3,4].includes(snapshot.version)?{name,reader:snapshot.evidence.id}:{name,snapshot});
+    // A saved January result is saved again as its stored record.
+    const body=JSON.stringify([3,4].includes(snapshot.version)?{name,reader:snapshot.evidence.id}:{name,snapshot:snapshot.record??snapshot});
     await perform(async ticket=>{
       message('Saving complete backtest results…');
       const record=await request('',{method:'POST',headers:{'Content-Type':'application/json'},body});

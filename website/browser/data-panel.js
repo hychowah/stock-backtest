@@ -26,9 +26,6 @@ const DataPanel=(()=>{
     node('data-assets').innerHTML=report.assets.map(row=>'<tr>'+[row.name,row.state,row.count,row.first,row.last].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
     node('data-financials').textContent=`${(report.issues??[]).join(' ')} ${report.financial_symbols} symbols have financial cache records; ${report.empty_financials.length} returned no annual reports. ${report.invalid_financial_lines} invalid financial lines. ${Object.values(report.missing_ratio_inputs??{}).reduce((n,rows)=>n+rows.length,0)} annual statement downloads remain for ratio inputs in this group. ${report.price_files} stock price files are saved overall. Missing financial symbols: ${report.missing_financials.slice(0,30).join(', ')||'none'}${report.missing_financials.length>30?'… (full list in the exported report)':''}.`;
     node('data-derived').innerHTML=report.derived.map(row=>'<tr>'+[row.name,row.state,row.bytes?(row.bytes/1e6).toFixed(1)+' MB':'—'].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
-    const revision=report.baseline?.summary;
-    node('data-baseline').textContent=revision?`Verified through ${revision.through}. ${revision.bootstrap?'Years checked':'Changed years'}: ${revision.changed_years.join(', ')||'none'}. ${revision.bootstrap?'First verification: some previous prices are unavailable.':'Previous report and priced holdings were preserved.'}`:'No baseline revision is saved yet. Rebuild to verify both engines and save revision evidence.';
-    node('data-baseline-export').disabled=!report.baseline;
     stocks();
   }
   function render(state){
@@ -62,17 +59,14 @@ const DataPanel=(()=>{
   }
   function init(){
     node('data-connect').addEventListener('click',refresh);
+    // An empty range end defaults to the latest day a download can return.
     node('data-end').max=new Date().toISOString().slice(0,10);
+    if(!node('data-end').value)node('data-end').value=node('data-end').max;
     for(const action of ['check','download','rebuild','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
     node('data-scope').addEventListener('change',()=>node('data-symbols').disabled=node('data-scope').value!=='symbols');
     node('data-search').addEventListener('input',stocks);
     node('data-export').addEventListener('click',()=>{
       if(!lastReport)return;const url=URL.createObjectURL(new Blob([JSON.stringify(lastReport,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='backtest-data-check.json';link.click();URL.revokeObjectURL(url);
-    });
-    node('data-baseline-export').addEventListener('click',()=>{
-      if(!lastReport?.baseline)return;
-      const url=URL.createObjectURL(new Blob([JSON.stringify(lastReport.baseline,null,2)],{type:'application/json'}));
-      const link=document.createElement('a');link.href=url;link.download='backtest-baseline-revision.json';link.click();URL.revokeObjectURL(url);
     });
     if(location.protocol==='file:'){
       node('data-connection').textContent='Open start.cmd, then choose Manage backtest data. This saved page needs the local service to inspect or change files.';

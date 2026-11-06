@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 from backtest.application import variable_coverage as coverage, scalar_execution
 from backtest.variables import definitions
-from test_scalar_execution import Fixture, scopes as prepared_scopes
+from test_scalar_execution import Fixture
 import test_strategy_requests as requests
 import test_variable_definitions as language
 from backtest.application import strategy_requests
@@ -59,17 +59,16 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(len(result['outputs']),1)
             self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],result['population'])
             with self.assertRaises(definitions.FormulaError):coverage.inspect(repeated,dict(scope,generation=listing['generation'],book=False),self.fixture.db,view)
-    def test_recorded_january_and_cancellation(self):
-        self.fixture.db.execute('DELETE FROM fact_metadata')
-        facts.finish(self.fixture.db, '2015-01-05', inputs='fixture',scopes=prepared_scopes(historical=[('2015-01-02',1)]))
+    def test_only_latest_scopes_and_cancellation(self):
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
-                listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='historical' and x['pool']==pool)
-                result=coverage.inspect(self.fixture.capture(pool=pool),dict(scope,generation=listing['generation']),self.fixture.db,view)
-                self.assertEqual(result['population'],4)
-                self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],4)
+                listing=coverage.scopes(self.fixture.db,view)
+                self.assertEqual({x['mode'] for x in listing['scopes']},{'latest'})
+                scope=dict(next(x for x in listing['scopes'] if x['pool']==pool),generation=listing['generation'])
+                with self.assertRaises(definitions.FormulaError):
+                    coverage.inspect(self.fixture.capture(pool=pool),dict(scope,mode='historical',context_date='2015-01-02',book=1),self.fixture.db,view)
                 def cancel():raise backtest_control.Cancelled()
-                with self.assertRaises(backtest_control.Cancelled):coverage.inspect(self.fixture.capture(pool=pool),dict(scope,generation=listing['generation']),self.fixture.db,view,checkpoint=cancel)
+                with self.assertRaises(backtest_control.Cancelled):coverage.inspect(self.fixture.capture(pool=pool),scope,self.fixture.db,view,checkpoint=cancel)
     def test_observation_leaf_reads_are_narrow_and_read_only(self):
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
@@ -105,7 +104,7 @@ class CoverageTests(unittest.TestCase):
             with PreparedInputs(configure=history(4,2015,2016)):
                 owner=Original()
                 listing=owner.coverage()
-                for mode in ('historical','latest'):
+                for mode in ('latest',):
                     scope=next(x for x in listing['scopes'] if x['mode']==mode and x['pool']=='cached')
                     parameter=dict(op='parameter',id='owner.ev_ebitda')
                     examples=[(parameter,2),(dict(op='at',date=scope['context_date'],arg=parameter),0)]

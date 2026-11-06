@@ -1,6 +1,6 @@
-# January strategy screener
+# Strategy screener
 
-Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. A portable export built with `python3 website/build.py --snapshot` opens directly from `dist/index.html` and supports the saved latest and January views.
+Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. A portable export built with `python3 website/build.py --snapshot` opens directly from `dist/index.html` and supports the saved latest view.
 
 ## Automatic updates
 
@@ -23,14 +23,14 @@ revision without watching. Ctrl+C stops the watcher and its server.
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
 2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
 3. Use **Additional filters → + Add filter**. Type in the new row to search one list of built-in filters, saved variables, measures and financial parameters, then choose **More than** or **Less than** and a value. Built-in filters work offline; a variable, measure or parameter makes the strategy run on the local service, and auto-run pauses. All conditions must pass at your chosen selection stage. Two conditions on one item create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Download Full annual financial data and rebuild to supply their inputs.
-4. Choose inclusive ranks in either mode, and book years in historical mode. Choose **Selection order**: **Filter first, then rank** (default), or **Rank first, then filter**. The second option filters only the requested shortlist, keeps original ranks and adds no replacements. Rank 1 has the lowest selected valuation multiple in the ranking scope. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks each year.
-5. Click **Screen latest** or **Run backtest** for the chosen mode. Year and rank changes also update the current filters. Reset strategy restores original filters and ranks 1–50 while preserving the chosen years.
+4. Choose inclusive ranks in either mode. Choose **Selection order**: **Filter first, then rank** (default), or **Rank first, then filter**. The second option filters only the requested shortlist, keeps original ranks and adds no replacements. Rank 1 has the lowest selected valuation multiple in the ranking scope. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks at each rebalance.
+5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Reset strategy restores original filters and ranks 1–50 while preserving the chosen dates.
 
 The order choice applies to all user filters, including size, sector and additional conditions. Both options start from the same prepared stock pool. If 20 stocks pass after selecting the top 50, each receives 5% weight. Saved results and queued tests retain the submitted order. Older saved results restore filter-first. Changing the order reuses prepared books.
 
-The saved January view reselects and equally weights stocks every January. Custom calendars rebalance on the selected fixed or random schedule. Charts, returns, CAGR, growth of $1, median market cap, and stock tables update together. CSV download links export the **current selection**. Sector and exchange are cached company metadata, not historical classifications.
+Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **displayed result**. Sector and exchange are cached company metadata, not historical classifications.
 
-If fewer stocks match than requested, the available picks receive equal weights and short years are listed. A year with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a period containing an empty book. SPY continues to show the full selected period. This is distinct from the CLI's explicitly labelled populated-book compounding. Early stops outside the original top-50 review are flagged when selected.
+If fewer stocks match than requested, the available picks receive equal weights and short periods are counted. A period with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a schedule containing an empty book. SPY continues to show the full selected period.
 
 ## Manage backtest data
 
@@ -76,11 +76,9 @@ python3 scripts/research.py prepare
 python3 website/build.py
 ```
 
-Preparation is only needed after changing data or calculation code. The builder queries the compact SQLite database, exports both pools as compact tuples, and embeds them in HTML. Changing screen parameters runs locally in JavaScript without reparsing prices. Stock tables are rendered when a year is opened to avoid creating thousands of hidden rows for large portfolios.
+Preparation is only needed after changing data or calculation code. The builder queries the compact SQLite database, exports the latest screen of both pools as compact tuples, and embeds them in HTML. Changing latest screen parameters runs locally in JavaScript without reparsing prices.
 
-The original top-50 result and tables remain embedded as a fallback for previews that block JavaScript. Interactive screening requires JavaScript. `dist/returns.csv`, `dist/holdings.csv`, and `dist/valuations.json` retain the baseline exports; browser-generated CSV downloads contain the selected strategy. The original canonical report remains `../results/summary-exits.txt` and is never overwritten by screening.
-
-The 2026 book is partial through 20 October 2026. Other book years are January-to-January, not calendar-year returns. Strategy and SPY returns in the interactive screener use full-precision prepared values.
+The default latest picks remain embedded as a static table for previews that block JavaScript. Interactive screening requires JavaScript. The build writes `index.html`, `latest-picks.csv`, `data.html` and `snapshot.json`; browser-generated CSV downloads contain the displayed result. The canonical report `../results/summary-exits.txt` is a frozen record that no screen reads or overwrites.
 
 ## Checks
 
@@ -93,26 +91,23 @@ python3 tests/test_cache_access.py
 node tests/check-data-panel.cjs
 ```
 
-The first checks controls and rendering using a simulated DOM. The second compares browser selection directly with SQLite across historical and latest configurations, including combined conditions, short and empty years. It requires the current prepared database. These checks do not replace a real-browser appearance check.
+The first checks controls and rendering using a simulated DOM, including a saved January result in the dated view. The second compares browser latest selection directly with SQLite, including combined conditions and empty screens. It requires the current prepared database. These checks do not replace a real-browser appearance check.
 
 A private Sites project is registered in `.openai/hosting.json`. Hosted publication remains blocked by source-host access from this environment. Preserve the project ID when retrying.
 
-## Per-year return contributions
+## Return contributions
 
-The latest selected year opens automatically in Explore the selected stocks. Choose another year or expand its entry to see gain/loss contribution pies, the top 10 contributors, and the full stock table. These views update with the current screen and rank range.
+Each dated period shows gain/loss contribution pies, the top 10 contributors and the full stock table.
 
-Contribution equals stock holding return divided by the actual number of selected stocks, expressed in percentage points of portfolio return. Contributions sum to the year's strategy return. Top 10 means the ten stocks with the highest signed contributions, regardless of portfolio size. If fewer than ten stocks are selected, all of them are shown. In an all-loss book, these are the smallest losses. This is historical attribution, not a new picking rule.
+Contribution equals stock holding return divided by the actual number of selected stocks, expressed in percentage points of portfolio return. Contributions sum to the period's strategy return. Top 10 means the ten stocks with the highest signed contributions, regardless of portfolio size. If fewer than ten stocks are selected, all of them are shown. In an all-loss book, these are the smallest losses. This is historical attribution, not a new picking rule.
 
-Gains and losses use separate pie charts so no negative slice is implied. Each pie is normalized to that side's total; it is not a percentage of the net portfolio return. Named slices are the top contributors; remaining gainers and losers are grouped separately. Zero-return stocks have no slice. The facts above the charts reconcile top contributors and other stocks to net return.
-
-The full table includes a contribution column. Browser holdings CSV exports add fractional initial weight and `contribution_pp`. Static original-book pies and top-contributor tables are included for previews without JavaScript; baseline CSV files retain their original columns. Attribution is calculated when a year's stock table opens.
+Gains and losses use separate pie charts so no negative slice is implied. Each pie is normalized to that side's total; it is not a percentage of the net portfolio return. Named slices are the top contributors; remaining gainers and losers are grouped separately. Zero-return stocks have no slice.
 
 ```bash
 node tests/check-contributions.cjs
-python3 tests/test_attribution.py
 ```
 
-These cover signed contributions, the top-10 stock limit, positive/negative/zero/empty books, deterministic ties, input preservation, and the static fallback. Existing range/control tests also check year switching and attribution updates.
+This covers signed contributions, the top-10 stock limit, positive/negative/zero/empty books, deterministic ties, input preservation and the pies.
 
 ## Latest stock picks
 
@@ -131,8 +126,8 @@ Updating source caches does not update an already-open standalone HTML file. Run
 Choose **EV / EBITDA** (current-date valuation) or **EV / 3-year average EBITDA**
 (current EV divided by mean EBITDA from three consecutive annual reports). Lower multiples rank first;
 minimum selected yield is the reciprocal of the multiple. A missing annual
-report excludes the stock from the three-year metric. Both latest and historical
-modes use only reports eligible at their screening date. Selected stock tables
+report excludes the stock from the three-year metric. Latest screens and dated
+books use only reports eligible at their screening date. Selected stock tables
 and CSV exports show the chosen signal. For a broader comparison, use all stocks
 with cached prices: the original candidate set retains its single-year pre-screen.
 See `../docs/research-workflow.md` for calculation and extension details.
@@ -141,8 +136,7 @@ See `../docs/research-workflow.md` for calculation and extension details.
 
 Double-click `../start.cmd`, or run `python3 website/serve.py`. The dependency
 chain is automatic; no separate preparation commands are needed. The browser
-opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, choose **Custom trade date
-and frequency**. Set the first trade date, end/mark date, and monthly, quarterly,
+opens at the successfully bound local address. The default listener is `0.0.0.0:3000`. The browser uses `http://127.0.0.1:3000` on this computer. `--host` and `--port` select another listener. If an unknown process owns the port, the service uses an available port. Use the browser tab opened by the launcher or its printed address. Under **Historical backtest**, set the first trade date, end/mark date, and monthly, quarterly,
 half-yearly or yearly rebalance interval, then click **Run backtest**.
 
 Rebalances stay anchored to the starting day, clamp invalid month ends, and roll
@@ -156,8 +150,8 @@ longer the first time because it prepares the other pool; later runs reuse it.
 The launcher retains existing completed books when upgrading the daily cache.
 
 Custom schedules require the local service; opening the HTML directly continues
-to support January backtests and latest picks. Daily preparation can take longer
-than January preparation and adds a local SQLite index; it never downloads data.
+to support latest picks. Daily preparation adds a local SQLite index; it never
+downloads data.
 See `../docs/research-workflow.md` for timing and calculation semantics.
 
 While a custom backtest runs, the page shows a spinner, elapsed time and the
@@ -226,12 +220,11 @@ Windows file indexers can briefly lock cache files. Atomic JSON publication retr
 Check with `python3 tests/test_diagnostics.py`, `python3 tests/test_data_manager.py` and `python3 tests/test_startup.py`. Run these checks on native Windows too.
 
 
-Rebuilds verify the January baseline with two independent engines at the saved
-Through date. Agreement permits a revised report. The previous report and priced
-holdings remain in `../results/baseline-history/`. The data panel shows the last
-revision after a check or rebuild. **Export baseline revision** downloads its
-old/new holdings, prices and returns as JSON. First-run unknown old prices stay
-null. Engine disagreement leaves the prior report, database and website intact.
+Rebuilds still verify the stored January reference books with two independent
+engines at the saved Through date; no page reads them. Agreement permits a
+revised report. The previous report and priced holdings remain in
+`../results/baseline-history/`. First-run unknown old prices stay null. Engine
+disagreement leaves the prior report, database and website intact.
 An interrupted file replacement requires retrying preparation; readers reject
 its unfinished publication journal. Standalone `build.py` takes cache ownership;
 managed children receive `--cache-owned` from their owning parent.
@@ -345,7 +338,7 @@ checks. The library checks include failed refreshes and out-of-order responses.
 
 The website runs only Original. A new draft shows no engine choice. Custom
 dated, random and variable-strategy runs use Original on the local service.
-January and latest screens keep their shared prepared paths. Normal startup and
+The latest screen keeps its shared prepared path. Normal startup and
 rebuild need no numerical packages.
 
 The experimental (Numba) engine was deleted from source. The server refuses a
@@ -361,7 +354,7 @@ evidence does not calculate.
 
 `website/browser/` contains the plain browser scripts, styles and HTML fragments.
 Their basenames, global interfaces and execution order stay the same. The built
-HTML embeds these assets. January and latest views still work without a server.
+HTML embeds these assets. The latest view still works without a server.
 
 `website/rendering/data.py` loads detached page data from one verified prepared
 connection. It closes the connection before rendering. `page.py` builds static

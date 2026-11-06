@@ -1,4 +1,4 @@
-"""Detached build data, one acquired connection and source-only recovery assets."""
+"""Detached latest build data, one acquired connection and source-only recovery assets."""
 from contextlib import ExitStack
 from pathlib import Path
 import subprocess
@@ -14,33 +14,21 @@ from website.rendering import data
 
 class PageDataTests(unittest.TestCase):
     def test_one_connection_closes_before_detached_data_is_returned(self):
-        with tempfile.TemporaryDirectory() as temporary,ExitStack() as context:
-            website=Path(temporary)/'website';website.mkdir()
-            results=website.parent/'results';results.mkdir()
-            report=b'Through 2026-10-21\nyear,portfolio,spy,names\n2025,0.1,0.2,1\n'
-            (results/'summary-exits.txt').write_bytes(report)
-            db=Mock();stocks={2025:dict(holdings=[dict(market_cap=100e6,return_value=.1)])}
-            context.enter_context(patch.object(data,'ROOT',website))
+        with ExitStack() as context:
+            db=Mock();latest_stocks=[dict(symbol='A')]
             acquired=context.enter_context(patch.object(data,'connect',return_value=db))
-            holdings=context.enter_context(patch.object(data,'load_holdings',return_value=stocks))
             compact=context.enter_context(patch.object(data,'load_screening_data',return_value={'latest':{'metadata':{'asof':'2026-10-21'}}}))
-            latest=context.enter_context(patch.object(data.screening,'latest',return_value=[]))
+            latest=context.enter_context(patch.object(data.screening,'latest',return_value=latest_stocks))
             page=data.load_page_data()
             acquired.assert_called_once_with();db.close.assert_called_once_with()
-            holdings.assert_called_once_with(db);compact.assert_called_once_with(db);latest.assert_called_once_with(db)
-            self.assertEqual(page.report_bytes,report)
-            self.assertEqual(page.holdings[2025]['median_market_cap'],100e6)
-            self.assertEqual(page.annual,[dict(year=2025,portfolio=.1,spy=.2)])
+            compact.assert_called_once_with(db);latest.assert_called_once_with(db)
+            self.assertEqual(page.latest_stocks,latest_stocks)
 
     def test_failed_projection_still_closes_its_connection(self):
-        with tempfile.TemporaryDirectory() as temporary,ExitStack() as context:
-            website=Path(temporary)/'website';website.mkdir()
-            results=website.parent/'results';results.mkdir()
-            (results/'summary-exits.txt').write_text('Through 2026-10-21\nyear,portfolio,spy,names\n2025,0.1,0.2,1\n')
+        with ExitStack() as context:
             db=Mock()
-            context.enter_context(patch.object(data,'ROOT',website))
             context.enter_context(patch.object(data,'connect',return_value=db))
-            context.enter_context(patch.object(data,'load_holdings',side_effect=ValueError('invalid projection')))
+            context.enter_context(patch.object(data,'load_screening_data',side_effect=ValueError('invalid projection')))
             with self.assertRaisesRegex(ValueError,'invalid projection'):data.load_page_data()
             db.close.assert_called_once_with()
 
