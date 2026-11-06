@@ -17,7 +17,7 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`, read through `facts.View`), T2
 (detail-mode explanations, D1), T3 (JSON observation tables and reference
-evaluator deleted), P1 and P2a.
+evaluator deleted), P1, P2a and P2b.
 
 Bench, research schema 13, daily cache 6, P1 code (6367bef; the four digests
 equal T3, which equal T2):
@@ -40,6 +40,16 @@ smaller (2 recorded scopes, not 64). Cold build 483 s: research 394 s
 (companies 171, dated facts 190, verification 21), daily 89 s. Sizes as P1.
 User test 484.2 s computed, 181.7 s saved. e48c97a ran beside test jobs
 (508 s; 540/209 s), so P1 is the timing baseline: no measurable change.
+
+P2b (4d66c8e, research schema 14, daily 7, cold build): the four digests equal
+P2a; evidence of random and custom runs is 2 bytes larger (header only). The
+dev check finds 0 differences; the frozen report differs only in 2026. Fixture
+harness parity (`results.py`, oracle 8dc5c72): 16 runs equal. The real-data
+build, `check_screener.py` (26 screens), range and contribution checks pass.
+Cold build 335 s: research 249 s (inputs 1.5, companies 65, dated facts 182,
+publication 0.003), daily 86 s (prices 83). `research.sqlite` 2.06 GB
+(`stock_days` 1.86 GB; −172 MB); `schedules.sqlite` 1.10 GB before books,
+10.80 GB after. User test 483.1 s computed, 180.6 s saved: no change.
 
 ## Decisions
 
@@ -349,7 +359,9 @@ Reviews of 8de87fb (A design, B implementation), 227cdd1 and 4db98dc.
 - Digests: `python3 ~/bench/out/result_digest.py OUT.json` from the bench
   folder. P2a replaces its January run with the dev-check run.
 - Harness: `~/bench/harness/` with `WT=` and a private `TMPDIR`, emptied
-  afterwards. From P2a it calls the repo dev check.
+  afterwards. From P2a it calls the repo dev check. P2b removed its
+  `january:*` scopes and its `variables.selection` import (a local copy of the
+  77 parameters); `results.py compare --oracle <export> --candidate <WT>` runs.
 
 ## Risks
 
@@ -363,4 +375,4 @@ Reviews of 8de87fb (A design, B implementation), 227cdd1 and 4db98dc.
 
 ## Next
 
-P2b after the independent review of P2a.
+P3 after the independent review of P2.
