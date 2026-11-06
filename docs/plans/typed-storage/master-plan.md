@@ -31,9 +31,7 @@ on a busier machine. P2c relabels `Marked to date` as `Scheduled exit`.
 
 P3a (f3312b7) and its follow-up (e62f012; research schema 16, daily 8): digests
 equal P2c; row parity, 0 mismatches (24,489,611 price days, 1,378 dated books,
-75,346,082 filter values). Latest reasons, old to new: legacy `MISSING_PRICE`
-to `OUTSIDE_LEGACY_BUFFER` 2,775, `POOL_INELIGIBLE` to `INELIGIBLE_VALUATION`
-9. Cold build 305 s; `research.sqlite` 1.32 GB; user test 533.1/200.4 s.
+75,346,082 filter values); 2,784 latest reasons renamed. Cold build 305 s; `research.sqlite` 1.32 GB; user test 533.1/200.4 s.
 
 P3b (3af5a28; research schema 17, daily 9): the four digests equal 62b912d
 (bytes differ in `prepared_period` and selection indices, P3b deviations). Dev
@@ -142,7 +140,7 @@ writer, tables and report binding, all research reuse, `baseline.py`,
 1996 floor; a stored book row records only how a holding exited;
 `rules.BANKRUPT` holds `(symbol, day of loss)`.
 
-### P3. One fact store and one book function (done: f3312b7, e62f012, 3af5a28, 56d9483, 007c5e3)
+### P3. One fact store and one book function (done: f3312b7, e62f012, 3af5a28, 56d9483, 007c5e3, 10a6b35)
 
 P3a wrote the store (each raw file parsed once into the facts; one admission
 rule `books.Screen.decide` and one book function `books.book` over
@@ -230,20 +228,16 @@ per schema).
 - Daily 11, one transaction in place: `book_store.delete` of the dropped books
   and the old open book, rebind, the new open book. Another VERSION or book
   identity empties the file first.
-- Deleted: daily `prices`, `sessions`, `treasuries`, `treasury10`, the refresh
-  evidence, `BOOK_INPUTS`, `_price_rows`, `_prices`, `_book_inputs`,
-  `_first_difference` (now the diff's row comparison), `_dated_change`,
-  `_keep_books`; research `treasury10`, `financial_inputs`, `_replace`
-  (`cache_assets.replace` serves it and `publish_bytes`).
+- Deleted: the daily price, session and Treasury tables, the refresh
+  evidence and their helpers; research `treasury10`, `financial_inputs` and
+  `_replace` (`cache_assets.replace` serves both).
 - Deviations: the `MAX_HISTORY` reader bounds stay (no code they guard went,
   B.10; `test_variable_coverage` requires bounded leaf reads); a diff whose
   base is not the bound research (two research builds before one daily
   update) keeps no book; a build whose tables differ from the replaced
   file's (a schema or catalog change) has no base; equal values compare
   equal (0.0 = -0.0; book tables are REAL).
-- Tests: `KeptBookTests` (one per kind just after the horizon, company
-  removal, names and listing, one-session append, short reach, interrupted
-  update, book identity, older version, another base, current cache).
+- Tests: `KeptBookTests`, one per change kind and failure path.
 - Evidence (bench, 007c5e3). (a) Cold build: the four digests equal
   3fe3d50; book store parity with the 3fe3d50 store, 1,380 book pools
   (75,404,972 filter values), 0 mismatches; dev check 0 differences; harness
@@ -255,7 +249,7 @@ per schema).
   workers) plus 71.6 s to delete them in place, against 3-4 s to keep them.
   Each restore matched the raw sha256 manifest (43,392 files).
 
-#### P3c3. Review fixes (done, see the commit)
+#### P3c3. Review fixes (done, 10a6b35)
 
 - S1: the book identity also digests `facts.LEGACY`, the legacy annual fields
   that `BookFacts.legacy_annual` reads. Fact-row code defines them
@@ -272,6 +266,14 @@ per schema).
 - Tests: SPY only, `year10` only, price and annual files added or removed,
   the legacy field list, an interrupted full drop, a foreign file and a lock
   error.
+- Evidence (bench, 10a6b35): the four digests equal ce196f8 (latest 270 bytes
+  shorter: 90 shorter `owner_scope.book` ids); dev check 0 differences; the
+  rebuild found no fact change. Cold build 157.0 s; user test 365.7/149.5 s.
+  S2, FY2026 reports for 5 companies: nightly 140.4 s (book cache 3.8 s);
+  1,342 of 1,378 dated books kept. All 1,342 kept pools recomputed over the
+  new facts (138.7 s, 8 workers) equal the kept ones: 0 mismatches (4,261,192
+  rows, 73,444,914 filter values). S3: a forced full drop of 1,343 books took
+  0.15 s (in place: 71.6 s). Restore: 43,392 raw files, 0 differing.
 
 ### P4. Book rows read in place
 
