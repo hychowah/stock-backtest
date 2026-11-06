@@ -1,31 +1,33 @@
-"""Complete recorded-scope inspection under a borrowed prepared view.
+"""Complete stored-book inspection under a borrowed prepared view.
 
-Every stored row of one recorded latest scope is admitted and evaluated
-values-only by the column evaluator; counts are exact.
+Every stored row of one latest scope (the open book's pool) is admitted and
+evaluated values-only by the column evaluator; counts are exact.
 """
 import hashlib
 from datetime import date
 
 from backtest.application import scalar_execution, strategy_requests
+from backtest.inputs import book_store
 from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library
 
 
-def scopes(view):
-    """Discover exact recorded roots, including scopes with no stored rows."""
+def scopes(db, view):
+    """Discover the inspectable scopes: each completed pool of the stored open book, including empty pools.
+
+    Dated books are not listed: their owner lanes use the dated owner policy.
+    """
     view.validate()
-    projection=view.projection
-    if (len(projection['scopes'])>scalar_execution.MAX_SCOPES or
-            scalar_execution._size(projection)>scalar_execution.MAX_METADATA_BYTES):
-        raise definitions.FormulaError('WORK_LIMIT','/coverage','Recorded scope discovery exceeds its complete bound.')
-    generation=hashlib.sha256(definitions.canonical(dict(input=view.identity,projection=projection)).encode()).hexdigest()
-    return dict(generation=generation,scopes=projection['scopes'])
+    generation=hashlib.sha256(definitions.canonical(dict(input=view.identity,projection=view.projection)).encode()).hexdigest()
+    found=[dict(mode='latest',pool=pool,context_date=entry,book=book)
+           for pool in ('legacy','cached') for book,entry,exit_day in book_store.completed(db,pool) if exit_day is None]
+    return dict(generation=generation,scopes=found)
 
 
 def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
-    """Reduce all captured output roots over one complete recorded population.
+    """Reduce all captured output roots over one complete stored population.
 
-    db is the operation's daily connection: the population is the latest book's
+    db is the operation's daily connection: the population is the open book's
     pool in the book store.
     """
     if (type(scope) is not dict or set(scope)!={'generation','mode','pool','context_date','book'}
@@ -38,7 +40,7 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
         if str(date.fromisoformat(scope['context_date']))!=scope['context_date']:raise ValueError()
     except ValueError:
         raise definitions.FormulaError('INVALID_SHAPE','/scope/context_date','A canonical recorded date is required.') from None
-    discovery=scopes(view)
+    discovery=scopes(db,view)
     exact={k:scope[k] for k in ('mode','pool','context_date','book')}
     if scope['generation']!=discovery['generation'] or exact not in discovery['scopes']:
         raise definitions.FormulaError('STALE_INPUT_GENERATION','/scope','The recorded scope is absent or its generation changed.')
@@ -46,8 +48,7 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     program=library.VariableCapture(definitions.canonical(checked['variables'])).program
-    rows,roots=scalar_execution._scope(db,view,checked,None,scope['context_date'],
-        latest=True,owner_scope=dict(kind='prepared',book=scope['book']))
+    rows,roots,owner_scope=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True)
     outputs=[]; seen=set()
     for root in definitions.require_program(program)['bundle']['roots']:
         identity=root['variable_id'],root['revision']
@@ -60,7 +61,7 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
     for decision in decisions:
         if decision['admitted']:admitted+=1
         else:admission_reasons[decision['reason']]=admission_reasons.get(decision['reason'],0)+1
-    for decision in decisions:decision['owner_scope']=dict(kind='prepared',book=scope['book'])
+    for decision in decisions:decision['owner_scope']=owner_scope
     for values in columns.Formulas(program).evaluate(roots,view,checkpoint,decisions=decisions):
         for key,(value,valid,reason) in values.items():
             output=by_id[key]

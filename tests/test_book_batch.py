@@ -38,12 +38,12 @@ class BookBatchTests(unittest.TestCase):
         store.company(self.db,'C',name='Small company',exchange='NASDAQ',sector='Technology')
         store.price(self.db,'B','2014-06-30',10)
         store.price(self.db,'C','2014-06-30',10)
-        self.db.execute("INSERT INTO stock_days SELECT 'C',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A' AND day>'2014-06-30'")
-        self.db.execute("INSERT INTO stock_days SELECT 'B',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A' AND day>='2015-01-01' AND day<'2015-09-01'")
+        self.db.research.execute("INSERT INTO stock_days SELECT 'C',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A' AND day>'2014-06-30'")
+        self.db.research.execute("INSERT INTO stock_days SELECT 'B',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A' AND day>='2015-01-01' AND day<'2015-09-01'")
         for year in (2012,2013,2014,2015):
-            self.db.execute('INSERT OR IGNORE INTO statements VALUES(?,?,?,?,?,?,?)',('A',f'{year}-06-30',f'{year}-09-28',100e6,150e6,30e6,.2))
-            self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('B',f'{year}-06-30',f'{year}-09-28',100e6,150e6,35e6,.23))
-            self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('C',f'{year}-06-30',f'{year}-09-28',50e6,75e6,20e6,20/75))
+            self.db.research.execute('INSERT OR IGNORE INTO statements VALUES(?,?,?,?,?,?,?)',('A',f'{year}-06-30',f'{year}-09-28',100e6,150e6,30e6,.2))
+            self.db.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('B',f'{year}-06-30',f'{year}-09-28',100e6,150e6,35e6,.23))
+            self.db.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('C',f'{year}-06-30',f'{year}-09-28',50e6,75e6,20e6,20/75))
         self.db.commit()
 
     def file_copy(self):
@@ -168,7 +168,7 @@ class BookBatchTests(unittest.TestCase):
 
     def test_another_writer_completing_the_same_book_is_idempotent(self):
         entry=date(2015,1,1);end=date(2015,7,1)
-        book=books.book(entry,end,'legacy',facts.BookFacts(self.db,'research'))
+        book=books.book(entry,end,'legacy',facts.BookFacts(self.db))
         with self.db:one=book_store.store(self.db,book)
         before=[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')]
         with self.db:two=book_store.store(self.db,book)
@@ -177,7 +177,7 @@ class BookBatchTests(unittest.TestCase):
 
     def test_book_read_transaction_releases_on_success_and_failure(self):
         key=('2015-01-01','2015-07-01','legacy')
-        book_facts=facts.BookFacts(self.db,'research')
+        book_facts=facts.BookFacts(self.db)
         original=books.book
         def observed(*args):
             self.assertTrue(self.db.in_transaction)

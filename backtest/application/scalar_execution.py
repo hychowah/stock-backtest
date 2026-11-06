@@ -1,11 +1,12 @@
 """Complete prepared scopes to scalar selected books and detached explanations.
 
 Only this adapter combines captured source lanes. The borrowed view
-(backtest/inputs/facts.View) owns admission and financial meanings; the column
-evaluator (backtest/variables/columns.py) owns formula values and their
+(backtest/inputs/fact_view.View) owns admission and financial meanings; the
+column evaluator (backtest/variables/columns.py) owns formula values and their
 explanations. One global scalar selection follows complete evaluation of the
-prepared scope. The caller owns the admitted connections and view,
-cancellation and the evidence sink.
+prepared scope. A prepared scope is one complete pool of a stored book, named
+by its book id and checked once by book_store.require_scope. The caller owns
+the admitted connection and view, cancellation and the evidence sink.
 """
 from copy import deepcopy
 from decimal import Decimal
@@ -24,9 +25,6 @@ from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
-# Encoded-byte bound on the recorded scope metadata that coverage returns.
-MAX_METADATA_BYTES = 256 * 1024 * 1024
-MAX_SCOPES = 16384
 MAX_PREVIEW_BYTES = 16 * 1024 * 1024
 
 
@@ -34,27 +32,23 @@ def _size(value):
     return len(definitions.canonical(value).encode('ascii'))
 
 
-def scope_rows(db, *, pool, book=None):
-    """Read one complete pool of one stored book (None: the latest book) in its kept row shape.
+def scope_rows(db, *, pool, book):
+    """Read one complete pool of one stored book in its row shape (book_store.rows), in symbol order.
 
     db is a daily connection that attaches research. MAX_CANDIDATES bounds the
-    rows; a scope of that size retains a few MB. Rows are in symbol order.
+    rows; a scope of that size retains a few MB.
     """
-    open_book = book is None
-    if open_book:
-        book, _ = book_store.latest(db)
-    cursor = db.execute('SELECT ' + book_store.projection(open_book) + ',c.name,c.sector,c.exchange,c.symbol AS _company_symbol '
-        'FROM book_rows s LEFT JOIN research.companies c USING(symbol) WHERE s.book=? AND s.pool=? ORDER BY s.symbol', (book, pool))
-    names = [item[0] for item in cursor.description]
     rows = []
-    for row in cursor:
-        backtest_control.checkpoint()
-        if len(rows) == MAX_CANDIDATES:
-            raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
-        detached=dict(zip(names,row))
-        if detached.pop('_company_symbol') is None:
-            raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.')
-        rows.append(detached)
+    try:
+        for row in book_store.rows(db, book, pool):
+            backtest_control.checkpoint()
+            if len(rows) == MAX_CANDIDATES:
+                raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
+            rows.append(row)
+    except definitions.FormulaError:
+        raise
+    except ValueError:
+        raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.') from None
     return rows
 
 
@@ -75,43 +69,49 @@ def check_preview(capture, roots, *, checkpoint=backtest_control.checkpoint):
     return program
 
 
+def _require(db, book, pool, day, latest, path):
+    """book_store.require_scope as a formula error at path."""
+    try:
+        book_store.require_scope(db, book, pool, day, latest)
+    except ValueError:
+        raise definitions.FormulaError('INVALID_SHAPE', path, 'Prepared owner scope does not match the admitted projection.') from None
+
+
 def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkpoint):
     """Explain explicit checked roots with the column evaluator; no complete-pool claim is made.
 
-    Only a latest root has a stored owner book (book 0); its date is checked by
-    the view's latest admission.
+    Only a latest root has a stored owner book: a prepared owner scope must name
+    the open book (book_store.require_scope); the root's date is checked by the
+    view's latest admission.
     """
     for index, root in enumerate(roots):
         scope = root.get('owner_scope')
-        if scope and scope['kind'] == 'prepared' and (root['mode'] != 'latest' or scope['book'] != 0):
-            raise definitions.FormulaError('INVALID_SHAPE', '/requests/' + str(index) + '/owner_scope',
-                                           'Prepared owner scope does not match the admitted projection.')
+        if scope and scope['kind'] == 'prepared':
+            path = '/requests/' + str(index) + '/owner_scope'
+            if root['mode'] != 'latest':
+                raise definitions.FormulaError('INVALID_SHAPE', path, 'Only a latest root has a stored owner book.')
+            _require(view.db, scope['book'], root['pool'], root['date'], True, path)
     block = columns.Formulas(program).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
     if _size(block) > MAX_PREVIEW_BYTES:
         raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Complete preview exceeds its encoded byte ceiling.')
     return dict(population='explicit-request-scopes', requested=roots, evaluations=[block])
 
 
-def _scope(db, view, capture, period, entry, *, latest, owner_scope):
-    """Return one complete prepared scope's rows and roots after checking its owner scope.
+def _scope(db, capture, book, entry, *, latest):
+    """Return one complete prepared scope's rows, roots and owner scope, after its one check.
 
-    A prepared owner scope names the stored latest book (book 0). A dated
-    owner scope reads the dated owner lanes.
+    The scope is one complete pool of the stored book (book_store.require_scope);
+    a latest scope names the open book. Its roots carry the prepared owner scope
+    of that book, whose stored lanes the owner parameters read; a dated
+    scope's roots read the dated owner lanes.
     """
-    if (type(owner_scope) is not dict or not (owner_scope == {'kind':'dated'} or
-            (set(owner_scope) == {'kind','book'} and owner_scope['kind'] == 'prepared'
-             and type(owner_scope['book']) is int and owner_scope['book'] >= 0))):
-        raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Invalid owner scope.')
-    pool=capture['pool']
-    if owner_scope['kind'] == 'prepared' and (not latest or owner_scope['book'] != 0 or not any(
-            item['mode'] == 'latest' and item['pool'] == pool and item['context_date'] == str(entry) and item['book'] == 0
-            for item in view.projection['scopes'])):
-        raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
-    rows=scope_rows(db,pool=pool,book=None if latest else period)
-    if len({row['symbol'] for row in rows}) != len(rows):
-        raise definitions.FormulaError('INVALID_SHAPE','/population','Prepared scope contains duplicate companies.')
-    roots=[dict(symbol=row['symbol'],pool=pool,mode='latest' if latest else 'historical',date=str(entry),owner_scope=owner_scope) for row in rows]
-    return rows,roots
+    pool = capture['pool']
+    _require(db, book, pool, entry, latest, '/owner_scope')
+    owner_scope = dict(kind='prepared', book=book) if latest else dict(kind='dated')
+    rows = scope_rows(db, pool=pool, book=book)
+    roots = [dict(symbol=row['symbol'], pool=pool, mode='latest' if latest else 'historical', date=str(entry),
+                  owner_scope=owner_scope) for row in rows]
+    return rows, roots, owner_scope
 
 
 class Executor:
@@ -162,50 +162,39 @@ class Executor:
             decision['owner_scope'] = owner_scope
         return decisions
 
-    def select(self, db, period, entry, exit_day=None, *, latest=False, owner_scope=None):
+    def select(self, db, book, entry, exit_day=None, *, latest=False):
+        """Select one complete prepared scope: the pool of the stored book named by its id (the open book when latest)."""
         self.checkpoint()
-        if owner_scope is None: owner_scope = dict(kind='dated')
-        rows, roots = _scope(db, self.view, self.capture, period, entry, latest=latest, owner_scope=owner_scope)
+        rows, roots, owner_scope = _scope(db, self.capture, book, entry, latest=latest)
         self.number += 1; identity = 'scope:' + str(self.number)
         specification = deepcopy(self.capture['selection'])
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
         lane_of = lambda role: 'ranking' if role == 0 else 'c' + str(role - 1)
-        mode = 'latest' if latest else 'historical'; book = book_store.latest(db)[0] if latest else period
+        mode = 'latest' if latest else 'historical'
         decisions = self._admit(rows, roots, entry, owner_scope, not latest)
         admitted = sum(decision['admitted'] for decision in decisions)
         receipt = dict(policy=dict(executor=_LOADED,selection=selection.policy_fingerprint()),id=identity,
             population='complete-prepared-scope', mode=mode, pool=self.pool, date=str(entry),
-            exit=str(exit_day) if exit_day is not None else None, prepared_period=period, input=self.view.identity,
-            rows=len(rows), source_population=self.view.bounds['population'],
+            exit=str(exit_day) if exit_day is not None else None, prepared_period=None if latest else book,
+            input=self.view.identity, rows=len(rows), source_population=self.view.bounds['population'],
             provider_admitted_in_prepared_scope=admitted,
             selection_population='prepared rows with usable return evidence' if not latest else 'prepared exact-session latest rows')
         values = [{} for row in rows]
-        # One query per stored table for the whole scope; primary keys make each
-        # symbol's value unique, as per-row lookups read.
+        # One read per stored table for the whole scope (book_store.lanes);
+        # primary keys make each symbol's value unique, as per-row lookups read.
         stored = {}
         metrics = {role: self.descriptors[source['id']]['storage'] for role, source in enumerate(role_sources)
                    if source['kind'] == 'builtin' and self.descriptors[source['id']]['storage']['kind'] == 'metric'}
         fields = {role: self.descriptors[source['id']]['storage'] for role, source in enumerate(role_sources)
                   if source['kind'] == 'builtin' and self.descriptors[source['id']]['storage']['kind'] != 'metric'}
-        if metrics:
-            names = sorted({storage['metric'] for storage in metrics.values()})
-            by_metric = {}
-            for symbol, metric, multiple, yield_value in db.execute(
-                    'SELECT symbol,metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND metric IN ('
-                    + ','.join('?' * len(names)) + ')', (book, self.pool, *names)):
-                by_metric[symbol, metric] = multiple, yield_value
-            for role, storage in metrics.items():
-                column = 1 if storage['component'] == 'yield' else 0
-                stored[role] = {symbol: pair[column] for (symbol, metric), pair in by_metric.items() if metric == storage['metric']}
-        if fields:
-            names = sorted({storage['field'] for storage in fields.values()})
-            by_field = {}
-            for symbol, field, value in db.execute(
-                    'SELECT symbol,field,value FROM book_filters WHERE book=? AND pool=? AND field IN ('
-                    + ','.join('?' * len(names)) + ')', (book, self.pool, *names)):
-                by_field[symbol, field] = value
-            for role, storage in fields.items():
-                stored[role] = {symbol: value for (symbol, field), value in by_field.items() if field == storage['field']}
+        pairs, filters = book_store.lanes(db, book, self.pool, [storage['metric'] for storage in metrics.values()],
+                                          [storage['field'] for storage in fields.values()])
+        for role, storage in metrics.items():
+            column = 1 if storage['component'] == 'yield' else 0
+            stored[role] = {symbol: found[storage['metric']][column] for symbol, found in pairs.items()
+                            if storage['metric'] in found}
+        for role, storage in fields.items():
+            stored[role] = {symbol: found[storage['field']] for symbol, found in filters.items() if storage['field'] in found}
         def builtin(role, symbol):
             source = role_sources[role]
             descriptor = self.descriptors[source['id']]; storage = descriptor['storage']

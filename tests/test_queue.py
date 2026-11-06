@@ -224,7 +224,7 @@ class ConsumerTests(unittest.TestCase):
         class Database(sqlite3.Connection):
             def close(db):closed.append(getattr(owner.state,'held',False));super().close()
         def connect():
-            db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;daily.attach(db,self.research);return db
+            db=sqlite3.connect(self.path,factory=Database,uri=True);db.row_factory=sqlite3.Row;daily.attach(db,self.research);return db
         self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.entered=Event();self.release=Event()
         original=schedules.financial_books.book

@@ -1,5 +1,3 @@
-
-from backtest import screening
 """Plan missing books once, calculate ahead, and commit through one SQLite writer.
 
 Only requested date pairs are planned. Processes use read-only daily
@@ -21,6 +19,7 @@ import tempfile
 from threading import Thread
 import time
 
+from backtest import screening
 from backtest.engines.original import schedules
 from backtest.financial import books
 from backtest.inputs import book_store, daily, facts
@@ -34,11 +33,6 @@ _reader=None
 _facts=None
 
 
-def generation(db):
-    row=db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()
-    return row[0] if row else None
-
-
 def plan(db,configuration,book_selection=None):
     """Deduplicate all required books, retaining first-use order by trial."""
     options=configuration['options']
@@ -46,9 +40,7 @@ def plan(db,configuration,book_selection=None):
     if len(configuration['samples'])!=configuration['requested']:
         raise ValueError('The number of sampled schedules must match the requested trials.')
     pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
-    available={(row[0],row[1],pool) for row in db.execute('''
-        SELECT b.entry,b.exit FROM books b JOIN book_pools p ON p.book=b.book
-        WHERE p.pool=? AND b.exit IS NOT NULL''',(pool,))}
+    available={(entry,exit_day,pool) for _,entry,exit_day in book_store.completed(db,pool) if exit_day is not None}
     sessions=facts.sessions(db)
     seen=set();jobs=[];trials=[]
     for dates in configuration['samples']:
@@ -90,7 +82,7 @@ def open_reader(path,research,expected):
     try:
         db.execute('PRAGMA query_only=ON')
         # The parent admitted this generation and its research file under cache ownership.
-        if generation(db)!=expected:
+        if daily.binding(db)!=expected:
             raise ValueError('The daily cache changed before a calculation worker started.')
         daily.attach(db,research)
         # Books read the research facts; the cache size is per schema.
@@ -111,7 +103,7 @@ def initialize_worker(path,research,expected):
             os._exit(0)
         Thread(target=follow_parent,daemon=True).start()
     _reader=open_reader(path,research,expected)
-    _facts=facts.BookFacts(_reader,'research')
+    _facts=facts.BookFacts(_reader)
 
 
 def calculate(key):
@@ -140,11 +132,11 @@ def calculations(db,jobs,workers,on_wait):
     if not jobs:
         yield iter(());return
     if workers==1:
-        book_facts=facts.BookFacts(db,'research')
+        book_facts=facts.BookFacts(db)
         yield (calculate_book(db,key,book_facts) for key in jobs)
         return
     executor=ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn'),
-                                 initializer=initialize_worker,initargs=(database_path(db),database_path(db,'research'),generation(db)))
+                                 initializer=initialize_worker,initargs=(database_path(db),database_path(db,'research'),daily.binding(db)))
     pending=deque();remaining=iter(jobs)
     def submit():
         key=next(remaining,None)

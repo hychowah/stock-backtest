@@ -18,32 +18,31 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import tools.ops.prepared_input_coverage as coverage
+sys.path.insert(0, str(ROOT/'tests'))
+import book_store_fixture as store
 
 
 class CoverageTests(unittest.TestCase):
     def setUp(self):
-        # Research facts and an empty book store, each in its own private connection.
-        self.research=sqlite3.connect(':memory:');self.research.row_factory=sqlite3.Row;self.addCleanup(self.research.close)
-        self.research.executescript(coverage.r.SCHEMA+facts.SCHEMA)
-        self.daily=sqlite3.connect(':memory:');self.daily.row_factory=sqlite3.Row
-        self.daily.executescript(coverage.daily_inputs.SCHEMA);self.addCleanup(self.daily.close)
+        # Research facts and an empty book store on one daily connection, as daily.connect gives it.
+        self.daily=store.connection();self.addCleanup(self.daily.close)
+        research=self.daily.research
         for i in range(1,4):
-            self.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(f'S{i}','2014-01-01','2014-04-01',i*100e6,200e6,100e6/i,.5/i))
-            facts.store_stock(self.research,f'S{i}',dict(source=dict(endpoint=facts.STOCK,sha256='a'*64,disposition='valid'),
+            research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(f'S{i}','2014-01-01','2014-04-01',i*100e6,200e6,100e6/i,.5/i))
+            facts.store_stock(research,f'S{i}',dict(source=dict(endpoint=facts.STOCK,sha256='a'*64,disposition='valid'),
                 dated={day:dict(adjClose=dict(value=10.,valid=True,reason=None),volume=dict(value=None,valid=False,reason='MISSING_INPUT'))
                        for day in ('2014-01-01','2015-01-02','2016-01-02','2017-01-02')}))
         self.spy=[dict(date=d,adjClose=100) for d in ('2015-01-02','2015-07-01','2016-01-02','2017-01-02')]
         self.treasury=[dict(date='2014-01-01',month3=1)]
-        self.research.executemany('INSERT INTO market_days(day,spy) VALUES(?,?)',[(r['date'],100) for r in self.spy])
-        metadata=dict(prices={f'S{i}.json':[1,1] for i in (1,2)})
-        self.research.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v)) for k,v in metadata.items()])
+        research.executemany('INSERT INTO market_days(day,spy) VALUES(?,?)',[(r['date'],100) for r in self.spy])
+        research.execute('INSERT INTO metadata VALUES(?,?)',('prices',json.dumps({f'S{i}.json':[1,1] for i in (1,2)})))
 
-    def report(self):return coverage._coverage(self.research,self.daily,self.spy,self.treasury,lambda:None)
+    def report(self):return coverage._coverage(self.daily,self.spy,self.treasury,lambda:None)
 
     def test_counts_without_january_books(self):
         report=self.report()
-        self.assertEqual(report['version'],3)
-        self.assertNotIn('years',report);self.assertNotIn('through',report)
+        self.assertEqual(report['version'],4)
+        self.assertNotIn('years',report);self.assertNotIn('through',report);self.assertNotIn('price_binding',report)
         self.assertEqual((report['financial_symbols'],report['accepted_price_files'],report['financial_symbols_without_price_files']),(3,2,1))
         self.assertEqual(report['daily_books'],dict(books=0,book_pools=0,book_rows=0))
 
@@ -56,15 +55,17 @@ class CoverageTests(unittest.TestCase):
         self.assertIn('Legitimate nontrading',report['stock_sessions']['scope'])
 
     def test_reporting_preserves_rows_and_rejects_stale_daily_before_raw_access(self):
-        before=self.research.total_changes,self.daily.total_changes;self.report()
-        self.assertEqual((self.research.total_changes,self.daily.total_changes),before)
+        before=self.daily.total_changes,self.daily.research.total_changes;self.report()
+        self.assertEqual((self.daily.total_changes,self.daily.research.total_changes),before)
         with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'daily.sqlite'
+            path=Path(tmp)/'daily.sqlite';source=Path(tmp)/'research.sqlite'
             with closing(sqlite3.connect(path)) as db:
                 db.execute('CREATE TABLE metadata(key,value)');db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs','{}'));db.commit()
+            sqlite3.connect(source).close()
             original=path.read_bytes()
-            with patch.object(coverage.cache_access,'access',side_effect=lambda:nullcontext()),patch.object(coverage.r,'connect',return_value=self.research),patch.object(coverage.daily_inputs,'fingerprint',return_value={'new':1}):
-                with self.assertRaisesRegex(ValueError,'Daily cache changed'):coverage.report(Path(tmp)/'research.sqlite',path)
+            with patch.object(coverage.cache_access,'access',side_effect=lambda:nullcontext()),patch.object(coverage.daily_inputs,'current',return_value={'new':1}), \
+                    patch.object(coverage.r,'RAW',Path(tmp)/'raw'):
+                with self.assertRaisesRegex(ValueError,'Daily cache changed'):coverage.report(source,path)
             self.assertEqual(path.read_bytes(),original)
 
     def test_pre_price_membership_keeps_full_fiscal_variants(self):

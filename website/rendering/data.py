@@ -1,4 +1,4 @@
-"""Acquire detached latest-screen projections from the latest book of the book store."""
+"""Acquire detached latest-screen projections from the open (latest) book of the book store."""
 from contextlib import closing
 from dataclasses import dataclass
 from backtest.inputs import book_store, daily
@@ -11,21 +11,24 @@ def load_screening_data(db=None):
     if db is None:
         with closing(daily.connect()) as acquired:
             return load_screening_data(acquired)
-    book,asof=book_store.latest(db)
-    companies = {r['symbol']: [r['name'], r['exchange'], r['sector']]
-                 for r in db.execute('SELECT symbol,name,exchange,sector FROM research.companies '
-                                     'WHERE symbol IN (SELECT symbol FROM book_rows WHERE book=?)',(book,))}
-    latest_fields=['symbol','candidate_rank','fiscal','known','entry','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','spread']
-    latest={pool:[list(row) for row in db.execute('SELECT '+','.join(latest_fields)+' FROM book_rows WHERE book=? AND pool=? ORDER BY symbol',(book,pool))] for pool in ['legacy','cached']}
-    candidates=db.execute('SELECT candidates FROM books WHERE book=?',(book,)).fetchone()[0]
-    latest['metadata']=dict(asof=asof,eligible_financials=candidates)
-    # The browser keys keep their old 'latest:<pool>:0:<symbol>' form.
-    metric_values={}
-    for r in db.execute('SELECT pool,symbol,metric,multiple,yield_value FROM book_metrics WHERE book=?',(book,)):
-        metric_values.setdefault(f"latest:{r['pool']}:0:{r['symbol']}",{})[r['metric']]=[r['multiple'],r['yield_value']]
-    filter_values={}
-    for r in db.execute('SELECT pool,symbol,field,value FROM book_filters WHERE book=?',(book,)):
-        filter_values.setdefault(f"latest:{r['pool']}:0:{r['symbol']}",{})[r['field']]=r['value']
+    book=book_store.open_book(db);record=book_store.record(db,book)
+    # A latest row is the book's LATEST shape without its pool, in that order.
+    fields=book_store.LATEST[1:]
+    names,latest,metric_values,filter_values={},{},{},{}
+    for pool in ('legacy','cached'):
+        rows=list(book_store.rows(db,book,pool))
+        latest[pool]=[[row[field] for field in fields] for row in rows]
+        names.update((row['symbol'],[row['name'],row['exchange'],row['sector']]) for row in rows)
+    for pool in ('cached','legacy'):
+        pairs,values=book_store.lanes(db,book,pool)
+        # The browser keys keep their old 'latest:<pool>:0:<symbol>' form.
+        for symbol,found in pairs.items():
+            metric_values[f'latest:{pool}:0:{symbol}']={metric:list(pair) for metric,pair in found.items()}
+        for symbol,found in values.items():
+            filter_values[f'latest:{pool}:0:{symbol}']=dict(found)
+    # In saved-company order, as the embedded page always listed them.
+    companies={row[0]:names[row[0]] for row in db.execute('SELECT symbol FROM research.companies') if row[0] in names}
+    latest['metadata']=dict(asof=record['entry'],eligible_financials=record['candidates'])
     # Sector and exchange choices cover every saved company, for dated runs too.
     choices={column:[row[0] for row in db.execute(f'SELECT DISTINCT {column} FROM research.companies ORDER BY {column}')]
              for column in ('sector','exchange')}

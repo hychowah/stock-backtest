@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import facts
+from backtest.inputs import fact_view, facts
 from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d, library
 import test_variable_definitions as language
@@ -27,46 +27,43 @@ def state(value, reason=None):
     return dict(value=value, valid=reason is None, reason=reason)
 
 
-def scopes(latest='2015-01-05'):
-    """Prepared scopes: the latest date in both pools."""
-    return [dict(mode='latest', pool=pool, context_date=latest, book=0) for pool in ('legacy', 'cached')]
-
-
 class Fixture:
     """A dated book (id 1, 2015-01-02 to 2015-01-05) and the latest book (id 2, 2015-01-05) of count companies.
 
-    db is the daily connection with the research file attached; source is the
-    view's research connection, which sees research rows after a commit.
+    db is the daily connection with the research file attached (book_store_fixture);
+    db.research writes the research rows.
     """
     def __init__(self, count=300):
         self.folder=tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.db=store.connection(Path(self.folder.name)/'research.sqlite')
-        dated=store.book(self.db,'2015-01-02','2015-01-05',spy=.1,candidates=count)
-        latest=store.book(self.db,'2015-01-05',None,candidates=count)
+        research=self.db.research
         for day,spy in [('2015-01-02',100.),('2015-01-05',110.)]:
             store.session(self.db,day,spy,2.)
+        rows={'dated':{},'latest':{}};pairs={'dated':{},'latest':{}};values={'dated':{}}
         for i in range(count):
             symbol=f'A{i:04d}'
             store.company(self.db,symbol,sector='Technology')
-            self.db.execute('INSERT INTO research.statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',150e6,180e6,54e6,.3))
+            research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',150e6,180e6,54e6,.3))
             for day in ['2014-06-30','2015-01-02','2015-01-05']:
                 store.price(self.db,symbol,day,10.)
             for pool in ('legacy','cached'):
-                values=dict(candidate_rank=i+1,fiscal='2014-06-30',known='2014-09-28',price=10.,market_cap=150e6,
-                            enterprise_value=180e6,ebitda=54e6,ebitda_yield=.3,ev_ebitda=3.,spread=.28)
-                store.row(self.db,dated,pool,symbol,entry='2015-01-02',exit='2015-01-05',return_value=i/1000,status='Scheduled exit',**values)
-                store.row(self.db,latest,pool,symbol,entry='2015-01-05',**values)
-                for book in (dated,latest):
-                    store.metric(self.db,book,pool,symbol,'ev_ebitda',3.,.3)
-                store.value(self.db,dated,pool,symbol,'profit_margin',i-150.)
+                columns=dict(candidate_rank=i+1,fiscal='2014-06-30',known='2014-09-28',price=10.,market_cap=150e6,
+                             enterprise_value=180e6,ebitda=54e6,ebitda_yield=.3,ev_ebitda=3.,spread=.28)
+                rows['dated'].setdefault(pool,{})[symbol]=dict(columns,entry='2015-01-02',exit='2015-01-05',
+                                                               return_value=i/1000,status='Scheduled exit')
+                rows['latest'].setdefault(pool,{})[symbol]=dict(columns,entry='2015-01-05')
+                for kind in ('dated','latest'):
+                    pairs[kind].setdefault(pool,{})[symbol]={'ev_ebitda':(3.,.3)}
+                values['dated'].setdefault(pool,{})[symbol]={'profit_margin':i-150.}
             annual=dict(revenue=state(float(i+1)),operatingIncome=state(float(i+1)/10))
-            facts.store_annual(self.db,symbol,dict(sources={},annual={'income-statement':{'2014-06-30':annual}}))
-        self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(fixture='2015-01-05')))))
-        facts.finish(self.db, '2015-01-05', inputs='fixture', scopes=scopes());self.db.commit()
-        self.source=sqlite3.connect(Path(self.folder.name)/'research.sqlite');self.source.row_factory=sqlite3.Row
+            facts.store_annual(research,symbol,dict(sources={},annual={'income-statement':{'2014-06-30':annual}}))
+        self.dated=store.book(self.db,'2015-01-02','2015-01-05',spy=.1,candidates=count,rows=rows['dated'],
+                              metrics=pairs['dated'],values=values['dated'])
+        self.latest=store.book(self.db,'2015-01-05',None,candidates=count,rows=rows['latest'],metrics=pairs['latest'])
+        store.record(research,self.db,'2015-01-05');self.db.commit()
     def close(self):
-        self.db.close();self.source.close();self.folder.cleanup()
-    def view(self):return facts.View(self.db,self.source,lambda:None,lambda:None)
+        self.db.close();self.folder.cleanup()
+    def view(self):return fact_view.View(self.db,lambda:None,lambda:None)
     def capture(self, expression=None, *, pool='cached', direction='highest', order='filter_first', conditions=None, first=1,last=5):
         authored=language.entry(language.definition(expression or dict(op='parameter',id='annual.revenue'),'USD' if expression is None else 'scalar','usd' if expression is None else 'number'),'draft:ranking')
         intent=requests.intent(requests.formula(authored),conditions,rank_from=first,rank_to=last,selection_order=order)
@@ -75,7 +72,7 @@ class Fixture:
     def select(self,capture, *, latest=False, record_bytes=8*1024**2):
         records=[]
         with self.view() as view:
-            result=x.Executor(capture,view,records.append,record_bytes=record_bytes).select(self.db,None if latest else 1,date(2015,1,5) if latest else date(2015,1,2),None if latest else date(2015,1,5),latest=latest)
+            result=x.Executor(capture,view,records.append,record_bytes=record_bytes).select(self.db,self.latest if latest else self.dated,date(2015,1,5) if latest else date(2015,1,2),None if latest else date(2015,1,5),latest=latest)
         return result,records
 
 
@@ -83,7 +80,7 @@ class ScalarTests(unittest.TestCase):
     def setUp(self):
         self.fixture=Fixture();self.addCleanup(self.fixture.close)
     def test_orphan_snapshot_rejects_complete_scope(self):
-        self.fixture.db.execute("DELETE FROM research.companies WHERE symbol='A0000'")
+        self.fixture.db.research.execute("DELETE FROM companies WHERE symbol='A0000'")
         with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture())
         self.assertEqual(failure.exception.path,'/population')
     def test_more_than_256_candidates_rank_globally_and_explain_only_selected_rows(self):
@@ -156,7 +153,7 @@ class ScalarTests(unittest.TestCase):
         receipt=next(r['value'] for r in records if r['type']=='scope')
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],250)
     def test_missing_only_active_source_excludes(self):
-        self.fixture.db.execute("DELETE FROM research.annual_facts WHERE symbol='A0299'");self.fixture.db.commit()
+        self.fixture.db.research.execute("DELETE FROM annual_facts WHERE symbol='A0299'")
         stocks,_=self.fixture.select(self.fixture.capture())
         self.assertEqual(stocks[0]['symbol'],'A0298')
         stocks,_=self.fixture.select(self.fixture.capture(language.constant('1')))
@@ -176,6 +173,27 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(result['evaluations'][0]['results'][0]['value'],2.)
         with self.fixture.view() as view:
             with self.assertRaises(d.FormulaError):preview(capture,[],view)
+    def test_a_prepared_scope_is_a_stored_book_named_by_its_id(self):
+        capture=self.fixture.capture()
+        latest=dict(symbol='A0001',pool='cached',mode='latest',date='2015-01-05')
+        with self.fixture.view() as view:
+            result=preview(capture,[dict(latest,owner_scope=dict(kind='prepared',book=self.fixture.latest))],view)
+            self.assertTrue(result['evaluations'][0]['results'][0]['valid'])
+            # The one check (book_store.require_scope): only the open book of that day and pool.
+            for book in (0,self.fixture.dated,99):
+                with self.assertRaises(d.FormulaError) as failure:
+                    preview(capture,[dict(latest,owner_scope=dict(kind='prepared',book=book))],view)
+                self.assertEqual(failure.exception.path,'/requests/0/owner_scope')
+            with self.assertRaises(d.FormulaError):
+                preview(capture,[dict(latest,mode='historical',date='2015-01-02',
+                                      owner_scope=dict(kind='prepared',book=self.fixture.dated))],view)
+            with self.assertRaises(d.FormulaError):
+                x.Executor(capture,view,lambda record:None).select(self.fixture.db,self.fixture.dated,date(2015,1,5),latest=True)
+        # A latest scope records its real book id in every root's owner scope.
+        _,records=self.fixture.select(capture,latest=True)
+        requests=[item for r in records if r['type']=='evaluation' for item in r['value']['block']['requests']]
+        self.assertTrue(requests)
+        self.assertTrue(all(item['owner_scope']==dict(kind='prepared',book=self.fixture.latest) for item in requests))
     def test_latest_has_no_future_fields(self):
         stocks,_=self.fixture.select(self.fixture.capture(),latest=True)
         self.assertEqual(stocks[0]['symbol'],'A0299')
@@ -183,7 +201,7 @@ class ScalarTests(unittest.TestCase):
     def test_view_closure_does_not_close_borrowed_connection(self):
         view=self.fixture.view();view.close()
         with self.assertRaises(ValueError):view.validate()
-        self.assertEqual(self.fixture.source.execute('SELECT count(*) FROM companies').fetchone()[0],300)
+        self.assertEqual(self.fixture.db.execute('SELECT count(*) FROM research.companies').fetchone()[0],300)
     def test_stale_binding_rejected_and_no_connections_owned(self):
         view=self.fixture.view()
         self.fixture.db.execute("UPDATE metadata SET value='{}' WHERE key='daily_inputs'")

@@ -248,12 +248,13 @@ Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
 **Research database.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 17) from the raw cache: companies,
+`data/research.sqlite` (research schema 18) from the raw cache: companies,
 annual reports and typed facts, no book. Every build is a full build. It
 writes a temporary file and replaces the database atomically; a failure keeps
-the previous database. `books.Screen.decide` admits; `books.book` builds books. `research.calculation_sources()` is the one list of code
-that computes prepared rows or books; the research signature, the facts policy
-and the daily book identity bind it. The `legacy` pool keeps the original
+the previous database. `books.Screen.decide` admits; `books.book` builds books.
+`research.code_sources(role)` is the one rule of code roles: the research
+identity binds fact-row code, the book identity book code, readers nothing.
+The `legacy` pool keeps the original
 250-candidate pre-price screen; the `cached` pool covers cached-price companies
 only. Checks:
 `tests/test_research.py`, `tests/test_prepared_facts.py`, `tests/test_books.py` and
@@ -322,13 +323,13 @@ and `results/experiments/fmp-throughput-2026-10-23.json`. Do not present old
 timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
-daily book store (version 9), attaching research read-only. It prepares only the
+daily book store (version 10), attaching research read-only. It prepares only the
 requested pool and records completion in `book_pools` with the rows. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
 Reuse `screening.select` and `metrics.evaluate`; never duplicate formulas. Label
-dated period returns, not annual returns. Daily inputs bind accepted research
-content, policy and price inventory; older caches rebuild and refreshes keep
-only unaffected books. A latest root reads the stored latest owner lanes;
+dated period returns, not annual returns. The daily binding names the research
+and book identities; older caches rebuild and refreshes keep only unaffected
+books. `book_store` owns every read of its tables. A latest root reads the stored latest owner lanes;
 every other root uses the dated owner policy. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).
@@ -422,7 +423,7 @@ parameter. Eager scalar execution and numerical sample preview are
 unsupported. Derived `at` and `lookback` contexts use dated owner policy, even
 at an equal date. Preserve the 32-definition closure ceiling and signed zero in
 typed value columns. Original scalar operations hold inputs through
-`backtest/inputs/operation_inputs.py`: one daily fingerprint at entry, one file
+`backtest/inputs/operation_inputs.py`: one daily binding check at entry, one file
 status per step, no row rescans. Checks: `tests/test_columns.py`,
 `tests/test_parameter_admission.py`, `tests/test_prepared_facts.py`,
 `tests/test_operation_inputs.py` and heavy `tests/test_original_long_window.py`.

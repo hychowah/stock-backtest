@@ -62,10 +62,10 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
     selection = dict(strategy=options['strategy'])
     producer = dict(engine='original',label='Original')
     if mode == 'latest':
-        # The stored latest book of the book store; no dated-book reconstruction occurs.
+        # The stored open book of the book store; no dated-book reconstruction occurs.
         asof = view.bounds['latest_date']
         with diagnostics.stage('selection'):
-            stocks = executor.select(db,None,date.fromisoformat(asof),latest=True,owner_scope=dict(kind='prepared',book=0))
+            stocks = executor.select(db,view.open_book,date.fromisoformat(asof),latest=True)
         for stock in stocks:writer.screen(stock)
         return dict(asof=asof,requested=requested,names=len(stocks),options=options,producer=producer)
     if mode == 'random':

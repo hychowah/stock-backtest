@@ -52,13 +52,13 @@ with runtime_access.ownership(root,timeout=0):
    assert Path(module.__file__).resolve().is_relative_to(root.resolve()),name
  r.prepare();daily.prepare()
  result=coverage.report()
- assert result['version']==3 and result['financial_symbols']==result['accepted_price_files']
+ assert result['version']==4 and result['financial_symbols']==result['accepted_price_files']
  # The book store holds only the latest book, with its two pools.
  assert result['daily_books']==dict(books=1,book_pools=2,book_rows=2),result['daily_books']
  from backtest.inputs import book_store
  with closing(daily.connect()) as db:
-  book,latest=book_store.latest(db)
-  stocks=db.execute('SELECT COUNT(*) FROM book_rows WHERE book=?',(book,)).fetchone()[0]
+  book=book_store.open_book(db);latest=book_store.record(db,book)['entry']
+  stocks=sum(1 for pool in ('legacy','cached') for _ in book_store.rows(db,book,pool))
  assert not (root/'results').exists()
  out.write_text(json.dumps(dict(status='prepared',latest=latest,stocks=stocks,module_origins=True,daily_books=result['daily_books'])))
 '''

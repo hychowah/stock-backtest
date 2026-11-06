@@ -18,8 +18,9 @@ ROOT=Path(__file__).resolve().parents[1]
 class AdapterTests(unittest.TestCase):
     def setUp(self):
         self.db=store.connection();self.addCleanup(self.db.close)
-        self.books=[store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=8) for year in (2015,2016)]
-        self.latest=store.book(self.db,'2017-01-03',None,candidates=8)
+        # Two dated books and the latest book; stored() writes them through the book store once.
+        self.content={key:({},{},{}) for key in (2015,2016,'latest')}
+        self.books=[];self.latest=None
         self.rows=[]
         for symbol,score,cap,rank,sector in [('A',.4,200e6,None,'Energy'),('B',.4,300e6,2,'Technology'),
             ('C',.4,400e6,2,'Technology'),('D',.2,500e6,4,'Energy'),('N',-.1,500e6,5,'Energy'),
@@ -27,24 +28,32 @@ class AdapterTests(unittest.TestCase):
             store.company(self.db,symbol,sector=sector)
             self.rows.append(dict(symbol=symbol,score=score,cap=cap,candidate_rank=rank,sector=sector))
             for pool in ('legacy','cached'):
-                for year,book in zip((2015,2016),self.books):
-                    store.row(self.db,book,pool,symbol,candidate_rank=rank,fiscal='2014-06-30',known='2014-09-28',
+                for year in (2015,2016):
+                    self.content[year][0].setdefault(pool,{})[symbol]=dict(candidate_rank=rank,fiscal='2014-06-30',known='2014-09-28',
                         entry=f'{year}-01-02',price=10.,exit=f'{year+1}-01-02',market_cap=cap,enterprise_value=200e6,
                         ebitda=20e6,ebitda_yield=score,ev_ebitda=9.,spread=score-.02,return_value=.1,status='Scheduled exit')
-                store.row(self.db,self.latest,pool,symbol,candidate_rank=rank,fiscal='2016-06-30',known='2016-09-28',
+                self.content['latest'][0].setdefault(pool,{})[symbol]=dict(candidate_rank=rank,fiscal='2016-06-30',known='2016-09-28',
                     entry='2017-01-03',price=10.,market_cap=cap,enterprise_value=200e6,ebitda=20e6,ebitda_yield=score,
                     ev_ebitda=9.,spread=score-.02)
-                for book in (*self.books,self.latest):
-                    for metric in metrics.METRICS:
-                        if symbol!='M':
-                            # Pair members intentionally are not reciprocals.
-                            store.metric(self.db,book,pool,symbol,metric,17. if metric=='ev_ebitda' else 29.,
-                                         score if metric=='ev_ebitda' else score/2)
-                    for field in metrics.FILTERS:
-                        if symbol in ('B','C','D'):
-                            store.value(self.db,book,pool,symbol,field,10. if symbol=='B' else 20. if symbol=='C' else -5.)
+                for _,pairs,values in self.content.values():
+                    if symbol!='M':
+                        # Pair members intentionally are not reciprocals.
+                        pairs.setdefault(pool,{})[symbol]={metric:(17. if metric=='ev_ebitda' else 29.,
+                                                                   score if metric=='ev_ebitda' else score/2) for metric in metrics.METRICS}
+                    if symbol in ('B','C','D'):
+                        values.setdefault(pool,{})[symbol]={field:10. if symbol=='B' else 20. if symbol=='C' else -5.
+                                                            for field in metrics.FILTERS}
+
+    def stored(self):
+        if not self.books:
+            for year in (2015,2016):
+                self.books.append(store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=8,
+                                             rows=self.content[year][0],metrics=self.content[year][1],values=self.content[year][2]))
+            self.latest=store.book(self.db,'2017-01-03',None,candidates=8,rows=self.content['latest'][0],
+                                   metrics=self.content['latest'][1],values=self.content['latest'][2])
 
     def dataset(self):
+        self.stored()
         return data.load_screening_data(self.db)
 
     def browser(self,payload):
@@ -65,6 +74,7 @@ process.stdout.write(JSON.stringify(answer));
 
     def sql(self,options,latest=False):
         compact=lambda group:[[h['symbol'],h['rank'],h['metric_multiple'],h['metric_yield']] for h in group]
+        self.stored()
         if latest:return compact(screening.latest(self.db,**options))
         return [compact(screening.select(self.db,book=book,**options)) for book in self.books]
 
@@ -120,7 +130,8 @@ process.stdout.write(JSON.stringify(answer));
     def test_strict_display_threshold_keeps_adjacent_binary64_values(self):
         low,high=13.501116090704034,13.501116090704036
         self.assertGreater(high,low);self.assertEqual(high/100,low/100)
-        self.db.execute("UPDATE book_filters SET value=? WHERE field='profit_margin' AND symbol='B'",(high,))
+        for _,_,values in self.content.values():
+            for pool in values:values[pool]['B']['profit_margin']=high
         options=dict(filters=[dict(field='profit_margin',op='gt',value=low)])
         expected=[['B',1,17.,.4],['C',2,17.,.4]]
         self.assertEqual(self.sql(options,True),expected)
@@ -148,9 +159,9 @@ process.stdout.write(JSON.stringify(answer));
         for i in range(8200):
             symbol=f'P{i:05d}'
             store.company(self.db,symbol)
-            store.row(self.db,self.latest,'cached',symbol,candidate_rank=i+10,fiscal='2016-06-30',known='2016-09-28',
+            self.content['latest'][0]['cached'][symbol]=dict(candidate_rank=i+10,fiscal='2016-06-30',known='2016-09-28',
                       entry='2017-01-03',price=10.,market_cap=200e6,enterprise_value=200e6,ebitda_yield=.3,ev_ebitda=4.,spread=.2)
-            store.metric(self.db,self.latest,'cached',symbol,'ev_ebitda',4.,.3)
+            self.content['latest'][1]['cached'][symbol]={'ev_ebitda':(4.,.3)}
         options=dict(pool='cached',rank_to=1)
         self.assertEqual(self.sql(options,True),[['A',1,17.,.4]])
         actual=self.browser(dict(dataset=self.dataset(),cases=[options]))['cases'][0]

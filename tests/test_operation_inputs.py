@@ -1,4 +1,4 @@
-"""Operation-held prepared inputs: one fingerprint at entry, cheap between-step checks."""
+"""Operation-held prepared inputs: one daily binding check at entry, cheap between-step checks."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -29,8 +29,8 @@ def long_window_capture():
 
 
 def counted():
-    """Count daily fingerprints."""
-    return patch.object(daily, 'fingerprint', wraps=daily.fingerprint)
+    """Count the daily binding checks (daily.current)."""
+    return patch.object(daily, 'current', wraps=daily.current)
 
 
 def closed(db):
@@ -49,11 +49,10 @@ class HeldInputsTests(unittest.TestCase):
     def test_unchanged_inputs_pass_each_step_and_close_on_exit(self):
         with operation_inputs.held(checkpoint=lambda: None) as inputs:
             inputs.require_unchanged(); inputs.require_unchanged()
-            source = inputs.research()
-            self.assertIs(inputs.research(), source)
-            self.assertEqual(source.execute("SELECT count(*) FROM companies WHERE symbol='TEST'").fetchone()[0], 1)
+            # The one connection reads the research facts through its attached schema.
             db = inputs.db
-        self.assertTrue(closed(db) and closed(source))
+            self.assertEqual(db.execute("SELECT count(*) FROM research.companies WHERE symbol='TEST'").fetchone()[0], 1)
+        self.assertTrue(closed(db))
 
     def test_rewritten_or_replaced_research_database_fails_the_next_step(self):
         path = self.prepared.source
@@ -68,15 +67,15 @@ class HeldInputsTests(unittest.TestCase):
                     with operation_inputs.held(checkpoint=lambda: None) as inputs:
                         change(); inputs.require_unchanged()
 
-    def test_cancellation_closes_connections_after_one_fingerprint(self):
+    def test_cancellation_closes_the_connection_after_one_binding_check(self):
         def cancel(): raise backtest_control.Cancelled()
         fingerprints = counted()
         with fingerprints as fingerprint, self.assertRaises(backtest_control.Cancelled):
             with operation_inputs.held(checkpoint=cancel) as inputs:
-                source = inputs.research(); db = inputs.db
+                db = inputs.db
                 inputs.require_unchanged()
         self.assertEqual(fingerprint.call_count, 1)
-        self.assertTrue(closed(db) and closed(source))
+        self.assertTrue(closed(db))
 
 
 class OriginalScaleTests(unittest.TestCase):

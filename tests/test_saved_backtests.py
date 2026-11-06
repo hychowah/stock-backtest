@@ -158,7 +158,7 @@ class StoreTests(unittest.TestCase):
         if origin:handler.headers['Origin']=origin
         handler.rfile=io.BytesIO(packed);responses=[]
         handler.reply=lambda code,payload:responses.append((code,payload))
-        with patch.object(serve,'SAVED_BACKTESTS',self.store),patch.object(serve.cache_access,'daily',side_effect=AssertionError('Library must not acquire financial cache')):
+        with patch.object(serve,'SAVED_BACKTESTS',self.store),patch.object(serve.cache_access,'access',side_effect=AssertionError('Library must not acquire financial cache')):
             getattr(handler,'do_'+method)()
         return responses[0]
 

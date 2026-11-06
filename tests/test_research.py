@@ -29,38 +29,6 @@ from backtest.runtime import cache_access, diagnostics
 import book_store_fixture as store
 
 
-class PreparedPriceBindingTests(unittest.TestCase):
-    def test_committed_inventory_is_deterministic_closed_and_does_not_scan_raw(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path=Path(folder)/'research.sqlite'
-            with closing(sqlite3.connect(path)) as db:
-                db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
-                db.execute('INSERT INTO metadata VALUES(?,?)',('prices',json.dumps({'B.json':[2,3],'A.json':[1,4]})));db.commit()
-            connections=[]
-            def connect(source):
-                self.assertEqual(source,path)
-                value=sqlite3.connect(source);connections.append(value);return value
-            with patch.object(r,'connect',side_effect=connect),patch.object(r,'price_sources',side_effect=AssertionError('No raw scan')):
-                first=r.prepared_price_binding(path)
-                with closing(sqlite3.connect(path)) as db:
-                    db.execute('UPDATE metadata SET value=?',(json.dumps({'A.json':[1,4],'B.json':[2,3]}),));db.commit()
-                self.assertEqual(r.prepared_price_binding(path),first)
-                with closing(sqlite3.connect(path)) as db:
-                    db.execute('UPDATE metadata SET value=?',(json.dumps({'A.json':[1,5],'B.json':[2,3]}),));db.commit()
-                self.assertNotEqual(r.prepared_price_binding(path),first)
-            for db in connections:
-                with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
-
-    def test_missing_or_malformed_inventory_fails_closed(self):
-        for inventory in (None,[],{'A.json':[1]}, {'A.json':[True,1]}, {'A.json':[1,-1]}, {'../A.json':[1,2]}):
-            with self.subTest(inventory=inventory):
-                db=sqlite3.connect(':memory:');db.execute('CREATE TABLE metadata(key TEXT,value TEXT)')
-                if inventory is not None:db.execute('INSERT INTO metadata VALUES(?,?)',('prices',json.dumps(inventory)))
-                with patch.object(r,'connect',return_value=db),self.assertRaisesRegex(ValueError,'price inventory'):
-                    r.prepared_price_binding()
-                with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
-
-
 def before(prices, day, slack):
     """The last (day, price) on or before day within slack days, or None."""
     found = [row for row in prices if row[0] <= day]
@@ -74,34 +42,40 @@ class ResearchTests(unittest.TestCase):
         self.books={}
         for i in range(1,4):
             store.company(self.db,f'S{i}',sector='Energy' if i==1 else 'Technology')
+        # Each dated book's rows, ranking pairs and filter values; dated() stores them once.
+        self.content={}
         for year in [2015,2016]:
-            self.books[year]=store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=3)
+            rows,pairs=self.content.setdefault(year,({},{}))
             for i in range(1,4):
                 symbol=f'S{i}'
                 for pool in ['legacy','cached']:
                     # EBITDA/EV ranking intentionally disagrees with subsequent returns.
-                    store.row(self.db,self.books[year],pool,symbol,candidate_rank=i,fiscal='2014-01-01',known='2014-03-31',
+                    rows.setdefault(pool,{})[symbol]=dict(candidate_rank=i,fiscal='2014-01-01',known='2014-03-31',
                               entry=f'{year}-01-02',price=10.,exit=f'{year+1}-01-02',market_cap=i*100e6,enterprise_value=200e6,
                               ebitda=40e6,ebitda_yield=.5/i,ev_ebitda=2*i,spread=.5/i-.02,
                               return_value=(-.9 if i==1 else i*.1),status='Scheduled exit')
                     # A dated book stores its own ranking pair (books.book).
-                    store.metric(self.db,self.books[year],pool,symbol,'ev_ebitda',2*i,.5/i)
+                    pairs.setdefault(pool,{}).setdefault(symbol,{})['ev_ebitda']=(2*i,.5/i)
+        self.values={year:{} for year in self.content}
 
     def dated(self,years,**options):
         """Selected rows of the dated books of these years, book by book."""
+        if not self.books:
+            for year,(rows,pairs) in self.content.items():
+                self.books[year]=store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=3,
+                                            rows=rows,metrics=pairs,values=self.values[year])
         return [row for year in years for row in screening.select(self.db,book=self.books[year],**options)]
 
     def latest_rows(self,pool='legacy',ranks=True):
         """A latest book of three companies whose ranking pairs come from metrics.evaluate."""
-        latest=store.book(self.db,'2015-01-02',None,candidates=3)
+        rows,pairs={},{}
         for i in range(1,4):
             row=dict(candidate_rank=i if ranks else None,fiscal='2014-01-01',known='2014-04-01',entry='2015-01-02',price=10.,
                      market_cap=i*100e6,enterprise_value=200e6,ebitda=.5/i*200e6,ebitda_yield=.5/i,ev_ebitda=2*i,spread=.5/i-.02)
-            store.row(self.db,latest,pool,f'S{i}',**row)
+            rows[f'S{i}']=row
             history=[dict(row) for row in self.db.execute('SELECT * FROM research.statements WHERE symbol=? ORDER BY fiscal',(f'S{i}',))]
-            for name,(multiple,value) in r.metrics.evaluate(dict(row,symbol=f'S{i}'),history).items():
-                store.metric(self.db,latest,pool,f'S{i}',name,multiple,value)
-        return latest
+            pairs[f'S{i}']=r.metrics.evaluate(dict(row,symbol=f'S{i}'),history)
+        return store.book(self.db,'2015-01-02',None,candidates=3,pools=(pool,),rows={pool:rows},metrics={pool:pairs})
 
     def test_shared_selection_validation(self):
         for select in (lambda db,**options:self.dated([2015,2016],**options), screening.latest):
@@ -110,10 +84,10 @@ class ResearchTests(unittest.TestCase):
                     select(self.db,**options)
 
     def test_ten_year_treasury_asof_preserves_zero_negative_and_missing(self):
-        self.db.executemany('INSERT INTO research.market_days VALUES(?,?,?,?,?,?)',[
+        self.db.research.executemany('INSERT INTO market_days VALUES(?,?,?,?,?,?)',[
             ('2015-01-02',None,1,None,0,None),('2015-01-05',None,1,None,-.1,None),('2015-01-06',None,1,None,4,None),
             ('2015-01-07',None,1,None,None,'MISSING_INPUT')])
-        ten_year=lambda day:facts.BookFacts(self.db,'research').ten_year(day)
+        ten_year=lambda day:facts.BookFacts(self.db).ten_year(day)
         self.assertIsNone(ten_year(date(2015,1,1)))
         self.assertEqual(ten_year(date(2015,1,2)),0)
         self.assertEqual(ten_year(date(2015,1,4)),0)
@@ -125,8 +99,8 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(r.metrics.annual_average(rows,'2013-12-31',3),7)
         self.assertIsNone(r.metrics.annual_average(rows[1:],'2013-12-31',3))
         # The alternate metric must drive both ranking and filter thresholds.
-        store.metric(self.db,self.books[2015],'legacy','S1','ev_ebitda_3y',20,.05)
-        store.metric(self.db,self.books[2015],'legacy','S2','ev_ebitda_3y',3,.3333333333333333)
+        pairs=self.content[2015][1]['legacy']
+        pairs['S1']['ev_ebitda_3y']=(20,.05);pairs['S2']['ev_ebitda_3y']=(3,.3333333333333333)
         selected=self.dated([2015],metric='ev_ebitda_3y',max_multiple=5)
         self.assertEqual([row['symbol'] for row in selected],['S2'])
         self.assertEqual((selected[0]['metric_multiple'],selected[0]['metric_yield']),(3,1/3))
@@ -135,7 +109,7 @@ class ResearchTests(unittest.TestCase):
 
     def test_book_ranking_pairs_come_from_the_one_metric_calculator(self):
         for year,ebitda in [(2012,10e6),(2013,20e6),(2014,30e6)]:
-            self.db.execute('INSERT INTO research.statements VALUES(?,?,?,?,?,?,?)',('S1',f'{year}-01-01',f'{year}-04-01',100e6,200e6,ebitda,.1))
+            self.db.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('S1',f'{year}-01-01',f'{year}-04-01',100e6,200e6,ebitda,.1))
         self.latest_rows()
         row=screening.latest(self.db,metric='ev_ebitda_3y')[0]
         self.assertEqual(row['metric_multiple'],10)
@@ -153,7 +127,7 @@ class ResearchTests(unittest.TestCase):
 
     def test_combined_thresholds_before_ranking_and_missing_values(self):
         for symbol,field,number in [('S1','return_1y',-10),('S2','return_1y',20),('S2','ev_ebitda',4),('S3','return_1y',30)]:
-            store.value(self.db,self.books[2015],'legacy',symbol,field,number)
+            self.values[2015].setdefault('legacy',{}).setdefault(symbol,{})[field]=number
         conditions=[dict(field='return_1y',op='gt',value=0),dict(field='return_1y',op='lt',value=30),dict(field='ev_ebitda',op='lt',value=5)]
         rows=self.dated([2015],rank_to=1,filters=conditions)
         self.assertEqual([(row['symbol'],row['rank']) for row in rows],[('S2',1)])
@@ -243,7 +217,8 @@ class ResearchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'research.sqlite'
             db=sqlite3.connect(path);db.executescript(r.SCHEMA)
-            db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v)) for k,v in dict(version=r.SCHEMA_VERSION,inputs={'a':1},prices={'b':2}).items()]);db.commit();db.close()
+            db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v)) for k,v in dict(version=r.SCHEMA_VERSION,inputs={'a':1},prices={'b':2},
+                identity=dict(code=r.code_identity('facts'))).items()]);db.commit();db.close()
             # Readers compare the accepted signature; a data action refreshes it.
             r.forget_signature()
             with patch.object(r,'signature',return_value={'a':1}),patch.object(r,'price_sources',return_value={'b':2}):
@@ -333,7 +308,7 @@ class PreparationTests(unittest.TestCase):
         r.prepare(self.path)
         full, current = [record for record in diagnostics.records(folder) if record['event'] == 'prepare.research']
         self.assertEqual((full['outcome'], full['companies'], current['outcome']), ('prepared', 1, 'current'))
-        self.assertLessEqual({'inputs', 'companies', 'dated_facts', 'facts_finish', 'commit', 'publication'},
+        self.assertLessEqual({'inputs', 'companies', 'dated_facts', 'identity', 'commit', 'publication'},
                              full['stages'].keys())
 
     def test_windows_sharing_failure_retries_publication(self):
@@ -429,8 +404,13 @@ for(let i=0;i<cases.length;i++){
         r.prepare(self.path)
         before = self.path.read_bytes()
         timestamp = self.path.stat().st_mtime_ns
+        read = Path.read_bytes
+        def source_only(path):
+            # The fact-row code identity reads source files, never a saved raw file.
+            if path.is_relative_to(r.RAW): raise AssertionError('Unexpected file read')
+            return read(path)
         with patch.object(Path, 'read_text', side_effect=AssertionError('Unexpected JSON parse')), \
-                patch.object(Path, 'read_bytes', side_effect=AssertionError('Unexpected file read')):
+                patch.object(Path, 'read_bytes', source_only):
             r.prepare(self.path)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(self.path.stat().st_mtime_ns, timestamp)

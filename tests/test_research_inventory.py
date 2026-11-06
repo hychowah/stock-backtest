@@ -21,9 +21,8 @@ from backtest.inputs import research as r
 
 
 def original_signature():
-    paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
-    paths += [r.RAW/'px',Path(r.__file__),Path(r.metrics.__file__),Path(r.books.__file__),Path(r.rules.__file__),Path(r.cache_assets.__file__),Path(r.market.__file__)]
-    paths += [Path(r.financial_inputs.__file__),Path(r.financial_inputs.parameters.__file__),Path(r.facts.__file__)]
+    # Code is not in the signature: research.identity compares the fact-row code by content.
+    paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]+[r.RAW/'px']
     paths += sorted((r.RAW/'financial-inputs').glob('*/*.json'))
     return dict({p.relative_to(r.ROOT).as_posix():['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths})
 
@@ -34,9 +33,7 @@ def original_prices():
 
 def prior_signature():
     """Pre-projection-repair boundary: collect metadata before building keys."""
-    paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
-    paths += [r.RAW/'px',r.Path(r.__file__),r.Path(r.metrics.__file__),r.Path(r.books.__file__),r.Path(r.rules.__file__),r.Path(r.cache_assets.__file__),r.Path(r.market.__file__)]
-    paths += [r.Path(r.financial_inputs.__file__),r.Path(r.financial_inputs.parameters.__file__),r.Path(r.facts.__file__)]
+    paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]+[r.RAW/'px']
     entries=[(p,p.stat()) for p in paths]
     entries += r._metadata_entries(r.RAW/'financial-inputs','*/*.json')
     return dict({p.relative_to(r.ROOT).as_posix():['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries})
@@ -49,8 +46,6 @@ class InventoryTests(unittest.TestCase):
         self.raw=self.root/'raw';self.px=self.raw/'px';self.financial=self.raw/'financial-inputs'
         self.px.mkdir(parents=True);(self.financial/'income').mkdir(parents=True)
         for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(self.raw/n).write_text('[]')
-        for module,name in ((r,'research.py'),(r.metrics,'metrics.py'),(r.books,'books.py'),(r.rules,'rules.py'),(r.cache_assets,'cache_assets.py'),(r.financial_inputs,'financial_inputs.py'),(r.market,'market.py'),(r.financial_inputs.parameters,'parameters.py'),(r.facts,'facts.py')):
-            p=self.root/name;p.write_text('source');self.context.enter_context(patch.object(module,'__file__',str(p)))
         for name,value in (('ROOT',self.root),('RAW',self.raw)):self.context.enter_context(patch.object(r,name,value))
         for p in (self.px/'A.json',self.px/'z.json',self.financial/'income/A.json'):p.write_text('[]')
 
@@ -76,13 +71,9 @@ class InventoryTests(unittest.TestCase):
         path.write_text('{"new":{}}');self.assertEqual(before,r.signature())
         path.unlink();self.assertEqual(before,r.signature())
 
-    def test_outside_dependency_and_metadata_failure_precedence(self):
-        outside=self.root.parent/(self.root.name+'-outside.py')
-        outside.write_text('outside');self.addCleanup(outside.unlink)
-        with patch.object(r.metrics,'__file__',str(outside)):
-            self.assert_same_failure(ValueError)
-            (self.root/'financial_inputs.py').unlink()
-            self.assert_same_failure(FileNotFoundError)
+    def test_metadata_failure_precedence(self):
+        (self.raw/'treasury.json').unlink()
+        self.assert_same_failure(FileNotFoundError)
 
     def test_financial_projection_containment(self):
         # An exact string prefix is not lexical path containment.
@@ -99,6 +90,7 @@ class InventoryTests(unittest.TestCase):
 
     def test_root_entry_and_root_parent_projection_fallback(self):
         # Synthetic discovery also exercises a path whose parent is outside ROOT.
+        (self.root/'research.py').write_text('source')
         for asset in (self.root,self.root/'research.py'):
             with patch.object(r,'_metadata_entries',return_value=[(asset,asset.stat())]):
                 self.assertEqual(list(r.signature().items()),list(prior_signature().items()))

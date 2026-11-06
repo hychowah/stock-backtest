@@ -250,9 +250,10 @@ evaluation, no library entry and no current catalog.
 ## Execution
 
 The column evaluator, `backtest/variables/columns.py`, evaluates in binary64
-over the typed prepared facts that `backtest/inputs/facts.py` writes and reads.
+over the typed prepared facts that `backtest/inputs/facts.py` writes.
 It owns report selection, annual alignment, dated lookups and reasons; the
-borrowed `facts.View` owns admission and entry valuation. The same code gives
+borrowed `backtest/inputs/fact_view.View` reads the facts and owns admission
+and entry valuation. The same code gives
 values-only results for complete scopes and explanation blocks for selected or
 sampled rows. It reads no raw files.
 

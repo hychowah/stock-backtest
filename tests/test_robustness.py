@@ -34,8 +34,8 @@ class RobustnessTests(unittest.TestCase):
         self.db=store.connection(self.research)
         self.addCleanup(self.db.close)
         store.company(self.db,'A')
-        self.db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
-        self.db.execute("INSERT INTO statements VALUES('A','2015-06-30','2015-09-28',100000000,150000000,30000000,.2)")
+        self.db.research.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
+        self.db.research.execute("INSERT INTO statements VALUES('A','2015-06-30','2015-09-28',100000000,150000000,30000000,.2)")
         store.price(self.db,'A','2014-06-30',10)
         day=date(2015,1,1);i=0
         while day<=date(2016,12,30):
@@ -50,7 +50,7 @@ class RobustnessTests(unittest.TestCase):
 
     def calculate(self,mode,options,configuration=None,**kwargs):
         def connection():
-            db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
+            db=sqlite3.connect(':memory:',uri=True);db.row_factory=sqlite3.Row
             self.db.backup(db);daily.attach(db,self.research);return db
         with patch.object(daily,'connect',side_effect=connection):
             return Original().calculate(mode,options,None,configuration,**kwargs)
@@ -120,10 +120,10 @@ class RobustnessTests(unittest.TestCase):
 
     def test_selection_order_survives_plan_and_reuses_random_books(self):
         store.company(self.db,'B',sector='Technology')
-        self.db.execute("INSERT INTO statements SELECT 'B',fiscal,known,market_cap,enterprise_value,ebitda/2,ebitda_yield/2 FROM statements WHERE symbol='A'")
-        self.db.execute("INSERT INTO stock_days SELECT 'B',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A'")
-        self.db.execute("INSERT INTO fact_sources SELECT 'B',endpoint,sha256,disposition FROM fact_sources WHERE symbol='A'")
-        self.db.commit()
+        research=self.db.research
+        research.execute("INSERT INTO statements SELECT 'B',fiscal,known,market_cap,enterprise_value,ebitda/2,ebitda_yield/2 FROM statements WHERE symbol='A'")
+        research.execute("INSERT INTO stock_days SELECT 'B',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A'")
+        research.execute("INSERT INTO fact_sources SELECT 'B',endpoint,sha256,disposition FROM fact_sources WHERE symbol='A'")
         options=dict(trials=2,seed=11,pool='cached',sector='Technology')
         first=self.config(**options);captured=[]
         r.run(self.db,first,capture=lambda number,result:captured.append(result))

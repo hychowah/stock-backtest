@@ -61,7 +61,7 @@ class CalculationTests(unittest.TestCase):
             def close(db):
                 closures.append(getattr(owner.state,'held',False));super().close()
         def connect():
-            db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;daily.attach(db,self.research);return db
+            db=sqlite3.connect(self.path,factory=Database,uri=True);db.row_factory=sqlite3.Row;daily.attach(db,self.research);return db
         self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.options=dict(start='2015-01-01',end='2016-12-30',months=3,rank_to=1)
         self.service=Original()

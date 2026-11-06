@@ -34,15 +34,16 @@ def latest_book():
     Saving a dated book rewrites schedules.sqlite but leaves the latest book and
     this identity unchanged. A missing or unreadable cache raises OSError.
     """
+    from backtest.inputs import daily
     path=ROOT.parent/'data'/'schedules.sqlite'
     if not path.exists():raise OSError('The daily cache is missing.')
     try:
         with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
-            row=db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()
+            binding=daily.binding(db)
     except sqlite3.Error as error:
         raise OSError('The daily cache is unreadable.') from error
-    if row is None:raise OSError('The daily cache has no generation.')
-    return hashlib.sha256(row[0].encode('utf-8')).hexdigest()
+    if binding is None:raise OSError('The daily cache has no generation.')
+    return hashlib.sha256(binding.encode('utf-8')).hexdigest()
 
 
 def current_build():

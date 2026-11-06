@@ -1,15 +1,13 @@
 """Prepared inputs held unchanged for one Original scalar operation.
 
-held() connects the daily cache; that connection checks the daily fingerprint
-once (raw input metadata, recorded research bindings, bound engine source) and
-attaches the research database read-only for books, sessions and company names.
-Inside the context, require_unchanged() is the between-step check. It costs one
-file-status read and fails if the research database was rewritten or replaced
-since entry. The caller holds cache ownership around held(), so no preparation
-or download can write the inputs during the operation.
-
-research() opens at most one read-only research connection, closed with the
-context.
+held() connects the daily cache; that connection checks the daily binding once
+(the research record with its accepted raw-file signature and the book code)
+and attaches the research database read-only for books, facts, sessions and
+company names. It is the operation's one connection. Inside the context,
+require_unchanged() is the between-step check. It costs one file-status read
+and fails if the research database was rewritten or replaced since entry. The
+caller holds cache ownership around held(), so no preparation or download can
+write the inputs during the operation.
 """
 from contextlib import contextmanager
 import os
@@ -35,13 +33,6 @@ class HeldInputs:
         self.db = db
         self._checkpoint = checkpoint
         self._research_status = _status(research.DATABASE)
-        self._research = None
-
-    def research(self):
-        """Return the operation's read-only research connection, opening it once."""
-        if self._research is None:
-            self._research = research.connect()
-        return self._research
 
     def require_unchanged(self):
         """Raise ValueError if the research database was rewritten or replaced since entry."""
@@ -52,14 +43,10 @@ class HeldInputs:
 
 @contextmanager
 def held(*, checkpoint):
-    """Yield HeldInputs for one operation and close its connections."""
+    """Yield HeldInputs for one operation and close its connection."""
     db = daily.connect()
-    inputs = None
     try:
-        inputs = HeldInputs(db, checkpoint)
-        yield inputs
+        yield HeldInputs(db, checkpoint)
         checkpoint()
     finally:
-        if inputs is not None and inputs._research is not None:
-            inputs._research.close()
         db.close()

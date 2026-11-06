@@ -6,15 +6,15 @@
 python3 scripts/research.py prepare
 ```
 
-Every preparation is a full build (research schema 17). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
+Every preparation is a full build (research schema 18). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
 
 The database contains company metadata and listing, cleaned annual financial observations with availability dates, and typed facts for custom variables and books. It holds no book: the latest and dated books live in the book store of `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
 The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Missing prices are not downloaded automatically. Run `python3 scripts/research.py status` to inspect annual coverage.
 
-Queries use read-only connections and check core input files, calculation code, and the price-directory timestamp without scanning every price file. Preparation checks the full per-price-file size/timestamp manifest. After editing an existing price file, run preparation to incorporate and validate the change; queries are reads of the last prepared snapshot. The `.building` database is temporary; a failed preparation preserves the previous completed database. Fingerprints are local freshness checks, not cryptographic verification of downloaded data.
+Queries use read-only connections and check the research record: core input file stamps, the price-directory timestamp and the content identity of the fact-row code, without scanning every price file. Preparation checks the full per-price-file size/timestamp manifest. After editing an existing price file, run preparation to incorporate and validate the change; queries are reads of the last prepared snapshot. The `.building` database is temporary; a failed preparation preserves the previous completed database. Fingerprints are local freshness checks, not cryptographic verification of downloaded data.
 
-`schedules.sqlite` (version 9) is the separate rebuildable book store, prepared by
+`schedules.sqlite` (version 10) is the separate rebuildable book store, prepared by
 `python3 scripts/schedules.py prepare`. Its tables (`books`, `book_pools`,
 `book_rows`, `book_metrics`, `book_filters`) hold the latest book and the
 reusable entry/exit books in one row shape and one book-id space. The latest
@@ -25,8 +25,9 @@ attaches `research.sqlite` read-only; books read the research facts there, and
 the cache copies no research table. It also keeps parsed prices, SPY sessions
 and Treasury yields, which only its kept-book check reads. The local website
 service computes missing dated books and persists them here; `research.sqlite`
-remains read-only. Daily-cache freshness includes the schedule engine and
-research calculation fingerprints.
+remains read-only. Daily-cache freshness is its binding: the research content
+identity and the content identity of the book code (`research.code_sources`
+names the files); editing a reader such as the schedule engine changes neither.
 
 `book_metrics` stores ready-to-rank multiple/yield pairs keyed by book, pool,
 symbol and catalog metric ID; `book_filters` stores the threshold values.
@@ -34,7 +35,7 @@ symbol and catalog metric ID; `book_filters` stores the threshold values.
 three-year average EBITDA, and preserves the default metric's exact existing
 values. Missing history omits a pair. Consumers join or export these values;
 they never reconstruct formulas. Catalog and calculator code in
-`backtest/financial/metrics.py` participates in freshness checks.
+`backtest/financial/metrics.py` is book code: an edit drops the saved books.
 
 `book_pools(book,pool)` records which pools a book completed. A completed book can
 contain one or both pools. The service prepares only the requested pool, and
@@ -49,8 +50,8 @@ hold a write transaction. Price lookups share one short read transaction per
 book, released before the result returns to the writer. The parent stages large trials in a temporary local
 file before their atomic save. Replays start no workers when all books are saved.
 
-A daily cache from an older version, or one whose research inputs or calculation
-code changed, fails the freshness check. `python3 scripts/schedules.py prepare`
+A daily cache from an older version, or one whose research content or book code
+changed, fails the freshness check. `python3 scripts/schedules.py prepare`
 then rebuilds it from the saved files. No market data is downloaded.
 
 `logs/website-<namespace>-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.

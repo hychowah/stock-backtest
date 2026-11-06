@@ -14,42 +14,35 @@ stock, Treasury and SPY rows use resolve() below, which parses each file once.
   it is listed now.
 - fact_sources: the source file digest and disposition per company and
   endpoint; the empty symbol names the shared Treasury and SPY files.
-- fact_metadata: version, latest date, prepared scopes, policy and content identity.
 
-A field is valid when its value is present; otherwise its reason column names
-the provider reason. A saved day or fiscal date always has a value or a reason
-for each of its endpoint's fields. Value columns have no declared type, so
-SQLite keeps the binary64 bits exactly, including -0.0, which a REAL column
-stores as the integer 0.
+The research record (research.py) names the facts' version and content
+identity. A field is valid when its value is present; otherwise its reason
+column names the provider reason. A saved day or fiscal date always has a
+value or a reason for each of its endpoint's fields. Value columns have no
+declared type, so SQLite keeps the binary64 bits exactly, including -0.0,
+which a REAL column stores as the integer 0.
 
 One rule gives a day its value: equal admissible values agree, and a
 conflicting, non-USD or invalid value gives no value and a reason. Books
 (books.book) and admission (books.Screen) read the valid values through
-BookFacts, on a research connection or through the 'research' schema that a
-daily connection attaches. The book store of the daily cache
-(backtest/inputs/book_store.py) holds the latest and dated books.
-
-A View borrows the operation's daily and research connections. The caller's
-cache ownership keeps both unchanged while the view is open.
+BookFacts. Every reader reads the facts through the 'research' schema that a
+daily connection attaches (daily.attach). The book store of the daily cache
+(backtest/inputs/book_store.py) holds the latest and dated books; the formula
+view (backtest/inputs/fact_view.py) reads the facts for formulas.
 """
 from datetime import date
-import functools
 import hashlib
 import json
 import math
-from pathlib import Path
-import sqlite3
 
 from backtest.financial import books
-from backtest.inputs import book_store, cache_assets, financial_inputs, market
+from backtest.inputs import cache_assets, financial_inputs, market
 from backtest.variables import parameters
 
-VERSION = 4
 MAX_HISTORY = 16384
 STOCK = 'historical-price-eod/dividend-adjusted'
 TREASURY = 'treasury-rates'
 CALENDAR = 'spy-calendar'
-_LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _annual_columns():
@@ -62,9 +55,10 @@ def _annual_columns():
 
 
 ANNUAL = _annual_columns()
-_BY_FIELD = {(endpoint, field): column for column, endpoint, field in ANNUAL}
+# The annual_facts column of each (endpoint, field).
+COLUMNS = {(endpoint, field): column for column, endpoint, field in ANNUAL}
 # The legacy values-only annual fields by endpoint, in financial_inputs order.
-_LEGACY = tuple((endpoint, tuple((field, _BY_FIELD[endpoint, field]) for field in fields))
+_LEGACY = tuple((endpoint, tuple((field, COLUMNS[endpoint, field]) for field in fields))
                 for endpoint, fields in financial_inputs.ENDPOINTS.items() if fields)
 
 SCHEMA = '''
@@ -77,7 +71,6 @@ CREATE TABLE annual_facts(symbol TEXT, endpoint TEXT, fiscal TEXT, ''' + ', '.jo
 CREATE TABLE companies(symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT, listed INTEGER NOT NULL);
 CREATE TABLE fact_sources(symbol TEXT, endpoint TEXT, sha256 TEXT, disposition TEXT NOT NULL,
  PRIMARY KEY(symbol,endpoint)) WITHOUT ROWID;
-CREATE TABLE fact_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 '''
 
 
@@ -205,7 +198,7 @@ def store_annual(db, symbol, resolution):
     rows = []
     for endpoint, dates in resolution['annual'].items():
         for fiscal, states in dates.items():
-            values = {_BY_FIELD[endpoint, field]: _pair(state) for field, state in states.items()}
+            values = {COLUMNS[endpoint, field]: _pair(state) for field, state in states.items()}
             row = [symbol, endpoint, fiscal]
             for column, _, _ in ANNUAL:
                 row.extend(values.get(column, (None, None)))
@@ -244,9 +237,10 @@ def store_companies(db, universe):
          company.get('sector') or 'Unavailable', int(company.get('listed') is True)) for symbol, company in universe.items()))
 
 
-# Book facts: what books.book, books.Screen and the derived-context readers read.
+# Book facts: what books.book, books.Screen and the derived-context readers read,
+# through the 'research' schema of a daily connection.
 
-def legacy_annual(db, symbol, checkpoint=lambda: None, schema='main'):
+def legacy_annual(db, symbol, checkpoint=lambda: None):
     """{fiscal: {field: value}} of the valid legacy annual values of one company.
 
     The fields are financial_inputs.ENDPOINTS, in its endpoint and field order;
@@ -256,7 +250,7 @@ def legacy_annual(db, symbol, checkpoint=lambda: None, schema='main'):
     columns = [column for _, fields in _LEGACY for _, column in fields]
     found = {}
     for endpoint, fiscal, *values in db.execute(
-            f'SELECT endpoint,fiscal,{",".join(columns)} FROM {schema}.annual_facts WHERE symbol=? AND endpoint IN '
+            f'SELECT endpoint,fiscal,{",".join(columns)} FROM research.annual_facts WHERE symbol=? AND endpoint IN '
             f'({",".join("?" * len(_LEGACY))}) ORDER BY fiscal', (symbol, *(endpoint for endpoint, _ in _LEGACY))):
         checkpoint()
         found.setdefault(fiscal, {})[endpoint] = dict(zip(columns, values))
@@ -269,33 +263,32 @@ def legacy_annual(db, symbol, checkpoint=lambda: None, schema='main'):
     return result
 
 
-def ten_year(db, day, schema='main'):
+def ten_year(db, day):
     """(day, percent) of the latest valid 10-year Treasury value on or before day, or None."""
-    row = db.execute(f'SELECT day,year10 FROM {schema}.market_days WHERE day<=? AND year10 IS NOT NULL '
+    row = db.execute('SELECT day,year10 FROM research.market_days WHERE day<=? AND year10 IS NOT NULL '
                      'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
     return None if row is None else (row[0], row[1])
 
 
-def sessions(db, schema='research'):
-    """The saved SPY sessions in order; a daily connection reads them from its attached research schema."""
+def sessions(db):
+    """The saved SPY sessions in order."""
     return [date.fromisoformat(row[0]) for row in db.execute(
-        f'SELECT day FROM {schema}.market_days WHERE spy IS NOT NULL ORDER BY day')]
+        'SELECT day FROM research.market_days WHERE spy IS NOT NULL ORDER BY day')]
 
 
 class BookFacts:
-    """The facts port of books.Screen and books.book over a research schema.
+    """The facts port of books.Screen and books.book on a daily connection that attaches research.
 
-    schema is 'main' on a research connection and 'research' on a daily
-    connection that attaches it. reports() is (broad, legacy) as books.pools
-    gives it; cached() holds the companies with a saved price file;
-    companies() maps each saved company to whether it is listed. price() reads
-    the valid adjusted closes, spy() a valid SPY session, treasury() and
-    ten_year() the valid yields. Each input is read once per instance; the
-    caller keeps the connection unchanged while it is used.
+    reports() is (broad, legacy) as books.pools gives it; cached() holds the
+    companies with a saved price file; companies() maps each saved company to
+    whether it is listed. price() reads the valid adjusted closes, spy() a
+    valid SPY session, treasury() and ten_year() the valid yields. Each input
+    is read once per instance; the caller keeps the connection unchanged while
+    it is used.
     """
 
-    def __init__(self, db, schema='main'):
-        self.db, self.schema = db, schema
+    def __init__(self, db):
+        self.db = db
         self._annual, self._reports, self._cached, self._companies = {}, None, None, None
 
     def reports(self):
@@ -303,7 +296,7 @@ class BookFacts:
             broad = {}
             for symbol, fiscal, known, cap, ev, ebitda, ebitda_yield in self.db.execute(
                     'SELECT symbol,fiscal,known,market_cap,enterprise_value,ebitda,ebitda_yield '
-                    f'FROM {self.schema}.statements ORDER BY rowid'):
+                    'FROM research.statements ORDER BY rowid'):
                 broad.setdefault(symbol, []).append(dict(
                     fiscal=date.fromisoformat(fiscal), known=date.fromisoformat(known), market_cap=cap,
                     enterprise_value=ev, ebitda=ebitda, ebitda_yield=ebitda_yield, enterprise=ev, **{'yield': ebitda_yield}))
@@ -315,19 +308,19 @@ class BookFacts:
     def cached(self):
         if self._cached is None:
             self._cached = {row[0] for row in self.db.execute(
-                f"SELECT symbol FROM {self.schema}.fact_sources WHERE endpoint=? AND disposition!='missing'", (STOCK,))}
+                "SELECT symbol FROM research.fact_sources WHERE endpoint=? AND disposition!='missing'", (STOCK,))}
         return self._cached
 
     def companies(self):
         if self._companies is None:
             self._companies = {symbol: bool(listed) for symbol, listed in self.db.execute(
-                f'SELECT symbol,listed FROM {self.schema}.companies')}
+                'SELECT symbol,listed FROM research.companies')}
         return self._companies
 
     def price(self, symbol, day, forward=False, slack=None):
         """(day, adjusted close) nearest on or before (on or after, if forward) day within slack days, or None."""
         operator, order = ('>=', 'ASC') if forward else ('<=', 'DESC')
-        row = self.db.execute(f'SELECT day,adjusted FROM {self.schema}.stock_days WHERE symbol=? AND day{operator}? '
+        row = self.db.execute(f'SELECT day,adjusted FROM research.stock_days WHERE symbol=? AND day{operator}? '
                               f'AND adjusted IS NOT NULL ORDER BY day {order} LIMIT 1', (symbol, str(day))).fetchone()
         if row is None:
             return None
@@ -335,406 +328,21 @@ class BookFacts:
         return result if slack is None or abs((result[0] - day).days) <= slack else None
 
     def spy(self, day):
-        row = self.db.execute(f'SELECT spy FROM {self.schema}.market_days WHERE day=? AND spy IS NOT NULL',
+        row = self.db.execute('SELECT spy FROM research.market_days WHERE day=? AND spy IS NOT NULL',
                               (str(day),)).fetchone()
         return None if row is None else row[0]
 
     def treasury(self, day):
         """The latest valid 3-month Treasury yield on or before day, as a fraction, or None."""
-        row = self.db.execute(f'SELECT month3 FROM {self.schema}.market_days WHERE day<=? AND month3 IS NOT NULL '
+        row = self.db.execute('SELECT month3 FROM research.market_days WHERE day<=? AND month3 IS NOT NULL '
                               'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
         return None if row is None else row[0] / 100
 
     def ten_year(self, day):
-        row = ten_year(self.db, day, self.schema)
+        row = ten_year(self.db, day)
         return None if row is None else row[1]
 
     def legacy_annual(self, symbol):
         if symbol not in self._annual:
-            self._annual[symbol] = legacy_annual(self.db, symbol, schema=self.schema)
+            self._annual[symbol] = legacy_annual(self.db, symbol)
         return self._annual[symbol]
-
-
-class _Recorder:
-    """The view's facts port: BookFacts whose price lookups are recorded for explanations.
-
-    The caller empties calls before the decision or valuation it explains.
-    """
-
-    def __init__(self, facts):
-        self.facts, self.calls = facts, []
-
-    def __getattr__(self, name):
-        return getattr(self.facts, name)
-
-    def price(self, symbol, day, forward=False, slack=None):
-        result = self.facts.price(symbol, day, forward, slack)
-        # 'price' is the stored explanation label of a valuation lookup.
-        self.calls.append(dict(requested_date=str(day), column='price', forward=forward, slack=slack,
-                               observation=[str(result[0]), result[1]] if result else None))
-        return result
-
-
-# Projection metadata.
-
-def policy_binding():
-    """Bind the preparation and financial source that establishes these facts."""
-    return dict(_policy_binding())
-
-
-@functools.cache
-def _policy_binding():
-    # The research signature binds the same list, so an edit that rejects
-    # these facts also makes research.prepare rebuild them. Hashed once per
-    # process: deployment restarts the server on source change.
-    from backtest.inputs import research
-    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in research.calculation_sources()}
-
-
-def finish(db, latest_date, *, inputs, scopes):
-    """Record the projection metadata in the caller's transaction.
-
-    The content identity hashes what determines the rows (the caller's input
-    identity, the scopes and this policy), not the rows themselves, so an
-    incremental build and a full rebuild of the same inputs record the same
-    identity.
-    """
-    scopes = list(scopes)
-    policy = policy_binding()
-    content = hashlib.sha256(encoded(dict(version=VERSION, inputs=inputs, scopes=scopes, policy=policy)).encode()).hexdigest()
-    metadata = dict(version=VERSION, latest_date=str(latest_date), scopes=scopes, policy=policy, content=content)
-    db.executemany('INSERT INTO fact_metadata VALUES(?,?)', ((key, encoded(value)) for key, value in metadata.items()))
-    return require(db, expected=metadata)
-
-
-def require(db, *, expected=None):
-    """Reject absent, incompatible or stale facts before formula work."""
-    try:
-        metadata = {row[0]: json.loads(row[1]) for row in db.execute('SELECT key,value FROM fact_metadata')}
-        if (set(metadata) != {'version', 'latest_date', 'scopes', 'policy', 'content'}
-                or type(metadata['version']) is not int or metadata['version'] != VERSION
-                or str(date.fromisoformat(metadata['latest_date'])) != metadata['latest_date']
-                or not isinstance(metadata['scopes'], list)
-                or metadata['policy'] != policy_binding()
-                or not isinstance(metadata['content'], str) or len(metadata['content']) != 64
-                or expected is not None and metadata != expected):
-            raise ValueError()
-        keys = set()
-        for scope in metadata['scopes']:
-            if (type(scope) is not dict or set(scope) != {'mode', 'pool', 'context_date', 'book'}
-                    or scope['mode'] != 'latest' or scope['pool'] not in ('legacy', 'cached')
-                    or type(scope['book']) is not int
-                    or str(date.fromisoformat(scope['context_date'])) != scope['context_date']):
-                raise ValueError()
-            key = scope['mode'], scope['pool'], scope['context_date']
-            if key in keys or scope['mode'] == 'latest' and (scope['context_date'] != metadata['latest_date']
-                                                              or scope['book'] != 0):
-                raise ValueError()
-            keys.add(key)
-        if any(('latest', pool, metadata['latest_date']) not in keys for pool in ('legacy', 'cached')):
-            raise ValueError()
-    except (sqlite3.Error, ValueError, TypeError, KeyError):
-        raise ValueError('Prepared facts are missing, incompatible or stale. Retry offline preparation.') from None
-    return metadata
-
-
-# Reading.
-
-def _states(**pairs):
-    """Field states from (value, reason) pairs; a field with neither has no state."""
-    return {field: dict(value=value, valid=reason is None, reason=reason)
-            for field, (value, reason) in pairs.items() if value is not None or reason is not None}
-
-
-class View:
-    """Borrowed daily cache and research facts of one operation; close it before either connection.
-
-    Research supplies the reports, prices, saved sessions and typed facts
-    through BookFacts; the daily cache supplies the admitted daily identity
-    and the stored latest book (book_store). Admission is books.Screen.decide
-    for every root: an open-book screen at the latest date for a latest root,
-    a dated screen for a historical root. Each company, day and source is read
-    once per view: neither database can change while it is open. validate()
-    is the operation's boundary check: the freshness callback, the admitted
-    daily identity and the facts metadata.
-    """
-
-    def __init__(self, db, research, freshness, checkpoint):
-        freshness()
-        self._db, self.db, self._freshness, self._checkpoint = db, research, freshness, checkpoint
-        self._expected = require(research)
-        row = db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()
-        if row is None:
-            raise ValueError('Admitted daily input identity is missing.')
-        self._admitted = row[0]
-        binding = json.loads(self._admitted)
-        self.identity = 'sqlite:' + hashlib.sha256(encoded(dict(inputs=binding, adapter=_LOADED)).encode()).hexdigest()
-        self._facts = BookFacts(research)
-        self._recorder = _Recorder(self._facts)
-        broad, legacy = self._facts.reports()
-        if any(len(rows) > MAX_HISTORY for rows in broad.values()):
-            raise ValueError('Prepared observation history exceeds its bound.')
-        self._pools = dict(cached=broad, legacy=legacy)
-        self._bounds = dict(latest_date=self._expected['latest_date'], population=len(broad))
-        self._screens, self._reports, self._companies, self._latest_book = {}, {}, {}, None
-        self._sessions, self._stock, self._treasury, self._sources = {}, {}, {}, {}
-        self.closed = False
-
-    @property
-    def projection(self):
-        """The admitted facts metadata (scopes, latest date, content identity); callers do not change it."""
-        return self._expected
-
-    @property
-    def bounds(self):
-        return dict(self._bounds)
-
-    def validate(self):
-        if self.closed:
-            raise ValueError('Observation input view is closed.')
-        self._checkpoint()
-        self._freshness()
-        current = self._db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()
-        if current is None or current[0] != self._admitted:
-            raise ValueError('Admitted daily input identity changed.')
-        require(self.db, expected=self._expected)
-
-    def _open(self):
-        if self.closed:
-            raise ValueError('Observation input view is closed.')
-
-    def close(self):
-        self.closed = True
-        self._db = self.db = self._freshness = self._facts = self._recorder = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *unused):
-        self.close()
-
-    # Admission and valuation, by the existing financial policy.
-
-    def _screen(self, day, open_book, checkpoint=lambda: None):
-        """The books.Screen of one entry day; a day that is not a saved SPY session from FIRST_DAY fails."""
-        key = day, open_book
-        if key not in self._screens:
-            checkpoint()
-            self._screens[key] = books.Screen(date.fromisoformat(day), self._recorder, open_book=open_book)
-        return self._screens[key]
-
-    def candidates(self, day, checkpoint=lambda: None):
-        """Return (statements by pool, legacy ranks) at one saved screen date."""
-        self._open()
-        screen = self._screen(day, False, checkpoint)
-        return screen.statements, screen.ranks
-
-    def is_cached(self, symbol):
-        self._open()
-        return symbol in self._facts.cached()
-
-    def reports(self, symbol, pool):
-        self._open()
-        key = symbol, pool
-        if key not in self._reports:
-            self._reports[key] = [dict(row, fiscal=str(row['fiscal']), known=str(row['known']))
-                                  for row in self._pools[pool].get(symbol, [])]
-        return self._reports[key]
-
-    def admit(self, roots, checkpoint=lambda: None):
-        """Admission decisions in root order: books.Screen.decide, with its reason.
-
-        A latest root must be on the latest date and uses the open book's
-        screen (listed companies, the exact session). A historical root, on a
-        saved SPY session from rules.FIRST_DAY, uses the complete-population
-        candidates of its date: the legacy buffer precedes cached-price
-        membership, so asking for fewer companies cannot promote one. A
-        historical decision that reached the entry valuation keeps its
-        recorded lookups as admission evidence. Earlier contexts reuse these
-        decisions.
-        """
-        self._open()
-        self.validate()
-        decisions = []
-        for index, root in enumerate(roots):
-            checkpoint()
-            symbol, pool, latest = root['symbol'], root['pool'], root['mode'] == 'latest'
-            if latest and root['date'] != self._bounds['latest_date']:
-                raise ValueError('Latest observation root does not match prepared admission.')
-            screen = self._screen(root['date'], latest, checkpoint)
-            self._recorder.calls = []
-            held, reason = screen.decide(symbol, pool)
-            statement = screen.statements[pool].get(symbol)
-            decision = dict(root='r' + str(index), symbol=symbol, pool=pool, mode=root['mode'],
-                            date=root['date'], admitted=held is not None, reason=reason,
-                            candidate_rank=screen.ranks.get(symbol), statement=None, valuation=None)
-            if statement is not None:
-                decision['statement'] = (dict(fiscal=str(statement['fiscal']), known=str(statement['known']))
-                                         if latest else _detached(statement))
-            if not latest and self._recorder.calls:
-                decision['admission_evidence'] = dict(
-                    lookup_policy='existing-entry-valuation', lookups=self._recorder.calls,
-                    statement=_detached(statement), reason=None if reason == 'INELIGIBLE_VALUATION' else reason)
-            if held is not None:
-                valuation = dict(market_cap=held['market_cap'], enterprise_value=held['enterprise_value'],
-                                 ebitda=held['ebitda'])
-                if not latest:
-                    valuation.update(fiscal_price=[str(held['fiscal_price'][0]), held['fiscal_price'][1]],
-                                     valuation_price=[str(held['entry'][0]), held['entry'][1]])
-                decision['valuation'] = valuation
-            decisions.append(decision)
-        self.validate()
-        return decisions
-
-    def entry(self, symbol, statement, day):
-        """Observe the authoritative entry valuation (books.admit) and its recorded lookups."""
-        self._open()
-        recorder = self._recorder
-        recorder.calls = []
-        reason, value = books.admit(statement, day, lambda when, forward, slack: recorder.price(symbol, when, forward, slack),
-                                    books.ENTRY_SLACK)
-        evidence = dict(lookup_policy='existing-entry-valuation', lookups=recorder.calls, statement=_detached(statement),
-                        reason=reason)
-        if value is None:
-            return None, evidence
-        fiscal, entry, cap, ev, ebitda = value
-        return dict(market_cap=cap, enterprise_value=ev, ebitda=ebitda,
-                    fiscal_price=[str(fiscal[0]), fiscal[1]], valuation_price=[str(entry[0]), entry[1]]), evidence
-
-    def lookup(self, symbol, day, forward=False, slack=None):
-        self._open()
-        if not isinstance(day, date):
-            raise ValueError('Invalid observation price lookup.')
-        value = self._facts.price(symbol, day, forward, slack)
-        if value is not None and (not math.isfinite(value[1]) or value[1] <= 0):
-            raise ValueError('Prepared observation price is invalid.')
-        return value
-
-    def broad_reports(self, symbol, checkpoint=lambda: None, *, budget=None):
-        self._open()
-        checkpoint()
-        reports = self.reports(symbol, 'cached')
-        if budget is not None and len(encoded(reports).encode('utf-8')) > budget:
-            raise ValueError('Observation report history exceeds its byte bound.')
-        return reports
-
-    def legacy_financial_history(self, symbol, checkpoint=lambda: None, *, budget=None):
-        """legacy_annual() of one company; the byte bound counts each date's JSON text."""
-        self._open()
-        result = legacy_annual(self.db, symbol, checkpoint)
-        if len(result) > MAX_HISTORY:
-            raise ValueError('Prepared observation history exceeds its bound.')
-        size = 0
-        for fiscal, values in result.items():
-            checkpoint()
-            size += len(symbol) + len(fiscal) + len(json.dumps(values))
-            if budget is not None and size > budget:
-                raise ValueError('Observation financial history exceeds its byte bound.')
-        return result
-
-    def legacy_treasury(self, day, checkpoint=lambda: None):
-        self._open()
-        checkpoint()
-        row = ten_year(self.db, day)
-        return dict(day=row[0], value=row[1]) if row else None
-
-    # Typed facts.
-
-    def company(self, symbol, pool, requirements):
-        """Return company facts: reports, the requested annual states and their sources.
-
-        Income-statement dates always form the fiscal spine when any annual field
-        is required.
-        """
-        self._open()
-        key = symbol, pool
-        cached = self._companies.get(key)
-        if cached is None:
-            cached = self._companies[key] = dict(reports=self.reports(symbol, pool), annual={}, sources={}, loaded={})
-        annual, loaded, sources = cached['annual'], cached['loaded'], cached['sources']
-        wanted = dict(requirements)
-        if wanted:
-            wanted.setdefault('income-statement', set())
-        for endpoint, fields in wanted.items():
-            missing = sorted(set(fields) - loaded.get(endpoint, set()))
-            if endpoint in loaded and not missing:
-                continue
-            states = annual.setdefault(endpoint, {})
-            columns = [_BY_FIELD[endpoint, field] for field in missing]
-            projection = ''.join(f',{column},{column}_reason' for column in columns)
-            count = 0
-            for row in self.db.execute(f'SELECT fiscal{projection} FROM annual_facts WHERE symbol=? AND endpoint=? '
-                                       'ORDER BY fiscal LIMIT ?', (symbol, endpoint, MAX_HISTORY + 1)):
-                count += 1
-                if count > MAX_HISTORY:
-                    raise ValueError('Prepared observation history exceeds its bound.')
-                states.setdefault(row[0], {}).update(
-                    _states(**{field: row[1 + 2 * i:3 + 2 * i] for i, field in enumerate(missing)}))
-            loaded.setdefault(endpoint, set()).update(missing)
-            if endpoint not in sources:
-                sources[endpoint] = self.source(symbol, endpoint)
-        return cached
-
-    def session(self, day):
-        """The latest valid SPY session on or before day within seven days, or None."""
-        self._open()
-        if day not in self._sessions:
-            row = self.db.execute('SELECT day FROM market_days WHERE day<=? AND spy IS NOT NULL ORDER BY day DESC LIMIT 1',
-                                  (str(day),)).fetchone()
-            self._sessions[day] = row[0] if row is not None and (day - date.fromisoformat(row[0])).days <= 7 else None
-        return self._sessions[day]
-
-    def stock(self, symbol, day):
-        """{'adjClose': state, 'volume': state} at one exact saved day, or None."""
-        self._open()
-        key = symbol, day
-        if key not in self._stock:
-            row = self.db.execute('SELECT adjusted,adjusted_reason,volume,volume_reason FROM stock_days '
-                                  'WHERE symbol=? AND day=?', (symbol, str(day))).fetchone()
-            self._stock[key] = None if row is None else _states(adjClose=row[0:2], volume=row[2:4])
-        return self._stock[key]
-
-    def treasury(self, day):
-        """(day, {'month3': state, 'year10': state}) of the latest saved Treasury day on or before day."""
-        self._open()
-        if day not in self._treasury:
-            row = self.db.execute('SELECT day,month3,month3_reason,year10,year10_reason FROM market_days WHERE day<=? '
-                                  'AND (month3 IS NOT NULL OR month3_reason IS NOT NULL) ORDER BY day DESC LIMIT 1',
-                                  (str(day),)).fetchone()
-            self._treasury[day] = None if row is None else (row[0], _states(month3=row[1:3], year10=row[3:5]))
-        return self._treasury[day]
-
-    def source(self, symbol, endpoint):
-        """{endpoint, sha256, disposition} of one source file, as explanations keep them."""
-        self._open()
-        key = symbol, endpoint
-        if key not in self._sources:
-            row = self.db.execute('SELECT sha256,disposition FROM fact_sources WHERE symbol=? AND endpoint=?',
-                                  (symbol, endpoint)).fetchone()
-            self._sources[key] = None if row is None else dict(endpoint=endpoint, sha256=row[0], disposition=row[1])
-        return self._sources[key]
-
-    def prepared(self, decision):
-        """Owner values of the stored latest book row of a latest root (book_store).
-
-        A missing row is unavailable; it never falls back to a recalculation.
-        """
-        self._open()
-        pool, symbol = decision['pool'], decision['symbol']
-        if decision['mode'] != 'latest':
-            raise ValueError('Only a latest root has a stored owner book.')
-        if self._latest_book is None:
-            self._latest_book = book_store.latest(self._db)[0]
-        key = self._latest_book, pool, symbol
-        row = self._db.execute('SELECT market_cap FROM book_rows WHERE book=? AND pool=? AND symbol=?', key).fetchone()
-        if row is None:
-            return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
-        metrics = {metric: [multiple, value] for metric, multiple, value in self._db.execute(
-            'SELECT metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND symbol=?', key)}
-        filters = {field: value for field, value in self._db.execute(
-            'SELECT field,value FROM book_filters WHERE book=? AND pool=? AND symbol=?', key)}
-        return dict(reason=None, evidence=dict(snapshot=dict(market_cap=row[0]), metrics=metrics, filters=filters))
-
-
-def _detached(statement):
-    return {key: str(value) if isinstance(value, date) else value for key, value in statement.items()}

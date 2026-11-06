@@ -22,7 +22,7 @@ class CoverageTests(unittest.TestCase):
     def test_latest_pools_and_filters_do_not_shrink_population(self):
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
-                listing=coverage.scopes(view)
+                listing=coverage.scopes(self.fixture.db,view)
                 scope=next(item for item in listing['scopes'] if item['mode']=='latest' and item['pool']==pool)
                 scope=dict(scope,generation=listing['generation'])
                 result=coverage.inspect(self.fixture.capture(pool=pool,first=2,last=2),scope,self.fixture.db,view)
@@ -30,22 +30,26 @@ class CoverageTests(unittest.TestCase):
                 self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],4)
                 with self.assertRaises(ValueError):coverage.inspect(self.fixture.capture(pool=pool),dict(scope,generation='bad'),self.fixture.db,view)
     def test_empty_and_orphan_scope(self):
-        self.fixture.db.execute("DELETE FROM book_rows WHERE book=2 AND pool='cached'")
+        self.fixture.db.execute("DELETE FROM book_rows WHERE book=2 AND pool='cached'");self.fixture.db.commit()
         with self.fixture.view() as view:
-            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             result=coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual(result['population'],0);self.assertEqual(result['outputs'][0]['valid'],0)
-        self.fixture.db.execute("DELETE FROM research.companies WHERE symbol='A0000'")
+        self.fixture.db.research.execute("DELETE FROM companies WHERE symbol='A0000'")
         with self.fixture.view() as view:
-            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='legacy')
+            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='legacy')
             with self.assertRaises(definitions.FormulaError):coverage.inspect(self.fixture.capture(pool='legacy'),dict(scope,generation=listing['generation']),self.fixture.db,view)
-    def test_metadata_bound_before_observation(self):
+    def test_discovery_lists_the_stored_open_book_by_its_id(self):
         with self.fixture.view() as view:
-            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            bound=scalar_execution._size(view.projection)-1
-            with patch.object(scalar_execution,'MAX_METADATA_BYTES',bound),patch.object(coverage.columns.Formulas,'evaluate',side_effect=AssertionError('observed')):
-                with self.assertRaises(definitions.FormulaError) as failure:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
-                self.assertEqual(failure.exception.code,'WORK_LIMIT')
+            listing=coverage.scopes(self.fixture.db,view)
+            self.assertEqual(listing['scopes'],[dict(mode='latest',pool=pool,context_date='2015-01-05',book=self.fixture.latest)
+                                                for pool in ('legacy','cached')])
+            # A scope that names another stored book is not discovered; nothing is observed.
+            with patch.object(coverage.columns.Formulas,'evaluate',side_effect=AssertionError('observed')):
+                with self.assertRaises(definitions.FormulaError) as failure:
+                    coverage.inspect(self.fixture.capture(),dict(listing['scopes'][1],generation=listing['generation'],
+                                                                 book=self.fixture.dated),self.fixture.db,view)
+                self.assertEqual(failure.exception.code,'STALE_INPUT_GENERATION')
     def test_repeated_output_counts_once_per_company(self):
         capture=self.fixture.capture();wire=capture.to_dict();root=wire['variables']['program']['bundle']['roots'][0]
         source=dict(kind='formula',**root)
@@ -54,7 +58,7 @@ class CoverageTests(unittest.TestCase):
         entries=definitions.authored_bundle(library.VariableCapture(definitions.canonical(wire['variables'])).program)['definitions']
         repeated=strategy_requests.capture_strategy(intent,submitted=entries)
         with self.fixture.view() as view:
-            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             result=coverage.inspect(repeated,dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual(len(result['outputs']),1)
             self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],result['population'])
@@ -62,7 +66,7 @@ class CoverageTests(unittest.TestCase):
     def test_only_latest_scopes_and_cancellation(self):
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
-                listing=coverage.scopes(view)
+                listing=coverage.scopes(self.fixture.db,view)
                 self.assertEqual({x['mode'] for x in listing['scopes']},{'latest'})
                 scope=dict(next(x for x in listing['scopes'] if x['pool']==pool),generation=listing['generation'])
                 with self.assertRaises(definitions.FormulaError):
@@ -71,14 +75,13 @@ class CoverageTests(unittest.TestCase):
                 with self.assertRaises(backtest_control.Cancelled):coverage.inspect(self.fixture.capture(pool=pool),scope,self.fixture.db,view,checkpoint=cancel)
     def test_observation_leaf_reads_are_narrow_and_read_only(self):
         with self.fixture.view() as view:
-            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             statements=[]
-            for db in (self.fixture.db,self.fixture.source):db.set_trace_callback(statements.append)
+            self.fixture.db.set_trace_callback(statements.append)
             try:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
-            finally:
-                for db in (self.fixture.db,self.fixture.source):db.set_trace_callback(None)
+            finally:self.fixture.db.set_trace_callback(None)
             self.assertFalse(any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','REPLACE','CREATE','DROP')) for s in statements))
-            leaves=[s for s in statements if 'FROM annual_facts' in s]
+            leaves=[s for s in statements if 'FROM research.annual_facts' in s]
             self.assertTrue(leaves,statements)
             self.assertTrue(all('symbol=' in s.lower() and 'limit ' in s.lower() for s in leaves),leaves)
     def test_distinct_outputs_share_a_dependency(self):
@@ -89,7 +92,7 @@ class CoverageTests(unittest.TestCase):
         intent=requests.intent(source1,[requests.condition(source2,'0','number')]);intent['pool']='cached'
         capture=strategy_requests.capture_strategy(intent,submitted=[dependency,first,second])
         with self.fixture.view() as view:
-            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             result=coverage.inspect(capture,dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual({item['variable_id'] for item in result['outputs']},{'local:first','local:second'})
             self.assertTrue(all(item['valid']+item['unavailable']==4 for item in result['outputs']))

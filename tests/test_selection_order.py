@@ -31,26 +31,30 @@ def dated(db, *, first=2015, last=2015, **options):
 class SelectionOrderTests(unittest.TestCase):
     def setUp(self):
         self.db=store.connection();self.addCleanup(self.db.close)
-        books={year:store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=6) for year in (2015,2016)}
-        latest=store.book(self.db,'2017-01-03',None,candidates=6)
+        content={key:({},{},{}) for key in (2015,2016,'latest')}
         # B/C tie on yield and candidate rank; symbol resolves the tie. M has
         # no selected metric, so it cannot consume a rank in either policy.
         for symbol,score,cap,candidate,sector in [('A',.5,100e6,None,'Energy'),('B',.4,200e6,2,'Technology'),('C',.4,300e6,2,'Technology'),('D',.2,400e6,4,'Energy'),('M',.9,500e6,1,'Technology')]:
             store.company(self.db,symbol,sector=sector)
             for pool in ('legacy','cached'):
-                for year,book in books.items():
-                    store.row(self.db,book,pool,symbol,candidate_rank=candidate,fiscal='2014-06-30',known='2014-09-28',
+                for year in (2015,2016):
+                    content[year][0].setdefault(pool,{})[symbol]=dict(candidate_rank=candidate,fiscal='2014-06-30',known='2014-09-28',
                               entry=f'{year}-01-02',price=10.,exit=f'{year+1}-01-02',market_cap=cap,enterprise_value=200e6,
                               ebitda=score*200e6,ebitda_yield=score,ev_ebitda=1/score,spread=score-.02,return_value=.1,
                               status='Scheduled exit')
-                store.row(self.db,latest,pool,symbol,candidate_rank=candidate,fiscal='2016-06-30',known='2016-09-28',
+                content['latest'][0].setdefault(pool,{})[symbol]=dict(candidate_rank=candidate,fiscal='2016-06-30',known='2016-09-28',
                           entry='2017-01-03',price=10,market_cap=cap,enterprise_value=200e6,ebitda=score*200e6,
                           ebitda_yield=score,ev_ebitda=1/score,spread=score-.02)
-                for book in (*books.values(),latest):
+                for _,pairs,values in content.values():
                     if symbol!='M':
-                        store.metric(self.db,book,pool,symbol,'ev_ebitda',1/score,score)
+                        pairs.setdefault(pool,{})[symbol]={'ev_ebitda':(1/score,score)}
                     if symbol in ('B','C'):
-                        store.value(self.db,book,pool,symbol,'pe',10)
+                        values.setdefault(pool,{})[symbol]={'pe':10}
+        for year in (2015,2016):
+            store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=6,rows=content[year][0],
+                       metrics=content[year][1],values=content[year][2])
+        store.book(self.db,'2017-01-03',None,candidates=6,rows=content['latest'][0],metrics=content['latest'][1],
+                   values=content['latest'][2])
 
     def ids(self,select,**options):
         if select is dated:options=dict(first=2015,last=2015,**options)

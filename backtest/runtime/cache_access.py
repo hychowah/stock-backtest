@@ -200,17 +200,3 @@ def exclusive(function):
     def guarded(*args,**kwargs):
         with access():return function(*args,**kwargs)
     return guarded
-
-
-@contextmanager
-def daily():
-    """Open a daily database and retain ownership through its final close.
-
-    Fixed schedules and random batches use this same boundary. Their worker
-    pools must finish before leaving the context; workers do not acquire locks.
-    """
-    from backtest.inputs import daily as daily
-    with access():
-        db=daily.connect()
-        try:yield db
-        finally:db.close()

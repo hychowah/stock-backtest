@@ -1,10 +1,10 @@
 """Bounded bridge from formula contexts to existing financial owners.
 
 Prepared scope membership is explicit: a latest root, or a root with a prepared
-owner scope, reads its stored latest book row (facts.View.prepared), and a
-missing row never falls back to a recalculation. Other contexts use the dated
-owner policy here. One
-resolved context serves every requested lane of that context.
+owner scope (named by its stored book id), reads its row of that stored book
+(fact_view.View.prepared; the open book without an owner scope), and a missing
+row never falls back to a recalculation. Other contexts use the dated owner
+policy here. One resolved context serves every requested lane of that context.
 """
 import json
 import math
@@ -29,6 +29,7 @@ def detached(value, checkpoint=lambda: None):
 
 
 def prepared_scope(root, context):
+    """Whether the context is a root context whose owner lanes are stored book lanes (View.prepared)."""
     if context['id'] != context['root']:
         return False
     owner = root.get('owner_scope')

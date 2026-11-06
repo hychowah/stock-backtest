@@ -4,6 +4,11 @@ A daily connection attaches the research database read-only as the schema
 'research'. Books, sessions and company names are read from there (facts and
 book_store); the daily cache keeps only the books and what its kept-book check
 compares.
+
+The daily binding (metadata 'daily_inputs') names what the books were computed
+from: this cache's VERSION, the research content identity and the book
+identity (research.code_identity('books')). binding() is its one reader;
+connect() admits a cache whose binding equals the current one.
 """
 from contextlib import closing
 from datetime import date
@@ -18,18 +23,17 @@ from backtest.runtime import cache_access as cache_access
 from backtest.financial import books as financial_books
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
-from backtest import calendar as schedule_calendar
-from backtest import portfolio_results as portfolio_results
 from backtest.inputs import market
 from backtest.inputs import facts
 from backtest.inputs import book_store
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 9
+VERSION = 10
 # The book store (book_store.SCHEMA) holds the latest and dated books. The
 # daily price, session and Treasury rows and the copied 10-year yields are
-# read only by the kept-book check of a refresh (_prices, _dated_change).
+# read only by the kept-book check of a refresh (_prices, _dated_change);
+# VERSION covers their rules.
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE prices(symbol TEXT, day TEXT, adjusted REAL NOT NULL, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
@@ -41,24 +45,21 @@ CREATE TABLE treasury10 (day TEXT PRIMARY KEY, yield_percent REAL NOT NULL) WITH
 
 # The research tables whose rows every dated book reads; a change drops every book.
 BOOK_INPUTS = ('companies','statements','financial_inputs')
-PRICE_SOURCES = (Path(__file__),Path(r.__file__),Path(facts.__file__),Path(rules.__file__),Path(market.__file__))
 
 
-def _engine_sources():
-    return [Path(__file__),Path(__file__).parents[1]/'engines'/'original'/'schedules.py',
-            Path(__file__).parents[1]/'engines'/'original'/'book_batch.py',
-            Path(schedule_calendar.__file__),Path(portfolio_results.__file__)]
+def binding(db):
+    """The saved daily binding of a daily connection (JSON text), or None."""
+    row=db.execute("SELECT value FROM main.metadata WHERE key='daily_inputs'").fetchone()
+    return None if row is None else row[0]
 
 
-def fingerprint(source=None, *, accepted=False):
-    # Daily prices bind to the validated research price inventory. Changed
-    # prepared inputs refresh prices/books. Prepared rows are identified by
-    # their recorded metadata, not rescanned. Preparation inspects raw inputs
-    # afresh; readers compare the accepted signature.
-    prices,prepared=r.prepared_bindings(source or r.DATABASE)
-    return dict(version=VERSION, facts_version=facts.VERSION,
-                inputs=r.accepted_signature() if accepted else r.signature(),prices=prices,facts=prepared,
-                engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
+def current(db,schema='research'):
+    """The daily binding of the current research record and book code.
+
+    schema names the research database on db: 'research' on a daily
+    connection, 'main' on preparation's research connection.
+    """
+    return dict(version=VERSION,research=r.identity(db,schema)['content'],books=r.code_identity('books'))
 
 
 def attach(db,source):
@@ -67,18 +68,19 @@ def attach(db,source):
 
 
 def connect(path=DATABASE,source=None):
-    # The returned connection is caller-owned. It attaches the research
-    # database that the saved fingerprint binds.
-    path=Path(path)
+    """A caller-owned daily connection with research attached, admitted once by its binding."""
+    path,source=Path(path),Path(source or r.DATABASE)
     if not path.exists():
         raise ValueError('Daily cache missing. Run: python3 scripts/schedules.py prepare')
+    if not source.exists():
+        raise ValueError('Prepared database missing. Run: python3 scripts/research.py prepare')
     db=sqlite3.connect(path.resolve().as_uri(),uri=True,timeout=60)
     db.row_factory=sqlite3.Row
     try:
-        saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-        if saved!=fingerprint(source, accepted=True):
+        attach(db,source)
+        saved=binding(db)
+        if saved is None or json.loads(saved)!=current(db):
             raise ValueError('Daily cache changed. Run: python3 scripts/schedules.py prepare')
-        attach(db,source or r.DATABASE)
     except Exception:
         db.close();raise
     return db
@@ -97,17 +99,6 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value,separators=(',',':')).encode()).hexdigest()
 
 
-def _code():
-    """Content identities of the code that derives price rows and saved books.
-
-    The fingerprint binds the same files by size and time. Content identity
-    keeps saved rows across checkouts that only rewrite timestamps.
-    """
-    def content(paths):
-        return _digest([hashlib.sha256(p.read_bytes()).hexdigest() for p in paths])
-    return dict(prices=content(PRICE_SOURCES),books=content(r.calculation_sources()+_engine_sources()))
-
-
 def _book_inputs(reference,db):
     """Copy the 10-year yields for the kept-book check; return the identity of the undated book inputs."""
     db.execute('INSERT INTO main.treasury10 SELECT * FROM research.treasury10')
@@ -121,10 +112,10 @@ def _book_inputs(reference,db):
 
 
 def _previous(path):
-    """Return the saved inputs and refresh evidence of an existing cache.
+    """Return the saved binding and refresh evidence of an existing cache.
 
-    Old rows are read only when the saved code identities equal the current
-    ones. Those bind this module, so its schema and evidence form match too.
+    Old rows are read only when the evidence has this VERSION and the saved
+    book identity equals the current one.
     """
     # Read-write, like connect(): a book write interrupted by a crash leaves a
     # hot journal that only a writable connection rolls back.
@@ -147,17 +138,17 @@ def _first_difference(old,new):
     return None
 
 
-def _prices(db,symbols,saved,code):
+def _prices(db,symbols,saved,same_code):
     """Store company prices; return their evidence and the first changed days.
 
-    With an attached previous cache, equal file bytes copy the stored rows
-    without parsing. Bytes, not stamps, decide: downloads rewrite checked files
-    with equal bytes, and a copy can keep old stamps. A saved digest of the
-    stored rows proves a pure append without reading them back; otherwise the
-    rows are compared.
+    With an attached previous cache of the same book identity (which binds
+    facts.observe), equal file bytes copy the stored rows without parsing.
+    Bytes, not stamps, decide: downloads rewrite checked files with equal
+    bytes, and a copy can keep old stamps. A saved digest of the stored rows
+    proves a pure append without reading them back; otherwise the rows are
+    compared.
     """
     previous=saved['prices'] if saved else {}
-    same_code=saved is not None and saved['code']['prices']==code['prices']
     units={};earliest=[]
     for i,symbol in enumerate(symbols,1):
         backtest_control.checkpoint()
@@ -229,16 +220,20 @@ def prepare(path=DATABASE, source=r.DATABASE):
     # need to discover and run the dependency chain themselves.
     r.prepare(source)
     diagnostics.lap('research')
-    inputs=fingerprint(source)
     reference=r.connect(source,full_prices=True)
-    saved=None
+    # research.prepare has just inspected the raw files; this preparation reads raw prices too.
+    raw=r.accepted_signature()
+    inputs=current(reference,'main')
+    saved=previous=None
     if path.exists():
-        # Compare the saved fingerprint with this operation's own. connect()
+        # Compare the saved binding with this operation's own. connect()
         # would compute it again and ask no new freshness question.
-        current,saved=_previous(path)
-        if current==inputs:
+        previous,saved=_previous(path)
+        if previous==inputs:
             reference.close();print('Daily cache already current; no prices parsed.')
             diagnostics.note(outcome='current');return
+    # Saved books and price rows are reused only under the same book identity.
+    same_code=saved is not None and isinstance(previous,dict) and previous.get('books')==inputs['books']
     diagnostics.lap('input_check')
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
@@ -253,27 +248,26 @@ def prepare(path=DATABASE, source=r.DATABASE):
         tables=_book_inputs(reference,db)
         diagnostics.lap('copy_research')
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
-        code=_code()
-        units,earliest=_prices(db,symbols,saved,code)
+        units,earliest=_prices(db,symbols,saved,same_code)
         diagnostics.lap('prices')
         db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')])
         db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None])
         diagnostics.lap('market')
         books=_digest(dict(tables=tables,symbols=symbols))
-        if saved is not None and code['books']==saved['code']['books'] and books==saved['books']:
+        if same_code and books==saved['books']:
             earliest+=[day for table in ('sessions','treasuries','treasury10') if (day:=_dated_change(db,table)) is not None]
             _keep_books(db,min(earliest) if earliest else None)
             diagnostics.lap('keep_books')
         # The latest book: the open book at research's latest date, from its
         # facts. Kept dated books keep their ids; the latest book takes the next.
-        book_facts=facts.BookFacts(reference)
+        book_facts=facts.BookFacts(db)
+        latest=date.fromisoformat(r.identity(reference)['latest_date'])
         for pool in ('legacy','cached'):
-            book_store.store(db,financial_books.book(date.fromisoformat(inputs['facts']['latest_date']),None,pool,
-                                                     book_facts,backtest_control.checkpoint))
+            book_store.store(db,financial_books.book(latest,None,pool,book_facts,backtest_control.checkpoint))
         diagnostics.lap('latest_book')
-        if inputs!=fingerprint(source):
+        if inputs!=current(reference,'main') or raw!=r.signature():
             raise ValueError('Inputs changed during daily preparation; retry.')
-        evidence=dict(version=VERSION,code=code,books=books,prices=units)
+        evidence=dict(version=VERSION,books=books,prices=units)
         for key,value in dict(daily_inputs=inputs,refresh=evidence).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         db.commit()

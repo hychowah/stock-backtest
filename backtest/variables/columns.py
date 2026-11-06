@@ -21,7 +21,7 @@ in tree order; mean adds oldest first; min/max keep the oldest equal member;
 growth and CAGR need a positive first (and, for CAGR, last) member; the first
 unavailable operand's reason wins; a nonfinite result is unavailable.
 
-The borrowed view (backtest/inputs/facts.View) owns admission, entry
+The borrowed view (backtest/inputs/fact_view.View) owns admission, entry
 valuation and the typed facts; it reads each company or day once.
 """
 import calendar

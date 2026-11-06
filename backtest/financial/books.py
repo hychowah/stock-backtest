@@ -2,7 +2,7 @@
 
 Screen(day, facts) is the admission state of one entry day, and
 Screen.decide() the per-company decision, with its denial reason, of an open
-(latest) book, a dated book and a formula root (facts.View). book() computes
+(latest) book, a dated book and a formula root (fact_view.View). book() computes
 one pool of a book from prepared facts through the facts port
 (facts.BookFacts); daily preparation writes the latest book and
 schedules.prepare_period and the book workers write the dated books with it.

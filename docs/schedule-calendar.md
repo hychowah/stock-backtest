@@ -123,10 +123,11 @@ keeps complete holdings and financial fields without adding a version to
 existing application payloads. This verifies date/financial separation. It
 does not change the ordinary engine.
 
-The daily-cache engine fingerprint includes `backtest/calendar.py` and the
-`backtest/portfolio_results.py` reducer. A changed source requires ordinary
-offline preparation. There is no new identity mechanism or database schema
-version. Private source exports already include Python modules.
+`backtest/calendar.py` and the `backtest/portfolio_results.py` reducer are
+readers: they bind no identity, so an edit to either neither rebuilds the daily
+cache nor drops a saved book (`research.code_sources`). There is no database
+schema version for the calendar. Private source exports already include Python
+modules.
 
 `tests/fixtures/schedule-calendar-legacy-v1.json` contains compact expectations
 derived from the unchanged pre-change capture. It records the capture's base

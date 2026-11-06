@@ -51,6 +51,16 @@ def research_facts(db, raw, symbols):
         facts.store_stock(db, symbol, facts.stock(raw, symbol))
 
 
+def identify(db, content):
+    """Write the research record of a hand-built source: a fixture signature and content identity."""
+    latest = db.execute('SELECT MAX(day) FROM market_days WHERE spy IS NOT NULL').fetchone()[0]
+    db.execute("DELETE FROM metadata WHERE key IN ('version','inputs','identity')")
+    db.executemany('INSERT INTO metadata VALUES(?,?)', [(key, json.dumps(value)) for key, value in dict(
+        version=research.SCHEMA_VERSION, inputs={'fixture': 1}, identity=dict(
+            version=research.SCHEMA_VERSION, latest_date=latest, code=research.code_identity('facts'),
+            content=content)).items()])
+
+
 def legacy(db, symbol, fiscal, **values):
     """Store legacy annual values as the typed annual facts that books read (facts.legacy_annual)."""
     annual = {}
@@ -60,39 +70,44 @@ def legacy(db, symbol, fiscal, **values):
     facts.store_annual(db, symbol, dict(sources={}, annual=annual))
 
 
+def research_file(path, content):
+    """A research file whose record passes research.identity under a fixture signature."""
+    with closing(sqlite3.connect(path)) as db:
+        db.executescript(research.SCHEMA)
+        db.executemany('INSERT INTO metadata VALUES(?,?)', [(key, json.dumps(value)) for key, value in dict(
+            version=research.SCHEMA_VERSION, inputs={'fixture': 1}, identity=dict(
+                version=research.SCHEMA_VERSION, latest_date='2015-01-05', code=research.code_identity('facts'),
+                content=content)).items()])
+        db.commit()
+
+
 class CalendarTests(unittest.TestCase):
     def test_daily_binding_and_connect_use_explicit_research_source(self):
         with tempfile.TemporaryDirectory() as folder:
-            source=Path(folder)/'custom-research.sqlite';path=Path(folder)/'daily.sqlite'
+            source=Path(folder)/'custom-research.sqlite';other=Path(folder)/'research.sqlite';path=Path(folder)/'daily.sqlite'
+            research_file(source,'custom');research_file(other,'default')
             # daily.connect attaches the bound research file.
-            sqlite3.connect(source).close()
-            with patch.object(research,'signature',return_value={'fixture':1}),patch.object(research,'prepared_bindings',
-                    side_effect=lambda selected:('custom' if selected==source else 'default',{'fixture':1})):
-                inputs=daily.fingerprint(source)
+            with patch.object(research,'signature',return_value={'fixture':1}),patch.object(research,'DATABASE',other):
+                research.forget_signature();self.addCleanup(research.forget_signature)
+                with closing(sqlite3.connect(':memory:',uri=True)) as probe:
+                    daily.attach(probe,source);inputs=daily.current(probe)
+                self.assertEqual(inputs['research'],'custom')
                 with closing(sqlite3.connect(path)) as db:
                     db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT)')
                     db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(inputs)));db.commit()
                 with closing(daily.connect(path,source)) as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM metadata').fetchone()[0],1)
                 with self.assertRaisesRegex(ValueError,'Daily cache changed'):daily.connect(path)
 
-    def test_daily_fingerprint_tracks_portfolio_reducer(self):
+    def test_reader_sources_are_not_in_the_daily_binding(self):
         with tempfile.TemporaryDirectory() as folder:
-            path=Path(folder)/'portfolio_results.py';path.write_text('# first')
-            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_bindings',return_value=('fixture',{'fixture':1})),patch.object(portfolio_results,'__file__',str(path)):
-                before=daily.fingerprint()
-                path.write_text('# changed portfolio source')
-                after=daily.fingerprint()
-        self.assertNotEqual(before['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name],after['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name])
-
-    def test_daily_fingerprint_tracks_calendar_source(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path=Path(folder)/'schedule_calendar.py';path.write_text('# first')
-            with patch.object(research,'signature',return_value={'private-fixture':1}),patch.object(research,'prepared_bindings',return_value=('fixture',{'fixture':1})),patch.object(schedule_calendar,'__file__',str(path)):
-                before=daily.fingerprint()
-                path.write_text('# changed calendar source')
-                after=daily.fingerprint()
-        self.assertEqual(set(before['engine']),{'backtest/inputs/daily.py','backtest/engines/original/schedules.py','backtest/engines/original/book_batch.py',path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name,'backtest/portfolio_results.py'})
-        self.assertNotEqual(before['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name],after['engine'][path.relative_to(research.ROOT).as_posix() if path.is_relative_to(research.ROOT) else path.name])
+            source=Path(folder)/'research.sqlite';research_file(source,'fixture')
+            with patch.object(research,'signature',return_value={'fixture':1}),closing(sqlite3.connect(':memory:',uri=True)) as probe:
+                research.forget_signature();self.addCleanup(research.forget_signature)
+                daily.attach(probe,source);before=daily.current(probe)
+                for module in (portfolio_results,schedule_calendar,s,daily):
+                    copy=Path(folder)/Path(module.__file__).name;copy.write_text('# changed reader source')
+                    with patch.object(module,'__file__',str(copy)):
+                        self.assertEqual(daily.current(probe),before)
 
     def sessions(self,first,last):
         days=[]
@@ -131,7 +146,7 @@ class BacktestTests(unittest.TestCase):
             store.session(self.db,day,spy)
         for symbol,ebitda,prices in [('A',30e6,[10,20,30,15]),('B',10e6,[10,10,20,20])]:
             store.company(self.db,symbol)
-            self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
+            self.db.research.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
             for day,price in zip(['2014-06-30','2015-01-02','2015-04-01','2015-07-01'],prices):
                 store.price(self.db,symbol,day,price)
         self.db.commit()
@@ -139,7 +154,7 @@ class BacktestTests(unittest.TestCase):
     def copy(self,path):
         """A file copy of the daily cache that attaches the same research file."""
         copy=sqlite3.connect(path);self.db.backup(copy);copy.close()
-        db=sqlite3.connect(path);db.row_factory=sqlite3.Row;daily.attach(db,self.research)
+        db=sqlite3.connect(path,uri=True);db.row_factory=sqlite3.Row;daily.attach(db,self.research)
         return db
 
     def test_weekly_dates_use_ordinary_financial_evaluation_with_legacy_metadata(self):
@@ -166,8 +181,8 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(unlabelled(result['periods']),unlabelled(fixed))
 
     def test_financial_ratios_use_selected_report_and_reuse_books(self):
-        legacy(self.db,'A','2014-06-30',netIncome=20e6,revenue=100e6)
-        legacy(self.db,'A','2015-06-30',netIncome=1e9,revenue=1e9)
+        legacy(self.db.research,'A','2014-06-30',netIncome=20e6,revenue=100e6)
+        legacy(self.db.research,'A','2015-06-30',netIncome=1e9,revenue=1e9)
         options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
         result=s.backtest(self.db,**options,filters=[dict(field='pe',op='lt',value=11),dict(field='profit_margin',op='gt',value=15)])
         self.assertEqual([h['symbol'] for h in result['periods'][0]['holdings']],['A'])
@@ -178,10 +193,10 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(result['periods'][0]['names'],0)
 
     def test_operating_spread_uses_entry_treasury_and_reuses_completed_books(self):
-        self.db.executemany('INSERT INTO market_days(day,year10) VALUES(?,?)',[
+        self.db.research.executemany('INSERT INTO market_days(day,year10) VALUES(?,?)',[
             ('2014-12-31',3),('2015-01-05',99)])
         for year,margin in [(2012,.1),(2013,.2),(2014,.3),(2015,99)]:
-            legacy(self.db,'A',f'{year}-06-30',revenue=100e6,operatingIncome=margin*100e6)
+            legacy(self.db.research,'A',f'{year}-06-30',revenue=100e6,operatingIncome=margin*100e6)
         options=dict(start='2015-01-02',end='2015-07-01',months=6,pool='cached',min_cap=0,min_ev=0)
         filters=[dict(field='operating_yield_spread_3y',op='gt',value=4)]
         result=s.backtest(self.db,**options,filters=filters)
@@ -218,11 +233,11 @@ class BacktestTests(unittest.TestCase):
 
     def test_stopped_holding_and_bankruptcy_follow_the_one_admission_rule(self):
         entry,exit_day=date(2015,1,2),date(2015,7,1)
-        decide=lambda:financial_books.Screen(entry,facts.BookFacts(self.db,'research')).decide('A','legacy',exit_day)
+        decide=lambda:financial_books.Screen(entry,facts.BookFacts(self.db)).decide('A','legacy',exit_day)
         held,reason=decide()
         self.assertEqual((reason,held['return_value'],held['status'],held['exit']),(None,-.25,'Scheduled exit',(exit_day,15.)))
         # A stopped holding is retained, and a declared bankruptcy overrides price.
-        self.db.execute("DELETE FROM stock_days WHERE symbol='A' AND day='2015-07-01'")
+        self.db.research.execute("DELETE FROM stock_days WHERE symbol='A' AND day='2015-07-01'")
         held,reason=decide()
         self.assertEqual((held['status'],held['return_value']),('Last available price',.5))
         with patch.object(rules,'BANKRUPT',{('A',date(2015,5,15))}):
@@ -244,7 +259,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],2)
 
     def test_unavailable_report_and_missing_metric(self):
-        self.db.execute("UPDATE statements SET known='2015-01-02' WHERE symbol='A'")
+        self.db.research.execute("UPDATE statements SET known='2015-01-02' WHERE symbol='A'")
         result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
         self.assertEqual(result['periods'][0]['holdings'][0]['symbol'],'B')
         result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,metric='ev_ebitda_3y')
@@ -263,8 +278,8 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual((second['B']['return_value'],second['B']['status']),(0.,'Scheduled exit'))
 
     def test_stop_and_missing_buy(self):
-        self.db.execute("DELETE FROM stock_days WHERE symbol='A' AND day='2015-07-01'")
-        self.db.execute("DELETE FROM stock_days WHERE symbol='B' AND day='2015-01-02'")
+        self.db.research.execute("DELETE FROM stock_days WHERE symbol='A' AND day='2015-07-01'")
+        self.db.research.execute("DELETE FROM stock_days WHERE symbol='B' AND day='2015-01-02'")
         result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=2)
         self.assertEqual(result['periods'][0]['names'],1)
         a=next(h for h in result['periods'][1]['holdings'] if h['symbol']=='A')
@@ -282,7 +297,7 @@ class BacktestTests(unittest.TestCase):
         # C is outside the original report-size screen, but belongs in the
         # broader pool when the user lowers the screen's market-cap floor.
         store.company(self.db,'C')
-        self.db.execute("INSERT INTO statements VALUES('C','2014-06-30','2014-09-28',50000000,75000000,60000000,.8)")
+        self.db.research.execute("INSERT INTO statements VALUES('C','2014-06-30','2014-09-28',50000000,75000000,60000000,.8)")
         for day in ('2014-06-30','2015-01-02','2015-04-01','2015-07-01'):
             store.price(self.db,'C',day,10)
         self.db.commit()
@@ -328,7 +343,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],2)
 
     def test_empty_pool_is_complete_and_other_pool_can_be_added(self):
-        self.db.execute('UPDATE statements SET market_cap=50000000');self.db.commit()
+        self.db.research.execute('UPDATE statements SET market_cap=50000000')
         options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1,min_cap=0,min_ev=0)
         empty=s.backtest(self.db,pool='legacy',**options)
         self.assertIsNone(empty['cagr'])
@@ -392,7 +407,7 @@ from pathlib import Path
 sys.path.insert(0,sys.argv[1])
 from backtest.engines.original import schedules as s
 from backtest.inputs import daily
-db=sqlite3.connect(sys.argv[2]);db.row_factory=sqlite3.Row
+db=sqlite3.connect(sys.argv[2],uri=True);db.row_factory=sqlite3.Row
 daily.attach(db,sys.argv[4])
 db.execute('PRAGMA cache_size=1')
 original=s.prepare_period
@@ -418,7 +433,7 @@ s.backtest(db,start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
             finally:
                 if process.poll() is None:process.kill()
                 process.communicate(timeout=5)
-            recovered=sqlite3.connect(path);recovered.row_factory=sqlite3.Row;daily.attach(recovered,self.research)
+            recovered=sqlite3.connect(path,uri=True);recovered.row_factory=sqlite3.Row;daily.attach(recovered,self.research)
             try:
                 self.assertEqual(recovered.execute('PRAGMA integrity_check').fetchone()[0],'ok')
                 self.assertEqual(self.counts(recovered),before)
@@ -440,13 +455,14 @@ class PreparationTests(unittest.TestCase):
         (raw/'treasury.json').write_text('[]')
         db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
         db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
-        research_facts(db,raw,['A'])
+        research_facts(db,raw,['A']);identify(db,'first')
         db.commit();db.close()
         self.context.enter_context(patch.object(research,'RAW',raw))
         self.context.enter_context(patch.object(research,'DATABASE',self.source))
         self.context.enter_context(patch.object(market,'RAW',raw))
         self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(daily,'fingerprint',return_value={'fixture':1,'facts':dict(latest_date='2015-01-02')}))
+        self.context.enter_context(patch.object(research,'signature',return_value={'fixture':1}))
+        research.forget_signature();self.addCleanup(research.forget_signature)
         self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:rows(sqlite3.connect(self.source))))
 
     def test_publish_and_unchanged_skip(self):
@@ -464,8 +480,13 @@ class PreparationTests(unittest.TestCase):
         tables={row[0] for row in db.execute("SELECT name FROM main.sqlite_master WHERE type='table'")}
         self.assertFalse(tables&{'companies','statements','financial_inputs','periods','snapshots','period_pools'})
         db.close()
+        read=Path.read_bytes
+        def source_only(path):
+            # The code identities read source files, never a saved raw file.
+            if path.is_relative_to(research.RAW):raise AssertionError('Unchanged preparation must not read prices')
+            return read(path)
         with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')), \
-                patch.object(Path,'read_bytes',side_effect=AssertionError('Unchanged preparation must not read prices')):
+                patch.object(Path,'read_bytes',source_only):
             daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
 
@@ -473,7 +494,8 @@ class PreparationTests(unittest.TestCase):
         daily.prepare(self.path,self.source);original=self.path.read_bytes()
         # Changed bytes are parsed again; the parse fails.
         (research.RAW/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=11)])))
-        with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(facts,'observe',side_effect=ValueError('bad fixture')):
+        with closing(sqlite3.connect(self.source)) as db,db:identify(db,'second')
+        with patch.object(facts,'observe',side_effect=ValueError('bad fixture')):
             with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
@@ -506,8 +528,8 @@ class RefreshTests(unittest.TestCase):
         for owner,key,value in [(research,'RAW',raw),(market,'RAW',raw),(research,'DATABASE',self.source)]:
             self.context.enter_context(patch.object(owner,key,value))
         self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(daily,'fingerprint',side_effect=lambda source=None,**kw:{
-            'fixture':self.generation,'facts':dict(latest_date=self.SESSIONS[-1])}))
+        self.context.enter_context(patch.object(research,'signature',return_value={'fixture':1}))
+        research.forget_signature();self.addCleanup(research.forget_signature)
         # Research preparation rewrites the dated facts from the saved files, as a full build would.
         self.context.enter_context(patch.object(research,'prepare',side_effect=lambda source:self.research_facts()))
         self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:rows(sqlite3.connect(self.source))))
@@ -521,7 +543,7 @@ class RefreshTests(unittest.TestCase):
 
     def research_facts(self):
         with closing(sqlite3.connect(self.source)) as db,db:
-            research_facts(db,self.raw,['A','B','C'])
+            research_facts(db,self.raw,['A','B','C']);identify(db,str(self.generation))
 
     def accept_prices(self):
         """Record the price inventory as research preparation would, then make the cache stale."""
@@ -636,14 +658,13 @@ class RefreshTests(unittest.TestCase):
         self.refresh()
         self.assert_matches_full_build({})
 
-    def test_changed_book_code_drops_books_and_keeps_prices(self):
+    def test_changed_book_code_drops_books_and_their_price_rows(self):
+        # The book identity binds facts.observe, the rule of the daily price rows too.
         with closing(sqlite3.connect(self.path)) as db,db:
-            evidence=json.loads(db.execute("SELECT value FROM metadata WHERE key='refresh'").fetchone()[0])
-            evidence['code']['books']='0'*64
-            db.execute("UPDATE metadata SET value=? WHERE key='refresh'",(json.dumps(evidence),))
-        self.generation+=1
+            binding=json.loads(daily.binding(db));binding['books']='0'*64
+            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(binding),))
         reads=self.refresh()
-        self.assertFalse({'A.json','B.json','C.json'}&set(reads))
+        self.assertEqual({'A.json','B.json','C.json'},set(reads))
         self.assert_matches_full_build({})
 
     def test_cache_without_refresh_evidence_is_rebuilt(self):

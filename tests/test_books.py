@@ -3,7 +3,7 @@
 The daily cache writes the latest book into the book store from books.book
 over facts.BookFacts, and dated books come from the same function through the
 research schema that a daily connection attaches. Formula roots are admitted
-by the same rule (facts.View.admit). The fictional cache has every latest
+by the same rule (fact_view.View.admit). The fictional cache has every latest
 denial, a conflicting price day, a conflicting Treasury day, a signed-zero
 yield and more annual endpoints.
 """
@@ -72,12 +72,16 @@ class BookTests(unittest.TestCase):
         cls.inputs = PreparedInputs(configure=configure)
         cls.research = sqlite3.connect(cls.inputs.source)
         cls.research.row_factory = sqlite3.Row
+        # The facts readers read the research schema that a daily connection attaches.
+        cls.attached = sqlite3.connect(':memory:', uri=True)
+        daily.attach(cls.attached, cls.inputs.source)
         cls.daily = sqlite3.connect(cls.inputs.path)
         cls.daily.row_factory = sqlite3.Row
 
     @classmethod
     def tearDownClass(cls):
         cls.research.close()
+        cls.attached.close()
         cls.daily.close()
         cls.inputs.close()
         cls.buffer.stop()
@@ -87,23 +91,23 @@ class BookTests(unittest.TestCase):
         row = self.research.execute("SELECT adjusted,adjusted_reason FROM stock_days WHERE symbol='Q0002' AND day='2015-01-05'").fetchone()
         self.assertEqual(tuple(row), (None, 'CONFLICTING_INPUT'))
         self.assertIsNone(self.daily.execute("SELECT 1 FROM prices WHERE symbol='Q0002' AND day='2015-01-05'").fetchone())
-        book_facts = facts.BookFacts(self.research)
+        book_facts = facts.BookFacts(self.attached)
         self.assertEqual(book_facts.price('Q0002', date(2015, 1, 5), True, 4)[0], date(2015, 1, 6))
         valid = self.research.execute('SELECT symbol,day,adjusted FROM stock_days WHERE adjusted IS NOT NULL ORDER BY symbol,day')
         self.assertEqual(exact(valid), exact(self.daily.execute('SELECT * FROM prices ORDER BY symbol,day')))
         # The conflicting weekend 3-month yield is skipped; the signed zero keeps its sign.
         self.assertEqual(book_facts.treasury(date(2015, 1, 4)), .02)
-        self.assertEqual(facts.ten_year(self.research, '2015-01-04'), ('2015-01-03', -0.0))
-        self.assertEqual(math.copysign(1, facts.ten_year(self.research, '2015-01-04')[1]), -1)
+        self.assertEqual(facts.ten_year(self.attached, '2015-01-04'), ('2015-01-03', -0.0))
+        self.assertEqual(math.copysign(1, facts.ten_year(self.attached, '2015-01-04')[1]), -1)
         for day in ('2013-01-01', '2015-01-02', '2015-01-04', '2016-10-20'):
-            row = facts.ten_year(self.research, day)
+            row = facts.ten_year(self.attached, day)
             saved = self.research.execute('SELECT yield_percent FROM treasury10 WHERE day<=? ORDER BY day DESC LIMIT 1', (day,)).fetchone()
             self.assertEqual(None if row is None else row[1], None if saved is None else saved[0])
         sessions = self.research.execute('SELECT day,spy FROM market_days WHERE spy IS NOT NULL ORDER BY day')
         self.assertEqual(exact(sessions), exact(self.daily.execute('SELECT * FROM sessions ORDER BY day')))
 
     def test_listing_and_cached_prices_are_company_facts(self):
-        book_facts = facts.BookFacts(self.research)
+        book_facts = facts.BookFacts(self.attached)
         companies = book_facts.companies()
         self.assertEqual(len(companies), 20)
         self.assertEqual({symbol for symbol, listed in companies.items() if not listed}, {'Q0006'})
@@ -120,11 +124,11 @@ class BookTests(unittest.TestCase):
             {'revenue': saved['Q0003']['2015-06-30']['revenue'], 'operatingIncome': saved['Q0003']['2015-06-30']['operatingIncome'],
              'totalStockholdersEquity': 80e6, 'totalDebt': -0.0, 'freeCashFlow': 9e6}))
         for symbol, values in saved.items():
-            self.assertEqual(json.dumps(facts.legacy_annual(self.research, symbol)), json.dumps(values), symbol)
+            self.assertEqual(json.dumps(facts.legacy_annual(self.attached, symbol)), json.dumps(values), symbol)
 
     def test_latest_book_is_the_open_book_of_the_latest_date(self):
-        latest = date.fromisoformat(facts.require(self.research)['latest_date'])
-        screen = books.Screen(latest, facts.BookFacts(self.research), open_book=True)
+        latest = date.fromisoformat(research.identity(self.research)['latest_date'])
+        screen = books.Screen(latest, facts.BookFacts(self.attached), open_book=True)
         (book, entry, exit_day, spy, candidates), = self.daily.execute('SELECT book,entry,exit,spy,candidates FROM books')
         self.assertEqual((entry, exit_day, spy, candidates), (str(latest), None, None, len(screen.statements['cached'])))
         self.assertEqual(exact(self.daily.execute('SELECT pool FROM book_pools ORDER BY pool')), exact([('cached',), ('legacy',)]))
@@ -141,7 +145,7 @@ class BookTests(unittest.TestCase):
     def test_view_admits_latest_roots_with_the_one_vocabulary(self):
         with self.inputs.view() as view:
             day = view.bounds['latest_date']
-            symbols = sorted(facts.BookFacts(self.research).companies()) + ['NONE']
+            symbols = sorted(facts.BookFacts(self.attached).companies()) + ['NONE']
             roots = [dict(symbol=symbol, pool=pool, mode='latest', date=day) for symbol in symbols for pool in ('legacy', 'cached')]
             decisions = view.admit(roots)
         reasons = Counter((decision['pool'], decision['reason']) for decision in decisions)
@@ -157,10 +161,10 @@ class BookTests(unittest.TestCase):
         self.assertEqual(set(admitted['valuation']), {'market_cap', 'enterprise_value', 'ebitda'})
         self.assertNotIn('admission_evidence', admitted)
 
-    def test_dated_books_read_the_attached_research_like_the_research_port(self):
+    def test_dated_books_are_deterministic_across_connections(self):
         with closing(daily.connect()) as db:
             sessions = facts.sessions(db)
-            attached, direct = facts.BookFacts(db, 'research'), facts.BookFacts(self.research)
+            attached, direct = facts.BookFacts(db), facts.BookFacts(self.attached)
             pairs = [(sessions[i], sessions[min(i + 63, len(sessions) - 1)]) for i in range(0, len(sessions) - 1, 120)]
             pairs += [(date(2015, 1, 2), date(2015, 1, 5)), (date(2016, 6, 1), date(2016, 10, 20))]
             self.assertGreater(len(pairs), 6)
@@ -182,7 +186,7 @@ class BookTests(unittest.TestCase):
         with closing(sqlite3.connect(':memory:')) as db:
             db.executescript(book_store.SCHEMA)
             entry, exit_day = date(2015, 1, 2), date(2015, 7, 1)
-            ids = [book_store.store(db, books.book(entry, exit_day, pool, facts.BookFacts(self.research)))
+            ids = [book_store.store(db, books.book(entry, exit_day, pool, facts.BookFacts(self.attached)))
                    for pool in ('legacy', 'cached')]
             self.assertEqual(ids[0], ids[1])
             self.assertEqual(db.execute('SELECT entry,exit FROM books').fetchall(), [('2015-01-02', '2015-07-01')])

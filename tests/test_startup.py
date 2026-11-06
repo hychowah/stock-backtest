@@ -207,12 +207,12 @@ class PortableFingerprintTests(unittest.TestCase):
             with patch.object(Path,'stat',stat):self.assertEqual(research.signature(),expected)
             self.assertEqual(expected['raw/px'][0],'directory')
             self.assertTrue(all('\\' not in key for key in expected))
+            # Code is not a raw input: an edit changes the fact-row code identity, not the signature.
             policy_source=Path(research.books.__file__)
+            identity=research.code_identity('facts')
             policy_source.write_text('changed book policy source')
-            changed=research.signature()
-            self.assertNotEqual(changed['books.py'],expected['books.py'])
-            self.assertEqual({key:value for key,value in changed.items() if key!='books.py'},
-                             {key:value for key,value in expected.items() if key!='books.py'})
+            self.assertEqual(research.signature(),expected)
+            self.assertNotEqual(research.code_identity('facts'),identity)
 
 
 if __name__=='__main__':unittest.main()

@@ -79,7 +79,7 @@ class FormulaThresholdTests(unittest.TestCase):
 class FormulaRootAdmissionTests(unittest.TestCase):
     def test_admission_denials_survive_constant_only_selection(self):
         fixture=Fixture(4);self.addCleanup(fixture.close)
-        fixture.db.execute("UPDATE research.companies SET listed=0 WHERE symbol='A0000'");fixture.db.commit()
+        fixture.db.research.execute("UPDATE companies SET listed=0 WHERE symbol='A0000'")
         constant=fixture.capture(language.constant('7'))
         stocks,_=fixture.select(constant,latest=True)
         self.assertEqual([row['symbol'] for row in stocks],['A0001','A0002','A0003'])
@@ -91,7 +91,7 @@ class FormulaRootAdmissionTests(unittest.TestCase):
     def test_complete_population_and_legacy_buffer_cannot_expand(self):
         fixture=Fixture();self.addCleanup(fixture.close)
         # A0005 has no saved price file.
-        fixture.db.execute("DELETE FROM research.fact_sources WHERE symbol='A0005'");fixture.db.commit()
+        fixture.db.research.execute("DELETE FROM fact_sources WHERE symbol='A0005'")
         roots=[dict(symbol=symbol,pool=pool,mode='historical',date='2015-01-02') for symbol,pool in
                [('A0249','legacy'),('A0250','legacy'),('A0005','legacy'),('A0250','cached')]]
         constant=fixture.capture(language.constant('5'),pool='legacy')

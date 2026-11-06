@@ -22,9 +22,10 @@ from unittest.mock import patch
 from backtest.application import variable_authoring
 from backtest.financial import rules
 from backtest.inputs import financial_inputs as financial, facts
-from backtest.inputs import daily, research
+from backtest.inputs import book_store, daily, fact_view, research
 from backtest.variables import columns, definitions, parameters
 from prepared_inputs_fixture import PreparedInputs
+import book_store_fixture as store
 import test_prepared_facts
 import test_variable_definitions as language
 from test_parameter_contract import ORACLE as DIRECT_ORACLE
@@ -116,7 +117,7 @@ class Company:
     """A private research file of company A and an in-memory daily cache that attaches it.
 
     Set the attributes, then call view(): it writes them and borrows a
-    facts.View. reports are statements rows; annual maps endpoint, fiscal date
+    fact_view.View. reports are statements rows; annual maps endpoint, fiscal date
     and field to a resolved state; books maps a pool to its stored latest book
     row (market_cap, metrics, filters). Every report fiscal date, the root date and
     the latest date have a price of 10. financials (legacy values by fiscal
@@ -174,25 +175,23 @@ class Company:
             endpoint: dict(endpoint=endpoint, sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid')
             for endpoint in annual}))
         last = self.reports[-1]
-        scopes = [dict(mode='latest', pool=pool, context_date=self.latest_date, book=0) for pool in ('legacy', 'cached')]
-        facts.finish(db, self.latest_date, inputs='fixture', scopes=scopes)
-        db.commit()
-        cache = sqlite3.connect(':memory:')
+        cache = sqlite3.connect(':memory:', uri=True)
         cache.row_factory = sqlite3.Row
         self.daily.append(cache)
         cache.executescript(daily.SCHEMA)
+        store.record(db, cache, self.latest_date)
+        db.commit()
         daily.attach(cache, self.path)
-        cache.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
-            inputs=dict(fixture=max(self.root_date, self.latest_date)))),))
-        book = cache.execute('INSERT INTO books(entry,exit,spy,candidates) VALUES(?,NULL,NULL,1)', (self.latest_date,)).lastrowid
-        for pool, row in self.books.items():
-            cache.execute('INSERT INTO book_rows VALUES(' + ','.join('?' * 17) + ')', (book, pool, 'A', 1, last['fiscal'],
-                last['known'], self.latest_date, 10., None, row['market_cap'], 190e6, 54e6, .3, 3., .28, None, None))
-            cache.executemany('INSERT INTO book_metrics VALUES(?,?,?,?,?,?)',
-                              [(book, pool, 'A', metric, *pair) for metric, pair in row['metrics'].items()])
-            cache.executemany('INSERT INTO book_filters VALUES(?,?,?,?,?)',
-                              [(book, pool, 'A', name, value) for name, value in row['filters'].items()])
-        return facts.View(cache, db, self.freshness, lambda: None)
+        # The open book of both pools; a pool without a row is stored empty.
+        for pool in ('legacy', 'cached'):
+            row = self.books.get(pool)
+            book_store.store(cache, dict(entry=self.latest_date, exit=None, pool=pool, spy=None, candidates=1,
+                rows=[] if row is None else [('A', 1, last['fiscal'], last['known'], self.latest_date, 10., None,
+                                               row['market_cap'], 190e6, 54e6, .3, 3., .28, None, None)],
+                metrics=[] if row is None else [('A', metric, *pair) for metric, pair in row['metrics'].items()],
+                filters=[] if row is None else [('A', name, value) for name, value in row['filters'].items()]))
+        cache.commit()
+        return fact_view.View(cache, self.freshness, lambda: None)
 
 
 class AnnualResolutionTests(unittest.TestCase):
@@ -300,8 +299,7 @@ class AnnualFormulaTests(unittest.TestCase):
         view = self.company.view()
         wanted = {'income-statement': {'revenue'}}
         queries = []
-        self.company.db.set_trace_callback(queries.append)
-        self.addCleanup(self.company.db.set_trace_callback, None)
+        view.db.set_trace_callback(queries.append)
         with patch.object(view, 'validate', side_effect=AssertionError('Whole-generation rescan')):
             first = view.company('A', 'legacy', wanted)
             reads = len(queries)
@@ -421,8 +419,7 @@ class AnnualFormulaTests(unittest.TestCase):
         self.company.annual['cash-flow-statement'] = {'2012-06-30': {'capitalExpenditure': state(-1)}}
         view = self.company.view()
         queries = []
-        self.company.db.set_trace_callback(queries.append)
-        self.addCleanup(self.company.db.set_trace_callback, None)
+        view.db.set_trace_callback(queries.append)
         self.assertEqual(values(formulas(field('annual.revenue')), view, [root()]), [[(100., None)]])
         reads = [sql for sql in queries if 'annual_facts' in sql]
         self.assertTrue(reads)
@@ -460,7 +457,7 @@ class AnnualTransportTests(unittest.TestCase):
         inputs = self.prepared()
         rows = annual_rows()
         with closing(research.connect()) as original:
-            self.assertEqual(facts.require(original)['version'], facts.VERSION)
+            self.assertEqual(research.identity(original)['version'], research.SCHEMA_VERSION)
             for endpoint, fields in ORACLE.items():
                 stored = original.execute('SELECT * FROM annual_facts WHERE symbol=? AND endpoint=? AND fiscal=?',
                                           ('TEST', endpoint, '2014-06-30')).fetchone()
@@ -493,54 +490,44 @@ class AnnualTransportTests(unittest.TestCase):
             ebitda, ev = 1 / 5 * 150e6, 100e6 * (20 / 10) + (150e6 - 100e6)
             self.assertEqual(values(program, view, roots[:1]), [[(ev / ebitda, None), (ebitda / ev, None)]])
 
-    def test_incompatible_facts_version_is_rejected_by_borrowing(self):
+    def test_incompatible_research_record_is_rejected_by_borrowing(self):
         inputs = self.prepared()
         with closing(sqlite3.connect(inputs.source)) as db:
-            db.execute("UPDATE fact_metadata SET value=? WHERE key='version'", (json.dumps(facts.VERSION + 1),))
+            db.execute("UPDATE metadata SET value=? WHERE key='version'", (json.dumps(research.SCHEMA_VERSION + 1),))
             db.commit()
-            with self.assertRaisesRegex(ValueError, 'incompatible'):
-                facts.require(db)
-            with self.assertRaisesRegex(ValueError, 'incompatible'):
-                facts.View(db, db, lambda: None, lambda: None)
-
-    def test_research_incompatible_facts_block_downstream_fingerprints(self):
-        inputs = self.prepared()
+            with self.assertRaisesRegex(ValueError, 'version changed'):
+                research.identity(db)
+        with self.assertRaisesRegex(ValueError, 'version changed'):
+            daily.connect()
         with closing(sqlite3.connect(inputs.source)) as db:
-            db.execute("UPDATE fact_metadata SET value='0' WHERE key='version'")
+            db.execute("DELETE FROM metadata WHERE key='identity'")
             db.commit()
-        with self.assertRaisesRegex(ValueError, 'incompatible'):
-            research.prepared_bindings(inputs.source)
-        with self.assertRaisesRegex(ValueError, 'incompatible'):
-            daily.fingerprint(inputs.source)
+        with closing(sqlite3.connect(':memory:', uri=True)) as cache:
+            cache.executescript(daily.SCHEMA)
+            cache.execute("INSERT INTO metadata VALUES('daily_inputs','{}')")
+            daily.attach(cache, inputs.source)
+            with self.assertRaisesRegex(ValueError, 'incompatible'):
+                fact_view.View(cache, lambda: None, lambda: None)
 
-    def test_semantic_source_changes_invalidate_research_and_facts_policy(self):
+    def test_semantic_source_changes_invalidate_the_research_identity(self):
         fixture = test_prepared_facts.ProjectionTests('test_complete_chain_preserves_evidence_dates_and_latest_valuation')
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
-        policy = facts.policy_binding()
-        self.assertIn('parameters.py', policy)
+        fixture.prepare()
+        self.assertIn(Path(parameters.__file__), research.code_sources('facts'))
+        before = research.code_identity('facts')
         with tempfile.TemporaryDirectory() as folder:
             file = Path(folder)/'parameters.py'
             file.write_bytes(Path(parameters.__file__).read_bytes()+b'\n# private semantic change\n')
-            # The binding is hashed once per process; a new process sees the edit.
-            self.addCleanup(facts._policy_binding.cache_clear)
+            # The catalog defines annual_facts columns: its content is fact-row code.
             with patch.object(parameters, '__file__', str(file)):
-                facts._policy_binding.cache_clear()
-                self.assertNotEqual(facts.policy_binding()['parameters.py'], policy['parameters.py'])
-            facts._policy_binding.cache_clear()
-        # Signature must include the actual semantic source as an independent
-        # dependency, even when financial resolver source remains unchanged.
-        with ExitStack() as context:
-            modules = (research, research.metrics, research.books, research.rules, research.cache_assets,
-                research.market, financial, parameters, facts)
-            for module in modules:
-                file = research.ROOT/Path(module.__file__).name
-                file.write_bytes(Path(module.__file__).read_bytes())
-                context.enter_context(patch.object(module, '__file__', str(file)))
-            before = fixture.real_signature()
-            file = Path(parameters.__file__)
-            file.write_bytes(file.read_bytes()+b'\n# semantic change\n')
-            self.assertNotEqual(fixture.real_signature(), before)
+                self.assertNotEqual(research.code_identity('facts'), before)
+                with closing(research_connection(fixture.source)) as db, self.assertRaisesRegex(ValueError, 'changed'):
+                    research.identity(db)
+
+
+def research_connection(path):
+    return sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
 
 
 if __name__ == '__main__': unittest.main()

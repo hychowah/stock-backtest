@@ -1,7 +1,7 @@
 """Column formula evaluation over typed prepared facts: arithmetic, observation rules and explanations.
 
 Each case writes a private research file and an in-memory daily cache that
-attaches it, borrows a facts.View of both, admits the roots (books.Screen.decide)
+attaches it, borrows a fact_view.View of it, admits the roots (books.Screen.decide)
 and runs columns.Formulas. Every explained result must equal the values-only
 result.
 """
@@ -19,9 +19,10 @@ from unittest.mock import patch
 
 from backtest.application import strategy_requests
 from backtest.financial import books, rules
-from backtest.inputs import daily, facts, research
+from backtest.inputs import book_store, daily, fact_view, facts, research
 from backtest.variables import columns, definitions as d, parameters
 from prepared_inputs_fixture import PreparedInputs
+import book_store_fixture as store
 import test_strategy_requests as requests
 import test_variable_definitions as language
 
@@ -118,17 +119,16 @@ class Company:
                                  dated=self.treasury),
             facts.CALENDAR: dict(source=dict(endpoint=facts.CALENDAR, sha256='e'*64, disposition='valid'),
                                  dated={day: dict(adjClose=state(100.)) for day in sessions})})
-        facts.finish(db, self.latest_date, inputs='fixture', scopes=[
-            dict(mode='latest', pool=pool, context_date=self.latest_date, book=0) for pool in ('legacy', 'cached')])
-        db.commit()
-        daily_db = self.daily = sqlite3.connect(':memory:')
+        daily_db = self.daily = sqlite3.connect(':memory:', uri=True)
         daily_db.row_factory = sqlite3.Row
         daily_db.executescript(daily.SCHEMA)
+        store.record(db, daily_db, self.latest_date)
+        db.commit()
         daily.attach(daily_db, path)
-        daily_db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",
-                         (json.dumps(dict(inputs=dict(fixture=self.through or self.root_date))),))
         # The latest book has no stored rows: owner lanes at a latest root are unavailable.
-        daily_db.execute('INSERT INTO books(entry,exit,spy,candidates) VALUES(?,NULL,NULL,0)', (self.latest_date,))
+        for pool in ('legacy', 'cached'):
+            book_store.store(daily_db, dict(entry=self.latest_date, exit=None, pool=pool, spy=None, candidates=0,
+                                            rows=[], metrics=[], filters=[]))
         daily_db.commit()
         return daily_db
 
@@ -137,7 +137,7 @@ class Company:
             if self.stale:
                 raise ValueError('Fixture inputs are stale.')
         daily_db = self.build()
-        return facts.View(daily_db, self.db, freshness, lambda: None)
+        return fact_view.View(daily_db, freshness, lambda: None)
 
     def close(self):
         for db in (self.daily, self.db):
@@ -284,7 +284,7 @@ class ColumnTests(unittest.TestCase):
             # An unknown company is a denial, at a latest and at a historical root.
             self.assertEqual([item['reason'] for item in view.admit([self.latest(symbol='B'), self.root(symbol='B')])],
                              ['UNKNOWN_COMPANY', 'UNKNOWN_COMPANY'])
-            view.db.execute('DELETE FROM fact_metadata')
+            self.company.db.execute("DELETE FROM metadata WHERE key='identity'"); self.company.db.commit()
             with self.assertRaisesRegex(ValueError, 'missing|stale'):
                 view.admit([self.latest()])
 

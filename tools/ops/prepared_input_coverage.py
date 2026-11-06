@@ -1,13 +1,12 @@
 """Read-only coverage evidence for an ordinary independently prepared workspace."""
-from backtest.inputs import daily as daily_inputs, facts, market
+from backtest.inputs import book_store, daily as daily_inputs, facts, market
 from backtest.financial import rules
 
 from collections import Counter
-from contextlib import ExitStack, closing
+from contextlib import closing
 from datetime import date
 import json
 from pathlib import Path
-import sqlite3
 
 from backtest.inputs import research as r
 from backtest.financial import books as books
@@ -33,15 +32,15 @@ def series_summary(payload,key,*,positive=False):
                 scope='Observed saved dates. Calendar gaps do not prove missing exchange sessions.')
 
 
-def _stock_sessions(research,checkpoint):
-    """Valid adjusted closes against valid SPY sessions, from the research facts."""
+def _stock_sessions(db,checkpoint):
+    """Valid adjusted closes against valid SPY sessions, from the research facts of a daily connection."""
     examples=[];totals=Counter();seen=set()
     query='''SELECT p.symbol,MIN(p.day),MAX(p.day),COUNT(s.day),COUNT(*)
-             FROM stock_days p LEFT JOIN market_days s ON s.day=p.day AND s.spy IS NOT NULL
+             FROM research.stock_days p LEFT JOIN research.market_days s ON s.day=p.day AND s.spy IS NOT NULL
              WHERE p.adjusted IS NOT NULL GROUP BY p.symbol ORDER BY p.symbol'''
-    for symbol,first,last,matched,observed in research.execute(query):
+    for symbol,first,last,matched,observed in db.execute(query):
         checkpoint();seen.add(symbol)
-        expected=research.execute('SELECT COUNT(*) FROM market_days WHERE spy IS NOT NULL AND day BETWEEN ? AND ?',(first,last)).fetchone()[0]
+        expected=db.execute('SELECT COUNT(*) FROM research.market_days WHERE spy IS NOT NULL AND day BETWEEN ? AND ?',(first,last)).fetchone()[0]
         missing=expected-matched
         if missing<0:raise ValueError('Invalid stock/session coverage.')
         totals['symbols_with_adjusted_prices']+=1;totals['observed_adjusted_rows']+=observed
@@ -50,7 +49,7 @@ def _stock_sessions(research,checkpoint):
             totals['symbols_with_internal_omissions']+=1
             examples.append(dict(symbol=symbol,first=first,last=last,available_spy_sessions=expected,observed=matched,missing=missing))
     examples=sorted(examples,key=lambda v:(-v['missing'],v['symbol']))[:20]
-    totals['symbols_without_adjusted_prices']=len(facts.BookFacts(research).cached()-seen)
+    totals['symbols_without_adjusted_prices']=len(facts.BookFacts(db).cached()-seen)
     return dict(totals=totals,largest_examples=examples,
                 scope='Omissions relative to saved SPY sessions within each stock observed span. Legitimate nontrading intervals are not classified as repairable gaps. Leading/trailing unavailability is excluded.')
 
@@ -64,17 +63,18 @@ def _source_histories(raw):
     return books.pools(books.statements(records,universe))
 
 
-def _coverage(research,daily,spy_payload,treasury_payload,checkpoint,histories=None):
-    metadata={row[0]:json.loads(row[1]) for row in research.execute('SELECT key,value FROM metadata')}
-    inventory=metadata['prices'];histories=facts.BookFacts(research).reports() if histories is None else histories
+def _coverage(db,spy_payload,treasury_payload,checkpoint,histories=None):
+    """The report of one daily connection that attaches research."""
+    inventory=json.loads(db.execute("SELECT value FROM research.metadata WHERE key='prices'").fetchone()[0])
+    histories=facts.BookFacts(db).reports() if histories is None else histories
     stock_files={symbol:market.cache_path_for(symbol).name in inventory for symbol in histories[0]}
-    return dict(version=3,
-        companies=research.execute('SELECT COUNT(*) FROM companies').fetchone()[0],
+    return dict(version=4,
+        companies=db.execute('SELECT COUNT(*) FROM research.companies').fetchone()[0],
         financial_symbols=len(histories[0]),accepted_price_files=len(inventory),
         financial_symbols_without_price_files=sum(not v for v in stock_files.values()),
         spy=series_summary(spy_payload,'adjClose',positive=True),treasury=series_summary(treasury_payload,'month3'),
-        stock_sessions=_stock_sessions(research,checkpoint),
-        daily_books={t:daily.execute('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in ('books','book_pools','book_rows')},
+        stock_sessions=_stock_sessions(db,checkpoint),
+        daily_books=book_store.counts(db),
         limits=['Counts describe the cached inputs and ordinary eligibility, not the full US universe.',
                 'No classification of new early stops or bankruptcy review is implied.'])
 
@@ -84,17 +84,13 @@ def report(research_path=None,daily_path=None,*,checkpoint=lambda:None):
 
     Version 2 has no January book counts or report digest. Version 3 reads the
     stock sessions from the research facts and counts the book store's books,
-    pools and rows (the latest book included). Missing observations remain
+    pools and rows (the latest book included). Version 4 reads both through one
+    daily connection (daily.connect checks its binding and each price file's
+    stamps) and drops the price-inventory digest. Missing observations remain
     explicit.
     """
     research_path=Path(research_path or r.DATABASE);daily_path=Path(daily_path or daily_inputs.DATABASE)
-    with cache_access.access(),ExitStack() as stack:
-        research=stack.enter_context(closing(r.connect(research_path,full_prices=True)))
-        daily=stack.enter_context(closing(sqlite3.connect(daily_path.resolve().as_uri()+'?mode=ro',uri=True)))
-        daily.row_factory=sqlite3.Row
-        saved=json.loads(daily.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-        if saved!=daily_inputs.fingerprint(research_path):raise ValueError('Daily cache changed. Run ordinary preparation.')
+    with cache_access.access(),closing(daily_inputs.connect(daily_path,research_path)) as db:
+        r.identity(db,'research',prices=True)
         spy=json.loads((r.RAW/'spy-div.json').read_bytes());treasury=json.loads((r.RAW/'treasury.json').read_bytes())
-        result=_coverage(research,daily,spy,treasury,checkpoint,_source_histories(r.RAW))
-        result['price_binding']=r.prepared_price_binding(research_path)
-        return result
+        return _coverage(db,spy,treasury,checkpoint,_source_histories(r.RAW))

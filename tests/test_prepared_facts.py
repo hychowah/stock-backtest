@@ -4,15 +4,21 @@ from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
 
 from contextlib import ExitStack, closing
+from datetime import date
 import hashlib
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
 
+from backtest import calendar as schedule_calendar, portfolio_results, screening
+from backtest.application import scalar_execution
+from backtest.engines.original import book_batch, schedules
+from backtest.financial import books, metrics, rules
 from backtest.inputs import financial_inputs as financial, facts
-from backtest.inputs import daily, research
+from backtest.inputs import book_store, daily, fact_view, research
 import test_research as research_fixtures
 
 
@@ -98,8 +104,7 @@ class ProjectionTests(unittest.TestCase):
         """View.admit of both latest TEST roots (books.Screen.decide) after a fresh daily build."""
         self.path.unlink(missing_ok=True)
         self.prepare()
-        with closing(daily.connect(self.path, self.source)) as db, closing(research.connect(self.source)) as source, \
-                facts.View(db, source, lambda: None, lambda: None) as view:
+        with closing(daily.connect(self.path, self.source)) as db, fact_view.View(db, lambda: None, lambda: None) as view:
             day = view.bounds['latest_date']
             return view.admit([dict(symbol='TEST', pool=pool, mode='latest', date=day) for pool in ('legacy', 'cached')]), \
                 db.execute('SELECT COUNT(*) FROM book_rows').fetchone()[0]
@@ -107,9 +112,12 @@ class ProjectionTests(unittest.TestCase):
     def test_complete_chain_preserves_evidence_dates_and_latest_valuation(self):
         self.prepare()
         with closing(research.connect(self.source)) as original, closing(sqlite3.connect(self.path)) as copied:
-            first = facts.require(original)
-            self.assertEqual(first['latest_date'], '2015-10-20')
-            self.assertEqual(json.loads(copied.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])['facts'], first)
+            first = research.identity(original)
+            self.assertEqual(set(first), {'version', 'latest_date', 'code', 'content'})
+            self.assertEqual((first['latest_date'], first['code']), ('2015-10-20', research.code_identity('facts')))
+            # The daily binding names the research content identity and the book code.
+            self.assertEqual(json.loads(daily.binding(copied)), dict(version=daily.VERSION, research=first['content'],
+                                                                     books=research.code_identity('books')))
             # The daily cache binds the facts and attaches them; it holds no copy of them.
             names = {row[0] for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             self.assertFalse(names & {'stock_days', 'market_days', 'annual_facts', 'fact_sources', 'companies',
@@ -139,59 +147,110 @@ class ProjectionTests(unittest.TestCase):
                 self.assertEqual({(decision['admitted'], decision['reason']) for decision in decisions}, {(False, reason)})
                 self.assertEqual(rows, 0)
 
-    def test_projection_source_change_and_missing_metadata_fail_closed(self):
+    def test_changed_code_and_missing_record_fail_closed(self):
         self.prepare()
         with closing(sqlite3.connect(self.source)) as db:
-            expected = facts.require(db)
-            with patch.object(facts, 'policy_binding', return_value={'changed': 'source'}):
-                with self.assertRaisesRegex(ValueError, 'stale'): facts.require(db)
-            db.execute('DELETE FROM fact_metadata')
-            with self.assertRaisesRegex(ValueError, 'missing'): facts.require(db, expected=expected)
+            research.identity(db)
+            with patch.object(research, 'code_identity', return_value='0' * 64):
+                with self.assertRaisesRegex(ValueError, 'changed'): research.identity(db)
+            db.execute("DELETE FROM metadata WHERE key='identity'"); db.commit()
+            with self.assertRaisesRegex(ValueError, 'changed'): research.identity(db)
+        with self.assertRaisesRegex(ValueError, 'changed'): daily.connect(self.path, self.source)
 
-    def test_policy_change_rebuilds_research_before_downstream_preparation(self):
-        modules = (research, research.metrics, research.books, research.rules, research.cache_assets,
-                   research.market, financial, financial.parameters, facts)
+    def dated(self):
+        """Save one dated book of each pool; return the stored dated pools."""
+        with closing(daily.connect(self.path, self.source)) as db, db:
+            book_facts = facts.BookFacts(db)
+            for pool in ('legacy', 'cached'):
+                schedules.prepare_period(db, date(2015, 1, 2), date(2015, 10, 20), pool, book_facts)
+        return self.saved()
+
+    def saved(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            return db.execute('SELECT COUNT(*) FROM book_pools JOIN books USING(book) WHERE exit IS NOT NULL').fetchone()[0]
+
+    def copies(self, context, modules):
+        """Point each module's source file at a private copy under the fixture root; return the copies."""
+        copies = []
+        for module in modules:
+            path = research.ROOT / ('copy-' + Path(module.__file__).name)
+            path.write_bytes(Path(module.__file__).read_bytes())
+            context.enter_context(patch.object(module, '__file__', str(path)))
+            copies.append(path)
+        return copies
+
+    def edit(self, path):
+        path.write_bytes(path.read_bytes() + b'\n# Changed private source fixture.\n')
+
+    def published(self):
+        return self.source.stat().st_mtime_ns, self.path.stat().st_mtime_ns
+
+    def test_reader_edit_neither_rebuilds_research_nor_drops_books(self):
+        readers = (fact_view, daily, schedules, book_batch, screening, scalar_execution, schedule_calendar, portfolio_results)
         with ExitStack() as context:
-            for module in modules:
-                path = research.ROOT / Path(module.__file__).name
-                path.write_bytes(Path(module.__file__).read_bytes())
-                context.enter_context(patch.object(module, '__file__', str(path)))
-            # Every calculation source is a private copy here.
-            self.assertEqual(research.calculation_sources(), [Path(module.__file__) for module in modules])
-            context.enter_context(patch.object(research, 'signature', side_effect=self.real_signature))
-            # The binding is hashed once per process; deployment restarts it.
-            self.addCleanup(facts._policy_binding.cache_clear)
-            facts._policy_binding.cache_clear()
-            # The facts policy binds exactly the files that the research signature binds.
-            self.assertEqual(set(facts.policy_binding()), {path.name for path in research.calculation_sources()})
+            copies = self.copies(context, readers)
             self.prepare()
-            for policy in research.calculation_sources():
-                with self.subTest(policy=policy.name):
-                    previous = research.prepared_bindings(self.source)[1]
-                    signature = research.signature()
-                    policy.write_bytes(policy.read_bytes() + b'\n# Changed private policy fixture.\n')
-                    facts._policy_binding.cache_clear()
-                    self.assertNotEqual(research.signature(), signature)
-                    with closing(sqlite3.connect(self.source)) as db:
-                        with self.assertRaisesRegex(ValueError, 'stale'): facts.require(db)
-                    # Ordinary preparation must repair the rejected policy without force.
-                    research.prepare(self.source)
-                    current = research.prepared_bindings(self.source)[1]
-                    self.assertNotEqual(current['policy'][policy.name], previous['policy'][policy.name])
+            self.assertEqual(self.dated(), 2)
+            before = self.published()
+            for path in copies:
+                with self.subTest(reader=path.name):
+                    self.edit(path)
+                    daily.connect(self.path, self.source).close()
                     self.prepare()
-                    with closing(daily.connect(self.path, self.source)) as db:
-                        saved = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-                        self.assertEqual(saved['facts'], current)
+                    self.assertEqual(self.published(), before)
+                    self.assertEqual(self.saved(), 2)
+
+    def test_book_code_edit_drops_every_book(self):
+        modules = (books, metrics, rules, facts, book_store)
+        with ExitStack() as context:
+            copies = self.copies(context, modules)
+            # Every book code file is a private copy here.
+            self.assertEqual(research.code_sources('books'), copies)
+            self.prepare()
+            for module, path in zip(modules, copies):
+                with self.subTest(book_code=module.__name__):
+                    self.assertEqual(self.dated(), 2)
+                    rebuilds = path in research.code_sources('facts')
+                    research_stamp = self.source.stat().st_mtime_ns
+                    self.edit(path)
+                    with self.assertRaisesRegex(ValueError, 'changed'): daily.connect(self.path, self.source)
+                    self.prepare()
+                    self.assertEqual(self.saved(), 0)
+                    # Only fact-row code also rebuilds research.
+                    self.assertEqual(self.source.stat().st_mtime_ns != research_stamp, rebuilds)
+
+    def test_equal_bytes_rewrites_keep_both_identities(self):
+        with ExitStack() as context:
+            copies = self.copies(context, (books, book_store))
+            context.enter_context(patch.object(research, 'signature', side_effect=self.real_signature))
+            self.prepare()
+            self.assertEqual(self.dated(), 2)
+            identity = json.loads(daily.binding(sqlite3.connect(self.path)))
+            daily_stamp = self.path.stat().st_mtime_ns
+            # Equal code bytes with new stamps change nothing.
+            for path in copies:
+                path.write_bytes(path.read_bytes())
+            daily.connect(self.path, self.source).close()
+            # Equal raw bytes with a new stamp rebuild research to the same content identity.
+            price = research.RAW / 'px/TEST.json'
+            price.write_bytes(price.read_bytes()); os.utime(price, ns=(1, 1))
+            research_stamp = self.source.stat().st_mtime_ns
+            self.prepare()
+            self.assertNotEqual(self.source.stat().st_mtime_ns, research_stamp)
+            self.assertEqual(json.loads(daily.binding(sqlite3.connect(self.path))), identity)
+            self.assertEqual((self.path.stat().st_mtime_ns, self.saved()), (daily_stamp, 2))
 
     def test_daily_cancellation_preserves_previous_database(self):
         self.prepare(); before = self.path.read_bytes()
         def cancelled(): raise RuntimeError('fixture cancellation')
-        with patch.object(daily, 'fingerprint', return_value={'stale inputs': True}), \
+        stale = dict(version=daily.VERSION, research='0' * 64, books='0' * 64)
+        with patch.object(daily, 'current', return_value=stale), \
              patch.object(daily.backtest_control, 'checkpoint', side_effect=cancelled):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 daily.prepare(self.path, self.source)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
+
 
 
 if __name__ == '__main__':

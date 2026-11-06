@@ -72,14 +72,14 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
         if set(options)-allowed:raise ValueError('Unknown screening option.')
         screening.validate_selection(**options)
     pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
-    book_facts=facts.BookFacts(db,'research')
+    book_facts=facts.BookFacts(db)
     def select_period(entry,exit_day):
         with diagnostics.stage('books'):
             book=prepare_period(db,entry,exit_day,pool,book_facts)
         with diagnostics.stage('selection'):
             stocks=(screening.select(db,book=book,**options) if book_selection is None
                     else book_selection.select(db,book,entry,exit_day))
-        spy=db.execute('SELECT spy FROM books WHERE book=?',(book,)).fetchone()[0]
+        spy=book_store.record(db,book)['spy']
         return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:
         contract = book_selection.contract if book_selection is not None else 1

@@ -115,7 +115,7 @@ class InventoryExecution(unittest.TestCase):
         day = self.company.latest_date
         same = formulas(field('owner.pe', wrap=dict(op='at', date=day)))
         latest = root(mode='latest', day=day)
-        roots = [latest, root(mode='latest', day=day, owner_scope=dict(kind='prepared', book=0)),
+        roots = [latest, root(mode='latest', day=day, owner_scope=dict(kind='prepared', book=view.open_book)),
                  root(mode='latest', day=day, owner_scope=dict(kind='dated'))]
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper, \
                 patch.object(view, 'lookup', wraps=view.lookup) as lookup:

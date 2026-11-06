@@ -2,8 +2,10 @@
 
 validate_selection(**options) performs no SQL and preserves submitted settings.
 select(db, *, book=None, **options) selects from one book of a daily
-connection (backtest/inputs/book_store.py); None is the latest book.
-latest(db, **options) applies the common selector to the latest book.
+connection (backtest/inputs/book_store.py); None is the open (latest) book.
+latest(db, **options) applies the common selector to the open book. This
+ranked SELECT is the one SQL reader of book tables outside the book store; it
+takes the table names and the book's row shape from the store.
 """
 from .financial import metrics
 from .inputs import book_store
@@ -65,7 +67,7 @@ def _sql_conditions(specification, book):
         if lane in columns:
             clauses.append(columns[lane]+op+'?');values.append(item['value'])
         elif lane.startswith('filter.') and lane[7:] in metrics.FILTERS:
-            clauses.append('EXISTS (SELECT 1 FROM book_filters f WHERE f.book=? AND f.pool=s.pool AND f.symbol=s.symbol AND f.field=? AND f.value'+op+'?)')
+            clauses.append(f'EXISTS (SELECT 1 FROM {book_store.FILTERS} f WHERE f.book=? AND f.pool=s.pool AND f.symbol=s.symbol AND f.field=? AND f.value'+op+'?)')
             values.extend([book,lane[7:],item['value']])
         else:
             raise ValueError('Unsupported legacy selection lane.')
@@ -79,17 +81,16 @@ def select(db, *, book=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics
     company name, sector and exchange, the metric pair and the rank.
     """
     spec=legacy_specification(rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
-    open_book=book is None
-    if open_book:
-        book,_=book_store.latest(db)
+    if book is None:
+        book=book_store.open_book(db)
     conditions,thresholds=_sql_conditions(spec,book)
     before=' WHERE '+conditions if spec['selection_order']=='filter_first' else ''
     after=' AND '+conditions if spec['selection_order']=='rank_first' else ''
     direction={'highest':'DESC','lowest':'ASC'}[spec['ranking']['direction']]
     sql=f"""WITH candidates AS (
-      SELECT {book_store.projection(open_book)},c.name,c.sector,c.exchange,m.yield_value AS metric_yield,m.multiple AS metric_multiple
-      FROM book_rows s JOIN research.companies c USING(symbol)
-      JOIN book_metrics m ON m.book=s.book AND m.pool=s.pool AND m.symbol=s.symbol AND m.metric=?
+      SELECT {book_store.columns(db,book)},c.name,c.sector,c.exchange,m.yield_value AS metric_yield,m.multiple AS metric_multiple
+      FROM {book_store.ROWS} s JOIN research.companies c USING(symbol)
+      JOIN {book_store.METRICS} m ON m.book=s.book AND m.pool=s.pool AND m.symbol=s.symbol AND m.metric=?
       WHERE s.book=? AND s.pool=?), ranked AS (
       SELECT s.*,ROW_NUMBER() OVER(ORDER BY s.metric_yield {direction},s.candidate_rank ASC,s.symbol ASC) AS rank
       FROM candidates s{before}) SELECT * FROM ranked s WHERE rank BETWEEN ? AND ?{after} ORDER BY rank"""
@@ -100,5 +101,5 @@ def select(db, *, book=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics
     return [dict(zip(fields,row)) for row in cursor]
 
 
-def latest(db, *, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
-    return select(db,rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
+def latest(db, **options):
+    return select(db, book=None, **options)

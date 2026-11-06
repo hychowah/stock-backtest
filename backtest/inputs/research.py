@@ -1,10 +1,17 @@
-"""Offline research database: companies, reports and typed facts.
+"""Offline research database: companies, reports, typed facts and the one research record.
 
 It holds no book: the book store of the daily cache (backtest/inputs/book_store.py)
 holds the latest and dated books, computed from these facts.
 
 Every preparation is a full build. It writes a temporary file and replaces the
 published database atomically; the previous database stays on any failure.
+
+The metadata table is the one research record: the schema version, the
+accepted raw-file signature (inputs) with each price file's stamps (prices),
+and the identity: version, latest date, the content identity of the fact-row
+code (code) and the content identity of the facts (content). Readers compare
+the stamps and the code (identity()). Both identities are content digests, so
+a rewrite with equal bytes keeps them.
 """
 from __future__ import annotations
 
@@ -24,14 +31,14 @@ from backtest.inputs import market, cache_assets
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
-from backtest.inputs import facts
+from backtest.inputs import book_store, facts
 from backtest.runtime import backtest_control
 from backtest.runtime import diagnostics
 from backtest.runtime import cache_access as cache_access
 from backtest.paths import ROOT, RAW
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 # The annual rows (statements, and the legacy values-only financial_inputs
 # JSON) and the 10-year Treasury yields; the typed facts are facts.SCHEMA.
 # The daily cache copies treasury10 for its kept-book check.
@@ -97,10 +104,10 @@ def signature():
     Every call discovers and inspects inputs afresh. Keys preserve lexical
     paths relative to ROOT; discovery and metadata failures retain their
     existing precedence. No inventory or derived prefix survives the call.
-    raw/download-coverage.json is not an input: no preparation reads it.
+    raw/download-coverage.json is not an input: no preparation reads it. Code
+    is not in the signature: identity() compares the fact-row code by content.
     """
-    paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
-    paths += [RAW/'px'] + calculation_sources()
+    paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']] + [RAW/'px']
     entries = [(path, path.stat()) for path in paths]
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
     result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}
@@ -128,18 +135,37 @@ def price_sources():
     return {p.name: [info.st_size,info.st_mtime_ns] for p,info in _metadata_entries(RAW/'px', '*.json')}
 
 
-def calculation_sources():
-    """Source files whose content computes prepared rows or books.
+def code_sources(role):
+    """The source files whose content forms one identity: the one rule of code roles.
 
-    The list names only that code: never the reference engine or the
-    development check (backtest/engines/reference), and never code that only
-    reads or selects stored rows. The research signature and the daily cache's
-    book identity bind these files, so an edit elsewhere neither rebuilds
-    research nor drops saved books.
+    Each identity binds only the files that hold its role's code, by content
+    (sha256), so a rewrite with equal bytes keeps it.
+    - 'facts', the research identity: the fact-row code that parses saved
+      files into research rows. research.prepare; facts.resolve, observe and
+      the store_* writers; books.statements; financial_inputs with its
+      parameter catalog; the parsing parts of cache_assets; market and rules.
+    - 'books', the book identity that the daily binding names: the code that
+      computes and stores books. books.py, metrics.py, rules.py,
+      facts.BookFacts and book_store (its schema, writer and readers).
+    A file that holds code of both roles is in both lists. Readers bind no
+    identity: fact_view (View and its recorder), schedules, book_batch,
+    calendar, portfolio_results, screening, scalar_execution, the CLI and
+    connection code (daily.py among them). An edit to a reader neither
+    rebuilds research nor drops a book. The reference engine and the
+    development check (backtest/engines/reference) are never bound.
     """
-    here = Path(__file__)
-    return [here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(cache_assets.__file__), Path(market.__file__),
-            Path(financial_inputs.__file__), Path(financial_inputs.parameters.__file__), Path(facts.__file__)]
+    if role == 'facts':
+        return [Path(__file__)] + [Path(module.__file__) for module in (
+            facts, books, rules, financial_inputs, financial_inputs.parameters, cache_assets, market)]
+    if role == 'books':
+        return [Path(module.__file__) for module in (books, metrics, rules, facts, book_store)]
+    raise ValueError('Unknown code role.')
+
+
+def code_identity(role):
+    """The content identity of one code role: the digest of its files' names and sha256s (code_sources)."""
+    digests = [[path.name, hashlib.sha256(path.read_bytes()).hexdigest()] for path in code_sources(role)]
+    return hashlib.sha256(json.dumps(digests, separators=(',', ':')).encode()).hexdigest()
 
 
 def _replace(source, destination):
@@ -152,51 +178,35 @@ def _replace(source, destination):
             time.sleep(cache_assets.PUBLISH_RETRY_DELAYS[attempt])
 
 
-def prepared_price_binding(path=DATABASE):
-    """Identify the price inventory accepted by committed research metadata.
+def identity(db, schema='main', *, prices=False):
+    """The identity of one research record, after the readers' freshness check.
 
-    Read no raw price files. Preparation owns inventory validation; ordinary
-    daily-cache checks bind to that validated prerequisite without rescanning it.
+    schema is 'main' on a research connection and 'research' on a daily
+    connection that attaches it. The record must have this schema version,
+    the accepted raw-file signature, the current fact-row code and, when
+    prices is set, each saved price file's current stamps. A stale record
+    raises ValueError.
     """
-    with closing(connect(path)) as db:
-        return _price_binding(db)
+    keys = ('version', 'inputs', 'identity') + (('prices',) if prices else ())
+    meta = {key: json.loads(value) for key, value in db.execute(
+        f'SELECT key,value FROM {schema}.metadata WHERE key IN ({",".join("?" * len(keys))})', keys)}
+    if meta.get('version') != SCHEMA_VERSION:
+        raise ValueError('Database version changed; run research.py prepare')
+    if (meta.get('inputs') != accepted_signature() or (prices and meta.get('prices') != price_sources())
+            or not isinstance(meta.get('identity'), dict) or meta['identity'].get('code') != code_identity('facts')):
+        raise ValueError('Cached inputs changed. Run: python3 scripts/research.py prepare')
+    return meta['identity']
 
 
-def prepared_bindings(path=DATABASE):
-    """Return the price and typed-facts bindings from one connection.
-
-    The caller compares signature() itself, so this connection skips it. The
-    facts binding is the metadata, including the content identity that
-    preparation recorded; the app is the only writer and holds the cache lock.
-    """
-    with closing(connect(path, check=False)) as db:
-        return _price_binding(db), facts.require(db)
-
-
-def _price_binding(db):
-    row=db.execute("SELECT value FROM metadata WHERE key='prices'").fetchone()
-    inventory=json.loads(row[0]) if row else None
-    if (not isinstance(inventory,dict) or any(
-            not isinstance(name,str) or Path(name).name!=name or not name.endswith('.json')
-            or not isinstance(stamp,list) or len(stamp)!=2
-            or any(type(value) is not int or value<0 for value in stamp)
-            for name,stamp in inventory.items())):
-        raise ValueError('Prepared price inventory is invalid. Run research.py prepare')
-    return hashlib.sha256(json.dumps(inventory,sort_keys=True,separators=(',',':')).encode('utf-8')).hexdigest()
-
-
-def connect(path=DATABASE, check=True, full_prices=False):
+def connect(path=DATABASE, full_prices=False):
+    """Open a read-only research connection whose record passes identity()."""
     path=Path(path)
     if not path.exists():
         raise ValueError('Prepared database missing. Run: python3 scripts/research.py prepare')
     db=sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)
     db.row_factory=sqlite3.Row
     try:
-        meta={r['key']:json.loads(r['value']) for r in db.execute("SELECT * FROM metadata WHERE key IN ('version','inputs','prices')")}
-        if meta.get('version') != SCHEMA_VERSION:
-            raise ValueError('Database version changed; run research.py prepare')
-        if check and (meta.get('inputs')!=accepted_signature() or (full_prices and meta.get('prices')!=price_sources())):
-            raise ValueError('Cached inputs changed. Run: python3 scripts/research.py prepare')
+        identity(db,prices=full_prices)
     except Exception:
         db.close()
         raise
@@ -232,7 +242,12 @@ def prepare(path=DATABASE, force=False):
             print(f'Database already current ({time.perf_counter()-started:.2f}s); no JSON prices parsed.')
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
-    universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
+    code=code_identity('facts')
+    content=(RAW/'universe.json').read_bytes()
+    # The facts' content identity: the code and the bytes of every saved file read.
+    raw=dict(universe=hashlib.sha256(content).hexdigest(),
+             metrics=hashlib.sha256((RAW/'metrics.jsonl').read_bytes()).hexdigest())
+    universe={r['symbol']:r for r in json.loads(content)}
     # Each saved file is parsed once, into its typed facts.
     market_facts=facts.shared(RAW,backtest_control.checkpoint)
     for name,endpoint in (('spy-div.json',facts.CALENDAR),('treasury.json',facts.TREASURY)):
@@ -254,7 +269,6 @@ def prepare(path=DATABASE, force=False):
     db.row_factory=sqlite3.Row
     try:
         db.executescript(SCHEMA+facts.SCHEMA)
-        units={}
         db.executemany('INSERT INTO treasury10 VALUES(?,?)',sorted(valid['year10'].items()))
         facts.store_companies(db,universe)
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
@@ -268,22 +282,23 @@ def prepare(path=DATABASE, force=False):
             facts.store_annual(db,symbol,resolved)
             if number%200==0 or number==len(broad):
                 print(f'Prepared {number}/{len(broad)} companies',flush=True)
-            # The facts identity binds each price file's bytes.
-            if symbol in cached:
-                units[symbol]=stock['source']['sha256']
             db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in resolved['values'].items()])
         diagnostics.lap('companies')
         diagnostics.note(companies=len(cached))
         facts.store_market(db,market_facts)
         diagnostics.lap('dated_facts')
-        scopes=[dict(mode='latest',pool=pool,context_date=str(latest_day),book=0) for pool in ('legacy','cached')]
-        # Rows follow from the raw signature and each price file's bytes.
-        facts.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,prices=units))
-        diagnostics.lap('facts_finish')
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources).items():
+        # fact_sources holds the digest of every price, annual, SPY and Treasury file read.
+        digest=hashlib.sha256()
+        for row in db.execute('SELECT symbol,endpoint,sha256,disposition FROM fact_sources ORDER BY symbol,endpoint'):
+            digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
+        raw['sources']=digest.hexdigest()
+        record=dict(version=SCHEMA_VERSION,latest_date=str(latest_day),code=code)
+        record['content']=hashlib.sha256(facts.encoded(dict(record,raw=raw)).encode()).hexdigest()
+        diagnostics.lap('identity')
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,identity=record).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
-        if inputs!=signature() or sources!=price_sources():
+        if inputs!=signature() or sources!=price_sources() or code!=code_identity('facts'):
             raise ValueError('Inputs changed during preparation; retry.')
         db.commit()
         diagnostics.lap('commit')
@@ -309,14 +324,13 @@ def main():
     if args.command=='prepare':
         prepare(args.database,args.force);return
     # The latest book lives in the book store of the daily cache, which binds this database.
-    from backtest.inputs import book_store, daily
+    from backtest.inputs import daily
     connect(args.database).close()
     with closing(daily.connect(daily.DATABASE,args.database)) as db:
-        book,asof=book_store.latest(db)
-        candidates=db.execute('SELECT candidates FROM books WHERE book=?',(book,)).fetchone()[0]
-        counts=dict(db.execute('SELECT pool,COUNT(*) FROM book_rows WHERE book=? GROUP BY pool',(book,)).fetchall())
+        book=book_store.open_book(db);latest=book_store.record(db,book)
+        counts={pool:sum(1 for _ in book_store.rows(db,book,pool)) for pool in ('legacy','cached')}
     print(f'Database: {args.database.stat().st_size/1e6:.1f} MB')
-    print(f"Latest session {asof}: {candidates} active names with eligible financials; "
+    print(f"Latest session {latest['entry']}: {latest['candidates']} active names with eligible financials; "
           f"{counts.get('cached',0)} valued with cached prices, {counts.get('legacy',0)} in the original candidate set.")
 
 

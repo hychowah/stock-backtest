@@ -35,17 +35,16 @@ class ExecutionTests(unittest.TestCase):
         fixture=Fixture(12)
         source=Path(self.folder.name)/'research.sqlite'
         with closing(sqlite3.connect(self.path)) as db:fixture.db.backup(db)
-        with closing(sqlite3.connect(source)) as db:fixture.source.backup(db)
+        with closing(sqlite3.connect(source)) as db:fixture.db.research.backup(db)
         fixture.close()
         self.capture=fixture.capture()
-        self.binding=dict(inputs=dict(fixture='2015-01-05'))
         self.opened=[];self.financial=False
         owner=self
         class Connection(sqlite3.Connection):
             def close(connection):
                 super().close();owner.opened.remove(connection)
         def connect(path,*,attach):
-            db=sqlite3.connect(path,factory=Connection);db.row_factory=sqlite3.Row;self.opened.append(db)
+            db=sqlite3.connect(path,factory=Connection,uri=True);db.row_factory=sqlite3.Row;self.opened.append(db)
             # The daily connection attaches research, as daily.connect does.
             if attach:daily.attach(db,source)
             return db
@@ -58,7 +57,6 @@ class ExecutionTests(unittest.TestCase):
         patch.object(daily,'connect',side_effect=lambda *args,**kwargs:connect(self.path,attach=True)).start()
         patch.object(research,'connect',side_effect=lambda *args,**kwargs:connect(source,attach=False)).start()
         patch.object(research,'DATABASE',source).start()
-        patch.object(daily,'fingerprint',return_value=self.binding).start()
         patch.object(original_calculations.Original,'_financial',side_effect=financial).start()
         self.calc=original_calculations.Original()
     def options(self,**changes):return dict(strategy=self.capture.to_dict(),start='2015-01-02',end='2015-01-05',months=12,**changes)

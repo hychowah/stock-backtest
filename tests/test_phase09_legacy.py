@@ -42,9 +42,9 @@ def replay():
             financial_rows = [tuple(row) for row in db.execute('SELECT * FROM financial_inputs ORDER BY symbol,fiscal')]
         daily.prepare(fixture.daily, fixture.path)
         with closing(daily.connect(fixture.daily, fixture.path)) as db:
-            filters = [('latest', pool, 0, symbol, field, value) for pool, symbol, field, value in db.execute(
-                'SELECT pool,symbol,field,value FROM book_filters WHERE book=? ORDER BY pool,symbol,field',
-                (book_store.latest(db)[0],))]
+            book = book_store.open_book(db)
+            filters = sorted(('latest', pool, 0, symbol, field, value) for pool in ('legacy', 'cached')
+                             for symbol, found in book_store.lanes(db, book, pool)[1].items() for field, value in found.items())
     finally:
         fixture.doCleanups()
     selection = test_selection_order.SelectionOrderTests('test_filter_first_default_and_rank_first_does_not_refill')

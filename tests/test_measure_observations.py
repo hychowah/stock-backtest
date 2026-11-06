@@ -1,4 +1,4 @@
-"""Prepared scope metadata, owner lanes from stored books and the dated owner policy."""
+"""Prepared scope membership, owner lanes from stored books and the dated owner policy."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -16,55 +16,19 @@ import test_annual_observations as annual
 from test_annual_observations import field, formulas, values, root
 
 
-def latest_scopes(day, pools=('cached', 'legacy')):
-    return [dict(mode='latest', pool=pool, context_date=day, book=0) for pool in pools]
-
-
 class PreparedMeasureTests(unittest.TestCase):
-    def facts_db(self):
-        db = sqlite3.connect(':memory:')
-        self.addCleanup(db.close)
-        db.executescript(facts.SCHEMA)
-        return db
-
-    def test_scope_identity_membership_and_empty_scope(self):
-        db = self.facts_db()
-        metadata = facts.finish(db, '2020-01-02', inputs='fixture', scopes=latest_scopes('2020-01-02'))
-        self.assertEqual(facts.require(db), metadata)
-        # The content identity follows the inputs and scopes, not the rows.
-        other = self.facts_db()
-        self.assertEqual(facts.finish(other, '2020-01-02', inputs='fixture', scopes=latest_scopes('2020-01-02'))['content'],
-                         metadata['content'])
-        changed = self.facts_db()
-        self.assertNotEqual(facts.finish(changed, '2020-01-02', inputs='changed', scopes=latest_scopes('2020-01-02'))['content'],
-                            metadata['content'])
+    def test_prepared_scope_membership(self):
         root = dict(mode='latest', pool='cached')
         self.assertTrue(bridge.prepared_scope(root, dict(id='a', root='a', date='2020-01-02')))
         self.assertFalse(bridge.prepared_scope(root, dict(id='b', root='a', date='2020-01-02')))
         # A historical root has no stored owner book, on any date.
         self.assertFalse(bridge.prepared_scope(dict(mode='historical', pool='cached'), dict(id='a', root='a', date='2020-01-02')))
         dated = dict(root, owner_scope=dict(kind='dated'))
-        prepared = dict(root, owner_scope=dict(kind='prepared', book=0))
+        # A prepared owner scope names its stored book by id.
+        prepared = dict(root, owner_scope=dict(kind='prepared', book=7))
         self.assertFalse(bridge.prepared_scope(dated, dict(id='a', root='a', date='2020-01-02')))
         self.assertTrue(bridge.prepared_scope(prepared, dict(id='a', root='a', date='2020-01-02')))
         self.assertFalse(bridge.prepared_scope(prepared, dict(id='b', root='a', date='2020-01-02')))
-        db.execute("UPDATE fact_metadata SET value='[]' WHERE key='scopes'")
-        with self.assertRaises(ValueError):
-            facts.require(db)
-
-    def test_projection_rejects_missing_moved_or_duplicate_latest_scope(self):
-        for scopes in (latest_scopes('2020-01-02', ('cached',)), latest_scopes('2019-01-02'),
-                       latest_scopes('2020-01-02') + latest_scopes('2020-01-02', ('cached',)),
-                       latest_scopes('2020-01-02') + [dict(mode='historical', pool='cached', context_date='2019-01-02', book=True)]):
-            with self.subTest(scopes=scopes), self.assertRaises(ValueError):
-                facts.finish(self.facts_db(), '2020-01-02', inputs='fixture', scopes=scopes)
-        db = self.facts_db()
-        metadata = facts.finish(db, '2020-01-02', inputs='fixture', scopes=latest_scopes('2020-01-02'))
-        self.assertEqual({item['pool'] for item in metadata['scopes']}, {'cached', 'legacy'})
-        scopes = [item for item in metadata['scopes'] if item['pool'] == 'cached']
-        db.execute("UPDATE fact_metadata SET value=? WHERE key='scopes'", (facts.encoded(scopes),))
-        with self.assertRaises(ValueError):
-            facts.require(db)
 
     def test_stored_components_and_missing_lanes(self):
         context = dict(reason=None, evidence=dict(snapshot=dict(market_cap=500.),
@@ -276,13 +240,10 @@ class PreparedTransportTests(unittest.TestCase):
 
     def test_prepared_owner_lanes_are_the_stored_book_rows(self):
         with self.prepared().view() as view:
-            self.assertEqual({scope['mode'] for scope in view.projection['scopes']}, {'latest'})
             for mode, day in (('latest', '2015-10-20'),):
                 for pool in ('legacy', 'cached'):
-                    scope = next(scope for scope in view.projection['scopes'] if scope['mode'] == mode
-                                 and scope['pool'] == pool and scope['context_date'] == day)
                     with closing(daily.connect()) as cache:
-                        key = (book_store.latest(cache)[0], pool, 'TEST')
+                        key = (book_store.open_book(cache), pool, 'TEST')
                         pairs = {row[0]: [row[1], row[2]] for row in cache.execute(
                             'SELECT metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND symbol=?', key)}
                         stored = {row[0]: row[1] for row in cache.execute(

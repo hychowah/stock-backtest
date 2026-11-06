@@ -4,7 +4,7 @@
 ordinary research and daily preparation on it. It then patches
 `research.DATABASE`, `research.connect`, `daily.connect` and
 `cache_access.workspace`. Ordinary owners, such as `Original` and
-`facts.View`, then read only these files and take only the private
+`fact_view.View`, then read only these files and take only the private
 `WorkspaceAccess` in `owner`. Nothing is downloaded and no project data is read.
 
 The default cache has one company, TEST, with sessions through 2015-10-20 (the
@@ -16,15 +16,15 @@ first, last)` returns one such callable for a larger deterministic history.
 Use the object as a context manager. `close()` undoes every patch and removes
 the files. Attributes: `root` (private folder), `source` (research.sqlite),
 `path` (daily.sqlite), `owner`, `context` (ExitStack) and `fixture` (the
-ProjectionTests instance that owns the folder). `view()` borrows a `facts.View` of the daily
-and research databases.
+ProjectionTests instance that owns the folder). `view()` borrows a `fact_view.View` of the
+daily connection, which attaches the research database.
 """
 from contextlib import ExitStack, closing, contextmanager
 from datetime import date, timedelta
 import json
 from unittest.mock import patch
 
-from backtest.inputs import daily, facts, financial_inputs, research
+from backtest.inputs import daily, fact_view, financial_inputs, research
 from backtest.runtime import cache_access
 import test_prepared_facts
 
@@ -55,9 +55,8 @@ class PreparedInputs:
 
     @contextmanager
     def view(self):
-        """Yield a borrowed view of the prepared daily and research databases; close them on exit."""
-        with closing(daily.connect()) as db, closing(research.connect()) as source, \
-                facts.View(db, source, lambda: None, lambda: None) as view:
+        """Yield a borrowed view of the prepared daily connection; close it on exit."""
+        with closing(daily.connect()) as db, fact_view.View(db, lambda: None, lambda: None) as view:
             yield view
 
     def close(self):

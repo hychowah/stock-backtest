@@ -339,14 +339,14 @@ class TransportTests(unittest.TestCase):
         inputs=self.prepared()
         view=self.view(inputs)
         with closing(sqlite3.connect(inputs.source)) as db:
-            for version in (facts.VERSION-1,facts.VERSION+1):
-                db.execute('UPDATE fact_metadata SET value=? WHERE key=?',(json.dumps(version),'version'))
-                with self.assertRaisesRegex(ValueError,'stale'):facts.require(db)
-            db.execute('UPDATE fact_metadata SET value=? WHERE key=?',(json.dumps(facts.VERSION),'version'))
-            facts.require(db)
-            db.execute('UPDATE fact_metadata SET value=? WHERE key=?',(json.dumps('f'*64),'content'))
+            for version in (research.SCHEMA_VERSION-1,research.SCHEMA_VERSION+1):
+                db.execute('UPDATE metadata SET value=? WHERE key=?',(json.dumps(version),'version'))
+                with self.assertRaisesRegex(ValueError,'version changed'):research.identity(db)
+            db.execute('UPDATE metadata SET value=? WHERE key=?',(json.dumps(research.SCHEMA_VERSION),'version'))
+            identity=research.identity(db)
+            db.execute('UPDATE metadata SET value=? WHERE key=?',(json.dumps(dict(identity,content='f'*64)),'identity'))
             db.commit()
-            facts.require(db)
+            research.identity(db)
         # An open view is bound to the content identity it admitted.
         with self.assertRaisesRegex(ValueError,'stale'):view.validate()
 
