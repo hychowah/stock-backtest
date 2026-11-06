@@ -11,18 +11,18 @@ import test_strategy_requests as requests
 import test_variable_definitions as language
 from backtest.application import strategy_requests
 from backtest.variables import library
-from backtest.inputs import facts
+from backtest.inputs import book_store
 from backtest.runtime import backtest_control
 from backtest.application.original_calculations import Original
 from prepared_inputs_fixture import PreparedInputs, history
 
 class CoverageTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=Fixture(4);self.addCleanup(self.fixture.db.close)
+        self.fixture=Fixture(4);self.addCleanup(self.fixture.close)
     def test_latest_pools_and_filters_do_not_shrink_population(self):
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
-                listing=coverage.scopes(self.fixture.db,view)
+                listing=coverage.scopes(view)
                 scope=next(item for item in listing['scopes'] if item['mode']=='latest' and item['pool']==pool)
                 scope=dict(scope,generation=listing['generation'])
                 result=coverage.inspect(self.fixture.capture(pool=pool,first=2,last=2),scope,self.fixture.db,view)
@@ -30,18 +30,18 @@ class CoverageTests(unittest.TestCase):
                 self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],4)
                 with self.assertRaises(ValueError):coverage.inspect(self.fixture.capture(pool=pool),dict(scope,generation='bad'),self.fixture.db,view)
     def test_empty_and_orphan_scope(self):
-        self.fixture.db.execute("DELETE FROM latest_snapshots WHERE pool='cached'")
+        self.fixture.db.execute("DELETE FROM book_rows WHERE book=2 AND pool='cached'")
         with self.fixture.view() as view:
-            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             result=coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual(result['population'],0);self.assertEqual(result['outputs'][0]['valid'],0)
-        self.fixture.db.execute("DELETE FROM companies WHERE symbol='A0000'")
+        self.fixture.db.execute("DELETE FROM research.companies WHERE symbol='A0000'")
         with self.fixture.view() as view:
-            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='legacy')
+            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='legacy')
             with self.assertRaises(definitions.FormulaError):coverage.inspect(self.fixture.capture(pool='legacy'),dict(scope,generation=listing['generation']),self.fixture.db,view)
     def test_metadata_bound_before_observation(self):
         with self.fixture.view() as view:
-            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             bound=scalar_execution._size(view.projection)-1
             with patch.object(scalar_execution,'MAX_METADATA_BYTES',bound),patch.object(coverage.columns.Formulas,'evaluate',side_effect=AssertionError('observed')):
                 with self.assertRaises(definitions.FormulaError) as failure:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
@@ -54,7 +54,7 @@ class CoverageTests(unittest.TestCase):
         entries=definitions.authored_bundle(library.VariableCapture(definitions.canonical(wire['variables'])).program)['definitions']
         repeated=strategy_requests.capture_strategy(intent,submitted=entries)
         with self.fixture.view() as view:
-            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             result=coverage.inspect(repeated,dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual(len(result['outputs']),1)
             self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],result['population'])
@@ -62,7 +62,7 @@ class CoverageTests(unittest.TestCase):
     def test_only_latest_scopes_and_cancellation(self):
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
-                listing=coverage.scopes(self.fixture.db,view)
+                listing=coverage.scopes(view)
                 self.assertEqual({x['mode'] for x in listing['scopes']},{'latest'})
                 scope=dict(next(x for x in listing['scopes'] if x['pool']==pool),generation=listing['generation'])
                 with self.assertRaises(definitions.FormulaError):
@@ -71,10 +71,12 @@ class CoverageTests(unittest.TestCase):
                 with self.assertRaises(backtest_control.Cancelled):coverage.inspect(self.fixture.capture(pool=pool),scope,self.fixture.db,view,checkpoint=cancel)
     def test_observation_leaf_reads_are_narrow_and_read_only(self):
         with self.fixture.view() as view:
-            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            statements=[];self.fixture.db.set_trace_callback(statements.append)
+            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            statements=[]
+            for db in (self.fixture.db,self.fixture.source):db.set_trace_callback(statements.append)
             try:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
-            finally:self.fixture.db.set_trace_callback(None)
+            finally:
+                for db in (self.fixture.db,self.fixture.source):db.set_trace_callback(None)
             self.assertFalse(any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','REPLACE','CREATE','DROP')) for s in statements))
             leaves=[s for s in statements if 'FROM annual_facts' in s]
             self.assertTrue(leaves,statements)
@@ -87,20 +89,21 @@ class CoverageTests(unittest.TestCase):
         intent=requests.intent(source1,[requests.condition(source2,'0','number')]);intent['pool']='cached'
         capture=strategy_requests.capture_strategy(intent,submitted=[dependency,first,second])
         with self.fixture.view() as view:
-            listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
+            listing=coverage.scopes(view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             result=coverage.inspect(capture,dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual({item['variable_id'] for item in result['outputs']},{'local:first','local:second'})
             self.assertTrue(all(item['valid']+item['unavailable']==4 for item in result['outputs']))
     def test_prepared_owner_missing_lanes_and_equal_date_derived_policy(self):
-        finish=facts.finish
-        def adversarial(db,*args,**kwargs):
-            # Stored owner lanes: Q0000 keeps its book rows but loses every
-            # metric and filter; Q0001 loses only ev_ebitda.
-            for table in ('screening_metrics','filter_values'):
-                db.execute('DELETE FROM '+table+" WHERE symbol='Q0000'")
-            db.execute("DELETE FROM screening_metrics WHERE symbol='Q0001' AND metric='ev_ebitda'")
-            return finish(db,*args,**kwargs)
-        with patch.object(facts,'finish',side_effect=adversarial):
+        store=book_store.store
+        def adversarial(db,book):
+            # Stored owner lanes of the latest book: Q0000 keeps its book rows
+            # but loses every metric and filter; Q0001 loses only ev_ebitda.
+            stored=store(db,book)
+            for table in ('book_metrics','book_filters'):
+                db.execute('DELETE FROM '+table+" WHERE book=? AND symbol='Q0000'",(stored,))
+            db.execute("DELETE FROM book_metrics WHERE book=? AND symbol='Q0001' AND metric='ev_ebitda'",(stored,))
+            return stored
+        with patch.object(book_store,'store',side_effect=adversarial):
             with PreparedInputs(configure=history(4,2015,2016)):
                 owner=Original()
                 listing=owner.coverage()

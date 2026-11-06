@@ -88,7 +88,7 @@ class InventoryExecution(unittest.TestCase):
         expected = dict(gross_profit=60., gross_margin=.6, operating_margin=.2, net_margin=.12,
             ebit=17., ebitda=54e6, free_cash_flow=14., operating_cash_flow_plus_capex=11.,
             total_debt=70., net_debt=60., working_capital=50., tangible_book_equity=75.,
-            market_cap=200., enterprise_value=190e6, basic_eps=2., diluted_eps=1.5,
+            market_cap=200., enterprise_value=180e6, basic_eps=2., diluted_eps=1.5,
             price_sales=2., debt_assets=.35, pe=8., pb=2., fcf_yield=.07, price_fcf=9.,
             peg=1.5, roe=.1, current_ratio=2., interest_coverage=3., debt_equity=.7,
             return_1y=.15, return_3y=.25, ev_ebitda=4., ev_ebitda_3y=5.,

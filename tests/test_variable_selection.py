@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
-import json
 import unittest
 from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d
@@ -36,7 +35,7 @@ class FormulaThresholdTests(unittest.TestCase):
         self.assertEqual(normalized['submitted_threshold'],dict(value='+8e0',unit='percent'))
         self.assertEqual(normalized['threshold'],dict(value='0.08',unit='scalar'))
         self.assertEqual((normalized['comparison_value'],normalized['storage_comparison_value']),(.08,.08))
-        fixture=Fixture(4);self.addCleanup(fixture.db.close)
+        fixture=Fixture(4);self.addCleanup(fixture.close)
         stocks,_=fixture.select(captured)
         self.assertEqual(len(stocks),4)
         # Conditions are strict: a formula value equal to the threshold fails.
@@ -79,8 +78,8 @@ class FormulaThresholdTests(unittest.TestCase):
 
 class FormulaRootAdmissionTests(unittest.TestCase):
     def test_admission_denials_survive_constant_only_selection(self):
-        fixture=Fixture(4);self.addCleanup(fixture.db.close)
-        fixture.db.execute("UPDATE latest_admission SET admitted=0,reason='NOT_LISTED' WHERE symbol='A0000'")
+        fixture=Fixture(4);self.addCleanup(fixture.close)
+        fixture.db.execute("UPDATE research.companies SET listed=0 WHERE symbol='A0000'");fixture.db.commit()
         constant=fixture.capture(language.constant('7'))
         stocks,_=fixture.select(constant,latest=True)
         self.assertEqual([row['symbol'] for row in stocks],['A0001','A0002','A0003'])
@@ -90,9 +89,9 @@ class FormulaRootAdmissionTests(unittest.TestCase):
         self.assertEqual(block['observations']['roots'][0]['reason'],'NOT_LISTED')
 
     def test_complete_population_and_legacy_buffer_cannot_expand(self):
-        fixture=Fixture();self.addCleanup(fixture.db.close)
-        fixture.db.execute("INSERT INTO metadata VALUES('cached_symbols',?)",
-                           (json.dumps([f'A{i:04d}' for i in range(300) if i!=5]),))
+        fixture=Fixture();self.addCleanup(fixture.close)
+        # A0005 has no saved price file.
+        fixture.db.execute("DELETE FROM research.fact_sources WHERE symbol='A0005'");fixture.db.commit()
         roots=[dict(symbol=symbol,pool=pool,mode='historical',date='2015-01-02') for symbol,pool in
                [('A0249','legacy'),('A0250','legacy'),('A0005','legacy'),('A0250','cached')]]
         constant=fixture.capture(language.constant('5'),pool='legacy')

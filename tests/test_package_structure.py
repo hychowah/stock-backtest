@@ -35,13 +35,12 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(submitted,original)
         self.assertNotIn('db',inspect.signature(screening.validate_selection).parameters)
 
-    def test_preparation_catalog_rejects_before_first_database_operation(self):
-        from backtest.inputs import research as research
-        class NoDatabase:
-            def execute(self,*args):raise AssertionError('Catalog validation must precede SQL')
-        with patch.dict(metrics.METRICS,{'unsupported':dict(label='Unsupported')}):
+    def test_metric_catalog_rejects_before_any_calculation(self):
+        observation=dict(fiscal='2014-01-01',enterprise_value=1.,ev_ebitda=1.,ebitda_yield=1.)
+        with patch.dict(metrics.METRICS,{'unsupported':dict(label='Unsupported')}),\
+                patch.dict(metrics.CALCULATORS,{name:(lambda *args:self.fail('calculated')) for name in metrics.CALCULATORS}):
             with self.assertRaisesRegex(ValueError,'Every catalog'):
-                research.prepare_metrics(NoDatabase())
+                metrics.evaluate(observation,[])
 
     def test_private_source_fixture_contains_nested_financial_package(self):
         from source_service_fixture import FictionalWorkspace

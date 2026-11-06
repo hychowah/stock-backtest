@@ -22,9 +22,11 @@ from unittest.mock import patch
 from datetime import date
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from backtest.inputs import daily
+from backtest.inputs import daily, facts
 from backtest.inputs import research as r
+from backtest.financial import books
 from backtest.runtime import cache_access, diagnostics
+import book_store_fixture as store
 
 
 class PreparedPriceBindingTests(unittest.TestCase):
@@ -59,96 +61,108 @@ class PreparedPriceBindingTests(unittest.TestCase):
                 with self.assertRaises(sqlite3.ProgrammingError):db.execute('SELECT 1')
 
 
-def dated(db,first,last,**options):
-    """Select dated book rows of period ids first through last."""
-    return screening.select(db,period=(first,last),**options)
+def before(prices, day, slack):
+    """The last (day, price) on or before day within slack days, or None."""
+    found = [row for row in prices if row[0] <= day]
+    return found[-1] if found and (day - found[-1][0]).days <= slack else None
 
 
 class ResearchTests(unittest.TestCase):
     def setUp(self):
-        # Research latest rows and dated book rows share one selector.
-        self.db=sqlite3.connect(':memory:')
-        self.db.row_factory=sqlite3.Row
-        self.db.executescript(r.SCHEMA+daily.DATED_SCHEMA)
+        # Latest and dated books share one selector over the book store.
+        self.db=store.connection()
+        self.books={}
+        for i in range(1,4):
+            store.company(self.db,f'S{i}',sector='Energy' if i==1 else 'Technology')
         for year in [2015,2016]:
-            self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,f'{year}-01-02',f'{year+1}-01-02',.1,.02,3,3))
+            self.books[year]=store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=3)
             for i in range(1,4):
                 symbol=f'S{i}'
-                self.db.execute('INSERT OR IGNORE INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy' if i==1 else 'Technology'))
                 for pool in ['legacy','cached']:
                     # EBITDA/EV ranking intentionally disagrees with subsequent returns.
-                    self.db.execute('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',(pool,year,symbol,i,'2014-01-01',f'{year}-01-02',f'{year+1}-01-02',i*100e6,200e6,40e6,.5/i,2*i,.5/i-.02,(-.9 if i==1 else i*.1),'Scheduled exit'))
-                    # A dated book stores its own ranking pair (engines/original/schedules.py).
-                    self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('historical',pool,year,symbol,'ev_ebitda',2*i,.5/i))
+                    store.row(self.db,self.books[year],pool,symbol,candidate_rank=i,fiscal='2014-01-01',known='2014-03-31',
+                              entry=f'{year}-01-02',price=10.,exit=f'{year+1}-01-02',market_cap=i*100e6,enterprise_value=200e6,
+                              ebitda=40e6,ebitda_yield=.5/i,ev_ebitda=2*i,spread=.5/i-.02,
+                              return_value=(-.9 if i==1 else i*.1),status='Scheduled exit')
+                    # A dated book stores its own ranking pair (books.book).
+                    store.metric(self.db,self.books[year],pool,symbol,'ev_ebitda',2*i,.5/i)
 
-    def latest_rows(self):
+    def dated(self,years,**options):
+        """Selected rows of the dated books of these years, book by book."""
+        return [row for year in years for row in screening.select(self.db,book=self.books[year],**options)]
+
+    def latest_rows(self,pool='legacy',ranks=True):
+        """A latest book of three companies whose ranking pairs come from metrics.evaluate."""
+        latest=store.book(self.db,'2015-01-02',None,candidates=3)
         for i in range(1,4):
-            self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',('legacy',f'S{i}',i,'2014-01-01','2014-04-01','2015-01-02',10.,i*100e6,200e6,.5/i,2*i,.5/i-.02))
-        r.prepare_metrics(self.db)
+            row=dict(candidate_rank=i if ranks else None,fiscal='2014-01-01',known='2014-04-01',entry='2015-01-02',price=10.,
+                     market_cap=i*100e6,enterprise_value=200e6,ebitda=.5/i*200e6,ebitda_yield=.5/i,ev_ebitda=2*i,spread=.5/i-.02)
+            store.row(self.db,latest,pool,f'S{i}',**row)
+            history=[dict(row) for row in self.db.execute('SELECT * FROM research.statements WHERE symbol=? ORDER BY fiscal',(f'S{i}',))]
+            for name,(multiple,value) in r.metrics.evaluate(dict(row,symbol=f'S{i}'),history).items():
+                store.metric(self.db,latest,pool,f'S{i}',name,multiple,value)
+        return latest
 
     def test_shared_selection_validation(self):
-        for select in (lambda db,**options:dated(db,2015,2016,**options), screening.latest):
+        for select in (lambda db,**options:self.dated([2015,2016],**options), screening.latest):
             for options in ({'rank_to':1.5}, {'rank_to':5001}, {'min_yield':float('nan')}, {'min_cap':1e9,'max_cap':100}):
                 with self.subTest(options=options), self.assertRaises(ValueError):
                     select(self.db,**options)
 
     def test_ten_year_treasury_asof_preserves_zero_negative_and_missing(self):
-        self.db.executemany('INSERT INTO treasury10 VALUES(?,?)',[
-            ('2015-01-02',0),('2015-01-05',-.1),('2015-01-06',4)])
-        self.assertIsNone(r.ten_year_yield(self.db,date(2015,1,1)))
-        self.assertEqual(r.ten_year_yield(self.db,date(2015,1,2)),0)
-        self.assertEqual(r.ten_year_yield(self.db,date(2015,1,4)),0)
-        self.assertEqual(r.ten_year_yield(self.db,date(2015,1,5)),-.1)
+        self.db.executemany('INSERT INTO research.market_days VALUES(?,?,?,?,?,?)',[
+            ('2015-01-02',None,1,None,0,None),('2015-01-05',None,1,None,-.1,None),('2015-01-06',None,1,None,4,None),
+            ('2015-01-07',None,1,None,None,'MISSING_INPUT')])
+        ten_year=lambda day:facts.BookFacts(self.db,'research').ten_year(day)
+        self.assertIsNone(ten_year(date(2015,1,1)))
+        self.assertEqual(ten_year(date(2015,1,2)),0)
+        self.assertEqual(ten_year(date(2015,1,4)),0)
+        self.assertEqual(ten_year(date(2015,1,5)),-.1)
+        self.assertEqual(ten_year(date(2015,1,7)),4)
 
     def test_three_year_metric_and_missing_history(self):
         rows=[dict(fiscal=f'{y}-12-31',known=f'{y+1}-03-31',enterprise_value=999,ebitda=v) for y,v in [(2011,3),(2012,6),(2013,12),(2014,999)]]
         self.assertEqual(r.metrics.annual_average(rows,'2013-12-31',3),7)
         self.assertIsNone(r.metrics.annual_average(rows[1:],'2013-12-31',3))
         # The alternate metric must drive both ranking and filter thresholds.
-        self.db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)', [('historical','legacy',2015,'S1','ev_ebitda_3y',20,.05),('historical','legacy',2015,'S2','ev_ebitda_3y',3,.3333333333333333)])
-        selected=dated(self.db,2015,2015,metric='ev_ebitda_3y',max_multiple=5)
+        store.metric(self.db,self.books[2015],'legacy','S1','ev_ebitda_3y',20,.05)
+        store.metric(self.db,self.books[2015],'legacy','S2','ev_ebitda_3y',3,.3333333333333333)
+        selected=self.dated([2015],metric='ev_ebitda_3y',max_multiple=5)
         self.assertEqual([row['symbol'] for row in selected],['S2'])
         self.assertEqual((selected[0]['metric_multiple'],selected[0]['metric_yield']),(3,1/3))
         with self.assertRaises(ValueError):
             screening.latest(self.db,metric='unknown')
 
-    def test_preparation_owns_calculations_and_exact_default_values(self):
+    def test_book_ranking_pairs_come_from_the_one_metric_calculator(self):
         for year,ebitda in [(2012,10e6),(2013,20e6),(2014,30e6)]:
-            self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('S1',f'{year}-01-01',f'{year}-04-01',100e6,200e6,ebitda,.1))
+            self.db.execute('INSERT INTO research.statements VALUES(?,?,?,?,?,?,?)',('S1',f'{year}-01-01',f'{year}-04-01',100e6,200e6,ebitda,.1))
         self.latest_rows()
         row=screening.latest(self.db,metric='ev_ebitda_3y')[0]
         self.assertEqual(row['metric_multiple'],10)
         self.assertEqual(row['metric_yield'],.1)
         # Same history, different screening-date EV must produce a different value.
-        # Preparation fills an empty table, so each rerun here empties it first.
-        self.db.execute("UPDATE latest_snapshots SET enterprise_value=400e6")
-        self.db.execute('DELETE FROM screening_metrics')
-        r.prepare_metrics(self.db)
-        self.assertEqual(screening.latest(self.db,metric='ev_ebitda_3y')[0]['metric_multiple'],20)
+        history=[dict(row) for row in self.db.execute("SELECT * FROM research.statements WHERE symbol='S1' ORDER BY fiscal")]
+        observation=dict(symbol='S1',fiscal='2014-01-01',enterprise_value=400e6,ev_ebitda=4,ebitda_yield=.25)
+        self.assertEqual(r.metrics.evaluate(observation,history)['ev_ebitda_3y'][0],20)
         for row in screening.latest(self.db):
             self.assertEqual(row['metric_multiple'],row['ev_ebitda'])
             self.assertEqual(row['metric_yield'],row['ebitda_yield'])
         # A different formula needs only registration, without selector changes.
         with patch.dict(r.metrics.METRICS,{'test_signal':dict(label='Test signal')}), patch.dict(r.metrics.CALCULATORS,{'test_signal':lambda observation,history:(2.,.5)}):
-            self.db.execute('DELETE FROM screening_metrics')
-            r.prepare_metrics(self.db)
-            self.assertEqual(len(screening.latest(self.db,metric='test_signal')),3)
+            self.assertEqual(r.metrics.evaluate(observation,history)['test_signal'],(2.,.5))
 
     def test_combined_thresholds_before_ranking_and_missing_values(self):
-        self.db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',[
-            ('historical','legacy',2015,'S1','return_1y',-10),
-            ('historical','legacy',2015,'S2','return_1y',20),
-            ('historical','legacy',2015,'S2','ev_ebitda',4),
-            ('historical','legacy',2015,'S3','return_1y',30)])
+        for symbol,field,number in [('S1','return_1y',-10),('S2','return_1y',20),('S2','ev_ebitda',4),('S3','return_1y',30)]:
+            store.value(self.db,self.books[2015],'legacy',symbol,field,number)
         conditions=[dict(field='return_1y',op='gt',value=0),dict(field='return_1y',op='lt',value=30),dict(field='ev_ebitda',op='lt',value=5)]
-        rows=dated(self.db,2015,2015,rank_to=1,filters=conditions)
+        rows=self.dated([2015],rank_to=1,filters=conditions)
         self.assertEqual([(row['symbol'],row['rank']) for row in rows],[('S2',1)])
         for conditions in ([dict(field='unknown_ratio',op='lt',value=15)],[dict(field='return_1y',op='gt',value=float('nan'))],[dict(field='return_1y',op='gte',value=0)],{}):
             with self.assertRaises(ValueError):screening.latest(self.db,filters=conditions)
 
     def test_trailing_returns_use_only_past_prices_and_require_history(self):
         prices=[(date(2017,2,28),50),(date(2019,2,28),80),(date(2020,2,28),100),(date(2020,3,2),1000)]
-        lookup=lambda day,forward,slack:r.before(prices,day,slack)
+        lookup=lambda day,forward,slack:before(prices,day,slack)
         observation=dict(market_cap=100e6,enterprise_value=200e6,ebitda_yield=.1)
         values=r.metrics.filter_values(observation,{},date(2020,2,29),lookup)
         self.assertEqual(values['return_1y'],25)
@@ -162,18 +176,22 @@ class ResearchTests(unittest.TestCase):
         self.db.close()
 
     def test_rank_not_future_return_and_filter_before_ranking(self):
-        rows=dated(self.db,2015,2015,rank_from=1,rank_to=2)
+        rows=self.dated([2015],rank_from=1,rank_to=2)
         self.assertEqual([x['symbol'] for x in rows],['S1','S2'])
         self.assertAlmostEqual(sum(x['return_value'] for x in rows)/len(rows),-.35)
-        rows=dated(self.db,2015,2015,min_cap=150e6,rank_to=1)
+        # A dated row keeps the old snapshot shape: no known date, entry price or book id.
+        self.assertEqual(list(rows[0]),['pool','symbol','candidate_rank','fiscal','entry','exit','market_cap','enterprise_value',
+            'ebitda','ebitda_yield','ev_ebitda','spread','return_value','status','name','sector','exchange','metric_yield',
+            'metric_multiple','rank'])
+        rows=self.dated([2015],min_cap=150e6,rank_to=1)
         self.assertEqual([x['symbol'] for x in rows],['S2'])
-        self.assertEqual(dated(self.db,2015,2016,sector='Unknown'),[])
-        self.assertEqual({x['symbol'] for x in dated(self.db,2015,2016,sector='Energy')},{'S1'})
+        self.assertEqual(self.dated([2015,2016],sector='Unknown'),[])
+        self.assertEqual({x['symbol'] for x in self.dated([2015,2016],sector='Energy')},{'S1'})
 
     def test_period_pool_ratio_and_rank_bounds(self):
-        self.assertEqual(len(dated(self.db,2015,2015,pool='cached',rank_from=2,rank_to=3)),2)
-        self.assertEqual({x['symbol'] for x in dated(self.db,2015,2016,max_multiple=2)}, {'S1'})
-        with self.assertRaises(ValueError):dated(self.db,2015,2016,rank_from=3,rank_to=1)
+        self.assertEqual(len(self.dated([2015],pool='cached',rank_from=2,rank_to=3)),2)
+        self.assertEqual({x['symbol'] for x in self.dated([2015,2016],max_multiple=2)}, {'S1'})
+        with self.assertRaises(ValueError):self.dated([2015,2016],rank_from=3,rank_to=1)
 
     def test_statement_availability_and_max_age(self):
         statement=dict(fiscal=date(2014,12,31),known=date(2015,3,31))
@@ -184,39 +202,41 @@ class ResearchTests(unittest.TestCase):
     def test_early_stop_bankruptcy_and_valuation(self):
         statement={'fiscal':date(2014,6,30),'known':date(2014,9,28),'market_cap':100e6,'enterprise':150e6,'yield':.2}
         prices=[(date(2014,6,30),10.),(date(2015,1,2),20.),(date(2015,6,1),5.)]
-        lookup=lambda day,forward,slack:(r.after if forward else r.before)(prices,day,slack)
-        result=r.books.snapshot(statement,date(2015,1,2),date(2016,1,4),lookup,False)
-        self.assertEqual(result[3],200e6)
-        self.assertEqual(result[4],250e6)
-        self.assertAlmostEqual(result[6],.12)
-        self.assertEqual(result[-2],-.75)
-        self.assertEqual(result[-1],'Last available price')
-        self.assertEqual(r.books.snapshot(statement,date(2015,1,2),date(2016,1,4),lookup,True)[-2],-1.)
-        self.assertIsNone(r.books.snapshot(statement,date(2015,2,2),date(2016,1,4),lookup,False))
+        def lookup(day,forward,slack):
+            if not forward:return before(prices,day,slack)
+            found=[row for row in prices if row[0]>=day]
+            return found[0] if found and (found[0][0]-day).days<=slack else None
+        reason,(fiscal_px,start,cap,ev,ebitda)=books.admit(statement,date(2015,1,2),lookup,books.ENTRY_SLACK)
+        self.assertEqual((reason,cap,ev),(None,200e6,250e6))
+        self.assertAlmostEqual(books.ebitda_yield_and_multiple(ebitda,ev)[0],.12)
+        reason,(end,ret,status)=books.close(start,date(2016,1,4),lookup,False)
+        self.assertEqual((reason,ret,status),(None,-.75,'Last available price'))
+        self.assertEqual(books.close(start,date(2016,1,4),lookup,True)[1][1:],(-1.,'Bankruptcy'))
+        self.assertEqual(books.admit(statement,date(2015,2,2),lookup,books.ENTRY_SLACK),('MISSING_PRICE',None))
 
     def test_latest_uses_exact_date_and_available_reports(self):
         day=date(2026,10,20)
         statement=dict(fiscal=date(2025,12,31),known=date(2026,3,31),market_cap=100e6,enterprise=150e6)
         statement['yield']=.2
         prices=[(date(2025,12,31),10.),(date(2026,10,19),20.),(date(2026,10,21),100.)]
-        self.assertIsNone(r.latest_snapshot(statement,day,prices))
+        # The open book values each company at the exact session: no slack.
+        exact=lambda day,forward,slack:next((row for row in prices if row[0]==day),None) if forward else before(prices,day,slack)
+        self.assertEqual(books.admit(statement,day,exact,0),('MISSING_PRICE',None))
         prices=sorted(prices+[(day,30.)])
-        row=r.latest_snapshot(statement,day,prices)
-        self.assertEqual(row[2],'2026-10-20')
-        self.assertEqual(row[3],30.)
-        self.assertEqual(row[4],300e6)
-        self.assertEqual(row[5],350e6)
-        self.assertIsNone(r.latest_snapshot(dict(statement,known=day),day,prices))
-        self.assertIsNone(r.latest_snapshot(dict(statement,fiscal=date(2023,1,1),known=date(2023,4,1)),day,prices))
+        reason,(fiscal_px,entry,cap,ev,ebitda)=books.admit(statement,day,exact,0)
+        self.assertEqual((reason,entry,cap,ev),(None,(day,30.),300e6,350e6))
+        self.assertIsNone(rules.latest_statement([dict(statement,known=day)],day))
+        self.assertIsNone(rules.latest_statement([dict(statement,fiscal=date(2023,1,1),known=date(2023,4,1))],day))
 
     def test_latest_filters_before_ranking_without_future_returns(self):
-        for i in range(1,4):
-            self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',('cached',f'S{i}',None,'2025-12-31','2026-03-31','2026-10-20',10.,i*100e6,200e6,.5/i,2*i,.5/i-.02))
-        r.prepare_metrics(self.db)
+        self.latest_rows('cached',ranks=False)
         rows=screening.latest(self.db,pool='cached',min_cap=150e6,rank_to=1)
         self.assertEqual([h['symbol'] for h in rows],['S2'])
-        self.assertEqual(rows[0]['price_date'],'2026-10-20')
+        self.assertEqual(rows[0]['price_date'],'2015-01-02')
         self.assertNotIn('return_value',rows[0])
+        # A latest row keeps the old latest snapshot shape.
+        self.assertEqual(list(rows[0])[:12],['pool','symbol','candidate_rank','fiscal','known','price_date','price','market_cap',
+            'enterprise_value','ebitda_yield','ev_ebitda','spread'])
         self.assertEqual(screening.latest(self.db,pool='cached',sector='Unknown'),[])
 
     def test_invalidation_and_readonly(self):
@@ -251,6 +271,7 @@ class PreparationTests(unittest.TestCase):
         raw = root / 'raw'
         (raw / 'px').mkdir(parents=True)
         self.path = root / 'data' / 'research.sqlite'
+        self.daily = root / 'data' / 'schedules.sqlite'
         (raw / 'universe.json').write_text(json.dumps([
             dict(symbol='TEST', name='Test Company', exchange='NYSE', sector='Technology', listed=True)]))
         (raw / 'metrics.jsonl').write_text(json.dumps(dict(symbol='TEST', rows=[
@@ -274,8 +295,18 @@ class PreparationTests(unittest.TestCase):
         self.context.enter_context(patch('urllib.request.urlopen', side_effect=AssertionError('Unexpected download')))
         self.context.enter_context(redirect_stdout(io.StringIO()))
 
-    def verify_fixture(self, db):
-        stocks = screening.latest(db)
+    def latest(self, **options):
+        """Build the daily cache afresh from this research database and screen its latest book.
+
+        The fixture's raw signature is constant, so a kept cache would not see a forced research rebuild.
+        """
+        self.daily.unlink(missing_ok=True)
+        daily.prepare(self.daily, self.path)
+        with closing(daily.connect(self.daily, self.path)) as db:
+            return screening.latest(db, **options)
+
+    def verify_fixture(self):
+        stocks = self.latest()
         self.assertEqual([(h['symbol'], h['price_date'], h['price']) for h in stocks], [('TEST', '2015-10-20', 22.)])
         self.assertAlmostEqual(stocks[0]['market_cap'], 220e6)
 
@@ -285,13 +316,15 @@ class PreparationTests(unittest.TestCase):
         self.assertFalse(self.path.with_name(self.path.name + '.building').exists())
         db = r.connect(self.path, full_prices=True)
         try:
-            self.verify_fixture(db)
             tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            self.assertFalse(tables & {'periods', 'snapshots', 'baseline_prices', 'baseline_periods'})
-            self.assertEqual({row[0] for row in db.execute('SELECT DISTINCT mode FROM screening_metrics')}, {'latest'})
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM metadata WHERE key IN ('historical_through','reuse','baseline_result')").fetchone()[0], 0)
+            # Research holds facts only: no January, latest or dated book.
+            self.assertFalse(tables & {'periods', 'snapshots', 'baseline_prices', 'baseline_periods', 'latest_snapshots',
+                                       'latest_admission', 'screening_metrics', 'filter_values', 'company_facts'})
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM metadata WHERE key IN ('historical_through','reuse','baseline_result','latest')").fetchone()[0], 0)
+            self.assertEqual(tuple(db.execute('SELECT * FROM companies').fetchone()), ('TEST', 'Test Company', 'NYSE', 'Technology', 1))
         finally:
             db.close()
+        self.verify_fixture()
 
     def test_preparation_logs_its_stages(self):
         folder = self.path.parent.parent / 'logs'
@@ -300,7 +333,7 @@ class PreparationTests(unittest.TestCase):
         r.prepare(self.path)
         full, current = [record for record in diagnostics.records(folder) if record['event'] == 'prepare.research']
         self.assertEqual((full['outcome'], full['companies'], current['outcome']), ('prepared', 1, 'current'))
-        self.assertLessEqual({'inputs', 'companies', 'dated_facts', 'metrics', 'facts_finish', 'commit', 'publication'},
+        self.assertLessEqual({'inputs', 'companies', 'dated_facts', 'facts_finish', 'commit', 'publication'},
                              full['stages'].keys())
 
     def test_windows_sharing_failure_retries_publication(self):
@@ -313,8 +346,7 @@ class PreparationTests(unittest.TestCase):
         with patch.object(Path, 'replace', flaky), patch.object(r.time, 'sleep'):
             r.prepare(self.path)
         self.assertEqual(len(calls), 2)
-        with closing(r.connect(self.path)) as db:
-            self.verify_fixture(db)
+        self.verify_fixture()
 
     def test_operating_spread_preparation_and_browser_sql_parity(self):
         r.financial_inputs.publish(r.RAW,'TEST','income-statement',[
@@ -325,18 +357,16 @@ class PreparationTests(unittest.TestCase):
             dict(date='2015-01-03',month3=2,year10=99),
             dict(date='2015-10-20',month3=2,year10=4),
             dict(date='2015-10-21',month3=2,year10=99)]))
-        r.prepare(self.path)
+        daily.prepare(self.daily,self.path)
         root=Path(__file__).resolve().parents[1]
         sys.path.insert(0,str(root/'website'))
         from website.rendering import data as dataset
-        with patch.object(dataset,'connect',side_effect=lambda:r.connect(self.path)):
-            prepared=dataset.load_screening_data()
         latest=[];cases=[]
-        with closing(r.connect(self.path)) as db:
-            saved=[dict(row) for row in db.execute("SELECT * FROM filter_values WHERE field='operating_yield_spread_3y'")]
+        with closing(daily.connect(self.daily,self.path)) as db:
+            prepared=dataset.load_screening_data(db)
+            saved=[dict(row) for row in db.execute("SELECT * FROM book_filters WHERE field='operating_yield_spread_3y'")]
             self.assertEqual(len(saved),2)
             for row in saved:
-                self.assertEqual(row['mode'],'latest')
                 self.assertAlmostEqual(row['value'],100*20e6/270e6-4)
             for pool in ('legacy','cached'):
                 for op,value in [('gt',4),('lt',4),('gt',5),('lt',5),('gt',0)]:
@@ -355,10 +385,10 @@ for(let i=0;i<cases.length;i++){
         # Missing Treasury inputs omit this filter, while ordinary picks remain.
         (r.RAW/'treasury.json').write_text('[{"date":"2015-01-02","month3":2}]')
         r.prepare(self.path,force=True)
-        with closing(r.connect(self.path)) as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM filter_values WHERE field='operating_yield_spread_3y'").fetchone()[0],0)
-            self.assertEqual(len(screening.latest(db)),1)
-            self.assertEqual(screening.latest(db,filters=cases[0]['filters']),[])
+        self.assertEqual(len(self.latest()),1)
+        self.assertEqual(self.latest(filters=cases[0]['filters']),[])
+        with closing(daily.connect(self.daily,self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM book_filters WHERE field='operating_yield_spread_3y'").fetchone()[0],0)
 
     def test_preparation_stores_latest_financial_ratios(self):
         ledger={}
@@ -367,11 +397,11 @@ for(let i=0;i<cases.length;i++){
         r.prepare(self.path)
         with closing(r.connect(self.path)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM financial_inputs').fetchone()[0],1)
-            selected=screening.latest(db,filters=[dict(field='pe',op='lt',value=12),dict(field='profit_margin',op='gt',value=19)])
-            self.assertEqual([h['symbol'] for h in selected],['TEST'])
-            latest=screening.latest(db,filters=[dict(field='pe',op='gt',value=10)])
-            self.assertEqual([h['symbol'] for h in latest],['TEST'])
-            self.assertEqual(screening.latest(db,filters=[dict(field='fcf_yield',op='gt',value=0)]),[])
+        selected=self.latest(filters=[dict(field='pe',op='lt',value=12),dict(field='profit_margin',op='gt',value=19)])
+        self.assertEqual([h['symbol'] for h in selected],['TEST'])
+        latest=self.latest(filters=[dict(field='pe',op='gt',value=10)])
+        self.assertEqual([h['symbol'] for h in latest],['TEST'])
+        self.assertEqual(self.latest(filters=[dict(field='fcf_yield',op='gt',value=0)]),[])
 
     def test_new_saved_session_advances_the_latest_screen(self):
         spy=r.RAW/'spy-div.json'
@@ -381,23 +411,19 @@ for(let i=0;i<cases.length;i++){
         prices=json.loads(path.read_text());prices['div'].append(dict(date='2016-01-04',adjClose=24))
         path.write_text(json.dumps(prices))
         r.prepare(self.path)
-        with closing(r.connect(self.path)) as db:
-            self.assertEqual(screening.latest(db)[0]['price_date'],'2016-01-04')
-            self.assertEqual(screening.latest(db)[0]['price'],24.)
+        self.assertEqual(self.latest()[0]['price_date'],'2016-01-04')
+        self.assertEqual(self.latest()[0]['price'],24.)
 
     def test_prepare_latest_excludes_unlisted_names(self):
         r.prepare(self.path)
-        db=r.connect(self.path)
-        self.assertEqual(len(screening.latest(db)),1)
-        self.assertEqual(screening.latest(db)[0]['price_date'],'2015-10-20')
-        self.assertEqual(screening.latest(db)[0]['price'],22.)
-        db.close()
+        self.assertEqual(len(self.latest()),1)
+        self.assertEqual(self.latest()[0]['price_date'],'2015-10-20')
+        self.assertEqual(self.latest()[0]['price'],22.)
         universe=r.RAW/'universe.json'
         rows=json.loads(universe.read_text());rows[0]['listed']=False
         universe.write_text(json.dumps(rows))
         r.prepare(self.path,force=True)
-        with closing(r.connect(self.path)) as db:
-            self.assertEqual(screening.latest(db),[])
+        self.assertEqual(self.latest(),[])
 
     def test_unchanged_inputs_skip_json_parsing_and_writes(self):
         r.prepare(self.path)
@@ -426,16 +452,12 @@ for(let i=0;i<cases.length;i++){
     def test_failed_preparation_preserves_existing_database(self):
         r.prepare(self.path)
         before = self.path.read_bytes()
-        with patch.object(r, 'prepare_metrics', side_effect=ValueError('Metric failure')):
-            with self.assertRaisesRegex(ValueError, 'Metric failure'):
+        with patch.object(r.facts, 'store_market', side_effect=ValueError('Fact failure')):
+            with self.assertRaisesRegex(ValueError, 'Fact failure'):
                 r.prepare(self.path, force=True)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertFalse(self.path.with_name(self.path.name + '.building').exists())
-        db = r.connect(self.path)
-        try:
-            self.verify_fixture(db)
-        finally:
-            db.close()
+        self.verify_fixture()
 
     def test_unreadable_saved_price_file_stops_preparation(self):
         r.prepare(self.path)

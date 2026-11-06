@@ -6,14 +6,16 @@ from contextlib import closing
 from datetime import date
 import json
 import sqlite3
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import daily, facts, research
+from backtest.inputs import facts
 from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d, library
 import test_variable_definitions as language
 import test_strategy_requests as requests
+import book_store_fixture as store
 
 
 def preview(capture, roots, view):
@@ -31,33 +33,40 @@ def scopes(latest='2015-01-05'):
 
 
 class Fixture:
+    """A dated book (id 1, 2015-01-02 to 2015-01-05) and the latest book (id 2, 2015-01-05) of count companies.
+
+    db is the daily connection with the research file attached; source is the
+    view's research connection, which sees research rows after a commit.
+    """
     def __init__(self, count=300):
-        self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        # One database serves as the daily cache and the research facts.
-        self.db.executescript(research.SCHEMA+daily.DATED_SCHEMA+facts.SCHEMA)
+        self.folder=tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.db=store.connection(Path(self.folder.name)/'research.sqlite')
+        dated=store.book(self.db,'2015-01-02','2015-01-05',spy=.1,candidates=count)
+        latest=store.book(self.db,'2015-01-05',None,candidates=count)
+        for day,spy in [('2015-01-02',100.),('2015-01-05',110.)]:
+            store.session(self.db,day,spy,2.)
         for i in range(count):
             symbol=f'A{i:04d}'
-            self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Technology'))
-            self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',150e6,180e6,54e6,.3))
-            self.db.executemany('INSERT INTO prices VALUES(?,?,?)',[(symbol,day,10.) for day in ['2014-06-30','2015-01-02','2015-01-05']])
+            store.company(self.db,symbol,sector='Technology')
+            self.db.execute('INSERT INTO research.statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',150e6,180e6,54e6,.3))
+            for day in ['2014-06-30','2015-01-02','2015-01-05']:
+                store.price(self.db,symbol,day,10.)
             for pool in ('legacy','cached'):
-                self.db.execute('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(pool,1,symbol,i+1,'2014-06-30','2015-01-02','2015-01-05',150e6,180e6,54e6,.3,3.,.28,i/1000,'Scheduled exit'))
-                self.db.execute('INSERT INTO latest_snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(pool,symbol,i+1,'2014-06-30','2014-09-28','2015-01-05',10.,150e6,180e6,.3,3.,.28))
-                self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('historical',pool,1,symbol,'ev_ebitda',3.,.3))
-                self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('latest',pool,0,symbol,'ev_ebitda',3.,.3))
-                self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',('historical',pool,1,symbol,'profit_margin',i-150.))
+                values=dict(candidate_rank=i+1,fiscal='2014-06-30',known='2014-09-28',price=10.,market_cap=150e6,
+                            enterprise_value=180e6,ebitda=54e6,ebitda_yield=.3,ev_ebitda=3.,spread=.28)
+                store.row(self.db,dated,pool,symbol,entry='2015-01-02',exit='2015-01-05',return_value=i/1000,status='Scheduled exit',**values)
+                store.row(self.db,latest,pool,symbol,entry='2015-01-05',**values)
+                for book in (dated,latest):
+                    store.metric(self.db,book,pool,symbol,'ev_ebitda',3.,.3)
+                store.value(self.db,dated,pool,symbol,'profit_margin',i-150.)
             annual=dict(revenue=state(float(i+1)),operatingIncome=state(float(i+1)/10))
             facts.store_annual(self.db,symbol,dict(sources={},annual={'income-statement':{'2014-06-30':annual}}))
-            latest=dict(admitted=True,reason=None,candidate_rank=i+1,statement=dict(fiscal='2014-06-30',known='2014-09-28'),
-                valuation=dict(market_cap=150e6,enterprise_value=180e6,ebitda=54e6))
-            for pool in ('legacy','cached'):facts.store_latest(self.db,symbol,pool,latest)
-        self.db.executemany('INSERT INTO sessions VALUES(?,?)',[('2015-01-02',100.),('2015-01-05',110.)])
-        self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(1,'2015-01-02','2015-01-05',.1,.02,250,count))
-        self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'legacy'))
-        self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'cached'))
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(fixture='2015-01-05')))))
         facts.finish(self.db, '2015-01-05', inputs='fixture', scopes=scopes());self.db.commit()
-    def view(self):return facts.View(self.db,self.db,lambda:None,lambda:None)
+        self.source=sqlite3.connect(Path(self.folder.name)/'research.sqlite');self.source.row_factory=sqlite3.Row
+    def close(self):
+        self.db.close();self.source.close();self.folder.cleanup()
+    def view(self):return facts.View(self.db,self.source,lambda:None,lambda:None)
     def capture(self, expression=None, *, pool='cached', direction='highest', order='filter_first', conditions=None, first=1,last=5):
         authored=language.entry(language.definition(expression or dict(op='parameter',id='annual.revenue'),'USD' if expression is None else 'scalar','usd' if expression is None else 'number'),'draft:ranking')
         intent=requests.intent(requests.formula(authored),conditions,rank_from=first,rank_to=last,selection_order=order)
@@ -72,9 +81,9 @@ class Fixture:
 
 class ScalarTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=Fixture();self.addCleanup(self.fixture.db.close)
+        self.fixture=Fixture();self.addCleanup(self.fixture.close)
     def test_orphan_snapshot_rejects_complete_scope(self):
-        self.fixture.db.execute("DELETE FROM companies WHERE symbol='A0000'")
+        self.fixture.db.execute("DELETE FROM research.companies WHERE symbol='A0000'")
         with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture())
         self.assertEqual(failure.exception.path,'/population')
     def test_more_than_256_candidates_rank_globally_and_explain_only_selected_rows(self):
@@ -147,7 +156,7 @@ class ScalarTests(unittest.TestCase):
         receipt=next(r['value'] for r in records if r['type']=='scope')
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],250)
     def test_missing_only_active_source_excludes(self):
-        self.fixture.db.execute("DELETE FROM annual_facts WHERE symbol='A0299'")
+        self.fixture.db.execute("DELETE FROM research.annual_facts WHERE symbol='A0299'");self.fixture.db.commit()
         stocks,_=self.fixture.select(self.fixture.capture())
         self.assertEqual(stocks[0]['symbol'],'A0298')
         stocks,_=self.fixture.select(self.fixture.capture(language.constant('1')))
@@ -174,7 +183,7 @@ class ScalarTests(unittest.TestCase):
     def test_view_closure_does_not_close_borrowed_connection(self):
         view=self.fixture.view();view.close()
         with self.assertRaises(ValueError):view.validate()
-        self.assertEqual(self.fixture.db.execute('SELECT count(*) FROM companies').fetchone()[0],300)
+        self.assertEqual(self.fixture.source.execute('SELECT count(*) FROM companies').fetchone()[0],300)
     def test_stale_binding_rejected_and_no_connections_owned(self):
         view=self.fixture.view()
         self.fixture.db.execute("UPDATE metadata SET value='{}' WHERE key='daily_inputs'")
@@ -183,7 +192,7 @@ class ScalarTests(unittest.TestCase):
     def test_small_record_limit_fails_explicitly(self):
         with self.assertRaises(d.FormulaError):self.fixture.select(self.fixture.capture(),record_bytes=100)
     def test_entry_admission_and_missing_return_rows_have_distinct_scope_counts(self):
-        self.fixture.db.execute("DELETE FROM snapshots WHERE symbol='A0299'")
+        self.fixture.db.execute("DELETE FROM book_rows WHERE book=1 AND symbol='A0299'")
         stocks,records=self.fixture.select(self.fixture.capture())
         receipt=next(record['value'] for record in records if record['type']=='scope')
         self.assertEqual(receipt['source_population'],300)

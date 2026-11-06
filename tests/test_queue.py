@@ -224,15 +224,15 @@ class ConsumerTests(unittest.TestCase):
         class Database(sqlite3.Connection):
             def close(db):closed.append(getattr(owner.state,'held',False));super().close()
         def connect():
-            db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;return db
+            db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;daily.attach(db,self.research);return db
         self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.entered=Event();self.release=Event()
-        original=schedules.compute_period
+        original=schedules.financial_books.book
         def compute(*args,**kwargs):
             self.entered.set()
             while not self.release.wait(.01):backtest_control.checkpoint()
             return original(*args,**kwargs)
-        self.context.enter_context(patch.object(schedules,'compute_period',side_effect=compute))
+        self.context.enter_context(patch.object(schedules.financial_books,'book',side_effect=compute))
         # Spawned book workers cannot see this patch; keep calculation in this process.
         self.context.enter_context(patch.object(book_batch,'MIN_PARALLEL_BOOKS',10**9))
         self.store=queue.Store(self.folder/'queue.sqlite');self.consumer=queue.Queue(self.store,library=queue.saved_backtests.Store((self.store).path.with_name('saved-library.sqlite')))
@@ -297,7 +297,7 @@ class ConsumerTests(unittest.TestCase):
         active=self.store.get(item['id']);self.store.change(item['id'],'stop',{'revision':active['revision']})
         self.assertEqual(self.terminal(item['id'])['state'],'cancelled')
         db=sqlite3.connect(self.path)
-        try:self.assertEqual(db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],0)
+        try:self.assertEqual(db.execute('SELECT COUNT(*) FROM books').fetchone()[0],0)
         finally:db.close()
         self.release.set();self.assertEqual(self.terminal(next_item['id'])['state'],'complete')
 

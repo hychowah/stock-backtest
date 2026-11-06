@@ -5,54 +5,47 @@ sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolv
 from copy import deepcopy
 import json
 import math
-import sqlite3
 import subprocess
 import unittest
-from unittest.mock import patch
 from backtest import screening, selection
 from backtest.financial import metrics
-from backtest.inputs import daily, research
 from website.rendering import data
+import book_store_fixture as store
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
 class AdapterTests(unittest.TestCase):
     def setUp(self):
-        self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(research.SCHEMA+daily.DATED_SCHEMA)
-        self.db.execute('INSERT INTO metadata VALUES(?,?)',('latest',json.dumps(dict(asof='2017-01-03'))))
-        for year in (2015,2016):
-            self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,f'{year}-01-02',f'{year+1}-01-02',.1,.02,8,8))
+        self.db=store.connection();self.addCleanup(self.db.close)
+        self.books=[store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=8) for year in (2015,2016)]
+        self.latest=store.book(self.db,'2017-01-03',None,candidates=8)
         self.rows=[]
         for symbol,score,cap,rank,sector in [('A',.4,200e6,None,'Energy'),('B',.4,300e6,2,'Technology'),
             ('C',.4,400e6,2,'Technology'),('D',.2,500e6,4,'Energy'),('N',-.1,500e6,5,'Energy'),
             ('Z',-0.,500e6,6,'Energy'),('Y',0.,500e6,None,None),('M',.9,500e6,1,'Technology')]:
-            self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE',sector))
+            store.company(self.db,symbol,sector=sector)
             self.rows.append(dict(symbol=symbol,score=score,cap=cap,candidate_rank=rank,sector=sector))
             for pool in ('legacy','cached'):
-                for year in (2015,2016):
-                    self.db.execute('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',
-                        (pool,year,symbol,rank,'2014-06-30',f'{year}-01-02',f'{year+1}-01-02',cap,200e6,20e6,score,9.,score-.02,.1,'Scheduled exit'))
-                self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',
-                    (pool,symbol,rank,'2016-06-30','2016-09-28','2017-01-03',10.,cap,200e6,score,9.,score-.02))
-                for mode,years in [('historical',(2015,2016)),('latest',(0,))]:
-                    for year in years:
-                        for metric in metrics.METRICS:
-                            if symbol!='M':
-                                # Pair members intentionally are not reciprocals.
-                                self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
-                                    (mode,pool,year,symbol,metric,17. if metric=='ev_ebitda' else 29.,score if metric=='ev_ebitda' else score/2))
-                        for field in metrics.FILTERS:
-                            if symbol in ('B','C','D'):
-                                self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                                    (mode,pool,year,symbol,field,10. if symbol=='B' else 20. if symbol=='C' else -5.))
+                for year,book in zip((2015,2016),self.books):
+                    store.row(self.db,book,pool,symbol,candidate_rank=rank,fiscal='2014-06-30',known='2014-09-28',
+                        entry=f'{year}-01-02',price=10.,exit=f'{year+1}-01-02',market_cap=cap,enterprise_value=200e6,
+                        ebitda=20e6,ebitda_yield=score,ev_ebitda=9.,spread=score-.02,return_value=.1,status='Scheduled exit')
+                store.row(self.db,self.latest,pool,symbol,candidate_rank=rank,fiscal='2016-06-30',known='2016-09-28',
+                    entry='2017-01-03',price=10.,market_cap=cap,enterprise_value=200e6,ebitda=20e6,ebitda_yield=score,
+                    ev_ebitda=9.,spread=score-.02)
+                for book in (*self.books,self.latest):
+                    for metric in metrics.METRICS:
+                        if symbol!='M':
+                            # Pair members intentionally are not reciprocals.
+                            store.metric(self.db,book,pool,symbol,metric,17. if metric=='ev_ebitda' else 29.,
+                                         score if metric=='ev_ebitda' else score/2)
+                    for field in metrics.FILTERS:
+                        if symbol in ('B','C','D'):
+                            store.value(self.db,book,pool,symbol,field,10. if symbol=='B' else 20. if symbol=='C' else -5.)
 
     def dataset(self):
-        self.db.commit()
-        def connect():
-            db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row;self.db.backup(db);return db
-        with patch.object(data,'connect',side_effect=connect):return data.load_screening_data()
+        return data.load_screening_data(self.db)
 
     def browser(self,payload):
         code="""
@@ -71,9 +64,9 @@ process.stdout.write(JSON.stringify(answer));
         return json.loads(output.stdout)
 
     def sql(self,options,latest=False):
-        rows=screening.latest(self.db,**options) if latest else screening.select(self.db,period=(2015,2016),**options)
         compact=lambda group:[[h['symbol'],h['rank'],h['metric_multiple'],h['metric_yield']] for h in group]
-        return compact(rows) if latest else [compact([h for h in rows if h['year']==year]) for year in (2015,2016)]
+        if latest:return compact(screening.latest(self.db,**options))
+        return [compact(screening.select(self.db,book=book,**options)) for book in self.books]
 
     def expected(self,options):
         # Characterize the pre-adapter contract independently of its translation.
@@ -127,7 +120,7 @@ process.stdout.write(JSON.stringify(answer));
     def test_strict_display_threshold_keeps_adjacent_binary64_values(self):
         low,high=13.501116090704034,13.501116090704036
         self.assertGreater(high,low);self.assertEqual(high/100,low/100)
-        self.db.execute("UPDATE filter_values SET value=? WHERE field='profit_margin' AND symbol='B'",(high,))
+        self.db.execute("UPDATE book_filters SET value=? WHERE field='profit_margin' AND symbol='B'",(high,))
         options=dict(filters=[dict(field='profit_margin',op='gt',value=low)])
         expected=[['B',1,17.,.4],['C',2,17.,.4]]
         self.assertEqual(self.sql(options,True),expected)
@@ -150,13 +143,14 @@ process.stdout.write(JSON.stringify(answer));
         self.assertTrue(result[-1]['latest'])
 
     def test_legacy_populations_are_not_limited_by_callable_candidate_ceiling(self):
-        self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',('BIG','BIG','NYSE','Energy'))
+        store.company(self.db,'BIG')
         # More than 8,192 rows across one prepared pool, beyond callable limits.
         for i in range(8200):
             symbol=f'P{i:05d}'
-            self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
-            self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',('cached',symbol,i+10,'2016-06-30','2016-09-28','2017-01-03',10.,200e6,200e6,.3,4.,.2))
-            self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',('latest','cached',0,symbol,'ev_ebitda',4.,.3))
+            store.company(self.db,symbol)
+            store.row(self.db,self.latest,'cached',symbol,candidate_rank=i+10,fiscal='2016-06-30',known='2016-09-28',
+                      entry='2017-01-03',price=10.,market_cap=200e6,enterprise_value=200e6,ebitda_yield=.3,ev_ebitda=4.,spread=.2)
+            store.metric(self.db,self.latest,'cached',symbol,'ev_ebitda',4.,.3)
         options=dict(pool='cached',rank_to=1)
         self.assertEqual(self.sql(options,True),[['A',1,17.,.4]])
         actual=self.browser(dict(dataset=self.dataset(),cases=[options]))['cases'][0]

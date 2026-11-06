@@ -46,15 +46,15 @@ class JobTests(unittest.TestCase):
                 closures.append(getattr(owner.state,'held',False))
                 super().close()
         def connect():
-            db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;return db
+            db=sqlite3.connect(self.path,factory=Database);db.row_factory=sqlite3.Row;daily.attach(db,self.research);return db
         self.context.enter_context(patch.object(daily,'connect',side_effect=connect))
         self.entered=Event();self.release=Event()
-        original=schedules.compute_period
+        original=schedules.financial_books.book
         def compute(*args,**kwargs):
             result=original(*args,**kwargs);self.entered.set()
             while not self.release.wait(.01):control.checkpoint()
             return result
-        self.context.enter_context(patch.object(schedules,'compute_period',side_effect=compute))
+        self.context.enter_context(patch.object(schedules.financial_books,'book',side_effect=compute))
         # Spawned book workers cannot see this patch; keep calculation in this process.
         self.context.enter_context(patch.object(book_batch,'MIN_PARALLEL_BOOKS',10**9))
         class Handler(serve.Handler):
@@ -136,7 +136,7 @@ class JobTests(unittest.TestCase):
         self.assertEqual(self.terminal()['state'],'cancelled')
         self.assertEqual(self.closures,[True])
         db=sqlite3.connect(self.path)
-        try:self.assertEqual(db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],0)
+        try:self.assertEqual(db.execute('SELECT COUNT(*) FROM books').fetchone()[0],0)
         finally:db.close()
         self.assertEqual(self.request('POST','/stop')[1]['state'],'cancelled')
 

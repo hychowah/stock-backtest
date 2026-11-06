@@ -2,11 +2,10 @@
 
 Screen(day, facts) is the admission state of one entry day, and
 Screen.decide() the per-company decision, with its denial reason, of an open
-(latest) book, a dated book and a formula root. book() computes one pool of a
-book from prepared facts through the facts port (facts.BookFacts). Today the
-latest book of the daily cache comes from book(); dated books
-(schedules.compute_period through snapshot) and formula roots (facts.View)
-share admit() and close() and switch to decide() in typed-storage P3b.
+(latest) book, a dated book and a formula root (facts.View). book() computes
+one pool of a book from prepared facts through the facts port
+(facts.BookFacts); daily preparation writes the latest book and
+schedules.prepare_period and the book workers write the dated books with it.
 Price lookups return (date, positive dividend-adjusted close) or None within
 the given tolerance. Storage, calendar planning and SQL insertion stay outside
 this module. A change to book policy must pass the development check
@@ -126,22 +125,6 @@ def close(start, exit_day, lookup, bankruptcy):
     if bankruptcy:
         return None,(end,-1.,'Bankruptcy')
     return None,(end,end[1]/start[1]-1,status)
-
-
-def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
-    """A dated holding in the daily cache's row shape, or None (schedules.compute_period).
-
-    Return [fiscal, entry, exit, cap, EV, EBITDA, yield, multiple, return, status].
-    """
-    reason,valuation=admit(statement,entry_day,lookup,ENTRY_SLACK)
-    if reason is not None:
-        return None
-    _,start,cap,ev,ebitda=valuation
-    reason,ending=close(start,exit_day,lookup,bankruptcy)
-    if reason is not None:
-        return None
-    end,ret,status=ending
-    return [str(statement['fiscal']),str(start[0]),str(end[0]),cap,ev,ebitda,*ebitda_yield_and_multiple(ebitda,ev),ret,status]
 
 
 class Screen:

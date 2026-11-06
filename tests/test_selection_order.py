@@ -9,47 +9,48 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest import screening
 from pathlib import Path
 import json
-import sqlite3
 import subprocess
 import sys
 import unittest
-from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
-from backtest.inputs import daily
-from backtest.inputs import research as r
+from backtest.inputs import book_store
 from website.rendering import data as dataset
+sys.path.insert(0,str(ROOT/'tests'))
+import book_store_fixture as store
 
 
 def dated(db, *, first=2015, last=2015, **options):
-    """Select the dated book rows of period ids first through last."""
-    return screening.select(db, period=(first, last), **options)
+    """Select the rows of the dated books that enter in years first through last, book by book."""
+    pool=options.get('pool','legacy')
+    return [row for year in range(first,last+1)
+            for row in screening.select(db,book=book_store.find(db,f'{year}-01-02',f'{year+1}-01-02',pool),**options)]
 
 
 class SelectionOrderTests(unittest.TestCase):
     def setUp(self):
-        self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(r.SCHEMA+daily.DATED_SCHEMA)
-        self.db.execute('INSERT INTO metadata VALUES(?,?)',('latest',json.dumps(dict(asof='2017-01-03'))))
-        for year in (2015,2016):
-            self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,f'{year}-01-02',f'{year+1}-01-02',.1,.02,6,6))
+        self.db=store.connection();self.addCleanup(self.db.close)
+        books={year:store.book(self.db,f'{year}-01-02',f'{year+1}-01-02',spy=.1,candidates=6) for year in (2015,2016)}
+        latest=store.book(self.db,'2017-01-03',None,candidates=6)
         # B/C tie on yield and candidate rank; symbol resolves the tie. M has
         # no selected metric, so it cannot consume a rank in either policy.
         for symbol,score,cap,candidate,sector in [('A',.5,100e6,None,'Energy'),('B',.4,200e6,2,'Technology'),('C',.4,300e6,2,'Technology'),('D',.2,400e6,4,'Energy'),('M',.9,500e6,1,'Technology')]:
-            self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE',sector))
+            store.company(self.db,symbol,sector=sector)
             for pool in ('legacy','cached'):
-                for year in (2015,2016):
-                    self.db.execute('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',
-                                    (pool,year,symbol,candidate,'2014-06-30',f'{year}-01-02',f'{year+1}-01-02',cap,200e6,score*200e6,score,1/score,score-.02,.1,'Scheduled exit'))
-                self.db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',
-                                (pool,symbol,candidate,'2016-06-30','2016-09-28','2017-01-03',10,cap,200e6,score,1/score,score-.02))
-                for mode,years in [('historical',(2015,2016)),('latest',(0,))]:
-                    for year in years:
-                        if symbol!='M':
-                            self.db.execute('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',(mode,pool,year,symbol,'ev_ebitda',1/score,score))
-                        if symbol in ('B','C'):
-                            self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',(mode,pool,year,symbol,'pe',10))
+                for year,book in books.items():
+                    store.row(self.db,book,pool,symbol,candidate_rank=candidate,fiscal='2014-06-30',known='2014-09-28',
+                              entry=f'{year}-01-02',price=10.,exit=f'{year+1}-01-02',market_cap=cap,enterprise_value=200e6,
+                              ebitda=score*200e6,ebitda_yield=score,ev_ebitda=1/score,spread=score-.02,return_value=.1,
+                              status='Scheduled exit')
+                store.row(self.db,latest,pool,symbol,candidate_rank=candidate,fiscal='2016-06-30',known='2016-09-28',
+                          entry='2017-01-03',price=10,market_cap=cap,enterprise_value=200e6,ebitda=score*200e6,
+                          ebitda_yield=score,ev_ebitda=1/score,spread=score-.02)
+                for book in (*books.values(),latest):
+                    if symbol!='M':
+                        store.metric(self.db,book,pool,symbol,'ev_ebitda',1/score,score)
+                    if symbol in ('B','C'):
+                        store.value(self.db,book,pool,symbol,'pe',10)
 
     def ids(self,select,**options):
         if select is dated:options=dict(first=2015,last=2015,**options)
@@ -75,15 +76,12 @@ class SelectionOrderTests(unittest.TestCase):
 
     def test_years_rank_independently_and_ties_are_stable(self):
         rows=dated(self.db,first=2015,last=2016,rank_to=2,min_cap=150e6,selection_order='rank_first')
-        self.assertEqual([(h['year'],h['symbol'],h['rank']) for h in rows],[(2015,'B',2),(2016,'B',2)])
+        self.assertEqual([(h['entry'][:4],h['symbol'],h['rank']) for h in rows],[('2015','B',2),('2016','B',2)])
         self.assertEqual(self.ids(screening.latest,rank_from=2,rank_to=3,selection_order='rank_first'),[('B',2),('C',3)])
 
     def test_browser_sql_latest_parity_in_both_pools_orders_and_ranges(self):
-        def copy_connection():
-            db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
-            self.db.backup(db);return db
-        self.db.commit()
-        with patch.object(dataset,'connect',side_effect=copy_connection):prepared=dataset.load_screening_data()
+        prepared=dataset.load_screening_data(self.db)
+        self.assertEqual(prepared['latest']['metadata'],dict(asof='2017-01-03',eligible_financials=6))
         cases=[]
         for pool in ('legacy','cached'):
             for order in ('filter_first','rank_first'):

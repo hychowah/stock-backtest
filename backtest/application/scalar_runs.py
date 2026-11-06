@@ -9,6 +9,7 @@ import time
 
 from backtest import calendar_requests
 from backtest.application import scalar_execution, strategy_requests
+from backtest.inputs import facts
 from backtest.variables import definitions
 from backtest.runtime import diagnostics
 from backtest.engines.original import schedules, robustness, book_batch
@@ -48,7 +49,7 @@ def check_size(writer, executor, periods):
             f'{writer.max_bytes / 1e6:.0f} MB limit. Use fewer trials, dates or ranks.')
 
 
-def execute(db, source, mode, options, writer, view, configuration, *, planned=None, progress=None, checkpoint=lambda:None):
+def execute(db, mode, options, writer, view, configuration, *, planned=None, progress=None, checkpoint=lambda:None):
     checked = strategy_requests.check_options(options, checkpoint=checkpoint)
     capture = strategy_requests.CapturedStrategy(strategy_requests._encode(checked,strategy_requests.STRATEGY_BYTES,checkpoint))
     # Random-date runs keep formula values and reasons, not step traces.
@@ -61,15 +62,15 @@ def execute(db, source, mode, options, writer, view, configuration, *, planned=N
     selection = dict(strategy=options['strategy'])
     producer = dict(engine='original',label='Original')
     if mode == 'latest':
-        # The stored latest book; no dated-book reconstruction occurs.
+        # The stored latest book of the book store; no dated-book reconstruction occurs.
         asof = view.bounds['latest_date']
         with diagnostics.stage('selection'):
-            stocks = executor.select(source,None,date.fromisoformat(asof),latest=True,owner_scope=dict(kind='prepared',book=0))
+            stocks = executor.select(db,None,date.fromisoformat(asof),latest=True,owner_scope=dict(kind='prepared',book=0))
         for stock in stocks:writer.screen(stock)
         return dict(asof=asof,requested=requested,names=len(stocks),options=options,producer=producer)
     if mode == 'random':
         with diagnostics.stage('plan'):
-            sessions = [date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+            sessions = facts.sessions(db)
             if planned is None:
                 planned = calendar_requests.plan(sessions,options,checkpoint=checkpoint)
             else:
@@ -93,7 +94,7 @@ def execute(db, source, mode, options, writer, view, configuration, *, planned=N
         return summary
     if mode != 'custom':raise ValueError('Unsupported scalar execution mode.')
     if 'months' in options and 'calendar' not in options and 'dates' not in options:
-        sessions = [date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+        sessions = facts.sessions(db)
         check_size(writer, executor, len(schedules.schedule(options['start'], options['end'], options['months'], sessions)))
     sink.start_trial(1)
     evaluator = schedules.backtest_calendar if 'calendar' in options else schedules.backtest_dates if 'dates' in options else schedules.backtest

@@ -1,12 +1,11 @@
 """The one admission rule (books.Screen.decide) and book function (books.book) over research facts.
 
 The daily cache writes the latest book into the book store from books.book
-over facts.BookFacts; research still writes the old latest tables
-(latest_snapshots, latest_admission and its year-0 metric and filter rows),
-and dated books still come from schedules.compute_period over the daily cache.
-These tests compare the new path with both, value for value and reason for
-reason, on a fictional cache with latest denials, a conflicting price day, a
-conflicting Treasury day, a signed-zero yield and more annual endpoints.
+over facts.BookFacts, and dated books come from the same function through the
+research schema that a daily connection attaches. Formula roots are admitted
+by the same rule (facts.View.admit). The fictional cache has every latest
+denial, a conflicting price day, a conflicting Treasury day, a signed-zero
+yield and more annual endpoints.
 """
 from pathlib import Path as _TestPath
 import sys as _test_sys
@@ -21,7 +20,6 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from backtest.engines.original import schedules
 from backtest.financial import books, rules
 from backtest.inputs import book_store, daily, facts, research
 from prepared_inputs_fixture import PreparedInputs, history
@@ -99,7 +97,8 @@ class BookTests(unittest.TestCase):
         self.assertEqual(math.copysign(1, facts.ten_year(self.research, '2015-01-04')[1]), -1)
         for day in ('2013-01-01', '2015-01-02', '2015-01-04', '2016-10-20'):
             row = facts.ten_year(self.research, day)
-            self.assertEqual(None if row is None else row[1], research.ten_year_yield(self.research, date.fromisoformat(day)))
+            saved = self.research.execute('SELECT yield_percent FROM treasury10 WHERE day<=? ORDER BY day DESC LIMIT 1', (day,)).fetchone()
+            self.assertEqual(None if row is None else row[1], None if saved is None else saved[0])
         sessions = self.research.execute('SELECT day,spy FROM market_days WHERE spy IS NOT NULL ORDER BY day')
         self.assertEqual(exact(sessions), exact(self.daily.execute('SELECT * FROM sessions ORDER BY day')))
 
@@ -109,11 +108,13 @@ class BookTests(unittest.TestCase):
         self.assertEqual(len(companies), 20)
         self.assertEqual({symbol for symbol, listed in companies.items() if not listed}, {'Q0006'})
         self.assertEqual(book_facts.cached(), {f'Q{i:04d}' for i in range(20)} - {'Q0008'})
-        self.assertEqual(book_facts.cached(), daily.cached_symbols(self.daily))
+        self.assertEqual(book_facts.cached(), {row[0] for row in self.daily.execute('SELECT DISTINCT symbol FROM prices')})
+        # Listing is a column of the one companies table, beside the names.
+        self.assertEqual(tuple(self.research.execute("SELECT * FROM companies WHERE symbol='Q0006'").fetchone())[4], 0)
 
     def test_legacy_annual_values_equal_the_saved_json_bit_for_bit(self):
         saved = {}
-        for symbol, fiscal, values in self.daily.execute('SELECT symbol,fiscal,values_json FROM financial_inputs ORDER BY symbol,fiscal'):
+        for symbol, fiscal, values in self.research.execute('SELECT symbol,fiscal,values_json FROM financial_inputs ORDER BY symbol,fiscal'):
             saved.setdefault(symbol, {})[fiscal] = json.loads(values)
         self.assertEqual(json.dumps(saved['Q0003']['2015-06-30']), json.dumps(
             {'revenue': saved['Q0003']['2015-06-30']['revenue'], 'operatingIncome': saved['Q0003']['2015-06-30']['operatingIncome'],
@@ -121,59 +122,59 @@ class BookTests(unittest.TestCase):
         for symbol, values in saved.items():
             self.assertEqual(json.dumps(facts.legacy_annual(self.research, symbol)), json.dumps(values), symbol)
 
-    def test_latest_book_equals_the_old_latest_tables(self):
-        latest = json.loads(self.research.execute("SELECT value FROM metadata WHERE key='latest'").fetchone()[0])
-        (book, entry, exit_day, spy, candidates), = self.daily.execute('SELECT book,entry,exit,spy,candidates FROM books')
-        self.assertEqual((entry, exit_day, spy, candidates), (latest['asof'], None, None, latest['eligible_financials']))
-        self.assertEqual(exact(self.daily.execute('SELECT pool FROM book_pools ORDER BY pool')), exact([('cached',), ('legacy',)]))
-        new = self.daily.execute('''SELECT pool,symbol,candidate_rank,fiscal,known,entry,price,market_cap,enterprise_value,
-            ebitda_yield,ev_ebitda,spread,ebitda,exit,return_value,status FROM book_rows WHERE book=? ORDER BY pool,symbol''', (book,))
-        old = self.research.execute('''SELECT s.pool,s.symbol,s.candidate_rank,s.fiscal,s.known,s.price_date,s.price,s.market_cap,
-            s.enterprise_value,s.ebitda_yield,s.ev_ebitda,s.spread,a.ebitda,NULL,NULL,NULL FROM latest_snapshots s
-            JOIN latest_admission a ON a.symbol=s.symbol AND a.pool=s.pool ORDER BY s.pool,s.symbol''').fetchall()
-        self.assertEqual(len(old), 26)
-        self.assertEqual(exact(new), exact(old))
-        for table, columns in (('screening_metrics', 'metric,multiple,yield_value'), ('filter_values', 'field,value')):
-            target = 'book_metrics' if table == 'screening_metrics' else 'book_filters'
-            self.assertEqual(
-                exact(self.daily.execute(f'SELECT pool,symbol,{columns} FROM {target} WHERE book=? ORDER BY 1,2,3', (book,))),
-                exact(self.research.execute(f"SELECT pool,symbol,{columns} FROM {table} WHERE mode='latest' AND year=0 ORDER BY 1,2,3")))
-
-    def test_latest_reasons_map_from_the_old_vocabulary(self):
+    def test_latest_book_is_the_open_book_of_the_latest_date(self):
         latest = date.fromisoformat(facts.require(self.research)['latest_date'])
         screen = books.Screen(latest, facts.BookFacts(self.research), open_book=True)
-        pairs = Counter()
-        for symbol, pool, admitted, reason in self.research.execute('SELECT symbol,pool,admitted,reason FROM latest_admission'):
-            held, new = screen.decide(symbol, pool)
-            self.assertEqual(held is not None, bool(admitted))
-            pairs[pool, reason, new] += 1
-        self.assertEqual(pairs, Counter({
-            ('cached', None, None): 17, ('legacy', None, None): 9,
-            ('cached', 'NOT_LISTED', 'NOT_LISTED'): 1, ('legacy', 'NOT_LISTED', 'NOT_LISTED'): 1,
-            ('cached', 'MISSING_PRICE', 'MISSING_PRICE'): 1, ('legacy', 'MISSING_PRICE', 'MISSING_PRICE'): 1,
-            ('cached', 'MISSING_PRICE', 'MISSING_CACHED_PRICES'): 1, ('legacy', 'MISSING_PRICE', 'MISSING_CACHED_PRICES'): 1,
-            ('legacy', 'MISSING_PRICE', 'OUTSIDE_LEGACY_BUFFER'): 7, ('legacy', 'POOL_INELIGIBLE', 'INELIGIBLE_VALUATION'): 1}))
-        self.assertEqual(screen.decide('NONE', 'cached'), (None, 'UNKNOWN_COMPANY'))
+        (book, entry, exit_day, spy, candidates), = self.daily.execute('SELECT book,entry,exit,spy,candidates FROM books')
+        self.assertEqual((entry, exit_day, spy, candidates), (str(latest), None, None, len(screen.statements['cached'])))
+        self.assertEqual(exact(self.daily.execute('SELECT pool FROM book_pools ORDER BY pool')), exact([('cached',), ('legacy',)]))
+        stored = {(pool, symbol): (fiscal, known, day, price, cap, ev, ebitda) for pool, symbol, fiscal, known, day, price, cap, ev, ebitda
+                  in self.daily.execute('SELECT pool,symbol,fiscal,known,entry,price,market_cap,enterprise_value,ebitda FROM book_rows WHERE book=?', (book,))}
+        self.assertEqual(len(stored), 26)
+        for pool in ('legacy', 'cached'):
+            for symbol, statement in screen.statements[pool].items():
+                held, _ = screen.decide(symbol, pool)
+                self.assertEqual(stored.get((pool, symbol)), None if held is None else (
+                    str(statement['fiscal']), str(statement['known']), str(held['entry'][0]), held['entry'][1],
+                    held['market_cap'], held['enterprise_value'], held['ebitda']))
 
-    def test_dated_books_equal_the_daily_cache_calculation(self):
-        sessions = [date.fromisoformat(row[0]) for row in self.daily.execute('SELECT day FROM sessions ORDER BY day')]
-        reports, cached = daily.histories(self.daily), daily.cached_symbols(self.daily)
-        book_facts = facts.BookFacts(self.research)
-        pairs = [(sessions[i], sessions[min(i + 63, len(sessions) - 1)]) for i in range(0, len(sessions) - 1, 120)]
-        pairs += [(date(2015, 1, 2), date(2015, 1, 5)), (date(2016, 6, 1), date(2016, 10, 20))]
-        self.assertGreater(len(pairs), 6)
-        compared = Counter()
-        for entry, exit_day in pairs:
-            for pool in ('legacy', 'cached'):
-                with self.subTest(entry=entry, exit=exit_day, pool=pool):
-                    old = schedules.compute_period(self.daily, entry, exit_day, reports, cached, pool)
-                    new = books.book(entry, exit_day, pool, book_facts)
-                    self.assertEqual(exact([(new['entry'], new['exit'], new['spy'], new['candidates'])]),
-                                     exact([old['period'][:3] + old['period'][-1:]]))
-                    self.assertEqual(exact([row[:3] + row[4:5] + row[6:] for row in new['rows']]), exact(old['snapshots']))
-                    self.assertEqual(exact(new['metrics']), exact(old['metrics']))
-                    self.assertEqual(exact(new['filters']), exact(old['filters']))
-                    compared.update(row[-1] for row in new['rows'])
+    def test_view_admits_latest_roots_with_the_one_vocabulary(self):
+        with self.inputs.view() as view:
+            day = view.bounds['latest_date']
+            symbols = sorted(facts.BookFacts(self.research).companies()) + ['NONE']
+            roots = [dict(symbol=symbol, pool=pool, mode='latest', date=day) for symbol in symbols for pool in ('legacy', 'cached')]
+            decisions = view.admit(roots)
+        reasons = Counter((decision['pool'], decision['reason']) for decision in decisions)
+        self.assertEqual(reasons, Counter({
+            ('cached', None): 17, ('legacy', None): 9, ('cached', 'NOT_LISTED'): 1, ('legacy', 'NOT_LISTED'): 1,
+            ('cached', 'MISSING_PRICE'): 1, ('legacy', 'MISSING_PRICE'): 1,
+            ('cached', 'MISSING_CACHED_PRICES'): 1, ('legacy', 'MISSING_CACHED_PRICES'): 1,
+            ('legacy', 'OUTSIDE_LEGACY_BUFFER'): 7, ('legacy', 'INELIGIBLE_VALUATION'): 1,
+            ('cached', 'UNKNOWN_COMPANY'): 1, ('legacy', 'UNKNOWN_COMPANY'): 1}))
+        # An admitted latest root keeps its stored shape: report dates and the entry valuation, no lookups.
+        admitted = next(decision for decision in decisions if decision['admitted'])
+        self.assertEqual(set(admitted['statement']), {'fiscal', 'known'})
+        self.assertEqual(set(admitted['valuation']), {'market_cap', 'enterprise_value', 'ebitda'})
+        self.assertNotIn('admission_evidence', admitted)
+
+    def test_dated_books_read_the_attached_research_like_the_research_port(self):
+        with closing(daily.connect()) as db:
+            sessions = facts.sessions(db)
+            attached, direct = facts.BookFacts(db, 'research'), facts.BookFacts(self.research)
+            pairs = [(sessions[i], sessions[min(i + 63, len(sessions) - 1)]) for i in range(0, len(sessions) - 1, 120)]
+            pairs += [(date(2015, 1, 2), date(2015, 1, 5)), (date(2016, 6, 1), date(2016, 10, 20))]
+            self.assertGreater(len(pairs), 6)
+            compared = Counter()
+            for entry, exit_day in pairs:
+                for pool in ('legacy', 'cached'):
+                    with self.subTest(entry=entry, exit=exit_day, pool=pool):
+                        new = books.book(entry, exit_day, pool, attached)
+                        old = books.book(entry, exit_day, pool, direct)
+                        for key in ('rows', 'metrics', 'filters'):
+                            self.assertEqual(exact(new[key]), exact(old[key]))
+                        self.assertEqual({key: new[key] for key in ('entry', 'exit', 'spy', 'candidates')},
+                                         {key: old[key] for key in ('entry', 'exit', 'spy', 'candidates')})
+                        compared.update(row[-1] for row in new['rows'])
         self.assertGreater(compared['Scheduled exit'], 100)
         self.assertGreater(compared['Last available price'], 0)
 

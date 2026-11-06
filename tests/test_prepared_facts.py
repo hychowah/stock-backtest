@@ -94,24 +94,33 @@ class ProjectionTests(unittest.TestCase):
     def prepare(self):
         daily.prepare(self.path, self.source)
 
+    def latest_decisions(self):
+        """View.admit of both latest TEST roots (books.Screen.decide) after a fresh daily build."""
+        self.path.unlink(missing_ok=True)
+        self.prepare()
+        with closing(daily.connect(self.path, self.source)) as db, closing(research.connect(self.source)) as source, \
+                facts.View(db, source, lambda: None, lambda: None) as view:
+            day = view.bounds['latest_date']
+            return view.admit([dict(symbol='TEST', pool=pool, mode='latest', date=day) for pool in ('legacy', 'cached')]), \
+                db.execute('SELECT COUNT(*) FROM book_rows').fetchone()[0]
+
     def test_complete_chain_preserves_evidence_dates_and_latest_valuation(self):
         self.prepare()
         with closing(research.connect(self.source)) as original, closing(sqlite3.connect(self.path)) as copied:
             first = facts.require(original)
             self.assertEqual(first['latest_date'], '2015-10-20')
             self.assertEqual(json.loads(copied.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])['facts'], first)
-            # The daily cache binds the facts; it holds no copy of them.
+            # The daily cache binds the facts and attaches them; it holds no copy of them.
             names = {row[0] for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            self.assertFalse(names & {'stock_days', 'market_days', 'annual_facts', 'fact_sources',
-                                       'latest_admission', 'fact_metadata'})
+            self.assertFalse(names & {'stock_days', 'market_days', 'annual_facts', 'fact_sources', 'companies',
+                                       'statements', 'financial_inputs', 'fact_metadata'})
             self.assertFalse([name for name in names if name.startswith('observation_')])
             row = original.execute("SELECT operating_income,operating_income_reason,revenue FROM annual_facts "
                                    "WHERE symbol='TEST' AND fiscal='2014-06-30'").fetchone()
             self.assertEqual(tuple(row), (None, 'MISSING_INPUT', 100e6))
-            latest = original.execute("SELECT admitted,reason,fiscal,market_cap,enterprise_value FROM latest_admission "
-                                      "WHERE symbol='TEST' AND pool='legacy'").fetchone()
-            self.assertEqual(tuple(latest)[:3], (1, None, '2014-06-30'))
-            self.assertEqual(latest['enterprise_value'], 270e6)
+            latest = copied.execute("SELECT fiscal,enterprise_value FROM book_rows WHERE pool='legacy' AND symbol='TEST' "
+                                    "AND book=(SELECT book FROM books WHERE exit IS NULL)").fetchone()
+            self.assertEqual(tuple(latest), ('2014-06-30', 270e6))
             source = original.execute("SELECT sha256,disposition FROM fact_sources WHERE symbol='TEST' AND endpoint=?",
                                       (facts.STOCK,)).fetchone()
             self.assertEqual(source[0], hashlib.sha256((research.RAW/'px/TEST.json').read_bytes()).hexdigest())
@@ -126,11 +135,9 @@ class ProjectionTests(unittest.TestCase):
                 prices['div'][-1]['date'] = '2015-10-20' if exact else '2015-10-19'
                 path.write_text(json.dumps(prices))
                 research.prepare(self.source, force=True)
-                with closing(research.connect(self.source)) as db:
-                    rows = db.execute('SELECT admitted,reason FROM latest_admission').fetchall()
-                    self.assertTrue(rows)
-                    self.assertEqual({tuple(row) for row in rows}, {(0, reason)})
-                    self.assertEqual(db.execute('SELECT count(*) FROM latest_snapshots').fetchone()[0], 0)
+                decisions, rows = self.latest_decisions()
+                self.assertEqual({(decision['admitted'], decision['reason']) for decision in decisions}, {(False, reason)})
+                self.assertEqual(rows, 0)
 
     def test_projection_source_change_and_missing_metadata_fail_closed(self):
         self.prepare()

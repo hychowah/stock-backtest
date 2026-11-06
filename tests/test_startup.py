@@ -3,13 +3,14 @@ import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily
-from contextlib import ExitStack, nullcontext
+from contextlib import ExitStack, closing, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import io
 import sys
 import errno
+import sqlite3
 import tempfile
 import unittest
 
@@ -104,7 +105,10 @@ class BuildStateTests(unittest.TestCase):
         self.context=ExitStack();self.addCleanup(self.context.close)
         root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
         self.website=root/'website';(self.website/'local').mkdir(parents=True)
-        (root/'data').mkdir();(root/'data'/'research.sqlite').write_bytes(b'database')
+        (root/'data').mkdir();self.daily=root/'data'/'schedules.sqlite'
+        with closing(sqlite3.connect(self.daily)) as db:
+            db.execute('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+            db.execute("INSERT INTO metadata VALUES('daily_inputs','{\"generation\":1}')");db.commit()
         (self.website/'browser').mkdir()
         self.source=self.website/'browser/range.js';self.source.write_bytes(b'const n=1;\r\n')
         for name in ('index.html','latest-picks.csv','data.html'):
@@ -139,6 +143,17 @@ class BuildStateTests(unittest.TestCase):
             folder=self.website/directory;folder.mkdir(parents=True,exist_ok=True)
             (folder/'generated.py').write_text('ignored')
         self.assertTrue(build_state.current_build())
+
+    def test_latest_book_generation_not_the_cache_stamp_binds_the_build(self):
+        build_state.record_build();self.assertTrue(build_state.current_build())
+        # Saving a dated book rewrites the cache; the latest book is unchanged.
+        with closing(sqlite3.connect(self.daily)) as db:
+            db.execute("INSERT INTO metadata VALUES('saved','book')");db.commit()
+        self.assertTrue(build_state.current_build())
+        with closing(sqlite3.connect(self.daily)) as db:
+            db.execute("UPDATE metadata SET value='{\"generation\":2}' WHERE key='daily_inputs'");db.commit()
+        self.assertFalse(build_state.current_build())
+        self.daily.unlink();self.assertFalse(build_state.current_build())
 
     def test_portable_snapshot_does_not_satisfy_local_build(self):
         snapshot=self.website/'dist';snapshot.mkdir()

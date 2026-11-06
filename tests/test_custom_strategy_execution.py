@@ -33,8 +33,10 @@ class ExecutionTests(unittest.TestCase):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
         self.path=Path(self.folder.name)/'daily.sqlite'
         fixture=Fixture(12)
+        source=Path(self.folder.name)/'research.sqlite'
         with closing(sqlite3.connect(self.path)) as db:fixture.db.backup(db)
-        fixture.db.close()
+        with closing(sqlite3.connect(source)) as db:fixture.source.backup(db)
+        fixture.close()
         self.capture=fixture.capture()
         self.binding=dict(inputs=dict(fixture='2015-01-05'))
         self.opened=[];self.financial=False
@@ -42,17 +44,20 @@ class ExecutionTests(unittest.TestCase):
         class Connection(sqlite3.Connection):
             def close(connection):
                 super().close();owner.opened.remove(connection)
-        def connect(*args,**kwargs):
-            db=sqlite3.connect(self.path,factory=Connection);db.row_factory=sqlite3.Row;self.opened.append(db);return db
+        def connect(path,*,attach):
+            db=sqlite3.connect(path,factory=Connection);db.row_factory=sqlite3.Row;self.opened.append(db)
+            # The daily connection attaches research, as daily.connect does.
+            if attach:daily.attach(db,source)
+            return db
         @contextmanager
         def financial(*args,**kwargs):
             self.financial=True
             try:yield
             finally:self.financial=False
         self.addCleanup(patch.stopall)
-        patch.object(daily,'connect',side_effect=connect).start()
-        patch.object(research,'connect',side_effect=connect).start()
-        patch.object(research,'DATABASE',Path(self.folder.name)/'research.sqlite').start()
+        patch.object(daily,'connect',side_effect=lambda *args,**kwargs:connect(self.path,attach=True)).start()
+        patch.object(research,'connect',side_effect=lambda *args,**kwargs:connect(source,attach=False)).start()
+        patch.object(research,'DATABASE',source).start()
         patch.object(daily,'fingerprint',return_value=self.binding).start()
         patch.object(original_calculations.Original,'_financial',side_effect=financial).start()
         self.calc=original_calculations.Original()

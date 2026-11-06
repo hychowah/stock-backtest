@@ -259,11 +259,15 @@ class TransportTests(unittest.TestCase):
         program=formulas(*[field('market.volume',wrap=dict(op='at',date=day)) for day in ('2015-01-09','2015-01-10')])
         with inputs.view() as view:
             self.assertEqual(values(program,view,[LATEST]),[[(12.5,None),(None,'MISSING_SESSION')]])
-        # Removing only own-stock exact row never carries its earlier row.
+        # Removing only own-stock exact row never carries its earlier row. The
+        # same stock days value the entry, so the historical root is denied too.
         with closing(sqlite3.connect(inputs.source)) as db:
             db.execute("DELETE FROM stock_days WHERE symbol='TEST' AND day='2015-01-02'");db.commit()
         with inputs.view() as view:
-            self.assertEqual(values(formulas(field('market.volume')),view,[HISTORICAL]),[[(None,'MISSING_INPUT')]])
+            self.assertEqual(values(formulas(field('market.volume',wrap=dict(op='at',date='2015-01-02'))),view,[LATEST]),
+                             [[(None,'MISSING_INPUT')]])
+            self.assertEqual(view.admit([HISTORICAL])[0]['reason'],'MISSING_PRICE')
+            self.assertEqual(values(formulas(field('market.volume')),view,[HISTORICAL]),[[(None,'ROOT_NOT_ADMITTED')]])
 
     def test_treasury_latest_date_null_conflict_and_no_older_field_fallback(self):
         def change(inputs):

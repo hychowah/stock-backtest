@@ -1,7 +1,8 @@
 """Prepared inputs held unchanged for one Original scalar operation.
 
 held() connects the daily cache; that connection checks the daily fingerprint
-once (raw input metadata, recorded research bindings, bound engine source).
+once (raw input metadata, recorded research bindings, bound engine source) and
+attaches the research database read-only for books, sessions and company names.
 Inside the context, require_unchanged() is the between-step check. It costs one
 file-status read and fails if the research database was rewritten or replaced
 since entry. The caller holds cache ownership around held(), so no preparation

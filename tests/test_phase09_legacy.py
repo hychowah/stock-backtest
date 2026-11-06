@@ -3,7 +3,10 @@
 P2b removed the January books, their baseline and the report. The replay
 compares every part that still exists with the frozen values: financial
 projections and completion, financial rows, latest filter rows, and both
-selection orders over latest and dated book rows.
+selection orders over latest and dated book rows. P3b moved the latest book into
+the daily cache's book store: its filter rows keep the frozen
+(mode, pool, year 0, symbol, field, value) form, and a dated row no longer
+carries the private period id (year).
 """
 import sys
 from pathlib import Path
@@ -14,7 +17,7 @@ import json
 import unittest
 
 from backtest import screening
-from backtest.inputs import financial_inputs as financial, research
+from backtest.inputs import book_store, daily, financial_inputs as financial, research
 import test_research
 import test_selection_order
 
@@ -37,7 +40,11 @@ def replay():
         research.prepare(fixture.path)
         with closing(research.connect(fixture.path)) as db:
             financial_rows = [tuple(row) for row in db.execute('SELECT * FROM financial_inputs ORDER BY symbol,fiscal')]
-            filters = [tuple(row) for row in db.execute('SELECT * FROM filter_values ORDER BY mode,pool,year,symbol,field')]
+        daily.prepare(fixture.daily, fixture.path)
+        with closing(daily.connect(fixture.daily, fixture.path)) as db:
+            filters = [('latest', pool, 0, symbol, field, value) for pool, symbol, field, value in db.execute(
+                'SELECT pool,symbol,field,value FROM book_filters WHERE book=? ORDER BY pool,symbol,field',
+                (book_store.latest(db)[0],))]
     finally:
         fixture.doCleanups()
     selection = test_selection_order.SelectionOrderTests('test_filter_first_default_and_rank_first_does_not_refill')
@@ -72,6 +79,9 @@ class FrozenLegacyTests(unittest.TestCase):
         for removed in ('baseline', 'report'):
             del expected[removed]
         expected['filters'] = [row for row in expected['filters'] if row[0] == 'latest']
+        for name, rows in expected['selections'].items():
+            for row in rows:
+                row.pop('year', None)
         self.assertEqual(replay(), expected)
 
 

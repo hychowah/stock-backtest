@@ -1,7 +1,7 @@
 """Independent cache-only calculation of the January study.
 
 This engine uses run's original screen and price arithmetic. It does not use
-prepared books, books.snapshot or the SQL selector. The development check
+prepared books, books.book or the SQL selector. The development check
 (check.py) compares the book code with it on the bench.
 """
 from __future__ import annotations

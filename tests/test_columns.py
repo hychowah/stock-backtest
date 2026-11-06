@@ -1,8 +1,9 @@
 """Column formula evaluation over typed prepared facts: arithmetic, observation rules and explanations.
 
-Each case writes one private in-memory database that serves as the daily cache
-and the research facts, borrows a facts.View of it, admits the roots and runs
-columns.Formulas. Every explained result must equal the values-only result.
+Each case writes a private research file and an in-memory daily cache that
+attaches it, borrows a facts.View of both, admits the roots (books.Screen.decide)
+and runs columns.Formulas. Every explained result must equal the values-only
+result.
 """
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from datetime import date, timedelta
 import json
 import sqlite3
 import struct
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -67,20 +69,22 @@ class Company:
         self.root_date, self.latest_date, self.through = '2015-01-02', '2015-01-05', None
         self.reports = ['2012-06-30', '2013-06-30', '2014-06-30']
         self.annual = {f'{year}-06-30': annual(100., income) for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}
-        self.latest = dict(admitted=True, reason=None, candidate_rank=1,
-                           statement=dict(fiscal='2014-06-30', known='2014-09-28'),
-                           valuation=dict(market_cap=160e6, enterprise_value=190e6, ebitda=54e6))
+        self.listed = True
         self.fill, self.prices, self.population, self.stale = True, {}, 0, False
         self.spy, self.stock, self.treasury = [], {}, {}
-        self.db = None
+        self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.db = self.daily = None
 
     def build(self):
-        if self.db is not None:
-            self.db.close()
-        db = self.db = sqlite3.connect(':memory:')
+        """Write the research file and open the daily cache that attaches it; return the daily connection."""
+        self.close()
+        path = Path(self.folder.name) / 'research.sqlite'
+        path.unlink(missing_ok=True)
+        db = self.db = sqlite3.connect(path)
         db.row_factory = sqlite3.Row
-        db.executescript(research.SCHEMA + daily.DATED_SCHEMA + facts.SCHEMA)
-        db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology')")
+        db.execute('PRAGMA synchronous=OFF')  # A private fixture file needs no durability.
+        db.executescript(research.SCHEMA + facts.SCHEMA)
+        db.execute('INSERT INTO companies VALUES(?,?,?,?,?)', ('A', 'A', 'NYSE', 'Technology', int(self.listed)))
         for fiscal in self.reports:
             known = str(date.fromisoformat(fiscal) + rules.LAG)
             db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)', ('A', fiscal, known, 150e6, 180e6, 54e6, .3))
@@ -92,50 +96,60 @@ class Company:
                 prices[str(day)] = 10.
                 day += timedelta(days=1)
         prices.update(self.prices)
-        db.executemany('INSERT INTO prices VALUES(?,?,?)',
-                       [('A', day, price) for day, price in prices.items() if price is not None])
+        # One value rule: valuation and market inputs read the same stock days.
+        stock = {day: dict(adjClose=state(price), volume=state(None, 'MISSING_INPUT'))
+                 for day, price in prices.items() if price is not None}
+        stock.update(self.stock)
+        facts.store_annual(db, 'A', dict(sources={'income-statement': SOURCE}, annual={'income-statement': self.annual}))
+        facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c'*64, disposition='valid'), dated=stock))
         for index in range(self.population):
             # Higher yield than A; Z000-Z009 have no cached prices.
             symbol = f'Z{index:03d}'
-            db.execute('INSERT INTO companies VALUES(?,?,?,?)', (symbol, symbol, 'NYSE', 'Energy'))
+            db.execute('INSERT INTO companies VALUES(?,?,?,?,?)', (symbol, symbol, 'NYSE', 'Energy', 1))
             db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',
                        (symbol, '2014-06-30', '2014-09-28', 150e6, 180e6, 162e6, .9))
             if index >= 10:
-                db.executemany('INSERT INTO prices VALUES(?,?,?)',
-                               [(symbol, day, 10.) for day in ('2014-06-30', '2015-01-02')])
-        db.execute('INSERT INTO sessions VALUES(?,?)', (self.root_date, 100.))
-        facts.store_annual(db, 'A', dict(sources={'income-statement': SOURCE}, annual={'income-statement': self.annual}))
-        facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c'*64, disposition='valid'),
-                                        dated=self.stock, book={}))
+                facts.store_stock(db, symbol, dict(source=dict(endpoint=facts.STOCK, sha256='f'*64, disposition='valid'),
+                    dated={day: dict(adjClose=state(10.), volume=state(None, 'MISSING_INPUT')) for day in ('2014-06-30', '2015-01-02')}))
+        # Admission needs saved SPY sessions at the root and latest dates.
+        sessions = sorted({*self.spy, self.root_date, self.latest_date})
         facts.store_market(db, {
             facts.TREASURY: dict(source=dict(endpoint=facts.TREASURY, sha256='d'*64, disposition='valid'),
-                                 dated=self.treasury, book={}),
+                                 dated=self.treasury),
             facts.CALENDAR: dict(source=dict(endpoint=facts.CALENDAR, sha256='e'*64, disposition='valid'),
-                                 dated={day: dict(adjClose=state(100.)) for day in self.spy}, book={})})
-        for pool in ('legacy', 'cached'):
-            facts.store_latest(db, 'A', pool, self.latest)
-        db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",
-                   (json.dumps(dict(inputs=dict(fixture=self.through or self.root_date))),))
+                                 dated={day: dict(adjClose=state(100.)) for day in sessions})})
         facts.finish(db, self.latest_date, inputs='fixture', scopes=[
             dict(mode='latest', pool=pool, context_date=self.latest_date, book=0) for pool in ('legacy', 'cached')])
         db.commit()
-        return db
+        daily_db = self.daily = sqlite3.connect(':memory:')
+        daily_db.row_factory = sqlite3.Row
+        daily_db.executescript(daily.SCHEMA)
+        daily.attach(daily_db, path)
+        daily_db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",
+                         (json.dumps(dict(inputs=dict(fixture=self.through or self.root_date))),))
+        # The latest book has no stored rows: owner lanes at a latest root are unavailable.
+        daily_db.execute('INSERT INTO books(entry,exit,spy,candidates) VALUES(?,NULL,NULL,0)', (self.latest_date,))
+        daily_db.commit()
+        return daily_db
 
     def view(self):
         def freshness():
             if self.stale:
                 raise ValueError('Fixture inputs are stale.')
-        return facts.View(self.build(), self.db, freshness, lambda: None)
+        daily_db = self.build()
+        return facts.View(daily_db, self.db, freshness, lambda: None)
 
     def close(self):
-        if self.db is not None:
-            self.db.close()
+        for db in (self.daily, self.db):
+            if db is not None:
+                db.close()
+        self.db = self.daily = None
 
 
 class ColumnTests(unittest.TestCase):
     def setUp(self):
         self.company = Company()
-        self.addCleanup(self.company.close)
+        self.addCleanup(self.company.folder.cleanup);self.addCleanup(self.company.close)
 
     def root(self, **changes):
         return dict(dict(symbol='A', pool='legacy', mode='historical', date=self.company.root_date), **changes)
@@ -235,7 +249,7 @@ class ColumnTests(unittest.TestCase):
         self.assertEqual(block['results'][0]['value'], 12.)
         self.assertEqual(block['observations']['results'], [])
         self.assertTrue(block['observations']['roots'][0]['admitted'])
-        self.company.latest = dict(self.company.latest, admitted=False, reason='NOT_LISTED')
+        self.company.listed = False
         with self.company.view() as view, patch.object(view, 'company', side_effect=AssertionError('Annual read')):
             for expression, unit in ((c('12'), 'scalar'), (parameter(), 'USD')):
                 block = self.explain(program(expression, unit), [self.latest()], view=view)
@@ -264,12 +278,12 @@ class ColumnTests(unittest.TestCase):
             with self.subTest(changed=changed), self.company.view() as view, self.assertRaises(ValueError):
                 view.admit([self.root(**changed)])
         with self.company.view() as view:
-            with self.assertRaisesRegex(ValueError, 'outside saved'):
+            with self.assertRaisesRegex(ValueError, 'not a saved SPY session'):
                 view.admit([self.root(date='2015-01-03')])
             self.assertTrue(view.admit([self.latest()])[0]['admitted'])
-            view.db.execute('DELETE FROM latest_admission')
-            with self.assertRaisesRegex(ValueError, 'admission is missing'):
-                view.admit([self.latest()])
+            # An unknown company is a denial, at a latest and at a historical root.
+            self.assertEqual([item['reason'] for item in view.admit([self.latest(symbol='B'), self.root(symbol='B')])],
+                             ['UNKNOWN_COMPANY', 'UNKNOWN_COMPANY'])
             view.db.execute('DELETE FROM fact_metadata')
             with self.assertRaisesRegex(ValueError, 'missing|stale'):
                 view.admit([self.latest()])
@@ -299,10 +313,10 @@ class ColumnTests(unittest.TestCase):
             block = self.explain(program(c('13')), roots, view=view)
             alone = self.explain(program(parameter('market.enterprise_value'), 'USD'), [roots[1]], view=view)
             ev = self.explain(program(parameter('market.enterprise_value'), 'USD'), [roots[-1]], view=view)
-            db = view.db
-            selected, ranks = books.candidates(daily.histories(db), date(2015, 1, 2))
+            book_facts = facts.BookFacts(view.db)
+            selected, ranks = books.candidates(book_facts.reports(), date(2015, 1, 2))
             expected = books.admit(selected['legacy']['Z249'], date(2015, 1, 2),
-                lambda day, forward, slack: daily.price(db, 'Z249', day, forward, slack), books.ENTRY_SLACK)[1]
+                lambda day, forward, slack: book_facts.price('Z249', day, forward, slack), books.ENTRY_SLACK)[1]
         admitted = block['observations']['roots']
         self.assertEqual([item['valid'] for item in block['results']], [True, False, False, True])
         self.assertEqual([item['reason'] for item in admitted], [None, 'OUTSIDE_LEGACY_BUFFER', 'MISSING_CACHED_PRICES', None])
@@ -538,14 +552,17 @@ class ColumnTests(unittest.TestCase):
 
     # Enterprise value.
 
-    def test_latest_root_reads_prepared_ev_and_earlier_contexts_reconstruct(self):
+    def test_latest_root_values_at_its_session_and_earlier_contexts_reconstruct(self):
+        # The latest root is valued at its exact session (books.Screen.decide); a
+        # derived context reconstructs with the same entry valuation rule.
+        self.company.prices = {self.company.latest_date: 12.}
         ev = parameter('market.enterprise_value')
-        for day in (self.company.root_date, self.company.latest_date):
+        for day, difference, earlier_value in ((self.company.root_date, 30e6, 180e6), (self.company.latest_date, 0., 210e6)):
             with self.subTest(day=day):
                 block = self.explain(program(b('sub', ev, dict(op='at', date=day, arg=ev)), 'USD'), [self.latest()])
-                self.assertEqual(block['results'][0]['value'], 10e6)
+                self.assertEqual(block['results'][0]['value'], difference)
                 current, earlier = block['observations']['results']
-                self.assertEqual((current['members'][0]['value'], earlier['members'][0]['value']), (190e6, 180e6))
+                self.assertEqual((current['members'][0]['value'], earlier['members'][0]['value']), (210e6, earlier_value))
                 self.assertEqual(earlier['candidate_rank'], 1)
                 self.assertEqual(earlier['members'][0]['evidence']['lookup_policy'], 'existing-entry-valuation')
                 self.assertEqual(len(block['observations']['contexts']), 2)
@@ -573,6 +590,8 @@ class ColumnTests(unittest.TestCase):
 
     def test_price_volume_and_treasury_lookups(self):
         self.company.spy = ['2014-12-10', '2014-12-31', '2015-01-02']
+        # The 2014-12-10 session has no saved price for A.
+        self.company.prices = {'2014-12-10': None}
         self.company.stock = {'2014-12-31': dict(adjClose=state(9.5), volume=state(1000.)),
                               '2015-01-02': dict(adjClose=state(10.5), volume=state(None, 'INVALID_INPUT'))}
         self.company.treasury = {'2014-12-01': dict(month3=state(2.5), year10=state(-.25)),

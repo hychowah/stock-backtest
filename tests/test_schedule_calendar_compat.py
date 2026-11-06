@@ -2,12 +2,10 @@
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
-from backtest.inputs import daily
 from datetime import date, timedelta
 import hashlib
 import json
 from pathlib import Path
-import sqlite3
 import sys
 import unittest
 
@@ -18,6 +16,8 @@ from backtest.inputs import market, fmp_download, cache_assets
 fmp_download.KEY_PATH = ROOT/'tmp/cb08/nonexistent-key'
 from backtest.engines.original import schedules as s
 from backtest.engines.original import robustness as r
+sys.path.insert(0, str(ROOT/'tests'))
+import book_store_fixture as store
 
 
 def digest(value):
@@ -33,9 +33,8 @@ class MonthlyCompatibilityTests(unittest.TestCase):
                     if (first+timedelta(days=n)).weekday() in specification['weekdays']
                     and str(first+timedelta(days=n)) not in specification['holidays']]
         self.assertEqual(digest([str(d) for d in sessions]),specification['sha256'])
-        db = sqlite3.connect(':memory:'); db.row_factory = sqlite3.Row
-        self.addCleanup(db.close); db.executescript(daily.SCHEMA)
-        db.executemany('INSERT INTO sessions VALUES(?,100)',[(str(d),) for d in sessions])
+        db = store.connection(); self.addCleanup(db.close)
+        for day in sessions: store.session(db, str(day), 100)
         examples = {(e['start'],e['months'],e['seed']):e for e in fixture['examples']}
         self.assertEqual(len(fixture['cases']),60)
         for case in fixture['cases']:

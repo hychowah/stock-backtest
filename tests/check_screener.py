@@ -1,4 +1,4 @@
-"""Compare browser latest-screen filtering with independent queries against prepared SQLite."""
+"""Compare browser latest-screen filtering with independent queries against the latest book of the daily cache."""
 
 import sys as _package_sys
 from pathlib import Path as _PackagePath
@@ -15,10 +15,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from backtest.inputs import research as research
+from backtest.inputs import daily
 
 def main():
-    db = research.connect()
+    db = daily.connect()
     try:
         latest_cases=[{},dict(pool='cached',rank_to=100),dict(pool='cached',min_cap=500e6,max_cap=5e9,min_yield=.15),dict(pool='cached',sector='Technology',exchange='NASDAQ',max_multiple=8),dict(rank_from=10,rank_to=20),dict(sector='No matching sector'),dict(pool='cached',metric='ev_ebitda_3y',rank_to=100,max_multiple=8)]
         latest_cases.append(dict(pool='cached',filters=[dict(field='fcf_yield',op='gt',value=5)]))

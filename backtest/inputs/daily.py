@@ -1,4 +1,10 @@
-"""Prepared daily storage; connections and transactions belong to callers."""
+"""Prepared daily storage: the book store; connections and transactions belong to callers.
+
+A daily connection attaches the research database read-only as the schema
+'research'. Books, sessions and company names are read from there (facts and
+book_store); the daily cache keeps only the books and what its kept-book check
+compares.
+"""
 from contextlib import closing
 from datetime import date
 import hashlib
@@ -20,34 +26,21 @@ from backtest.inputs import book_store
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 8
-# Tables only the daily cache has: dated books and the daily price, session
-# and Treasury rows. A period id (periods.year) names one entry and exit;
-# period_pools records each completed pool. Latest and dated books share
-# research's screening_metrics and filter_values definitions. The book store
-# (book_store.SCHEMA) holds the latest book in the one book row shape.
-DATED_SCHEMA = '''
-CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
-CREATE TABLE snapshots (
- pool TEXT, year INTEGER, symbol TEXT, candidate_rank INTEGER,
- fiscal TEXT, entry TEXT, exit TEXT, market_cap REAL, enterprise_value REAL,
- ebitda REAL, ebitda_yield REAL, ev_ebitda REAL, spread REAL,
- return_value REAL, status TEXT, PRIMARY KEY(pool,year,symbol));
-CREATE INDEX screen_lookup ON snapshots(pool,year,ebitda_yield DESC);
-CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
-CREATE TABLE period_pools(
- period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
- PRIMARY KEY(period_id,pool), FOREIGN KEY(period_id) REFERENCES periods(year)
-) WITHOUT ROWID;
+VERSION = 9
+# The book store (book_store.SCHEMA) holds the latest and dated books. The
+# daily price, session and Treasury rows and the copied 10-year yields are
+# read only by the kept-book check of a refresh (_prices, _dated_change).
+SCHEMA = '''
+CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE prices(symbol TEXT, day TEXT, adjusted REAL NOT NULL, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
 CREATE TABLE sessions(day TEXT PRIMARY KEY, price REAL) WITHOUT ROWID;
 CREATE TABLE treasuries(day TEXT PRIMARY KEY, yield_value REAL) WITHOUT ROWID;
-'''
-SCHEMA = r.SHARED_SCHEMA + DATED_SCHEMA + book_store.SCHEMA
+CREATE TABLE treasury10 (day TEXT PRIMARY KEY, yield_percent REAL NOT NULL) WITHOUT ROWID;
+''' + book_store.SCHEMA
 
 
-COPIED_TABLES = ('companies','statements','financial_inputs','treasury10')
-BOOK_TABLES = ('snapshots','filter_values','screening_metrics')
+# The research tables whose rows every dated book reads; a change drops every book.
+BOOK_INPUTS = ('companies','statements','financial_inputs')
 PRICE_SOURCES = (Path(__file__),Path(r.__file__),Path(facts.__file__),Path(rules.__file__),Path(market.__file__))
 
 
@@ -67,17 +60,25 @@ def fingerprint(source=None, *, accepted=False):
                 inputs=r.accepted_signature() if accepted else r.signature(),prices=prices,facts=prepared,
                 engine={p.relative_to(r.ROOT).as_posix() if p.is_relative_to(r.ROOT) else p.name:[p.stat().st_size,p.stat().st_mtime_ns] for p in _engine_sources()})
 
+
+def attach(db,source):
+    """Attach the research database read-only as the schema 'research'."""
+    db.execute('ATTACH DATABASE ? AS research',(Path(source).resolve().as_uri()+'?mode=ro',))
+
+
 def connect(path=DATABASE,source=None):
-    # The returned connection is caller-owned.
+    # The returned connection is caller-owned. It attaches the research
+    # database that the saved fingerprint binds.
     path=Path(path)
     if not path.exists():
         raise ValueError('Daily cache missing. Run: python3 scripts/schedules.py prepare')
-    db=sqlite3.connect(path,timeout=60)
+    db=sqlite3.connect(path.resolve().as_uri(),uri=True,timeout=60)
     db.row_factory=sqlite3.Row
     try:
         saved=json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
         if saved!=fingerprint(source, accepted=True):
             raise ValueError('Daily cache changed. Run: python3 scripts/schedules.py prepare')
+        attach(db,source or r.DATABASE)
     except Exception:
         db.close();raise
     return db
@@ -107,19 +108,15 @@ def _code():
     return dict(prices=content(PRICE_SOURCES),books=content(r.calculation_sources()+_engine_sources()))
 
 
-def _copy_research(reference,db):
-    """Copy prepared research rows from the attached research schema.
-
-    Return the identity of the undated book inputs.
-    """
+def _book_inputs(reference,db):
+    """Copy the 10-year yields for the kept-book check; return the identity of the undated book inputs."""
+    db.execute('INSERT INTO main.treasury10 SELECT * FROM research.treasury10')
     digest=hashlib.sha256()
-    for table in COPIED_TABLES:
-        db.execute(f'INSERT INTO main.{table} SELECT * FROM research.{table}')
-        if table!='treasury10':
-            digest.update(table.encode()+b'\n')
-            for row in reference.execute('SELECT * FROM '+table):
-                backtest_control.checkpoint()
-                digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
+    for table in BOOK_INPUTS:
+        digest.update(table.encode()+b'\n')
+        for row in reference.execute('SELECT * FROM '+table):
+            backtest_control.checkpoint()
+            digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
     return digest.hexdigest()
 
 
@@ -198,23 +195,21 @@ def _dated_change(db,table):
 
 
 def _keep_books(db,since):
-    """Copy saved books that read no input changed on or after since.
+    """Copy saved dated books that read no input changed on or after since, with their book ids.
 
     A book reads no price, session or yield after max(exit, entry+FORWARD_REACH).
-    None keeps every book.
+    None keeps every dated book. The latest book is never kept.
     """
-    previous=db.execute('SELECT year,entry,exit FROM old.periods').fetchall()
-    kept=[(year,) for year,entry,exit_day in previous
+    previous=db.execute('SELECT book,entry,exit FROM old.books WHERE exit IS NOT NULL').fetchall()
+    kept=[(book,) for book,entry,exit_day in previous
           if since is None or max(date.fromisoformat(exit_day),date.fromisoformat(entry)+financial_books.FORWARD_REACH)<date.fromisoformat(since)]
     diagnostics.note(books_previous=len(previous),books_kept=len(kept),changed_from=since)
     if not kept:return
-    db.execute('CREATE TEMP TABLE kept_periods(year INTEGER PRIMARY KEY)')
-    db.executemany('INSERT INTO temp.kept_periods VALUES(?)',kept)
-    db.execute('INSERT INTO periods SELECT * FROM old.periods WHERE year IN (SELECT year FROM temp.kept_periods)')
-    db.execute('INSERT INTO period_pools SELECT * FROM old.period_pools WHERE period_id IN (SELECT year FROM temp.kept_periods)')
-    for table in BOOK_TABLES:
-        db.execute(f'INSERT INTO {table} SELECT * FROM old.{table} WHERE year IN (SELECT year FROM temp.kept_periods)')
-    db.execute('DROP TABLE temp.kept_periods')
+    db.execute('CREATE TEMP TABLE kept_books(book INTEGER PRIMARY KEY)')
+    db.executemany('INSERT INTO temp.kept_books VALUES(?)',kept)
+    for table in book_store.TABLES:
+        db.execute(f'INSERT INTO main.{table} SELECT * FROM old.{table} WHERE book IN (SELECT book FROM temp.kept_books)')
+    db.execute('DROP TABLE temp.kept_books')
 
 
 @diagnostics.operation('prepare.daily')
@@ -223,8 +218,9 @@ def prepare(path=DATABASE, source=r.DATABASE):
     """Parse changed raw prices only; keep the previous cache if publication fails.
 
     A stale cache with refresh evidence and the current layout supplies its
-    unchanged company prices and every saved book that cannot read a changed
-    input. The result matches a full build of the same inputs plus those books.
+    unchanged company prices and every saved dated book that cannot read a
+    changed input. The latest book is computed afresh. The result matches a
+    full build of the same inputs plus those books.
     """
     started=time.perf_counter()
     diagnostics.lap('admission')
@@ -253,8 +249,8 @@ def prepare(path=DATABASE, source=r.DATABASE):
         db.executescript(SCHEMA)
         if saved is not None:
             db.execute('ATTACH DATABASE ? AS old',(path.resolve().as_uri()+'?mode=ro',))
-        db.execute('ATTACH DATABASE ? AS research',(Path(source).resolve().as_uri()+'?mode=ro',))
-        tables=_copy_research(reference,db)
+        attach(db,source)
+        tables=_book_inputs(reference,db)
         diagnostics.lap('copy_research')
         symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
         code=_code()
@@ -263,21 +259,22 @@ def prepare(path=DATABASE, source=r.DATABASE):
         db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')])
         db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None])
         diagnostics.lap('market')
-        # The latest book: the open book at research's latest date, from its facts.
-        book_facts=facts.BookFacts(reference)
-        for pool in ('legacy','cached'):
-            book_store.store(db,financial_books.book(date.fromisoformat(inputs['facts']['latest_date']),None,pool,
-                                                     book_facts,backtest_control.checkpoint))
-        diagnostics.lap('latest_book')
         books=_digest(dict(tables=tables,symbols=symbols))
         if saved is not None and code['books']==saved['code']['books'] and books==saved['books']:
             earliest+=[day for table in ('sessions','treasuries','treasury10') if (day:=_dated_change(db,table)) is not None]
             _keep_books(db,min(earliest) if earliest else None)
             diagnostics.lap('keep_books')
+        # The latest book: the open book at research's latest date, from its
+        # facts. Kept dated books keep their ids; the latest book takes the next.
+        book_facts=facts.BookFacts(reference)
+        for pool in ('legacy','cached'):
+            book_store.store(db,financial_books.book(date.fromisoformat(inputs['facts']['latest_date']),None,pool,
+                                                     book_facts,backtest_control.checkpoint))
+        diagnostics.lap('latest_book')
         if inputs!=fingerprint(source):
             raise ValueError('Inputs changed during daily preparation; retry.')
         evidence=dict(version=VERSION,code=code,books=books,prices=units)
-        for key,value in dict(daily_inputs=inputs,cached_symbols=symbols,refresh=evidence).items():
+        for key,value in dict(daily_inputs=inputs,refresh=evidence).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         db.commit()
         db.close();reference.close();temporary.replace(path)
@@ -287,63 +284,3 @@ def prepare(path=DATABASE, source=r.DATABASE):
     diagnostics.lap('publication')
     diagnostics.note(outcome=action,symbols=len(symbols),database_bytes=path.stat().st_size)
     print(f'Daily cache {path.stat().st_size/1e6:.1f} MB {action} in {time.perf_counter()-started:.1f}s',flush=True)
-
-def price(db,symbol,day,forward=False,slack=None):
-    operator,order=('>=','ASC') if forward else ('<=','DESC')
-    row=db.execute(f'SELECT day,adjusted FROM prices WHERE symbol=? AND day{operator}? ORDER BY day {order} LIMIT 1',(symbol,str(day))).fetchone()
-    if row is None:
-        return None
-    result=(date.fromisoformat(row[0]),row[1])
-    return result if slack is None or abs((result[0]-day).days)<=slack else None
-
-def prepared_report(record):
-    """Decode one prepared annual row; financial eligibility stays with books."""
-    row=dict(record);symbol=row.pop('symbol')
-    row.update(fiscal=date.fromisoformat(row['fiscal']),known=date.fromisoformat(row['known']),enterprise=row['enterprise_value'])
-    row['yield']=row['ebitda_yield']
-    return symbol,row
-
-
-def histories(db):
-    broad,legacy={},{}
-    for record in db.execute('SELECT * FROM statements ORDER BY rowid'):
-        backtest_control.checkpoint()
-        symbol,row=prepared_report(record)
-        broad.setdefault(symbol,[]).append(row)
-    for rows in broad.values():rows.sort(key=lambda s:s['fiscal'])
-    return financial_books.pools(broad)
-
-def prepared_period(db,entry,exit_day,pool):
-    row=db.execute('''SELECT p.year FROM periods p JOIN period_pools b ON b.period_id=p.year
-                      WHERE p.entry=? AND p.exit=? AND b.pool=?''',
-                   (str(entry),str(exit_day),pool)).fetchone()
-    return row[0] if row is not None else None
-
-def cached_symbols(db):
-    row=db.execute("SELECT value FROM metadata WHERE key='cached_symbols'").fetchone()
-    return set(json.loads(row[0])) if row else {row[0] for row in db.execute('SELECT DISTINCT symbol FROM prices')}
-
-def store_period(db,book):
-    """Save a complete pool in the caller's transaction, including empty pools.
-
-    Rows and completion marker commit together. Daily-price inventory binding
-    remains the prerequisite for every read and write.
-    """
-    pool=book['pool'];entry=book['entry'];exit_day=book['exit']
-    completed=prepared_period(db,entry,exit_day,pool)
-    if completed is not None:return completed
-    row=db.execute('SELECT year FROM periods WHERE entry=? AND exit=?',(entry,exit_day)).fetchone()
-    if row is None:
-        cursor=db.execute('INSERT INTO periods(entry,exit,spy,treasury,legacy_candidates,cached_candidates) VALUES(?,?,?,?,?,?)',book['period'])
-        period_id=cursor.lastrowid
-    else:period_id=row[0]
-    db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',
-                   ((pool,period_id,*row) for row in book['snapshots']))
-    db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                   (('historical',pool,period_id,*row) for row in book.get('filters',[])))
-    db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
-                   (('historical',pool,period_id,*row) for row in book['metrics']))
-    # Empty pools are completed too. The caller commits this marker with all
-    # snapshots/metrics, so an interrupted pool switch can safely be retried.
-    db.execute('INSERT INTO period_pools VALUES(?,?)',(period_id,pool))
-    return period_id

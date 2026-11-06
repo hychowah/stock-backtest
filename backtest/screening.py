@@ -1,11 +1,12 @@
-"""Validation and SQL selection over acquired prepared tables.
+"""Validation and SQL selection over one stored book of the book store.
 
 validate_selection(**options) performs no SQL and preserves submitted settings.
-select(db, *, period=None, **options) selects latest when period is None;
-an inclusive period-id range selects dated book rows.
-latest(db, **options) applies the common selector to latest snapshots.
+select(db, *, book=None, **options) selects from one book of a daily
+connection (backtest/inputs/book_store.py); None is the latest book.
+latest(db, **options) applies the common selector to the latest book.
 """
 from .financial import metrics
+from .inputs import book_store
 from . import selection as policy
 
 
@@ -53,7 +54,7 @@ def legacy_specification(*, rank_from=1,rank_to=50,pool='legacy',metric=metrics.
     return spec
 
 
-def _sql_conditions(specification, mode, historical):
+def _sql_conditions(specification, book):
     """Render only adapter-owned lanes; all submitted values stay parameters."""
     columns={lane:'s.'+lane for lane in ('market_cap','enterprise_value',
              'metric_yield','metric_multiple','sector','exchange')}
@@ -64,34 +65,36 @@ def _sql_conditions(specification, mode, historical):
         if lane in columns:
             clauses.append(columns[lane]+op+'?');values.append(item['value'])
         elif lane.startswith('filter.') and lane[7:] in metrics.FILTERS:
-            clauses.append('EXISTS (SELECT 1 FROM filter_values f WHERE f.symbol=s.symbol AND f.pool=s.pool AND f.year='+('s.year' if historical else '0')+' AND f.mode=? AND f.field=? AND f.value'+op+'?)')
-            values.extend([mode,lane[7:],item['value']])
+            clauses.append('EXISTS (SELECT 1 FROM book_filters f WHERE f.book=? AND f.pool=s.pool AND f.symbol=s.symbol AND f.field=? AND f.value'+op+'?)')
+            values.extend([book,lane[7:],item['value']])
         else:
             raise ValueError('Unsupported legacy selection lane.')
     return ' AND '.join(clauses),values
 
 
-def select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
-    """Execute the legacy scalar adapter in SQL; preserve rows and SQL pushdown."""
+def select(db, *, book=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
+    """Execute the legacy scalar adapter in SQL over one book; preserve rows and SQL pushdown.
+
+    Rows keep the book's row shape (book_store.DATED or LATEST) plus the
+    company name, sector and exchange, the metric pair and the rank.
+    """
     spec=legacy_specification(rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
-    mode='historical' if period is not None else 'latest'
-    table='snapshots' if period is not None else 'latest_snapshots'
-    base=['s.pool=?'];values=[mode,metric,pool]
-    if period is not None:
-        base.append('s.year BETWEEN ? AND ?');values.extend(period)
-    conditions,thresholds=_sql_conditions(spec,mode,period is not None)
-    join=' JOIN screening_metrics m ON m.symbol=s.symbol AND m.pool=s.pool AND '+('m.year=s.year' if period is not None else 'm.year=0')+' AND m.mode=? AND m.metric=?'
-    partition,ordering=('PARTITION BY s.year ','year,rank') if period is not None else ('','rank')
+    open_book=book is None
+    if open_book:
+        book,_=book_store.latest(db)
+    conditions,thresholds=_sql_conditions(spec,book)
     before=' WHERE '+conditions if spec['selection_order']=='filter_first' else ''
     after=' AND '+conditions if spec['selection_order']=='rank_first' else ''
     direction={'highest':'DESC','lowest':'ASC'}[spec['ranking']['direction']]
     sql=f"""WITH candidates AS (
-      SELECT s.*,c.name,c.sector,c.exchange,m.yield_value AS metric_yield,m.multiple AS metric_multiple
-      FROM {table} s JOIN companies c USING(symbol){join} WHERE """+' AND '.join(base)+f"""), ranked AS (
-      SELECT s.*,ROW_NUMBER() OVER({partition}ORDER BY s.metric_yield {direction},s.candidate_rank ASC,s.symbol ASC) AS rank
-      FROM candidates s{before}) SELECT * FROM ranked s WHERE rank BETWEEN ? AND ?{after} ORDER BY {ordering}"""
+      SELECT {book_store.projection(open_book)},c.name,c.sector,c.exchange,m.yield_value AS metric_yield,m.multiple AS metric_multiple
+      FROM book_rows s JOIN research.companies c USING(symbol)
+      JOIN book_metrics m ON m.book=s.book AND m.pool=s.pool AND m.symbol=s.symbol AND m.metric=?
+      WHERE s.book=? AND s.pool=?), ranked AS (
+      SELECT s.*,ROW_NUMBER() OVER(ORDER BY s.metric_yield {direction},s.candidate_rank ASC,s.symbol ASC) AS rank
+      FROM candidates s{before}) SELECT * FROM ranked s WHERE rank BETWEEN ? AND ?{after} ORDER BY rank"""
     bounds=[spec['rank_from'],spec['rank_to']]
-    arguments=values+(thresholds+bounds if spec['selection_order']=='filter_first' else bounds+thresholds)
+    arguments=[metric,book,pool]+(thresholds+bounds if spec['selection_order']=='filter_first' else bounds+thresholds)
     cursor=db.execute(sql,arguments)
     fields=[c[0] for c in cursor.description]
     return [dict(zip(fields,row)) for row in cursor]

@@ -18,6 +18,7 @@ _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 from backtest import selection
 from backtest.financial import books
+from backtest.inputs import book_store
 from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library
@@ -33,18 +34,17 @@ def _size(value):
     return len(definitions.canonical(value).encode('ascii'))
 
 
-def scope_rows(db, *, pool, period=None):
-    """Read one complete prepared snapshot scope without metric-availability joins.
+def scope_rows(db, *, pool, book=None):
+    """Read one complete pool of one stored book (None: the latest book) in its kept row shape.
 
-    MAX_CANDIDATES bounds the rows; a scope of that size retains a few MB.
+    db is a daily connection that attaches research. MAX_CANDIDATES bounds the
+    rows; a scope of that size retains a few MB. Rows are in symbol order.
     """
-    table = 'snapshots' if period is not None else 'latest_snapshots'
-    args = [pool]
-    where = 's.pool=?'
-    if period is not None:
-        where += ' AND s.year=?'; args.append(period)
-    cursor = db.execute('SELECT s.*,c.name,c.sector,c.exchange,c.symbol AS _company_symbol FROM ' + table +
-        ' s LEFT JOIN companies c USING(symbol) WHERE ' + where + ' ORDER BY s.rowid', args)
+    open_book = book is None
+    if open_book:
+        book, _ = book_store.latest(db)
+    cursor = db.execute('SELECT ' + book_store.projection(open_book) + ',c.name,c.sector,c.exchange,c.symbol AS _company_symbol '
+        'FROM book_rows s LEFT JOIN research.companies c USING(symbol) WHERE s.book=? AND s.pool=? ORDER BY s.symbol', (book, pool))
     names = [item[0] for item in cursor.description]
     rows = []
     for row in cursor:
@@ -107,7 +107,7 @@ def _scope(db, view, capture, period, entry, *, latest, owner_scope):
             item['mode'] == 'latest' and item['pool'] == pool and item['context_date'] == str(entry) and item['book'] == 0
             for item in view.projection['scopes'])):
         raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.')
-    rows=scope_rows(db,pool=pool,period=None if latest else period)
+    rows=scope_rows(db,pool=pool,book=None if latest else period)
     if len({row['symbol'] for row in rows}) != len(rows):
         raise definitions.FormulaError('INVALID_SHAPE','/population','Prepared scope contains duplicate companies.')
     roots=[dict(symbol=row['symbol'],pool=pool,mode='latest' if latest else 'historical',date=str(entry),owner_scope=owner_scope) for row in rows]
@@ -140,8 +140,8 @@ class Executor:
 
         Dated scopes apply the view's admission rules (eligible report, legacy buffer,
         cached prices, eligible valuation) and take the entry valuation from the
-        book row: compute_period derived it with the same function and prices.
-        The latest scope uses the view's typed latest admission.
+        book row: books.book derived it with the same rule and prices.
+        The latest scope uses the view's admission (books.Screen.decide).
         """
         if dated:
             statements, ranks = self.view.candidates(str(entry), self.checkpoint)
@@ -170,7 +170,7 @@ class Executor:
         specification = deepcopy(self.capture['selection'])
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
         lane_of = lambda role: 'ranking' if role == 0 else 'c' + str(role - 1)
-        mode = 'latest' if latest else 'historical'; year = 0 if latest else period
+        mode = 'latest' if latest else 'historical'; book = book_store.latest(db)[0] if latest else period
         decisions = self._admit(rows, roots, entry, owner_scope, not latest)
         admitted = sum(decision['admitted'] for decision in decisions)
         receipt = dict(policy=dict(executor=_LOADED,selection=selection.policy_fingerprint()),id=identity,
@@ -191,8 +191,8 @@ class Executor:
             names = sorted({storage['metric'] for storage in metrics.values()})
             by_metric = {}
             for symbol, metric, multiple, yield_value in db.execute(
-                    'SELECT symbol,metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND metric IN ('
-                    + ','.join('?' * len(names)) + ')', (mode, self.pool, year, *names)):
+                    'SELECT symbol,metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND metric IN ('
+                    + ','.join('?' * len(names)) + ')', (book, self.pool, *names)):
                 by_metric[symbol, metric] = multiple, yield_value
             for role, storage in metrics.items():
                 column = 1 if storage['component'] == 'yield' else 0
@@ -201,8 +201,8 @@ class Executor:
             names = sorted({storage['field'] for storage in fields.values()})
             by_field = {}
             for symbol, field, value in db.execute(
-                    'SELECT symbol,field,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND field IN ('
-                    + ','.join('?' * len(names)) + ')', (mode, self.pool, year, *names)):
+                    'SELECT symbol,field,value FROM book_filters WHERE book=? AND pool=? AND field IN ('
+                    + ','.join('?' * len(names)) + ')', (book, self.pool, *names)):
                 by_field[symbol, field] = value
             for role, storage in fields.items():
                 stored[role] = {symbol: value for (symbol, field), value in by_field.items() if field == storage['field']}

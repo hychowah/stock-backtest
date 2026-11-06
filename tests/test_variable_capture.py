@@ -324,7 +324,7 @@ class CaptureTests(unittest.TestCase):
         import test_strategy_requests as requests
         from test_scalar_execution import Fixture, preview
         fixture = Fixture(4)
-        self.addCleanup(fixture.db.close)
+        self.addCleanup(fixture.close)
         ev = self.store.create('Captured EV', definition(dict(op='parameter', id='market.enterprise_value'), 'USD', 'usd'))
         capture = self.store.capture([root(ev)])
         intent = requests.intent(requests.formula(ev), rank_to=1)

@@ -2,9 +2,11 @@
 from backtest import screening
 """Plan missing books once, calculate ahead, and commit through one SQLite writer.
 
-Only requested date pairs are planned. Processes use read-only connections and
-the ordinary financial calculator. Ordered, bounded prefetch keeps trial saves
-atomic and deterministic. Large staged trials spill to a temporary local file.
+Only requested date pairs are planned. Processes use read-only daily
+connections that attach the research database the parent admitted, and the
+ordinary book function (books.book over facts.BookFacts). Ordered, bounded
+prefetch keeps trial saves atomic and deterministic. Large staged trials spill
+to a temporary local file.
 """
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
@@ -20,7 +22,8 @@ from threading import Thread
 import time
 
 from backtest.engines.original import schedules
-from backtest.inputs import daily
+from backtest.financial import books
+from backtest.inputs import book_store, daily, facts
 from backtest import calendar_requests as calendar_requests
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
@@ -28,9 +31,7 @@ from backtest.runtime import diagnostics
 DEFAULT_WORKERS=8
 MIN_PARALLEL_BOOKS=16
 _reader=None
-_books=None
-_cached=None
-_financials={}
+_facts=None
 
 
 def generation(db):
@@ -46,9 +47,9 @@ def plan(db,configuration,book_selection=None):
         raise ValueError('The number of sampled schedules must match the requested trials.')
     pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
     available={(row[0],row[1],pool) for row in db.execute('''
-        SELECT p.entry,p.exit FROM periods p JOIN period_pools b ON b.period_id=p.year
-        WHERE b.pool=?''',(pool,))}
-    sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+        SELECT b.entry,b.exit FROM books b JOIN book_pools p ON p.book=b.book
+        WHERE p.pool=? AND b.exit IS NOT NULL''',(pool,))}
+    sessions=facts.sessions(db)
     seen=set();jobs=[];trials=[]
     for dates in configuration['samples']:
         periods,_,_,_,_=calendar_requests.periods(sessions,dict(calendar_requests.request_fields(configuration),dates=dates),checkpoint=backtest_control.checkpoint)
@@ -63,8 +64,8 @@ def plan(db,configuration,book_selection=None):
     return dict(jobs=jobs,trials=trials,unique_books=len(seen),reused_books=len(seen)-len(jobs))
 
 
-def database_path(db):
-    return next((row[2] for row in db.execute('PRAGMA database_list') if row[1]=='main'), '')
+def database_path(db,schema='main'):
+    return next((row[2] for row in db.execute('PRAGMA database_list') if row[1]==schema), '')
 
 
 def worker_count(db,jobs,requested):
@@ -83,22 +84,24 @@ def worker_count(db,jobs,requested):
     return min(count,len(jobs),os.cpu_count() or 1)
 
 
-def open_reader(path,expected):
+def open_reader(path,research,expected):
     db=sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True,timeout=60)
     db.row_factory=sqlite3.Row
     try:
         db.execute('PRAGMA query_only=ON')
-        db.execute('PRAGMA cache_size=-65536')
-        # The parent admitted this generation under cache ownership.
+        # The parent admitted this generation and its research file under cache ownership.
         if generation(db)!=expected:
             raise ValueError('The daily cache changed before a calculation worker started.')
+        daily.attach(db,research)
+        # Books read the research facts; the cache size is per schema.
+        db.execute('PRAGMA research.cache_size=-65536')
         return db
     except BaseException:
         db.close();raise
 
 
-def initialize_worker(path,expected):
-    global _reader,_books,_cached
+def initialize_worker(path,research,expected):
+    global _reader,_facts
     parent=multiprocessing.parent_process()
     if parent is not None:
         def follow_parent():
@@ -107,15 +110,15 @@ def initialize_worker(path,expected):
             # These children only read, so exit promptly and release their locks.
             os._exit(0)
         Thread(target=follow_parent,daemon=True).start()
-    _reader=open_reader(path,expected)
-    _books=daily.histories(_reader);_cached=daily.cached_symbols(_reader)
+    _reader=open_reader(path,research,expected)
+    _facts=facts.BookFacts(_reader,'research')
 
 
 def calculate(key):
-    return calculate_book(_reader,key,_books,_cached,_financials)
+    return calculate_book(_reader,key,_facts)
 
 
-def calculate_book(db,key,books,cached,financials=None):
+def calculate_book(db,key,book_facts):
     """One short read transaction per book, released before any parent write.
 
     Autocommit otherwise acquires a file read lock for every price lookup, which
@@ -126,7 +129,7 @@ def calculate_book(db,key,books,cached,financials=None):
     owned=not db.in_transaction
     if owned:db.execute('BEGIN')
     try:
-        return schedules.compute_period(db,date.fromisoformat(entry),date.fromisoformat(exit_day),books,cached,pool,financials)
+        return books.book(date.fromisoformat(entry),date.fromisoformat(exit_day),pool,book_facts,backtest_control.checkpoint)
     finally:
         if owned:db.rollback()
 
@@ -137,11 +140,11 @@ def calculations(db,jobs,workers,on_wait):
     if not jobs:
         yield iter(());return
     if workers==1:
-        books=daily.histories(db);cached=daily.cached_symbols(db);financials={}
-        yield (calculate_book(db,key,books,cached,financials) for key in jobs)
+        book_facts=facts.BookFacts(db,'research')
+        yield (calculate_book(db,key,book_facts) for key in jobs)
         return
     executor=ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn'),
-                                 initializer=initialize_worker,initargs=(database_path(db),generation(db)))
+                                 initializer=initialize_worker,initargs=(database_path(db),database_path(db,'research'),generation(db)))
     pending=deque();remaining=iter(jobs)
     def submit():
         key=next(remaining,None)
@@ -205,7 +208,7 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
                         if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
                         for unused in missing:
                             backtest_control.checkpoint()
-                            daily.store_period(db,pickle.load(staged))
+                            book_store.store(db,pickle.load(staged))
                         backtest_control.checkpoint()
                     stats['write_seconds']+=time.perf_counter()-writing
                     stats['saved_books']+=len(missing)

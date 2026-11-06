@@ -10,7 +10,6 @@ intervals vary. Portfolio and paired SPY hold zero-return cash before the first
 sampled trade; CAGR uses a common start/end window. Percentiles describe
 correlated historical scenarios, not confidence intervals or one portfolio.
 """
-from datetime import date
 import math
 import random
 import statistics
@@ -19,6 +18,7 @@ import time
 from backtest.engines.original import schedules as schedules
 from backtest.engines.original import book_batch as book_batch
 from backtest import calendar as schedule_calendar
+from backtest.inputs import facts
 
 
 def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
@@ -28,7 +28,7 @@ def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
     if type(seed) is not int or not 0<=seed<=4294967295:
         raise ValueError('Choose a whole-number seed between 0 and 4294967295.')
     screening.validate_selection(**options)
-    sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+    sessions=facts.sessions(db)
     calendar=schedule_calendar.SessionCalendar(sessions)
     configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
     sampled=calendar.sample(configuration,trials,seed,checkpoint=backtest_control.checkpoint)

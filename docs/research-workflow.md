@@ -18,35 +18,35 @@ per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
 publishes no report; the development check (`python3 scripts/check.py`) compares
 the book code with the independent reference on the real-data bench.
 
-Research schema 16 stores:
+Research schema 17 stores facts only, no book:
 
-- Company name, exchange, sector (cached metadata, not historical profiles).
+- Each saved company with its name, exchange and sector (cached metadata, not
+  historical profiles) and whether it is listed now (`companies`).
 - Financial period end, assumed availability date, report market cap, enterprise
   value, inferred EBITDA, and EBITDA/EV for valid USD reports, and the extra
   annual inputs in `financial_inputs`.
 - Saved 10-year Treasury yields in `treasury10`.
-- The latest book: the latest cached session, exact-date price, fiscal and
-  availability dates and entry-style valuations for cached currently-listed
-  companies (`latest_snapshots`), with their ranking pairs and filter values. No
-  future holding return is attached to these picks.
 - The typed facts below.
 
-Dated books (entry and exit dates, SPY return, Treasury yield, entry valuations,
-holding returns and exit basis) live in the daily cache, `data/schedules.sqlite`
-(version 8). It copies companies, reports and Treasury rows from research and
-shares the definition of `screening_metrics` and `filter_values`.
-
-The daily cache also holds the book store (`backtest/inputs/book_store.py`): one
-row shape and one writer for latest and dated books. `books(book, entry, exit,
-spy, candidates)` names one entry and exit; `book_pools(book, pool)` marks each
+The daily cache, `data/schedules.sqlite` (version 9), holds the book store
+(`backtest/inputs/book_store.py`): one row shape, one writer and the readers of
+latest and dated books. `books(book, entry, exit, spy, candidates)` names one
+entry and exit, in one book-id space; `book_pools(book, pool)` marks each
 completed pool; `book_rows` has one row per pool and company (rank, fiscal and
 known dates, entry date and price, exit, valuation, EBITDA, yield, multiple,
 spread, return and status), with `book_metrics` and `book_filters`. The latest
 book is the book with no exit at the research database's latest date; it has
-no return or status, and `candidates` is its count of eligible financials.
-Daily preparation writes it from the typed facts with `books.book`. The readers
-still read `latest_snapshots` in research and the dated `periods` and
-`snapshots`.
+no return or status, and `candidates` is its count of eligible financials. No
+future holding return is attached to its picks. Daily preparation writes it from
+the typed facts with `books.book`; dated books are computed with the same
+function when a backtest first needs them. A daily connection
+(`daily.connect`) attaches the research database read-only as the schema
+`research`: books, sessions and company names come from there, and the daily
+cache copies no research table. Readers select a book's rows in the row shape
+that results and the website keep: a dated row has the old daily snapshot
+columns and a latest row the old latest snapshot columns (`price_date` is the
+entry session). The daily cache also keeps parsed prices, SPY sessions, 3-month
+and copied 10-year yields; only its kept-book check reads them.
 
 `books.Screen(day, facts)` is the one admission rule, and
 `Screen(...).decide(symbol, pool, exit_day)` decides one company of the latest
@@ -56,9 +56,9 @@ these denial reasons (`books.REASONS`): `UNKNOWN_COMPANY`, `NOT_LISTED` (latest
 book only), `NO_ELIGIBLE_REPORT`, `OUTSIDE_LEGACY_BUFFER`,
 `MISSING_CACHED_PRICES`, then the entry valuation (`MISSING_PRICE`,
 `NONPOSITIVE_VALUATION`, `NONFINITE_RESULT`), `INELIGIBLE_VALUATION`, and for a
-dated book `ENTRY_NOT_BEFORE_EXIT` and `MISSING_EXIT_PRICE`. The stored
-latest-root reasons in `latest_admission` keep the earlier vocabulary until the
-readers switch.
+dated book `ENTRY_NOT_BEFORE_EXIT` and `MISSING_EXIT_PRICE`. Formula roots
+(`facts.View.admit`) and saved results show these reasons; results saved
+earlier keep the reasons they stored.
 
 Preparation reuses the existing 90-day lag and 800-day report-age rule. A report
 must become available strictly before the buy date, matching the original code.
@@ -70,7 +70,7 @@ not proof of a true point-in-time vendor archive.
 ## Inspect the prepared database
 
 ```bash
-# Database size and the latest session's price coverage
+# Database size and the latest session's price coverage (the latest book of the daily cache)
 python3 scripts/research.py status
 ```
 
@@ -90,7 +90,7 @@ python3 website/build.py
 
 Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the tracked `website/dist/` snapshot unchanged. Refresh that portable snapshot only with `python3 website/build.py --snapshot`. Review its generated files and the `snapshot.json` latest date and source hashes before committing. Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable snapshot instead.
 
-The website builder queries the prepared database and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. Strategy CAGR and cumulative growth are unavailable if any period has no matching stocks; SPY remains for the full selected period.
+The website builder reads the latest book of the daily cache and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. Strategy CAGR and cumulative growth are unavailable if any period has no matching stocks; SPY remains for the full selected period.
 
 `backtest/engines/reference/revalue.py` remains a slower, independent cache-based calculation of the January study. Only the development check uses it; no build, startup or preparation runs it. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Choose the portfolio size with the ranks in the strategy builder.
 
@@ -118,7 +118,7 @@ The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot su
 
 ## Current-date preparation
 
-`latest_snapshots` and latest-date metadata hold the latest book that the readers use; the book store of the daily cache holds the same book. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
+The latest book of the book store is the current-date screen. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
 
 Updating a database and rebuilding HTML are separate from fetching missing or new market data.
 
@@ -139,9 +139,8 @@ single-year top-250 pre-screen; use the cached pool to compare signals across
 the broader available price universe. Neither pool represents full coverage.
 
 `backtest/financial/metrics.py` owns the display catalog, calculator registry and
-pure metric calculations. `research.prepare_metrics()` populates the prepared
-metric tables within the preparation transaction. `screening_metrics` stores ready-to-rank multiple/yield pairs by
-mode, pool, year, symbol and metric ID (year 0 represents latest mode). Thus
+pure metric calculations. `books.book` stores each book's ready-to-rank
+multiple/yield pairs in `book_metrics` by book, pool, symbol and metric ID. Thus
 screening-date values remain separate even when observations use the same fiscal
 report. Preparation preserves both default EV/EBITDA values exactly.
 `website/rendering/data.py` exports the display catalog and prepared pairs; SQL and
@@ -209,7 +208,7 @@ filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
-Daily cache version 5 tracks this in `period_pools`. Daily inputs include a digest
+The book store tracks this in `book_pools`. Daily inputs include a digest
 of the price inventory accepted by committed research metadata. The digest covers
 filenames, sizes and modification times. Normal daily connections do not scan raw
 prices. An older cache without this binding or without refresh evidence takes the
@@ -391,11 +390,12 @@ The browser submits each run to the loopback `/api/backtest-runs/<id>` service a
 polls its status; progress counts real completed trials, and the run continues on
 the server if the page closes. `backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
 deduplicates missing date-pair/pool books across the batch. Bounded process
-workers read prepared inputs with read-only SQLite connections and calculate
-ahead through `schedules.compute_period`. Each process loads report histories
-once. Price queries share one short read transaction per book, avoiding repeated
-native Windows lock operations. The reader releases it before returning the book;
-no reader holds a transaction across multiple books. Only the parent saves books, using `schedules.store_period` in short write
+workers read prepared inputs with read-only daily connections that attach the
+research file the parent admitted, and calculate ahead with `books.book`. Each
+process loads report histories once. Price queries share one short read
+transaction per book, avoiding repeated native Windows lock operations. The
+reader releases it before returning the book; no reader holds a transaction
+across multiple books. Only the parent saves books, using `book_store.store` in short write
 transactions. New books for a whole trial are staged before its atomic commit;
 large trials spill to a temporary file. No calculation holds the writer lock.
 The automatic policy uses up to eight workers for at least 16 missing books,
@@ -513,7 +513,7 @@ the data panel, download missing assets, then rebuild. Changing filters makes no
 provider requests. Missing inputs exclude only stocks filtered on those inputs.
 
 `backtest/financial/metrics.py` defines the catalog and prepares threshold values.
-Schema version 5 stores them in `filter_values`, separately from ranking pairs.
+Each book stores them in `book_filters`, separately from ranking pairs.
 Returns use dividend-adjusted closes on or before the screening date and its
 calendar anniversary, with a seven-calendar-day tolerance at each endpoint.
 A leap-day anniversary clamps to 28 February. Return values use percent units;
@@ -556,8 +556,9 @@ session. Dated books use their entry session, even if a stock's first buy price
 is a later session. The filter uses
 percentage points: enter `5` for a spread above or below 5 pp.
 
-Schema version 8 adds `treasury10(day, yield_percent)` from saved `year10`
-fields in `raw/treasury.json`. The daily cache copies this table. Prepared
+Research keeps `treasury10(day, yield_percent)` from saved `year10` fields in
+`raw/treasury.json`; books read the valid 10-year values of `market_days`
+(`facts.ten_year`). Prepared
 `financial_inputs` now includes unambiguous USD `operatingIncome` values from
 full annual income statements. Both pools and all four website modes share
 `metrics.operating_yield_spread`. Missing history or Treasury values omit only
@@ -764,9 +765,9 @@ Annual responses can contain repeated fiscal dates. Keep every returned row, inc
 
 Research preparation writes the inputs of custom-variable formulas as typed
 tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. Typed facts
-version 3 belongs to research schema 16; older caches rebuild. The daily cache
+version 4 belongs to research schema 17; older caches rebuild. The daily cache
 does not copy them: Original reads them on the operation's research
-connection. Preparation reads and parses each saved price, SPY and Treasury
+connection, and books read them through the attached `research` schema. Preparation reads and parses each saved price, SPY and Treasury
 file once. A saved file that cannot be read stops preparation, as an invalid
 `metrics.jsonl` record does; the data panel downloads it again.
 
@@ -775,27 +776,24 @@ admissible values agree. A conflicting, non-USD or invalid value gives no
 value and a reason. Prices are the dividend-adjusted closes (`div`); valuation
 and returns read the same series. `facts.BookFacts` is the facts port of books:
 reports by pool, cached companies (from `fact_sources`), listing (from
-`company_facts`), the valid adjusted closes, SPY sessions and yields.
+`companies`), the valid adjusted closes, SPY sessions and yields.
 
 - `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason)`:
   one row per company and saved price day.
 - `market_days(day, spy, month3, month3_reason, year10, year10_reason)`: `spy`
   is set on a valid SPY session; a saved Treasury day has a value or a reason
   for both fields (both yields in percent).
-- `company_facts(symbol, listed)`: whether each saved company is listed now.
+- `companies(symbol, name, exchange, sector, listed)`: each saved company and
+  whether it is listed now.
 - `facts.legacy_annual` derives the legacy annual values
   (`financial_inputs.ENDPOINTS`, valid values only) from `annual_facts`, and
   `facts.ten_year` reads the valid 10-year values. `books.book` and the dated
-  owner policy read them through these two functions; the dated books of the
-  daily cache still read its copied `financial_inputs` and `treasury10`.
+  owner policy read them through these two functions.
 - `annual_facts(symbol, endpoint, fiscal, <field>, <field>_reason, ...)`: one row
   per company, statement endpoint and fiscal date, with one value and one
   reason column for each annual catalog field (parameter id without `annual.`).
 - `fact_sources(symbol, endpoint, sha256, disposition)`: the digest of each
   annual, price, Treasury (`''`) and SPY (`''`) source file.
-- `latest_admission(symbol, pool, admitted, reason, candidate_rank, fiscal,
-  known, market_cap, enterprise_value, ebitda)`: every company's latest-root
-  decision, denials included.
 - `fact_metadata`: version, latest date, prepared scopes, policy and content
   identity.
 
@@ -804,9 +802,12 @@ the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
 `INVALID_INPUT`). Value columns have no declared type, so SQLite keeps the
 binary64 bits exactly, including -0.0, which a REAL column stores as the
 integer 0. Days are keyed by date, never by raw-file row. Prepared latest owner
-lanes are the stored latest book rows (`latest_snapshots`, `screening_metrics`,
-`filter_values`), read in place; a missing row never falls back to a
-recalculation.
+lanes are the latest book's stored rows (`book_rows`, `book_metrics`,
+`book_filters`), read in place; a missing row never falls back to a
+recalculation. A formula root is admitted by `books.Screen.decide`: a latest
+root by the latest book's screen (listed companies, the exact session), a
+historical root by its date's screen. A historical decision that reaches the
+entry valuation keeps the lookups that the view's recording facts port saw.
 
 Annual resolution (`financial_inputs.resolve_history`) keeps every admitted
 endpoint and fiscal date, even when every requested field is unavailable.
@@ -858,8 +859,8 @@ ordinary definitions and exact references. A latest root consumes its stored
 latest owner lanes. Every other root, January sessions included, and every
 derived context use dated owner policy, even at the root date. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
-dates. Only those named annual adapters support annual history. Typed facts 3,
-research schema 16 and daily cache 8 require incompatible caches to rebuild;
+dates. Only those named annual adapters support annual history. Typed facts 4,
+research schema 17 and daily cache 9 require incompatible caches to rebuild;
 durable records keep their formats. Version-3 authoring exposes all 52 direct
 inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,

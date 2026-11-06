@@ -1,6 +1,6 @@
 """Complete recorded-scope inspection under a borrowed prepared view.
 
-Every snapshot row of one recorded latest scope is admitted and evaluated
+Every stored row of one recorded latest scope is admitted and evaluated
 values-only by the column evaluator; counts are exact.
 """
 import hashlib
@@ -11,8 +11,8 @@ from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library
 
 
-def scopes(source, view):
-    """Discover exact recorded roots, including scopes with no snapshot rows."""
+def scopes(view):
+    """Discover exact recorded roots, including scopes with no stored rows."""
     view.validate()
     projection=view.projection
     if (len(projection['scopes'])>scalar_execution.MAX_SCOPES or
@@ -22,8 +22,12 @@ def scopes(source, view):
     return dict(generation=generation,scopes=projection['scopes'])
 
 
-def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint):
-    """Reduce all captured output roots over one complete recorded population."""
+def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
+    """Reduce all captured output roots over one complete recorded population.
+
+    db is the operation's daily connection: the population is the latest book's
+    pool in the book store.
+    """
     if (type(scope) is not dict or set(scope)!={'generation','mode','pool','context_date','book'}
             or type(scope['generation']) is not str or len(scope['generation'])!=64
             or any(c not in '0123456789abcdef' for c in scope['generation'])
@@ -34,7 +38,7 @@ def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint
         if str(date.fromisoformat(scope['context_date']))!=scope['context_date']:raise ValueError()
     except ValueError:
         raise definitions.FormulaError('INVALID_SHAPE','/scope/context_date','A canonical recorded date is required.') from None
-    discovery=scopes(source,view)
+    discovery=scopes(view)
     exact={k:scope[k] for k in ('mode','pool','context_date','book')}
     if scope['generation']!=discovery['generation'] or exact not in discovery['scopes']:
         raise definitions.FormulaError('STALE_INPUT_GENERATION','/scope','The recorded scope is absent or its generation changed.')
@@ -42,7 +46,7 @@ def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     program=library.VariableCapture(definitions.canonical(checked['variables'])).program
-    rows,roots=scalar_execution._scope(source,view,checked,None,scope['context_date'],
+    rows,roots=scalar_execution._scope(db,view,checked,None,scope['context_date'],
         latest=True,owner_scope=dict(kind='prepared',book=scope['book']))
     outputs=[]; seen=set()
     for root in definitions.require_program(program)['bundle']['roots']:

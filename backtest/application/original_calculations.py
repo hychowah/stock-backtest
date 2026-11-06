@@ -5,11 +5,10 @@ Publish only after workers and connections close. Queue waiting repeats only
 admission, never calculation. Optional numerical dependencies are not imported.
 """
 
-from backtest.inputs import daily
+from backtest.inputs import daily, facts
 from backtest import screening
 
 from contextlib import contextmanager
-from datetime import date
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import cache_access as cache_access
 from backtest.runtime import diagnostics
@@ -78,7 +77,7 @@ class Original(Control):
                 db.execute('PRAGMA cache_size=-131072')
                 if mode=='random':
                     with diagnostics.stage('plan'):
-                        sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+                        sessions=facts.sessions(db)
                         if planned is None:
                             planned=calendar_requests.plan(sessions,options,checkpoint=self._checkpoint) if 'calendar' in options else robustness.plan(db,**options)
                         else:
@@ -153,10 +152,9 @@ class Original(Control):
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                source=inputs.research()
-                with facts.View(inputs.db,source,inputs.require_unchanged,self._checkpoint) as view:
-                    value=(variable_coverage.scopes(source,view) if capture is None else
-                           variable_coverage.inspect(capture,scope,source,view,checkpoint=self._checkpoint))
+                with facts.View(inputs.db,inputs.research(),inputs.require_unchanged,self._checkpoint) as view:
+                    value=(variable_coverage.scopes(view) if capture is None else
+                           variable_coverage.inspect(capture,scope,inputs.db,view,checkpoint=self._checkpoint))
         return dict(value,producer=dict(engine='original',label='Original coverage'))
 
     @diagnostics.operation('backtest.run')
@@ -190,12 +188,12 @@ class Original(Control):
                     # Random plan must be known before the immutable header.
                     if mode=='random' and planned is None:
                         with diagnostics.stage('plan'):
-                            sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
+                            sessions=facts.sessions(db)
                             planned=calendar_requests.plan(sessions,financial,checkpoint=self._checkpoint)
                         metadata['configuration']=planned
                     writer=scalar_result_evidence.Writer(destination,trials=trials,metadata=metadata,max_bytes=max_bytes,
                         piece_bytes=piece_bytes,record_bytes=record_bytes,checkpoint=self._checkpoint)
-                    summary=scalar_runs.execute(db,source,mode,financial,writer,view,configured,planned=planned,
+                    summary=scalar_runs.execute(db,mode,financial,writer,view,configured,planned=planned,
                         progress=progress,checkpoint=self._checkpoint)
                     view.validate()
         # Sealing runs after financial handles and ownership have closed.

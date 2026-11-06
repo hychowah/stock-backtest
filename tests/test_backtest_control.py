@@ -2,7 +2,7 @@
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
-from backtest.inputs import daily
+from backtest.inputs import book_store, daily
 from pathlib import Path
 import socket
 import sqlite3
@@ -39,23 +39,23 @@ class CancellationTests(unittest.TestCase):
             with self.assertRaises(control.Cancelled):
                 schedules.backtest(self.db,start='2015-01-01',end='2016-12-30',months=3,rank_to=1)
         self.assertFalse(self.db.in_transaction)
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],0)
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],0)
         self.assertTrue(schedules.backtest(self.db,start='2015-01-01',end='2016-12-30',months=3,rank_to=1)['periods'])
 
     def test_cancel_during_trial_write_keeps_only_completed_trials(self):
         configuration=self.config(trials=3,seed=11)
         planned=book_batch.plan(self.db,configuration)
         first=len(planned['trials'][0]);writes=0;stopped=False
-        original=daily.store_period
+        original=book_store.store
         def store(*args,**kwargs):
             nonlocal writes,stopped
             original(*args,**kwargs);writes+=1
             if writes>first:stopped=True
-        with control.cancel_when(lambda:stopped),patch.object(daily,'store_period',side_effect=store):
+        with control.cancel_when(lambda:stopped),patch.object(book_store,'store',side_effect=store):
             with self.assertRaises(control.Cancelled):robustness.run(self.db,configuration,workers=1)
         self.assertFalse(self.db.in_transaction)
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],first)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],first)
         retry=robustness.run(self.db,configuration,workers=1)
         self.assertEqual(retry['completed'],3)
         self.assertEqual(retry['execution']['reused_books'],first)
@@ -64,7 +64,7 @@ class CancellationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'daily.sqlite'
             db=sqlite3.connect(path);db.row_factory=sqlite3.Row
-            self.db.backup(db)
+            self.db.backup(db);daily.attach(db,self.research)
             try:
                 configuration=self.config(trials=4,seed=41);stopped=False;executors=[]
                 original=book_batch.ProcessPoolExecutor

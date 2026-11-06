@@ -72,11 +72,11 @@ Treasury curves. See the [formula and data rules](../docs/research-workflow.md#s
 ## Rebuild from saved data
 
 ```bash
-python3 scripts/research.py prepare
+python3 scripts/schedules.py prepare
 python3 website/build.py
 ```
 
-Preparation is only needed after changing data or calculation code. The builder queries the compact SQLite database, exports the latest screen of both pools as compact tuples, and embeds them in HTML. Changing latest screen parameters runs locally in JavaScript without reparsing prices.
+Preparation is only needed after changing data or calculation code; the daily-cache command prepares research first. The builder reads the latest book of the book store in `data/schedules.sqlite` (which attaches `data/research.sqlite`), exports the latest screen of both pools as compact tuples, and embeds them in HTML. `website/build.py` alone needs a prepared daily cache. Changing latest screen parameters runs locally in JavaScript without reparsing prices.
 
 The default latest picks remain embedded as a static table for previews that block JavaScript. Interactive screening requires JavaScript. The build writes `index.html`, `latest-picks.csv`, `data.html` and `snapshot.json`; browser-generated CSV downloads contain the displayed result. The canonical report `../results/summary-exits.txt` is a frozen record that no screen reads or overwrites.
 
@@ -119,7 +119,7 @@ Latest mode has separate prepared records for the original 250-candidate pool an
 
 Click **Screen latest**, **Top 50**, or **Top 100**. Download latest picks exports the currently selected stocks, including valuation date, adjusted price, estimated market cap/EV, ratios, fiscal date, and assumed availability date. `dist/latest-picks.csv` is the default-settings fallback export generated at build time; browser downloads reflect the current filters. The latest table is also embedded as a no-JavaScript fallback.
 
-Updating source caches does not update an already-open standalone HTML file. Run `python3 scripts/research.py prepare` and `python3 website/build.py` for the local server, then reload the page. To refresh the untracked standalone export in `dist/`, use `python3 website/build.py --snapshot` explicitly. These commands never download data. Future latest sessions are prepared independently of the canonical backtest's saved Through date, so new current prices do not silently extend the old report.
+Updating source caches does not update an already-open standalone HTML file. Run `python3 scripts/schedules.py prepare` and `python3 website/build.py` for the local server, then reload the page. To refresh the untracked standalone export in `dist/`, use `python3 website/build.py --snapshot` explicitly. These commands never download data. Future latest sessions are prepared independently of the canonical backtest's saved Through date, so new current prices do not silently extend the old report.
 
 ## Ranking metrics
 
@@ -351,12 +351,15 @@ evidence does not calculate.
 Their basenames, global interfaces and execution order stay the same. The built
 HTML embeds these assets. The latest view still works without a server.
 
-`website/rendering/data.py` loads detached page data from one verified prepared
-connection. It closes the connection before rendering. `page.py` builds static
+`website/rendering/data.py` loads detached page data from one verified daily
+connection: the latest book of the book store and the attached research
+company names. It closes the connection before rendering. `page.py` builds static
 markup. `assets.py` owns asset order and the source-only recovery page.
 `rendering/build.py` writes the HTML, the latest picks CSV, the data panel and
 the snapshot provenance. `rendering/state.py`
-checks explicit nested source inventories and the prepared database generation.
+checks explicit nested source inventories and the latest book's identity: the
+daily generation that wrote it, not the cache file's stamp, so a saved dated book
+does not force a rebuild.
 The executable command remains `python3 website/build.py`.
 
 `website/server/app.py` owns HTTP transport and server lifetime. Its grouped

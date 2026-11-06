@@ -6,7 +6,8 @@ from backtest.application.original_calculations import Original
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
-from backtest.inputs import daily
+from backtest.inputs import daily, facts
+from backtest.financial import books as financial_books
 from backtest.runtime import cache_access
 from datetime import date,timedelta
 from pathlib import Path
@@ -21,22 +22,26 @@ sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 from backtest.engines.original import robustness as r
 from backtest.engines.original import schedules as s
 from backtest.application import jobs as backtest_jobs
+sys.path.insert(0,str(ROOT/'tests'))
+import book_store_fixture as store
 class RobustnessTests(unittest.TestCase):
     def setUp(self):
         folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
         coordinator=patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(Path(folder.name)/'cache.lock'))
         coordinator.start();self.addCleanup(coordinator.stop)
-        self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(daily.SCHEMA)
-        self.db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
+        # The daily cache in memory; its research facts in a private file.
+        self.research=Path(folder.name)/'research.sqlite'
+        self.db=store.connection(self.research)
+        self.addCleanup(self.db.close)
+        store.company(self.db,'A')
         self.db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
         self.db.execute("INSERT INTO statements VALUES('A','2015-06-30','2015-09-28',100000000,150000000,30000000,.2)")
-        self.db.execute("INSERT INTO prices VALUES('A','2014-06-30',10)")
+        store.price(self.db,'A','2014-06-30',10)
         day=date(2015,1,1);i=0
         while day<=date(2016,12,30):
             if day.weekday()<5:
-                self.db.execute('INSERT INTO sessions VALUES(?,?)',(str(day),100+i*.02))
-                self.db.execute("INSERT INTO prices VALUES('A',?,?)",(str(day),10+i*.01));i+=1
+                store.session(self.db,str(day),100+i*.02)
+                store.price(self.db,'A',str(day),10+i*.01);i+=1
             day+=timedelta(days=1)
         self.db.commit()
 
@@ -46,7 +51,7 @@ class RobustnessTests(unittest.TestCase):
     def calculate(self,mode,options,configuration=None,**kwargs):
         def connection():
             db=sqlite3.connect(':memory:');db.row_factory=sqlite3.Row
-            self.db.backup(db);return db
+            self.db.backup(db);daily.attach(db,self.research);return db
         with patch.object(daily,'connect',side_effect=connection):
             return Original().calculate(mode,options,None,configuration,**kwargs)
 
@@ -101,7 +106,7 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(r.distribution([0,10])['p10'],1)
         self.assertEqual(r.distribution([0,10])['stddev'],5)
         # New filters over the same sampled books never re-read raw/daily prices.
-        with patch.object(daily,'price',side_effect=AssertionError('Cached books must be reused')):
+        with patch.object(facts.BookFacts,'price',side_effect=AssertionError('Cached books must be reused')):
             repeat=r.run(self.db,config)
         self.assertEqual([t['cagr'] for t in repeat['trials']],expected)
 
@@ -114,9 +119,10 @@ class RobustnessTests(unittest.TestCase):
         self.assertTrue(all(row['empty_periods']>0 for row in result['trials']))
 
     def test_selection_order_survives_plan_and_reuses_random_books(self):
-        self.db.execute("INSERT INTO companies VALUES('B','B','NYSE','Technology')")
+        store.company(self.db,'B',sector='Technology')
         self.db.execute("INSERT INTO statements SELECT 'B',fiscal,known,market_cap,enterprise_value,ebitda/2,ebitda_yield/2 FROM statements WHERE symbol='A'")
-        self.db.execute("INSERT INTO prices SELECT 'B',day,adjusted FROM prices WHERE symbol='A'")
+        self.db.execute("INSERT INTO stock_days SELECT 'B',day,adjusted,adjusted_reason,volume,volume_reason FROM stock_days WHERE symbol='A'")
+        self.db.execute("INSERT INTO fact_sources SELECT 'B',endpoint,sha256,disposition FROM fact_sources WHERE symbol='A'")
         self.db.commit()
         options=dict(trials=2,seed=11,pool='cached',sector='Technology')
         first=self.config(**options);captured=[]
@@ -126,7 +132,7 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(after['samples'],first['samples'])
         self.assertEqual(after['options']['selection_order'],'rank_first')
         captured=[]
-        with patch.object(s,'compute_period',side_effect=AssertionError('Reuse prepared random books')):
+        with patch.object(financial_books,'book',side_effect=AssertionError('Reuse prepared random books')):
             result=r.run(self.db,after,capture=lambda number,result:captured.append(result))
         self.assertEqual(result['incomplete'],2)
         self.assertTrue(all(p['names']==0 for trial in captured for p in trial['periods']))
@@ -137,30 +143,30 @@ class RobustnessTests(unittest.TestCase):
         def interrupt(event):
             if event['completed']==1:raise KeyboardInterrupt()
         with self.assertRaises(KeyboardInterrupt):r.run(self.db,config,interrupt)
-        retained=self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0]
+        retained=self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0]
         self.assertGreater(retained,0)
         result=r.run(self.db,config)
         self.assertEqual(result['completed'],3)
-        self.assertGreaterEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],retained)
+        self.assertGreaterEqual(self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0],retained)
 
     def test_pool_switch_commits_each_trial_and_preserves_original_pool(self):
         original=self.config(trials=3,seed=11,pool='legacy')
         first=r.run(self.db,original)
-        periods=self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0]
-        legacy=[tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")]
+        periods=self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0]
+        legacy=[tuple(row) for row in self.db.execute("SELECT * FROM book_rows WHERE pool='legacy' ORDER BY book,symbol")]
         wider=self.config(trials=3,seed=11,pool='cached')
         def interrupt(event):
             if event['completed']==1:raise KeyboardInterrupt()
         with self.assertRaises(KeyboardInterrupt):r.run(self.db,wider,interrupt)
-        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM period_pools WHERE pool='cached'").fetchone()[0],2)
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM periods').fetchone()[0],periods)
-        self.assertEqual([tuple(row) for row in self.db.execute("SELECT * FROM snapshots WHERE pool='legacy' ORDER BY year,symbol")],legacy)
-        with patch.object(daily,'price',side_effect=AssertionError('Original pool remains complete')),patch.object(daily,'histories',side_effect=AssertionError('Original pool remains complete')):
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM book_pools WHERE pool='cached'").fetchone()[0],2)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0],periods)
+        self.assertEqual([tuple(row) for row in self.db.execute("SELECT * FROM book_rows WHERE pool='legacy' ORDER BY book,symbol")],legacy)
+        with patch.object(facts.BookFacts,'price',side_effect=AssertionError('Original pool remains complete')),patch.object(facts.BookFacts,'reports',side_effect=AssertionError('Original pool remains complete')):
             replay=r.run(self.db,original)
         self.assertEqual([row['cagr'] for row in replay['trials']],[row['cagr'] for row in first['trials']])
         retry=r.run(self.db,wider)
         self.assertEqual([row['cagr'] for row in retry['trials']],[row['cagr'] for row in first['trials']])
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM period_pools').fetchone()[0],2*periods)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],2*periods)
 
     def test_optional_capture_keeps_full_trial_results_without_changing_summary(self):
         configuration=self.config(trials=3,seed=42)

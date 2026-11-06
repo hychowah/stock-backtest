@@ -1,5 +1,5 @@
 """Read-only coverage evidence for an ordinary independently prepared workspace."""
-from backtest.inputs import daily as daily_inputs, market
+from backtest.inputs import daily as daily_inputs, facts, market
 from backtest.financial import rules
 
 from collections import Counter
@@ -33,14 +33,15 @@ def series_summary(payload,key,*,positive=False):
                 scope='Observed saved dates. Calendar gaps do not prove missing exchange sessions.')
 
 
-def _stock_sessions(daily,checkpoint):
+def _stock_sessions(research,checkpoint):
+    """Valid adjusted closes against valid SPY sessions, from the research facts."""
     examples=[];totals=Counter();seen=set()
     query='''SELECT p.symbol,MIN(p.day),MAX(p.day),COUNT(s.day),COUNT(*)
-             FROM prices p LEFT JOIN sessions s ON s.day=p.day
+             FROM stock_days p LEFT JOIN market_days s ON s.day=p.day AND s.spy IS NOT NULL
              WHERE p.adjusted IS NOT NULL GROUP BY p.symbol ORDER BY p.symbol'''
-    for symbol,first,last,matched,observed in daily.execute(query):
+    for symbol,first,last,matched,observed in research.execute(query):
         checkpoint();seen.add(symbol)
-        expected=daily.execute('SELECT COUNT(*) FROM sessions WHERE day BETWEEN ? AND ?',(first,last)).fetchone()[0]
+        expected=research.execute('SELECT COUNT(*) FROM market_days WHERE spy IS NOT NULL AND day BETWEEN ? AND ?',(first,last)).fetchone()[0]
         missing=expected-matched
         if missing<0:raise ValueError('Invalid stock/session coverage.')
         totals['symbols_with_adjusted_prices']+=1;totals['observed_adjusted_rows']+=observed
@@ -49,7 +50,7 @@ def _stock_sessions(daily,checkpoint):
             totals['symbols_with_internal_omissions']+=1
             examples.append(dict(symbol=symbol,first=first,last=last,available_spy_sessions=expected,observed=matched,missing=missing))
     examples=sorted(examples,key=lambda v:(-v['missing'],v['symbol']))[:20]
-    totals['symbols_without_adjusted_prices']=len(daily_inputs.cached_symbols(daily)-seen)
+    totals['symbols_without_adjusted_prices']=len(facts.BookFacts(research).cached()-seen)
     return dict(totals=totals,largest_examples=examples,
                 scope='Omissions relative to saved SPY sessions within each stock observed span. Legitimate nontrading intervals are not classified as repairable gaps. Leading/trailing unavailability is excluded.')
 
@@ -65,15 +66,15 @@ def _source_histories(raw):
 
 def _coverage(research,daily,spy_payload,treasury_payload,checkpoint,histories=None):
     metadata={row[0]:json.loads(row[1]) for row in research.execute('SELECT key,value FROM metadata')}
-    inventory=metadata['prices'];histories=daily_inputs.histories(daily) if histories is None else histories
+    inventory=metadata['prices'];histories=facts.BookFacts(research).reports() if histories is None else histories
     stock_files={symbol:market.cache_path_for(symbol).name in inventory for symbol in histories[0]}
-    return dict(version=2,
+    return dict(version=3,
         companies=research.execute('SELECT COUNT(*) FROM companies').fetchone()[0],
         financial_symbols=len(histories[0]),accepted_price_files=len(inventory),
         financial_symbols_without_price_files=sum(not v for v in stock_files.values()),
         spy=series_summary(spy_payload,'adjClose',positive=True),treasury=series_summary(treasury_payload,'month3'),
-        stock_sessions=_stock_sessions(daily,checkpoint),
-        daily_books={t:daily.execute('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in ('periods','snapshots','period_pools')},
+        stock_sessions=_stock_sessions(research,checkpoint),
+        daily_books={t:daily.execute('SELECT COUNT(*) FROM '+t).fetchone()[0] for t in ('books','book_pools','book_rows')},
         limits=['Counts describe the cached inputs and ordinary eligibility, not the full US universe.',
                 'No classification of new early stops or bankruptcy review is implied.'])
 
@@ -81,8 +82,10 @@ def _coverage(research,daily,spy_payload,treasury_payload,checkpoint,histories=N
 def report(research_path=None,daily_path=None,*,checkpoint=lambda:None):
     """Report coverage from current ordinary prepared data.
 
-    Version 2 has no January book counts or report digest. Missing
-    observations remain explicit.
+    Version 2 has no January book counts or report digest. Version 3 reads the
+    stock sessions from the research facts and counts the book store's books,
+    pools and rows (the latest book included). Missing observations remain
+    explicit.
     """
     research_path=Path(research_path or r.DATABASE);daily_path=Path(daily_path or daily_inputs.DATABASE)
     with cache_access.access(),ExitStack() as stack:

@@ -6,41 +6,41 @@
 python3 scripts/research.py prepare
 ```
 
-Every preparation is a full build (research schema 16). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
+Every preparation is a full build (research schema 17). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
 
-The database contains company metadata, cleaned annual financial observations with availability dates, typed facts for custom variables and books, and the latest book that the readers use: latest-session valuations for cached currently-listed companies with an exact-date price, with their ranking pairs and filter values, in `latest_snapshots`. It holds no January books; dated books live in `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
+The database contains company metadata and listing, cleaned annual financial observations with availability dates, and typed facts for custom variables and books. It holds no book: the latest and dated books live in the book store of `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
 The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Missing prices are not downloaded automatically. Run `python3 scripts/research.py status` to inspect annual coverage.
 
 Queries use read-only connections and check core input files, calculation code, and the price-directory timestamp without scanning every price file. Preparation checks the full per-price-file size/timestamp manifest. After editing an existing price file, run preparation to incorporate and validate the change; queries are reads of the last prepared snapshot. The `.building` database is temporary; a failed preparation preserves the previous completed database. Fingerprints are local freshness checks, not cryptographic verification of downloaded data.
 
-`latest_snapshots` stores prospective picks with no holding return. Latest-date metadata records the actual cached session and coverage. After extending price data, run preparation then rebuild the website; an open HTML file is a saved snapshot, not a live data feed.
+`schedules.sqlite` (version 9) is the separate rebuildable book store, prepared by
+`python3 scripts/schedules.py prepare`. Its tables (`books`, `book_pools`,
+`book_rows`, `book_metrics`, `book_filters`) hold the latest book and the
+reusable entry/exit books in one row shape and one book-id space. The latest
+book stores prospective picks at the latest cached session with no holding
+return; after extending price data, run preparation then rebuild the website; an
+open HTML file is a saved snapshot, not a live data feed. A daily connection
+attaches `research.sqlite` read-only; books read the research facts there, and
+the cache copies no research table. It also keeps parsed prices, SPY sessions
+and Treasury yields, which only its kept-book check reads. The local website
+service computes missing dated books and persists them here; `research.sqlite`
+remains read-only. Daily-cache freshness includes the schedule engine and
+research calculation fingerprints.
 
-`screening_metrics` stores ready-to-rank multiple/yield pairs keyed
-by mode, pool, year, symbol and catalog metric ID. Research holds the latest
-rows (mode `latest`, year 0). Dated books in `schedules.sqlite` use mode
-`historical` and their period ID as the year; both files share one table
-definition. Preparation computes all formulas, including screening-date EV divided by
+`book_metrics` stores ready-to-rank multiple/yield pairs keyed by book, pool,
+symbol and catalog metric ID; `book_filters` stores the threshold values.
+`books.book` computes all formulas, including screening-date EV divided by
 three-year average EBITDA, and preserves the default metric's exact existing
 values. Missing history omits a pair. Consumers join or export these values;
 they never reconstruct formulas. Catalog and calculator code in
 `backtest/financial/metrics.py` participates in freshness checks.
 
-`schedules.sqlite` (version 8) is the separate rebuildable daily-price index and
-dated-book cache, prepared by `python3 scripts/schedules.py prepare`. It stores
-only existing cached price histories plus research financials, SPY sessions,
-Treasury yields and reusable entry/exit books (`periods`, `snapshots`,
-`period_pools`). Its book store (`books`, `book_pools`, `book_rows`,
-`book_metrics`, `book_filters`) holds the latest book in the one book row shape
-that dated books will share. The local website service computes missing books
-and persists them here; original `research.sqlite` remains read-only. Daily-cache
-freshness includes the schedule engine and research calculation fingerprints.
-
-`period_pools(period_id,pool)` records which pools a period completed. A completed period can
+`book_pools(book,pool)` records which pools a book completed. A completed book can
 contain one or both pools. The service prepares only the requested pool, and
-fills the other on demand while retaining the same period ID. Completion markers
-also cover empty pools; do not infer readiness from the presence of snapshots.
-Markers, snapshots and metrics commit together, once per schedule/trial. See
+fills the other on demand while retaining the same book ID. Completion markers
+also cover empty pools; do not infer readiness from the presence of rows.
+Markers, rows and metrics commit together, once per schedule/trial. See
 [the schedule calendar](../docs/schedule-calendar.md) for the date rules.
 
 Random batches plan unique missing books upfront. Read-only worker processes

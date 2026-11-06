@@ -1,4 +1,4 @@
-"""Build the standalone website from the prepared research database."""
+"""Build the standalone website from the latest book of the prepared daily cache."""
 import argparse
 import sys
 from contextlib import nullcontext

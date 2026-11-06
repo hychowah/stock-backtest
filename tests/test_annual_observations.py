@@ -113,7 +113,7 @@ def statement(fiscal, *, earnings_yield=.3, market_cap=150e6, enterprise=180e6, 
 
 
 class Company:
-    """One in-memory database as the daily cache and the research facts of company A.
+    """A private research file of company A and an in-memory daily cache that attaches it.
 
     Set the attributes, then call view(): it writes them and borrows a
     facts.View. reports are statements rows; annual maps endpoint, fiscal date
@@ -126,9 +126,13 @@ class Company:
     """
 
     def __init__(self):
-        self.db = sqlite3.connect(':memory:')
+        self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.path = Path(self.folder.name) / 'research.sqlite'
+        self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(research.SCHEMA + daily.DATED_SCHEMA + facts.SCHEMA)
+        self.db.execute('PRAGMA synchronous=OFF')  # A private fixture file needs no durability.
+        self.db.executescript(research.SCHEMA + facts.SCHEMA)
+        self.daily = []
         self.reports = [statement(f'{year}-06-30') for year in (2012, 2013, 2014)]
         self.annual = {'income-statement': {f'{year}-06-30': dict(revenue=state(100.), operatingIncome=state(income))
                                             for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}}
@@ -137,7 +141,9 @@ class Company:
         self.stale = False
 
     def close(self):
-        self.db.close()
+        for db in (*self.daily, self.db):
+            db.close()
+        self.folder.cleanup()
 
     def freshness(self):
         if self.stale:
@@ -147,16 +153,18 @@ class Company:
         db = self.db
         for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
             db.execute('DELETE FROM ' + table)
-        db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology')")
+        db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology',1)")
         db.executemany('INSERT INTO statements VALUES(?,?,?,?,?,?,?)', [
             ('A', row['fiscal'], row['known'], row['market_cap'], row['enterprise_value'], row['ebitda'],
              row['ebitda_yield']) for row in self.reports])
         days = {row['fiscal'] for row in self.reports} | {self.root_date, self.latest_date}
-        db.executemany('INSERT INTO prices VALUES(?,?,?)', [('A', day, 10.) for day in sorted(days)])
-        db.executemany('INSERT INTO sessions VALUES(?,?)', [(day, 100.) for day in sorted({self.root_date, self.latest_date})])
-        db.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
-            inputs=dict(fixture=max(self.root_date, self.latest_date)))),))
-        db.executemany('INSERT INTO market_days(day,year10) VALUES(?,?)', self.treasury10)
+        facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c' * 64, disposition='valid'), dated={
+            day: dict(adjClose=state(10.), volume=state(None, 'MISSING_INPUT')) for day in sorted(days)}))
+        # Admission needs saved SPY sessions at the root and latest dates.
+        sessions = {self.root_date, self.latest_date}
+        db.executemany('INSERT INTO market_days(day,spy,year10) VALUES(?,?,?)',
+                       [(day, 100. if day in sessions else None, value) for day, value in self.treasury10])
+        db.executemany('INSERT OR IGNORE INTO market_days(day,spy) VALUES(?,?)', [(day, 100.) for day in sorted(sessions)])
         annual = {endpoint: {fiscal: dict(fields) for fiscal, fields in dates.items()} for endpoint, dates in self.annual.items()}
         for fiscal, values in self.financials.items():
             for name, value in values.items():
@@ -166,20 +174,25 @@ class Company:
             endpoint: dict(endpoint=endpoint, sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid')
             for endpoint in annual}))
         last = self.reports[-1]
-        for pool in ('legacy', 'cached'):
-            facts.store_latest(db, 'A', pool, dict(admitted=True, reason=None, candidate_rank=1,
-                statement=dict(fiscal=last['fiscal'], known=last['known']),
-                valuation=dict(market_cap=160e6, enterprise_value=190e6, ebitda=54e6)))
-        for pool, row in self.books.items():
-            db.execute('INSERT INTO latest_snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', (pool, 'A', 1, last['fiscal'],
-                last['known'], self.latest_date, 10., row['market_cap'], 190e6, .3, 3., .28))
-            db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',
-                           [('latest', pool, 0, 'A', metric, *pair) for metric, pair in row['metrics'].items()])
-            db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                           [('latest', pool, 0, 'A', name, value) for name, value in row['filters'].items()])
         scopes = [dict(mode='latest', pool=pool, context_date=self.latest_date, book=0) for pool in ('legacy', 'cached')]
         facts.finish(db, self.latest_date, inputs='fixture', scopes=scopes)
-        return facts.View(db, db, self.freshness, lambda: None)
+        db.commit()
+        cache = sqlite3.connect(':memory:')
+        cache.row_factory = sqlite3.Row
+        self.daily.append(cache)
+        cache.executescript(daily.SCHEMA)
+        daily.attach(cache, self.path)
+        cache.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
+            inputs=dict(fixture=max(self.root_date, self.latest_date)))),))
+        book = cache.execute('INSERT INTO books(entry,exit,spy,candidates) VALUES(?,NULL,NULL,1)', (self.latest_date,)).lastrowid
+        for pool, row in self.books.items():
+            cache.execute('INSERT INTO book_rows VALUES(' + ','.join('?' * 17) + ')', (book, pool, 'A', 1, last['fiscal'],
+                last['known'], self.latest_date, 10., None, row['market_cap'], 190e6, 54e6, .3, 3., .28, None, None))
+            cache.executemany('INSERT INTO book_metrics VALUES(?,?,?,?,?,?)',
+                              [(book, pool, 'A', metric, *pair) for metric, pair in row['metrics'].items()])
+            cache.executemany('INSERT INTO book_filters VALUES(?,?,?,?,?)',
+                              [(book, pool, 'A', name, value) for name, value in row['filters'].items()])
+        return facts.View(cache, db, self.freshness, lambda: None)
 
 
 class AnnualResolutionTests(unittest.TestCase):
@@ -389,11 +402,11 @@ class AnnualFormulaTests(unittest.TestCase):
             [[(value, reason)]] = values(program, self.company.view(), [root(day=self.company.root_date)])
             self.assertEqual(reason is None, age == 800)
         self.company.root_date = '2024-04-02'
-        # A latest root reuses prepared admission, but its own context still
-        # cannot observe a future annual report.
+        # A latest root has the same admission rule: no report is known at the latest date.
         view = self.company.view()
         self.assertEqual(values(program, view, [root(mode='latest', day=self.company.latest_date)]),
-                         [[(None, 'NO_ELIGIBLE_REPORT')]])
+                         [[(None, 'ROOT_NOT_ADMITTED')]])
+        self.assertEqual(view.admit([root(mode='latest', day=self.company.latest_date)])[0]['reason'], 'NO_ELIGIBLE_REPORT')
 
     def test_each_endpoint_history_is_bounded(self):
         self.company.annual['cash-flow-statement'] = {f'{year}-06-30': {'capitalExpenditure': state(-1)}
@@ -458,8 +471,9 @@ class AnnualTransportTests(unittest.TestCase):
                                           ('TEST', endpoint)).fetchone()
                 path = financial.asset_path(research.RAW, 'TEST', endpoint)
                 self.assertEqual(tuple(source), (hashlib.sha256(path.read_bytes()).hexdigest(), 'valid'))
-            metrics = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='latest' "
-                                       "AND pool='cached' AND year=0 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
+        with closing(daily.connect()) as cache:
+            metrics = cache.execute("SELECT multiple,yield_value FROM book_metrics WHERE pool='cached' AND symbol='TEST' "
+                                    "AND metric='ev_ebitda' AND book=(SELECT book FROM books WHERE exit IS NULL)").fetchone()
         places = [(endpoint, name, identity) for endpoint, fields in ORACLE.items() for name, identity in fields.items()]
         roots = [root('TEST', 'cached'), root('TEST', 'cached', 'latest', '2015-10-20')]
         with inputs.view() as view:

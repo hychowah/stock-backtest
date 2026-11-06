@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 from backtest import measure_observations as bridge
 from backtest.financial import books, metrics, rules
-from backtest.inputs import facts, research
+from backtest.inputs import book_store, daily, facts, research
 from prepared_inputs_fixture import PreparedInputs
 import test_annual_observations as annual
 from test_annual_observations import field, formulas, values, root
@@ -81,7 +81,7 @@ class PreparedMeasureTests(unittest.TestCase):
 
 
 class OwnerExtractionTests(unittest.TestCase):
-    def test_snapshot_preserves_predecessor_and_lookup_order(self):
+    def test_entry_and_exit_rules_preserve_predecessor_and_lookup_order(self):
         def predecessor(statement, entry_day, exit_day, lookup, bankruptcy):
             # One dividend-adjusted series: the entry valuation price is the buy price.
             fiscal_px, start = lookup(statement['fiscal'], False, 7), lookup(entry_day, True, 4)
@@ -101,6 +101,16 @@ class OwnerExtractionTests(unittest.TestCase):
             if bankruptcy: status = 'Bankruptcy'
             return [str(statement['fiscal']), str(start[0]), str(end[0]), cap, ev,
                     ebitda, ebitda / ev, ev / ebitda, ret, status]
+        def current(statement, entry_day, exit_day, lookup, bankruptcy):
+            # books.Screen.decide's order: the entry valuation, then the exit.
+            reason, valuation = books.admit(statement, entry_day, lookup, books.ENTRY_SLACK)
+            if reason is not None: return None
+            _, start, cap, ev, ebitda = valuation
+            reason, ending = books.close(start, exit_day, lookup, bankruptcy)
+            if reason is not None: return None
+            end, ret, status = ending
+            return [str(statement['fiscal']), str(start[0]), str(end[0]), cap, ev, ebitda,
+                    *books.ebitda_yield_and_multiple(ebitda, ev), ret, status]
         fiscal, entry = date(2018, 12, 31), date(2020, 1, 2)
         statement = dict(fiscal=fiscal, known=fiscal + rules.LAG, market_cap=101., enterprise=153., yield_=.1)
         statement['yield'] = statement.pop('yield_')
@@ -117,7 +127,7 @@ class OwnerExtractionTests(unittest.TestCase):
             with self.subTest(label=label):
                 report = dict(statement, **{'yield': 0. if zero else .1})
                 results, histories = [], []
-                for fn in (predecessor, books.snapshot):
+                for fn in (predecessor, current):
                     calls = []
                     def lookup(day, forward, slack):
                         calls.append((day, forward, slack))
@@ -271,12 +281,13 @@ class PreparedTransportTests(unittest.TestCase):
                 for pool in ('legacy', 'cached'):
                     scope = next(scope for scope in view.projection['scopes'] if scope['mode'] == mode
                                  and scope['pool'] == pool and scope['context_date'] == day)
-                    key = (mode, pool, scope['book'], 'TEST')
-                    pairs = {row[0]: [row[1], row[2]] for row in view.db.execute(
-                        'SELECT metric,multiple,yield_value FROM screening_metrics WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
-                    stored = {row[0]: row[1] for row in view.db.execute(
-                        'SELECT field,value FROM filter_values WHERE mode=? AND pool=? AND year=? AND symbol=?', key)}
-                    cap = view.db.execute('SELECT market_cap FROM latest_snapshots WHERE pool=? AND symbol=?', (pool, 'TEST')).fetchone()
+                    with closing(daily.connect()) as cache:
+                        key = (book_store.latest(cache)[0], pool, 'TEST')
+                        pairs = {row[0]: [row[1], row[2]] for row in cache.execute(
+                            'SELECT metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND symbol=?', key)}
+                        stored = {row[0]: row[1] for row in cache.execute(
+                            'SELECT field,value FROM book_filters WHERE book=? AND pool=? AND symbol=?', key)}
+                        cap = cache.execute('SELECT market_cap FROM book_rows WHERE book=? AND pool=? AND symbol=?', key).fetchone()
                     self.assertTrue(pairs and stored)
                     roots = [root('TEST', pool, mode, day)]
                     [decision] = view.admit(roots)
@@ -295,8 +306,8 @@ class PreparedTransportTests(unittest.TestCase):
         # A real admitted company has a stored row but no PE lane in the saved fixture.
         with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
             self.assertEqual(values(program, view, roots), [[(None, 'LEGACY_MEASURE_UNAVAILABLE')]])
-        with closing(sqlite3.connect(inputs.source)) as db:
-            db.execute("DELETE FROM latest_snapshots WHERE pool='cached' AND symbol='TEST'")
+        with closing(sqlite3.connect(inputs.path)) as db:
+            db.execute("DELETE FROM book_rows WHERE pool='cached' AND symbol='TEST'")
             db.commit()
         # The prepared scope lacks this company's book row.
         with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):

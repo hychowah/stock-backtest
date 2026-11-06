@@ -19,7 +19,7 @@ from test_scalar_execution import Fixture
 
 class EvidenceTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=Fixture(8);self.addCleanup(self.fixture.db.close)
+        self.fixture=Fixture(8);self.addCleanup(self.fixture.close)
         self.capture=self.fixture.capture()
     def produce(self,mode='custom',**limits):
         stream=io.BytesIO()
@@ -28,7 +28,7 @@ class EvidenceTests(unittest.TestCase):
         metadata=dict(mode=mode,options=options,configuration=None)
         writer=scalar_result_evidence.Writer(stream,trials=0 if mode=='latest' else 1,metadata=metadata,max_bytes=16*1024**2,**limits)
         with self.fixture.view() as view:
-            summary=scalar_runs.execute(self.fixture.db,self.fixture.db,mode,options,writer,view,None)
+            summary=scalar_runs.execute(self.fixture.db,mode,options,writer,view,None)
         manifest=writer.finish(summary)
         return stream,manifest
     def test_fixed_complete_roundtrip_without_pair_requirement(self):
@@ -57,7 +57,7 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(scopes['rows'][0]['population'],'complete-prepared-scope')
         self.assertTrue(any('block' in row for row in blocks['rows']))
         encoded=stream.getvalue()
-        self.fixture.db.close()
+        self.fixture.close()
         self.fixture.db=__import__('sqlite3').connect(':memory:')
         with patch.object(s,'builtin_catalog',side_effect=AssertionError('No current catalog')):
             detached=result_evidence.open_reader(io.BytesIO(encoded),max_bytes=16*1024**2)
