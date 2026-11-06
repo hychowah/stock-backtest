@@ -1,398 +1,424 @@
-# Typed prepared storage and in-place daily update
+# Typed storage: one fact store and faster backtests
 
 Status: active
 
 ## Goal
 
-Make the daily data update take about a minute, cut prepared data from about
-51 GB to a few GB, and make repeated custom-variable backtests faster, so the
-user can tune strategies interactively and later run an automatic search loop.
+Make preparation and backtests fast and simple for the user's workflow. The
+user picks variables as filters or ranking metrics, queues backtests and tunes
+them. Later a reinforcement-learning loop runs fixed date plans, and
+the data is updated every night. Prefer changes that delete code.
+
 Financial results stay identical. Saved library and queue records open
-unchanged.
+unchanged. There are no numeric targets. Each speed phase measures before and
+after on the real-data bench and removes the largest measured cost.
 
-The user's workflow: choose parameters or custom variables as filters or the
-ranking, queue the test, tune, repeat; later a reinforcement-learning loop runs
-this automatically on fixed date plans; the database is updated every day.
+## Starting point
 
-## Starting point (main a7b13ac, 5 November 2026)
+T1–T3 are complete on this branch:
 
-The `remove-slow-checks` initiative is complete; read its summary first. The
-current custom-variable path:
+- T1 writes typed facts (`stock_days`, `market_days`, `annual_facts`,
+  `fact_sources`, `latest_admission`) into `research.sqlite`.
+  `backtest/variables/columns.py` reads them through `facts.View`.
+- T2 takes explanations from the column evaluator's detail mode (D1).
+- T3 deletes the JSON observation tables, the provider and the reference
+  evaluator.
 
-- `backtest/variables/columns.py` evaluates formulas values-only. It reuses
-  the provider helpers in `backtest/observations.py` (`_anchor`, `_periods`,
-  `_annual`, `_report_ebitda`), `backtest/measure_observations.py` and the
-  borrowed `ReadView` from `backtest/inputs/sqlite_observations.py`. It reads
-  company facts from the JSON `observation_annual` rows and dated facts from
-  `observation_dated` and `observation_sessions`.
-- `backtest/application/scalar_execution.py` `Executor.select` admits dated
-  book rows with the view's admission rules and the book's valuation, reads
-  stored lanes with one query per table, evaluates formulas only for rows that
-  can still be selected, and (except in random-date runs) explains the
-  selected rows with the reference evaluator (`backtest/variables/reference.py`
-  over `observations.observe`), which must agree bit for bit.
-- Research preparation (`backtest/inputs/research.py`) builds a new
-  `research.sqlite` file each time and publishes it through
-  `backtest/inputs/baseline.py` (journal, three database hashes). Daily
-  preparation (`backtest/inputs/daily.py`) builds a new `schedules.sqlite` file,
-  copies research tables into it with `INSERT … SELECT` and keeps unaffected
-  books.
+Measured on the bench at the T3 code (research schema 13, daily cache 6):
 
-Measured on the copied real cache (`~/bench/ebitda-real`, WSL):
+- Cold build 490 s. Research 396 s: inputs 3, companies 172, dated facts 192,
+  independent verification 21, publication 6. Daily 93 s: copy 1, prices 90.
+- `research.sqlite` 2.24 GB (`stock_days` 1.86 GB). `schedules.sqlite`
+  1.10 GB before books and 10.8 GB with 1,346 books (`filter_values` 4.1 GB
+  plus a 3.9 GB index; `prices` 1.0 GB).
+- User test 508.5 s with books computed and 183.0 s with books saved: about
+  140 ms per date over 1,326 dates. The formula arithmetic is well under 1 ms
+  of it. A T0 profile put most of the per-date time in admission candidates,
+  scope-row reads, company facts, selection and writing.
+- The four whole-result digests equal T2.
 
-| Table | Database | Rows | Size |
-|---|---|---|---|
-| `observation_dated` | research | 24,497,566 | 31.1 GB |
-| `observation_dated` (copy) | daily | 24,497,566 | 14.3 GB |
-| `observation_annual` | research and daily | 380,833 | 1.9 GB each |
-| `observation_measure_contexts` | research and daily | — | 0.38 GB each |
-| `filter_values` + index (1,326 books) | daily | 75,342,237 | 8.0 GB |
-| `snapshots` (1,326 books) | daily | 4,371,248 | 0.58 GB |
-| `prices` | daily | 24,489,611 | 1.0 GB |
+## Decisions
 
-- Cold research and daily build: 1,363 s (research 983 s, of which the dated
-  observation stage was about 676 s; publication about 80 s).
-- The user's test (below) with all books saved: 200 s; first run with all
-  1,326 books computed: about 11–12 min; Stop: 0.0 s; result 78 MB.
-- A scope (one screen date) costs about 0.15 s. A profile of 20 real scopes
-  attributes most of it to admission candidates per date, scope-row reads,
-  column evaluation of company facts, selection and writing.
+These are binding (2026-11-05/06).
 
-## User decisions
+- Kept: Explain keeps values, dates, reasons, the source file and its digest.
+  Random-date results keep formula values and reasons, not step traces.
+  Readers compare an accepted raw-file signature. The Numba engine is deleted.
+  No parallel trials; 8 book workers.
+- **D1 = delete.** Done in T2 and T3.
+- **D2 replaced.** "yes, you need to do that. it is a bit different from common
+  database usage." The research database is the only source of truth.
+  `results/summary-exits.txt` is rendered from it. Remove the report/database
+  publication journal (`data/research.sqlite.publication.json`), its pending
+  files, `Baseline.recover`, the three full-database SHA-256 hashes and the
+  per-connect report check. The historical cutoff 2026-10-21 is a fixed
+  setting, not text read from the report. A leftover journal means: do a full
+  build from raw, then remove the journal. Keep the independent `revalue`
+  agreement when January results change. Keep the previous report and the
+  changed-years audit in `results/baseline-history/` when the report text
+  changes. `data/deployment.pending.json` is separate and stays.
+- **No numeric targets.** "i want the speed is reasonable. seting a number does
+  not make sense before we even work on that. stop when gain become marginal".
+  After each speed phase the orchestrator shows the user the gain and the next
+  largest cost. The user decides whether to continue.
+- **The nightly update may be slow.** "even longer wait is good we can schedule
+  it in mid night". The in-place one-minute daily update (old T4) is dropped.
+- **Approved outline** ("go ahead"): (1) one fact store, (2) faster backtests.
+- **Validation verdicts.** Keep the independent January engine; run it only
+  when the new January result differs from the stored verified one. Remove the
+  journal and its hashes. Keep the raw-file signature. Merge the four "is the
+  database current" layers into one. Remove the reuse digests if the nightly
+  full rebuild is chosen. Keep one formula gate. Keep the size check before a
+  run. Remove per-date re-admission and owner-value recomputation. The parity
+  harness is a development tool on the bench, not part of the app.
 
-Made (keep them):
+## Future decisions (not decided here)
 
-- Explain keeps values, dates (fiscal, known, observation), reasons, the source
-  file and its digest. It drops raw row positions and row hashes.
-- Random-date results keep each selected row's formula values and reasons, not
-  step traces. Fixed-date, January and latest results keep traces.
-- Readers compare an accepted raw-file signature; a hand edit to `raw/` needs a
-  data-panel check.
-- The frozen Numba engine is deleted.
-- The reference-engine comparison of the January baseline stays in
-  preparation.
-- No parallel trials for now; 8 book workers.
-- **D1 (2026-11-05), "D1: delete".** After parity, delete the old reference
-  evaluator. Fixed-date, January and latest runs get their explanations
-  (traces) from the column evaluator, and the live cross-check ends. The
-  parity harness stays as the oracle for the change. T3 therefore also
-  deletes `observations.py` and the reference evaluator.
-- **D2 replaced (2026-11-05), "yes, you need to do that".** The research
-  database is the only source of truth. The report/database publication
-  journal is removed (T4):
-  1. A full build still writes a temporary file and publishes it with one
-     atomic `os.replace`. A latest-only daily update changes `research.sqlite`
-     in place in one SQLite transaction. Both are crash-safe without a journal.
-  2. `results/summary-exits.txt` is an output rendered from the database's
-     verified baseline after each change, with an atomic small-file write. If
-     the machine stops before it is written, the next preparation renders it
-     again. Its bytes stay identical when nothing changed.
-  3. The historical cutoff 2026-10-21 becomes a fixed setting instead of
-     `cutoff(report text)` in `research.prepare`.
-  4. Delete `data/research.sqlite.publication.json`, `report.pending` and
-     `research.pending`, the three full-database SHA-256 hashes,
-     `Baseline.recover` and the `baseline_report_sha` check in `check_ready`
-     on every connect. A journal left on the runtime by older source means: do
-     a full build from raw, then remove the journal and its pending files. Add
-     no other reader for the old format.
-  5. Keep the independent `revalue.calculate` agreement whenever a historical
-     unit changes; the per-company reuse rule that tells new days from old-date
-     gap fills (a gap fill changes old books, so it takes the full path); and,
-     when the report text changes, the previous report and the changed-years
-     audit in `results/baseline-history/<generation>/` plus the
-     `baseline_revision` metadata. Existing history folders stay verbatim.
-     `data/deployment.pending.json` is a separate journal and stays.
-  6. Update AGENTS.md's research-database paragraph and the architecture guide
-     in the T4 commit.
+- Automatic nightly downloads would change the rule that downloads start only
+  from an explicit data-panel button.
+- A nightly update must run after the 01:00 publication supervisor
+  (`tools/deploy.py --start`) or in the same step.
 
-No decision is pending. The single-source baseline (decision "D2 replaced")
-is the next slice after T1, done by a separate agent in this worktree after an
-independent review of T1. That slice owns `backtest/inputs/baseline.py`, the
-Baseline call sites in `research.py` (recover, through and the historical
-cutoff, publish, check_ready in connect and in the prior-database check),
-`tools/ops/deploy.py`, `tools/ops/offline_input_copy.py`,
-`tests/test_baseline.py` and the AGENTS.md research-database paragraph.
+## Phase protocol
 
-## Constraints
-
-- AGENTS.md standing rules and feature contracts apply, except where the user
-  has decided otherwise above. Prepared schemas, freshness checks and the
-  daily cache are shared contracts: keep edits narrow and describe each schema
-  change in the docs and guide.
-- Python standard library only. New tests are fast.
-- Every change that alters stored rows needs a parity gate on the copied real
-  cache before any old table or code is dropped.
-- Each schema change rebuilds the prepared caches once at deployment. The
-  supervisor deploys `main` at 01:00; merging to `main` needs the user's
-  authorization each time.
-- Disk: keep one real-data bench copy; a rebuild needs about 34 GB of temporary
-  space until P3 shrinks the files.
-
-## Design
-
-### Typed facts
-
-- `stock_days(symbol, day, adjusted, price, volume, reason)` — one row per
-  company and session that the raw price file supplies, keyed by date, never
-  by file row. `reason` carries the existing provider reason when a field is
-  unavailable (non-positive price, conflicting rows, non-USD route).
-- `market_days(day, spy, month3, year10, …)` — SPY sessions and Treasury
-  fields keyed by date.
-- `annual_facts(symbol, endpoint, fiscal, <one REAL column per catalog field>,
-  <one reason column per field>)` — the selected annual states, with the
-  existing validity rules. Column names follow `backtest/variables/parameters.py`.
-- `annual_sources(symbol, endpoint, file, sha256)` — the source file and digest
-  that Explain keeps.
-- Keep `observation_latest` semantics (latest-root admission) as typed rows.
-- Owner measures in prepared scopes stay as stored lanes (today
-  `observation_measure_contexts`); store their values typed.
-- One new module, `backtest/inputs/facts.py`, owns writing and reading these
-  tables and replaces `observation_inputs.py`, `sqlite_observations.py`,
-  `dated_observation_inputs.py` and the storage half of
-  `measure_observations.py`. Financial policy stays in `backtest/financial/`.
-
-As built in T1 (deviations from the sketch above, with reasons):
-
-- `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason)`:
-  one reason column per field, because a day can have a valid price and an
-  invalid volume. No `price` column: valuation lookups keep the daily
-  `prices` table, whose rules (positive bars, last value per day) differ from
-  the observation rules (conflicting rows are unavailable).
-- `market_days(day, spy, month3, month3_reason, year10, year10_reason)`:
-  `spy` is set only on a valid SPY session; a Treasury day has a value or a
-  reason for both fields.
-- `annual_facts` column names are the parameter ids without `annual.`, plus
-  `<name>_reason`.
-- `fact_sources(symbol, endpoint, sha256, disposition)` holds annual, price,
-  Treasury and SPY sources in one table (Explain keeps the digest of dated
-  members too). The endpoint and symbol name the file.
-- `latest_admission(symbol, pool, admitted, reason, candidate_rank, fiscal,
-  known, market_cap, enterprise_value, ebitda)`.
-- Prepared owner lanes need no new table: the JSON measure contexts were
-  copies of the stored January and latest book rows (`snapshots` or
-  `latest_snapshots`, `screening_metrics`, `filter_values`), which are read in
-  place.
-- Value columns have no declared type: a REAL column stores -0.0 as the
-  integer 0 and would change signed-zero results.
-- The typed facts live only in `research.sqlite`. Original opens its research
-  connection in every mode and `columns.Facts(view, research)` reads them.
-
-### In-place daily update
-
-- A download that adds only days after the canonical report's Through date
-  changes only latest and dated units. Update `research.sqlite` and
-  `schedules.sqlite` in place in one transaction each: insert the new
-  `stock_days`/`market_days`, recompute latest snapshots and admission, delete
-  only books that read a changed day (the existing `_keep_books` rule), and
-  record the new identity.
-- A change to historical inputs keeps today's full build and baseline
-  publication.
-
-### Compact books
-
-- One row per (book, pool, symbol) with the snapshot fields and every filter
-  and metric value as columns, instead of one `filter_values` row per field.
-  `screening.select`, `website/rendering/data.py`, `website/browser/screener.js`
-  and `Executor.select` read it.
+- One fresh agent runs one phase in this worktree. It stops hard at the exit.
+- Inside a phase: build the new path, switch the readers, gather the real-copy
+  evidence, then delete the old path.
+- Real-copy evidence comes before any deletion: harness parity against the
+  previous phase; the four whole-result digests equal; cold build time by
+  stage; database sizes; user-test times with books computed and saved.
+- Exit checks:
+  - `TMPDIR=~/.cache/ebitda-ev-spread-tests/<name> python3 tests/run.py`, then
+    empty that folder;
+  - `--tier heavy` as well when the phase changes Original scalar operations
+    (`test_original_long_window.py`);
+  - `python3 tests/check_records.py`;
+  - the architecture guide updated (or reported as unaffected), and
+    `node docs/architecture-guide/check.cjs`;
+  - AGENTS feature contracts and `docs/` current;
+  - the evidence and audit dispositions in the commit message.
+- Between phases: an independent design review and an implementation audit.
+  Then the orchestrator shows the user the measured gain and the next cost.
+- Merging to `main` needs the user's authorization each time.
 
 ## Phases
 
-Each phase is its own branch-sized slice: tests pass, the guide and docs are
-current, real-copy parity holds, then ask the user to merge.
+### P1. Cleanup
 
-### T0. Baseline measurements (no product change)
+Scope:
 
-- Update `~/bench/ebitda-real` to the starting commit (see Bench).
-- Measure a realistic daily update on the copy: append one session to every
-  price file in the copy's `raw/` (copy only; never the runtime), add the SPY
-  and Treasury rows, then time `daily.prepare()`. Record each stage from
-  `data/logs/`.
-- Record the user test time with saved books and a 20-scope profile.
-- Exit: numbers in this plan's Measurements section.
+- One formula gate. `variables/selection.py` and `columns.require_program`
+  hold the same inventory (77 parameters). Keep one gate with the namespace
+  check. Run `definitions.require_program` once per check. Derive the catalog
+  support flags that `variable-workspace.js` shows from that gate.
+- Remove `raw/download-coverage.json` from `research.signature()`. No
+  preparation reads it.
+- Stale docs: `docs/plans/project-structure/source-map.md` (six deleted
+  modules); "Original reference execution" in
+  `website/browser/variable-workspace.html`; the guide's "Both backends
+  support…", "Phase 7 adds callable compiled arithmetic", "observation_identity
+  stage" and coverage-ledger freshness sentence; the AGENTS sentence that calls
+  the bench harness the oracle (it is a development tool outside the
+  repository).
+- Dead and test-only leftovers: `measure_observations.policy_fingerprint` and
+  `_LOADED`, the test-only `scalar_execution.preview`, `facts.TABLES`, the
+  `facts.prepared_view` pass-through, the `_Trace` note about the deleted
+  reference evaluator's numbering.
 
-### T1. Write typed facts beside the JSON tables
+Deletes: the second gate, the ledger signature entry, the leftovers.
 
-- Research preparation also writes `stock_days`, `market_days`,
-  `annual_facts`, `annual_sources` and typed latest/owner rows. The daily cache
-  reads them from research (attach or `INSERT … SELECT`), not a second copy if
-  avoidable.
-- `facts.py` read API with the operations `columns.py` needs: company reports
-  per pool, annual states at a fiscal date, session on or before a day within
-  seven days, own-stock row at a day, Treasury as of a day, latest admission,
-  prepared owner lanes.
-- `columns.py` reads through `facts.py`.
-- Parity: extend the harness so the column evaluator over typed facts equals
-  the reference over JSON for every row (fixtures, then real copy: the user
-  strategy on 20 scopes and the formula set on 64 rows per scope).
-- Exit: harness 0 mismatches; tests pass; scope time measured.
+Owns: `backtest/variables/selection.py`, the gate in `columns.py`,
+`variable_authoring.py`, the gate call in `strategy_requests.py`,
+`research.signature`, the named leftovers and docs, the AGENTS Custom
+variables paragraph and the tests of removed helpers.
 
-### T2. Explanations from the column evaluator (D1 = delete)
+Risks: the gate must refuse every parameter and operation that the column
+evaluator lacks; test the full catalog. The signature change rebuilds prepared
+data once.
 
-- Add a detail mode to `columns.py` that records, for selected rows only, the
-  inputs, dates, reasons, source file and digest, and the operations, in the
-  `evaluation` block shape that `website/browser/variable-evidence.js` reads
-  (`requests`, `program.nodes`, `observations.results/roots/contexts`,
-  `operations`, `results`).
-- Fixed-date, January and latest runs use the detail mode; the reference
-  evaluator leaves the run path and the live cross-check ends.
-- Exit: viewer checks pass; on fixtures and the real copy the detail traces
-  carry the same values, dates and reasons as the reference traces.
+Exit: the protocol checks. Real copy: four digests equal; cold build time.
 
-### T3. Remove the JSON observation tables
+### P2. Single-source baseline (D2)
 
-- Gate: storage parity on the real copy (typed facts reproduce every value and
-  reason the JSON tables give).
-- Drop `observation_*` tables from both databases; delete
-  `observation_inputs.py`, `sqlite_observations.py`,
-  `dated_observation_inputs.py`, the storage parts of
-  `measure_observations.py`, `observations.py`, `variables/evaluation.py` and
-  `variables/reference.py`. Move preview and coverage
-  (`scalar_execution.preview`, `variable_coverage.py`) to the column
-  evaluator. Keep small arithmetic golden tests.
-- Exit: database sizes measured; cold build time measured; tests pass.
+Scope:
 
-### T4. In-place daily update and single-source baseline
+- Research preparation builds a temporary file, verifies it, writes
+  `baseline_result` and `baseline_revision` into it and publishes it with one
+  atomic replace. No journal.
+- Every preparation, including the "already current" path, renders
+  `results/summary-exits.txt` from the database's verified result. It writes
+  the file atomically only when the bytes differ. Unchanged results keep
+  identical bytes.
+- The historical cutoff is the fixed setting `rules.ASOF`. The report leaves
+  `signature()`. `website/rendering/data.py` takes the cutoff from the
+  database.
+- The independent engine runs only when the new January result differs from
+  the verified result in the current database, or when none exists. Equal
+  means exact equality at full precision.
+- When the report text changes, write the previous report and the
+  changed-years audit to `results/baseline-history/<generation>/` before the
+  replace, and record `baseline_revision`. Existing history folders stay
+  verbatim.
+- A leftover journal forces a full build from raw. After publication, remove
+  the journal and its `*.pending` files. Add no other reader of the old format.
+- `--collect-report` exports the report rendered from the verified result in
+  the same database read.
 
-- Implement the latest-only path above in `research.py` and `daily.py`, inside
-  the existing cache ownership. Keep the full-build path for historical
-  changes. Keep crash safety: one transaction per database; a failed update
-  leaves the previous state.
-- Remove the report/database publication journal as decision "D2 replaced"
-  describes: render `results/summary-exits.txt` from the database's verified
-  baseline, fix the historical cutoff as a setting, and treat a leftover
-  journal as a request for a full build.
-- Exit: on the real copy a one-session append completes in about a minute and
-  equals a full rebuild of the same inputs (table-by-table comparison of
-  everything except identities); `tests/test_prepared_reuse.py`,
-  `tests/test_schedules.py` and `tests/test_baseline.py` cover the paths; an
-  interrupted update and a leftover journal are tested.
+Deletes: the journal, `report.pending`, `research.pending`, the three
+full-database hashes, `Baseline.recover`, `check_ready` and
+`baseline_report_sha` on every connect, `cutoff(text)` as an input, and the
+`_PriorUnits` baseline-reuse condition.
 
-### T5. Compact books
+Owns: `backtest/inputs/baseline.py`; the Baseline call sites in `research.py`
+(recover, through, publish, connect, the prior check); `website/rendering/data.py`
+(cutoff only); `tools/ops/deploy.py` (`export_runtime_report`);
+`tools/ops/offline_input_copy.py`; `tests/test_baseline.py`,
+`test_offline_preparation.py`, `test_offline_input_copy.py`,
+`test_research_inventory.py`, the export part of `test_deployment.py`; the
+AGENTS research-database paragraph; `docs/research-workflow.md`;
+`data/README.md`.
 
-- New book table shape; update the SQL screener, website embedding and browser
-  screener together. Keep `period_pools` completion semantics.
-- Exit: `python3 tests/check_screener.py` after a build, `node
-  tests/check-range.cjs`, `node tests/check-contributions.cjs` and the
-  selection-order tests pass; holdings identical on the real copy; book size
-  measured.
+Risks:
 
-### T6. Remaining per-scope cost (optional)
+- A stop between the database replace and the report write leaves an old
+  report. The next preparation renders it again. Readers of the report text
+  must not treat it as a source.
+- Fixtures set the cutoff through the report text today. They must patch the
+  setting instead.
+- Keep the first-run rule: unavailable prices stay null.
 
-- Admission candidates per date (`books.candidates` over every company) and
-  scope-row reads. Measure first; change only with identical results.
+Exit: the protocol checks; tests for a leftover journal, a stop before and
+after the replace, and a report re-render. Real copy: the rendered report
+equals the current report byte for byte; four digests equal; a rebuild with
+unchanged inputs skips the independent engine; publication time measured.
 
-## Measurements
+### P3. One build: parse once, full rebuild
 
-T0, bench updated to this branch (code identical to main a7b13ac), WSL, 5
-November 2026:
+Scope:
 
-- User test (see Bench): 557.9 s with all 1,326 books computed (8 workers),
-  211.2 s with every book saved; result 78.1 MB.
-- 20 quarterly scopes (2013–2018, books computed, cProfile): 33.9 s, of
-  which books 16.6 s and `Executor.select` 10.2 s.
+- Measure first. On the bench, run a one-session append (the T0 procedure)
+  through the current reuse path, and a forced full build. Show both times to
+  the user. The default is the nightly full rebuild.
+- Research preparation reads, hashes and parses each raw file once. From one
+  price payload it derives the January series, the latest snapshot, the typed
+  stock days and the source digest and disposition (the `SeriesAsset`
+  validity rule applied to the same payload). The shared SPY and Treasury
+  files are parsed once too. Drop the per-file re-hash checks that cache
+  ownership already covers.
+- With the full rebuild, delete the reuse machinery. Split
+  `research.prepare` into builders only where that deletes code.
+- The daily cache keeps its own price copy and kept-book rule in this phase.
 
-T1, fixtures (private edge-case fixture of the parity harness):
+Deletes: `_PriorUnits` (rowid spans, `copy_history`, `copy_dated`,
+`prepended`, `ATTACH prior`), `facts.copy_stock`, the `days` filter of
+`facts.resolve`, `_bounded_digest`, `_rows_digest`, `_reuse_scope`,
+`REUSE_MARGIN` and the `reuse` metadata.
 
-- Column evaluator over typed facts against the reference over JSON, default
-  scopes: 860 pairs, 28,251 roots, 542,682 outputs, 0 mismatches.
-- Storage parity, every typed row against its JSON row: 94,810 compared, 0
-  mismatches.
-- Full sweep, every January, latest and dated scope: 2,752 pairs, 95,546
-  roots, 1,835,372 outputs, 0 mismatches.
+Owns: `backtest/inputs/research.py` (build), `facts.py` (resolve and store),
+`cache_assets.py` (only to share the validity rule),
+`tests/test_prepared_reuse.py`, `test_research.py`, `test_prepared_facts.py`.
 
-T2, fixtures:
+Risks:
 
-- Detail traces against reference traces of the same chunks, normalized by
-  `traces.py`: 542,682 traces, 895,491 operations, 1,586,316 members, 0
-  mismatches.
-- Whole results against main a7b13ac (`results.py`: holdings, summaries,
-  explained lanes): 16 runs equal, 1,031 traces equal.
+- Row order: verify that no result depends on rowid order (`scope_rows`
+  orders by `s.rowid`).
+- The one-parse disposition must equal `SeriesAsset` labels; compare
+  `fact_sources`.
+- If the measurement shows that reuse pays, keep only that part and say why
+  here.
 
-T0, one-session append on the bench (2026-10-22 added to the 3,985 price files
-whose newest row was 2026-10-21, plus SPY and Treasury; pre-T1 code):
+Exit: the protocol checks. Real copy: the new research database equals the
+previous cold build table by table, except identity metadata; four digests
+equal; cold build and one-session append times by stage.
 
-- `daily.prepare()` 1,236 s: research 987 s (inputs 4, companies 167,
-  dated observations 565, measure contexts 1, prior-unit copies 195,
-  publication 51; the baseline was reused), daily 250 s (copy of research
-  tables 40, prices 89 with 3,985 parsed and 3,246 copied, kept books 116 with
-  1,343 of 1,346 kept, publication 3).
-- Sizes after it: research 17.0 GB (`observation_dated` 14.5 GB), daily
-  27.3 GB (`observation_dated` copy 14.3 GB, `filter_values` 4.1 GB plus its
-  index 3.9 GB). A cold build's 33.7 GB research file adds free pages.
-- User test afterwards: 206.7 s (3 books recomputed).
+### P4. One fact store and one identity
 
-T3, fixtures: the fast tier (91 files) and the heavy tier pass;
-`tests/test_columns.py` replaces the provider and reference evaluator tests.
-Only checks of deleted mechanics were dropped.
+Scope:
 
-T1 and T2, real copy (bench at the T2 code 8253395, schema 12 with JSON and
-typed tables, WSL, 5–6 November 2026):
+- `research.sqlite` holds each fact once:
+  - `stock_days` gains the valuation `price` and the book `adjusted` columns
+    (the `daily._price_rows` rules). Days that only the light series supplies
+    become rows without observation fields.
+  - `market_days` gains the book SPY close (`market.load_bars`), the book
+    3-month yield and the 10-year yield (today `sessions`, `treasuries`,
+    `treasury10`).
+  - `statements` stays once. The legacy annual values that
+    `metrics.filter_values` reads come from `annual_facts` (the legacy fields
+    of `financial_inputs.ENDPOINTS`, valid values only).
+- `schedules.sqlite` holds only dated books (`periods`, `period_pools`,
+  `snapshots`, `filter_values`, `screening_metrics`) and one binding record.
+  Its connections, including the read-only book workers, attach research
+  read-only.
+- One identity record in research: the schema version, the accepted raw
+  signature (including each price file) and the content identity of the code
+  that computes rows. The daily binding names that research identity and the
+  code that computes books. Editing a reader must not invalidate books;
+  split the `facts.py` writer from its reader if needed.
+- Kept books. Before the replace, preparation compares the new rows that
+  books read with the previous research file, only for changed files and
+  market rows. It records the first changed day and the previous identity. A
+  changed statement, annual fact, company list, cached set or book code drops
+  every book. The daily step keeps a book only when it is bound to that
+  previous identity and reads nothing on or after that day (the existing
+  `_keep_books` rule). Otherwise it drops the book, which is computed again on
+  demand.
 
-- Cold research and daily build 1,788 s (research 1,122 s; daily copy of
-  research tables 576 s, prices 88 s); research.sqlite 35.7 GB.
-- User test 528 s with all 1,326 books computed, 199 s with every book saved
-  (main: 558 s and 211 s); the printed result summary equals main's.
-- Storage parity (`storage.py`): 25,019,399 typed rows against their JSON rows,
-  0 mismatches (stock days 24,489,611, Treasury days 7,955, SPY sessions
-  8,004, annual rows 380,833, sources 28,926, latest admission 22,108,
-  prepared lanes 81,961).
-- Values and traces (`real.py --scopes 20 --formulas --formula-roots 64
-  --detail`): 880 pairs, 120,216 roots, 1,122,456 outputs, 0 mismatches, 0
-  errors; 1,122,456 traces, 2,005,344 operations, 3,603,214 members, 0
-  mismatches. Reference 868.8 s, column evaluator 133.0 s.
-- 20 quarterly scopes 2013–2018 under cProfile: 24.3 s (T0: 33.9 s).
+Deletes: daily `prices`, `sessions`, `treasuries` and the copied `companies`,
+`statements`, `financial_inputs`, `treasury10`; research `treasury10` and
+`financial_inputs`; `_copy_research` and its every-row digest; `daily._prices`,
+`_first_difference`, `_dated_change`; `fact_metadata`, `facts.require` and its
+per-scope calls, `facts.policy_binding`, `prepared_bindings`,
+`prepared_price_binding`, the daily engine stats and the `_code` digests.
 
-T3, real copy (bench at bf245df, research schema 13, daily cache 6; typed
-facts only):
+Owns: `research.py` (schema, identity, change day), `daily.py`, `facts.py`,
+`engines/original/schedules.py`, `book_batch.py`, the `sessions` readers
+(`robustness.py`, `calendar_requests.py`, `scalar_runs.py`,
+`original_calculations.py`), `operation_inputs.py`,
+`tools/ops/prepared_input_coverage.py`, `website/server/data_manager.py`
+(status), their tests, the AGENTS dated-schedule and data-panel paragraphs,
+`docs/schedule-calendar.md`, `docs/research-workflow.md`.
 
-- Cold build 490 s: research 396 s (inputs 3, companies 172, dated facts 192,
-  metrics 2, commit 1, independent verification 21, publication 6), daily
-  93 s (copy of research tables 1, prices 90, publication 1).
-- research.sqlite 2.24 GB (`stock_days` 1.86 GB, `annual_facts` 0.13 GB);
-  schedules.sqlite 1.10 GB before books, 10.8 GB with 1,346 dated books
-  (`filter_values` 4.1 GB plus its index 3.9 GB, `prices` 1.0 GB). Bench copy
-  17 GB in total (about 61 GB before).
-- User test 508.5 s with all books computed, 183.0 s with every book saved.
-- Whole results against T2 (`~/bench/out/result_digest.py`: the recorded
-  random test, quarterly fixed dates 2013–2018, January 1996–2026 and latest;
-  holdings rows, summaries without timings and every explained lane
-  normalized by `traces.py`): all four equal, digests and full files
-  (40,320 + 600 + 917 + 30 rows; 201,600 + 3,000 + 4,585 + 150 lanes).
+Risks:
+
+- One fact, two rules. The book rules (positive bars, last value per day, the
+  light series) differ from the observation rules (conflicts unavailable).
+  Keep separate columns where they can differ.
+- The derived legacy annual values must equal the JSON values bit for bit.
+- `periods`, `snapshots`, `filter_values` and `screening_metrics` exist in both
+  files. Name the schema in SQL.
+- A worker must attach the research file that the parent admitted. `PRAGMA
+  cache_size` applies per schema; measure book computation through the attach.
+- Native Windows: attach, file replace and spawn workers
+  (`tests/test_book_batch.py` on native Windows before merge).
+- Results record `input` and `projection` from the view. Keep the fields and
+  fill them from the one identity. Old results open unchanged.
+
+Exit: the protocol checks. Real copy, before deletion: every moved column
+equals the old daily table or JSON input (0 mismatches); harness parity; four
+digests equal. Then: cold build time; sizes, including `schedules.sqlite`
+before books; a one-session append keeps the same books as the old rule (T0:
+1,343 of 1,346).
+
+### P5. Book rows are admission and owner lanes
+
+Scope:
+
+- A stored book row is its root's admission decision, for January, latest and
+  dated books: present means admitted, with its candidate rank and valuation.
+  `Executor` stops calling `view.candidates` (`books.candidates` over every
+  company) per dated date and `View.admit` for January and latest scopes.
+  Latest rows gain `ebitda`.
+- One admission function in `books.py` serves `compute_period`, the research
+  January and latest rows and explicit preview roots. Keep the reason codes
+  that saved results can contain. Delete `latest_admission` if that function
+  serves latest preview roots.
+- Owner lanes at a stored-book root of every kind read the book's stored
+  lanes, named by the book id instead of a threaded `owner_scope`. Derived
+  `at` and `lookback` contexts keep the dated owner policy (AGENTS).
+- Values-only evaluation builds no evidence: no JSON encoding and no detach.
+  Detail mode builds evidence for selected rows only. Keep the explanation
+  block shape. Scope the owner byte ceiling to detail mode.
+- One owner-scope check (today three) and one operating-margin formula in
+  `metrics.py` (today also in `columns.py`).
+- Then profile 20 scopes and the user test, and list what is left:
+  scope-row reads, report dates parsed again per root, `filter_values` reads,
+  first-run book computation, result encoding (78 MB). Compact book rows (old
+  T5) only if the profile shows that the book tables cost.
+
+Deletes: dated re-admission in `Executor._admit`, the admission chains in
+`View.admit` and `_admit`, evidence building in values-only owner lanes, and
+the `View` members that only served them.
+
+Owns: `scalar_execution.py`, `columns.py`, `facts.py` (`View`),
+`measure_observations.py`, `financial/books.py`, `financial/metrics.py`
+(operating margin), `engines/original/schedules.py` (admission), `research.py`
+(latest rows), `scalar_runs.py`, their tests.
+
+Risks:
+
+- Signed zero: stored `filter_values` are REAL and lose -0.0. Dated owner
+  lanes keep it today. The harness shows any change; January and latest lanes
+  already read stored values.
+- Every stored row must pass the one admission function; assert it in a test
+  and on the bench.
+- Explained dated owner lanes change their evidence source. List the changed
+  fields and compare the rest.
+
+Exit: the protocol checks, heavy tier included. Real copy: harness parity of
+values and reasons against P4, with the owner formula set on 64 rows per
+scope; four digests equal; user-test time with books saved; the 20-scope
+profile. Then stop. The user decides about P6.
+
+### P6 and later (only if the user continues)
+
+One measured cost per phase, with the same protocol. Stop when the gain
+becomes marginal.
+
+## Review candidates
+
+Reviews of 8de87fb: A is the design review, B is the implementation audit.
+
+Adopted:
+
+- A.1 in part: the per-scope work is a required phase (P5), and real-copy
+  gates come before deletions.
+- A.2: P3 (one parse, delete `_PriorUnits`, builders, row-order check) and P4
+  (one fact store, attach).
+- A.3: P5. A.4: P4. A.5: P1.
+- B.2: P3. B.3: P1. B.4: P5. B.5: P1. B.6: P4. B.7: P1. B.8: P4. B.9: P5.
+- B.11 in part: P1 fixes the AGENTS harness wording.
+
+Rejected:
+
+- Numeric targets (A.1): the user rejected them.
+- Ordering by measured cost before storage (A.1): the user approved the
+  outline that puts the fact store first.
+- The in-place update and its unit algorithm (from-scratch design, A.2): the
+  user dropped the in-place update. A full rebuild is one path.
+- Deleting `View.broad_reports`, `legacy_financial_history` and
+  `legacy_treasury` (A.3): derived contexts keep the dated owner policy, so
+  these readers stay. P5 removes only their evidence cost.
+- Rewriting history for B.11: only on the user's request.
+
+Deferred:
+
+- Compact book rows (A.3, old T5): decided by P5's profile.
+- Provider-era bounds (B.10: `MAX_HISTORY`, `MAX_METADATA_BYTES`,
+  `MAX_SCOPES`): AGENTS keeps resource ceilings. Remove a bound only with the
+  code that it guards.
+
+Resolved: B.1 (real-copy parity at T2 and the T3 digests).
 
 ## Bench and tools
 
-- Real-data copy: `~/bench/ebitda-real` (raw 4.2 GB, research 33.7 GB, daily
-  about 18–28 GB). It is a copy of the Windows runtime's `raw/` and `results/`
-  plus `data/variable-library.sqlite`, with code exported from a commit. Never
-  write the Windows runtime; never copy assets back.
-- Update its code: `WT=<worktree> bash ~/bench/scripts/update_bench.sh`. It
-  copies only changed files (unchanged files keep their times, so the raw
-  signature does not force a rebuild), prepares, and runs the user test twice.
-  Run long jobs detached: `setsid nohup bash … > log 2>&1 < /dev/null &`.
-- The user test: `~/bench/user-test.json` (24 random quarterly trials,
-  2013-01-01 → 2026-10-21, seed 2607948532, ranks 1–30, cached pool,
-  EV/EBITDA yield ranking, three built-in conditions and `debt/EV` < 50%).
-  Run from the bench folder: `python3 ~/bench/scripts/run_user_test.py full`,
-  or `stop 20` to time cancellation.
-- Profiles: `~/bench/scripts/profile_real_scope.py` (20 quarterly scopes,
-  cProfile into `~/bench/out/`), `evidence_sizes.py`, `table_sizes.py`.
-- Parity harness: `~/bench/harness/` (`parity.py` fixtures, `real.py` real
-  copy, `results.py` whole results, `storage.py` typed against JSON rows,
-  `storage_fixture.py` the same on the fixture). Point it at a checkout with `WT=`; use
-  `TMPDIR=~/.cache/ebitda-ev-spread-tests/p0` and empty it afterwards.
-- Only one operation holds the bench's cache lock at a time; a second run
-  waits.
+`~/bench/README.md` has the details.
+
+- Copy: `~/bench/ebitda-real`, about 17 GB at T3. Never write the Windows
+  runtime or copy anything back.
+- Update the code: `WT=<worktree> bash ~/bench/scripts/update_bench.sh`
+  (changed files, preparation, the user test twice). Run long jobs detached.
+- User test: `~/bench/user-test.json` (24 random quarterly trials,
+  2013-01-01 → 2026-10-21, seed 2607948532, ranks 1–30, cached pool, EV/EBITDA
+  yield ranking, three built-in conditions and debt/EV < 50%). Run
+  `python3 ~/bench/scripts/run_user_test.py full` from the bench folder.
+- Digests: `python3 ~/bench/out/result_digest.py OUT.json` from the bench
+  folder (random test, quarterly fixed dates 2013–2018, January 1996–2026,
+  latest). T3 digests: `~/bench/out/t3-digest.json`.
+- Harness: `~/bench/harness/`. Set `WT=` and
+  `TMPDIR=~/.cache/ebitda-ev-spread-tests/<name>`; empty it afterwards. Each
+  phase extends the storage comparison it needs.
+- Profiles: `~/bench/scripts/profile_real_scope.py`, `table_sizes.py`.
 
 ## Risks
 
-- Hidden consumers of the JSON evidence (stored results never read it; check
-  `website/` and tests before T3).
-- Reason-code drift between JSON states and typed columns: the harness compares
-  reasons, not only values.
-- In-place updates and crashes: keep one transaction per database and test an
-  interrupted update.
-- Disk during migration: dual tables (T1–T3) temporarily add a few GB.
+- Deployment: each schema change bumps its version and rebuilds the prepared
+  caches once. The 01:00 supervisor deploys `main`. A leftover baseline journal on the runtime forces
+  a full build (P2).
+- Native Windows: attach, file replace and spawn workers need the native checks
+  that AGENTS names before a merge.
+- Scope creep: each phase stops at its exit. A new idea goes to the user first.
 
 ## Next
 
-Plan reshape after independent design review (orchestrator).
+An independent design review checks this plan before code starts. Then a fresh
+agent runs P1.
