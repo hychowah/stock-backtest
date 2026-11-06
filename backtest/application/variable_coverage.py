@@ -19,8 +19,9 @@ def scopes(db, view):
     """
     view.validate()
     generation=hashlib.sha256(definitions.canonical(dict(input=view.identity,projection=view.projection)).encode()).hexdigest()
+    book=book_store.open_book(db);entry=book_store.record(db,book)['entry']
     found=[dict(mode='latest',pool=pool,context_date=entry,book=book)
-           for pool in ('legacy','cached') for book,entry,exit_day in book_store.completed(db,pool) if exit_day is None]
+           for pool in ('legacy','cached') if book_store.find(db,entry,None,pool)==book]
     return dict(generation=generation,scopes=found)
 
 

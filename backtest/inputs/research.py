@@ -144,6 +144,8 @@ def code_sources(role):
     - 'books', the book identity that the daily binding names: the code that
       computes and stores books. books.py, metrics.py, rules.py,
       facts.BookFacts and book_store (its schema, writer and readers).
+      code_identity also names the legacy annual field list that
+      BookFacts.legacy_annual reads (facts.LEGACY): fact-row code defines it.
     A file that holds code of both roles is in both lists. Readers bind no
     identity: fact_view (View and its recorder), schedules, book_batch,
     calendar, portfolio_results, screening, scalar_execution, the CLI and
@@ -160,8 +162,14 @@ def code_sources(role):
 
 
 def code_identity(role):
-    """The content identity of one code role: the digest of its files' names and sha256s (code_sources)."""
+    """The content identity of one code role: the digest of its files' names and sha256s (code_sources).
+
+    The book identity also digests facts.LEGACY, so an edit to the legacy field
+    list in financial_inputs or the catalog drops every book.
+    """
     digests = [[path.name, hashlib.sha256(path.read_bytes()).hexdigest()] for path in code_sources(role)]
+    if role == 'books':
+        digests.append(['facts.LEGACY', facts.LEGACY])
     return hashlib.sha256(json.dumps(digests, separators=(',', ':')).encode()).hexdigest()
 
 
@@ -252,10 +260,11 @@ class _Diff:
     """The fact diff of one build against the replaced research file, attached as 'old'.
 
     A price or annual file whose sha256 (fact_sources) and the fact-row code
-    are both unchanged is skipped. The rows of every other file, of removed
-    companies, the statements, the company set and the SPY and Treasury rows
-    are compared. Equal values compare equal, so 0.0 equals -0.0: book tables
-    store REAL values, which keep no signed zero.
+    are both unchanged is skipped. The rows of every other file, the statements
+    and the SPY and Treasury rows are compared. Statements keep only the saved
+    companies, so they cover an added or removed company. Equal values compare
+    equal, so 0.0 equals -0.0: book tables store REAL values, which keep no
+    signed zero.
     """
 
     def __init__(self, db, same_code):
@@ -268,15 +277,10 @@ class _Diff:
 
     def _note(self, kind, symbol, key):
         if key is not None:
-            self.rows[kind][symbol] = min(key, self.rows[kind].get(symbol, key))
+            self.rows[kind][symbol] = key
 
     def _unchanged(self, symbol, endpoint, sha):
         return self.same and (symbol, endpoint) in self.sources and self.sources[symbol, endpoint] == sha
-
-    def _legacy(self, symbol):
-        old, new = (facts.legacy_annual(self.db, symbol, schema=schema) for schema in ('old', 'main'))
-        self._note('annual', symbol, next((fiscal for fiscal in sorted(old.keys() | new.keys())
-                                           if old.get(fiscal) != new.get(fiscal)), None))
 
     def company(self, symbol, stock, rows, annual):
         """Compare one company's price rows and legacy annual values, unless their files are unchanged."""
@@ -288,24 +292,18 @@ class _Diff:
                 'SELECT day,adjusted,adjusted_reason,volume,volume_reason FROM old.stock_days WHERE symbol=? ORDER BY day',
                 (symbol,)).fetchall(), rows))
         if not all(self._unchanged(symbol, endpoint, source['sha256']) for endpoint, source in annual.items()):
-            self._legacy(symbol)
+            old, new = (facts.legacy_annual(self.db, symbol, schema=schema) for schema in ('old', 'main'))
+            self._note('annual', symbol, next((fiscal for fiscal in sorted(old.keys() | new.keys())
+                                               if old.get(fiscal) != new.get(fiscal)), None))
 
-    def finish(self, companies):
-        """Compare the removed companies' rows, the statements, the company set, SPY and Treasury; return the rows."""
-        for symbol in sorted({symbol for symbol, _ in self.sources} - set(companies) - {''}):
-            self._note('prices', symbol, self.read.execute(
-                'SELECT MIN(day) FROM old.stock_days WHERE symbol=?', (symbol,)).fetchone()[0])
-            self._legacy(symbol)
+    def finish(self):
+        """Compare the statements, SPY and Treasury; return the rows."""
         statements = {}
         for index, schema in enumerate(('old', 'main')):
             for symbol, *row in self.read.execute(f'SELECT * FROM {schema}.statements ORDER BY symbol,fiscal'):
                 statements.setdefault(symbol, ([], []))[index].append(tuple(row))
         for symbol, (old, new) in statements.items():
             self._note('statements', symbol, _first_change(old, new))
-        old, new = ({row[0] for row in self.read.execute(f'SELECT symbol FROM {schema}.companies')} for schema in ('old', 'main'))
-        for symbol in old ^ new:
-            reports = statements.get(symbol, ([], []))
-            self._note('companies', symbol, min((row[0] for row in reports[0] + reports[1]), default=None))
         self._note('market', '', _first_change(*(self.read.execute(f'SELECT * FROM {schema}.market_days ORDER BY day').fetchall()
                                                   for schema in ('old', 'main'))))
         return self.rows
@@ -391,7 +389,7 @@ def prepare(path=DATABASE, force=False):
         diagnostics.lap('dated_facts')
         changed=dict(base=None,rows={})
         if diff is not None:
-            changed=dict(base=base.get('content'),rows=diff.finish(broad))
+            changed=dict(base=base.get('content'),rows=diff.finish())
         diagnostics.note(changes={kind:len(rows) for kind,rows in changed['rows'].items()})
         diagnostics.lap('fact_diff')
         # fact_sources holds the digest of every price, annual, SPY and Treasury file read.

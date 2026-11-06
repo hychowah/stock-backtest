@@ -514,7 +514,7 @@ class KeptBookTests(unittest.TestCase):
 
     def test_price_row_just_after_the_horizon_keeps_the_book_and_on_it_drops_it(self):
         self.edit('px/A.json',lambda value:value['div'].append(dict(date=self.DAY,adjClose=25)))
-        self.assertEqual(self.update(),dict(prices={'A':self.DAY},market={},statements={},annual={},companies={}))
+        self.assertEqual(self.update(),dict(prices={'A':self.DAY},market={},statements={},annual={}))
         self.assert_kept(self.before)
         self.saved=self.stored()
         self.edit('px/B.json',lambda value:next(row for row in value['div'] if row['date']=='2015-04-01').update(adjClose=99))
@@ -528,30 +528,74 @@ class KeptBookTests(unittest.TestCase):
 
     def test_statement_known_just_after_the_horizon_keeps_the_book(self):
         self.reports['B'].append(self.report(self.FISCAL,25e6));self.write_reports()
-        self.assertEqual(self.update(),dict(prices={},market={},statements={'B':self.FISCAL},annual={},companies={}))
+        self.assertEqual(self.update(),dict(prices={},market={},statements={'B':self.FISCAL},annual={}))
         self.assert_kept(self.before)
 
     def test_legacy_annual_value_known_just_after_the_horizon_keeps_the_book(self):
         self.annual('A',[dict(date=self.FISCAL,reportedCurrency='USD',revenue=120e6,netIncome=12e6)])
-        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={'A':self.FISCAL},companies={}))
+        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={'A':self.FISCAL}))
         self.assert_kept(self.before)
 
     def test_added_company_is_visible_from_its_earliest_known_statement(self):
         self.edit('universe.json',lambda rows:rows.append(dict(symbol='D',name='D',exchange='NYSE',sector='Energy',listed=True)))
         self.reports['D']=[self.report(self.FISCAL)];self.write_reports()
-        changes=self.update()
-        self.assertEqual((changes['companies'],changes['statements']),({'D':self.FISCAL},{'D':self.FISCAL}))
+        self.assertEqual(self.update(),dict(prices={},market={},statements={'D':self.FISCAL},annual={}))
         self.assert_kept(self.before)
 
-    def test_removed_company_and_its_price_file_drop_every_book_it_could_read(self):
+    def test_removed_company_drops_every_book_from_its_earliest_known_statement(self):
+        # Statements keep only the saved companies: the statements diff covers the removal.
         self.edit('universe.json',lambda rows:rows.pop())
-        changes=self.update()
-        self.assertEqual((changes['companies'],changes['prices']),({'C':'2014-06-30'},{'C':'2014-06-30'}))
+        self.assertEqual(self.update(),dict(prices={},market={},statements={'C':'2014-06-30'},annual={}))
         self.assert_kept([])
+
+    def test_spy_session_alone_is_a_market_change(self):
+        # The third book reads SPY on its exit day, 2015-04-01.
+        self.edit('spy-div.json',lambda rows:next(row for row in rows if row['date']=='2015-04-01').update(adjClose=150))
+        self.assertEqual(self.update(),dict(prices={},market={'':'2015-04-01'},statements={},annual={}))
+        self.assert_kept(self.before[:2])
+
+    def test_ten_year_yield_alone_is_a_market_change(self):
+        # The third book reads the 10-year yield on its entry day, 2015-03-02.
+        self.edit('treasury.json',lambda rows:next(row for row in rows if row['date']=='2015-03-02').update(year10=4))
+        self.assertEqual(self.update(),dict(prices={},market={'':'2015-03-02'},statements={},annual={}))
+        self.assert_kept(self.before[:1])
+
+    def test_price_file_removed_or_added_for_a_company_that_stays(self):
+        path=self.raw/'px'/'C.json';path.unlink()
+        self.assertEqual(self.update(),dict(prices={'C':'2014-06-30'},market={},statements={},annual={}))
+        self.assert_kept([])
+        self.saved=self.stored()
+        self.write('px/C.json',dict(div=[dict(date=day,adjClose=10) for day in [self.DAY,*self.SESSIONS[4:]]]))
+        self.assertEqual(self.update(),dict(prices={'C':self.DAY},market={},statements={},annual={}))
+        self.assert_kept(self.before)
+
+    def test_annual_file_added_or_removed_for_a_company_that_stays(self):
+        self.annual('B',[dict(date=self.FISCAL,reportedCurrency='USD',revenue=50e6,netIncome=5e6)])
+        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={'B':self.FISCAL}))
+        self.assert_kept(self.before)
+        self.saved=self.stored()
+        financial_inputs.asset_path(self.raw,'A','income-statement').unlink()
+        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={'A':'2014-06-30'}))
+        self.assert_kept([])
+
+    def test_legacy_field_list_change_drops_every_book(self):
+        # An edit to financial_inputs.ENDPOINTS is fact-row code only; the book identity names facts.LEGACY.
+        legacy=tuple((endpoint,tuple(item for item in fields if item[0]!='netIncome')) for endpoint,fields in facts.LEGACY)
+        identity=research.code_identity
+        with patch.object(facts,'LEGACY',legacy), \
+                patch.object(research,'code_identity',side_effect=lambda role:identity(role)+('x' if role=='facts' else '')):
+            self.update()
+            self.assertEqual(self.stored(),{})
+            rerun=self.backtest()
+            self.assertNotIn('pe',{row[1] for rows,filters,metrics in rerun.values() for row in filters})
+            fresh=self.root/'data'/'fresh.sqlite'
+            daily.prepare(fresh,self.source)
+            self.assertEqual(rerun,self.backtest(fresh))
+        self.assertIn('pe',{row[1] for rows,filters,metrics in self.saved.values() for row in filters})
 
     def test_names_sectors_and_listing_are_not_book_inputs(self):
         self.edit('universe.json',lambda rows:rows[0].update(name='Renamed',sector='Utilities',listed=False))
-        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={},companies={}))
+        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={}))
         self.assert_kept(list(self.saved))
 
     def test_one_session_append_keeps_every_book_and_skips_unchanged_files(self):
@@ -561,7 +605,7 @@ class KeptBookTests(unittest.TestCase):
             self.edit(f'px/{name}.json',lambda value:value['div'].insert(0,dict(date=day,adjClose=40)))
         self.edit('spy-div.json',lambda rows:rows.append(dict(date=day,adjClose=120)))
         self.edit('treasury.json',lambda rows:rows.append(dict(date=day,month3=2.5,year10=4)))
-        self.assertEqual(self.update(),dict(prices={'A':day,'B':day},market={'':day},statements={},annual={},companies={}))
+        self.assertEqual(self.update(),dict(prices={'A':day,'B':day},market={'':day},statements={},annual={}))
         with closing(daily.connect(self.path,self.source)) as cache:
             with patch.object(financial_books,'book',side_effect=AssertionError('Kept books must be reused')):
                 s.backtest(cache,**self.OPTIONS)
@@ -637,8 +681,34 @@ class KeptBookTests(unittest.TestCase):
             self.edit('px/A.json',lambda value:value['div'].append(dict(date=day,adjClose=25)))
             self.generation+=1
             research.prepare(self.source)
+        # No book stays, so an empty file replaces the cache before the transaction, which deletes nothing.
+        deleted=[]
+        with patch.object(book_store,'delete',side_effect=lambda db,books:deleted.extend(books)), \
+                patch.object(financial_books,'book',side_effect=KeyboardInterrupt()):
+            with self.assertRaises(KeyboardInterrupt):daily.prepare(self.path,self.source)
+        self.assertEqual(deleted,[])
+        # An interruption after that leaves the empty cache: valid, unbound and without a book.
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
+            self.assertIsNone(daily.binding(db))
+            self.assertEqual(book_store.stored(db),[])
+        with self.assertRaisesRegex(ValueError,'changed'):daily.connect(self.path,self.source)
         daily.prepare(self.path,self.source)
         self.assert_kept([])
+
+    def test_only_an_old_or_foreign_file_starts_the_cache_from_empty(self):
+        before=self.path.read_bytes()
+        locked=sqlite3.OperationalError('database is locked');locked.sqlite_errorcode=sqlite3.SQLITE_BUSY
+        self.generation+=1
+        with patch.object(daily,'binding',side_effect=locked):
+            with self.assertRaises(sqlite3.OperationalError):daily.prepare(self.path,self.source)
+        self.assertEqual(self.path.read_bytes(),before)
+        for content in (b'not a database file '*64,b''):
+            with self.subTest(content=content[:4]):
+                self.path.write_bytes(content)
+                daily.prepare(self.path,self.source)
+                self.assertEqual(self.stored(),{})
+                self.assertEqual(self.backtest(),self.saved)
 
     def test_current_cache_reads_no_raw_file(self):
         original=self.path.read_bytes()

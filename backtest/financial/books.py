@@ -38,12 +38,12 @@ def horizon(entry, exit_day):
 # - market: a SPY or Treasury row (market_days), its own day.
 # - statements: a statement, its known day (fiscal + LAG).
 # - annual: a legacy annual value (facts.legacy_annual), its known day.
-# - companies: an added or removed company, its earliest known statement.
-# Only the company set is an input: dated books read only whether a company
-# exists, and selection reads names and sectors live. The open book also
-# reads listed, but it is never kept.
+# Every read of facts.BookFacts belongs to one kind. Statements keep only the saved
+# companies (statements()), so an added or removed company is a statements
+# change. Dated books read only whether a company exists, and selection reads
+# names and sectors live; the open book also reads listed, but it is never kept.
 VISIBLE=dict(prices=lambda day:day,market=lambda day:day,statements=lambda fiscal:fiscal+run.LAG,
-             annual=lambda fiscal:fiscal+run.LAG,companies=lambda fiscal:fiscal+run.LAG)
+             annual=lambda fiscal:fiscal+run.LAG)
 
 
 def change_day(changes):

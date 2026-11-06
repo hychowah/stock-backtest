@@ -1,4 +1,4 @@
-"""Typed prepared facts for formulas and books, and their borrowed view.
+"""Typed prepared facts: the tables that research preparation writes and the book facts port.
 
 Research preparation resolves saved files into these tables in its build
 transaction. Annual statements use financial_inputs.resolve_history; saved
@@ -57,9 +57,11 @@ def _annual_columns():
 ANNUAL = _annual_columns()
 # The annual_facts column of each (endpoint, field).
 COLUMNS = {(endpoint, field): column for column, endpoint, field in ANNUAL}
-# The legacy values-only annual fields by endpoint, in financial_inputs order.
-_LEGACY = tuple((endpoint, tuple((field, COLUMNS[endpoint, field]) for field in fields))
-                for endpoint, fields in financial_inputs.ENDPOINTS.items() if fields)
+# The legacy values-only annual fields by endpoint, in financial_inputs order:
+# what BookFacts.legacy_annual reads. financial_inputs and the catalog are fact-row
+# code, so the book identity names this list itself (research.code_identity).
+LEGACY = tuple((endpoint, tuple((field, COLUMNS[endpoint, field]) for field in fields))
+               for endpoint, fields in financial_inputs.ENDPOINTS.items() if fields)
 
 SCHEMA = '''
 CREATE TABLE stock_days(symbol TEXT, day TEXT, adjusted, adjusted_reason TEXT, volume, volume_reason TEXT,
@@ -244,22 +246,22 @@ def store_companies(db, universe):
 def legacy_annual(db, symbol, checkpoint=lambda: None, schema='research'):
     """{fiscal: {field: value}} of the valid legacy annual values of one company.
 
-    The fields are financial_inputs.ENDPOINTS, in its endpoint and field order;
-    a fiscal date without a valid value is left out. This equals the
+    The fields are LEGACY (financial_inputs.ENDPOINTS), in its endpoint and
+    field order; a fiscal date without a valid value is left out. This equals the
     values-only projection of financial_inputs.resolve_history bit for bit.
     schema names the research facts on db: 'research' on a daily connection;
     research preparation's fact diff reads 'main' and 'old'.
     """
-    columns = [column for _, fields in _LEGACY for _, column in fields]
+    columns = [column for _, fields in LEGACY for _, column in fields]
     found = {}
     for endpoint, fiscal, *values in db.execute(
             f'SELECT endpoint,fiscal,{",".join(columns)} FROM {schema}.annual_facts WHERE symbol=? AND endpoint IN '
-            f'({",".join("?" * len(_LEGACY))}) ORDER BY fiscal', (symbol, *(endpoint for endpoint, _ in _LEGACY))):
+            f'({",".join("?" * len(LEGACY))}) ORDER BY fiscal', (symbol, *(endpoint for endpoint, _ in LEGACY))):
         checkpoint()
         found.setdefault(fiscal, {})[endpoint] = dict(zip(columns, values))
     result = {}
     for fiscal, rows in found.items():
-        values = {field: row[column] for endpoint, fields in _LEGACY if (row := rows.get(endpoint))
+        values = {field: row[column] for endpoint, fields in LEGACY if (row := rows.get(endpoint))
                   for field, column in fields if row[column] is not None}
         if values:
             result[fiscal] = values
@@ -287,7 +289,10 @@ class BookFacts:
     whether it is listed. price() reads the valid adjusted closes, spy() a
     valid SPY session, treasury() and ten_year() the valid yields. Each input
     is read once per instance; the caller keeps the connection unchanged while
-    it is used.
+    it is used. Each read is one kind of the research fact diff (research._Diff,
+    books.VISIBLE): reports() and companies() statements, cached() and price()
+    prices, spy(), treasury() and ten_year() market, legacy_annual() annual; a
+    new read needs a kind, or kept books go stale.
     """
 
     def __init__(self, db):

@@ -88,6 +88,10 @@ keeps it. `research.code_sources(role)` holds the one role rule.
   `fact_sources` digests and the universe and annual-metrics digests).
 - The book identity (`research.code_identity('books')`) binds the book code:
   `books.py`, `metrics.py`, `rules.py`, `facts.BookFacts` and `book_store.py`.
+  It also names the legacy annual field list that `BookFacts.legacy_annual`
+  reads (`facts.LEGACY`). That list comes from fact-row code
+  (`financial_inputs.ENDPOINTS` and the catalog), so an edit to it drops every
+  saved book.
 - Readers bind no identity: the formula view (`backtest/inputs/fact_view.py`),
   `schedules`, `book_batch`, `calendar`, `portfolio_results`, `screening`,
   `scalar_execution`, the command-line tools and the connection code. An edit
@@ -250,15 +254,20 @@ Kept books. Every research build compares its facts with the research file it
 replaces and records the fact diff (`research.changes`): its base (the replaced
 content identity) and, per kind and company, the earliest changed row key. A
 price or annual file whose `fact_sources` sha256 and the fact-row code are both
-unchanged is not compared; the statements, the company set and the SPY and
-Treasury rows always are. Research does not decide which books stay. The
-change-day rule lives in `books.py`, next to `FORWARD_REACH`:
+unchanged is not compared; the statements and the SPY and Treasury rows always
+are. Research does not decide which books stay. The change-day rule lives in
+`books.py`, next to `FORWARD_REACH`:
 
+- The kinds are exactly the reads of `facts.BookFacts`: `statements` (reports
+  and companies), `prices` (cached files and adjusted closes), `market` (SPY,
+  3-month and 10-year yields) and `annual` (legacy annual values). A new read
+  needs a kind, or kept books go stale.
 - Visible day (`books.VISIBLE`): a price, SPY or Treasury row, its own day; a
   statement or a legacy annual value, its known day (fiscal + 90 days); an
-  added or removed price file, its first row day; an added or removed company,
-  its earliest known statement. Only the company set counts: dated books read
-  only whether a company exists, and selection reads names and sectors live.
+  added or removed price file, its first row day. Statements keep only the
+  saved companies, so an added or removed company is a statements change at
+  its earliest known statement. Dated books read only whether a company
+  exists, and selection reads names and sectors live.
 - `books.change_day` is the first visible day of the diff. `books.kept` keeps a
   dated book when its horizon, `books.horizon` (the later of its exit and its
   entry plus `FORWARD_REACH`, four days), is before that day. The open book is
@@ -269,10 +278,16 @@ dropped books and the old open book (`book_store.delete`), rebinds the
 identity and writes the new open book. There is no temporary file and no copy
 of kept books; a failure rolls back and leaves the previous cache, through
 SQLite's own journal. A diff whose base is not the bound research content
-(research rebuilt twice before one daily update) keeps no book. A changed book
-identity, or a cache from an older version, empties the cache first. A daily
-download therefore keeps every book whose horizon ends before the new
-session, and each kept book equals the book a full build calculates.
+(research rebuilt twice before one daily update), or a research build whose
+tables differ from the replaced file's, keeps no book. When no stored book
+stays, as then or after a changed book identity or an older cache version,
+preparation first replaces the cache with an empty file: deleting every book
+in place journals the whole file. A failure after that leaves the empty cache,
+which binds nothing. Only a file that is not a database, is damaged, or has
+no binding counts as an old or foreign cache; a locked file or an I/O error
+stops preparation and leaves the file. A daily download therefore keeps every
+book whose horizon ends before the new session, and each kept book equals the
+book a full build calculates.
 
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
@@ -847,10 +862,13 @@ the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
 binary64 bits exactly, including -0.0, which a REAL column stores as the
 integer 0. Days are keyed by date, never by raw-file row. A prepared scope is
 one complete pool of a stored book, named by its book id; a latest scope names
-the open book, and `book_store.require_scope` is its one check. Prepared latest
-owner lanes are that book's stored lanes (`book_store.rows` and `lanes`, one
-read per book pool), read in place; a missing row never falls back to a
-recalculation. A formula root is admitted by `books.Screen.decide`: a latest
+the open book, and `book_store.require_scope` is its one check. A book id is a
+handle, not a durable name: it names one book only while the cache keeps it,
+and SQLite can reuse a deleted id. A recorded `owner_scope.book` is a label,
+never a lookup key outside the operation or coverage generation that made it.
+Prepared latest owner lanes are that book's stored lanes (`book_store.rows` and
+`lanes`, one read per book pool), read in place; a missing row never falls back
+to a recalculation. A formula root is admitted by `books.Screen.decide`: a latest
 root by the latest book's screen (listed companies, the exact session), a
 historical root by its date's screen. A historical decision that reaches the
 entry valuation keeps the lookups that the view's recording facts port saw.

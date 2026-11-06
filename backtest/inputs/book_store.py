@@ -3,9 +3,14 @@
 The tables live in the daily cache (schedules.sqlite). A book id names one
 entry and exit; the open (latest) book has no exit and is the book at the
 research database's latest date. Latest and dated books share one book-id
-space. book_pools marks each completed pool. A book records its SPY return and
-candidates, the number of cached-pool reports of its entry day (for the latest
-book, the eligible financials that the latest screen reports). The book
+space. An id is a handle, not a durable name: it names one book only while
+the cache keeps that book, and delete() lets SQLite reuse the highest ids
+(INTEGER PRIMARY KEY without AUTOINCREMENT). A recorded owner_scope book is
+therefore a label, never a lookup key outside the operation or coverage
+generation that produced it. book_pools marks each completed pool. A book
+records its SPY return and candidates, the number of cached-pool reports of
+its entry day (for the latest book, the eligible financials that the latest
+screen reports). The book
 identity (research.code_identity('books')) binds this module, so an edit to
 the schema, the writer or a reader here drops every saved book.
 

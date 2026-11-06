@@ -240,16 +240,21 @@ class ProjectionTests(unittest.TestCase):
             self.assertEqual(json.loads(daily.binding(sqlite3.connect(self.path))), identity)
             self.assertEqual((self.path.stat().st_mtime_ns, self.saved()), (daily_stamp, 2))
 
-    def test_daily_cancellation_preserves_previous_database(self):
-        self.prepare(); before = self.path.read_bytes()
+    def test_daily_cancellation_after_a_full_drop_leaves_an_empty_valid_cache(self):
+        self.prepare()
         def cancelled(): raise RuntimeError('fixture cancellation')
         stale = dict(version=daily.VERSION, research='0' * 64, books='0' * 64)
         with patch.object(daily, 'current', return_value=stale), \
              patch.object(daily.backtest_control, 'checkpoint', side_effect=cancelled):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 daily.prepare(self.path, self.source)
-        # The in-place update rolls back: the previous cache, byte for byte.
-        self.assertEqual(self.path.read_bytes(), before)
+        # The research diff has no base, so no book stays: the empty cache replaced the file
+        # before the transaction (an in-place rollback is KeptBookTests' interrupted update).
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
+            self.assertEqual((daily.binding(db), book_store.stored(db)), (None, []))
+        self.prepare()
+        daily.connect(self.path, self.source).close()
 
 
 

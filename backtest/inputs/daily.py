@@ -55,10 +55,9 @@ def connect(path=DATABASE,source=None):
         raise ValueError('Daily cache missing. Run: python3 scripts/schedules.py prepare')
     if not source.exists():
         raise ValueError('Prepared database missing. Run: python3 scripts/research.py prepare')
-    db=sqlite3.connect(path.resolve().as_uri(),uri=True,timeout=60)
+    db=_open(path,source)
     db.row_factory=sqlite3.Row
     try:
-        attach(db,source)
         saved=binding(db)
         if saved is None or json.loads(saved)!=current(db):
             raise ValueError('Daily cache changed. Run: python3 scripts/schedules.py prepare')
@@ -68,8 +67,11 @@ def connect(path=DATABASE,source=None):
 
 
 def _saved(path):
-    """The saved binding of an existing cache, or None when it has none or cannot be read.
+    """The saved binding of an existing cache, or None for a file that holds none.
 
+    None means an old or foreign file: not a database, a damaged one, or one
+    without a metadata table or a binding. Every other error, such as a
+    locked database or an I/O failure, propagates and leaves the file alone.
     Read-write, like connect(): a book write interrupted by a crash leaves a
     hot journal that only a writable connection rolls back.
     """
@@ -77,19 +79,42 @@ def _saved(path):
         return None
     try:
         with closing(sqlite3.connect(path,timeout=60)) as db:
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'").fetchone() is None:
+                return None
             saved=binding(db)
-        return json.loads(saved) if saved is not None else None
-    except (sqlite3.Error,ValueError):
+    except sqlite3.DatabaseError as error:
+        if getattr(error,'sqlite_errorcode',0)&0xff not in (sqlite3.SQLITE_NOTADB,sqlite3.SQLITE_CORRUPT):
+            raise
         return None
+    try:
+        value=json.loads(saved) if saved is not None else None
+    except ValueError:
+        return None
+    return value if isinstance(value,dict) else None
+
+
+def _open(path,source):
+    """A read-write connection to the cache at path with research attached; no binding check."""
+    db=sqlite3.connect(path.resolve().as_uri(),uri=True,timeout=60)
+    try:
+        attach(db,source)
+    except BaseException:
+        db.close();raise
+    return db
 
 
 def _empty(path):
-    """Replace the cache at path with an empty one of this VERSION."""
+    """Replace the cache at path with an empty one of this VERSION: no binding, no book.
+
+    The schema commits in one transaction, so an interruption leaves an empty
+    file or this empty cache, never part of a schema.
+    """
     # _saved has rolled back any hot journal; a stale journal must not meet the new file.
-    for name in (path,path.with_name(path.name+'-journal')):
+    # Versions before 11 built the cache in a temporary file; an interrupted build left it.
+    for name in (path,path.with_name(path.name+'-journal'),path.with_name(path.name+'.building')):
         name.unlink(missing_ok=True)
     with closing(sqlite3.connect(path)) as db:
-        db.executescript(SCHEMA)
+        db.executescript('BEGIN;'+SCHEMA+'COMMIT;')
 
 
 @diagnostics.operation('prepare.daily')
@@ -100,10 +125,15 @@ def prepare(path=DATABASE, source=r.DATABASE):
     Research preparation runs first. A cache of this VERSION and book identity
     keeps every dated book that books.kept keeps after research's fact diff
     (research.changes): it deletes the other books and the old open book,
-    rebinds, then writes the new open book at research's latest date. A diff
-    from another base than the bound research content keeps no book. A
-    missing cache, an older version or another book identity is rebuilt from
-    empty. A failure rolls the transaction back: the previous cache stays.
+    rebinds, then writes the new open book at research's latest date. A
+    failure rolls the transaction back: the previous cache stays.
+
+    When no stored book stays, the cache starts from an empty file (_empty)
+    instead, since deleting every book in place journals the whole file: a
+    missing cache, an older version, another book identity, a diff from
+    another base than the bound research content, or a change visible on or
+    before rules.FIRST_DAY, where no book enters. A failure after that leaves
+    the empty cache, which binds nothing.
     """
     started=time.perf_counter()
     diagnostics.lap('admission')
@@ -120,9 +150,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
         # Only a change in the book identity (or this VERSION) drops every book.
         _empty(path)
         previous=None
-    db=sqlite3.connect(path.resolve().as_uri(),uri=True,timeout=60)
-    try:
-        attach(db,source)
+    with closing(_open(path,source)) as db:
         # The research record admits its raw signature, its code and each price file's stamps.
         latest=date.fromisoformat(r.identity(db,'research',prices=True)['latest_date'])
         inputs=current(db)
@@ -130,7 +158,6 @@ def prepare(path=DATABASE, source=r.DATABASE):
             print('Daily cache already current; no book changed.')
             diagnostics.note(outcome='current');return
         diagnostics.lap('input_check')
-        db.execute('BEGIN IMMEDIATE')
         changed=None
         stored=book_store.stored(db)
         if previous is not None:
@@ -138,11 +165,19 @@ def prepare(path=DATABASE, source=r.DATABASE):
             # A diff from another base can hide any change: no book enters before FIRST_DAY.
             changed=(financial_books.change_day(record['rows']) if record['base']==previous['research']
                      else rules.FIRST_DAY)
-        dropped=[book for book,entry,exit_day in stored if not financial_books.kept(
-            date.fromisoformat(entry),exit_day and date.fromisoformat(exit_day),changed)]
+    # This operation's exclusive cache ownership keeps the stored books unchanged after the read.
+    dropped=[book for book,entry,exit_day in stored if not financial_books.kept(
+        date.fromisoformat(entry),exit_day and date.fromisoformat(exit_day),changed)]
+    diagnostics.note(books_previous=len(stored),books_kept=len(stored)-len(dropped),
+                     changed_from=None if changed is None else str(changed))
+    if stored and len(dropped)==len(stored):
+        # No book stays: an empty file replaces the cache at once.
+        _empty(path)
+        dropped,previous=[],None
+    db=_open(path,source)
+    try:
+        db.execute('BEGIN IMMEDIATE')
         book_store.delete(db,dropped)
-        diagnostics.note(books_previous=len(stored),books_kept=len(stored)-len(dropped),
-                         changed_from=None if changed is None else str(changed))
         diagnostics.lap('drop_books')
         db.execute("INSERT OR REPLACE INTO metadata VALUES('daily_inputs',?)",(json.dumps(inputs),))
         # The open book at research's latest date, from its facts. Kept dated

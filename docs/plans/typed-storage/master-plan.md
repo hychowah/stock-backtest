@@ -17,7 +17,7 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`), T2 (detail-mode explanations,
 D1), T3 (JSON observation tables and reference evaluator deleted), P1, P2
-(P2a, P2b, P2c) and P3 (P3a with its follow-up, P3b, P3c1, P3c2).
+(P2a, P2b, P2c) and P3 (P3a with its follow-up, P3b, P3c1, P3c2, P3c3).
 
 Bench, P1 code (6367bef, research schema 13, daily 6): cold build 462 s
 (research 377, daily 84). `research.sqlite` 2.24 GB; `schedules.sqlite` 1.10 GB
@@ -35,14 +35,12 @@ equal P2c; row parity, 0 mismatches (24,489,611 price days, 1,378 dated books,
 to `OUTSIDE_LEGACY_BUFFER` 2,775, `POOL_INELIGIBLE` to `INELIGIBLE_VALUATION`
 9. Cold build 305 s; `research.sqlite` 1.32 GB; user test 533.1/200.4 s.
 
-P3b (3af5a28; research schema 17, daily 9): the four digests equal 62b912d,
-latest traces included. Result byte sizes differ only by timings; the bytes
-also differ in the recorded scope `prepared_period` and selection indices (P3b
-deviations). Dev check 0 differences; latest roots (22,108) 0 mismatches; book
-store = old snapshots (1,378 book pools, 4,371,522 rows, 7,939,836 pairs);
-harness parity 16 runs. Cold build 264 s: research 158, daily 106 (prices
-101). `research.sqlite` 1.31 GB; `schedules.sqlite` 0.80 GB before books,
-5.27 GB with 1,378 books. User test 398.3 s computed, 166.0 s saved.
+P3b (3af5a28; research schema 17, daily 9): the four digests equal 62b912d
+(bytes differ in `prepared_period` and selection indices, P3b deviations). Dev
+check 0 differences; latest roots and the book store equal the old snapshots;
+harness 16 runs. Cold build 264 s (research 158, daily 106);
+`schedules.sqlite` 0.80 GB before books, 5.27 GB with 1,378; user test
+398.3/166.0 s.
 
 P3c2 (007c5e3; research schema 19, daily 11): cold build 143 s;
 `schedules.sqlite` 3.2 MB before books, 4.47 GB with 1,378; user test
@@ -95,7 +93,10 @@ These are binding (2026-11-05/06).
   stay a full rebuild. Both are P3c2.
 - **Owner scope ids** (orchestrator, P3c1): new results record the real book
   id in a prepared `owner_scope`, not 0. Saved results keep theirs and are
-  never rewritten.
+  never rewritten. An id is a handle: it names one book only while the cache
+  keeps it, and the in-place delete lets SQLite reuse the highest ids. A
+  recorded `owner_scope.book` is a label, never a lookup key outside the
+  operation or coverage generation that produced it.
 
 ## Future decisions (not decided here)
 
@@ -202,39 +203,30 @@ per schema).
   `store`), `completed`, `find`, `rows` (shape by the book), `lanes`,
   `require_scope` (the one scope check), `counts`. `screening` takes table
   names and `columns()` from it.
-- Deleted: `fact_metadata`, `facts.require`/`finish`/`VERSION`,
-  `policy_binding`, `prepared_bindings`, `prepared_price_binding`,
-  `calculation_sources`, `fingerprint`, `_engine_sources`, `_code`,
-  `HeldInputs.research()`, `MAX_SCOPES`, `MAX_METADATA_BYTES`,
-  `cache_access.daily()`, `book_store.latest`/`projection`, the schema
-  options. Audit fixes: test attaches open with `uri=True`;
-  `book_store_fixture` writes through `book_store.store` over a read-only
-  attached file; recorder lookups recorded only inside `record()`.
+- Deleted: the facts metadata and its readers, the policy and price
+  bindings, `calculation_sources`, `fingerprint`, the scope and metadata
+  ceilings, `cache_access.daily()` and the old book-store readers.
 - Deviations: coverage discovery lists the open book's pools only (dated
   books need P4's stored owner lanes); `_keep_books` keeps its SQL (P3c2
   deletes it); a book-code change also re-parses the daily price rows (the
   book identity binds `facts.observe`); latest receipts keep
   `prepared_period` null; coverage report version 4 drops `price_binding`.
-- Evidence (56d9483, cold build): the four digests equal 1e3596d (rows,
-  summaries, traces). Record by record, the only differing fields are the
-  listed ones: latest `owner_scope.book` 0 to the open book id (30 requests,
-  contexts and roots), `input`, `projection`, receipt `policy.executor`,
-  block `generation`/`projection`/`policy`, timings. Dev check 0
-  differences; harness 16 runs, 0 different; real-data website checks pass.
-  Cold build 251 s: research 153 (companies 150), daily 98 (prices 94).
-  `research.sqlite` 1.31 GB; `schedules.sqlite` 0.80 GB before books, 5.26 GB
-  with 1,378 books. User test 381.1 s computed, 153.0 s saved.
+- Evidence (56d9483, cold build): the four digests equal 1e3596d; records
+  differ only in the listed fields (latest `owner_scope.book` names the open
+  book, `input`, `projection`, receipt policy, block generation, timings).
+  Dev check 0 differences; harness 16 runs, 0 different. Cold build 251 s;
+  user test 381.1/153.0 s.
 
 #### P3c2. Kept books, the in-place cache and the deletes (done, 007c5e3)
 
 - Rule (`books.py`): `horizon(entry, exit)` = max(exit, entry +
   `FORWARD_REACH`); `VISIBLE` maps a diff kind's key to its visible day
-  (`prices`, `market`: the day; `statements`, `annual`, `companies`: fiscal +
-  `LAG`); `change_day(diff)`; `kept(entry, exit, day)` (open book never).
+  (`prices`, `market`: the day; `statements`, `annual`: fiscal + `LAG`);
+  `change_day(diff)`; `kept(entry, exit, day)` (open book never).
 - Research schema 19 records `changes` = {base, rows}: per kind and company
   the earliest changed row key against the replaced file (attached `old`).
   Price and annual files with an equal sha256 and fact-row code are skipped;
-  statements, the company set and SPY/Treasury rows are always compared.
+  statements and SPY/Treasury rows are always compared.
 - Daily 11, one transaction in place: `book_store.delete` of the dropped books
   and the old open book, rebind, the new open book. Another VERSION or book
   identity empties the file first.
@@ -252,23 +244,34 @@ per schema).
 - Tests: `KeptBookTests` (one per kind just after the horizon, company
   removal, names and listing, one-session append, short reach, interrupted
   update, book identity, older version, another base, current cache).
-- Evidence (bench, 007c5e3). (a) Cold build: the four digests equal 3fe3d50;
-  records differ only in `input`, `projection` (version 18 to 19, code,
-  content) and timings. Book store parity with the 3fe3d50 store: 1,380 book
-  pools (4,374,931 rows, 7,945,965 pairs, 75,404,972 filter values), 0
-  mismatches. Dev check 0 differences; harness 16 runs, 0 different;
-  real-data website checks pass. Cold build 142.7 s: research 139.8
-  (companies 137.4), book cache 2.9. `research.sqlite` 1.26 GB. (b) One
-  session appended to 3,985 price files, SPY and Treasury: nightly 156.9 s
-  (research 153.9 with 3,985 files compared and 3,246 skipped; book cache 3.0
-  in place); 1,376 of 1,378 dated books kept; user test 145.1 s, 2 books
-  computed. (c) FY2026 reports for 5 companies (2 eligible statements, 5
-  annual): nightly 139.9 s (every price file skipped; book cache 3.9); change
-  day 2026-09-28; 1,342 of 1,376 kept; user test 149.0 s, 34 books computed.
-  (d) Recompute all: 1,342 book pools in 210.1 s with 8 workers (plus 71.6 s
-  to delete them in place), against 3-4 s to keep them. After each restore the
-  raw files match their sha256 manifest (43,392 files, 0 differing); the final
-  store still equals the 3fe3d50 store (1,378 shared pools, 0 mismatches).
+- Evidence (bench, 007c5e3). (a) Cold build: the four digests equal
+  3fe3d50; book store parity with the 3fe3d50 store, 1,380 book pools
+  (75,404,972 filter values), 0 mismatches; dev check 0 differences; harness
+  16 runs, 0 different. Cold build 142.7 s; `research.sqlite` 1.26 GB. (b)
+  One session appended to 3,985 price files, SPY and Treasury: nightly 156.9 s
+  (3,246 files skipped; book cache 3.0 s); 1,376 of 1,378 books kept. (c)
+  FY2026 reports for 5 companies: nightly 139.9 s; change day 2026-09-28;
+  1,342 of 1,376 kept. (d) Recomputing 1,342 book pools took 210.1 s (8
+  workers) plus 71.6 s to delete them in place, against 3-4 s to keep them.
+  Each restore matched the raw sha256 manifest (43,392 files).
+
+#### P3c3. Review fixes (done, see the commit)
+
+- S1: the book identity also digests `facts.LEGACY`, the legacy annual fields
+  that `BookFacts.legacy_annual` reads. Fact-row code defines them
+  (`financial_inputs.ENDPOINTS`, the catalog), so an edit there now drops
+  every book.
+- The diff kinds are exactly the `BookFacts` reads (its docstring): the
+  `companies` kind and the removed-company loop went; statements cover both.
+- S3: when no stored book stays, `daily.prepare` replaces the cache with an
+  empty file before `BEGIN`; a failure then leaves the empty, unbound cache.
+  C2: only a non-database, damaged or unbound file starts from empty; lock
+  and I/O errors propagate. `_empty` removes an older version's `.building`.
+- Deviation: the empty-file path runs whenever every stored book drops, which
+  includes a change day on or before `FIRST_DAY`.
+- Tests: SPY only, `year10` only, price and annual files added or removed,
+  the legacy field list, an interrupted full drop, a foreign file and a lock
+  error.
 
 ### P4. Book rows read in place
 
@@ -289,6 +292,10 @@ Scope:
   `variable_coverage.inspect` drops its extra calls; `Original.preview`
   restores the capture once. `Executor.__init__` keeps its restore, the
   execution boundary for queued rows.
+- Book ids are handles (Owner scope ids). If a request may name a dated book
+  id, check it by (entry, exit, pool) or reject ids that requests supply.
+- Decide whether coverage discovery lists dated books once their owner lanes
+  read stored rows.
 - Then profile 20 scopes and the user test, and list what is left (scope-row
   reads, report dates parsed per root, `filter_values` reads, first-run books,
   result encoding). Compact book rows (old T5) only if the profile says so.
