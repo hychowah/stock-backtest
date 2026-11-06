@@ -60,7 +60,6 @@ class OfflineInputCopyTests(unittest.TestCase):
         for relative in copier.FILES:
             path = self.source/relative; path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'null\n\x00\xff')
-        (self.source/'results/summary-exits.txt').write_bytes(b'Through 2026-10-21\nkept verbatim\r\n')
         for relative in copier.DIRECTORIES:
             path = self.source/relative; (path/'nested').mkdir(parents=True)
             (path/'nested/empty').write_bytes(b'')
@@ -117,9 +116,10 @@ class OfflineInputCopyTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         return result.stdout.strip()
 
-    def test_exact_bytes_manifest_cutoff_exclusions_and_originals(self):
+    def test_exact_bytes_manifest_exclusions_and_originals(self):
+        # The frozen report and its history are records, not preparation inputs.
         for relative in ('raw/archive/old', 'data/research.sqlite', 'data/schedules.sqlite',
-                         'data/saved-backtests.sqlite', 'data/backtest-queue.sqlite',
+                         'data/saved-backtests.sqlite', 'data/backtest-queue.sqlite', 'results/summary-exits.txt',
                          'results/baseline-history/old', '.env', 'website/local/index.html'):
             path=self.source/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'excluded')
         before=self.original(); result=self.run_copy()
@@ -128,7 +128,7 @@ class OfflineInputCopyTests(unittest.TestCase):
         packed=(self.destination/'manifest.json.gz').read_bytes()
         self.assertEqual(marker['manifest_sha256'],hashlib.sha256(packed).hexdigest())
         manifest=json.loads(gzip.decompress(packed))
-        self.assertEqual(manifest['through'],'2026-10-21')
+        self.assertEqual(manifest['version'],2);self.assertNotIn('through',manifest)
         self.assertLessEqual(manifest['charged_bytes'],copier.MAX_BYTES)
         self.assertFalse(manifest['preparation']);self.assertFalse(manifest['financial_calculation'])
         expected=copier._inventory(self.source,lambda:None)
@@ -186,11 +186,9 @@ class OfflineInputCopyTests(unittest.TestCase):
         os.mkfifo(self.source/'raw/px/fifo')
         self.assert_incomplete(self.run_copy(),reason='unsupported_file_type')
 
-    def test_budget_and_report_errors_publish_no_marker(self):
+    def test_budget_errors_publish_no_marker(self):
         self.assert_incomplete(self.run_copy(max_bytes=1),reason='storage_limit')
         self.assert_incomplete(self.run_copy(max_bytes=copier.MAX_BYTES+1),reason='invalid_budget')
-        (self.source/'results/summary-exits.txt').write_bytes(b'no cutoff')
-        self.assert_incomplete(self.run_copy(),reason='report_cutoff')
 
     def test_source_same_size_same_mtime_mutation_detected(self):
         original=copier._copy_file

@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 from backtest.application import strategy_requests
 from backtest.financial import books, rules
-from backtest.inputs import daily, facts
+from backtest.inputs import daily, facts, research
 from backtest.variables import columns, definitions as d, parameters
 from prepared_inputs_fixture import PreparedInputs
 import test_strategy_requests as requests
@@ -79,7 +79,7 @@ class Company:
             self.db.close()
         db = self.db = sqlite3.connect(':memory:')
         db.row_factory = sqlite3.Row
-        db.executescript(daily.SCHEMA + facts.SCHEMA)
+        db.executescript(research.SCHEMA + daily.DATED_SCHEMA + facts.SCHEMA)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology')")
         for fiscal in self.reports:
             known = str(date.fromisoformat(fiscal) + rules.LAG)
@@ -115,7 +115,7 @@ class Company:
         for pool in ('legacy', 'cached'):
             facts.store_latest(db, 'A', pool, self.latest)
         db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",
-                   (json.dumps(dict(inputs=dict(historical_through=self.through or self.root_date))),))
+                   (json.dumps(dict(inputs=dict(fixture=self.through or self.root_date))),))
         facts.finish(db, self.latest_date, inputs='fixture', scopes=[
             dict(mode='latest', pool=pool, context_date=self.latest_date, book=0) for pool in ('legacy', 'cached')])
         db.commit()

@@ -1,14 +1,15 @@
 # Backtest reports
 
-- `summary-exits.txt` is the current result: holdings that stop trading are retained at the last available price, with explicitly identified bankruptcies treated as total losses.
+The January study's reports are a frozen record. Nothing regenerates, collects
+or changes them.
+
+- `summary-exits.txt` is the study result: holdings that stop trading are retained at the last available price, with explicitly identified bankruptcies treated as total losses. Its 2026 row is marked through its Through date.
 - `stops/` contains early-stop listings and SEC filing classifications used in the exit review. Classification flags are clues, not automatic bankruptcy decisions.
-- `legacy/summary.txt` and `legacy/picks.csv` use the older exit rule. They are preserved for comparison and are not the latest report or latest holdings.
+- `legacy/summary.txt` and `legacy/picks.csv` use the older exit rule. They are preserved for comparison and are not the study result.
+- `baseline-history/<generation>/` is ignored by Git and stays on the runtime. Each revision there retains the report that an earlier preparation replaced, its priced snapshots and `audit.json`.
 
-Recompute the current report with `python3 scripts/revalue.py` from the project folder. This forces preparation and compares the SQL and independent engines at the saved Through date. Agreement updates the report/database pair. Disagreement stops publication. This reads the cache and does not download data. Website holdings exports are under `website/dist/` and are checked against the current report.
+Run the study again as a custom schedule every 12 months from 1 January. On a
+real-data copy, `python3 scripts/check.py` compares that run with the
+independent reference engine and with `summary-exits.txt`.
 
-`baseline-history/<generation>/` stores local revision evidence and is ignored by
-Git. Each historical revision retains the previous report verbatim, previous and
-new priced snapshots, a current report copy and `audit.json`. First-run prices
-that older files did not retain are marked unavailable. Export the audit from
-Manage backtest data after a check or rebuild. Later saved sessions can advance
-latest screening without extending the historical report.
+`experiments/` holds small cited experiment summaries.

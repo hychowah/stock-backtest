@@ -109,8 +109,7 @@ wealth and −100% CAGR.
 
 Holding rows stay in SQL rank order. Attribution consumers retain their own
 existing signed-contribution order, with symbol ties. This module adds no
-second attribution calculator. January baseline price evidence remains in
-the existing baseline helpers. Dated holdings gain no invented price fields.
+second attribution calculator. Dated holdings gain no invented price fields.
 
 ## Completed random trials
 

@@ -9,7 +9,7 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import daily, facts
+from backtest.inputs import daily, facts, research
 from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d, library
 import test_variable_definitions as language
@@ -34,7 +34,7 @@ class Fixture:
     def __init__(self, count=300):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
         # One database serves as the daily cache and the research facts.
-        self.db.executescript(daily.SCHEMA+facts.SCHEMA)
+        self.db.executescript(research.SCHEMA+daily.DATED_SCHEMA+facts.SCHEMA)
         for i in range(count):
             symbol=f'A{i:04d}'
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Technology'))
@@ -55,7 +55,7 @@ class Fixture:
         self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(1,'2015-01-02','2015-01-05',.1,.02,250,count))
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'legacy'))
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'cached'))
-        self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(historical_through='2015-01-05')))))
+        self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(fixture='2015-01-05')))))
         facts.finish(self.db, '2015-01-05', inputs='fixture', scopes=scopes());self.db.commit()
     def view(self):return facts.View(self.db,self.db,lambda:None,lambda:None)
     def capture(self, expression=None, *, pool='cached', direction='highest', order='filter_first', conditions=None, first=1,last=5):

@@ -173,7 +173,8 @@ class BacktestTests(unittest.TestCase):
         statement=daily.histories(self.db)[0]['A'][0]
         entry,exit_day=date(2015,1,2),date(2015,7,1)
         series=[(date.fromisoformat(row[0]),row[1]) for row in self.db.execute("SELECT day,price FROM prices WHERE symbol='A' ORDER BY day")]
-        array=research.snapshot(statement,entry,exit_day,series,series,False)
+        bisected=lambda day,column,forward,slack:(research.after if forward else research.before)(series,day,slack)
+        array=financial_books.snapshot(statement,entry,exit_day,bisected,False)
         lookup=lambda day,column,forward,slack:daily.price(self.db,'A',day,column,forward=forward,slack=slack)
         self.assertEqual(array,financial_books.snapshot(statement,entry,exit_day,lookup,False))
         # A stopped holding is retained, and a declared bankruptcy overrides price.

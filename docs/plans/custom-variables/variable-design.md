@@ -278,7 +278,7 @@ unavailable reason per row. `backtest/application/scalar_execution.py` owns the
 shared population reads. Inspection writes nothing and builds no new fixed or
 random books.
 
-Typed facts version 1, research schema 13 and daily cache 6 carry the inputs.
+Typed facts version 1, research schema 14 and daily cache 7 carry the inputs.
 Older derived caches must rebuild. Durable records and immutable artifacts keep
 their formats; old explanation blocks open unchanged.
 

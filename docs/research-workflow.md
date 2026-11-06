@@ -8,26 +8,40 @@ Normal research should query the prepared databases instead of reparsing daily J
 python3 scripts/research.py prepare
 ```
 
-The first run reads the existing financial cache and each relevant stock-price file once. Subsequent preparation only checks source metadata when data and calculation code have not changed. Queries skip the full per-price-file scan to keep parameter changes fast. Raw downloads are preserved. The completed database and canonical report are published only after the SQL and independent engines agree on the original top-50 holdings, ranks, fiscal reports, price dates, prices, valuations, exit basis and returns at full precision. `--force` requests a complete offline rebuild.
+Every preparation is a full build. It reads the saved universe, annual
+financials and each cached price file, writes a temporary database and replaces
+`data/research.sqlite` in one step. A failure keeps the previous database. A
+current database is kept: when the saved inputs and calculation code have not
+changed, preparation only checks source metadata. Queries skip the full
+per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
+`--force` rebuilds a current database too. Preparation runs no second engine and
+publishes no report; the development check (`python3 scripts/check.py`) compares
+the book code with the independent reference on the real-data bench.
 
-When saved data changes, preparation builds a new database and copies unchanged company work from the published one. Reuse needs an equal reuse scope. The scope covers the content of the calculation source, the Python and SQLite versions, the report Through date, the universe file, the annual financial files, and the SPY and Treasury rows up to the historical horizon. The horizon is the later of the Through date and 31 days after the last January entry. Historical forward lookups start at a January entry and reach at most eight days. Exit lookups read backward from a day on or before Through. Historical calculations therefore cannot read rows after the horizon. Inside an equal scope, each company is a separate unit:
-
-- Its historical snapshots, prices, filter values and measure contexts are copied when its saved price rows up to the horizon are equal.
-- Its dated price evidence is copied when the price file bytes are equal. Its source evidence is copied only when its coverage receipt is also equal.
-- Files save rows newest first, so a daily download adds rows before the saved rows and moves each saved row by the same number of places. When the saved rows are otherwise equal, only the days of the new rows are resolved. The evidence of every other day is copied with each row position moved by that number. Any other change resolves the whole file.
-- Latest valuations are always recalculated. An unlisted company with equal file bytes is not parsed.
-
-Downloads rewrite a checked file even when no row changes, so file content, not its timestamp, decides reuse. Copied rows keep their original order, so the database equals a full rebuild row for row. Freshness checks are unchanged. `--force` recalculates every company.
-
-Preparation stores historical observations and a separate latest-session valuation snapshot:
+Research schema 14 stores:
 
 - Company name, exchange, sector (cached metadata, not historical profiles).
-- Financial period end, assumed availability date, report market cap, enterprise value, inferred EBITDA, and EBITDA/EV for valid USD reports.
-- January entry and scheduled exit dates, SPY return and Treasury yield.
-- Latest cached session, exact-date price, fiscal/assumed availability dates, and entry-style valuations for cached currently-listed companies; no future holding return is attached to these picks.
-- Stock entry market cap and EV, EBITDA/EV, EV/EBITDA, entry and exit dates, holding return, and exit basis.
+- Financial period end, assumed availability date, report market cap, enterprise
+  value, inferred EBITDA, and EBITDA/EV for valid USD reports, and the extra
+  annual inputs in `financial_inputs`.
+- Saved 10-year Treasury yields in `treasury10`.
+- The latest book: the latest cached session, exact-date price, fiscal and
+  availability dates and entry-style valuations for cached currently-listed
+  companies (`latest_snapshots`), with their ranking pairs and filter values. No
+  future holding return is attached to these picks.
+- The typed facts below.
 
-It reuses the existing 90-day lag and 800-day report-age rule. A report must become available strictly before the buy date, matching the original code. Entry EV is reconstructed using the dividend-adjusted price and report net debt, with the same limitations as the original backtest. Reported financials may contain later vendor revisions: the 90-day rule is an availability assumption, not proof of a true point-in-time vendor archive.
+Dated books (entry and exit dates, SPY return, Treasury yield, entry valuations,
+holding returns and exit basis) live in the daily cache, `data/schedules.sqlite`
+(version 7). It copies companies, reports and Treasury rows from research and
+shares the definition of `screening_metrics` and `filter_values`.
+
+Preparation reuses the existing 90-day lag and 800-day report-age rule. A report
+must become available strictly before the buy date, matching the original code.
+Entry EV is reconstructed using the dividend-adjusted price and report net debt,
+with the same limitations as the original backtest. Reported financials may
+contain later vendor revisions: the 90-day rule is an availability assumption,
+not proof of a true point-in-time vendor archive.
 
 ## Inspect the prepared database
 
@@ -38,7 +52,7 @@ python3 scripts/research.py status
 
 The January `screen` command was removed with the January mode. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). **Rank first, then filter** selects the requested ranks before applying user filters. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
-`legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: all pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides. This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
+`legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: both pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides (keyed by entry year). This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
 `cached` considers all available positive-EV USD reports for companies with cached price files. Its report selection can differ from the original pool because the original report-level size filters are not applied. It cannot claim to be the full 11,000-company universe. The status command reports the latest session's eligible financials and price-valued names. Acquiring missing prices is a separate, explicit task.
 
@@ -54,35 +68,35 @@ Normal builds write ignored `website/local/`, which the local server serves. Sta
 
 The website builder queries the prepared database and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. Strategy CAGR and cumulative growth are unavailable if any period has no matching stocks; SPY remains for the full selected period.
 
-The original `backtest/engines/reference/revalue.py` remains a slower, independent cache-based reference calculation. Keep it for auditing or deliberately recomputing the canonical saved report. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Do not edit `HOLD` just to try a different portfolio size; choose the ranks in the strategy builder.
+`backtest/engines/reference/revalue.py` remains a slower, independent cache-based calculation of the January study. Only the development check uses it; no build, startup or preparation runs it. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Choose the portfolio size with the ranks in the strategy builder.
 
 ## Checks
 
 ```bash
 python3 tests/test_research.py
+python3 tests/test_prepared_facts.py
 python3 tests/check_paths.py
 node tests/check-range.cjs
 node tests/check-contributions.cjs
 python3 tests/check_screener.py
 ```
 
-The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access and stale database detection. Preparation compares every historical year with the independent engine. `python3 tests/test_baseline.py` checks changed prices, holding-level mismatches, latest-only updates, interrupted publication, recovery receipts and Windows sharing locks. Website tests check rank and screen controls and the saved-January dated view using a simulated DOM, and compare browser latest picks against SQLite, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
+The research tests cover availability dates, rank selection before future returns, filters before ranking, early stops, bankruptcy overrides, price alignment, read-only access, stale database detection, failed builds and Windows sharing retries. `python3 tests/test_reference_check.py` runs the development check on a private fictional cache. Website tests check rank and screen controls and the saved-January dated view using a simulated DOM, and compare browser latest picks against SQLite, including combined threshold conditions. These automated checks do not replace a real-browser visual review.
 
 ## Measured performance
 
-Incremental preparation was measured on 5 November 2026 in WSL with fictional data only: 250 priced companies, 1.56 million price rows and a 2.2 GB research database. One product-like daily download followed each forced build. When every price file gained one session, preparation took 31.5 seconds and a forced full rebuild of the same inputs took 64.5 seconds. When half of the companies were unlisted, so that their files were rewritten with equal bytes, the times were 34.4 and 65.9 seconds. Every table matched the full rebuild in both cases. The disk was shared with other jobs, so single timings vary by tens of seconds. At that time a hash of every observation row took most of the remaining time. That hash is gone. A second WSL measurement on the same day used 150 fictional companies from 2000 to 2015. With every price file gaining one session, a startup took 28.0 seconds before the change and 14.4 seconds after it. At that time the remaining time was mostly the moved JSON dated evidence of every stored day, price parsing and publication of the complete database file. Research schema 13 stores typed days keyed by date and copies the unchanged ones instead.
+Research and daily preparation of the real cache were measured on the private
+bench copy; the typed-storage plan records the stage times and sizes. These are
+observed timings, not guarantees. See also `results/experiments/performance.json`
+for older measurements of a smaller January-only database.
 
-The full daily cycle was measured in the same workspace, with half of the companies unlisted and the Original engine. After one download, it ran `scripts/schedules.py prepare` and then a monthly schedule from 2010-01-01 to 2026-10-21 with 202 books. The cycle took 115 seconds with the previous source, which rebuilt both databases and recalculated every book. It took 59 seconds with the refresh, which kept every book. These timings do not describe the real cache or native Windows.
-
-The completed local database contains 39,468 January snapshots for the two candidate pools and occupies about 17 MB. On this environment, a full preparation took 62 seconds. After preparation, measured end-to-end times including Python startup were 0.45 seconds for top 100 in 2015–2020, 0.59 seconds for a filtered version, and 1.8 seconds for the website rebuild. These are observed timings, not guarantees. See `results/experiments/performance.json`.
-
-The original 1996 pre-price buffer yields only 61 usable holdings, so it cannot supply a complete top-100 book. The wider pool also has incomplete price coverage of the universe. The engine reports insufficient matches instead of claiming 100 names in every year.
+The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot supply a complete top-100 book. The wider pool also has incomplete price coverage of the universe. The engine reports insufficient matches instead of claiming 100 names in every period.
 
 ## Current-date preparation
 
-Schema version 2 adds `latest_snapshots` and latest-date metadata. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
+`latest_snapshots` and latest-date metadata hold the latest book. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
 
-Historical preparation is capped at the saved canonical report's Through date (and the configured historical ASOF). Latest preparation can advance beyond that date without silently extending the historical backtest. The report cutoff is included in source freshness. The committed database stores the report content hash. Updating the generated report does not invalidate its own source signature. Updating a database and rebuilding HTML are separate from fetching missing or new market data.
+Updating a database and rebuilding HTML are separate from fetching missing or new market data.
 
 ### Select a ranking metric
 
@@ -207,8 +221,8 @@ Run `python3 tests/test_schedules.py` in addition to the existing checks.
 Before requested-pool preparation, observed in this workspace: the one-time daily index took 174 seconds and
 occupied 430 MB. Building a previously unseen 20-period quarterly schedule took
 52 seconds in a direct engine run; changing its metric and rank bounds reused
-the books in 1.4 seconds. A 31-period January schedule through October 2026
-matched every prepared baseline selection and annual return. The local service
+the books in 1.4 seconds. A 31-period 12-month schedule from January 1996
+through October 2026 matched every reference selection and annual return. The local service
 uses a larger SQLite page cache for new-book calculations. Timings depend on disk
 and schedule length; new dates can require additional book preparation.
 
@@ -386,9 +400,9 @@ server without replacement; `--managed` enables replacement. Missing API routes
 in old tabs instruct the user to relaunch and use the newly opened tab.
 
 Dated financial policy is shared in `backtest/financial/books.py`: report-pool eligibility,
-candidate buffering, entry valuation and holding returns. January preparation
+candidate buffering, entry valuation and holding returns. Latest preparation
 and the daily engine supply array and SQL price adapters respectively;
-`revalue.py` remains the independent baseline.
+`revalue.py` remains the independent reference of the development check.
 
 Random streams publish their resolved configuration before executing trials.
 The browser saves that configuration locally immediately. **Replay saved date
@@ -513,9 +527,9 @@ Later reports cannot fill a missing year or field. Revenue and EV must be
 positive. Operating income and the resulting spread can be negative.
 
 Subtract the latest cached 10-year Treasury yield on or before the screening
-date. There is no added yield-age limit. January uses the book's screening
-session even if a stock's first buy price is a later session. Latest uses its
-exact saved SPY session. Dated books use their entry session. The filter uses
+date. There is no added yield-age limit. Latest uses its exact saved SPY
+session. Dated books use their entry session, even if a stock's first buy price
+is a later session. The filter uses
 percentage points: enter `5` for a spread above or below 5 pp.
 
 Schema version 8 adds `treasury10(day, yield_percent)` from saved `year10`
@@ -596,7 +610,8 @@ never its value or provider request URLs. Downloads can require a paid provider
 subscription. Opening the panel never starts a download.
 
 **Rebuild prepared data + website** runs research preparation, daily preparation,
-and the website build without network requests. Preparation still checks the stored January reference books with the independent engine; a disagreement stops publication. No page reads those books. Open the
+and the website build without network requests. Every research build is a full
+build. Open the
 strategy page after rebuilding to load the new embedded data.
 
 `website/server/data_manager.py` owns the inventory and background job. The local
@@ -614,8 +629,7 @@ Shutdown waits for the worker before releasing server lifetime ownership.
 
 The service serves `/data.html` directly from current source. Missing or invalid
 essential raw inputs route startup to this recovery panel. It does not need a
-prepared database or prior website build. The canonical reference report must
-be restored from backup if missing; it is never invented or downloaded.
+prepared database or prior website build.
 The built `website/local/data.html` and portable `website/dist/data.html` are standalone copies with local-service
 instructions when opened as a file.
 
@@ -672,46 +686,25 @@ cases as a controlled application speedup. The implementation checks use local
 provider fixtures and temporary caches; they make no live FMP calls.
 
 
-## Verified baseline revisions
+## Frozen January record
 
-A data addition can change a historical result without changing its Through date.
-Preparation compares the SQL baseline with `revalue.calculate(through)`. The
-reference calculation reads raw files and keeps its original selection and return
-arithmetic. It does not call the prepared engine. Full-precision numbers use
-relative and absolute tolerances of `1e-12`. All years and holding identities must
-match. Equal annual averages cannot conceal a holding mismatch.
+`results/summary-exits.txt`, `results/baseline-history/`, `results/legacy/` and
+`results/stops/` are a frozen record of the January study. Nothing regenerates,
+collects or changes them. Preparation stores no January books, report hash or
+revision evidence, and deletes the stale `data/research.sqlite.publication.json`
+that the removed publication left.
 
-The reference calculation runs when the reuse scope changes, or when any company's
-historical rows are recalculated, added or removed. Sometimes every historical unit
-is copied, and the copied baseline equals the published verified baseline. Then
-preparation keeps the earlier agreement, because both engines already agreed on
-these exact historical inputs. A daily price update after the Through date
-therefore needs no reference run. `--force` and `scripts/revalue.py` always run it.
-
-When the engines agree, `backtest/inputs/baseline.py` updates the report and research
-database together under cache ownership. `results/baseline-history/<generation>/`
-retains the previous report verbatim, previous and new priced snapshots, the new
-report and `audit.json`. The audit lists changed years, added or removed stocks,
-ranks, fiscal inputs, price dates, prices and returns. The first verification
-cannot recover prices missing from older databases. Those previous prices are
-null and the audit marks the migration. Later revisions use saved priced
-snapshots. Latest-only updates retain the historical revision.
-
-Publication first stages and hashes the evidence and closed database. The
-`data/research.sqlite.publication.json` journal binds the pending report and
-database to that evidence. Journal targets use logical names. Evidence locators
-use relative POSIX paths, so recovery also works after moving the project or
-switching between Windows and WSL. Readers reject unfinished publication. Retrying
-preparation completes a verified pending publication before testing freshness.
-Do not delete the journal or its referenced files to bypass recovery. Comparison
-failure leaves the existing report, database and website in place. A filesystem
-failure can interrupt replacement; its journal permits an idempotent retry.
-
-`python3 scripts/revalue.py` forces this same verified refresh at the saved cutoff.
-It no longer writes an unchecked report or advances the historical cutoff.
-Standalone website builds take cache ownership. Managed build subprocesses use
-`--cache-owned` while the parent retains ownership. Daily preparation captures its
-fingerprint after research preparation. No rebuild makes a market-data request.
+The development check, `python3 scripts/check.py [--through YYYY-MM-DD] [--json
+OUT]`, runs one Original custom run: every 12 months from 1 January 1996 to the
+through date (default 2026-10-21), legacy pool, `ev_ebitda` ranks 1–50 and the
+default floors. It compares every book, holding, date, valuation, return and exit
+basis with `revalue.calculate(through)` at full precision (relative and absolute
+tolerance `1e-12`) and names each difference. It passes with none. It also
+compares the annual rows with the frozen report at four decimals; the report
+marks 2026 through 2026-10-20, so only that row differs at the default date. Run
+it on the real-data bench after a change to book policy (`books.py`, `rules.py`,
+the dated book writer or its price lookups). The study constants (`FIRST_YEAR`,
+`LAST_YEAR`, `ASOF`, `HOLD`) live in `backtest/engines/reference/legacy.py`.
 
 ### Full annual financial data
 
@@ -746,7 +739,7 @@ Annual responses can contain repeated fiscal dates. Keep every returned row, inc
 
 Research preparation writes the inputs of custom-variable formulas as typed
 tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. Typed facts
-version 1 belongs to research schema 13; older caches rebuild. The daily cache
+version 1 belongs to research schema 14; older caches rebuild. The daily cache
 does not copy them: Original reads them on the operation's research
 connection.
 
@@ -770,9 +763,7 @@ A field is valid when its value is present; otherwise its reason column names
 the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
 `INVALID_INPUT`). Value columns have no declared type, so SQLite keeps the
 binary64 bits exactly, including -0.0, which a REAL column stores as the
-integer 0. Days are keyed by date, never by raw-file row. A download that
-prepends rows resolves only the new rows' days and copies every other typed
-day; a file with equal bytes copies its days and source. Prepared latest owner
+integer 0. Days are keyed by date, never by raw-file row. Prepared latest owner
 lanes are the stored latest book rows (`latest_snapshots`, `screening_metrics`,
 `filter_values`), read in place; a missing row never falls back to a
 recalculation.
@@ -806,12 +797,11 @@ Dated inputs require no earlier annual anchor after root admission. Legacy
 financial valid-series and as-of behavior keep their existing meanings.
 
 The facts' content identity hashes what determines the rows: the raw-file
-signature, each price file's content digest, the reuse scope, the scopes and
-the preparation policy (`facts.py`, `financial_inputs.py`, `books.py`,
+signature, each price file's content digest, the scopes and the preparation
+policy (`facts.py`, `financial_inputs.py`, `books.py`,
 `rules.py`, `measure_observations.py`, `research.py`, `parameters.py`).
 The raw-file signature leaves out `raw/download-coverage.json`, which no
-preparation reads. Preparation does not hash the rows themselves, so an
-incremental build and a full rebuild of the same inputs record the same identity. The daily cache binds
+preparation reads. Preparation does not hash the rows themselves. The daily cache binds
 that metadata. Operation entry checks the daily fingerprint once: the accepted
 raw-file signature and the recorded research metadata, not the prepared rows.
 Inspecting about 36,000 raw files takes about 1.7 seconds on the real cache, so
@@ -828,7 +818,7 @@ latest owner lanes. Every other root, January sessions included, and every
 derived context use dated owner policy, even at the root date. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
 dates. Only those named annual adapters support annual history. Typed facts 1,
-research schema 13 and daily cache 6 require incompatible caches to rebuild;
+research schema 14 and daily cache 7 require incompatible caches to rebuild;
 durable records keep their formats. Version-3 authoring exposes all 52 direct
 inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,

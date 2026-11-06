@@ -20,7 +20,7 @@ MIB = 1024**2
 # Allowances catch runaway fixture growth; they are not capacity limits. Keep
 # them well above the largest measured workspace.
 ALLOWANCES = dict(raw=64*MIB, database=512*MIB, website=64*MIB,
-                  history=32*MIB, control=16*MIB, downloads=16*MIB, total=2048*MIB)
+                  control=16*MIB, downloads=16*MIB, total=2048*MIB)
 SPEC = dict(companies=64, first='1992-01-01', through='2026-10-21',
             fiscal_first=1992, fiscal_last=2025, calendar='fictional weekdays')
 _retained_workspaces = {}
@@ -37,9 +37,9 @@ def write(path, value):
 
 class FictionalWorkspace:
     """Create a complete fictional workspace from an explicit source inventory
-    and saved-input specification. Prepared databases, baseline reports and
-    website output are produced only by the copied application's ordinary
-    preparation and build functions.
+    and saved-input specification. Prepared databases and website output are
+    produced only by the copied application's ordinary preparation and build
+    functions.
     """
     def __init__(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='fictional-workspace-')
@@ -118,8 +118,6 @@ class FictionalWorkspace:
                                   for n,day in enumerate(sessions)])
         write(raw/'treasury.json', [dict(date=day, month3=2.) for day in sessions])
         write(raw/'download-coverage.json', ledger)
-        (self.source/'results').mkdir()
-        (self.source/'results/summary-exits.txt').write_text('Fictional bootstrap only.\nThrough 2026-10-21\n', encoding='utf-8')
         (self.source/'data').mkdir(exist_ok=True)
         (self.root/'downloads').mkdir()
 
@@ -148,11 +146,11 @@ class FictionalWorkspace:
         assert all(sha(self.source/n)==s for n,s in self.sources.items())
         size = lambda root: sum(n for p,n in files if p.is_relative_to(root))
         result = dict(total=sum(n for _,n in files), raw=size(self.source/'raw'),
-            website=size(self.source/'website/local'), history=size(self.source/'results/baseline-history'),
+            website=size(self.source/'website/local'),
             control=sum(n for p,n in files if not p.is_relative_to(self.source) and p.suffix!='.sqlite'),
             downloads=size(self.root/'downloads'), databases={p.name:n for p,n in files
                 if p.parent==self.source/'data' and p.suffix=='.sqlite'})
-        for name in ('total','raw','website','history','control','downloads'):
+        for name in ('total','raw','website','control','downloads'):
             assert result[name] <= ALLOWANCES[name], (name,result[name],ALLOWANCES[name])
         for p,n in files:
             if p.suffix=='.sqlite':

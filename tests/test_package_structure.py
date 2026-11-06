@@ -107,7 +107,7 @@ assert not any(name in sys.modules for name in ('run','research','schedules','nu
 
     def test_documented_entry_imports_and_cli_shapes_from_other_directory(self):
         with tempfile.TemporaryDirectory() as folder:
-            for script in ('research.py','schedules.py'):
+            for script in ('research.py','schedules.py','check.py'):
                 result=subprocess.run([sys.executable,'-B',str(ROOT/'scripts'/script),'--help'],cwd=folder,capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stderr)
                 self.assertIn('usage:',result.stdout)
@@ -116,7 +116,7 @@ import runpy,sys
 from pathlib import Path
 root=Path(sys.argv[1])
 sys.path.insert(0,str(root/'scripts'))
-for name in ('run','revalue','list_stops','classify_stops'):
+for name in ('research','schedules','check'):
     runpy.run_path(str(root/'scripts'/(name+'.py')),run_name='offline_import')
 assert 'numpy' not in sys.modules and 'numba' not in sys.modules
 """

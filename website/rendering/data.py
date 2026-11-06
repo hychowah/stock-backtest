@@ -1,4 +1,4 @@
-"""Acquire detached latest-screen projections from one verified prepared database."""
+"""Acquire detached latest-screen projections from one prepared research database."""
 from contextlib import closing
 from dataclasses import dataclass
 import json

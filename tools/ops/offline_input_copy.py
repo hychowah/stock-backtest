@@ -1,6 +1,7 @@
 """Copy saved inputs for independent preparation; never copy derived books.
 
-Copy the active saved inputs and canonical report into a new independent root.
+Copy the active saved raw inputs into a new independent root. Manifest version
+2 holds no report; a version-1 capture (with the January report) is refused.
 Return only after exact-content verification and unchanged-source checks.
 Existing runtime ownership or live intent defers the operation. A directory
 without its completion marker is unusable. Offline exclusion preserves an
@@ -9,7 +10,6 @@ this is not live observation or a live-priority handoff.
 """
 from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
-from datetime import date
 import gzip
 import hashlib
 import io
@@ -27,7 +27,8 @@ SOURCE = Path(__file__).resolve().parents[2]
 from backtest.runtime import cache_access as cache_access
 from website import runtime_access
 FILES = ('raw/universe.json', 'raw/metrics.jsonl', 'raw/spy-div.json',
-         'raw/treasury.json', 'raw/download-coverage.json', 'results/summary-exits.txt')
+         'raw/treasury.json', 'raw/download-coverage.json')
+VERSION = 2
 DIRECTORIES = ('raw/px', 'raw/financial-inputs')
 BUFFER = 1024*1024
 MAX_BYTES = 6*1024**3
@@ -276,15 +277,9 @@ def _payload_plan(source, destination, before, maximum):
     estimated = sum(((r['bytes']+unit-1)//unit)*unit for r in before.values())+allowance
     if estimated > maximum or shutil.disk_usage(destination.parent).free < maximum:
         raise CopyError('storage_limit')
-    if before['results/summary-exits.txt']['bytes'] > BUFFER: raise CopyError('report_limit')
-    report = (source/'results/summary-exits.txt').read_bytes()
-    through = re.findall(rb'^Through (\d{4}-\d{2}-\d{2})\s*$', report, re.MULTILINE)
-    if len(through) != 1: raise CopyError('report_cutoff')
-    return dict(through=date.fromisoformat(through[0].decode()).isoformat(),
-                logical_bytes=sum(r['bytes'] for r in before.values()),
+    return dict(logical_bytes=sum(r['bytes'] for r in before.values()),
                 allocation_unit=unit, metadata_allowance=allowance,
-                estimated_charged_bytes=estimated, maximum_bytes=maximum,
-                report_sha256=hashlib.sha256(report).hexdigest())
+                estimated_charged_bytes=estimated, maximum_bytes=maximum)
 
 
 def _transfer_payload(source, destination, before, plan, check, expected=None):
@@ -312,7 +307,6 @@ def _transfer_payload(source, destination, before, plan, check, expected=None):
         if (destination/name).stat().st_size != row['bytes']: raise CopyError('destination_mismatch')
     _file_pass(before.items(), verify, lambda result: None, check)
     if _inventory(source, check) != before: raise CopyError('source_changed')
-    if hashes['results/summary-exits.txt'] != plan['report_sha256']: raise CopyError('source_changed')
     return dict(files={n:dict(**r, sha256=hashes[n]) for n,r in before.items()},
                 allocated_file_bytes=allocated, charged_bytes=allocated+plan['metadata_allowance'])
 
@@ -359,7 +353,7 @@ def _capture_manifest(source, expected, check):
     with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream: decoded=stream.read(MANIFEST_BYTES+1)
     if len(decoded)>MANIFEST_BYTES: raise CopyError('manifest_limit')
     manifest=json.loads(decoded,object_pairs_hook=_unique_object); rows=manifest.get('files')
-    if type(manifest.get('version')) is not int or manifest['version']!=1 or manifest.get('kind')!='offline_saved_inputs' or not isinstance(rows,dict):
+    if type(manifest.get('version')) is not int or manifest['version']!=VERSION or manifest.get('kind')!='offline_saved_inputs' or not isinstance(rows,dict):
         raise CopyError('invalid_manifest')
     if not 1<=len(rows)<=MAX_FILES or not set(FILES)<=rows.keys(): raise CopyError('invalid_manifest')
     folded=set()
@@ -394,12 +388,11 @@ def materialize_inputs(completed_capture, fresh_destination, *, expected_manifes
         before={n:dict(bytes=r['bytes'],mtime_ns=r['mtime_ns']) for n,r in sorted(manifest['files'].items())}
         if _inventory(source,checkpoint)!=before: raise CopyError('source_changed')
         plan=_payload_plan(source,destination,before,max_bytes)
-        if plan['through']!=manifest.get('through'): raise CopyError('report_cutoff')
         destination.mkdir(); created=True
         copied=_transfer_payload(source,destination,before,plan,checkpoint,{n:r['sha256'] for n,r in manifest['files'].items()})
         if _capture_manifest(source,expected_manifest_sha256,checkpoint)!=manifest: raise CopyError('source_changed')
-        record=dict(version=1,kind='initial_input_provenance',capture_manifest_sha256=expected_manifest_sha256,
-                    through=plan['through'],report_sha256=plan['report_sha256'],files=len(before),
+        record=dict(version=VERSION,kind='initial_input_provenance',capture_manifest_sha256=expected_manifest_sha256,
+                    files=len(before),
                     logical_bytes=plan['logical_bytes'],allocated_file_bytes=copied['allocated_file_bytes'],
                     charged_bytes=copied['charged_bytes'],maximum_bytes=max_bytes,prepared_freshness=False)
         pending=destination/'input-provenance.pending'
@@ -455,8 +448,7 @@ def copy_inputs(source, fresh_destination, *, checkpoint=lambda: None, max_bytes
             _pending(source)
             if _binding(source, check) != before_binding or _inventory(source, check) != before:
                 raise CopyError('source_changed')
-            plan.pop('report_sha256')
-            manifest = dict(version=1,kind='offline_saved_inputs',binding=before_binding,**plan,**copied,
+            manifest = dict(version=VERSION,kind='offline_saved_inputs',binding=before_binding,**plan,**copied,
                 io_workers=IO_WORKERS,maximum_outstanding_files=IO_WORKERS,callback_poll_seconds=POLL_SECONDS,
                 preparation=False,financial_calculation=False,originals_unchanged=True,
                 concurrency='Offline source-exclusive capture. Concurrent new startup may wait or time out; older cache actors do not signal live intent.')

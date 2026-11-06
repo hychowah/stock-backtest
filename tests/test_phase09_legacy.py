@@ -1,4 +1,10 @@
-"""Replay frozen Phase 9 entry evidence; never regenerate expected results here."""
+"""Replay frozen Phase 9 entry evidence; never regenerate expected results here.
+
+P2b removed the January books, their baseline and the report. The replay
+compares every part that still exists with the frozen values: financial
+projections and completion, financial rows, latest filter rows, and both
+selection orders over latest and dated book rows.
+"""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -9,7 +15,7 @@ import unittest
 
 from backtest import screening
 from backtest.inputs import financial_inputs as financial, research
-import test_baseline
+import test_research
 import test_selection_order
 
 FIXTURES = Path(__file__).parent/'fixtures'/'phase09_legacy'
@@ -17,7 +23,7 @@ FIXTURES = Path(__file__).parent/'fixtures'/'phase09_legacy'
 
 def replay():
     """Run actual entry owners on private synthetic assets and SQL fixtures."""
-    fixture = test_baseline.BaselineTests('test_new_price_refreshes_both_engines_and_preserves_exact_previous_evidence')
+    fixture = test_research.PreparationTests('test_success_publishes_database_without_january_books')
     fixture.setUp()
     try:
         inputs = json.loads((FIXTURES/'inputs.json').read_text())
@@ -30,17 +36,15 @@ def replay():
                               for endpoint in financial.ENDPOINTS} for symbol in inputs}
         research.prepare(fixture.path)
         with closing(research.connect(fixture.path)) as db:
-            baseline = research.verify_reference(db)
             financial_rows = [tuple(row) for row in db.execute('SELECT * FROM financial_inputs ORDER BY symbol,fiscal')]
             filters = [tuple(row) for row in db.execute('SELECT * FROM filter_values ORDER BY mode,pool,year,symbol,field')]
-        report = (research.RESULTS/'summary-exits.txt').read_text()
     finally:
         fixture.doCleanups()
     selection = test_selection_order.SelectionOrderTests('test_filter_first_default_and_rank_first_does_not_refill')
     selection.setUp()
     try:
         selections = {}
-        for mode, select in [('historical', screening.historical), ('latest', screening.latest)]:
+        for mode, select in [('historical', test_selection_order.dated), ('latest', screening.latest)]:
             for pool in ('legacy', 'cached'):
                 for order in ('filter_first', 'rank_first'):
                     for filtered in (False, True):
@@ -51,7 +55,7 @@ def replay():
     finally:
         selection.doCleanups()
     return json.loads(json.dumps(dict(projections=projections, completion=completion,
-        baseline=baseline, report=report, financial_rows=financial_rows, filters=filters, selections=selections), allow_nan=False))
+        financial_rows=financial_rows, filters=filters, selections=selections), allow_nan=False))
 
 
 class FrozenLegacyTests(unittest.TestCase):
@@ -63,8 +67,12 @@ class FrozenLegacyTests(unittest.TestCase):
         for name, digest in receipt['files'].items():
             self.assertEqual(hashlib.sha256((FIXTURES/name).read_bytes()).hexdigest(), digest)
 
-    def test_legacy_projections_baseline_and_both_selection_orders(self):
-        self.assertEqual(replay(), json.loads((FIXTURES/'expected.json').read_text()))
+    def test_legacy_projections_and_both_selection_orders(self):
+        expected = json.loads((FIXTURES/'expected.json').read_text())
+        for removed in ('baseline', 'report'):
+            del expected[removed]
+        expected['filters'] = [row for row in expected['filters'] if row[0] == 'latest']
+        self.assertEqual(replay(), expected)
 
 
 if __name__ == '__main__': unittest.main()

@@ -24,6 +24,8 @@ from datetime import datetime, timedelta
 # Extracted native helpers use explicit stage/target paths until support is bound.
 ROOT = (None if '--native-publish' in sys.argv else Path(__file__).resolve().parents[2])
 _SUPPORT_ROOT = ROOT
+# The frozen January report. Nothing reads it; the runtime keeps its own copy,
+# which deployment never installs, replaces or removes.
 REPORT = 'results/summary-exits.txt'
 MANIFEST = 'data/deployment.json'
 PENDING = 'data/deployment.pending.json'
@@ -156,14 +158,13 @@ def unpack(stage):
             if name.casefold() in seen:
                 raise ValueError('Deployment paths collide on Windows.')
             seen.add(name.casefold())
-            if not managed(name) and name != REPORT:
+            if not managed(name):
                 continue
             destination = target_path(payload, name)
             destination.parent.mkdir(parents=True, exist_ok=True)
             with archive.extractfile(entry) as source, destination.open('wb') as output:
                 shutil.copyfileobj(source, output)
-            if name != REPORT:
-                hashes[name] = digest(destination)
+            hashes[name] = digest(destination)
     manifest = dict(version=1, commit=request['commit'], files=hashes,
                     source=request['source'], distro=request['distro'])
     return payload, validate_manifest(manifest)
@@ -255,10 +256,6 @@ def apply_pending(root):
         install_file(target_path(payload, name), target_path(root, name))
     for name in old['files'].keys() - manifest['files'].keys():
         target_path(root, name).unlink(missing_ok=True)
-    report = root / REPORT
-    fresh = journal['previous'] is None and not (root / 'data/research.sqlite').exists()
-    if fresh and not report.exists() and (payload / REPORT).is_file():
-        install_file(payload / REPORT, report)
     verify_payload(root, manifest)
     write_json(root / MANIFEST, manifest)
     (root / PENDING).unlink()
@@ -603,8 +600,6 @@ def main():
             support(payload)
             publish(root, payload, manifest)
             say('Verified native source publication: ' + manifest['commit'])
-            if (payload / REPORT).is_file() and not (root / REPORT).exists():
-                say('The runtime report is missing. Restore its verified database-bound report from revision evidence or backup before starting.', error=True)
         elif options.native_launch:
             raise SystemExit(native_launch(server_arguments, options.revision, options.latest))
         elif options.native_check:

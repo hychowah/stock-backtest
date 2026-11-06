@@ -17,12 +17,20 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
+from backtest.inputs import daily
 from backtest.inputs import research as r
 from website.rendering import data as dataset
+
+
+def dated(db, *, first=2015, last=2015, **options):
+    """Select the dated book rows of period ids first through last."""
+    return screening.select(db, period=(first, last), **options)
+
+
 class SelectionOrderTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(r.SCHEMA)
+        self.addCleanup(self.db.close);self.db.executescript(r.SCHEMA+daily.DATED_SCHEMA)
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('latest',json.dumps(dict(asof='2017-01-03'))))
         for year in (2015,2016):
             self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,f'{year}-01-02',f'{year+1}-01-02',.1,.02,6,6))
@@ -44,11 +52,11 @@ class SelectionOrderTests(unittest.TestCase):
                             self.db.execute('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',(mode,pool,year,symbol,'pe',10))
 
     def ids(self,select,**options):
-        if select is screening.historical:options=dict(first=2015,last=2015,**options)
+        if select is dated:options=dict(first=2015,last=2015,**options)
         return [(h['symbol'],h['rank']) for h in select(self.db,**options)]
 
     def test_filter_first_default_and_rank_first_does_not_refill(self):
-        for select in (screening.historical,screening.latest):
+        for select in (dated,screening.latest):
             for pool in ('legacy','cached'):
                 options=dict(pool=pool,rank_to=2,min_cap=150e6)
                 self.assertEqual(self.ids(select,**options),[('B',1),('C',2)])
@@ -57,7 +65,7 @@ class SelectionOrderTests(unittest.TestCase):
                 self.assertEqual(self.ids(select,pool=pool,rank_from=2,rank_to=3,selection_order='rank_first',min_cap=250e6),[('C',3)])
 
     def test_all_user_conditions_move_together_and_missing_values_fail(self):
-        for select in (screening.historical,screening.latest):
+        for select in (dated,screening.latest):
             for condition in [dict(min_cap=150e6),dict(max_cap=300e6,sector='Technology'),dict(filters=[dict(field='pe',op='lt',value=11)])]:
                 self.assertEqual(self.ids(select,rank_to=1,**condition),[('B',1)])
                 self.assertEqual(self.ids(select,rank_to=1,selection_order='rank_first',**condition),[])
@@ -66,7 +74,7 @@ class SelectionOrderTests(unittest.TestCase):
                 select(self.db,selection_order='unknown')
 
     def test_years_rank_independently_and_ties_are_stable(self):
-        rows=screening.historical(self.db,first=2015,last=2016,rank_to=2,min_cap=150e6,selection_order='rank_first')
+        rows=dated(self.db,first=2015,last=2016,rank_to=2,min_cap=150e6,selection_order='rank_first')
         self.assertEqual([(h['year'],h['symbol'],h['rank']) for h in rows],[(2015,'B',2),(2016,'B',2)])
         self.assertEqual(self.ids(screening.latest,rank_from=2,rank_to=3,selection_order='rank_first'),[('B',2),('C',3)])
 

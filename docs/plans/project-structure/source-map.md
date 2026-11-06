@@ -8,7 +8,7 @@ This map lists the current source owners.
 | Validation, explicit legacy translation and SQL selection over stored built-in pairs/filter values | `backtest/screening.py` |
 | Shared calendar requests and portfolio result reduction | `backtest/calendar.py`, `calendar_requests.py`, `portfolio_results.py` |
 | Full annual responses, fiscal histories, cache receipts and prepared inputs | `backtest/inputs/` |
-| Original dated calculations and retained independent reference | `backtest/engines/original/`, `backtest/engines/reference/` |
+| Original dated calculations; the bench-only independent reference engine and development check, which no app module imports | `backtest/engines/original/`, `backtest/engines/reference/` |
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
 | Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
 | Strategy draft, the single filter list, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `filter-picker.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |

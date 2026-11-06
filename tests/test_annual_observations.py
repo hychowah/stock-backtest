@@ -126,7 +126,7 @@ class Company:
     def __init__(self):
         self.db = sqlite3.connect(':memory:')
         self.db.row_factory = sqlite3.Row
-        self.db.executescript(daily.SCHEMA + facts.SCHEMA)
+        self.db.executescript(research.SCHEMA + daily.DATED_SCHEMA + facts.SCHEMA)
         self.reports = [statement(f'{year}-06-30') for year in (2012, 2013, 2014)]
         self.annual = {'income-statement': {f'{year}-06-30': dict(revenue=state(100.), operatingIncome=state(income))
                                             for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}}
@@ -153,7 +153,7 @@ class Company:
         db.executemany('INSERT INTO prices VALUES(?,?,?,?)', [('A', day, 10., 10.) for day in sorted(days)])
         db.executemany('INSERT INTO sessions VALUES(?,?)', [(day, 100.) for day in sorted({self.root_date, self.latest_date})])
         db.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
-            inputs=dict(historical_through=max(self.root_date, self.latest_date)))),))
+            inputs=dict(fixture=max(self.root_date, self.latest_date)))),))
         db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',
                        [('A', fiscal, json.dumps(values)) for fiscal, values in self.financials.items()])
         db.executemany('INSERT INTO treasury10 VALUES(?,?)', self.treasury10)
@@ -453,8 +453,8 @@ class AnnualTransportTests(unittest.TestCase):
                                           ('TEST', endpoint)).fetchone()
                 path = financial.asset_path(research.RAW, 'TEST', endpoint)
                 self.assertEqual(tuple(source), (hashlib.sha256(path.read_bytes()).hexdigest(), 'valid'))
-            metrics = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='historical' "
-                                       "AND pool='cached' AND year=2015 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
+            metrics = original.execute("SELECT multiple,yield_value FROM screening_metrics WHERE mode='latest' "
+                                       "AND pool='cached' AND year=0 AND symbol='TEST' AND metric='ev_ebitda'").fetchone()
         places = [(endpoint, name, identity) for endpoint, fields in ORACLE.items() for name, identity in fields.items()]
         roots = [root('TEST', 'cached'), root('TEST', 'cached', 'latest', '2015-10-20')]
         with inputs.view() as view:
@@ -468,7 +468,11 @@ class AnnualTransportTests(unittest.TestCase):
                     self.assertEqual(result, [(rows[endpoint][0][name], None) for endpoint, name, _ in chunk])
             from backtest.variables import measures
             program = columns.Formulas(definitions.validate(measures.bundle(['ev_ebitda', 'ebitda_yield'])))
-            self.assertEqual(values(program, view, roots[:1]), [[(metrics[0], None), (metrics[1], None)]])
+            # The latest root reads the stored latest book; the dated root
+            # values the report at its entry price (20, fiscal price 10).
+            self.assertEqual(values(program, view, roots[1:]), [[(metrics[0], None), (metrics[1], None)]])
+            ebitda, ev = 1 / 5 * 150e6, 100e6 * (20 / 10) + (150e6 - 100e6)
+            self.assertEqual(values(program, view, roots[:1]), [[(ev / ebitda, None), (ebitda / ev, None)]])
 
     def test_incompatible_facts_version_is_rejected_by_borrowing(self):
         inputs = self.prepared()
@@ -509,9 +513,8 @@ class AnnualTransportTests(unittest.TestCase):
         # dependency, even when financial resolver source remains unchanged.
         from backtest import measure_observations
         with ExitStack() as context:
-            modules = (research, research.baseline, research.metrics, research.books, research.rules,
-                research.screening, research.selection, research.cache_assets, research.market,
-                research.legacy, research.revalue, financial, parameters, measure_observations, facts)
+            modules = (research, research.metrics, research.books, research.rules, research.cache_assets,
+                research.market, financial, parameters, measure_observations, facts)
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name
                 file.write_bytes(Path(module.__file__).read_bytes())

@@ -36,7 +36,7 @@ class ExecutionTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db:fixture.db.backup(db)
         fixture.db.close()
         self.capture=fixture.capture()
-        self.binding=dict(inputs=dict(historical_through='2015-01-05'))
+        self.binding=dict(inputs=dict(fixture='2015-01-05'))
         self.opened=[];self.financial=False
         owner=self
         class Connection(sqlite3.Connection):

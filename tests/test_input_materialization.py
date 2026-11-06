@@ -15,7 +15,7 @@ copier=fixtures.copier
 
 class MaterializationTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=fixtures.OfflineInputCopyTests('test_exact_bytes_manifest_cutoff_exclusions_and_originals')
+        self.fixture=fixtures.OfflineInputCopyTests('test_exact_bytes_manifest_exclusions_and_originals')
         self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
         result=self.fixture.run_copy();self.assertEqual(result['status'],'complete',result)
         self.capture=self.fixture.destination;self.destination=self.fixture.base/'working'
@@ -46,8 +46,12 @@ class MaterializationTests(unittest.TestCase):
             self.assertEqual((self.destination/name).read_bytes(),before[name])
             self.assertNotEqual((self.destination/name).stat().st_ino,(self.capture/name).stat().st_ino)
         self.assertFalse((self.destination/'complete.json').exists())
-        (self.destination/'results/summary-exits.txt').write_bytes(b'ordinary later publication')
+        (self.destination/'raw/universe.json').write_bytes(b'ordinary later download')
         self.assertEqual({p.relative_to(self.capture).as_posix():p.read_bytes() for p in self.capture.rglob('*') if p.is_file()},before)
+
+    def test_version_one_capture_with_the_report_is_refused(self):
+        self.rewrite_manifest(lambda d:d.update(version=1,through='2026-10-21'))
+        self.failed(self.materialize());self.assertFalse(self.destination.exists())
 
     def test_changed_manifest_and_missing_completion_fail_before_creation(self):
         (self.capture/'manifest.json.gz').write_bytes(b'changed')

@@ -1,6 +1,6 @@
 # US EBITDA/EV book, 1996–2026
 
-This folder is a 30-year test. It does not depend on `tmp/`. Move the whole folder, including `raw/`. Scripts resolve the project root from their own location and read the shared `raw/` cache.
+This document describes the original 30-year January study and its frozen result. The app now runs it as a 12-month dated schedule from 1 January. The folder does not depend on `tmp/`. Move the whole folder, including `raw/`. Scripts resolve the project root from their own location and read the shared `raw/` cache.
 
 The FMP key is read from `~/.grok/secrets/fmp_api_key` only for API requests. Cache-only backtests and website builds require no key.
 
@@ -12,9 +12,9 @@ Each stock gets the same weight. The comparison is SPY with dividends. There are
 
 EBITDA/EV is the earnings yield on enterprise value. A high number means the company looks cheap on that measure. The 3-month Treasury yield is subtracted, as requested. On a given day that yield is the same for every stock, so it does not change which 50 are bought.
 
-## Result to use
+## The frozen result
 
-Use `results/summary-exits.txt`.
+`results/summary-exits.txt` is the frozen record of the study. Nothing regenerates it.
 
 From 2 January 1996 to 2 January 2026, $1 in the book grew to $143.88. The same dollar in SPY grew to $18.51. That is 18.0% a year against 10.2% a year.
 
@@ -44,12 +44,10 @@ A stock that still trades on the January sale date keeps that price. Being delis
 
 | Path | Role |
 |---|---|
-| `scripts/revalue.py` | Requests a verified refresh of `results/summary-exits.txt` and the research database. This is the command to run. |
-| `backtest/engines/reference/revalue.py` | Independently calculates the book from saved files. It never publishes or downloads. |
-| `scripts/run.py` | Invokes the retained downloader and older report. Run only when saved inputs are missing. |
-| `backtest/inputs/legacy_downloads.py` | Builds the universe and downloads metrics and prices. |
-| `backtest/engines/reference/legacy.py` | Owns the independent original arithmetic and older `results/legacy/summary.txt` report. |
-| `results/summary-exits.txt` | Latest year-by-year result. |
+| `scripts/check.py` | The development check: compares a 12-month dated run with the independent reference engine at full precision, and with the frozen report. |
+| `backtest/engines/reference/revalue.py` | Independently calculates the study from saved files. It never publishes or downloads. |
+| `backtest/engines/reference/legacy.py` | Owns the study constants and the independent original arithmetic. |
+| `results/summary-exits.txt` | The frozen year-by-year result. |
 | `results/legacy/summary.txt`, `results/legacy/picks.csv` | Older pass. The holdings file matches this pass, not `results/summary-exits.txt`. |
 | `results/stops/stops.json` | The 37 names that stopped trading early. |
 | `results/stops/stops-class.json` | SEC form types for those 37 names. |
@@ -73,14 +71,8 @@ Financial companies are included. EBITDA/EV is a weak description of a bank or a
 
 ## Continue
 
-From this folder:
+Run the study as a custom schedule every 12 months from 1 January 1996 on the website or in the queue. It uses the saved data and does not call FMP. On a real-data copy, `python3 scripts/check.py` confirms that this run equals the independent reference engine.
 
-```
-python scripts/revalue.py
-```
-
-That uses the saved data and does not call FMP.
-
-To count a bankruptcy as a total loss, add the year and ticker to `BANKRUPT` in `backtest/financial/rules.py` and run it again.
+To count a bankruptcy as a total loss, add the entry year and ticker to `BANKRUPT` in `backtest/financial/rules.py` and rebuild the prepared data.
 
 `AGENTS.md` is the note for the next agent: which file is current, which cache to keep, and which FMP calls fail if they are too wide.

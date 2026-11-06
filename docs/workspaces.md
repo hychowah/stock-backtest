@@ -79,20 +79,15 @@ Source publication and native server execution share a lock. A deployment stops 
 | Content | Owner |
 |---|---|
 | Git history, code, tests, user documentation | WSL source checkout |
-| Reviewed report and experiment records in Git | WSL source checkout |
+| Frozen January record and experiment records in Git | WSL source checkout |
 | Saved provider data and download receipts under `raw/` | Windows runtime |
 | SQLite databases, process identities, locks and logs under `data/` | Windows runtime |
-| Current verified `results/summary-exits.txt` and baseline history | Windows runtime |
+| Runtime copy of `results/summary-exits.txt` and baseline history | Windows runtime |
 | Built local page under `website/local/` | Windows runtime |
 | Native environments and leftover experimental-engine caches | Windows runtime; create them for Windows |
 | Deployment hashes and commit identity | Windows `data/deployment.json` |
 
-Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. The canonical report is special: after initial installation, deployment never replaces it. Its exact content must remain bound to the prepared research database.
-
-A missing report in an established runtime stays missing. Restore its verified
-database-bound version from baseline revision evidence or backup. Deployment
-does not substitute the Git report for it. Initial seeding is allowed only when
-there is no previous deployment and no prepared research database.
+Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. `results/summary-exits.txt` is the exception: deployment never installs, replaces or removes it, even in a fresh runtime. Nothing reads it, so a runtime without it works normally.
 
 There is no automatic reverse source sync. Do not edit installed Windows code. Deployment detects unexpected edits and unowned-file collisions before replacing source. It removes only source files owned by the preceding deployment manifest. A case-only rename must be deployed through an intermediate committed filename so Windows can distinguish the versions.
 
@@ -106,11 +101,11 @@ This republishes the retained revision (or an explicitly selected revision), run
 
 The WSL checkout contains source and synthetic test fixtures, not another full raw cache. For example, `python3 tests/test_deployment.py` runs there. The saved-data `tests/check_paths.py` belongs in the Windows runtime and is included in `--check`. Linux and Windows environments and native binaries are separate.
 
-## The canonical report
+## The frozen report
 
-The tracked `results/summary-exits.txt` is a frozen record. Nothing collects a
-runtime report into source. Ordinary deployment leaves the active Windows report
-alone, and a fresh runtime receives a copy of the tracked report.
+The tracked `results/summary-exits.txt` is a frozen record of the January study.
+Nothing collects a runtime report into source, and no preparation writes or
+reads either copy. Deployment leaves the Windows copy alone.
 
 Raw data remains outside Git. Back it up separately. Baseline revision history remains in the Windows runtime.
 
@@ -130,8 +125,8 @@ The user architecture guide describes the current split.
 
 ## Private input copies
 
-`tools/ops/offline_input_copy.py` copies the saved raw inputs and the canonical
-report into a new private root. It has no command entry. It defers while a
+`tools/ops/offline_input_copy.py` copies the saved raw inputs into a new private
+root (manifest version 2; a version-1 capture with the report is refused). It has no command entry. It defers while a
 server, data job or pending publication holds ownership. A copy without its
 completion marker is unusable. The
 [faster engine summary](plans/compiled-backtest/master-plan.md) records the

@@ -309,22 +309,11 @@ class DeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'outside Git'):
             deploy.publish(self.root, self.payload, manifest)
 
-    def test_missing_established_report_is_not_reseeded(self):
+    def test_frozen_report_is_never_installed(self):
+        # Even a first deployment leaves the frozen report to the runtime.
         manifest = self.manifest({'README.md': 'source'})
         (self.payload / 'results').mkdir()
-        (self.payload / deploy.REPORT).write_text('reviewed initial report')
-        deploy.publish(self.root, self.payload, manifest)
-        self.assertEqual((self.root / deploy.REPORT).read_text(), 'reviewed initial report')
-        (self.root / deploy.REPORT).unlink()
-        deploy.publish(self.root, self.payload, manifest)
-        self.assertFalse((self.root / deploy.REPORT).exists())
-
-    def test_existing_database_prevents_first_deploy_report_seed(self):
-        manifest = self.manifest({'README.md': 'source'})
-        (self.payload / 'results').mkdir()
-        (self.payload / deploy.REPORT).write_text('old Git report')
-        (self.root / 'data').mkdir()
-        (self.root / 'data/research.sqlite').write_bytes(b'existing database')
+        (self.payload / deploy.REPORT).write_text('tracked frozen report')
         deploy.publish(self.root, self.payload, manifest)
         self.assertFalse((self.root / deploy.REPORT).exists())
 
@@ -431,7 +420,7 @@ class DeploymentTests(unittest.TestCase):
         payload, manifest = deploy.unpack(self.stage)
         self.assertEqual(list(manifest['files']), ['README.md'])
         self.assertFalse((payload / 'raw/secret.json').exists())
-        self.assertTrue((payload / deploy.REPORT).exists())
+        self.assertFalse((payload / deploy.REPORT).exists())
         archive([('scripts/link.py', '/outside', True)])
         with self.assertRaisesRegex(ValueError, 'plain Git files'):
             deploy.unpack(self.stage)

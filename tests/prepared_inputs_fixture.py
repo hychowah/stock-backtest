@@ -25,7 +25,6 @@ import json
 from unittest.mock import patch
 
 from backtest.engines.reference import legacy
-from backtest.financial import rules
 from backtest.inputs import daily, facts, financial_inputs, research
 from backtest.runtime import cache_access
 import test_prepared_facts
@@ -40,7 +39,6 @@ class PreparedInputs:
             self.context.callback(self.fixture.doCleanups)
             self.source, self.path = self.fixture.source, self.fixture.path
             self.root = self.source.parent.parent
-            research.signature.return_value['historical_through'] = '2015-10-20'
             if configure is not None:
                 configure(self)
             self.fixture.prepare()
@@ -77,7 +75,8 @@ def history(companies, first, last):
     """Return a `configure` callable with deterministic fictional assets.
 
     Symbols are Q0000, Q0001 and so on. Sessions are weekdays from 2 January
-    of `first` through 20 October of `last`. FIRST_YEAR and LAST_YEAR follow.
+    of `first` through 20 October of `last`. The reference engine's FIRST_YEAR
+    and LAST_YEAR follow.
     """
     def configure(inputs):
         raw = research.RAW
@@ -118,12 +117,8 @@ def history(companies, first, last):
         (raw/'spy-div.json').write_text(json.dumps([dict(date=str(day),
             adjClose=100.+(day-start).days*.005) for day in sessions]))
         (raw/'treasury.json').write_text(json.dumps([dict(date=str(day),month3=2.,year10=3.) for day in sessions]))
-        (research.RESULTS/'summary-exits.txt').write_text('Through '+str(through)+'\n')
-        research.signature.return_value=dict(fixture='private-scalar-qualification',historical_through=str(through))
-        # The research preparation fixture substitutes its canonical report
-        # verifier. This history keeps that substitution explicit.
-        research.verify_reference.side_effect=lambda db:research.prepared_baseline(db)
-        for owner in (rules,legacy):
-            inputs.context.enter_context(patch.object(owner,'FIRST_YEAR',first))
-            inputs.context.enter_context(patch.object(owner,'LAST_YEAR',last))
+        research.signature.return_value=dict(fixture='private-scalar-qualification',through=str(through))
+        inputs.context.enter_context(patch.object(legacy,'RAW',raw))
+        inputs.context.enter_context(patch.object(legacy,'FIRST_YEAR',first))
+        inputs.context.enter_context(patch.object(legacy,'LAST_YEAR',last))
     return configure

@@ -20,7 +20,6 @@ from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
 
 def write_fixture(root):
     raw=root/'raw';(raw/'px').mkdir(parents=True);(raw/'financial-inputs').mkdir()
-    (root/'results').mkdir();(root/'results/summary-exits.txt').write_text('Through 2026-10-20\n')
     dates=sorted({f'{y}-01-02' for y in range(1994,2027)}|{f'{y}-12-31' for y in range(1994,2026)}|{'2026-10-20'})
     prices=[dict(date=d,adjClose=100+i) for i,d in enumerate(dates)]
     spy=[r for r in prices if '1995-01-01'<=r['date']<='2026-10-20']
@@ -46,25 +45,20 @@ with runtime_access.ownership(root,timeout=0):
  from backtest.engines.original import schedules as s
  from backtest import portfolio_results, calendar as schedule_calendar
  import tools.ops.prepared_input_coverage as coverage
- for m in (r,s,r.market,r.legacy,r.books,r.metrics,r.baseline,r.cache_assets,r.financial_inputs,r.revalue,r.cache_access,portfolio_results,schedule_calendar,coverage):
+ for m in (r,s,r.market,r.books,r.metrics,r.cache_assets,r.financial_inputs,r.cache_access,portfolio_results,schedule_calendar,coverage):
   assert Path(m.__file__).resolve().is_relative_to(root.resolve()),m.__name__
  for name,module in list(sys.modules.items()):
   if name=='backtest' or name.startswith('backtest.'):
    assert Path(module.__file__).resolve().is_relative_to(root.resolve()),name
- assert r.rules.FIRST_YEAR==1996 and r.rules.LAST_YEAR==2026
  r.prepare();daily.prepare()
  result=coverage.report()
  assert result['version']==2 and result['financial_symbols']==result['accepted_price_files']
  assert result['daily_books']==dict(periods=0,snapshots=0,period_pools=0)
  with closing(r.connect(full_prices=True)) as db:
-  baseline=json.loads(db.execute("SELECT value FROM metadata WHERE key='baseline_result'").fetchone()[0])
-  assert len(baseline['years'])==31 and sum(len(y['holdings']) for y in baseline['years'])==31
-  audit=r.baseline.Baseline(r.RESULTS,r.DATABASE).audit(db)
-  assert audit['details']['bootstrap']
-  previous=r.RESULTS/audit['summary']['audit'];previous=previous.parent/'previous-snapshot.json'
-  assert json.loads(previous.read_bytes()) is None
- assert str(r.baseline.cutoff((root/'results/summary-exits.txt').read_text()))=='2026-10-20'
- out.write_text(json.dumps(dict(status='prepared',years=31,holdings=31,through=baseline['through'],module_origins=True,daily_books=result['daily_books'])))
+  latest=json.loads(db.execute("SELECT value FROM metadata WHERE key='latest'").fetchone()[0])
+  stocks=db.execute('SELECT COUNT(*) FROM latest_snapshots').fetchone()[0]
+ assert not (root/'results').exists()
+ out.write_text(json.dumps(dict(status='prepared',latest=latest['asof'],stocks=stocks,module_origins=True,daily_books=result['daily_books'])))
 '''
 
 STOP=r'''
@@ -130,11 +124,11 @@ class ExportedPreparationTests(unittest.TestCase):
         return json.loads(out.read_bytes())
 
     def test_ordinary_preparation_freshness_and_coverage_have_self_contained_origins(self):
-        result=self.prepare();self.assertEqual(result['through'],'2026-10-20')
-        self.assertTrue(result['module_origins']);self.assertEqual(result['years'],31)
+        result=self.prepare();self.assertEqual((result['latest'],result['stocks']),('2026-10-20',2))
+        self.assertTrue(result['module_origins'])
 
-    def test_terminated_preparation_closes_domain_and_preserves_published_pair(self):
-        self.prepare();files=[self.root/'data/research.sqlite',self.root/'results/summary-exits.txt']
+    def test_terminated_preparation_closes_domain_and_preserves_published_database(self):
+        self.prepare();files=[self.root/'data/research.sqlite']
         before=[hashlib.sha256(p.read_bytes()).hexdigest() for p in files];ready=self.base/'stop-ready'
         owner=OwnedProcess([sys.executable,'-I','-B','-X','utf8','-c',STOP,str(self.root),str(ready)],
             limits=ProcessLimits(2*1024**3,16,25,user_cpu_seconds=360 if os.name=='nt' else None,close_seconds=10,
@@ -154,7 +148,7 @@ class ExportedPreparationTests(unittest.TestCase):
         finally:
             if not owner.closed:owner.terminate();owner.close()
         self.assertEqual([hashlib.sha256(p.read_bytes()).hexdigest() for p in files],before)
-        # A fresh process must acquire both owners and accept the old published pair.
+        # A fresh process must acquire both owners and accept the old published database.
         verify=r'''from pathlib import Path
 import sys
 root=Path(sys.argv[1]);sys.path[:0]=[str(root)]

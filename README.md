@@ -1,6 +1,6 @@
 # EBITDA/EV January book
 
-A standalone US stock backtest and interactive results website. Each January, buy the 50 stocks with the highest EBITDA/enterprise value, equally weighted, and compare their dividend-adjusted returns with SPY. The saved test covers 1996 through 20 October 2026.
+A standalone US stock backtest and interactive results website. Screen US stocks by EBITDA/enterprise value or custom variables, then test the selected stocks on fixed or random dated schedules, equally weighted, against SPY with dividends included. The original study bought the 50 highest EBITDA/EV stocks each January from 1996; its frozen result covers 1996 through 20 October 2026.
 
 ## Open the website
 
@@ -74,7 +74,7 @@ Choose **Manage backtest data** to inspect saved files and date coverage.
 Choose a stock group or enter symbols. **Download missing data** fills missing
 financial symbols and price ranges with your local FMP key. **Rebuild prepared
 data + website** applies saved changes offline. Existing records are kept.
-A rebuild compares SQL results with the independent reference engine at the saved historical cutoff. When they agree, it updates the report and preserves revision evidence in `results/baseline-history/`. Engine disagreement stops publication. No download starts when the panel opens. If essential source files are missing,
+Every research rebuild is a full build; a failure keeps the previous database. No download starts when the panel opens. If essential source files are missing,
 startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
 
 Random-date batches plan missing books once, calculate ahead with separate Python
@@ -125,20 +125,22 @@ python3 tests/check_screener.py
 python3 tests/check_paths.py
 ```
 
-Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records. The independent `backtest/engines/reference/revalue.py` reference run still reads raw prices.
+Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records.
+
+The development check, `python3 scripts/check.py`, compares a 12-month dated run from 1 January 1996 with the independent reference engine (`backtest/engines/reference/revalue.py`, which reads raw prices) at full precision. Run it on a real-data copy after a change to book policy; no build or startup runs it.
 
 ## Project layout
 
 ```text
-scripts/             Data preparation, screening, backtest, exit analysis, and paths
-data/                Prepared local SQLite database (generated; ignored by Git)
+scripts/             Data preparation, daily cache and the development check
+data/                Prepared local SQLite databases (generated; ignored by Git)
 website/             Website source, builder, hosting identity, and built output
   local/             Ignored local server output
   dist/              Ignored portable export from build.py --snapshot
-results/
-  summary-exits.txt  Current backtest result
-  stops/             Early trading-stop analysis and filing classifications
-  legacy/            Earlier results using the old exit rule
+results/             Frozen January record and cited experiment summaries
+  summary-exits.txt  The January study result (frozen)
+  stops/             Early trading-stop analysis and filing classifications (frozen)
+  legacy/            Earlier results using the old exit rule (frozen)
 raw/                 Reusable universe, financial metrics, prices, SPY, Treasury data
   px/                One price-history file per stock
   archive/           Unused bulk downloads and exploratory responses
@@ -151,17 +153,17 @@ The [source map](docs/plans/project-structure/source-map.md) lists the owners of
 
 See [fast screening and backtesting](docs/research-workflow.md) for parameter examples, coverage limits, and the preparation/query separation.
 
-## Current result
+## The January record
 
-The current report is [results/summary-exits.txt](results/summary-exits.txt). From January 1996 to January 2026 it reports 18.01% annualized for the strategy versus 10.22% for SPY. These are historical backtest results, with no commissions.
+The frozen report of the original study is [results/summary-exits.txt](results/summary-exits.txt). From January 1996 to January 2026 it reports 18.01% annualized for the strategy versus 10.22% for SPY. These are historical backtest results, with no commissions. Nothing regenerates it; run the study again as a 12-month schedule from 1 January.
 
-[Methodology and limitations](docs/methodology.md) explain the universe, report lag, valuation adjustments, data issues, and exit treatment. The earlier `results/legacy/` reports are retained for reference and are not the current result.
+[Methodology and limitations](docs/methodology.md) explain the universe, report lag, valuation adjustments, data issues, and exit treatment. The earlier `results/legacy/` reports are retained for reference and are not the study result.
 
 ## Cache and downloads
 
 Normal backtest and website runs are offline and reuse `raw/`. No API key is required for those operations. See [raw/README.md](raw/README.md) for cache contents.
 
-`backtest/engines/reference/legacy.py` may fetch missing data and writes the **legacy** reports. Use it only when the cache needs additional data; its exit rule still differs from the current `backtest/engines/reference/revalue.py`. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when the main downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
+Fill missing data with **Download missing data** in the data panel. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when that downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
 
 The local website is ready to use. Hosted publication has not completed because the current environment cannot reach the Sites source server. Preserve `website/.openai/hosting.json` when retrying publication.
 
@@ -180,7 +182,7 @@ git --git-dir=.git-local --work-tree=. log --oneline
 
 Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
 
-Source and reviewed reports are versioned. The portable export in `website/dist/` is ignored. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
+Source and the frozen reports are versioned. The portable export in `website/dist/` is ignored. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
 
 ## Local builds and portable snapshots
 

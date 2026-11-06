@@ -82,7 +82,7 @@ class ResolutionTests(unittest.TestCase):
 class ProjectionTests(unittest.TestCase):
     def setUp(self):
         self.real_signature = research.signature
-        self.fixture = research_fixtures.PreparationTests('test_success_publishes_verified_database')
+        self.fixture = research_fixtures.PreparationTests('test_success_publishes_database_without_january_books')
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.source = self.fixture.path
@@ -144,10 +144,8 @@ class ProjectionTests(unittest.TestCase):
     def test_policy_change_rebuilds_research_before_downstream_preparation(self):
         from backtest import measure_observations
         with ExitStack() as context:
-            for module in (research, research.baseline, research.metrics, research.books,
-                           research.rules, research.screening, research.selection, research.cache_assets,
-                           research.market, research.legacy, research.revalue, financial, financial.parameters,
-                           measure_observations, facts):
+            for module in (research, research.metrics, research.books, research.rules, research.cache_assets,
+                           research.market, financial, financial.parameters, measure_observations, facts):
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module, '__file__', str(path)))

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 import random
 
+from backtest.financial import rules
+
 VERSION = 1
 LEGACY_MONTHS = (1, 3, 6, 12, 24)
 
@@ -54,8 +56,8 @@ class Configuration:
         if type(self.interval) is not Interval:
             raise ValueError('Calendar configuration requires an Interval.')
         lower, upper = _day(self.start), _day(self.end)
-        if lower < date(1996, 1, 1) or lower >= upper:
-            raise ValueError('Choose increasing dates from 1996-01-01.')
+        if lower < rules.FIRST_DAY or lower >= upper:
+            raise ValueError(f'Choose increasing dates from {rules.FIRST_DAY}.')
 
     def to_dict(self):
         return dict(version=self.version, start=self.start, end=self.end,
@@ -112,8 +114,8 @@ class SessionCalendar:
         back would find a price. This operation has no interval dependency.
         """
         lower, upper = _day(start), _day(end)
-        if lower < date(1996, 1, 1) or lower >= upper or upper > self.sessions[-1]:
-            raise ValueError(f'Choose increasing dates from 1996-01-01 through {self.sessions[-1]}.')
+        if lower < rules.FIRST_DAY or lower >= upper or upper > self.sessions[-1]:
+            raise ValueError(f'Choose increasing dates from {rules.FIRST_DAY} through {self.sessions[-1]}.')
         left, right = bisect_left(self.sessions, lower), bisect_right(self.sessions, upper) - 1
         if right < 0 or left >= right:
             raise ValueError('No complete trading interval in the selected dates.')

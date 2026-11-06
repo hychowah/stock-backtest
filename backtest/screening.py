@@ -2,8 +2,7 @@
 
 validate_selection(**options) performs no SQL and preserves submitted settings.
 select(db, *, period=None, **options) selects latest when period is None;
-an inclusive period range selects historical or dated rows without year checks.
-historical(db, *, first=1996, last=2026, **options) validates January years.
+an inclusive period-id range selects dated book rows.
 latest(db, **options) applies the common selector to latest snapshots.
 """
 from .financial import metrics
@@ -96,12 +95,6 @@ def select(db, *, period=None, rank_from=1,rank_to=50,pool='legacy',metric=metri
     cursor=db.execute(sql,arguments)
     fields=[c[0] for c in cursor.description]
     return [dict(zip(fields,row)) for row in cursor]
-
-
-def historical(db, *, first=1996,last=2026,rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
-    if any(type(v) is not int for v in (first,last)) or not 1996 <= first <= last <= 2026:
-        raise ValueError('Choose increasing integer years within 1996–2026.')
-    return select(db,period=(first,last),rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
 
 
 def latest(db, *, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):

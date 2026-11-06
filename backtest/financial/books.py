@@ -1,9 +1,9 @@
-"""Financial policy shared by January and arbitrary dated books.
+"""Financial policy shared by latest and dated books.
 
 Price adapters return (date, positive price) or None within the given tolerance.
 Storage, calendar planning and SQL insertion stay outside this module. A change
-to book policy must pass the development check, backtest/engines/reference/check.py,
-on the real-data bench.
+to book policy must pass the development check (python3 scripts/check.py) on
+the real-data bench.
 """
 from datetime import timedelta
 

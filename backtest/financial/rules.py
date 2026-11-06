@@ -1,16 +1,15 @@
-"""Shared strategy configuration, scalar decoding and report availability.
+"""Financial policy that latest and dated books share, and saved-value decoding.
 
-No storage or execution dependencies. Reference arithmetic remains independent.
+No storage or execution dependencies. The reference engine keeps its own study
+constants (backtest/engines/reference/legacy.py).
 """
 from datetime import date, datetime, timedelta
 
-FIRST_YEAR = 1996
-LAST_YEAR = 2026
-ASOF = date(2026, 10, 21)
+# The first day a schedule, a dated book or a historical formula root can use.
+FIRST_DAY = date(1996, 1, 1)
 MIN_MARKET_CAP = 100_000_000
 MIN_EV = 50_000_000
 BUFFER = 250
-HOLD = 50
 LAG = timedelta(days=90)
 MAX_AGE = timedelta(days=800)
 
@@ -73,5 +72,6 @@ def common_stock(symbol: str, name: str) -> bool:
     return True
 
 
-# Symbol-year pairs checked as bankruptcies. Shared by all engines.
+# Symbol-year pairs checked as bankruptcies: -100% in dated books and the
+# reference engine. The year is the book's entry year.
 BANKRUPT: set[tuple[int, str]] = set()

@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from backtest import screening, selection
 from backtest.financial import metrics
-from backtest.inputs import research
+from backtest.inputs import daily, research
 from website.rendering import data
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -20,7 +20,7 @@ ROOT=Path(__file__).resolve().parents[1]
 class AdapterTests(unittest.TestCase):
     def setUp(self):
         self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
-        self.addCleanup(self.db.close);self.db.executescript(research.SCHEMA)
+        self.addCleanup(self.db.close);self.db.executescript(research.SCHEMA+daily.DATED_SCHEMA)
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('latest',json.dumps(dict(asof='2017-01-03'))))
         for year in (2015,2016):
             self.db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,f'{year}-01-02',f'{year+1}-01-02',.1,.02,8,8))
@@ -71,7 +71,7 @@ process.stdout.write(JSON.stringify(answer));
         return json.loads(output.stdout)
 
     def sql(self,options,latest=False):
-        rows=screening.latest(self.db,**options) if latest else screening.historical(self.db,first=2015,last=2016,**options)
+        rows=screening.latest(self.db,**options) if latest else screening.select(self.db,period=(2015,2016),**options)
         compact=lambda group:[[h['symbol'],h['rank'],h['metric_multiple'],h['metric_yield']] for h in group]
         return compact(rows) if latest else [compact([h for h in rows if h['year']==year]) for year in (2015,2016)]
 

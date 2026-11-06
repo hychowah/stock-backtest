@@ -103,11 +103,10 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(resolved['dated'],{})
         self.assertEqual(self.path.read_bytes(),before)
 
-    def test_history_bound_day_filter_and_cancellation(self):
+    def test_history_bound_and_cancellation(self):
         self.path.write_text(json.dumps(dict(div=[dict(date=f'2015-01-0{day}',volume=1) for day in (2,3,4,5)])))
         with patch.object(facts,'MAX_HISTORY',3),self.assertRaisesRegex(ValueError,'history'):
             facts.resolve(self.path,facts.STOCK,stock=True)
-        self.assertEqual(set(facts.resolve(self.path,facts.STOCK,stock=True,days={'2015-01-03','2015-01-09'})['dated']),{'2015-01-03'})
         with self.assertRaisesRegex(RuntimeError,'cancel'):
             facts.resolve(self.path,facts.STOCK,stock=True,checkpoint=Mock(side_effect=RuntimeError('cancel')))
 

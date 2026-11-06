@@ -1,7 +1,8 @@
-"""Independent cache-only January calculation and verified reference refresh.
+"""Independent cache-only calculation of the January study.
 
 This engine uses run's original screen and price arithmetic. It does not use
-prepared snapshots, books.snapshot, or the SQL selector.
+prepared books, books.snapshot or the SQL selector. The development check
+(check.py) compares the book code with it on the bench.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import io
 import json
 
 from backtest.engines.reference import legacy as run
-from backtest.paths import RAW, RESULTS
+from backtest.paths import RAW
 
 from backtest.financial import rules
 
@@ -27,9 +28,9 @@ def last_in_window(div, entry: date, exit_day: date):
 def calculate(through: date):
     """Return full-precision years and priced holdings through a fixed date.
 
-    Read saved files only. The caller owns cache_access for both engines. Dates
-    in the result are ISO strings; unavailable prices are never carried forward
-    beyond the original engine's price rules. This function never publishes.
+    Read saved files only. The caller owns cache_access. Dates in the result
+    are ISO strings; unavailable prices are never carried forward beyond the
+    original engine's price rules. This function never publishes.
     """
     universe = {row['symbol']: row for row in json.loads((RAW/'universe.json').read_text(encoding='utf-8'))}
     with redirect_stdout(io.StringIO()):

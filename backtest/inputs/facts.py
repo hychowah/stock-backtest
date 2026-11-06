@@ -96,14 +96,13 @@ def row_day(row):
         return None
 
 
-def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None, days=None):
+def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None):
     """Return the source and the field states of each saved day of one file.
 
     Equal admissible values agree; different ones are CONFLICTING_INPUT.
     Currency-free stock routes use the admitted USD-company/share basis.
     Explicit foreign currency disqualifies only price, never volume. All signed
-    rates are valid. days limits the result to those saved days; None keeps
-    every day. The source is always complete.
+    rates are valid. The source is always complete.
     """
     source = dict(endpoint=endpoint, sha256=None, disposition='missing')
     try:
@@ -135,7 +134,7 @@ def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None, days=None):
     grouped = {}
     for row in rows:
         day = row_day(row)
-        if day is not None and (days is None or day in days):
+        if day is not None:
             grouped.setdefault(day, []).append(row)
     dated = {}
     fields = ('month3', 'year10') if endpoint == TREASURY else ('adjClose', 'volume') if stock else ('adjClose',)
@@ -162,8 +161,8 @@ def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None, days=None):
     return dict(source=source, dated=dated)
 
 
-def stock(raw, symbol, checkpoint=lambda: None, *, days=None):
-    return resolve(raw / 'px' / market.cache_path_for(symbol).name, STOCK, stock=True, checkpoint=checkpoint, days=days)
+def stock(raw, symbol, checkpoint=lambda: None):
+    return resolve(raw / 'px' / market.cache_path_for(symbol).name, STOCK, stock=True, checkpoint=checkpoint)
 
 
 def shared(raw, checkpoint=lambda: None):
@@ -200,26 +199,11 @@ def store_annual(db, symbol, resolution):
 
 
 def store_stock(db, symbol, resolution):
-    """Write the saved days of one price file; resolution may cover only some days."""
+    """Write the saved days of one price file."""
     _source(db, symbol, resolution['source'])
     db.executemany('INSERT INTO stock_days VALUES(?,?,?,?,?,?)',
                    ((symbol, day, *_pair(states['adjClose']), *_pair(states['volume']))
                     for day, states in resolution['dated'].items()))
-
-
-def copy_stock(db, schema, symbol, *, days=None):
-    """Copy one company's stock days from an attached prior build.
-
-    days excludes the days a caller writes from new rows; None copies every day.
-    """
-    if days:
-        db.execute('CREATE TEMP TABLE IF NOT EXISTS new_days(day TEXT PRIMARY KEY) WITHOUT ROWID')
-        db.execute('DELETE FROM temp.new_days')
-        db.executemany('INSERT INTO temp.new_days VALUES(?)', ((day,) for day in days))
-        db.execute(f'INSERT INTO stock_days SELECT * FROM {schema}.stock_days WHERE symbol=? '
-                   'AND day NOT IN (SELECT day FROM temp.new_days)', (symbol,))
-    else:
-        db.execute(f'INSERT INTO stock_days SELECT * FROM {schema}.stock_days WHERE symbol=?', (symbol,))
 
 
 def store_market(db, resolutions):
@@ -408,7 +392,7 @@ class View:
     def admit(self, roots, checkpoint=lambda: None):
         """Admission decisions in root order.
 
-        Historical roots, on a saved SPY session from FIRST_YEAR, use the
+        Historical roots, on a saved SPY session from rules.FIRST_DAY, use the
         complete-population candidates of their date: the legacy buffer precedes
         cached-price membership, so asking for fewer companies cannot promote
         one. Latest roots read the typed latest admission. Earlier contexts
@@ -438,7 +422,7 @@ class View:
                                     statement=None if fiscal is None else dict(fiscal=fiscal, known=known),
                                     valuation=None if cap is None else dict(market_cap=cap, enterprise_value=ev, ebitda=ebitda))
             else:
-                if (root['mode'] != 'historical' or day.year < rules.FIRST_YEAR
+                if (root['mode'] != 'historical' or day < rules.FIRST_DAY
                         or self._db.execute('SELECT 1 FROM sessions WHERE day=?', (str(day),)).fetchone() is None):
                     raise ValueError('Historical observation root is outside saved screen dates.')
                 selected, ranks = self.candidates(root['date'], checkpoint)

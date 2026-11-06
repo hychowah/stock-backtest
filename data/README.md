@@ -6,28 +6,31 @@
 python3 scripts/research.py prepare
 ```
 
-Preparation reads each cached company price history once, writes compact January snapshots, and compares the original top-50 priced holdings and annual returns with the independent engine before publishing the report/database pair. Running preparation again without input changes only checks file metadata and returns immediately.
+Every preparation is a full build (research schema 14). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
 
-The database contains company metadata, cleaned annual financial observations with availability dates, January holding periods, entry valuations/holding returns for both original-screen candidates and the wider set with cached prices, and separate latest-session valuations for cached currently-listed companies with an exact-date price. It does not duplicate daily histories: those stay in `raw/px/`. Changes to rebalance frequency require additional preparation.
+The database contains company metadata, cleaned annual financial observations with availability dates, typed facts for custom variables, and the latest book: latest-session valuations for cached currently-listed companies with an exact-date price, with their ranking pairs and filter values. It holds no January books; dated books live in `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
 The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Missing prices are not downloaded automatically. Run `python3 scripts/research.py status` to inspect annual coverage.
 
 Queries use read-only connections and check core input files, calculation code, and the price-directory timestamp without scanning every price file. Preparation checks the full per-price-file size/timestamp manifest. After editing an existing price file, run preparation to incorporate and validate the change; queries are reads of the last prepared snapshot. The `.building` database is temporary; a failed preparation preserves the previous completed database. Fingerprints are local freshness checks, not cryptographic verification of downloaded data.
 
-`latest_snapshots` stores prospective picks with no holding return. Latest-date metadata records the actual cached session and coverage. The canonical report's saved Through date constrains historical snapshots independently of newer latest-session prices. After extending price data, run preparation then rebuild the website; an open HTML file is a saved snapshot, not a live data feed.
+`latest_snapshots` stores prospective picks with no holding return. Latest-date metadata records the actual cached session and coverage. After extending price data, run preparation then rebuild the website; an open HTML file is a saved snapshot, not a live data feed.
 
 `screening_metrics` stores ready-to-rank multiple/yield pairs keyed
-by mode, pool, year, symbol and catalog metric ID. Latest observations use year
-0. Preparation computes all formulas, including screening-date EV divided by
+by mode, pool, year, symbol and catalog metric ID. Research holds the latest
+rows (mode `latest`, year 0). Dated books in `schedules.sqlite` use mode
+`historical` and their period ID as the year; both files share one table
+definition. Preparation computes all formulas, including screening-date EV divided by
 three-year average EBITDA, and preserves the default metric's exact existing
 values. Missing history omits a pair. Consumers join or export these values;
 they never reconstruct formulas. Catalog and calculator code in
 `backtest/financial/metrics.py` participates in freshness checks.
 
-`schedules.sqlite` is the separate rebuildable daily-price index and dated-book
-cache, prepared by `python3 scripts/schedules.py prepare`. It stores only existing
-cached price histories plus research financials, SPY sessions, Treasury yields
-and reusable entry/exit books. The local website service computes missing books
+`schedules.sqlite` (version 7) is the separate rebuildable daily-price index and
+dated-book cache, prepared by `python3 scripts/schedules.py prepare`. It stores
+only existing cached price histories plus research financials, SPY sessions,
+Treasury yields and reusable entry/exit books (`periods`, `snapshots`,
+`period_pools`). The local website service computes missing books
 and persists them here; original `research.sqlite` remains read-only. Daily-cache
 freshness includes the schedule engine and research calculation fingerprints.
 
@@ -50,12 +53,9 @@ then rebuilds it from the saved files. No market data is downloaded.
 
 `logs/website-<namespace>-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
 
-`baseline_prices` and `baseline_periods` hold the holding-level agreement.
-Metadata stores the priced result, last historical revision and exact report
-hash. The report cutoff is a source input; generated report contents are a
-publication identity. An unfinished `research.sqlite.publication.json` blocks
-readers. Preparation completes that verified publication before checking cache
-freshness. Keep its referenced `results/baseline-history/` files for recovery.
+Preparation deletes `research.sqlite.publication.json`, which the removed
+January report publication left. The frozen `results/baseline-history/` files
+stay untouched.
 
 ## Saved backtests
 

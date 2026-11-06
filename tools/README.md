@@ -9,15 +9,13 @@ import these canonical owners.
 | `tools.ops.deploy` | Verified committed-source publication and native update supervision |
 | `tools.ops.offline_input_copy` | Exact-byte private input materialization; no command entry |
 | `tools.ops.prepared_input_coverage` | Read-only prepared-input coverage (version 2: no January book counts); no command entry |
-| `tools.ops.list_stops`, `tools.ops.classify_stops` | Retained stop inspection commands |
 | `tools.ops.log_summary` | Read-only summary of unfinished operations, operation times, slow requests and failures; run as a module |
 | `tools.experiments.probe*`, `download_one`, `fetch_bulk` | Retained API acquisition experiments |
 
 The thin entries in `tools/` are `deploy.py`, `probe.py`, `download_one.py` and
 `fetch_bulk.py`. Each forwards to its owner in the table. Run
 `tools/experiments/probe_list.py` and `probe_span.py` as modules, for example
-`python3 -m tools.experiments.probe_list`. `scripts/list_stops.py` and
-`scripts/classify_stops.py` also remain commands. Private workers and library modules have no forwarding
+`python3 -m tools.experiments.probe_list`. Private workers and library modules have no forwarding
 entries.
 
 The deployment entry also supports an old running controller. That controller
@@ -30,7 +28,7 @@ ownership. Interrupted publication still uses the existing journal.
 Importing tool packages does not read credentials or make requests. Explicit
 acquisition generally requires `~/.grok/secrets/fmp_api_key`. Offline fixtures
 need neither credentials nor network access. Do not run acquisition to recompute
-saved results or rebuild the website. Use `scripts/revalue.py` and
+saved results or rebuild the website. Use `scripts/research.py prepare` and
 `website/build.py`. SPY and Treasury downloads belong to the data panel.
 
 ## WSL deployment

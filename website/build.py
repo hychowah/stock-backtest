@@ -1,4 +1,4 @@
-"""Build a standalone website from one committed baseline generation."""
+"""Build the standalone website from the prepared research database."""
 import argparse
 import sys
 from contextlib import nullcontext

@@ -19,20 +19,30 @@ from backtest.inputs import facts
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 6
-POOL_SCHEMA = '''
+VERSION = 7
+# Tables only the daily cache has: dated books and the daily price, session
+# and Treasury rows. A period id (periods.year) names one entry and exit;
+# period_pools records each completed pool. Latest and dated books share
+# research's screening_metrics and filter_values definitions.
+DATED_SCHEMA = '''
+CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
+CREATE TABLE snapshots (
+ pool TEXT, year INTEGER, symbol TEXT, candidate_rank INTEGER,
+ fiscal TEXT, entry TEXT, exit TEXT, market_cap REAL, enterprise_value REAL,
+ ebitda REAL, ebitda_yield REAL, ev_ebitda REAL, spread REAL,
+ return_value REAL, status TEXT, PRIMARY KEY(pool,year,symbol));
+CREATE INDEX screen_lookup ON snapshots(pool,year,ebitda_yield DESC);
+CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
 CREATE TABLE IF NOT EXISTS period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
  PRIMARY KEY(period_id,pool), FOREIGN KEY(period_id) REFERENCES periods(year)
 ) WITHOUT ROWID;
-'''
-SCHEMA = r.SCHEMA + '''
 CREATE TABLE prices(symbol TEXT, day TEXT, price REAL, adjusted REAL,
  PRIMARY KEY(symbol,day)) WITHOUT ROWID;
 CREATE TABLE sessions(day TEXT PRIMARY KEY, price REAL) WITHOUT ROWID;
 CREATE TABLE treasuries(day TEXT PRIMARY KEY, yield_value REAL) WITHOUT ROWID;
-CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
-''' + POOL_SCHEMA
+'''
+SCHEMA = r.SHARED_SCHEMA + DATED_SCHEMA
 
 
 COPIED_TABLES = ('companies','statements','financial_inputs','treasury10')

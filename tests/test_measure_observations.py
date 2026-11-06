@@ -312,9 +312,6 @@ class PreparedTransportTests(unittest.TestCase):
                 dict(date='2015-10-20', month3=2, year10=4)]))
         day = date(2015, 1, 2)
         with self.prepared(configure).view() as view:
-            # The stored January book bought at the delayed session.
-            self.assertEqual(view.db.execute("SELECT entry FROM snapshots WHERE pool='cached' AND year=2015 "
-                                             "AND symbol='TEST'").fetchone()[0], '2015-01-05')
             [decision] = view.admit([root('TEST', 'cached', owner_scope=dict(kind='dated'))])
             reports = [dict(row, fiscal=date.fromisoformat(row['fiscal']), known=date.fromisoformat(row['known']))
                        for row in view.reports('TEST', 'cached')]

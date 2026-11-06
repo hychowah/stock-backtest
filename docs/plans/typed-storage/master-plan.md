@@ -152,54 +152,37 @@ agent each. Re-check every dependency by grep first.
   cached-price stocks through today; the build writes no `returns.csv`,
   `holdings.csv` or `valuations.json`.
 
-#### P2b. Writer, reuse and study constants
+#### P2b. Writer, reuse and study constants (done)
 
-- First, the P2a review follow-up: one January refusal, at the run route;
-  stale docs and CSS; the local default end date; three latest parity cases.
-- The writer: the January loop in `research.prepare` (January `snapshots`,
-  `baseline_prices`, `periods`, `baseline_periods`, January `filter_values`
-  and `screening_metrics`), `verify_reference`, `prepared_baseline`,
-  `screening.historical`, `backtest/inputs/baseline.py`, the report in
-  `signature()`, the deploy REPORT special cases, the report copy in
-  `offline_input_copy.py` and the binding check in `research.connect`.
-- All research reuse, per answer (a): `_PriorUnits`, `_reuse_scope`,
-  `_rows_digest`, `_bounded_digest`, `REUSE_MARGIN`, `prepended`, `shifts`,
-  `facts.copy_stock`. A one-line cleanup removes
-  `data/research.sqlite.publication.json`; the schema bump forces the full
-  build. Do not touch `results/baseline-history/`.
-- `daily.SCHEMA`: move only the dated-only tables (`periods`, `snapshots` with
-  its index, `period_pools`) into `daily.py` with the same DDL. Keep one
-  definition of `screening_metrics` and `filter_values`, which latest and dated
-  books share. Stop creating empty `baseline_*` and `latest_snapshots` tables
-  in daily. No new row shape.
-- Scripts: delete `scripts/revalue.py`, the old report in `scripts/run.py`, and
-  `scripts/list_stops.py`, `classify_stops.py` with their `tools/ops` modules.
-  Keep the `legacy.py` helpers that `revalue` imports.
-- Study constants: `FIRST_YEAR`, `LAST_YEAR`, `ASOF` and `HOLD` move into the
-  reference engine. `rules.py` keeps only the policy that dated and latest
-  books use. The 1996 floor (twice in `calendar.py`, and `View.admit` through
-  `FIRST_YEAR`) becomes one constant in `rules.py`.
-- The dev check becomes a leaf. `check.agree`, `HOLDING_FIELDS`,
-  `YEAR_FIELDS` and `PRICE_FIELDS` go with the verification; `differences` and
-  the dated field lists stay. `scripts/check.py` runs it.
-  `research.calculation_sources()` lists only code that computes prepared rows
-  or books, so an edit to the reference engine keeps saved books. No module
-  under `backtest/` outside `engines/reference/` imports it.
-- Bench: remove the `january:*` scopes from `~/bench/harness/fixtures.py` and
-  `parity.py`, so that P3's harness parity runs.
-- Rewrite the AGENTS study sections ("What the test does" to "How to
-  continue", "Research database and baseline", "Website screening",
-  "Selection order") and the guide. Keep the
-  financial rules that dated and latest books use.
-
-Owns: `research.py`, `baseline.py`, `screening.py`, `daily.py`, `facts.py`
-(`copy_stock`), `rules.py`, `calendar.py` (floor), `engines/reference/*`,
-`scripts/*`, the stop tools, their tests (`test_baseline.py`,
-`test_research*.py`, `test_prepared_reuse.py` among them), AGENTS, the guide,
-`docs/research-workflow.md`, `data/README.md`.
-
-Exit: the protocol checks, heavy tier included. Real copy: the four digests
-equal P2a; the dev check passes; cold build time by stage; sizes.
+- P2a follow-up (5b67b71): one January refusal, at the run route; stale docs
+  and CSS; the local default end date; three latest parity cases.
+- Removed: the January writer (loop, tables, `verify_reference`,
+  `prepared_baseline`, `screening.historical`, `baseline.py`, the report in
+  `signature()` and in `research.connect`), all research reuse (`_PriorUnits`,
+  the scope and digests, `facts.copy_stock`), the deploy REPORT seed, the
+  offline-copy report, `scripts/revalue.py`, `run.py` and the stop tools.
+  Research schema 14 is a full build that replaces the file atomically and
+  deletes the old publication journal.
+- `daily.DATED_SCHEMA` holds the daily-only tables with the same DDL (daily 7);
+  `research.SHARED_SCHEMA` holds the one definition of the shared tables.
+- Study constants live in `engines/reference/legacy.py`; `rules.FIRST_DAY` is
+  the one 1996 floor.
+- The dev check is a leaf: `differences` and the dated field lists stay,
+  `scripts/check.py` runs it, `calculation_sources()` lists only row and book
+  code, and nothing outside `engines/reference/` imports that package.
+- Bench harness: the `january:*` scopes are gone.
+- Deviations (code over plan): `calculation_sources` also drops `screening`,
+  `selection` and `measure_observations`, which only select or read stored
+  rows. `legacy_downloads.py` goes with `legacy.main`, its only caller; the
+  data panel downloads every dataset. Deploy keeps REPORT unmanaged, because a
+  managed REPORT stops the first deployment wherever the runtime copy differs;
+  only the seed, extraction and warning go. The offline-copy manifest is
+  version 2 and refuses version 1. `facts.resolve` loses `days`;
+  `paths.LEGACY` and `STOPS` go.
+- Unlisted readers: `tests/check_paths.py` (imported the deleted scripts), the
+  fictional workspace's bootstrap report, `test_offline_preparation`,
+  `results/README.md`; `test_phase09_legacy` compares its frozen expectations
+  without the baseline, report and January rows.
 
 ### P3. One fact store and one book function
 

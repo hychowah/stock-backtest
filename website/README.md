@@ -220,20 +220,15 @@ Windows file indexers can briefly lock cache files. Atomic JSON publication retr
 Check with `python3 tests/test_diagnostics.py`, `python3 tests/test_data_manager.py` and `python3 tests/test_startup.py`. Run these checks on native Windows too.
 
 
-Rebuilds still verify the stored January reference books with two independent
-engines at the saved Through date; no page reads them. Agreement permits a
-revised report. The previous report and priced holdings remain in
-`../results/baseline-history/`. First-run unknown old prices stay null. Engine
-disagreement leaves the prior report, database and website intact.
-An interrupted file replacement requires retrying preparation; readers reject
-its unfinished publication journal. Standalone `build.py` takes cache ownership;
-managed children receive `--cache-owned` from their owning parent.
+Every rebuild is a full research build. A failure leaves the prior database and
+website intact. Standalone `build.py` takes cache ownership; managed children
+receive `--cache-owned` from their owning parent.
 
 ## Local builds and portable snapshots
 
 Normal builds, startup and data-panel rebuilds write ignored `website/local/`. The server uses this output. They do not change the untracked portable export in `website/dist/`.
 
-Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Each build writes `snapshot.json` with the historical report cutoff, latest screen date, report hash and website source hashes. An already-open page needs a reload.
+Run `python3 website/build.py --snapshot` to refresh the portable snapshot explicitly after preparing data. Each build writes `snapshot.json` with the latest screen date and the website source hashes. An already-open page needs a reload.
 
 Range and SQL/browser parity checks use local output by default. To check the portable snapshot, run `node tests/check-range.cjs website/dist` and `python3 tests/check_screener.py website/dist`.
 
@@ -254,7 +249,7 @@ needs the local service to use the library.
 Each row shows its stable UUID database ID. Select **Rename**, edit the name,
 then **Save name** or **Cancel**. Renaming changes no settings or stored results.
 Use **Sort saved backtests** for newest saved or performance in either direction.
-Performance means CAGR for January/fixed tests and mean trial CAGR for random
+Performance means CAGR for saved January and fixed tests and mean trial CAGR for random
 tests. Different test types and date windows can differ. Missing values stay last.
 The queue and library lists scroll inside their sections. Their controls remain
 outside the scrolling list. Keyboard users can focus each list and scroll it.

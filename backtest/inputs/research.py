@@ -1,25 +1,24 @@
-"""Offline January research database and configurable equal-weight backtests."""
+"""Offline research database: companies, reports, typed facts and the latest book.
+
+Every preparation is a full build. It writes a temporary file and replaces the
+published database atomically; the previous database stays on any failure.
+"""
 from __future__ import annotations
 
 import argparse
 from contextlib import closing
 from bisect import bisect_left, bisect_right
-import csv
 import hashlib
-from datetime import date, timedelta
+from datetime import date
 import json
 import os
-import platform
 import stat
 from pathlib import Path
 import sqlite3
-import statistics
 import time
 
 from backtest.financial import rules
 from backtest.inputs import market, cache_assets
-from backtest.engines.reference import legacy
-from backtest import measure_observations, screening, selection
 from backtest.financial import metrics as metrics
 from backtest.financial import books as books
 from backtest.inputs import financial_inputs as financial_inputs
@@ -27,13 +26,13 @@ from backtest.inputs import facts
 from backtest.runtime import backtest_control
 from backtest.runtime import diagnostics
 from backtest.runtime import cache_access as cache_access
-from backtest.engines.reference import check, revalue as revalue
-from backtest.inputs import baseline as baseline
-from backtest.paths import ROOT, RAW, RESULTS
+from backtest.paths import ROOT, RAW
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 13
-SCHEMA = '''
+SCHEMA_VERSION = 14
+# Tables that research and the daily cache both create. Daily copies the first
+# five; latest and dated books share screening_metrics and filter_values.
+SHARED_SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
 CREATE TABLE statements (symbol TEXT, fiscal TEXT, known TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL, PRIMARY KEY(symbol,fiscal));
@@ -41,15 +40,8 @@ CREATE TABLE financial_inputs (symbol TEXT, fiscal TEXT, values_json TEXT NOT NU
 CREATE TABLE treasury10 (day TEXT PRIMARY KEY, yield_percent REAL NOT NULL) WITHOUT ROWID;
 CREATE TABLE screening_metrics (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, metric TEXT, multiple REAL NOT NULL, yield_value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,metric));
 CREATE TABLE filter_values (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, field TEXT, value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,field));
-CREATE TABLE baseline_prices (year INTEGER, symbol TEXT, fiscal_price_date TEXT, valuation_date TEXT, fiscal_price REAL, valuation_price REAL, entry_price REAL, exit_price REAL, PRIMARY KEY(year,symbol));
-CREATE TABLE baseline_periods (year INTEGER PRIMARY KEY, spy_entry TEXT, spy_exit TEXT, spy_entry_price REAL, spy_exit_price REAL);
-CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
-CREATE TABLE snapshots (
- pool TEXT, year INTEGER, symbol TEXT, candidate_rank INTEGER,
- fiscal TEXT, entry TEXT, exit TEXT, market_cap REAL, enterprise_value REAL,
- ebitda REAL, ebitda_yield REAL, ev_ebitda REAL, spread REAL,
- return_value REAL, status TEXT, PRIMARY KEY(pool,year,symbol));
-CREATE INDEX screen_lookup ON snapshots(pool,year,ebitda_yield DESC);
+'''
+SCHEMA = SHARED_SCHEMA + '''
 CREATE TABLE latest_snapshots (
  pool TEXT, symbol TEXT, candidate_rank INTEGER, fiscal TEXT, known TEXT,
  price_date TEXT, price REAL, market_cap REAL, enterprise_value REAL,
@@ -107,7 +99,7 @@ def forget_signature():
 
 
 def signature():
-    """Return the current ordered input signature and report cutoff.
+    """Return the current ordered input signature.
 
     Every call discovers and inspects inputs afresh. Keys preserve lexical
     paths relative to ROOT; discovery and metadata failures retain their
@@ -136,7 +128,7 @@ def signature():
         else:
             key = prefixes[spelling] + path.name
         result[key] = ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns]
-    return dict(result, historical_through=str(baseline.cutoff((RESULTS/'summary-exits.txt').read_text(encoding='utf-8'))))
+    return result
 
 
 def price_sources():
@@ -144,171 +136,27 @@ def price_sources():
 
 
 def calculation_sources():
-    """Source files whose content establishes prepared rows and their check.
+    """Source files whose content computes prepared rows or books.
 
-    Download transport and the daily cache do not compute research rows, so
-    editing them does not force a research rebuild.
+    The list names only that code: never the reference engine or the
+    development check (backtest/engines/reference), and never code that only
+    reads or selects stored rows. The research signature and the daily cache's
+    book identity bind these files, so an edit elsewhere neither rebuilds
+    research nor drops saved books.
     """
     here = Path(__file__)
-    return [Path(baseline.__file__), here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(screening.__file__), Path(selection.__file__), Path(cache_assets.__file__), Path(market.__file__), Path(legacy.__file__), Path(revalue.__file__),
-            Path(financial_inputs.__file__), Path(financial_inputs.parameters.__file__),
-            Path(measure_observations.__file__), Path(facts.__file__)]
+    return [here, Path(metrics.__file__), Path(books.__file__), Path(rules.__file__), Path(cache_assets.__file__), Path(market.__file__),
+            Path(financial_inputs.__file__), Path(financial_inputs.parameters.__file__), Path(facts.__file__)]
 
 
-# Historical forward price lookups start at a January entry and reach at most
-# books.FORWARD_REACH; exit lookups read backward from a day on or before the
-# report cutoff. REUSE_MARGIN is a wider margin: rows after the later of the
-# cutoff and the last entry + REUSE_MARGIN can change only latest and dated units.
-REUSE_MARGIN = timedelta(days=31)
-
-
-def _digest(value):
-    return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-
-
-def _file_digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _rows_digest(rows):
-    return hashlib.sha256(json.dumps(rows,separators=(',',':')).encode()).hexdigest()
-
-
-def _beyond(row, horizon):
-    """True only when both saved-date readers place the row after the horizon."""
-    if not isinstance(row,dict):
-        return False
-    value=row.get('date')
-    try:
-        iso=date.fromisoformat(str(value)[:10])
-    except ValueError:
-        return False
-    if iso<=horizon:
-        return False
-    day=rules.parse_day(value)
-    return day is not None and day>horizon
-
-
-def _bounded_digest(payload, horizon, key=None):
-    """Digest the saved rows that a historical calculation can read.
-
-    Drop rows dated after the horizon from the row list, or only from
-    payload[key]. Keep everything else bound, including undated rows and the
-    complete light series, whose presence selects the valuation scale. Saved
-    key order is kept: a reordered file only costs a recalculation.
-    """
-    if key is None:
-        value=[row for row in payload if not _beyond(row,horizon)] if isinstance(payload,list) else payload
-    elif isinstance(payload,dict) and isinstance(payload.get(key),list):
-        value=dict(payload,**{key:[row for row in payload[key] if not _beyond(row,horizon)]})
-    else:
-        value=payload
-    return _rows_digest(value)
-
-
-def _reuse_scope(through, horizon, treasury_rows):
-    """Identify every shared input of historical rows and of the reference check.
-
-    The interpreter and SQLite versions are bound too: date parsing and the
-    order of unsorted queries may change with either of them.
-    """
-    return _digest(dict(
-        version=SCHEMA_VERSION, facts=facts.VERSION, through=str(through),
-        runtime=[platform.python_implementation(),platform.python_version(),sqlite3.sqlite_version],
-        code=[_file_digest(path) for path in calculation_sources()],
-        universe=_file_digest(RAW/'universe.json'), metrics=_file_digest(RAW/'metrics.jsonl'),
-        financial={path.relative_to(RAW).as_posix():[info.st_size,info.st_mtime_ns]
-                   for path,info in _metadata_entries(RAW/'financial-inputs','*/*.json')},
-        spy=_bounded_digest(json.loads((RAW/'spy-div.json').read_text()),horizon),
-        treasury=_bounded_digest(treasury_rows,horizon)))
-
-
-class _PriorUnits:
-    """Company units of the published database that a new build may copy.
-
-    The prior database is attached read-only only when its reuse scope equals
-    the current scope. Copied rows keep their original order, so the new
-    database equals a full rebuild row for row. Callers end the transaction
-    before finish() detaches the prior database.
-    """
-    SPANS = ('snapshots','baseline_prices','filter_values')
-
-    @classmethod
-    def open(cls, db, path, owner, scope):
-        if not path.exists():
-            return None
-        location=path.resolve().as_uri()+'?mode=ro'
+def _replace(source, destination):
+    """Replace atomically; retry Windows sharing/access locks for under 2s."""
+    for attempt in range(len(cache_assets.PUBLISH_RETRY_DELAYS)+1):
         try:
-            with closing(sqlite3.connect(location,uri=True)) as prior:
-                owner.check_ready(prior)
-                meta={key:json.loads(value) for key,value in prior.execute(
-                    "SELECT key,value FROM metadata WHERE key IN ('reuse','baseline_result')")}
-        except (sqlite3.Error,ValueError,OSError):
-            return None
-        # The scope binds this source and schema, so an equal scope means this
-        # code wrote the units in their current form.
-        reuse=meta.get('reuse')
-        if not isinstance(reuse,dict) or reuse.get('scope')!=scope:
-            return None
-        db.execute('ATTACH DATABASE ? AS prior',(location,))
-        return cls(db,reuse['symbols'],meta.get('baseline_result'))
-
-    def __init__(self, db, units, baseline_result):
-        self.db,self.units,self.baseline=db,units,baseline_result
-        self.spans={}
-        for table in self.SPANS:
-            for symbol,low,high,count in db.execute(f'SELECT symbol,min(rowid),max(rowid),count(*) FROM prior.{table} GROUP BY symbol'):
-                self.spans.setdefault(symbol,{})[table]=(low,high) if high-low+1==count else None
-        self.history,self.dated=set(),set()
-
-    def copy_history(self, symbol, digest):
-        """Copy one company's historical rows when its readable prices are equal."""
-        spans=self.spans.get(symbol,{})
-        unit=self.units.get(symbol)
-        if unit is None or unit['history']!=digest or None in spans.values():
-            return False
-        for table,span in spans.items():
-            # The unary + keeps SQLite on the rowid range; a mode index would
-            # scan every historical row of every company for each company.
-            self.db.execute(f'INSERT INTO {table} SELECT * FROM prior.{table} WHERE rowid BETWEEN ? AND ?'
-                            +(" AND +mode='historical'" if table=='filter_values' else '')+' ORDER BY rowid',span)
-        self.history.add(symbol)
-        return True
-
-    def prepended(self, symbol, rows):
-        """Return how many rows a download added before the unchanged saved rows.
-
-        SeriesAsset saves rows newest first, so a daily download moves every
-        earlier row by the same number of places. Return None for any other change.
-        """
-        known=self.units.get(symbol)
-        known=known['rows'] if known is not None else None
-        if not isinstance(rows,list) or known is None or not len(rows)>known[0]:
-            return None
-        offset=len(rows)-known[0]
-        return offset if _rows_digest(rows[offset:])==known[1] else None
-
-    def copy_dated(self, symbol, unit):
-        """Batch the typed days and source of a price file with equal bytes; return whether it is copied.
-
-        Dated facts depend only on the file bytes.
-        """
-        known=self.units.get(symbol)
-        if known is None or known['content']!=unit['content']:
-            return False
-        self.dated.add(symbol)
-        return True
-
-    def finish(self):
-        """Copy batched typed days and sources, commit and release the prior database."""
-        self.db.execute('CREATE TEMP TABLE reused(symbol TEXT PRIMARY KEY) WITHOUT ROWID')
-        self.db.executemany('INSERT INTO temp.reused VALUES(?)',[(symbol,) for symbol in self.dated])
-        self.db.execute('INSERT INTO stock_days SELECT * FROM prior.stock_days WHERE symbol IN (SELECT symbol FROM temp.reused)')
-        self.db.execute('INSERT INTO fact_sources SELECT * FROM prior.fact_sources WHERE endpoint=? AND symbol IN (SELECT symbol FROM temp.reused)',
-                        (facts.STOCK,))
-        self.db.commit()
-        self.db.execute('DROP TABLE temp.reused')
-        self.db.execute('DETACH DATABASE prior')
+            source.replace(destination);return
+        except PermissionError as error:
+            if getattr(error,'winerror',None) not in (5,32,33) or attempt==len(cache_assets.PUBLISH_RETRY_DELAYS):raise
+            time.sleep(cache_assets.PUBLISH_RETRY_DELAYS[attempt])
 
 
 def prepared_price_binding(path=DATABASE):
@@ -351,7 +199,6 @@ def connect(path=DATABASE, check=True, full_prices=False):
     db=sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)
     db.row_factory=sqlite3.Row
     try:
-        baseline.Baseline(RESULTS,path).check_ready(db)
         meta={r['key']:json.loads(r['value']) for r in db.execute("SELECT * FROM metadata WHERE key IN ('version','inputs','prices')")}
         if meta.get('version') != SCHEMA_VERSION:
             raise ValueError('Database version changed; run research.py prepare')
@@ -392,13 +239,6 @@ def ten_year_yield(db, day):
     return row[0] if row else None
 
 
-def snapshot(statement, entry_day, exit_day, light, div, bankruptcy):
-    def lookup(day,column,forward,slack):
-        series=(light or div) if column=='price' else div
-        return (after if forward else before)(series,day,slack)
-    return books.snapshot(statement,entry_day,exit_day,lookup,bankruptcy)
-
-
 def latest_snapshot(statement, day, light, div):
     """Value at this exact session; never carry a stopped stock's old price."""
     if statement['known'] >= day or day-statement['fiscal'] > rules.MAX_AGE:
@@ -419,11 +259,15 @@ def latest_snapshot(statement, day, light, div):
 @cache_access.exclusive
 @diagnostics.operation('prepare.research')
 def prepare(path=DATABASE, force=False):
+    """Build the research database from saved files; never download.
+
+    Every build is a full build. A current database is kept unless force is set.
+    """
     started=time.perf_counter()
     diagnostics.note(force=force)
     path=Path(path)
-    owner=baseline.Baseline(RESULTS,path)
-    owner.recover()
+    # The removed January report publication left this journal; nothing reads it.
+    path.with_name(path.name+'.publication.json').unlink(missing_ok=True)
     # Preparation is a data action: its readers inspect raw inputs afresh.
     forget_signature()
     if path.exists() and not force:
@@ -437,12 +281,7 @@ def prepare(path=DATABASE, force=False):
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
     universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
-    # Reuse the current selection semantics, including the 250-name pre-price buffer.
-    book={}
     all_spy=market.load_bars(RAW/'spy-div.json','adjClose')
-    historical_end=owner.through()
-    spy=[row for row in all_spy if row[0]<=historical_end]
-    sessions=[d for d,_ in spy]
     yields=[]
     treasury_rows=json.loads((RAW/'treasury.json').read_text())
     for r in treasury_rows:
@@ -450,27 +289,12 @@ def prepare(path=DATABASE, force=False):
         if day is not None and value is not None:
             yields.append((day,value/100))
     yields.sort()
-    legacy={}
-    ranks={}
     records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
     if invalid:raise ValueError('Annual financial cache contains invalid records. Use the data panel to repair annual financials.')
     broad=books.statements(records,universe)
     financials=[(symbol,str(row['fiscal']),str(row['known']),row['market_cap'],row['enterprise'],row['ebitda'],row['yield'])
                 for symbol,rows in broad.items() for row in rows]
     broad,book=books.pools(broad)
-    for year in range(rules.FIRST_YEAR,rules.LAST_YEAR+1):
-        entry=market.session_on_or_after(sessions,date(year,1,1))
-        if entry is not None and entry<=rules.ASOF and market.asof_yield(yields,entry) is not None:
-            _,ranks[year]=books.candidates((broad,book),entry)
-            legacy[year]=ranks[year]
-    periods={}
-    for year in legacy:
-        entry=market.session_on_or_after(sessions,date(year,1,1))
-        end=market.session_on_or_after(sessions,date(year+1,1,1)) if year<rules.LAST_YEAR else sessions[-1]
-        a,b=after(spy,entry,4),before(spy,end,4)
-        periods[year]=(entry,end,books.benchmark_return(a[1],b[1]),market.asof_yield(yields,entry))
-    horizon=max([historical_end]+[entry+REUSE_MARGIN for entry,*_ in periods.values()])
-    scope=_reuse_scope(historical_end,horizon,treasury_rows)
     latest_day=all_spy[-1][0]
     active={s for s,r in universe.items() if r.get('listed') is True}
     latest_statements,latest_ranks=books.candidates(tuple({s:rows for s,rows in pool.items() if s in active} for pool in (broad,book)),latest_day)
@@ -485,15 +309,12 @@ def prepare(path=DATABASE, force=False):
     db.row_factory=sqlite3.Row
     try:
         db.executescript(SCHEMA+facts.SCHEMA)
-        # A company unit whose inputs are unchanged is copied from the published,
-        # verified database. A forced preparation always recalculates.
-        prior=None if force else _PriorUnits.open(db,path,owner,scope)
-        units,rebuilt,shifts={},set(),{}
+        units={}
         db.executemany('INSERT OR REPLACE INTO treasury10 VALUES(?,?)',
                        [(str(day),value) for row in treasury_rows
                         if (day:=rules.parse_day(row.get('date'))) is not None
                         and (value:=rules.num(row.get('year10'))) is not None])
-        treasury10_by_day={day:ten_year_yield(db,day) for day in {latest_day}|{p[0] for p in periods.values()}}
+        latest_treasury10=ten_year_yield(db,latest_day)
         db.executemany('INSERT INTO companies VALUES(?,?,?,?)',[(s,r.get('name') or 'Unavailable',r.get('exchange') or 'Unavailable',r.get('sector') or 'Unavailable') for s,r in universe.items()])
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
         # Denials are first-class preparation facts: every company and pool has
@@ -508,70 +329,21 @@ def prepare(path=DATABASE, force=False):
                     valuation=None)
                 if company.get('listed') is not True:
                     latest_admission[(symbol,pool)]['reason']='NOT_LISTED'
-        for year,(entry,end,spy_return,treasury) in periods.items():
-            count=sum(rules.latest_statement(rs,entry) is not None for rs in broad.values())
-            db.execute('INSERT INTO periods VALUES(?,?,?,?,?,?,?)',(year,str(entry),str(end),spy_return,treasury,len(legacy[year]),count))
-            a,b=after(spy,entry,4),before(spy,end,4)
-            db.execute('INSERT INTO baseline_periods VALUES(?,?,?,?,?)',(year,str(a[0]),str(b[0]),a[1],b[1]))
         cached_symbols=sorted(s for s in broad if market.cache_path_for(s).name in sources)
-        total=reused=0
         for number,symbol in enumerate(cached_symbols,1):
-            location=market.cache_path_for(symbol);name=location.name
-            # File bytes, never the file stamp, decide reuse: downloads rewrite
-            # checked files with equal bytes, and a copy can keep old stamps.
-            # Equal bytes of an unlisted company are not parsed: it has no
-            # latest root.
-            content=_file_digest(location)
-            unchanged=prior is not None and symbol in prior.units and prior.units[symbol]['content']==content
-            payload=None if unchanged and symbol not in active else json.loads(location.read_text())
-            rows=payload.get('div') if isinstance(payload,dict) else None
-            unit=units[symbol]=dict(content=content,
-                history=prior.units[symbol]['history'] if unchanged else _bounded_digest(payload,horizon,'div'),
-                rows=prior.units[symbol]['rows'] if unchanged else [len(rows),_rows_digest(rows)] if isinstance(rows,list) else None)
-            offset=None if unchanged or prior is None else prior.prepended(symbol,rows)
-            if offset is not None:
-                # Only the new rows' days are resolved; every other typed day is copied.
-                shifts[symbol]={day for row in rows[:offset] if (day:=facts.row_day(row)) is not None}
-            if prior is not None and prior.copy_history(symbol,unit['history']):
-                reused+=1
-            else:
-                rebuilt.add(symbol)
-                if payload is None:
-                    payload=json.loads(location.read_text())
-            light=div=None
-            if payload is not None:
+            # The facts identity binds each price file's bytes. An unlisted
+            # company has no latest root, so its prices are not parsed here.
+            content=market.cache_path_for(symbol).read_bytes()
+            units[symbol]=hashlib.sha256(content).hexdigest()
+            div=None
+            if symbol in active:
+                payload=json.loads(content)
                 light=[]
                 for r in payload.get('light') or []:
                     value=r.get('price') if r.get('price') is not None else r.get('close')
                     light.extend(bars([dict(date=r.get('date'),value=value)],'value'))
                 light.sort()
                 div=bars(payload.get('div') or [],'adjClose')
-            inserts=[]
-            for year,(entry,end,_,treasury) in (periods.items() if symbol in rebuilt else ()):
-                for pool,statements in [('legacy',book.get(symbol,[])),('cached',broad[symbol])]:
-                    candidate=ranks[year].get(symbol)
-                    if pool=='legacy' and candidate is None:
-                        continue
-                    statement=rules.latest_statement(statements,entry)
-                    if statement is None:
-                        continue
-                    row=snapshot(statement,entry,end,light,div,(year,symbol) in rules.BANKRUPT)
-                    if row is None:
-                        continue
-                    fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,ret,status=row
-                    # Original rescale rejects buy-date caps before ranking.
-                    if not books.eligible(pool,cap,ev):
-                        continue
-                    inserts.append((pool,year,symbol,candidate,fiscal,entry_date,exit_date,cap,ev,ebitda,earnings_yield,multiple,earnings_yield-treasury,ret,status))
-                    if pool=='legacy':
-                        fiscal_px=before(light or div,statement['fiscal'],7)
-                        valuation_px=after(light or div,entry,4)
-                        entry_px=after(div,date.fromisoformat(entry_date),0)
-                        exit_px=before(div,date.fromisoformat(exit_date),0)
-                        db.execute('INSERT INTO baseline_prices VALUES(?,?,?,?,?,?,?,?)',(year,symbol,str(fiscal_px[0]),str(valuation_px[0]),fiscal_px[1],valuation_px[1],entry_px[1],exit_px[1]))
-            db.executemany('INSERT INTO snapshots VALUES('+','.join('?'*15)+')',inserts)
-            total+=len(inserts)
-            if symbol in active:
                 for pool in ['legacy','cached']:
                     statement=latest_statements[pool].get(symbol)
                     candidate=latest_ranks.get(symbol)
@@ -599,73 +371,40 @@ def prepare(path=DATABASE, force=False):
             history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
             def lookup(day,column,forward,slack):
                 return (after if forward else before)(div,day,slack)
-            for mode,table,day_key in [('historical','snapshots','entry'),('latest','latest_snapshots','price_date')]:
-                if mode=='historical' and symbol not in rebuilt:
-                    continue
-                for saved in db.execute('SELECT * FROM '+table+' WHERE symbol=?',(symbol,)).fetchall():
-                    observation=dict(saved)
-                    pairs=metrics.evaluate(observation,history)
-                    screen_day=date.fromisoformat(saved[day_key])
-                    treasury_day=periods[saved['year']][0] if mode=='historical' else latest_day
-                    values=metrics.filter_values(observation,pairs,screen_day,lookup,financial_history,treasury10_by_day[treasury_day])
-                    db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                        [(mode,saved['pool'],observation.get('year',0),symbol,key,value) for key,value in values.items()])
+            for saved in db.execute('SELECT * FROM latest_snapshots WHERE symbol=?',(symbol,)).fetchall():
+                observation=dict(saved)
+                pairs=metrics.evaluate(observation,history)
+                values=metrics.filter_values(observation,pairs,date.fromisoformat(saved['price_date']),lookup,financial_history,latest_treasury10)
+                db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
+                    [('latest',saved['pool'],0,symbol,key,value) for key,value in values.items()])
             if number%200==0 or number==len(cached_symbols):
-                print(f'Prepared {number}/{len(cached_symbols)} cached companies; {total:,} new January snapshots; {reused:,} companies reused',flush=True)
+                print(f'Prepared {number}/{len(cached_symbols)} cached companies',flush=True)
         diagnostics.lap('companies')
-        diagnostics.note(companies=len(cached_symbols),companies_reused=reused,companies_rebuilt=len(rebuilt),snapshots_new=total)
+        diagnostics.note(companies=len(cached_symbols))
         for symbol in sorted(set(broad)-set(cached_symbols)):
             facts.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol))
         for (symbol,pool),evidence in latest_admission.items():
             facts.store_latest(db,symbol,pool,evidence)
         for symbol in sorted(broad):
             backtest_control.checkpoint()
-            if symbol in units and prior is not None and prior.copy_dated(symbol,units[symbol]):
-                continue
-            # Prepended rows touch only their own days: resolve those, copy the rest.
-            days=shifts.get(symbol)
-            resolution=facts.stock(RAW,symbol,backtest_control.checkpoint,days=days)
-            if days is not None and resolution['source']['sha256']!=units[symbol]['content']:
-                raise ValueError('Dated observation source changed during preparation.')
-            facts.store_stock(db,symbol,resolution)
-            if days is not None:
-                facts.copy_stock(db,'prior',symbol,days=days)
+            facts.store_stock(db,symbol,facts.stock(RAW,symbol,backtest_control.checkpoint))
         facts.store_market(db,facts.shared(RAW,backtest_control.checkpoint))
         diagnostics.lap('dated_facts')
         prepare_metrics(db)
         diagnostics.lap('metrics')
         scopes=[dict(mode='latest',pool=pool,context_date=str(latest_day),book=0) for pool in ('legacy','cached')]
-        if prior is not None:
-            prior.finish()
-        # Rows follow from the raw signature, each price file's bytes and the
-        # reuse scope (code, universe, metrics, financial inputs, SPY, Treasury).
-        facts.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,
-            scope=scope,prices={symbol:unit['content'] for symbol,unit in units.items()}))
+        # Rows follow from the raw signature and each price file's bytes.
+        facts.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,prices=units))
         diagnostics.lap('facts_finish')
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta,historical_through=str(historical_end),
-                              reuse=dict(scope=scope,symbols=units)).items():
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,latest=latest_meta).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
         if inputs!=signature() or sources!=price_sources():
             raise ValueError('Inputs changed during preparation; retry.')
         db.commit()
         diagnostics.lap('commit')
-        # The independent engine already agreed on these exact historical
-        # inputs when every company unit was copied and the copied baseline is
-        # the published one. Any recalculated or removed unit is checked again.
-        result=prepared_baseline(db) if prior is not None and not rebuilt and prior.units.keys()==units.keys() else None
-        if result is not None and json.loads(json.dumps(result))==prior.baseline:
-            print('Historical inputs unchanged; the verified January baseline was reused.',flush=True)
-            diagnostics.note(verification='reused')
-        else:
-            diagnostics.note(verification='independent')
-            result=verify_reference(db)
-        diagnostics.lap('verification')
-        diagnostics.note(verified_years=len(result['years']),verified_holdings=sum(len(year['holdings']) for year in result['years']))
-        if inputs!=signature() or sources!=price_sources():
-            raise ValueError('Inputs changed during baseline verification; retry.')
         db.close()
-        owner.publish(temporary,result)
+        _replace(temporary,path)
         diagnostics.lap('publication')
     except BaseException:
         db.close()
@@ -676,55 +415,23 @@ def prepare(path=DATABASE, force=False):
 
 
 def prepare_metrics(db):
-    """Publish ready-to-rank values for each mode, pool, date and company.
+    """Publish ready-to-rank latest values for each pool and company.
 
     The selected fiscal report bounds history; its availability and screening
-    eligibility were established when preparing the observation. Latest uses
-    year 0, while historical observations use their January book year.
+    eligibility were established when preparing the observation. Latest rows
+    use year 0. Dated books store their own values (engines/original/schedules.py).
     """
     metrics.validate_catalog()
     histories={}
     for row in db.execute('SELECT * FROM statements ORDER BY symbol,fiscal'):
         histories.setdefault(row['symbol'],[]).append(dict(row))
     db.execute('DELETE FROM screening_metrics')
-    for mode,table in [('historical','snapshots'),('latest','latest_snapshots')]:
-        values=[]
-        for row in db.execute('SELECT * FROM '+table):
-            observation=dict(row)
-            for metric,pair in metrics.evaluate(observation,histories.get(row['symbol'],[])).items():
-                values.append((mode,row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
-        db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',values)
-
-
-def aggregate(rows):
-    groups={}
-    for r in rows:
-        groups.setdefault(r['year'],[]).append(r)
-    return {year:dict(holdings=stocks,median_market_cap=statistics.median(r['market_cap'] for r in stocks),median_yield=statistics.median(r['metric_yield'] for r in stocks),median_multiple=statistics.median(r['metric_multiple'] for r in stocks),portfolio=statistics.mean(r['return_value'] for r in stocks)) for year,stocks in groups.items()}
-
-
-def prepared_baseline(db):
-    """Export the SQL engine's priced January result for independent comparison."""
-    years=[]
-    for year,group in aggregate(screening.historical(db)).items():
-        period=dict(db.execute('SELECT * FROM periods JOIN baseline_periods USING(year) WHERE year=?',(year,)).fetchone())
-        holdings=[]
-        for stock in group['holdings']:
-            prices=dict(db.execute('SELECT * FROM baseline_prices WHERE year=? AND symbol=?',(year,stock['symbol'])).fetchone())
-            holdings.append({key:(prices[key] if key in check.PRICE_FIELDS else stock[key]) for key in check.HOLDING_FIELDS})
-        years.append(dict(year=year,entry=period['entry'],exit=period['exit'],spy_entry=period['spy_entry'],spy_exit=period['spy_exit'],
-                          spy_entry_price=period['spy_entry_price'],spy_exit_price=period['spy_exit_price'],
-                          spy=period['spy'],portfolio=group['portfolio'],holdings=holdings))
-    through=json.loads(db.execute("SELECT value FROM metadata WHERE key='historical_through'").fetchone()[0])
-    return dict(through=through,years=years)
-
-
-def verify_reference(db):
-    result=prepared_baseline(db)
-    independent=revalue.calculate(date.fromisoformat(result['through']))
-    check.agree(result,independent)
-    print(f'Verified {len(result["years"])} January books, holdings, prices and returns with the independent engine.',flush=True)
-    return result
+    values=[]
+    for row in db.execute('SELECT * FROM latest_snapshots'):
+        observation=dict(row)
+        for metric,pair in metrics.evaluate(observation,histories.get(row['symbol'],[])).items():
+            values.append(('latest',row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
+    db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',values)
 
 
 def main():

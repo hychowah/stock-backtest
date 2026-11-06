@@ -178,13 +178,11 @@ class PortableFingerprintTests(unittest.TestCase):
     def test_directory_size_is_not_a_cache_dependency(self):
         with tempfile.TemporaryDirectory() as tmp,ExitStack() as context:
             root=Path(tmp);raw=root/'raw';raw.mkdir();(raw/'px').mkdir()
-            results=root/'results';results.mkdir()
             for name in ('universe.json','metrics.jsonl','spy-div.json','treasury.json'):(raw/name).write_text('[]')
-            (results/'summary-exits.txt').write_text('Through 2026-10-20\n')
-            context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw));context.enter_context(patch.object(research,'RESULTS',results))
-            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.screening,'screening.py'),(research.selection,'selection.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.market,'market.py'),(research.legacy,'legacy.py'),(research.revalue,'revalue.py'),(research.baseline,'baseline.py'),(research.financial_inputs.parameters,'parameters.py'),(research.measure_observations,'measure_observations.py'),(research.facts,'facts.py')]:
+            context.enter_context(patch.object(research,'ROOT',root));context.enter_context(patch.object(research,'RAW',raw))
+            for module,name in [(research,'research.py'),(research.metrics,'metrics.py'),(research.books,'books.py'),(research.rules,'rules.py'),(research.cache_assets,'cache_assets.py'),(research.financial_inputs,'financial_inputs.py'),(research.market,'market.py'),(research.financial_inputs.parameters,'parameters.py'),(research.facts,'facts.py')]:
                 file=root/name;file.write_text('source');context.enter_context(patch.object(module,'__file__',str(file)))
-            for name in ('legacy_downloads.py','fmp_download.py','daily.py'):(root/name).write_text('source')
+            for name in ('fmp_download.py','daily.py'):(root/name).write_text('source')
             expected=research.signature();original=Path.stat;directory=raw/'px'
             stamp=directory.stat().st_mtime_ns
             def stat(path,*args,**kwargs):
@@ -194,12 +192,12 @@ class PortableFingerprintTests(unittest.TestCase):
             with patch.object(Path,'stat',stat):self.assertEqual(research.signature(),expected)
             self.assertEqual(expected['raw/px'][0],'directory')
             self.assertTrue(all('\\' not in key for key in expected))
-            policy_source=Path(research.selection.__file__)
-            policy_source.write_text('changed selection policy source')
+            policy_source=Path(research.books.__file__)
+            policy_source.write_text('changed book policy source')
             changed=research.signature()
-            self.assertNotEqual(changed['selection.py'],expected['selection.py'])
-            self.assertEqual({key:value for key,value in changed.items() if key!='selection.py'},
-                             {key:value for key,value in expected.items() if key!='selection.py'})
+            self.assertNotEqual(changed['books.py'],expected['books.py'])
+            self.assertEqual({key:value for key,value in changed.items() if key!='books.py'},
+                             {key:value for key,value in expected.items() if key!='books.py'})
 
 
 if __name__=='__main__':unittest.main()

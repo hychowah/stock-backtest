@@ -120,7 +120,8 @@ checks. Windows `backtest-web.cmd` runs the same flow through WSL.
 Local paths live in ignored `data/workspace.json`.
 
 Preserve Windows-owned raw data, databases, logs, environments, local builds and
-the verified canonical report. Do not edit runtime source or copy these assets
+the runtime copy of the frozen report, which deployment never installs or
+replaces. Do not edit runtime source or copy these assets
 back into WSL. The WSL checkout has source and synthetic fixtures, not a
 second raw cache. Run real-cache preparation and `tests/check_paths.py` with
 native Windows Python.
@@ -134,44 +135,45 @@ Only manifest-owned source can be removed. See
 [docs/workspaces.md](docs/workspaces.md). Verify with
 `python3 tests/test_deployment.py`, including native Windows.
 
-## What the test does
+## What the app does
 
-Each January, from 1996 through 2026, buy the 50 US common stocks with the
-highest EBITDA/EV. Sell at the next January. The 2026 book is marked through the
-last SPY session on or before 2026-10-21. Compare with SPY, dividends included.
-Equal weight. No commissions. The 3-month Treasury yield is one number for every
-stock that day, so subtracting it does not change the rank.
+The app screens US common stocks by EBITDA/EV and other prepared metrics. A
+latest screen ranks stocks on the latest cached SPY session. A dated backtest
+buys the selected stocks on each date of a fixed or random schedule, holds them
+to the next date and compares the result with SPY, dividends included. Equal
+weight. No commissions. The 3-month Treasury yield is one number for every stock
+that day, so subtracting it does not change the rank. The original study (each
+January from 1996, the top 50) is a 12-month fixed schedule from 1 January.
 
-## Rules already chosen
+## Financial rules
 
 - Exchanges: NYSE, Nasdaq, NYSE American. ETFs and funds are out. Delisted US
   names are in the universe.
 - The annual figure is treated as known 90 days after fiscal year-end. A report
   older than 800 days is dropped.
-- Enterprise value at the buy date uses the report's debt and cash and the
-  dividend-adjusted buy-date price.
-- Market cap at least $100 million. Enterprise value at least $50 million.
-  Currency USD. A stock with no buy price is left out.
-- If trading stops before the January sale, the exit is the last price. That
-  covers an acquisition, a called note and a SPAC that returns cash.
+- Enterprise value at the entry date uses the report's debt and cash and the
+  dividend-adjusted entry price.
+- Default floors: market cap at least $100 million, enterprise value at least
+  $50 million. The `legacy` pool applies them before ranking. Currency USD. A
+  stock with no entry price is left out.
+- If trading stops before the scheduled exit, the exit is the last price. That
+  covers an acquisition, a called note and a SPAC that returns cash. A stock
+  that still has a price at the exit keeps it; a later delisting changes nothing.
 - A bankruptcy is a total loss. `BANKRUPT` in `backtest/financial/rules.py` is
-  the set of `(year, symbol)` pairs that get −100%. It is empty. The 37 stops
-  were checked: acquisitions, redemptions, SPAC cash or warrants.
-- A stock that still has a January price keeps that price. A later delisting
-  does not rewrite the year.
+  the set of `(entry year, symbol)` pairs that get −100%. It is empty. The 37
+  early stops of the January study were checked: acquisitions, redemptions, SPAC
+  cash or warrants.
+- The first usable day of a schedule or historical root is `rules.FIRST_DAY`
+  (1996-01-01).
 
-## Current result
+## Frozen January record
 
-`results/summary-exits.txt` is the result to continue from. It keeps a stock
-when trading stops. `results/legacy/summary.txt` and `results/legacy/picks.csv`
-are the earlier pass, which dropped a stock whose price stopped more than 10
-days before the January sale. Do not quote them as the latest result.
-
-`scripts/revalue.py` requests a verified refresh of `results/summary-exits.txt`
-and the research database. The independent read-only `calculate(through)` lives
-in `backtest/engines/reference/revalue.py`; it reads the cache and does not
-download. `scripts/run.py` runs the retained downloader and the older report in
-`backtest/engines/reference/legacy.py`, which keeps the old exit rule.
+`results/summary-exits.txt`, `results/baseline-history/`, `results/legacy/` and
+`results/stops/` are a frozen record of the January study. Nothing regenerates
+or touches them. `summary-exits.txt` keeps a stock when trading stops; its 2026
+row is marked through its Through date. `results/legacy/` is an earlier pass
+that dropped early stops; do not quote it. `results/stops/stops-class.json`
+records SEC form types for the 37 stops; its merger flag is broad.
 
 ## Cache
 
@@ -191,26 +193,25 @@ Do not refetch data that is already here. Keep `raw/` with the Windows runtime.
 A 30-year price or Treasury request returns only the latest rows, so request
 short windows. One stock price history is capped at about 5,000 sessions. Bulk
 statement files are refused when many run at once. Per-symbol `key-metrics` calls
-work at about 16 at a time; `fetch_metrics` turns off the pace gate in
-`backtest/inputs/legacy_downloads.py`.
+work at about 16 at a time.
 
-## How to continue
+## Development check
 
-Recompute exits from the cache with `python scripts/revalue.py`. Add a
-bankruptcy by putting `(year, "SYMBOL")` in `BANKRUPT`, then run it again. Run
-`scripts/run.py` only when the cache is missing data. Merge any new exit rule
-into `backtest/engines/reference/revalue.py` before treating the legacy report as
-current. `scripts/classify_stops.py` and `results/stops/stops-class.json` record
-SEC form types for the 37 stops. Their merger flag is broad; check a name before
-calling it a bankruptcy.
+`python3 scripts/check.py` runs one Original custom run (12-month schedule from
+1 January 1996 to 2026-10-21, legacy pool, `ev_ebitda` ranks 1–50, default
+floors). It compares it with `backtest/engines/reference/revalue.calculate`, an
+independent cache-only engine, at full precision; it must find 0 differences.
+It also compares the annual rows with the frozen report; only its 2026 row
+differs. Run it on the real-data bench after a change to book policy. No build,
+startup or preparation runs it, and no module outside
+`backtest/engines/reference/` imports that package.
 
 ## Project layout
 
 Documented commands live in `scripts/`. Financial policy, screening, calendars
 and portfolio results live in `backtest/`; `backtest/paths.py` resolves paths.
 Operational tools are in `tools/ops/`; `tools/experiments/` keeps the FMP API
-probes. Current reports are in `results/`, older reports in
-`results/legacy/`, stop analyses in `results/stops/` and small cited experiment
+probes. `results/` holds the frozen January record and small cited experiment
 summaries in `results/experiments/`. The website source lives in `website/`.
 
 Builds, startup and data-panel rebuilds write ignored `website/local/`, which the
@@ -244,25 +245,17 @@ controls change. Keep the guide self-contained. Report unverified browser checks
 Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
-**Research database and baseline.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 13) from the raw cache. It compares the
-prepared baseline with `revalue.calculate(through)` at full precision. Both
-engines must agree on all years, ranks, symbols, dates, prices, valuations,
-returns and exit basis. Never bypass disagreement or relax the tolerance.
-Reused company units must equal a full rebuild; a changed scope or
-historical unit reruns the comparison.
-`backtest/inputs/baseline.py` owns the report cutoff, rendering, revision
-evidence and recoverable report/database publication. Verified changes update the
-canonical report without advancing its Through date. Previous reports stay
-verbatim under ignored `results/baseline-history/`. First-run unavailable prices
-stay null. An unfinished `data/research.sqlite.publication.json` blocks readers.
-No website, screen or tool reads the January books; the development check
-`backtest/engines/reference/check.py` compares a 12-month dated run with
-`revalue` on a real-data copy. The `legacy` pool keeps the original 250-candidate pre-price screen with the
-current exit rule. The `cached` pool covers cached-price companies only; report
-missing coverage and unreviewed early stops. Checks: `tests/test_baseline.py`
-(also native Windows), `tests/test_research.py` and
-`tests/test_prepared_reuse.py`. See
+**Research database.** `scripts/research.py prepare` builds
+`data/research.sqlite` (research schema 14) from the raw cache: companies,
+annual reports, typed facts and the latest book. Every build is a full build. It
+writes a temporary file and replaces the database atomically; a failure keeps
+the previous database. Research holds no January books, report binding or
+reuse. It deletes the stale `data/research.sqlite.publication.json`.
+`research.calculation_sources()` lists only code that computes prepared rows or
+books, never the reference engine or the development check. The `legacy` pool
+keeps the original 250-candidate pre-price screen; the `cached` pool covers
+cached-price companies only. Checks: `tests/test_research.py`,
+`tests/test_prepared_facts.py` and `tests/test_research_inventory.py`. See
 [docs/research-workflow.md](docs/research-workflow.md).
 
 **Website screening.** `website/rendering/data.py` embeds the latest screen of
@@ -284,7 +277,7 @@ and `node tests/check-result-artifacts.cjs`.
 **Selection order.** `filter_first` is the default. `rank_first` takes the
 inclusive rank range from the prepared pool before user filters, keeps original
 ranks and adds no replacements. Equal weights use the survivor count. Each
-historical year ranks independently. Preserve the order through jobs, the queue,
+dated period ranks independently. Preserve the order through jobs, the queue,
 saved results and replay. Older records omit it and mean filter-first; never
 rewrite or recalculate them. Check `python3 tests/test_selection_order.py`.
 
@@ -327,7 +320,7 @@ and `results/experiments/fmp-throughput-2026-10-23.json`. Do not present old
 timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
-daily SQLite cache (version 6) after research preparation. It prepares only the
+daily SQLite cache (version 7) after research preparation. It prepares only the
 requested pool and records completion in `period_pools` in the same transaction
 as the rows. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
