@@ -17,7 +17,7 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`), T2 (detail-mode explanations,
 D1), T3 (JSON observation tables and reference evaluator deleted), P1, P2
-(P2a, P2b, P2c), P3a with its follow-up, P3b and P3c1.
+(P2a, P2b, P2c) and P3 (P3a with its follow-up, P3b, P3c1, P3c2).
 
 Bench, P1 code (6367bef, research schema 13, daily 6): cold build 462 s
 (research 377, daily 84). `research.sqlite` 2.24 GB; `schedules.sqlite` 1.10 GB
@@ -43,6 +43,11 @@ store = old snapshots (1,378 book pools, 4,371,522 rows, 7,939,836 pairs);
 harness parity 16 runs. Cold build 264 s: research 158, daily 106 (prices
 101). `research.sqlite` 1.31 GB; `schedules.sqlite` 0.80 GB before books,
 5.27 GB with 1,378 books. User test 398.3 s computed, 166.0 s saved.
+
+P3c2 (007c5e3; research schema 19, daily 11): cold build 143 s;
+`schedules.sqlite` 3.2 MB before books, 4.47 GB with 1,378; user test
+368.4/147.0 s. A one-session nightly update takes 157 s and keeps 1,376 of
+1,378 dated books; recomputing every book instead costs 210 s more (P3c2).
 
 ## Decisions
 
@@ -136,13 +141,14 @@ writer, tables and report binding, all research reuse, `baseline.py`,
 1996 floor; a stored book row records only how a holding exited;
 `rules.BANKRUPT` holds `(symbol, day of loss)`.
 
-### P3. One fact store and one book function
+### P3. One fact store and one book function (done: f3312b7, e62f012, 3af5a28, 56d9483, 007c5e3)
 
 P3a wrote the store (each raw file parsed once into the facts; one admission
 rule `books.Screen.decide` and one book function `books.book` over
 `facts.BookFacts`; `book_store.store`). P3b switched the readers. P3c1 gave
 each code role one identity, the book store every read of its tables and
-scopes their book ids. P3c2 finishes P3.
+scopes their book ids. P3c2 keeps unaffected books and updates the book
+cache in place.
 
 Owns: `research.py`, `daily.py`, `facts.py`, `fact_view.py`, `books.py`,
 `book_store.py`, `schedules.py`, `book_batch.py`, `screening.py`, the
@@ -219,7 +225,7 @@ per schema).
   `research.sqlite` 1.31 GB; `schedules.sqlite` 0.80 GB before books, 5.26 GB
   with 1,378 books. User test 381.1 s computed, 153.0 s saved.
 
-#### P3c2. Kept books, the in-place cache and the deletes (code done)
+#### P3c2. Kept books, the in-place cache and the deletes (done, 007c5e3)
 
 - Rule (`books.py`): `horizon(entry, exit)` = max(exit, entry +
   `FORWARD_REACH`); `VISIBLE` maps a diff kind's key to its visible day
@@ -246,6 +252,23 @@ per schema).
 - Tests: `KeptBookTests` (one per kind just after the horizon, company
   removal, names and listing, one-session append, short reach, interrupted
   update, book identity, older version, another base, current cache).
+- Evidence (bench, 007c5e3). (a) Cold build: the four digests equal 3fe3d50;
+  records differ only in `input`, `projection` (version 18 to 19, code,
+  content) and timings. Book store parity with the 3fe3d50 store: 1,380 book
+  pools (4,374,931 rows, 7,945,965 pairs, 75,404,972 filter values), 0
+  mismatches. Dev check 0 differences; harness 16 runs, 0 different;
+  real-data website checks pass. Cold build 142.7 s: research 139.8
+  (companies 137.4), book cache 2.9. `research.sqlite` 1.26 GB. (b) One
+  session appended to 3,985 price files, SPY and Treasury: nightly 156.9 s
+  (research 153.9 with 3,985 files compared and 3,246 skipped; book cache 3.0
+  in place); 1,376 of 1,378 dated books kept; user test 145.1 s, 2 books
+  computed. (c) FY2026 reports for 5 companies (2 eligible statements, 5
+  annual): nightly 139.9 s (every price file skipped; book cache 3.9); change
+  day 2026-09-28; 1,342 of 1,376 kept; user test 149.0 s, 34 books computed.
+  (d) Recompute all: 1,342 book pools in 210.1 s with 8 workers (plus 71.6 s
+  to delete them in place), against 3-4 s to keep them. After each restore the
+  raw files match their sha256 manifest (43,392 files, 0 differing); the final
+  store still equals the 3fe3d50 store (1,378 shared pools, 0 mismatches).
 
 ### P4. Book rows read in place
 
@@ -338,5 +361,4 @@ review and the P3 review at 1e3596d (P3c1 scope items 1–6).
 
 ## Next
 
-P3c2 real-copy evidence on the bench; then P4 after the independent review
-of P3c.
+P4 after the independent review of P3c.
