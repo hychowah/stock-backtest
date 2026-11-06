@@ -102,7 +102,8 @@ class ProjectionTests(unittest.TestCase):
             self.assertEqual(json.loads(copied.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])['facts'], first)
             # The daily cache binds the facts; it holds no copy of them.
             names = {row[0] for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            self.assertFalse(names & set(facts.TABLES))
+            self.assertFalse(names & {'stock_days', 'market_days', 'annual_facts', 'fact_sources',
+                                       'latest_admission', 'fact_metadata'})
             self.assertFalse([name for name in names if name.startswith('observation_')])
             row = original.execute("SELECT operating_income,operating_income_reason,revenue FROM annual_facts "
                                    "WHERE symbol='TEST' AND fiscal='2014-06-30'").fetchone()

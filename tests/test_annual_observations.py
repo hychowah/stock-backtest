@@ -124,9 +124,6 @@ class Company:
     dated owner policy. Set stale to fail the view's freshness callback.
     """
 
-    TABLES = ('companies', 'statements', 'prices', 'sessions', 'metadata', 'financial_inputs', 'treasury10',
-              'snapshots', 'screening_metrics', 'filter_values') + facts.TABLES
-
     def __init__(self):
         self.db = sqlite3.connect(':memory:')
         self.db.row_factory = sqlite3.Row
@@ -147,7 +144,7 @@ class Company:
 
     def view(self):
         db = self.db
-        for table in self.TABLES:
+        for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
             db.execute('DELETE FROM ' + table)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology')")
         db.executemany('INSERT INTO statements VALUES(?,?,?,?,?,?,?)', [
@@ -179,7 +176,7 @@ class Company:
         scopes = list(self.scopes) + [dict(mode='latest', pool=pool, context_date=self.latest_date, book=0)
                                       for pool in ('legacy', 'cached')]
         facts.finish(db, self.latest_date, inputs='fixture', scopes=scopes)
-        return facts.prepared_view(db, db, self.freshness, checkpoint=lambda: None)
+        return facts.View(db, db, self.freshness, lambda: None)
 
 
 class AnnualResolutionTests(unittest.TestCase):
@@ -483,7 +480,7 @@ class AnnualTransportTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'incompatible'):
                 facts.require(db)
             with self.assertRaisesRegex(ValueError, 'incompatible'):
-                facts.prepared_view(db, db, lambda: None, checkpoint=lambda: None)
+                facts.View(db, db, lambda: None, lambda: None)
 
     def test_research_incompatible_facts_block_downstream_fingerprints(self):
         inputs = self.prepared()

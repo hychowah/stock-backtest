@@ -210,12 +210,12 @@ example, the distinct display values `13.501116090704034` and
 `13.501116090704036` both become `0.13501116090704035` after division by 100.
 Old requests and saved records are not rewritten.
 
-The single qualified scalar gate is `backtest/variables/selection.py`. It admits
-a fixed inventory of 77 IDs: the 52 direct inputs, two adapters, six reported
-fields and 17 owner lanes. It admits definition versions 1–3 with catalogs
-`/1`–`/3` and temporal policy `annual-lag90/1`. Every
-captured definition is checked, including unused and constant-only entries.
-Provider recognition or compiler support alone grants no qualification.
+The one formula gate is `columns.require_program` in
+`backtest/variables/columns.py`. It admits the evaluator's own inventory of 77
+IDs: the 52 direct inputs, two adapters, six reported fields and 17 owner lanes.
+It admits definition versions 1–3 with catalogs `/1`–`/3` and temporal policy
+`annual-lag90/1`. Every captured definition is checked, including unused and
+constant-only entries. Catalog recognition alone grants no qualification.
 
 ## Library and reproducibility
 

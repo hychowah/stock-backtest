@@ -424,8 +424,8 @@ def require_formula_support(program, engine='original', *, checkpoint=backtest_c
     """
     if engine != 'original':
         _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Unsupported calculation engine.')
-    from backtest.variables import selection
-    return selection.require_program(program, checkpoint=checkpoint)
+    from backtest.variables import columns
+    return columns.require_program(program, checkpoint=checkpoint)
 
 
 def preview_engine(engine='original'):

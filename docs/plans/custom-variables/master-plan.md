@@ -50,9 +50,9 @@ The design contract is in [variable design](variable-design.md).
 - **One correctness authority.** The Python reference evaluator defines results.
   The deleted numerical engine compiled supported programs behind the same
   scalar boundary. Unsupported work fails before execution, with no fallback.
-- **One qualification gate.** `backtest/variables/selection.py` admits a fixed
-  77-ID inventory. Catalog recognition, provider support or compiler support
-  alone grants no application qualification.
+- **One qualification gate.** `columns.require_program` in
+  `backtest/variables/columns.py` admits a fixed 77-ID inventory. Catalog
+  recognition alone grants no application qualification.
 - **Conservative library retention (Phase 5).** Delete hides an entry. Revisions
   stay. There is no eviction. A damaged store is preserved and reported.
 - **Exact authoring content.** Owners produce the editor descriptors. One

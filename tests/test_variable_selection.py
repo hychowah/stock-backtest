@@ -8,7 +8,7 @@ from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d
 import test_strategy_requests as requests
 import test_variable_definitions as language
-from test_scalar_execution import Fixture
+from test_scalar_execution import Fixture, preview
 
 
 def program(expression=None, unit='scalar', display='number'):
@@ -85,7 +85,7 @@ class FormulaRootAdmissionTests(unittest.TestCase):
         stocks,_=fixture.select(constant,latest=True)
         self.assertEqual([row['symbol'] for row in stocks],['A0001','A0002','A0003'])
         with fixture.view() as view:
-            block=x.preview(constant,[dict(symbol='A0000',pool='cached',mode='latest',date='2015-01-05')],view)['evaluations'][0]
+            block=preview(constant,[dict(symbol='A0000',pool='cached',mode='latest',date='2015-01-05')],view)['evaluations'][0]
         self.assertEqual(block['results'][0]['reason'],'ROOT_NOT_ADMITTED')
         self.assertEqual(block['observations']['roots'][0]['reason'],'NOT_LISTED')
 
@@ -97,9 +97,9 @@ class FormulaRootAdmissionTests(unittest.TestCase):
                [('A0249','legacy'),('A0250','legacy'),('A0005','legacy'),('A0250','cached')]]
         constant=fixture.capture(language.constant('5'),pool='legacy')
         with fixture.view() as view:
-            block=x.preview(constant,roots,view)['evaluations'][0]
+            block=preview(constant,roots,view)['evaluations'][0]
             # Asking for fewer companies cannot promote one into the buffer.
-            alone=x.preview(constant,[roots[1]],view)['evaluations'][0]
+            alone=preview(constant,[roots[1]],view)['evaluations'][0]
         self.assertEqual([row['valid'] for row in block['results']],[True,False,False,True])
         self.assertEqual([row['reason'] for row in block['observations']['roots']],
                          [None,'OUTSIDE_LEGACY_BUFFER','MISSING_CACHED_PRICES',None])

@@ -9,7 +9,7 @@ import sqlite3
 import tempfile
 import unittest
 from unittest.mock import patch
-from backtest.variables import definitions as d, library, measures, selection
+from backtest.variables import columns, definitions as d, library, measures
 from backtest.application import variable_authoring as a
 from backtest.application import strategy_requests as s
 import test_variable_definitions as language
@@ -22,8 +22,8 @@ class AuthoringTests(unittest.TestCase):
         self.store=library.Store(Path(self.folder.name)/'variables.sqlite')
     def test_all_exact_measures_validate_save_reopen_capture_without_import(self):
         catalog=a.catalog();descriptors=catalog['measures'];self.assertEqual(len(descriptors),33)
-        self.assertEqual({item['id'] for item in catalog['expanded_parameters']},set(selection.QUALIFIED_PARAMETERS))
-        self.assertTrue(all(all(item['support'].values()) for item in catalog['expanded_parameters']+descriptors))
+        self.assertEqual({item['id'] for item in catalog['expanded_parameters']},{item['id'] for item in columns.catalog()})
+        self.assertTrue(all(item['support']==dict(original=True) for item in catalog['expanded_parameters']+descriptors))
         for measure in descriptors:
             with self.subTest(measure=measure['id']):
                 root=measure['root']

@@ -128,7 +128,7 @@ const VariableWorkspace=(()=>{
     node('variable-json').value=JSON.stringify(editor.definition.expression,null,2);
   }
   function parameters(){return editor?.definition.parameter_catalog==='financial-parameters/3'?(catalog?.expanded_parameters||[]):editor?.definition.parameter_catalog==='financial-parameters/2'?(catalog?.version2_parameters||[]):(catalog?.parameters||[]);}
-  function support(item){const s=item.support;if(!s)return '';return `Recognized; application qualification ${s.application_qualified?'qualified':'not qualified'}; Original ${s.original?'supported':'unsupported'}. Installed readiness and observed coverage are separate.`;}
+  function support(item){const s=item.support;if(!s)return '';return `Original ${s.original?'supported':'unsupported'}. Installed readiness and observed coverage are separate.`;}
   function options(items,selected){
     const groups=new Map();for(const item of items){const group=item.kind==='adapter'?'Existing policy adapters':item.source?.endpoint||'Financial inputs';if(!groups.has(group))groups.set(group,[]);groups.get(group).push(item);}
     return (selected?'':'<option value="" selected>Choose a parameter</option>')+[...groups].map(([group,values])=>`<optgroup label="${esc(group)}">${values.map(p=>`<option value="${esc(p.id)}" ${selected===p.id?'selected':''}>${esc(p.description)} (${esc(p.unit)})</option>`).join('')}</optgroup>`).join('');

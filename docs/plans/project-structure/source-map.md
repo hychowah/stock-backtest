@@ -30,27 +30,18 @@ application and input owners. Package initializers execute no operations.
 See the [custom-variable summary](../custom-variables/master-plan.md) for the
 contracts. These modules own the feature.
 
-- `backtest/observations.py`: direct observation capabilities, immutable plans,
-  temporal observations and detached evidence. It imports no compiler.
-- `backtest/inputs/observation_inputs.py`: prepared evidence, owner scopes and
-  root admission. Semantic source, policy and content bindings reject stale reuse.
-- `backtest/inputs/dated_observation_inputs.py`: saved stock, Treasury and SPY
-  calendar evidence. It never repairs or downloads. Shared sources use the empty
-  symbol.
-- `backtest/inputs/sqlite_observations.py`: a borrowed SQLite-backed observation
-  view over the prepared database.
+- `backtest/inputs/facts.py`: the typed facts in `research.sqlite`, the saved-file
+  resolver and the borrowed `View` (admission, entry valuation, typed reads and
+  stored January and latest owner lanes).
 - `backtest/inputs/operation_inputs.py`: one Original scalar operation's daily
   and research connections.
 - `backtest/measure_observations.py` and `backtest/variables/measures.py`:
   bounded financial-owner evidence and exact-reference measure bundles.
 - `backtest/variables/definitions.py`: formula validation, normalization,
   identities, unit inference and resolved dependency programs.
-- `backtest/variables/reference.py` and `evaluation.py`: bounded context plans,
-  independent Python binary64 arithmetic and detached operation evidence.
-- `backtest/variables/columns.py`: values-only formula evaluation for scalar
-  selection. It keeps the reference rules and arithmetic and records no trace.
+- `backtest/variables/columns.py`: the one formula evaluator, values only or
+  explained, and the one formula gate (`require_program`).
 - `backtest/selection.py`: pure finite-scalar ranking and conditions.
-  `backtest/variables/selection.py`: the qualified reference-backed selection gate.
 - `backtest/variables/library.py`: the durable variable repository in
   `data/variable-library.sqlite`, with capture and checked restore.
 - `backtest/application/strategy_requests.py`: complete immutable strategy intent.

@@ -828,7 +828,8 @@ The facts' content identity hashes what determines the rows: the raw-file
 signature, each price file's content digest, the reuse scope, the scopes and
 the preparation policy (`facts.py`, `financial_inputs.py`, `books.py`,
 `rules.py`, `measure_observations.py`, `research.py`, `parameters.py`).
-Preparation does not hash the rows themselves, so an incremental build and a
+The raw-file signature leaves out `raw/download-coverage.json`, which no
+preparation reads. Preparation does not hash the rows themselves, so an incremental build and a
 full rebuild of the same inputs record the same identity. The daily cache binds
 that metadata. Operation entry checks the daily fingerprint once: the accepted
 raw-file signature and the recorded research metadata, not the prepared rows.
@@ -849,8 +850,8 @@ dates. Only those named annual adapters support annual history. Typed facts 1,
 research schema 13 and daily cache 6 require incompatible caches to rebuild;
 durable records keep their formats. Version-3 authoring exposes all 52 direct
 inputs, policy adapters and 33 exact measures. The original four-item catalog
-remains available for legacy definitions. `variables.selection.require_program()`
-owns qualified scalar admission. Supported captures run through Original in
+remains available for legacy definitions. `columns.require_program()` is the
+one formula gate. Supported captures run through Original in
 Latest, January, fixed and random modes. Original sample preview and complete
 recorded January/latest coverage are separate operations. Eager scalar execution
 remains unsupported. Semantic restoration remains independent of execution

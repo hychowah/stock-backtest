@@ -5,18 +5,17 @@ wins over archive lookup. Unchanged captures are returned without a library or
 catalog read. No operation starts a calculation or owns financial resources.
 """
 from backtest.runtime import backtest_control
-from backtest.variables import columns, definitions, library, parameters, measures, selection
+from backtest.variables import columns, definitions, library, parameters, measures
 from backtest.application import strategy_requests
 
 
 def catalog():
+    """Editor descriptors; each support flag comes from the one formula gate's inventory."""
     available = {item['id']: item for item in columns.catalog()}
     admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
     expanded = parameters.catalog(parameters.V3)
-    qualified=set(selection.QUALIFIED_PARAMETERS)
     for item in expanded:
-        item['support']=dict(recognized=True,application_qualified=item['id'] in qualified,
-            original=item['id'] in qualified)
+        item['support']=dict(original=item['id'] in available)
     terms = []
     for descriptor in measures.catalog():
         bundle = measures.bundle([descriptor['id']])
@@ -31,10 +30,10 @@ def catalog():
         except definitions.FormulaError:
             original=False
         terms.append(dict(descriptor, submitted=bundle['definitions'], labels=labels,
-            support=dict(recognized=True,application_qualified=original,original=original)))
+            support=dict(original=original)))
     return dict(parameters=admitted, builtins=strategy_requests.builtin_catalog(),
                 expanded_parameters=expanded, version2_parameters=parameters.catalog(parameters.V2), measures=terms, units=parameters.units(parameters.V3),
-                operations=sorted(selection.QUALIFIED_OPERATIONS),
+                operations=sorted(columns.OPERATIONS),
                 namespaces=[parameters.V1,parameters.V2,parameters.V3],
                 displays={unit:details['displays'] for unit,details in parameters.units(parameters.V3).items()},
                 preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,

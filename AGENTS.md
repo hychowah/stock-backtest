@@ -416,17 +416,18 @@ before source ownership ends. See [docs/evidence-views.md](docs/evidence-views.m
 **Custom variables.** `backtest/variables/columns.py` evaluates formulas of
 definition versions 1–3 and catalogs `/1`–`/3`, values only or explained, over the
 typed facts of `backtest/inputs/facts.py` (research only; the daily cache does
-not copy them). One code path computes the values and their explanations; the
-parity harness on the bench is the oracle for changes to it. New formulas use
-version 3 and catalog `/3`; old formulas need an explicit upgrade.
-`backtest/variables/selection.py` holds the single qualified scalar gate.
-Evaluator support alone grants no application qualification. Eager scalar
-execution and numerical sample preview are unsupported. Derived `at` and
-`lookback` contexts use dated owner policy, even at an equal date. Preserve the
-32-definition closure ceiling and signed zero in typed value columns. Original
-scalar operations hold inputs through `backtest/inputs/operation_inputs.py`: one
-daily fingerprint at entry, one file status per step, no row rescans. Checks:
-`tests/test_columns.py`, `tests/test_prepared_facts.py`,
+not copy them). One code path computes the values and their explanations. The
+parity harness on the bench is a development tool outside the repository. New
+formulas use version 3 and catalog `/3`; old formulas need an explicit upgrade.
+`columns.require_program` is the one formula gate: a fixed namespace list and
+the evaluator's own operations and parameters, checked before readiness or
+financial input. Eager scalar execution and numerical sample preview are
+unsupported. Derived `at` and `lookback` contexts use dated owner policy, even
+at an equal date. Preserve the 32-definition closure ceiling and signed zero in
+typed value columns. Original scalar operations hold inputs through
+`backtest/inputs/operation_inputs.py`: one daily fingerprint at entry, one file
+status per step, no row rescans. Checks: `tests/test_columns.py`,
+`tests/test_parameter_admission.py`, `tests/test_prepared_facts.py`,
 `tests/test_operation_inputs.py` and heavy `tests/test_original_long_window.py`.
 See
 [variable design](docs/plans/custom-variables/variable-design.md) and the

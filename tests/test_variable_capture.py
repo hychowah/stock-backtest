@@ -322,7 +322,7 @@ class CaptureTests(unittest.TestCase):
         from datetime import date
         from backtest.application import scalar_execution, strategy_requests
         import test_strategy_requests as requests
-        from test_scalar_execution import Fixture
+        from test_scalar_execution import Fixture, preview
         fixture = Fixture(4)
         self.addCleanup(fixture.db.close)
         ev = self.store.create('Captured EV', definition(dict(op='parameter', id='market.enterprise_value'), 'USD', 'usd'))
@@ -333,7 +333,7 @@ class CaptureTests(unittest.TestCase):
         roots = [dict(symbol='A0001', pool='legacy', mode='historical', date='2015-01-02')]
         def run():
             with fixture.view() as view:
-                formula = scalar_execution.preview(strategy, roots, view)
+                formula = preview(strategy, roots, view)
                 selected = scalar_execution.Executor(strategy, view, lambda record: None).select(
                     fixture.db, 1, date(2015, 1, 2), date(2015, 1, 5))
             return json.dumps(formula, sort_keys=True), json.dumps(selected, sort_keys=True)

@@ -1,4 +1,4 @@
-"""Unqualified semantics fail before Original or provider work."""
+"""Formulas outside the one formula gate (columns.require_program) fail before Original work."""
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
@@ -7,10 +7,10 @@ import subprocess
 import unittest
 from functools import wraps
 from unittest.mock import Mock, patch
-from backtest.variables import columns, definitions as d, parameters, library, selection
+from backtest.variables import columns, definitions as d, parameters, library
 from backtest.application import strategy_requests as s, scalar_execution, variable_authoring
 from backtest.application.original_calculations import Original
-from test_variable_definitions import definition, constant, entry, root, bundle
+from test_variable_definitions import definition, constant, entry, root, bundle, binary
 from test_strategy_requests import intent, formula, condition
 from test_parameter_contract import expanded
 
@@ -18,12 +18,11 @@ ROOTS=[dict(symbol='A',pool='cached',mode='historical',date='2015-01-02')]
 
 
 def restrict_catalog_two(test):
-    """Model a recognized catalog which Original has not qualified."""
+    """Model a recognized catalog that the gate does not list."""
     @wraps(test)
     def run(*args, **kwargs):
-        original = frozenset(item for item in selection.QUALIFIED_NAMESPACES
-                             if item[1] != parameters.V2)
-        with patch.object(selection, 'QUALIFIED_NAMESPACES', original):
+        listed = frozenset(item for item in columns.NAMESPACES if item[1] != parameters.V2)
+        with patch.object(columns, 'NAMESPACES', listed):
             return test(*args, **kwargs)
     return run
 
@@ -58,7 +57,6 @@ class AdmissionTests(unittest.TestCase):
                 program=variable.program
                 self.assertEqual(d.require_program(program),program.to_dict())
                 self.assertEqual(columns.require_program(program),program.to_dict())
-                self.assertEqual(selection.require_program(program),program.to_dict())
                 options=dict(strategy=captured.to_dict(),engine='original')
                 self.assertEqual(s.check_options(options),captured.to_dict())
 
@@ -79,39 +77,34 @@ class AdmissionTests(unittest.TestCase):
 
     @restrict_catalog_two
     def test_preview_rejects_before_root_checks_or_evaluator(self):
-        class Untouched:
-            def __getattribute__(self, name):
-                raise AssertionError('No view access before admission: ' + name)
         for entries in expanded_cases():
             captured=capture(entries)
             with patch.object(scalar_execution.columns,'require_roots',side_effect=AssertionError('No root checks')), \
                  patch.object(scalar_execution.columns,'Formulas',side_effect=AssertionError('No evaluator construction')):
                 self.error(lambda:scalar_execution.check_preview(captured,ROOTS))
-                self.error(lambda:scalar_execution.preview(captured,ROOTS,Untouched()))
 
     def test_column_evaluator_accepts_constants_old_inputs_and_unused_v2_definitions(self):
-        # The column evaluator's own support check reaches input admission.
-        # Qualified selection accepts or rejects the complete capture by its policy.
+        # The gate admits these programs, and evaluation then reaches input admission.
         for entries in (list(expanded_cases())[0],list(expanded_cases())[1],list(expanded_cases())[-1]):
             program=d.validate(bundle(*entries,roots=[root(entries[0])]))
             inputs=Mock();inputs.admit.side_effect=AssertionError('Column evaluation reached inputs')
-            self.assertEqual(columns.require_program(program),program.to_dict())
-            self.assertEqual(selection.require_program(program),program.to_dict())
+            with patch.object(d,'require_program',wraps=d.require_program) as checked:
+                self.assertEqual(s.require_formula_support(program),program.to_dict())
+            self.assertEqual(checked.call_count,1)
             inputs.admit.assert_not_called()
             with self.assertRaisesRegex(AssertionError,'Column evaluation reached inputs'):
                 scalar_execution.evaluate_preview(program,ROOTS,inputs)
             inputs.admit.assert_called_once()
 
     @restrict_catalog_two
-    def test_restoration_and_evaluator_support_grant_no_qualification(self):
+    def test_restoration_needs_no_gate(self):
         cases=list(expanded_cases())
         for entries in (cases[0],cases[1],cases[-1]):
             captured=capture(entries)
             # Semantic restoration stays independent of runtime support.
             self.assertEqual(s.require_strategy(captured),captured.to_dict())
             program=library.VariableCapture(d.canonical(captured.to_dict()['variables'])).program
-            self.assertEqual(columns.require_program(program),program.to_dict())
-            self.error(lambda:selection.require_program(program))
+            self.error(lambda:columns.require_program(program))
             self.error(lambda:s.check_options(dict(strategy=captured.to_dict(),engine='original')))
 
     @restrict_catalog_two
@@ -128,19 +121,56 @@ class AdmissionTests(unittest.TestCase):
                 scope.assert_not_called()
             sink.assert_not_called()
 
-    def test_recognized_unqualified_parameters_differ_from_unknown_parameters(self):
-        for entries in list(expanded_cases())[1:-1]:
-            program=d.validate(bundle(*entries,roots=[root(entries[0])]))
-            identity=entries[0]['definition']['expression']['id']
-            with self.subTest(parameter=identity), patch.object(selection,'QUALIFIED_PARAMETERS',
-                    tuple(item for item in selection.QUALIFIED_PARAMETERS if item!=identity)):
-                self.assertEqual(columns.require_program(program),program.to_dict())
-                with self.assertRaises(d.FormulaError) as caught:selection.require_program(program)
-                self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
-                self.assertEqual(caught.exception.path,program.to_dict()['nodes'][0]['path'])
+    def test_gate_admits_the_full_catalog_and_refuses_what_the_evaluator_lacks(self):
+        self.assertEqual({item['id'] for item in columns.catalog()},
+                         {item['id'] for item in parameters.catalog(parameters.V3)})
+        units=parameters.units(parameters.V3)
+        for item in parameters.catalog(parameters.V3):
+            identity,unit=item['id'],item['unit']
+            expressions=[dict(op='parameter',id=identity)]
+            if identity.startswith('annual.'):
+                expressions.append(dict(op='annual',stat='mean',count=2,parameter=identity))
+            for expression in expressions:
+                value=dict(definition(expression,unit,units[unit]['displays'][0]),version=3,parameter_catalog=parameters.V3)
+                program=d.validate(bundle(entry(value)))
+                with self.subTest(parameter=identity,op=expression['op']):
+                    self.assertEqual(columns.require_program(program),program.to_dict())
+                    with patch.dict(columns._CATALOG):
+                        del columns._CATALOG[identity]
+                        with self.assertRaises(d.FormulaError) as caught:columns.require_program(program)
+                    self.assertEqual(caught.exception.code,'UNSUPPORTED_CAPABILITY')
+                    self.assertEqual(caught.exception.path,program.to_dict()['nodes'][0]['path'])
         with self.assertRaises(d.FormulaError) as caught:
             entry(expanded(dict(op='parameter',id='annual.unknown')))
         self.assertEqual((caught.exception.code,caught.exception.path),('UNKNOWN_PARAMETER','/expression/id'))
+
+    def test_gate_refuses_every_operation_and_statistic_the_evaluator_lacks(self):
+        one=constant('1')
+        def version3(expression,unit='scalar',display='number',identity=None):
+            value=dict(definition(expression,unit,display),version=3,parameter_catalog=parameters.V3)
+            return entry(value,identity or 'draft:'+expression['op'])
+        target=version3(one)
+        cases={op:[version3(binary(op,one,constant('2')))] for op in ('add','sub','mul','div','positive_div')}
+        cases.update(constant=[target],neg=[version3(dict(op='neg',arg=one))],
+            at=[version3(dict(op='at',date='2014-01-02',arg=one))],
+            lookback=[version3(dict(op='lookback',months=12,arg=one))],
+            parameter=[version3(dict(op='parameter',id='annual.revenue'),'USD','usd')],
+            annual=[version3(dict(op='annual',stat='mean',count=2,parameter='annual.revenue'),'USD','usd')],
+            ref=[target,version3(dict(op='ref',**root(target)))])
+        self.assertEqual(set(cases),columns.OPERATIONS)
+        for op,entries in cases.items():
+            program=d.validate(bundle(*entries))
+            with self.subTest(op=op):
+                self.assertEqual(columns.require_program(program),program.to_dict())
+                with patch.object(columns,'OPERATIONS',columns.OPERATIONS-{op}):
+                    self.error(lambda:columns.require_program(program))
+        for stat in columns.STATISTICS:
+            unit,display=('scalar','number') if stat in ('growth','cagr') else ('USD','usd')
+            program=d.validate(bundle(version3(dict(op='annual',stat=stat,count=2,parameter='annual.revenue'),unit,display)))
+            with self.subTest(stat=stat):
+                self.assertEqual(columns.require_program(program),program.to_dict())
+                with patch.object(columns,'STATISTICS',columns.STATISTICS-{stat}):
+                    self.error(lambda:columns.require_program(program))
 
     def test_legacy_catalog_stays_four_while_expanded_authoring_supports_shares(self):
         expected=['annual.revenue','annual.operating_income','annual.operating_margin','market.enterprise_value']
@@ -172,12 +202,11 @@ class Block(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0,Block())
 from test_parameter_admission import expanded_cases,capture
 from backtest.application import strategy_requests as s
-from backtest.variables import library,definitions as d,columns,selection
+from backtest.variables import library,definitions as d,columns
 for entries in expanded_cases():
  c=capture(entries);s.require_strategy(c)
  program=library.VariableCapture(d.canonical(c.to_dict()['variables'])).program
  columns.require_program(program)
- selection.require_program(program)
 '''
         subprocess.run([sys.executable,'-B','-c',code],cwd=Path(__file__).resolve().parent,
                        env={**__import__('os').environ,'PYTHONPATH':str(Path(__file__).resolve().parents[1])},check=True)

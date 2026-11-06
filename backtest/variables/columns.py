@@ -64,6 +64,10 @@ for _key in (*_ANNUAL, *_DATED):
 OPERATIONS = frozenset(('constant', 'parameter', 'annual', 'ref', 'at', 'lookback',
                         'neg', 'add', 'sub', 'mul', 'div', 'positive_div'))
 STATISTICS = frozenset(('mean', 'min', 'max', 'growth', 'cagr'))
+# Fixed (definition version, parameter catalog, temporal policy) combinations;
+# a new language version does not qualify until it is listed here.
+NAMESPACES = frozenset((version, 'financial-parameters/' + str(catalog), 'annual-lag90/1')
+                       for version in (1, 2, 3) for catalog in (1, 2, 3))
 
 
 def catalog():
@@ -74,15 +78,25 @@ def catalog():
 
 
 def require_program(program, *, checkpoint=lambda: None):
-    """Admit a checked program whose operations and parameters this evaluator implements."""
+    """The one formula gate: admit a checked program that this evaluator implements.
+
+    It runs before readiness or any financial input. Every captured definition,
+    including unused and constant-only entries, needs a listed namespace; every
+    node needs an implemented operation, statistic and catalog parameter.
+    """
     checkpoint()
     checked = definitions.require_program(program)
+    if checked['version'] != 1 or any(
+            (item['definition']['version'], item['definition']['parameter_catalog'],
+             item['definition']['temporal_policy']) not in NAMESPACES
+            for item in checked['bundle']['definitions']):
+        _fail('UNSUPPORTED_CAPABILITY', '/variables', 'Unsupported Original formula namespace.')
     for node in checked['nodes']:
         checkpoint()
         if node['op'] not in OPERATIONS or (node['op'] == 'annual' and node['stat'] not in STATISTICS):
-            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported formula operation.')
+            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original formula operation.')
         if node['op'] in ('parameter', 'annual') and node['parameter'] not in _CATALOG:
-            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported formula observation parameter.')
+            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original observation parameter.')
     return checked
 
 
@@ -245,7 +259,7 @@ def _dates(report):
 
 
 class _Trace:
-    """One explained chunk, numbered as the deleted reference evaluator numbered its blocks.
+    """One explained chunk in the block shape that the evidence viewer reads.
 
     Root contexts come first, one per distinct root, then derived contexts,
     observations and operations in evaluation order.

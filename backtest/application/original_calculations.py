@@ -139,7 +139,7 @@ class Original(Control):
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                with facts.prepared_view(inputs.db,inputs.research(),inputs.require_unchanged,checkpoint=self._checkpoint) as view:
+                with facts.View(inputs.db,inputs.research(),inputs.require_unchanged,self._checkpoint) as view:
                     value=scalar_execution.evaluate_preview(program,roots,view,checkpoint=self._checkpoint)
         return dict(value,producer=dict(engine='original',label='Original sample preview'))
 
@@ -154,7 +154,7 @@ class Original(Control):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
                 source=inputs.research()
-                with facts.prepared_view(inputs.db,source,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
+                with facts.View(inputs.db,source,inputs.require_unchanged,self._checkpoint) as view:
                     value=(variable_coverage.scopes(source,view) if capture is None else
                            variable_coverage.inspect(capture,scope,source,view,checkpoint=self._checkpoint))
         return dict(value,producer=dict(engine='original',label='Original coverage'))
@@ -181,7 +181,7 @@ class Original(Control):
                 db=inputs.db
                 # Formulas read typed facts on the research connection in every mode.
                 source=inputs.research()
-                with facts.prepared_view(db,source,inputs.require_unchanged,checkpoint=self._checkpoint) as view:
+                with facts.View(db,source,inputs.require_unchanged,self._checkpoint) as view:
                     metadata=dict(mode=mode,options=options,configuration=planned,input=view.identity,
                         projection=view.projection,producer=dict(engine='original',label='Original'))
                     def configured(value):

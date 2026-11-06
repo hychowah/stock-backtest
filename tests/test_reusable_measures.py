@@ -153,7 +153,7 @@ class InventoryExecution(unittest.TestCase):
 class CaptureAndAdmission(unittest.TestCase):
     def test_capture_restore_and_unused_gates_before_financial_access(self):
         import tempfile
-        from backtest.variables import library, selection
+        from backtest.variables import columns, library
         bundle = measures.bundle(['gross_margin'])
         with tempfile.TemporaryDirectory() as folder:
             store = library.Store(Path(folder) / 'private.sqlite')
@@ -167,7 +167,7 @@ class CaptureAndAdmission(unittest.TestCase):
         new = lang.entry(new_definition, 'new')
         for roots in ([lang.root(old)], [lang.root(new)]):
             program = d.validate(lang.bundle(old, new, roots=roots))
-            self.assertEqual(selection.require_program(program), program.to_dict())
+            self.assertEqual(columns.require_program(program), program.to_dict())
         from backtest.application import strategy_requests
         import test_strategy_requests as requests
         capture = strategy_requests.capture_strategy(requests.intent(requests.formula(new)), submitted=[new]).to_dict()

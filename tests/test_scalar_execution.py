@@ -16,6 +16,11 @@ import test_variable_definitions as language
 import test_strategy_requests as requests
 
 
+def preview(capture, roots, view):
+    """Check, then explain explicit roots, as Original.preview does under cache ownership."""
+    return x.evaluate_preview(x.check_preview(capture, roots), roots, view)
+
+
 def state(value, reason=None):
     return dict(value=value, valid=reason is None, reason=reason)
 
@@ -54,7 +59,7 @@ class Fixture:
         self.db.execute('INSERT INTO period_pools VALUES(?,?)',(1,'cached'))
         self.db.execute('INSERT INTO metadata VALUES(?,?)',('daily_inputs',json.dumps(dict(inputs=dict(historical_through='2015-01-05')))))
         facts.finish(self.db, '2015-01-05', inputs='fixture', scopes=scopes());self.db.commit()
-    def view(self):return facts.prepared_view(self.db,self.db,lambda:None,checkpoint=lambda:None)
+    def view(self):return facts.View(self.db,self.db,lambda:None,lambda:None)
     def capture(self, expression=None, *, pool='cached', direction='highest', order='filter_first', conditions=None, first=1,last=5):
         authored=language.entry(language.definition(expression or dict(op='parameter',id='annual.revenue'),'USD' if expression is None else 'scalar','usd' if expression is None else 'number'),'draft:ranking')
         intent=requests.intent(requests.formula(authored),conditions,rank_from=first,rank_to=last,selection_order=order)
@@ -159,11 +164,11 @@ class ScalarTests(unittest.TestCase):
     def test_explicit_preview_never_claims_pool_coverage(self):
         capture=self.fixture.capture()
         with self.fixture.view() as view:
-            result=x.preview(capture,[dict(symbol='A0001',pool='cached',mode='historical',date='2015-01-02')],view)
+            result=preview(capture,[dict(symbol='A0001',pool='cached',mode='historical',date='2015-01-02')],view)
         self.assertEqual(result['population'],'explicit-request-scopes')
         self.assertEqual(result['evaluations'][0]['results'][0]['value'],2.)
         with self.fixture.view() as view:
-            with self.assertRaises(d.FormulaError):x.preview(capture,[],view)
+            with self.assertRaises(d.FormulaError):preview(capture,[],view)
     def test_latest_has_no_future_fields(self):
         stocks,_=self.fixture.select(self.fixture.capture(),latest=True)
         self.assertEqual(stocks[0]['symbol'],'A0299')
@@ -187,7 +192,7 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(receipt['rows'],299)
         self.assertEqual(receipt['provider_admitted_in_prepared_scope'],299)
         with self.fixture.view() as view:
-            value=x.preview(self.fixture.capture(),[dict(symbol='A0299',pool='cached',mode='historical',date='2015-01-02')],view)
+            value=preview(self.fixture.capture(),[dict(symbol='A0299',pool='cached',mode='historical',date='2015-01-02')],view)
         self.assertTrue(value['evaluations'][0]['results'][0]['valid'])
         self.assertEqual(stocks[0]['symbol'],'A0298')
     def test_cancellation_after_first_chunk_never_returns_partial_selection(self):

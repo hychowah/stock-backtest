@@ -8,18 +8,11 @@ resolved context serves every requested lane of that context.
 import json
 import math
 from datetime import date
-from pathlib import Path
-import hashlib
 
 from backtest.financial import books, metrics
 
-_LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _PERCENT = frozenset(('profit_margin', 'fcf_yield', 'roe', 'return_1y',
                        'return_3y', 'operating_yield_spread_3y'))
-
-
-def policy_fingerprint():
-    return _LOADED
 
 
 def detached(value, checkpoint=lambda: None):

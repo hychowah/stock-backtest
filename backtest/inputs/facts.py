@@ -69,7 +69,6 @@ CREATE TABLE latest_admission(symbol TEXT, pool TEXT, admitted INTEGER NOT NULL,
  PRIMARY KEY(symbol,pool)) WITHOUT ROWID;
 CREATE TABLE fact_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
 '''
-TABLES = ('stock_days', 'market_days', 'annual_facts', 'fact_sources', 'latest_admission', 'fact_metadata')
 
 
 def encoded(value):
@@ -632,8 +631,3 @@ class View:
 
 def _detached(statement):
     return {key: str(value) if isinstance(value, date) else value for key, value in statement.items()}
-
-
-def prepared_view(db, research, freshness, *, checkpoint):
-    """Borrow a View for one operation; as a context manager it closes before the caller's connections."""
-    return View(db, research, freshness, checkpoint)

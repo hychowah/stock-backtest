@@ -24,7 +24,6 @@ def original_signature():
     paths=[r.RAW/n for n in ('universe.json','metrics.jsonl','spy-div.json','treasury.json')]
     paths += [r.RAW/'px',Path(r.baseline.__file__),Path(r.__file__),Path(r.metrics.__file__),Path(r.books.__file__),Path(r.rules.__file__),Path(r.screening.__file__),Path(r.selection.__file__),Path(r.cache_assets.__file__),Path(r.market.__file__),Path(r.legacy.__file__),Path(r.revalue.__file__)]
     paths += [Path(r.financial_inputs.__file__),Path(r.financial_inputs.parameters.__file__),Path(r.measure_observations.__file__),Path(r.facts.__file__)]
-    if (r.RAW/'download-coverage.json').exists():paths.append(r.RAW/'download-coverage.json')
     paths += sorted((r.RAW/'financial-inputs').glob('*/*.json'))
     return dict({p.relative_to(r.ROOT).as_posix():['directory' if p.is_dir() else p.stat().st_size,p.stat().st_mtime_ns] for p in paths},historical_through=str(r.baseline.cutoff((r.RESULTS/'summary-exits.txt').read_text(encoding='utf8'))))
 
@@ -39,7 +38,6 @@ def prior_signature():
     paths += [r.RAW/'px',r.Path(r.baseline.__file__),r.Path(r.__file__),r.Path(r.metrics.__file__),r.Path(r.books.__file__),r.Path(r.rules.__file__),r.Path(r.screening.__file__),r.Path(r.selection.__file__),r.Path(r.cache_assets.__file__),r.Path(r.market.__file__),r.Path(r.legacy.__file__),r.Path(r.revalue.__file__)]
     paths += [r.Path(r.financial_inputs.__file__),r.Path(r.financial_inputs.parameters.__file__),r.Path(r.measure_observations.__file__),r.Path(r.facts.__file__)]
     entries=[(p,p.stat()) for p in paths]
-    if (r.RAW/'download-coverage.json').exists():entries.append((r.RAW/'download-coverage.json',(r.RAW/'download-coverage.json').stat()))
     entries += r._metadata_entries(r.RAW/'financial-inputs','*/*.json')
     return dict({p.relative_to(r.ROOT).as_posix():['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries},historical_through=str(r.baseline.cutoff((r.RESULTS/'summary-exits.txt').read_text(encoding='utf8'))))
 
@@ -72,13 +70,12 @@ class InventoryTests(unittest.TestCase):
             errors.append((type(error),str(error),getattr(error,'errno',None),getattr(error,'filename',None)))
         self.assertEqual(*errors)
 
-    def test_optional_coverage_ledger_presence_stamp_and_removal_bind_freshness(self):
+    def test_coverage_ledger_does_not_bind_freshness(self):
+        # No preparation reads the download receipts.
         before=r.signature();path=self.raw/'download-coverage.json'
-        path.write_text('{}');present=r.signature()
-        self.assertNotEqual(before,present);self.agree()
-        self.assertIn('raw/download-coverage.json',present)
-        path.write_text('{"new":{}}');self.assertNotEqual(present,r.signature());self.agree()
-        path.unlink();self.assertEqual(before,r.signature());self.agree()
+        path.write_text('{}');self.assertEqual(before,r.signature());self.agree()
+        path.write_text('{"new":{}}');self.assertEqual(before,r.signature())
+        path.unlink();self.assertEqual(before,r.signature())
 
     def test_outside_dependency_and_metadata_failure_precedence(self):
         outside=self.root.parent/(self.root.name+'-outside.py')

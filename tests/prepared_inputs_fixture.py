@@ -4,7 +4,7 @@
 ordinary research and daily preparation on it. It then patches
 `research.DATABASE`, `research.connect`, `daily.connect` and
 `cache_access.workspace`. Ordinary owners, such as `Original` and
-`facts.prepared_view`, then read only these files and take only the private
+`facts.View`, then read only these files and take only the private
 `WorkspaceAccess` in `owner`. Nothing is downloaded and no project data is read.
 
 The default cache has one company, TEST, with sessions through 2015-10-20 (the
@@ -60,7 +60,7 @@ class PreparedInputs:
     def view(self):
         """Yield a borrowed view of the prepared daily and research databases; close them on exit."""
         with closing(daily.connect()) as db, closing(research.connect()) as source, \
-                facts.prepared_view(db, source, lambda: None, checkpoint=lambda: None) as view:
+                facts.View(db, source, lambda: None, lambda: None) as view:
             yield view
 
     def close(self):

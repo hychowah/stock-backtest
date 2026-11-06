@@ -76,11 +76,6 @@ def check_preview(capture, roots, *, checkpoint=backtest_control.checkpoint):
     return program
 
 
-def preview(capture, roots, view, *, checkpoint=backtest_control.checkpoint):
-    """Check, then explain explicit roots; the composition of check_preview and evaluate_preview."""
-    return evaluate_preview(check_preview(capture, roots, checkpoint=checkpoint), roots, view, checkpoint=checkpoint)
-
-
 def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkpoint):
     """Explain explicit checked roots with the column evaluator; no complete-pool claim is made."""
     for index, root in enumerate(roots):

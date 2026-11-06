@@ -112,13 +112,11 @@ def signature():
     Every call discovers and inspects inputs afresh. Keys preserve lexical
     paths relative to ROOT; discovery and metadata failures retain their
     existing precedence. No inventory or derived prefix survives the call.
+    raw/download-coverage.json is not an input: no preparation reads it.
     """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']]
     paths += [RAW/'px'] + calculation_sources()
     entries = [(path, path.stat()) for path in paths]
-    ledger_path = RAW/'download-coverage.json'
-    if ledger_path.exists():
-        entries.append((ledger_path, ledger_path.stat()))
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
     result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}
     prefixes = {}

@@ -18,7 +18,7 @@ from unittest.mock import patch
 from backtest.application import strategy_requests
 from backtest.financial import books, rules
 from backtest.inputs import daily, facts
-from backtest.variables import columns, definitions as d, parameters, selection
+from backtest.variables import columns, definitions as d, parameters
 from prepared_inputs_fixture import PreparedInputs
 import test_strategy_requests as requests
 import test_variable_definitions as language
@@ -125,7 +125,7 @@ class Company:
         def freshness():
             if self.stale:
                 raise ValueError('Fixture inputs are stale.')
-        return facts.prepared_view(self.build(), self.db, freshness, checkpoint=lambda: None)
+        return facts.View(self.build(), self.db, freshness, lambda: None)
 
     def close(self):
         if self.db is not None:
@@ -414,7 +414,6 @@ class ColumnTests(unittest.TestCase):
         for roots in ([language.root(old)], [language.root(new)]):
             checked = d.validate(language.bundle(old, new, roots=roots))
             self.assertEqual(columns.require_program(checked), checked.to_dict())
-            self.assertEqual(selection.require_program(checked), checked.to_dict())
             self.assertEqual(self.explain(checked)['results'][0]['value'], 2.)
         definition = language.definition(c('2')); definition['version'] = 2
         entry = language.entry(definition, 'version2')
