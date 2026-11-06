@@ -115,13 +115,12 @@ class InventoryExecution(unittest.TestCase):
         day = self.company.latest_date
         same = formulas(field('owner.pe', wrap=dict(op='at', date=day)))
         latest = root(mode='latest', day=day)
-        roots = [latest, root(mode='latest', day=day, owner_scope=dict(kind='prepared', book=view.open_book)),
-                 root(mode='latest', day=day, owner_scope=dict(kind='dated'))]
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper, \
                 patch.object(view.facts, 'price', wraps=view.facts.price) as lookup:
-            results = values(formulas(field('owner.pe')), view, roots) + values(same, view, roots[:1])
-        self.assertEqual(results, [[(9., None)], [(9., None)], [(15e6, None)], [(15e6, None)]])
-        self.assertEqual(helper.call_count, 2)
+            results = values(formulas(field('owner.pe')), view, [latest]) + values(same, view, [latest])
+        # The root context reads the open book's stored lane; the equal-date context the dated owner policy.
+        self.assertEqual(results, [[(9., None)], [(15e6, None)]])
+        self.assertEqual(helper.call_count, 1)
         backward = [call.args[1] for call in lookup.call_args_list if not call.args[2]]
         self.assertTrue(backward)
         self.assertTrue(all(day <= date.fromisoformat(self.company.latest_date) for day in backward))

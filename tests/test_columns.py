@@ -259,18 +259,24 @@ class ColumnTests(unittest.TestCase):
         self.assertEqual(block['observations']['results'][0]['reason'], 'ROOT_NOT_ADMITTED')
         self.assertEqual(self.result(c('1'), roots=[self.latest(symbol='B')])['reason'], 'ROOT_NOT_ADMITTED')
 
-    def test_root_shapes_and_owner_scopes_are_checked_and_kept_distinct(self):
+    def test_root_shapes_are_checked_and_scope_roots_keep_their_owner_scope(self):
         root = self.latest()
-        roots = [dict(root, owner_scope=dict(kind='prepared', book=0)), dict(root, owner_scope=dict(kind='dated')), root]
-        block = self.explain(program(c('12')), roots)
-        self.assertEqual(block['requests'], roots)
-        admitted = block['observations']['roots']
-        self.assertEqual([item.get('owner_scope') for item in admitted], [roots[0]['owner_scope'], roots[1]['owner_scope'], None])
-        self.assertNotIn('owner_scope', admitted[2])
-        self.assertEqual(block['observations']['contexts'][0]['owner_scope'], roots[0]['owner_scope'])
+        # A request names no book: an explicit root is exactly symbol, pool, mode and date.
         for roots in ([], {}, [dict(root, extra=1)], [dict(root, symbol=[])], [dict(root, mode='quarterly')],
-                      [dict(root, pool='all')], [dict(root, owner_scope=dict(kind='prepared', book=True))]):
+                      [dict(root, pool='all')], [dict(root, owner_scope=dict(kind='prepared', book=0))],
+                      [dict(root, owner_scope=dict(kind='dated'))]):
             self.error('INVALID_SHAPE', columns.require_roots, roots)
+        # A prepared scope's root (scalar_execution._scope) keeps its owner scope in the explanation.
+        scoped = dict(root, owner_scope=dict(kind='prepared', book=0))
+        with self.company.view() as view:
+            decisions = view.admit([root, root])
+            block = columns.Formulas(d.require_program(program(c('12')))).explain(
+                [scoped, root], view, lambda: None, decisions=[dict(decisions[0], owner_scope=scoped['owner_scope']), decisions[1]])
+        self.assertEqual(block['requests'], [scoped, root])
+        admitted = block['observations']['roots']
+        self.assertEqual([item.get('owner_scope') for item in admitted], [scoped['owner_scope'], None])
+        self.assertNotIn('owner_scope', admitted[1])
+        self.assertEqual(block['observations']['contexts'][0]['owner_scope'], scoped['owner_scope'])
         self.error('INVALID_DATE', columns.require_roots, [dict(root, date='20150102')])
 
     def test_admission_refuses_roots_outside_saved_sessions_and_changed_facts(self):

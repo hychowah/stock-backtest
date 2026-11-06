@@ -300,15 +300,15 @@ class View:
     def prepared(self, decision):
         """Owner values of a stored-book root's row (book_store.lanes and valuations).
 
-        The book is the root's prepared owner scope, else the open book of a
-        latest root; whoever names the scope checked it (book_store.require_scope).
-        One book pool is held at a time: an operation reads its scopes in turn.
-        A missing row is unavailable; it never falls back to a recalculation.
+        The book is the decision's owner scope, which only a prepared scope
+        names after its check (scalar_execution._scope and
+        book_store.require_scope), else the open book of a latest root. One
+        book pool is held at a time: an operation reads its scopes in turn. A
+        missing row is unavailable; it never falls back to a recalculation.
         """
         self._open()
-        scope = decision.get('owner_scope')
-        if scope is not None and scope['kind'] == 'prepared':
-            book = scope['book']
+        if 'owner_scope' in decision:
+            book = decision['owner_scope']['book']
         elif decision['mode'] == 'latest':
             book = self.open_book
         else:

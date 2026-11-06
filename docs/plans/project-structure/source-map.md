@@ -31,12 +31,14 @@ See the [custom-variable summary](../custom-variables/master-plan.md) for the
 contracts. These modules own the feature.
 
 - `backtest/inputs/facts.py`: the typed facts in `research.sqlite`, the saved-file
-  resolver and the borrowed `View` (admission, entry valuation, typed reads and
-  stored latest owner lanes).
+  resolver and the book facts port. `backtest/inputs/fact_view.py`: the borrowed
+  `View` (admission of explicit roots, entry valuation, typed reads and the
+  stored owner lanes of a stored-book root).
 - `backtest/inputs/operation_inputs.py`: one Original scalar operation's daily
   and research connections.
 - `backtest/measure_observations.py` and `backtest/variables/measures.py`:
-  bounded financial-owner evidence and exact-reference measure bundles.
+  owner lanes (a stored book's lanes, or the dated owner policy) and
+  exact-reference measure bundles.
 - `backtest/variables/definitions.py`: formula validation, normalization,
   identities, unit inference and resolved dependency programs; its
   `require_program` is the one formula gate.

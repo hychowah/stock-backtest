@@ -70,29 +70,13 @@ def check_preview(checked, roots):
     return projection
 
 
-def _require(db, book, pool, day, latest, path):
-    """book_store.require_scope as a formula error at path."""
-    try:
-        book_store.require_scope(db, book, pool, day, latest)
-    except ValueError:
-        raise definitions.FormulaError('INVALID_SHAPE', path, 'Prepared owner scope does not match the admitted projection.') from None
-
-
 def evaluate_preview(projection, roots, view, *, checkpoint=backtest_control.checkpoint):
     """Explain explicit checked roots with the column evaluator; no complete-pool claim is made.
 
-    A request names no dated book: a book id is a handle (book_store). A
-    prepared owner scope must name the open book on a latest root
-    (book_store.require_scope); the root's date is checked by the view's
-    latest admission.
+    A request names no book: a book id is a handle (book_store). The view
+    admits each root (books.Screen.decide); a latest root, on the latest date,
+    reads the open book's stored owner lanes.
     """
-    for index, root in enumerate(roots):
-        scope = root.get('owner_scope')
-        if scope and scope['kind'] == 'prepared':
-            path = '/requests/' + str(index) + '/owner_scope'
-            if root['mode'] != 'latest':
-                raise definitions.FormulaError('INVALID_SHAPE', path, 'Only a latest root has a stored owner book.')
-            _require(view.db, scope['book'], root['pool'], root['date'], True, path)
     block = columns.Formulas(projection).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
     if _size(block) > MAX_PREVIEW_BYTES:
         raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Complete preview exceeds its encoded byte ceiling.')
@@ -110,7 +94,10 @@ def _scope(db, capture, book, entry, *, latest):
     report, as the open book's screen chose it.
     """
     pool = capture['pool']
-    _require(db, book, pool, entry, latest, '/owner_scope')
+    try:
+        book_store.require_scope(db, book, pool, entry, latest)
+    except ValueError:
+        raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.') from None
     owner_scope = dict(kind='prepared', book=book)
     mode, day = 'latest' if latest else 'historical', str(entry)
     rows = scope_rows(db, pool=pool, book=book)
@@ -129,16 +116,16 @@ def _scope(db, capture, book, entry, *, latest):
     return rows, admission
 
 
-def _usable(value, scale):
-    """A stored lane value that is a valid input, else None: finite, and finite in canonical units.
+def _canonical(value, scale):
+    """A stored lane value in canonical units, or None when it is not a valid input.
 
-    scale is the decimal exponent to canonical units; only a positive scale can overflow.
+    A valid input is a finite number that stays finite in canonical units.
+    scale is the decimal exponent from the stored lane to canonical units.
     """
     if type(value) not in (int, float) or not math.isfinite(value):
         return None
-    if scale > 0 and not math.isfinite(float(Decimal(str(value)).scaleb(scale))):
-        return None
-    return value
+    canonical = float(Decimal(str(value)).scaleb(scale)) if scale else float(value)
+    return canonical if math.isfinite(canonical) else None
 
 
 class Executor:
@@ -177,6 +164,7 @@ class Executor:
             population='complete-prepared-scope', mode=mode, pool=self.pool, date=str(entry),
             exit=str(exit_day) if exit_day is not None else None, prepared_period=None if latest else book,
             input=self.view.identity, rows=len(rows), source_population=self.view.bounds['population'],
+            # A recorded receipt field: a stored row is admitted, so it equals rows by construction.
             provider_admitted_in_prepared_scope=len(rows),
             selection_population='prepared rows with usable return evidence' if not latest else 'prepared exact-session latest rows')
         # One read per stored table for the whole scope (book_store.lanes);
@@ -194,17 +182,18 @@ class Executor:
                             if storage['metric'] in found}
         for role, storage in fields.items():
             stored[role] = {symbol: found[storage['field']] for symbol, found in filters.items() if storage['field'] in found}
-        usable = {lane_of(role): {symbol: _usable(value, self.descriptors[role_sources[role]['id']]['storage']['scale'])
+        scales = {role: self.descriptors[role_sources[role]['id']]['storage']['scale'] for role in stored}
+        # Selection compares stored values. A finite value cannot overflow at a
+        # scale of 0 or below, so the row check converts only at a positive scale.
+        usable = {lane_of(role): {symbol: value if _canonical(value, max(scales[role], 0)) is not None else None
                                   for symbol, value in found.items()} for role, found in stored.items()}
         def builtin(role, symbol):
             """The evidence of one stored lane of a selected row."""
-            source = role_sources[role]
-            descriptor = self.descriptors[source['id']]; storage = descriptor['storage']
+            source = role_sources[role]; descriptor = self.descriptors[source['id']]
             value = stored[role].get(symbol)
-            canonical = float(Decimal(str(value)).scaleb(storage['scale'])) if value is not None else None
-            valid = type(value) in (int,float) and math.isfinite(value) and canonical is not None and math.isfinite(canonical)
+            canonical = _canonical(value, scales[role]); valid = canonical is not None
             return dict(scope=identity, symbol=symbol, source=source, stored=value if valid else None,
-                canonical=canonical if valid else None, unit=descriptor['unit'], valid=valid,
+                canonical=canonical, unit=descriptor['unit'], valid=valid,
                 reason=None if valid else 'MISSING_INPUT')
         # Each row's lanes: its usable stored values and the bound fields.
         values = []
@@ -296,7 +285,7 @@ class Executor:
         for item in selected['selected']:
             index = item['index']; original = rows[index]
             value = item['value']
-            if ranking_source['kind']=='builtin':value=float(Decimal(str(value)).scaleb(descriptor['storage']['scale']))
+            if ranking_source['kind']=='builtin':value=_canonical(value,descriptor['storage']['scale'])
             output.append(dict(original, rank=item['rank'], ranking_value=value, ranking_unit=descriptor['unit'],
                 ranking_display=descriptor['display'], ranking_direction=specification['ranking']['direction'],
                 scalar_evidence=dict(scope=identity, lanes=references[index])))

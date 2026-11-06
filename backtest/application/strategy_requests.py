@@ -347,7 +347,9 @@ def from_wire(value, *, checkpoint=backtest_control.checkpoint):
     JSON has one number type. A browser writes 100000000.0 as 100000000.
     Only checked floating-point fields accept that equivalent spelling. Integer
     fields, complete derived evidence, strings, ordering and shapes stay exact.
-    No catalog or library is read. require_strategy still checks canonical bytes.
+    No catalog or library is read. One compile checks and normalizes the
+    content; the capture is the canonical encoding of its result, which
+    require_strategy restores to the same meaning.
     """
     document = _encode(value, STRATEGY_BYTES, checkpoint)
     _shape(value, ('format', 'version', 'selection', 'variables', 'builtins', 'pool', 'bounds', 'limits'))
@@ -373,9 +375,7 @@ def from_wire(value, *, checkpoint=backtest_control.checkpoint):
     # Check the received and normalized representations against the same limit.
     if len(document) > bound:
         _fail('WORK_LIMIT', '', 'Captured strategy exceeds its lowered byte bound.')
-    capture = CapturedStrategy(_encode(rebuilt, bound, checkpoint))
-    require_strategy(capture, checkpoint=checkpoint)
-    return capture
+    return CapturedStrategy(_encode(rebuilt, bound, checkpoint))
 
 
 def canonical_options(options, *, checkpoint=backtest_control.checkpoint):
@@ -391,6 +391,8 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
     Custom options carry one strategy projection. Duplicate selection settings are
     rejected rather than guessed. Unsupported engines fail without fallback.
     Routes, jobs and queue admission use this owner for new scalar submissions.
+    Return the restored strategy: one compile (from_wire) checks its formula
+    program, and preview and coverage pass the result on.
     """
     if type(options) is not dict:
         _fail('INVALID_STRATEGY', '', 'Calculation options must be an object.')
@@ -403,8 +405,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         _fail('INVALID_STRATEGY','','Unknown custom calculation option.')
     if _OVERLAP.intersection(options):
         _fail('INVALID_STRATEGY', '', 'Use one captured strategy without duplicate selection settings.')
-    captured = from_wire(options['strategy'], checkpoint=checkpoint)
-    checked = require_strategy(captured, checkpoint=checkpoint)
+    checked = from_wire(options['strategy'], checkpoint=checkpoint).to_dict()
     current = {item['id']: item for item in builtin_catalog()}
     for descriptor in checked['builtins']:
         expected = current.get(descriptor['id'])

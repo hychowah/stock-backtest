@@ -126,6 +126,11 @@ class BookTests(unittest.TestCase):
              'totalStockholdersEquity': 80e6, 'totalDebt': -0.0, 'freeCashFlow': 9e6}))
         for symbol, values in saved.items():
             self.assertEqual(json.dumps(facts.legacy_annual(self.attached, symbol)), json.dumps(values), symbol)
+        # A bounded leaf read: a longer history fails instead of reading on.
+        rows, = self.attached.execute('SELECT count(*) FROM research.annual_facts WHERE symbol=? AND endpoint IN (?,?,?)',
+                                      ('Q0003', *(endpoint for endpoint, _ in facts.LEGACY))).fetchone()
+        with patch.object(facts, 'MAX_HISTORY', (rows - 1) // len(facts.LEGACY)), self.assertRaises(ValueError):
+            facts.legacy_annual(self.attached, 'Q0003')
 
     def test_latest_book_is_the_open_book_of_the_latest_date(self):
         latest = date.fromisoformat(research.identity(self.research)['latest_date'])

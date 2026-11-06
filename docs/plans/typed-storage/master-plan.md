@@ -17,7 +17,8 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`), T2 (detail-mode explanations,
 D1), T3 (JSON observation tables and reference evaluator deleted), P1, P2
-(P2a, P2b, P2c), P3 (P3a with its follow-up, P3b, P3c1, P3c2, P3c3) and P4.
+(P2a, P2b, P2c), P3 (P3a with its follow-up, P3b, P3c1, P3c2, P3c3), P4 and
+the P4 review cleanup (P4c).
 
 Bench, P1 code (6367bef, research schema 13, daily 6): cold build 462 s
 (research 377, daily 84). `research.sqlite` 2.24 GB; `schedules.sqlite` 1.10 GB
@@ -225,12 +226,13 @@ books and updates the book cache in place, and P3c3 fixed the review findings.
   `metrics.operating_margin` is the one margin formula.
 - Values-only evaluation builds no evidence: no detach, JSON byte counts or
   budgets. Stored lanes and annual members build evidence for explained rows
-  only. `Formulas` takes the restored projection; coverage and preview restore
-  the capture once; `Executor.__init__` keeps `require_strategy`.
+  only. `Formulas` takes the restored projection; `Executor.__init__` keeps
+  `require_strategy`. (P4 claimed one restore for coverage and preview; it
+  took 6 and 3 compiles until P4c.)
 - Decisions: coverage discovery stays the open book's pools (no caller needs
-  a dated scope). A request never names a dated book id (preview refuses a
-  historical prepared scope; coverage takes latest scopes only), so no
-  (entry, exit, pool) check was added.
+  a dated scope). A request names no book (P4c: a preview root is exactly
+  company, pool, mode and date; coverage names only a discovered open-book
+  scope), so no (entry, exit, pool) check was added.
 - Deviations: explained owner lanes at latest roots now show their report
   dates, as dated roots do ("Explain keeps dates"); the dated owner policy
   reads legacy annual values through `BookFacts`, as books do, without the
@@ -249,6 +251,28 @@ books and updates the book cache in place, and P3c3 fixed the review findings.
   explanations equal. Dev check 0 differences; the website build,
   `check_screener.py`, `check-range.cjs`, `check-contributions.cjs` and
   `check_paths.py` pass.
+
+### P4c. Review cleanup (done)
+
+From an independent design review and an audit of P4 at 1f32292; both found
+no wrong results.
+
+- Preview roots name no book: `columns.require_roots` takes exactly {symbol,
+  pool, mode, date}; the preview owner-scope loop, `_require`, the `_root`
+  copies and the `kind` test are gone. Only `scalar_execution._scope`
+  creates owner scopes, on its decisions; `prepared_scope` reads the decision.
+- Coverage drops the constant `provider_admitted`, `provider_unavailable` and
+  `provider_reasons` and their browser text; the recorded receipt key
+  `provider_admitted_in_prepared_scope` stays (it equals `rows`).
+- One stored-lane rule, `scalar_execution._canonical`: the canonical value or
+  None. The row check converts only at a positive scale (equivalent).
+- One compile per preview or coverage request: `from_wire` compiles once (its
+  trailing restore repeated an idempotent compile); `check_options` returns
+  the decoded capture; `inspect` takes the checked strategy. Before: 3
+  (preview) and 6 (coverage). The user test still compiles 17 times per run
+  (30 before; about 3 ms each): preflight, `execution_options`, `scalar_runs`
+  and the recorded-plan checks, and `Executor.__init__`.
+- `facts.legacy_annual` has a LIMIT bound (`MAX_HISTORY` × endpoints).
 
 ### P5 and later (only if the user continues)
 

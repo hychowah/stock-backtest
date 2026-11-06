@@ -877,9 +877,10 @@ stored candidate rank and entry valuation. An explicit preview root is
 admitted by `books.Screen.decide`: a latest root by the latest book's screen
 (listed companies, the exact session), a historical root by its date's
 screen. A historical decision that reaches the entry valuation keeps the
-lookups that the view's recording facts port saw. A request never names a
-dated book: a preview's prepared owner scope must name the open book, and
-coverage discovery lists the open book's pools only.
+lookups that the view's recording facts port saw. A request names no book: a
+preview root is exactly its company, pool, mode and date. A coverage request
+names only a scope that discovery listed in the same generation (the open
+book's pools).
 
 Annual resolution (`financial_inputs.resolve_history`) keeps every admitted
 endpoint and fiscal date, even when every requested field is unavailable.
@@ -934,7 +935,7 @@ date), even at the root date. Values-only evaluation builds no evidence;
 detail mode explains the selected rows only. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
 dates. Only those named annual adapters support annual history. Research schema
-18 and daily cache 10 require incompatible caches to rebuild;
+19 and daily cache 11 require incompatible caches to rebuild;
 durable records keep their formats. Version-3 authoring exposes all 52 direct
 inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,

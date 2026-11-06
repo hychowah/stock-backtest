@@ -132,7 +132,7 @@ class Original(Control):
         from backtest.application import scalar_execution, strategy_requests
         from backtest.inputs import fact_view, operation_inputs
         strategy_requests.preview_engine(engine)
-        # One restore of the capture; the preview reuses its checked program.
+        # check_options restores the capture once (one compile); the preview reuses its checked program.
         projection=scalar_execution.check_preview(strategy_requests.check_options({'strategy':capture}),roots)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
@@ -145,15 +145,14 @@ class Original(Control):
         """Discover or inspect recorded scopes under ordinary financial ownership."""
         from backtest.application import variable_coverage, strategy_requests
         from backtest.inputs import fact_view, operation_inputs
-        if capture is not None:
-            strategy_requests.check_options({'strategy':capture})
-            capture=strategy_requests.from_wire(capture)
+        # check_options restores the capture once (one compile); inspect reuses its checked program.
+        checked=None if capture is None else strategy_requests.check_options({'strategy':capture})
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
                 with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint) as view:
-                    value=(variable_coverage.scopes(inputs.db,view) if capture is None else
-                           variable_coverage.inspect(capture,scope,inputs.db,view,checkpoint=self._checkpoint))
+                    value=(variable_coverage.scopes(inputs.db,view) if checked is None else
+                           variable_coverage.inspect(checked,scope,inputs.db,view,checkpoint=self._checkpoint))
         return dict(value,producer=dict(engine='original',label='Original coverage'))
 
     @diagnostics.operation('backtest.run')

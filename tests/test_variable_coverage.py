@@ -16,6 +16,11 @@ from backtest.runtime import backtest_control
 from backtest.application.original_calculations import Original
 from prepared_inputs_fixture import PreparedInputs, history
 
+def checked(capture):
+    """The restored strategy that inspect takes (Original.coverage passes check_options' result)."""
+    return strategy_requests.require_strategy(capture)
+
+
 class CoverageTests(unittest.TestCase):
     def setUp(self):
         self.fixture=Fixture(4);self.addCleanup(self.fixture.close)
@@ -25,20 +30,20 @@ class CoverageTests(unittest.TestCase):
                 listing=coverage.scopes(self.fixture.db,view)
                 scope=next(item for item in listing['scopes'] if item['mode']=='latest' and item['pool']==pool)
                 scope=dict(scope,generation=listing['generation'])
-                result=coverage.inspect(self.fixture.capture(pool=pool,first=2,last=2),scope,self.fixture.db,view)
+                result=coverage.inspect(checked(self.fixture.capture(pool=pool,first=2,last=2)),scope,self.fixture.db,view)
                 self.assertEqual(result['population'],4)
                 self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],4)
-                with self.assertRaises(ValueError):coverage.inspect(self.fixture.capture(pool=pool),dict(scope,generation='bad'),self.fixture.db,view)
+                with self.assertRaises(ValueError):coverage.inspect(checked(self.fixture.capture(pool=pool)),dict(scope,generation='bad'),self.fixture.db,view)
     def test_empty_and_orphan_scope(self):
         self.fixture.db.execute("DELETE FROM book_rows WHERE book=2 AND pool='cached'");self.fixture.db.commit()
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            result=coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
+            result=coverage.inspect(checked(self.fixture.capture()),dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual(result['population'],0);self.assertEqual(result['outputs'][0]['valid'],0)
         self.fixture.db.research.execute("DELETE FROM companies WHERE symbol='A0000'")
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='legacy')
-            with self.assertRaises(definitions.FormulaError):coverage.inspect(self.fixture.capture(pool='legacy'),dict(scope,generation=listing['generation']),self.fixture.db,view)
+            with self.assertRaises(definitions.FormulaError):coverage.inspect(checked(self.fixture.capture(pool='legacy')),dict(scope,generation=listing['generation']),self.fixture.db,view)
     def test_discovery_lists_the_stored_open_book_by_its_id(self):
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view)
@@ -47,7 +52,7 @@ class CoverageTests(unittest.TestCase):
             # A scope that names another stored book is not discovered; nothing is observed.
             with patch.object(coverage.columns.Formulas,'evaluate',side_effect=AssertionError('observed')):
                 with self.assertRaises(definitions.FormulaError) as failure:
-                    coverage.inspect(self.fixture.capture(),dict(listing['scopes'][1],generation=listing['generation'],
+                    coverage.inspect(checked(self.fixture.capture()),dict(listing['scopes'][1],generation=listing['generation'],
                                                                  book=self.fixture.dated),self.fixture.db,view)
                 self.assertEqual(failure.exception.code,'STALE_INPUT_GENERATION')
     def test_repeated_output_counts_once_per_company(self):
@@ -59,10 +64,10 @@ class CoverageTests(unittest.TestCase):
         repeated=strategy_requests.capture_strategy(intent,submitted=entries)
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            result=coverage.inspect(repeated,dict(scope,generation=listing['generation']),self.fixture.db,view)
+            result=coverage.inspect(checked(repeated),dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual(len(result['outputs']),1)
             self.assertEqual(result['outputs'][0]['valid']+result['outputs'][0]['unavailable'],result['population'])
-            with self.assertRaises(definitions.FormulaError):coverage.inspect(repeated,dict(scope,generation=listing['generation'],book=False),self.fixture.db,view)
+            with self.assertRaises(definitions.FormulaError):coverage.inspect(checked(repeated),dict(scope,generation=listing['generation'],book=False),self.fixture.db,view)
     def test_only_latest_scopes_and_cancellation(self):
         for pool in ('cached','legacy'):
             with self.fixture.view() as view:
@@ -70,15 +75,15 @@ class CoverageTests(unittest.TestCase):
                 self.assertEqual({x['mode'] for x in listing['scopes']},{'latest'})
                 scope=dict(next(x for x in listing['scopes'] if x['pool']==pool),generation=listing['generation'])
                 with self.assertRaises(definitions.FormulaError):
-                    coverage.inspect(self.fixture.capture(pool=pool),dict(scope,mode='historical',context_date='2015-01-02',book=1),self.fixture.db,view)
+                    coverage.inspect(checked(self.fixture.capture(pool=pool)),dict(scope,mode='historical',context_date='2015-01-02',book=1),self.fixture.db,view)
                 def cancel():raise backtest_control.Cancelled()
-                with self.assertRaises(backtest_control.Cancelled):coverage.inspect(self.fixture.capture(pool=pool),scope,self.fixture.db,view,checkpoint=cancel)
+                with self.assertRaises(backtest_control.Cancelled):coverage.inspect(checked(self.fixture.capture(pool=pool)),scope,self.fixture.db,view,checkpoint=cancel)
     def test_observation_leaf_reads_are_narrow_and_read_only(self):
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
             statements=[]
             self.fixture.db.set_trace_callback(statements.append)
-            try:coverage.inspect(self.fixture.capture(),dict(scope,generation=listing['generation']),self.fixture.db,view)
+            try:coverage.inspect(checked(self.fixture.capture()),dict(scope,generation=listing['generation']),self.fixture.db,view)
             finally:self.fixture.db.set_trace_callback(None)
             self.assertFalse(any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','REPLACE','CREATE','DROP')) for s in statements))
             leaves=[s for s in statements if 'FROM research.annual_facts' in s]
@@ -93,7 +98,7 @@ class CoverageTests(unittest.TestCase):
         capture=strategy_requests.capture_strategy(intent,submitted=[dependency,first,second])
         with self.fixture.view() as view:
             listing=coverage.scopes(self.fixture.db,view);scope=next(x for x in listing['scopes'] if x['mode']=='latest' and x['pool']=='cached')
-            result=coverage.inspect(capture,dict(scope,generation=listing['generation']),self.fixture.db,view)
+            result=coverage.inspect(checked(capture),dict(scope,generation=listing['generation']),self.fixture.db,view)
             self.assertEqual({item['variable_id'] for item in result['outputs']},{'local:first','local:second'})
             self.assertTrue(all(item['valid']+item['unavailable']==4 for item in result['outputs']))
     def test_prepared_owner_missing_lanes_and_equal_date_derived_policy(self):

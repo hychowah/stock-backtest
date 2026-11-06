@@ -30,7 +30,7 @@ const context=vm.createContext({console,document,AbortController,setTimeout:call
  if(url.endsWith('/favourite'))return response({...entry,version:2,favourite:true});
  if(url.endsWith('/capture')){if(captureWait)await captureWait();return response({strategy:{selection:body.intent.selection,bounds:{}}});}
  if(url==='/api/variable-coverage/scopes')return response({generation:'a'.repeat(64),scopes:[{mode:'latest',context_date:'2015-01-05',pool:'cached',book:0},{mode:'historical',context_date:'2015-01-02',pool:'cached',book:2015}]});
- if(url==='/api/variable-coverage/inspect'){if(coverageWait)await coverageWait();return response({generation:body.scope.generation,projection:{content:'b'.repeat(64)},scope:body.scope,population:4,provider_admitted:4,provider_unavailable:0,provider_reasons:{},outputs:[{...exact,valid:4,unavailable:0,reasons:{}}]});}
+ if(url==='/api/variable-coverage/inspect'){if(coverageWait)await coverageWait();return response({generation:body.scope.generation,projection:{content:'b'.repeat(64)},scope:body.scope,population:4,outputs:[{...exact,valid:4,unavailable:0,reasons:{}}]});}
  if(url==='/api/variable-preview'){previewCount++;return response({population:'explicit-request-scopes',roots:body.roots});}
  throw Error('Unexpected route '+url);
 }});

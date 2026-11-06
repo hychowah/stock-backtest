@@ -18,17 +18,17 @@ from test_annual_observations import field, formulas, values, root
 
 class PreparedMeasureTests(unittest.TestCase):
     def test_prepared_scope_membership(self):
-        root = dict(mode='latest', pool='cached')
-        self.assertTrue(bridge.prepared_scope(root, dict(id='a', root='a', date='2020-01-02')))
-        self.assertFalse(bridge.prepared_scope(root, dict(id='b', root='a', date='2020-01-02')))
-        # A historical root has no stored owner book, on any date.
-        self.assertFalse(bridge.prepared_scope(dict(mode='historical', pool='cached'), dict(id='a', root='a', date='2020-01-02')))
-        dated = dict(root, owner_scope=dict(kind='dated'))
-        # A prepared owner scope names its stored book by id.
-        prepared = dict(root, owner_scope=dict(kind='prepared', book=7))
-        self.assertFalse(bridge.prepared_scope(dated, dict(id='a', root='a', date='2020-01-02')))
-        self.assertTrue(bridge.prepared_scope(prepared, dict(id='a', root='a', date='2020-01-02')))
-        self.assertFalse(bridge.prepared_scope(prepared, dict(id='b', root='a', date='2020-01-02')))
+        root, derived = dict(id='a', root='a', date='2020-01-02'), dict(id='b', root='a', date='2020-01-02')
+        latest = dict(mode='latest', pool='cached')
+        self.assertTrue(bridge.prepared_scope(latest, root))
+        self.assertFalse(bridge.prepared_scope(latest, derived))
+        # An explicit historical root has no stored owner book, on any date.
+        historical = dict(mode='historical', pool='cached')
+        self.assertFalse(bridge.prepared_scope(historical, root))
+        # A prepared scope's decision names its stored book by id.
+        scoped = dict(historical, owner_scope=dict(kind='prepared', book=7))
+        self.assertTrue(bridge.prepared_scope(scoped, root))
+        self.assertFalse(bridge.prepared_scope(scoped, derived))
 
     def test_stored_components_and_missing_lanes(self):
         context = dict(reason=None, evidence=dict(snapshot=dict(market_cap=500.),
@@ -198,7 +198,7 @@ class DatedOwnerTests(unittest.TestCase):
         program = formulas(*[field(name) for name in ('owner.pe', 'owner.pb', 'owner.return_1y')])
         with patch.object(bridge, 'dated', wraps=bridge.dated) as owner, \
                 patch.object(view, 'validate', wraps=view.validate) as validate:
-            [[pe, pb, trailing]] = values(program, view, [root(owner_scope=dict(kind='dated'))])
+            [[pe, pb, trailing]] = values(program, view, [root()])
         owner.assert_called_once()
         self.assertEqual((pe, pb), ((15e6, None), (3e6, None)))
         # No saved price a year before the root: the lane is unavailable, not recalculated.
@@ -261,7 +261,7 @@ class PreparedTransportTests(unittest.TestCase):
                 dict(date='2015-10-20', month3=2, year10=4)]))
         day = date(2015, 1, 2)
         with self.prepared(configure).view() as view:
-            [decision] = view.admit([root('TEST', 'cached', owner_scope=dict(kind='dated'))])
+            [decision] = view.admit([root('TEST', 'cached')])
             reports = [dict(row, fiscal=date.fromisoformat(row['fiscal']), known=date.fromisoformat(row['known']))
                        for row in view.reports('TEST', 'cached')]
             with patch.object(view.facts, 'price', wraps=view.facts.price) as price, \

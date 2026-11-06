@@ -206,18 +206,20 @@ class ScalarTests(unittest.TestCase):
         capture=self.fixture.capture()
         latest=dict(symbol='A0001',pool='cached',mode='latest',date='2015-01-05')
         with self.fixture.view() as view:
-            result=preview(capture,[dict(latest,owner_scope=dict(kind='prepared',book=self.fixture.latest))],view)
+            result=preview(capture,[latest],view)
             self.assertTrue(result['evaluations'][0]['results'][0]['valid'])
-            # The one check (book_store.require_scope): only the open book of that day and pool.
-            for book in (0,self.fixture.dated,99):
+            # A request names no book: a preview root with an owner scope is refused before any input is read.
+            for scope in (dict(kind='prepared',book=self.fixture.latest),dict(kind='dated')):
                 with self.assertRaises(d.FormulaError) as failure:
-                    preview(capture,[dict(latest,owner_scope=dict(kind='prepared',book=book))],view)
-                self.assertEqual(failure.exception.path,'/requests/0/owner_scope')
-            with self.assertRaises(d.FormulaError):
-                preview(capture,[dict(latest,mode='historical',date='2015-01-02',
-                                      owner_scope=dict(kind='prepared',book=self.fixture.dated))],view)
-            with self.assertRaises(d.FormulaError):
-                x.Executor(capture,view,lambda record:None).select(self.fixture.db,self.fixture.dated,date(2015,1,5),latest=True)
+                    preview(capture,[dict(latest,owner_scope=scope)],view)
+                self.assertEqual((failure.exception.code,failure.exception.path),('INVALID_SHAPE','/requests/0'))
+            # The one check (book_store.require_scope): only the open book of that day and pool.
+            executor=x.Executor(capture,view,lambda record:None)
+            for book,day,latest_scope in ((self.fixture.dated,date(2015,1,5),True),(99,date(2015,1,5),True),
+                                          (self.fixture.latest,date(2015,1,5),False),(self.fixture.dated,date(2015,1,5),False)):
+                with self.assertRaises(d.FormulaError) as failure:
+                    executor.select(self.fixture.db,book,day,latest=latest_scope)
+                self.assertEqual(failure.exception.path,'/owner_scope')
         # A latest scope records its real book id in every root's owner scope.
         _,records=self.fixture.select(capture,latest=True)
         requests=[item for r in records if r['type']=='evaluation' for item in r['value']['block']['requests']]

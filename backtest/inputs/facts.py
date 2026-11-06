@@ -250,14 +250,20 @@ def legacy_annual(db, symbol, checkpoint=lambda: None, schema='research'):
     field order; a fiscal date without a valid value is left out. This equals the
     values-only projection of financial_inputs.resolve_history bit for bit.
     schema names the research facts on db: 'research' on a daily connection;
-    research preparation's fact diff reads 'main' and 'old'.
+    research preparation's fact diff reads 'main' and 'old'. The read is
+    bounded: more than MAX_HISTORY rows for each legacy endpoint, counted
+    together, fail.
     """
     columns = [column for _, fields in LEGACY for _, column in fields]
-    found = {}
+    bound = MAX_HISTORY * len(LEGACY)
+    found, count = {}, 0
     for endpoint, fiscal, *values in db.execute(
             f'SELECT endpoint,fiscal,{",".join(columns)} FROM {schema}.annual_facts WHERE symbol=? AND endpoint IN '
-            f'({",".join("?" * len(LEGACY))}) ORDER BY fiscal', (symbol, *(endpoint for endpoint, _ in LEGACY))):
+            f'({",".join("?" * len(LEGACY))}) ORDER BY fiscal LIMIT ?', (symbol, *(endpoint for endpoint, _ in LEGACY), bound + 1)):
         checkpoint()
+        count += 1
+        if count > bound:
+            raise ValueError('Prepared observation history exceeds its bound.')
         found.setdefault(fiscal, {})[endpoint] = dict(zip(columns, values))
     result = {}
     for fiscal, rows in found.items():

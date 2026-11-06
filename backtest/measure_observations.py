@@ -1,12 +1,13 @@
 """Bounded bridge from formula contexts to existing financial owners.
 
 Prepared scope membership is explicit: the root context of a stored-book root
-(a prepared owner scope names its book by id; a latest root without one names
-the open book) reads that book's stored owner lanes (fact_view.View.prepared),
-and a missing row never falls back to a recalculation. Every other context
-uses the dated owner policy here: books.owner_values at the context date. One
-resolved context serves every requested lane of that context. Values carry no
-evidence beyond the lane's own source, key and stored value.
+reads that book's stored owner lanes (fact_view.View.prepared). A prepared
+scope's decision names its book by id in its owner scope; any other latest
+root reads the open book. A missing row never falls back to a recalculation.
+Every other context uses the dated owner policy here: books.owner_values at
+the context date. One resolved context serves every requested lane of that
+context. Values carry no evidence beyond the lane's own source, key and stored
+value.
 """
 import math
 from datetime import date
@@ -24,14 +25,13 @@ def detached(value):
     return value
 
 
-def prepared_scope(root, context):
-    """Whether the context is a root context whose owner lanes are stored book lanes (View.prepared)."""
-    if context['id'] != context['root']:
-        return False
-    owner = root.get('owner_scope')
-    if owner is not None:
-        return owner['kind'] == 'prepared'
-    return root['mode'] == 'latest'
+def prepared_scope(decision, context):
+    """Whether the context is a root context whose owner lanes are stored book lanes (View.prepared).
+
+    decision is the root's admission: a prepared scope's decision has an owner
+    scope (scalar_execution._scope); a latest root reads the open book.
+    """
+    return context['id'] == context['root'] and ('owner_scope' in decision or decision['mode'] == 'latest')
 
 
 def dated(view, root, context, anchor, checkpoint):

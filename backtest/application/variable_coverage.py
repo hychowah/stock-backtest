@@ -2,12 +2,13 @@
 
 Every stored row of one latest scope (the open book's pool) is its root's
 admission and is evaluated values-only by the column evaluator; counts are
-exact.
+exact. A stored row is admitted by construction, so the population is the
+admitted count.
 """
 import hashlib
 from datetime import date
 
-from backtest.application import scalar_execution, strategy_requests
+from backtest.application import scalar_execution
 from backtest.inputs import book_store
 from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions
@@ -16,8 +17,9 @@ from backtest.variables import columns, definitions
 def scopes(db, view):
     """Discover the inspectable scopes: each completed pool of the stored open book, including empty pools.
 
-    Dated books are not listed: no caller inspects one, and a request never
-    names a dated book id (a book id is a handle, book_store).
+    Dated books are not listed: no caller inspects one. An inspect request
+    names only a scope discovered in the same generation (a book id is a
+    handle, book_store).
     """
     view.validate()
     generation=hashlib.sha256(definitions.canonical(dict(input=view.identity,projection=view.projection)).encode()).hexdigest()
@@ -27,11 +29,12 @@ def scopes(db, view):
     return dict(generation=generation,scopes=found)
 
 
-def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
+def inspect(checked, scope, db, view, checkpoint=backtest_control.checkpoint):
     """Reduce all captured output roots over one complete stored population.
 
-    db is the operation's daily connection: the population is the open book's
-    pool in the book store.
+    checked is the strategy that strategy_requests.check_options restored; its
+    program projection is the evaluator's input. db is the operation's daily
+    connection: the population is the open book's pool in the book store.
     """
     if (type(scope) is not dict or set(scope)!={'generation','mode','pool','context_date','book'}
             or type(scope['generation']) is not str or len(scope['generation'])!=64
@@ -47,10 +50,8 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
     exact={k:scope[k] for k in ('mode','pool','context_date','book')}
     if scope['generation']!=discovery['generation'] or exact not in discovery['scopes']:
         raise definitions.FormulaError('STALE_INPUT_GENERATION','/scope','The recorded scope is absent or its generation changed.')
-    checked=strategy_requests.require_strategy(capture,checkpoint=checkpoint)
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
-    # The restore checked the program; its projection is the evaluator's input.
     projection=checked['variables']['program']
     rows,admission=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True)
     outputs=[]; seen=set()
@@ -68,8 +69,7 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
             if valid:output['valid']+=1
             else:
                 output['unavailable']+=1
-                if reason!='ROOT_NOT_ADMITTED':output['reasons'][reason]=output['reasons'].get(reason,0)+1
+                output['reasons'][reason]=output['reasons'].get(reason,0)+1
     view.validate();checkpoint()
     return dict(generation=discovery['generation'],scope=exact,projection=view.projection,
-        program=projection['bundle_revision'],population=len(rows),
-        provider_admitted=len(rows),provider_unavailable=0,provider_reasons={},outputs=outputs)
+        program=projection['bundle_revision'],population=len(rows),outputs=outputs)

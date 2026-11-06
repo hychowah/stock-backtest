@@ -15,10 +15,10 @@ One income fiscal spine selects annual periods before any endpoint join;
 other endpoints join those exact dates. Price and volume use the stock's own
 saved row at the SPY session on or before the context, within seven days.
 Treasury uses the latest saved day on or before the context and divides
-provider percent by 100. A stored-book root (a prepared owner scope, or a
-latest root) reads its book's stored owner lanes; other roots and derived
-contexts use dated owner policy. Arithmetic is binary64
-in tree order; mean adds oldest first; min/max keep the oldest equal member;
+provider percent by 100. A stored-book root (a prepared scope's row, whose
+decision names its book, or a latest root) reads its book's stored owner
+lanes; other roots and derived contexts use dated owner policy. Arithmetic is
+binary64 in tree order; mean adds oldest first; min/max keep the oldest equal member;
 growth and CAGR need a positive first (and, for CAGR, last) member; the first
 unavailable operand's reason wins; a nonfinite result is unavailable.
 
@@ -75,14 +75,17 @@ _SYMBOL_CHARACTERS = frozenset('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 
 
 def require_roots(roots):
-    """Check explicit company/date roots before any input is read."""
+    """Check explicit company/date roots before any input is read: exactly symbol, pool, mode and date.
+
+    A request names no book; only a prepared scope's rows carry an owner scope
+    (scalar_execution._scope).
+    """
     if type(roots) is not list or not roots:
         _fail('INVALID_SHAPE', '/requests', 'An ordered nonempty root request list is required.')
     for index, root in enumerate(roots):
         path = '/requests/' + str(index)
-        if type(root) is not dict or set(root) not in ({'symbol', 'pool', 'mode', 'date'},
-                                                       {'symbol', 'pool', 'mode', 'date', 'owner_scope'}):
-            _fail('INVALID_SHAPE', path, 'A root needs symbol, pool, mode, date and optional owner scope.')
+        if type(root) is not dict or set(root) != {'symbol', 'pool', 'mode', 'date'}:
+            _fail('INVALID_SHAPE', path, 'A root needs exactly symbol, pool, mode and date.')
         if any(type(root[name]) is not str for name in ('symbol', 'pool', 'mode', 'date')):
             _fail('INVALID_SHAPE', path, 'Root request fields must be strings.')
         if (not 1 <= len(root['symbol']) <= 64 or not set(root['symbol']) <= _SYMBOL_CHARACTERS
@@ -94,11 +97,6 @@ def require_roots(roots):
             valid = False
         if not valid:
             _fail('INVALID_DATE', path + '/date', 'An ISO calendar date is required.')
-        scope = root.get('owner_scope')
-        if 'owner_scope' in root and (type(scope) is not dict or not (
-                scope == {'kind': 'dated'} or (set(scope) == {'kind', 'book'} and scope['kind'] == 'prepared'
-                                               and type(scope['book']) is int and scope['book'] >= 0))):
-            _fail('INVALID_SHAPE', path + '/owner_scope', 'Invalid owner scope.')
     return roots
 
 
@@ -347,11 +345,8 @@ class Formulas:
 
     def _root(self, root, decision, view, checkpoint, *, trace=None, identity=None):
         checkpoint()
-        decision = dict(decision, owner_scope=root['owner_scope']) if 'owner_scope' in root else decision
-        root_context = dict(id='root', root='root', date=root['date'])
-        if 'owner_scope' in root:
-            root_context['owner_scope'] = root['owner_scope']
-        state = dict(tasks={}, observations={}, contexts={('root',): root_context}, anchors={})
+        state = dict(tasks={}, observations={}, contexts={('root',): dict(id='root', root='root', date=root['date'])},
+                     anchors={})
         if trace is not None:
             state.update(trace=trace, root=identity, ids={}, context_ids={('root',): identity}, observation_ids={})
         result = {}

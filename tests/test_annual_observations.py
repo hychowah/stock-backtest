@@ -99,8 +99,8 @@ def explained(program, view, roots):
     return program.explain(roots, view, lambda: None, decisions=view.admit(roots))
 
 
-def root(symbol='A', pool='legacy', mode='historical', day='2015-01-02', **owner):
-    return dict(symbol=symbol, pool=pool, mode=mode, date=day, **owner)
+def root(symbol='A', pool='legacy', mode='historical', day='2015-01-02'):
+    return dict(symbol=symbol, pool=pool, mode=mode, date=day)
 
 
 def state(value, reason=None):
