@@ -10,6 +10,7 @@ from backtest.financial import books as financial_books
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
 from backtest import calendar as schedule_calendar
+from backtest import calendar_requests
 from backtest import portfolio_results as portfolio_results
 
 from backtest.inputs import daily
@@ -44,7 +45,7 @@ def compute_period(db,entry,exit_day,books,cached,pool,financials=None):
         backtest_control.checkpoint()
         if symbol not in cached or (pool=='legacy' and symbol not in ranks):continue
         lookup=lambda day,column,forward,slack:daily.price(db,symbol,day,column,forward=forward,slack=slack)
-        row=financial_books.snapshot(s,entry,exit_day,lookup,(entry.year,symbol) in rules.BANKRUPT)
+        row=financial_books.snapshot(s,entry,exit_day,lookup,rules.bankrupt(symbol,entry,exit_day))
         if row is None:continue
         fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,ret,status=row
         if not financial_books.eligible(pool,cap,ev):continue
@@ -70,8 +71,9 @@ def prepare_period(db,entry,exit_day,books,cached,pool='legacy',financials=None)
 def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Regular schedules and random-date batches share one book evaluator."""
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
-    periods=schedule(start,end,months,sessions)
-    return backtest_periods(db,periods,months=months,book_selection=book_selection,emit_period=emit_period,**options)
+    periods,_,marked,_,_=calendar_requests.periods(sessions,dict(start=start,end=end,months=months),
+                                                   checkpoint=backtest_control.checkpoint)
+    return _backtest_periods(db,periods,final_mark=marked,months=months,book_selection=book_selection,emit_period=emit_period,**options)
 
 def backtest_calendar(db, *, book_selection=None, emit_period=None, **request):
     """Evaluate a version-1 calendar with the ordinary complete-book policy.
@@ -79,11 +81,10 @@ def backtest_calendar(db, *, book_selection=None, emit_period=None, **request):
     Requested calendar metadata remains separate from resolved trading sessions.
     Explicit dates preserve the common cash window used by random trials.
     """
-    from backtest import calendar_requests as calendar_requests
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
-    periods,first,options,metadata=calendar_requests.periods(
+    periods,first,marked,options,metadata=calendar_requests.periods(
         sessions,request,checkpoint=backtest_control.checkpoint)
-    return _backtest_periods(db,periods,common_start=first,frequency=metadata,book_selection=book_selection,emit_period=emit_period,**options)
+    return _backtest_periods(db,periods,final_mark=marked,common_start=first,frequency=metadata,book_selection=book_selection,emit_period=emit_period,**options)
 
 def dated_periods(dates,start,end,months,sessions):
     """Keep legacy month validation; explicit trades need no nominal schedule."""
@@ -95,13 +96,14 @@ def backtest_dates(db, *, dates, start, end, months=12, book_selection=None, emi
     """Evaluate explicit trades, holding cash before the first trade for both sides."""
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     first,final,periods=dated_periods(dates,start,end,months,sessions)
-    return _backtest_periods(db,periods,months=months,common_start=first,book_selection=book_selection,emit_period=emit_period,**options)
+    # Explicit trades end on the final mark.
+    return _backtest_periods(db,periods,final_mark=True,months=months,common_start=first,book_selection=book_selection,emit_period=emit_period,**options)
 
-def backtest_periods(db, periods, *, months, book_selection=None, emit_period=None, **options):
-    return _backtest_periods(db,periods,months=months,book_selection=book_selection,emit_period=emit_period,**options)
+def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None, frequency=None, book_selection=None, emit_period=None, **options):
+    """Prepare missing books atomically and apply the shared SQL screener.
 
-def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=None, book_selection=None, emit_period=None, **options):
-    """Prepare missing books atomically and apply the shared SQL screener."""
+    final_mark: the last period ends on a mark to date (portfolio_results).
+    """
     backtest_control.checkpoint()
     started=time.perf_counter()
     periods=portfolio_results.validate_periods(periods,common_start)
@@ -127,9 +129,9 @@ def _backtest_periods(db, periods, *, months=None, common_start=None, frequency=
         contract = book_selection.contract if book_selection is not None else 1
         if emit_period is None:
             result=portfolio_results.evaluate(periods,select_period,common_start=common_start,
-                checkpoint=backtest_control.checkpoint,contract=contract)
+                checkpoint=backtest_control.checkpoint,contract=contract,final_mark=final_mark)
         else:
             result=portfolio_results.evaluate_into(periods,select_period,emit_period,common_start=common_start,
-                checkpoint=backtest_control.checkpoint,contract=contract)
+                checkpoint=backtest_control.checkpoint,contract=contract,final_mark=final_mark)
     result.update(frequency if frequency is not None else dict(months=months),options=options,seconds=time.perf_counter()-started)
     return result

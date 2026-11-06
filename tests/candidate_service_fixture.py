@@ -24,7 +24,6 @@ def main():
     with runtime_access.ownership(source),ExitStack() as context:
         from backtest.financial import rules
         from backtest.inputs import market, fmp_download, cache_assets
-        from backtest.engines.reference import legacy
         fmp_download.KEY_PATH=source.parent/'nonexistent-offline-key'
         if scenario.startswith('ordinary'):
             class WithoutNative:

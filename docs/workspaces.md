@@ -87,7 +87,7 @@ Source publication and native server execution share a lock. A deployment stops 
 | Native environments and leftover experimental-engine caches | Windows runtime; create them for Windows |
 | Deployment hashes and commit identity | Windows `data/deployment.json` |
 
-Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. `results/summary-exits.txt` is the exception: deployment never installs, replaces or removes it, even in a fresh runtime. Nothing reads it, so a runtime without it works normally.
+Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. `results/summary-exits.txt` is the exception: deployment never installs, replaces or removes it, even in a fresh runtime. Only the development check reads it, on the real-data bench, so a runtime without it works normally.
 
 There is no automatic reverse source sync. Do not edit installed Windows code. Deployment detects unexpected edits and unowned-file collisions before replacing source. It removes only source files owned by the preceding deployment manifest. A case-only rename must be deployed through an intermediate committed filename so Windows can distinguish the versions.
 

@@ -53,10 +53,6 @@ then rebuilds it from the saved files. No market data is downloaded.
 
 `logs/website-<namespace>-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
 
-Preparation deletes `research.sqlite.publication.json`, which the removed
-January report publication left. The frozen `results/baseline-history/` files
-stay untouched.
-
 ## Saved backtests
 
 `saved-backtests.sqlite` contains user-saved backtests. It is separate from the

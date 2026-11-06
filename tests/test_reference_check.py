@@ -8,7 +8,7 @@ from datetime import date
 import unittest
 from unittest.mock import patch
 
-from backtest.engines.reference import check, revalue
+from backtest.engines.reference import check, legacy, revalue
 from backtest.inputs import research
 from backtest.runtime import cache_access
 from prepared_inputs_fixture import PreparedInputs, history
@@ -18,7 +18,10 @@ class ReferenceCheckTests(unittest.TestCase):
     def setUp(self):
         inputs = PreparedInputs(configure=history(12, 2014, 2016))
         self.addCleanup(inputs.close)
-        inputs.context.enter_context(patch.object(revalue, 'RAW', research.RAW))
+        # The reference engine reads the fixture and follows its study years.
+        for owner, name, value in ((revalue, 'RAW', research.RAW), (legacy, 'RAW', research.RAW),
+                                   (legacy, 'FIRST_YEAR', 2014), (legacy, 'LAST_YEAR', 2016)):
+            inputs.context.enter_context(patch.object(owner, name, value))
         self.through = date(2016, 10, 20)
         with cache_access.access():
             self.result = check.dated(self.through)
@@ -53,6 +56,7 @@ class ReferenceCheckTests(unittest.TestCase):
         rows = ''.join(f'{y["year"]},{y["portfolio"]:.4f},{y["spy"]:.4f},{len(y["holdings"])},0,0\n'
                        for y in self.adapted['years'])
         text = 'Through 2016-10-20\n\nyear,portfolio,spy,names,stopped,bankrupt\n' + rows
+        self.assertEqual(check.report_through(text), self.through)
         self.assertEqual(check.report_rows(self.adapted, text), [])
         changed = text.replace('2016,', '2016,9', 1)
         self.assertEqual([(item['year'], item['field']) for item in check.report_rows(self.adapted, changed)],

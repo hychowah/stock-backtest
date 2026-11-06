@@ -1,4 +1,4 @@
-# EBITDA/EV January book
+# EBITDA/EV stock backtest
 
 A standalone US stock backtest and interactive results website. Screen US stocks by EBITDA/enterprise value or custom variables, then test the selected stocks on fixed or random dated schedules, equally weighted, against SPY with dividends included. The original study bought the 50 highest EBITDA/EV stocks each January from 1996; its frozen result covers 1996 through 20 October 2026.
 
@@ -127,7 +127,7 @@ python3 tests/check_paths.py
 
 Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records.
 
-The development check, `python3 scripts/check.py`, compares a 12-month dated run from 1 January 1996 with the independent reference engine (`backtest/engines/reference/revalue.py`, which reads raw prices) at full precision. Run it on a real-data copy after a change to book policy; no build or startup runs it.
+The development check, `python3 scripts/check.py`, compares a 12-month dated run from 1 January 1996 to the frozen report's Through date with the independent reference engine (`backtest/engines/reference/revalue.py`, which reads raw prices) at full precision, and its annual rows with the frozen report. It passes with 0 differences. Run it on a real-data copy after a change to book policy; no build or startup runs it.
 
 ## Project layout
 

@@ -26,11 +26,12 @@ def last_in_window(div, entry: date, exit_day: date):
 
 
 def calculate(through: date):
-    """Return full-precision years and priced holdings through a fixed date.
+    """Return full-precision years and holdings through a fixed date.
 
-    Read saved files only. The caller owns cache_access. Dates in the result
-    are ISO strings; unavailable prices are never carried forward beyond the
-    original engine's price rules. This function never publishes.
+    The result has only the fields that check.differences compares. Read saved
+    files only; the caller owns cache_access. Dates are ISO strings;
+    unavailable prices are never carried forward beyond the original engine's
+    price rules.
     """
     universe = {row['symbol']: row for row in json.loads((RAW/'universe.json').read_text(encoding='utf-8'))}
     with redirect_stdout(io.StringIO()):
@@ -60,27 +61,24 @@ def calculate(through: date):
         refreshed.sort(key=lambda r:r['spread'],reverse=True)
         holdings = []
         for rank,row in enumerate(refreshed[:run.HOLD],1):
-            light, div = prices[row['symbol']]
+            _, div = prices[row['symbol']]
             start = run.first_on_or_after(div,row['entry_day'],4)
             if start is None: continue
             finish = run.last_on_or_before(div,end,10)
+            # The January study's label: a book that ends in its entry year is marked to date.
             status = 'Scheduled exit' if end.year > rebalance.year else 'Marked to date'
-            bankrupt = (year,row['symbol']) in rules.BANKRUPT
+            bankrupt = rules.bankrupt(row['symbol'],rebalance,end)
             if finish is None:
                 finish = last_in_window(div,start[0],end)
                 status = 'Last available price'
             if finish is None: continue
             ret = -1. if bankrupt else finish[1]/start[1]-1
             if bankrupt: status = 'Bankruptcy'
-            fiscal = run.last_on_or_before(light or div,row['fiscal'],7)
-            entry = run.first_on_or_after(light or div,rebalance,4)
             holdings.append(dict(symbol=row['symbol'],rank=rank,fiscal=str(row['fiscal']),entry=str(start[0]),exit=str(finish[0]),
-                                 fiscal_price_date=str(fiscal[0]),valuation_date=str(entry[0]),fiscal_price=fiscal[1],valuation_price=entry[1],entry_price=start[1],exit_price=finish[1],
                                  market_cap=row['equity_now'],enterprise_value=row['ev_now'],ebitda=row['ebitda_yield']*row['enterprise'],
                                  return_value=ret,status=status))
         if not holdings: raise ValueError('Reference calculation has no holdings for '+str(year))
         a,b=run.first_on_or_after(spy,rebalance,4),run.last_on_or_before(spy,end,4)
-        years.append(dict(year=year,entry=str(rebalance),exit=str(end),spy_entry=str(a[0]),spy_exit=str(b[0]),
-                          spy_entry_price=a[1],spy_exit_price=b[1],spy=b[1]/a[1]-1,
+        years.append(dict(year=year,entry=str(rebalance),exit=str(end),spy=b[1]/a[1]-1,
                           portfolio=sum(h['return_value'] for h in holdings)/len(holdings),holdings=holdings))
     return dict(through=str(through),years=years)

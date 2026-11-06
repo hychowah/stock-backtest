@@ -114,7 +114,13 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(result['growth'],.75)
         self.assertEqual(result['spy_growth'],1.1*1.1)
         self.assertEqual(result['cash_days'],0)
-        self.assertEqual(result['periods'],s.backtest(self.db,start=configuration['start'],end=configuration['end'],months=3,rank_to=1)['periods'])
+        fixed=s.backtest(self.db,start=configuration['start'],end=configuration['end'],months=3,rank_to=1)['periods']
+        # Explicit trades end on the final mark; this fixed schedule ends on its scheduled 1 July exit.
+        labels=lambda periods:[[h['status'] for h in p['holdings']] for p in periods]
+        self.assertEqual(labels(result['periods']),[['Scheduled exit'],['Marked to date']])
+        self.assertEqual(labels(fixed),[['Scheduled exit'],['Scheduled exit']])
+        unlabelled=lambda periods:[dict(p,holdings=[dict(h,status=None) for h in p['holdings']]) for p in periods]
+        self.assertEqual(unlabelled(result['periods']),unlabelled(fixed))
 
     def test_financial_ratios_use_selected_report_and_reuse_books(self):
         self.db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[
@@ -206,6 +212,17 @@ class BacktestTests(unittest.TestCase):
         result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,metric='ev_ebitda_3y')
         self.assertIsNone(result['growth']);self.assertIsNone(result['cagr'])
         self.assertTrue(all(p['names']==0 for p in result['periods']))
+
+    def test_a_bankruptcy_counts_only_in_the_book_whose_window_contains_its_day(self):
+        # One temporary loss of A on 15 May 2015: inside the April book, outside the January book.
+        with patch.object(rules,'BANKRUPT',{('A',date(2015,5,15))}):
+            result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=2)
+            self.assertTrue(rules.bankrupt('A',date(2015,4,1),date(2015,5,15)))
+            self.assertFalse(rules.bankrupt('A',date(2015,5,15),date(2015,7,1)))
+        first,second=({h['symbol']:h for h in p['holdings']} for p in result['periods'])
+        self.assertEqual((first['A']['return_value'],first['A']['status']),(.5,'Scheduled exit'))
+        self.assertEqual((second['A']['return_value'],second['A']['status']),(-1.,'Bankruptcy'))
+        self.assertEqual((second['B']['return_value'],second['B']['status']),(0.,'Scheduled exit'))
 
     def test_stop_and_missing_buy(self):
         self.db.execute("DELETE FROM prices WHERE symbol='A' AND day='2015-07-01'")

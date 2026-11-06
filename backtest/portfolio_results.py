@@ -112,15 +112,15 @@ def _holdings(book, entry, exit_day, contract=1):
     return stocks
 
 
-def evaluate(periods, select_period, *, common_start=None, checkpoint=None, contract=1):
+def evaluate(periods, select_period, *, common_start=None, checkpoint=None, contract=1, final_mark=False):
     """Collect the incremental reduction into the existing detached contract."""
     results = []
     summary = evaluate_into(periods, select_period, results.append,
-        common_start=common_start, checkpoint=checkpoint, contract=contract)
+        common_start=common_start, checkpoint=checkpoint, contract=contract, final_mark=final_mark)
     return dict(periods=results, **summary)
 
 
-def evaluate_into(periods, select_period, emit_period, *, common_start=None, checkpoint=None, contract=1):
+def evaluate_into(periods, select_period, emit_period, *, common_start=None, checkpoint=None, contract=1, final_mark=False):
     """Emit each complete holding period in order.
 
     Retain only aggregation state and the current period. The collecting adapter
@@ -131,6 +131,11 @@ def evaluate_into(periods, select_period, emit_period, *, common_start=None, che
     Empty books remain visible and make strategy growth/CAGR unavailable. A
     common start adds the established explicit-date cash fields. Cash has zero
     return for both sides. Cancellation and provider errors propagate unchanged.
+
+    A book row records only how a holding exited. The run labels its final
+    mark: with final_mark (the last period ends on a mark to date, not on a
+    scheduled exit), the last period's 'Scheduled exit' holdings show 'Marked
+    to date'.
     """
     if type(contract) is not int or contract not in (1,2):raise ValueError('Unsupported selected-book contract.')
     periods = validate_periods(periods, common_start)
@@ -139,9 +144,14 @@ def evaluate_into(periods, select_period, emit_period, *, common_start=None, che
         if checkpoint is not None: checkpoint()
         book = select_period(entry, exit_day)
         stocks = _holdings(book, entry, exit_day, contract)
+        final = exit_day == periods[-1][1]
+        if final and final_mark:
+            for stock in stocks:
+                if stock['status'] == 'Scheduled exit':
+                    stock['status'] = 'Marked to date'
         period = dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
             names=len(stocks), portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,
-            spy=book['spy'], is_final_period=exit_day==periods[-1][1])
+            spy=book['spy'], is_final_period=final)
         if growth is not None:growth=growth*(1+period['portfolio']) if period['portfolio'] is not None else None
         spy_growth*=1+period['spy']
         emit_period(period)

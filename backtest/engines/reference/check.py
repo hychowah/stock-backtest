@@ -7,14 +7,13 @@ lookups):
     python3 scripts/check.py [--through YYYY-MM-DD] [--json OUT]
 
 The dated run is the fixed 12-month schedule from 1 January legacy.FIRST_YEAR to
-the through date (default legacy.ASOF): legacy pool, ev_ebitda ranks 1 to
-legacy.HOLD and the default size floors, calculated by Original. adapt() gives it the shape of
-revalue.calculate(through); differences() is the one comparator. It compares
-both at full precision, within the 1e-12 tolerance, and names each difference.
-The check passes when there is none. report_rows() compares the annual rows
-with the frozen report (results/summary-exits.txt) at its four decimals. The
-report marks 2026 through its own Through date, so at a later through date only
-its 2026 row differs. A dated book stores no prices, so prices are not compared.
+the through date (default: the frozen report's Through date, 2026-10-20):
+legacy pool, ev_ebitda ranks 1 to legacy.HOLD and the default size floors,
+calculated by Original. adapt() gives it the shape of revalue.calculate(through);
+differences() is the one comparator. It compares both at full precision, within
+the 1e-12 tolerance, and names each difference. report_rows() compares the
+annual rows with the frozen report (results/summary-exits.txt) at its four
+decimals. The check passes when neither finds a difference.
 """
 import argparse
 import csv
@@ -23,6 +22,7 @@ import io
 import json
 import math
 from pathlib import Path
+import re
 
 from backtest.engines.reference import legacy
 
@@ -91,6 +91,11 @@ def differences(dated_result, reference):
     return found
 
 
+def report_through(text):
+    """The frozen report's Through date: its 2026 row is marked through it."""
+    return date.fromisoformat(re.search(r'^Through (\d{4}-\d{2}-\d{2})$', text, re.MULTILINE).group(1))
+
+
 def report_rows(dated_result, text):
     """Compare annual rows with the frozen report's four-decimal CSV rows."""
     rows = list(csv.DictReader(io.StringIO(text.replace('\r\n', '\n')[text.index('year,portfolio,spy,'):])))
@@ -117,21 +122,23 @@ def main():
     from backtest.paths import RESULTS
     from backtest.runtime import cache_access
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    parser.add_argument('--through', type=date.fromisoformat, default=legacy.ASOF)
+    parser.add_argument('--through', type=date.fromisoformat, help="Default: the frozen report's Through date")
     parser.add_argument('--json', type=Path, help='Write the dated run and every difference to this file')
     args = parser.parse_args()
+    text = (RESULTS / 'summary-exits.txt').read_text(encoding='utf-8')
+    through = args.through or report_through(text)
     with cache_access.access():
-        result = dated(args.through)
-        reference = revalue.calculate(args.through)
-    adapted = adapt(result, args.through)
+        result = dated(through)
+        reference = revalue.calculate(through)
+    adapted = adapt(result, through)
     found = differences(adapted, reference)
-    frozen = report_rows(adapted, (RESULTS / 'summary-exits.txt').read_text(encoding='utf-8'))
+    frozen = report_rows(adapted, text)
     kinds = {}
     for item in found:
         kinds[item['kind']] = kinds.get(item['kind'], 0) + 1
     print(f'Dated run: {len(adapted["years"])} books, {sum(len(y["holdings"]) for y in adapted["years"])} holdings, '
           f'{result["start"]} -> {result["end"]}.')
-    print(f'Against revalue.calculate({args.through}): {len(found)} differences {kinds or ""}.')
+    print(f'Against revalue.calculate({through}): {len(found)} differences {kinds or ""}.')
     for item in found[:40]:
         print('  ' + json.dumps(item, default=str))
     print(f'Against the frozen report: {len(frozen)} differences.')
@@ -139,7 +146,7 @@ def main():
         print('  ' + json.dumps(item, default=str))
     if args.json:
         args.json.write_text(json.dumps(dict(dated=adapted, differences=found, report=frozen), default=str))
-    raise SystemExit(1 if found else 0)
+    raise SystemExit(1 if found or frozen else 0)
 
 
 if __name__ == '__main__':

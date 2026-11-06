@@ -17,7 +17,7 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`, read through `facts.View`), T2
 (detail-mode explanations, D1), T3 (JSON observation tables and reference
-evaluator deleted), P1, P2a and P2b.
+evaluator deleted), P1 and P2 (P2a, P2b, P2c).
 
 Bench, research schema 13, daily cache 6, P1 code (6367bef; the four digests
 equal T3, which equal T2):
@@ -31,25 +31,15 @@ equal T3, which equal T2):
   140 ms per date over 1,326 dates. The formula arithmetic is well under 1 ms
   of it.
 
-P2a (67e0e5f, idle bench): the dev check finds 0 differences from
-`revalue.calculate(2026-10-21)` over 31 books and 1,550 holdings (also on P1
-code); the frozen report differs only in its 2026 row (marked 2026-10-20), and
-with `--through 2026-10-20` nothing differs. Random, custom and latest
-digests equal P1; the fixed-run digest equals e48c97a. Evidence is 4.8 KB
-smaller (2 recorded scopes, not 64). Cold build 483 s: research 394 s
-(companies 171, dated facts 190, verification 21), daily 89 s. Sizes as P1.
-User test 484.2 s computed, 181.7 s saved. e48c97a ran beside test jobs
-(508 s; 540/209 s), so P1 is the timing baseline: no measurable change.
+P2a (67e0e5f): digests equal P1; the dev check finds 0 differences over 31
+books and 1,550 holdings; evidence is 4.8 KB smaller (2 recorded scopes, not
+64). Cold build 483 s; user test 484.2 s computed, 181.7 s saved: no change.
 
-P2b (4d66c8e, research schema 14, daily 7, cold build): the four digests equal
-P2a; evidence of random and custom runs is 2 bytes larger (header only). The
-dev check finds 0 differences; the frozen report differs only in 2026. Fixture
-harness parity (`results.py`, oracle 8dc5c72): 16 runs equal. The real-data
-build, `check_screener.py` (26 screens), range and contribution checks pass.
-Cold build 335 s: research 249 s (inputs 1.5, companies 65, dated facts 182,
-publication 0.003), daily 86 s (prices 83). `research.sqlite` 2.06 GB
-(`stock_days` 1.86 GB; −172 MB); `schedules.sqlite` 1.10 GB before books,
-10.80 GB after. User test 483.1 s computed, 180.6 s saved: no change.
+P2b (4d66c8e, research schema 14, daily 7): digests equal P2a; harness parity
+(oracle 8dc5c72) 16 runs equal; dev check 0 differences. Cold build 335 s:
+research 249 s (companies 65, dated facts 182), daily 86 s. `research.sqlite`
+2.06 GB (−172 MB); `schedules.sqlite` 1.10 GB before books, 10.80 GB after.
+User test 483.1 s computed, 180.6 s saved: no change.
 
 ## Decisions
 
@@ -150,13 +140,9 @@ agent each. Re-check every dependency by grep first.
   baseline audit and data scope, `--collect-report`, `research.py screen` and
   the January parts of the coverage tool (version 2). `ResultArtifacts.decode`
   projects saved January results (versions 1–2) into dated periods.
-- Deviations (code over plan): deploy kept its REPORT special cases for P2b,
-  because the writer still rewrote the runtime report; an owner-less latest
-  root keeps stored latest lanes; sector and exchange choices come from all
-  companies; Historical backtest opens without a run; `check.py` stayed out of
-  `calculation_sources`.
-- Unlisted readers: the bench harness January scope; the report copy in
-  `offline_input_copy.py` and the `research.connect` binding (P2b).
+- Deviations: an owner-less latest root keeps stored latest lanes; sector and
+  exchange choices come from all companies; Historical backtest opens without a
+  run.
 - Visible changes: coverage lists latest scopes only until P3; previews on
   January sessions use the dated owner policy; the data panel defaults to
   cached-price stocks through today; the build writes no `returns.csv`,
@@ -166,33 +152,41 @@ agent each. Re-check every dependency by grep first.
 
 - P2a follow-up (5b67b71): one January refusal, at the run route; stale docs
   and CSS; the local default end date; three latest parity cases.
-- Removed: the January writer (loop, tables, `verify_reference`,
-  `prepared_baseline`, `screening.historical`, `baseline.py`, the report in
-  `signature()` and in `research.connect`), all research reuse (`_PriorUnits`,
-  the scope and digests, `facts.copy_stock`), the deploy REPORT seed, the
+- Removed: the January writer and tables, `verify_reference`, `baseline.py`,
+  the report binding, all research reuse, the deploy REPORT seed, the
   offline-copy report, `scripts/revalue.py`, `run.py` and the stop tools.
-  Research schema 14 is a full build that replaces the file atomically and
-  deletes the old publication journal.
+  Research schema 14 is a full build that replaces the file atomically.
 - `daily.DATED_SCHEMA` holds the daily-only tables with the same DDL (daily 7);
   `research.SHARED_SCHEMA` holds the one definition of the shared tables.
 - Study constants live in `engines/reference/legacy.py`; `rules.FIRST_DAY` is
   the one 1996 floor.
-- The dev check is a leaf: `differences` and the dated field lists stay,
-  `scripts/check.py` runs it, `calculation_sources()` lists only row and book
-  code, and nothing outside `engines/reference/` imports that package.
-- Bench harness: the `january:*` scopes are gone.
-- Deviations (code over plan): `calculation_sources` also drops `screening`,
-  `selection` and `measure_observations`, which only select or read stored
-  rows. `legacy_downloads.py` goes with `legacy.main`, its only caller; the
-  data panel downloads every dataset. Deploy keeps REPORT unmanaged, because a
-  managed REPORT stops the first deployment wherever the runtime copy differs;
-  only the seed, extraction and warning go. The offline-copy manifest is
-  version 2 and refuses version 1. `facts.resolve` loses `days`;
-  `paths.LEGACY` and `STOPS` go.
-- Unlisted readers: `tests/check_paths.py` (imported the deleted scripts), the
-  fictional workspace's bootstrap report, `test_offline_preparation`,
-  `results/README.md`; `test_phase09_legacy` compares its frozen expectations
-  without the baseline, report and January rows.
+- `scripts/check.py` runs the dev check; the bench harness `january:*` scopes
+  are gone.
+- Deviations: `calculation_sources` drops code that only selects or reads
+  stored rows; `legacy_downloads.py` goes with its only caller; REPORT stays
+  unmanaged (a managed one stops the first deployment where the runtime copy
+  differs); the offline-copy manifest is version 2 and refuses version 1.
+- Unlisted readers: `tests/check_paths.py`, the fictional workspace's
+  bootstrap report, `test_offline_preparation`, `results/README.md`,
+  `test_phase09_legacy`.
+
+#### P2c. Review follow-up and two user decisions (done)
+
+- Labels ("follow your recommendation"): a stored book row records only how a
+  holding exited (`Scheduled exit`, `Last available price`, `Bankruptcy`).
+  `portfolio_results` shows `Marked to date` for the last period's normal exits
+  when the run ends on a mark, not a scheduled exit (`calendar_requests.periods`
+  `marked`; `SessionCalendar.scheduled_final`; explicit trades always). The
+  reference engine keeps the January year rule. Returns are unchanged.
+- `rules.BANKRUPT` holds `(symbol, day of loss)`; a book whose window (after
+  entry, through exit) contains the day takes −100%. Still empty.
+- Fixes: the facts policy binds `research.calculation_sources()` (an edit to
+  `measure_observations.py` left research current while the facts were
+  rejected); `check_paths` no longer needs the runtime report; a test covers
+  the research input-change guard; the publication-journal deferral and unlink
+  go; the dev check is a leaf (`load_price_pair`, `session_on_or_after` in
+  `legacy.py`; `revalue` returns only compared fields; default through
+  2026-10-20; a report difference fails).
 
 ### P3. One fact store and one book function
 
@@ -226,6 +220,15 @@ Scope, in this order:
    - A prepared scope is a stored book (period row and pool), named by book id
      instead of a threaded `owner_scope`. One check in the book store; coverage
      discovery lists stored books.
+   - One `book` id names a dated book and replaces `periods.year`,
+     `snapshots.year`, `screening_metrics.year`, `filter_values.year` and
+     `period_pools.period_id`; the constant `mode` column goes.
+     `screening.select(db, book=None)` and `scalar_execution.scope_rows` take
+     one book: no inclusive range, no `PARTITION BY s.year`, no `historical`
+     flag. Tests stop building one database from `research.SCHEMA +
+     daily.DATED_SCHEMA`.
+   - One atomic-replace helper in `cache_assets`, with the Windows sharing
+     retry, serves `publish_bytes`, `research.prepare` and `daily.prepare`.
    - The kept-book rule below.
 5. Delete in one step (list below).
 
@@ -250,10 +253,12 @@ tables; research `treasury10` and `financial_inputs`; `daily._prices`,
 `facts.require`, `policy_binding`, `prepared_bindings`,
 `prepared_price_binding`, the daily engine stats and `_code` digests;
 `latest_admission`; the scope list with `MAX_SCOPES` and `MAX_METADATA_BYTES`;
-the `MAX_HISTORY` checks in the replaced readers; the three owner-scope checks.
+the `MAX_HISTORY` checks in the replaced readers; the three owner-scope checks;
+`research._replace`; the `mode` columns.
 
 Owns: `research.py`, `daily.py`, `facts.py`, `books.py`, `schedules.py`,
-`book_batch.py`, the `sessions` readers (`robustness.py`,
+`book_batch.py`, `screening.py`, the `cache_assets` replace helper, the
+`sessions` readers (`robustness.py`,
 `calendar_requests.py`, `scalar_runs.py`, `original_calculations.py`),
 `operation_inputs.py`, the scope readers (`scalar_execution`,
 `measure_observations.prepared_scope`, `columns.require_roots`,
@@ -375,4 +380,4 @@ Reviews of 8de87fb (A design, B implementation), 227cdd1 and 4db98dc.
 
 ## Next
 
-P3 after the independent review of P2.
+P3.

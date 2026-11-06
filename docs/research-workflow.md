@@ -52,7 +52,7 @@ python3 scripts/research.py status
 
 The January `screen` command was removed with the January mode. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). **Rank first, then filter** selects the requested ranks before applying user filters. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
-`legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: both pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides (keyed by entry year). This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
+`legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: both pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides (keyed by symbol and day of loss; a book whose window contains the day takes the loss). This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
 `cached` considers all available positive-EV USD reports for companies with cached price files. Its report selection can differ from the original pool because the original report-level size filters are not applied. It cannot claim to be the full 11,000-company universe. The status command reports the latest session's eligible financials and price-valued names. Acquiring missing prices is a separate, explicit task.
 
@@ -690,21 +690,22 @@ provider fixtures and temporary caches; they make no live FMP calls.
 
 `results/summary-exits.txt`, `results/baseline-history/`, `results/legacy/` and
 `results/stops/` are a frozen record of the January study. Nothing regenerates,
-collects or changes them. Preparation stores no January books, report hash or
-revision evidence, and deletes the stale `data/research.sqlite.publication.json`
-that the removed publication left.
+collects or changes them.
 
 The development check, `python3 scripts/check.py [--through YYYY-MM-DD] [--json
 OUT]`, runs one Original custom run: every 12 months from 1 January 1996 to the
-through date (default 2026-10-21), legacy pool, `ev_ebitda` ranks 1–50 and the
-default floors. It compares every book, holding, date, valuation, return and exit
-basis with `revalue.calculate(through)` at full precision (relative and absolute
-tolerance `1e-12`) and names each difference. It passes with none. It also
-compares the annual rows with the frozen report at four decimals; the report
-marks 2026 through 2026-10-20, so only that row differs at the default date. Run
-it on the real-data bench after a change to book policy (`books.py`, `rules.py`,
-the dated book writer or its price lookups). The study constants (`FIRST_YEAR`,
-`LAST_YEAR`, `ASOF`, `HOLD`) live in `backtest/engines/reference/legacy.py`.
+through date (default: the frozen report's Through date, 2026-10-20), legacy
+pool, `ev_ebitda` ranks 1–50 and the default floors. It compares every book,
+holding, date, valuation, return and exit status with `revalue.calculate(through)`
+at full precision (relative and absolute tolerance `1e-12`) and names each
+difference. It also compares the annual rows with the frozen report at four
+decimals. It passes with no difference in either comparison. The reference
+engine keeps the January study's label rule: a book that ends in its entry year
+is marked to date. In this 12-month run only the last book is a mark, so the
+labels agree. Run it on the real-data bench after a change to book policy
+(`books.py`, `rules.py`, the dated book writer or its price lookups). The study
+constants (`FIRST_YEAR`, `LAST_YEAR`, `ASOF`, `HOLD`) live in
+`backtest/engines/reference/legacy.py`.
 
 ### Full annual financial data
 
@@ -798,8 +799,9 @@ financial valid-series and as-of behavior keep their existing meanings.
 
 The facts' content identity hashes what determines the rows: the raw-file
 signature, each price file's content digest, the scopes and the preparation
-policy (`facts.py`, `financial_inputs.py`, `books.py`,
-`rules.py`, `measure_observations.py`, `research.py`, `parameters.py`).
+policy: the content of each file in `research.calculation_sources()`, the
+list that the raw-file signature also binds. An edit to one of these files
+therefore rebuilds research before readers check the facts.
 The raw-file signature leaves out `raw/download-coverage.json`, which no
 preparation reads. Preparation does not hash the rows themselves. The daily cache binds
 that metadata. Operation entry checks the daily fingerprint once: the accepted

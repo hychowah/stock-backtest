@@ -96,6 +96,14 @@ class CalendarTests(unittest.TestCase):
                                             ['2020-01-14','2020-01-24','2020-01-31']])
         self.assertEqual((sampled['window_start'],sampled['window_end']), ('2020-01-03','2020-02-03'))
 
+    def test_final_is_a_scheduled_exit_only_when_a_target_rolls_to_it(self):
+        # Weekly targets from 1 January: 8, 15, 22, 29 January and 5 February.
+        self.assertFalse(self.calendar.scheduled_final(config()))  # 3 February: a mark.
+        self.assertTrue(self.calendar.scheduled_final(config(end='2020-01-31')))  # 29 January rolls to 31.
+        self.assertFalse(self.calendar.scheduled_final(config(end='2020-01-28')))
+        self.assertTrue(self.calendar.scheduled_final(config(start='2020-01-06', end='2020-01-13')))
+        self.assertEqual(self.calendar.fixed(config(end='2020-01-31'))[-1], (date(2020,1,24), date(2020,1,31)))
+
     def test_all_supported_counts_plan_within_independent_bounds(self):
         calendar = c.SessionCalendar(days('2019-01-01','2025-01-03',weekdays=True))
         for unit, maximum in [('week',104),('month',24)]:

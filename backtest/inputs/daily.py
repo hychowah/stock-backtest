@@ -33,7 +33,7 @@ CREATE TABLE snapshots (
  return_value REAL, status TEXT, PRIMARY KEY(pool,year,symbol));
 CREATE INDEX screen_lookup ON snapshots(pool,year,ebitda_yield DESC);
 CREATE UNIQUE INDEX dated_period ON periods(entry,exit);
-CREATE TABLE IF NOT EXISTS period_pools(
+CREATE TABLE period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
  PRIMARY KEY(period_id,pool), FOREIGN KEY(period_id) REFERENCES periods(year)
 ) WITHOUT ROWID;

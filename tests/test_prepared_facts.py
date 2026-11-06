@@ -142,33 +142,39 @@ class ProjectionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'missing'): facts.require(db, expected=expected)
 
     def test_policy_change_rebuilds_research_before_downstream_preparation(self):
-        from backtest import measure_observations
+        modules = (research, research.metrics, research.books, research.rules, research.cache_assets,
+                   research.market, financial, financial.parameters, facts)
         with ExitStack() as context:
-            for module in (research, research.metrics, research.books, research.rules, research.cache_assets,
-                           research.market, financial, financial.parameters, measure_observations, facts):
+            for module in modules:
                 path = research.ROOT / Path(module.__file__).name
                 path.write_bytes(Path(module.__file__).read_bytes())
                 context.enter_context(patch.object(module, '__file__', str(path)))
+            # Every calculation source is a private copy here.
+            self.assertEqual(research.calculation_sources(), [Path(module.__file__) for module in modules])
             context.enter_context(patch.object(research, 'signature', side_effect=self.real_signature))
-            self.prepare()
-            previous = research.prepared_bindings(self.source)[1]
-            signature = research.signature()
-            policy = research.ROOT/'facts.py'
-            policy.write_bytes(policy.read_bytes() + b'\n# Changed private policy fixture.\n')
             # The binding is hashed once per process; deployment restarts it.
             self.addCleanup(facts._policy_binding.cache_clear)
             facts._policy_binding.cache_clear()
-            self.assertNotEqual(research.signature(), signature)
-            with closing(sqlite3.connect(self.source)) as db:
-                with self.assertRaisesRegex(ValueError, 'stale'): facts.require(db)
-            # Ordinary preparation must repair the rejected policy without force.
-            research.prepare(self.source)
-            current = research.prepared_bindings(self.source)[1]
-            self.assertNotEqual(current['policy']['facts.py'], previous['policy']['facts.py'])
+            # The facts policy binds exactly the files that the research signature binds.
+            self.assertEqual(set(facts.policy_binding()), {path.name for path in research.calculation_sources()})
             self.prepare()
-            with closing(daily.connect(self.path, self.source)) as db:
-                saved = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
-                self.assertEqual(saved['facts'], current)
+            for policy in research.calculation_sources():
+                with self.subTest(policy=policy.name):
+                    previous = research.prepared_bindings(self.source)[1]
+                    signature = research.signature()
+                    policy.write_bytes(policy.read_bytes() + b'\n# Changed private policy fixture.\n')
+                    facts._policy_binding.cache_clear()
+                    self.assertNotEqual(research.signature(), signature)
+                    with closing(sqlite3.connect(self.source)) as db:
+                        with self.assertRaisesRegex(ValueError, 'stale'): facts.require(db)
+                    # Ordinary preparation must repair the rejected policy without force.
+                    research.prepare(self.source)
+                    current = research.prepared_bindings(self.source)[1]
+                    self.assertNotEqual(current['policy'][policy.name], previous['policy'][policy.name])
+                    self.prepare()
+                    with closing(daily.connect(self.path, self.source)) as db:
+                        saved = json.loads(db.execute("SELECT value FROM metadata WHERE key='daily_inputs'").fetchone()[0])
+                        self.assertEqual(saved['facts'], current)
 
     def test_daily_cancellation_preserves_previous_database(self):
         self.prepare(); before = self.path.read_bytes()

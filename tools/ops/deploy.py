@@ -24,8 +24,9 @@ from datetime import datetime, timedelta
 # Extracted native helpers use explicit stage/target paths until support is bound.
 ROOT = (None if '--native-publish' in sys.argv else Path(__file__).resolve().parents[2])
 _SUPPORT_ROOT = ROOT
-# The frozen January report. Nothing reads it; the runtime keeps its own copy,
-# which deployment never installs, replaces or removes.
+# The frozen January report. Only the development check reads it, on the bench.
+# The runtime keeps its own copy, which deployment never installs, replaces or
+# removes.
 REPORT = 'results/summary-exits.txt'
 MANIFEST = 'data/deployment.json'
 PENDING = 'data/deployment.pending.json'

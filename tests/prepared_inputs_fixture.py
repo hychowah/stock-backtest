@@ -24,7 +24,6 @@ from datetime import date, timedelta
 import json
 from unittest.mock import patch
 
-from backtest.engines.reference import legacy
 from backtest.inputs import daily, facts, financial_inputs, research
 from backtest.runtime import cache_access
 import test_prepared_facts
@@ -75,8 +74,7 @@ def history(companies, first, last):
     """Return a `configure` callable with deterministic fictional assets.
 
     Symbols are Q0000, Q0001 and so on. Sessions are weekdays from 2 January
-    of `first` through 20 October of `last`. The reference engine's FIRST_YEAR
-    and LAST_YEAR follow.
+    of `first` through 20 October of `last`.
     """
     def configure(inputs):
         raw = research.RAW
@@ -85,7 +83,6 @@ def history(companies, first, last):
         while day<=through:
             if day.weekday()<5:sessions.append(day)
             day+=timedelta(days=1)
-        through=sessions[-1]
         symbols=[f'Q{i:04d}' for i in range(companies)]
         (raw/'universe.json').write_text(json.dumps([dict(symbol=symbol,name='Fictional '+symbol,
             exchange='NYSE',sector='Technology' if i%2 else 'Energy',listed=True)
@@ -117,8 +114,5 @@ def history(companies, first, last):
         (raw/'spy-div.json').write_text(json.dumps([dict(date=str(day),
             adjClose=100.+(day-start).days*.005) for day in sessions]))
         (raw/'treasury.json').write_text(json.dumps([dict(date=str(day),month3=2.,year10=3.) for day in sessions]))
-        research.signature.return_value=dict(fixture='private-scalar-qualification',through=str(through))
-        inputs.context.enter_context(patch.object(legacy,'RAW',raw))
-        inputs.context.enter_context(patch.object(legacy,'FIRST_YEAR',first))
-        inputs.context.enter_context(patch.object(legacy,'LAST_YEAR',last))
+        research.signature.return_value=dict(fixture='private-scalar-qualification')
     return configure

@@ -89,7 +89,7 @@ class OwnerExtractionTests(unittest.TestCase):
             start = lookup(entry_px[0], 'adjusted', True, 4)
             if start is None or start[0] >= exit_day: return None
             end = lookup(exit_day, 'adjusted', False, 10)
-            status = 'Scheduled exit' if exit_day.year > entry_day.year else 'Marked to date'
+            status = 'Scheduled exit'  # A book records only how a holding exited.
             if end is None:
                 end = lookup(exit_day, 'adjusted', False, 100000)
                 if end is None or end[0] < start[0]: return None
@@ -104,7 +104,7 @@ class OwnerExtractionTests(unittest.TestCase):
         statement['yield'] = statement.pop('yield_')
         for label, exit_day, missing, bankrupt, zero in (
                 ('scheduled', date(2021, 1, 2), None, False, False),
-                ('marked', date(2020, 12, 2), None, False, False),
+                ('same year', date(2020, 12, 2), None, False, False),
                 ('stopped', date(2021, 1, 2), 10, False, False),
                 ('bankrupt', date(2021, 1, 2), None, True, False),
                 ('no exit', date(2021, 1, 2), 'all_exit', False, True),

@@ -72,6 +72,12 @@ def common_stock(symbol: str, name: str) -> bool:
     return True
 
 
-# Symbol-year pairs checked as bankruptcies: -100% in dated books and the
-# reference engine. The year is the book's entry year.
-BANKRUPT: set[tuple[int, str]] = set()
+# (symbol, day of loss) pairs checked as bankruptcies. A holding returns -100%
+# in a dated book, and in the reference engine, only when the book's window
+# contains that day: after the entry day, through the exit day. A loss on a
+# rebalance day counts in the book that ends there.
+BANKRUPT: set[tuple[str, date]] = set()
+
+
+def bankrupt(symbol: str, entry: date, exit_day: date) -> bool:
+    return any(name == symbol and entry < day <= exit_day for name, day in BANKRUPT)

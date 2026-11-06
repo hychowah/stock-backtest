@@ -10,8 +10,8 @@ not rewrite jobs, queued tests or saved results.
 `backtest/portfolio_results.py` uses only the standard library. Its interface is:
 
 ```text
-evaluate(periods, select_period, common_start=None, checkpoint=None) -> result
-evaluate_into(periods, select_period, emit_period, common_start=None, checkpoint=None) -> summary
+evaluate(periods, select_period, common_start=None, checkpoint=None, final_mark=False) -> result
+evaluate_into(periods, select_period, emit_period, common_start=None, checkpoint=None, final_mark=False) -> summary
 select_period(entry, exit) -> {entry, exit, holdings, spy}
 ```
 
@@ -96,7 +96,7 @@ without projection.
 | `ebitda_yield`, `spread`, `metric_yield` | Finite fractional yields. Spread subtracts the entry Treasury yield. |
 | `ev_ebitda`, `metric_multiple` | Finite multiples. The selected metric pair stays distinct from current EV/EBITDA. |
 | `return_value` | Finite fractional total return, including stopped exits and −1 for bankruptcy. |
-| `status` | Exactly `Scheduled exit`, `Marked to date`, `Last available price` or `Bankruptcy`. |
+| `status` | Exactly `Scheduled exit`, `Marked to date`, `Last available price` or `Bankruptcy`. A stored book row records only how a holding exited, with `Scheduled exit` for a normal exit. With `final_mark`, the last period's normal exits show `Marked to date`. The schedule passes `final_mark` when its last period ends on a mark, not on a scheduled exit: always for explicit trades, and for a fixed schedule when no nominal target rolls forward to the final session (`SessionCalendar.scheduled_final`). Saved results keep their stored labels. |
 | `weight` | `1 / actual selected count`. The weights reset each period. |
 | `contribution_pp` | `return_value / actual selected count * 100`, in percentage points. Signed values remain signed. |
 

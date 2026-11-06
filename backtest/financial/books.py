@@ -59,7 +59,13 @@ def ebitda_yield_and_multiple(ebitda, enterprise_value):
 
 
 def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
-    """Rescale report equity at entry and retain stopped holdings at last price."""
+    """Rescale report equity at entry and retain stopped holdings at last price.
+
+    The status records only how the holding exited: 'Scheduled exit' for a
+    normal exit, 'Last available price' or 'Bankruptcy'. A stored book serves
+    every schedule with the same entry and exit, so the run, not the book,
+    labels its final mark (portfolio_results.evaluate_into).
+    """
     valuation=entry_valuation(statement,entry_day,lookup)
     if valuation is None:
         return None
@@ -68,7 +74,7 @@ def snapshot(statement, entry_day, exit_day, lookup, bankruptcy):
     if start is None or start[0]>=exit_day:
         return None
     end=lookup(exit_day,'adjusted',False,10)
-    status='Scheduled exit' if exit_day.year>entry_day.year else 'Marked to date'
+    status='Scheduled exit'
     if end is None:
         end=lookup(exit_day,'adjusted',False,100000)
         if end is None or end[0]<start[0]:

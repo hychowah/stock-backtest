@@ -52,6 +52,7 @@ The public operations are:
 |---|---|
 | `window(start, end)` | `(first, final)` as date objects |
 | `fixed(configuration)` | A list of `(entry, exit)` date pairs |
+| `scheduled_final(configuration)` | Whether the final mark of `fixed` is also a scheduled exit |
 | `sample(configuration, trials, seed)` | A calendar-only plan, described below |
 | `explicit(dates, start, end)` | `(first, final, periods)` as date objects and date pairs |
 
@@ -79,6 +80,12 @@ Fixed targets roll forward to saved sessions. Distinct rolled entries strictly
 before the final mark remain. Several targets can roll to one entry in a sparse
 calendar. Duplicate entries merge. Each entry exits at the next entry. The last
 entry exits at the final mark.
+
+The final mark is also a scheduled exit when a nominal target rolls forward to
+it. Otherwise the last period ends on a mark to date. Explicit trades always end
+on a mark to date. `calendar_requests.periods` reports this as `marked`, and
+the run labels the last period's normal exits `Marked to date`
+([dated result contract](portfolio-results.md)).
 
 Random blocks use nominal boundaries before rolling. Each block is half-open:
 `[left, right)`. The final block is clipped at the final mark, which is never a

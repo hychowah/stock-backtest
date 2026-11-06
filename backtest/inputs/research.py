@@ -30,8 +30,8 @@ from backtest.paths import ROOT, RAW
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
 SCHEMA_VERSION = 14
-# Tables that research and the daily cache both create. Daily copies the first
-# five; latest and dated books share screening_metrics and filter_values.
+# Tables that research and the daily cache both create. Daily copies the four
+# after metadata; latest and dated books share screening_metrics and filter_values.
 SHARED_SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE companies (symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT);
@@ -266,8 +266,6 @@ def prepare(path=DATABASE, force=False):
     started=time.perf_counter()
     diagnostics.note(force=force)
     path=Path(path)
-    # The removed January report publication left this journal; nothing reads it.
-    path.with_name(path.name+'.publication.json').unlink(missing_ok=True)
     # Preparation is a data action: its readers inspect raw inputs afresh.
     forget_signature()
     if path.exists() and not force:
@@ -425,12 +423,10 @@ def prepare_metrics(db):
     histories={}
     for row in db.execute('SELECT * FROM statements ORDER BY symbol,fiscal'):
         histories.setdefault(row['symbol'],[]).append(dict(row))
-    db.execute('DELETE FROM screening_metrics')
     values=[]
     for row in db.execute('SELECT * FROM latest_snapshots'):
-        observation=dict(row)
-        for metric,pair in metrics.evaluate(observation,histories.get(row['symbol'],[])).items():
-            values.append(('latest',row['pool'],observation.get('year',0),row['symbol'],metric,*pair))
+        for metric,pair in metrics.evaluate(dict(row),histories.get(row['symbol'],[])).items():
+            values.append(('latest',row['pool'],0,row['symbol'],metric,*pair))
     db.executemany('INSERT INTO screening_metrics VALUES(?,?,?,?,?,?,?)',values)
 
 

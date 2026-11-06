@@ -1,4 +1,4 @@
-# EBITDA/EV January book
+# EBITDA/EV stock backtest
 
 This folder is a standalone US stock backtest with a local website. It is not a
 a different research session. Do not open the parent harness, do not invent a
@@ -119,12 +119,10 @@ installed revision and updates to `main` at 01:00. `--revision <commit>
 checks. Windows `backtest-web.cmd` runs the same flow through WSL.
 Local paths live in ignored `data/workspace.json`.
 
-Preserve Windows-owned raw data, databases, logs, environments, local builds and
-the runtime copy of the frozen report, which deployment never installs or
-replaces. Do not edit runtime source or copy these assets
-back into WSL. The WSL checkout has source and synthetic fixtures, not a
-second raw cache. Run real-cache preparation and `tests/check_paths.py` with
-native Windows Python.
+Preserve Windows-owned raw data, databases, logs, environments and local builds.
+Do not edit runtime source or copy these assets back into WSL. The WSL checkout
+has source and synthetic fixtures, not a second raw cache. Run real-cache
+preparation and `tests/check_paths.py` with native Windows Python.
 
 Publication stops only authenticated project servers, owns runtime source
 exclusively, then takes financial cache ownership. Native server entry takes
@@ -159,10 +157,14 @@ January from 1996, the top 50) is a 12-month fixed schedule from 1 January.
 - If trading stops before the scheduled exit, the exit is the last price. That
   covers an acquisition, a called note and a SPAC that returns cash. A stock
   that still has a price at the exit keeps it; a later delisting changes nothing.
-- A bankruptcy is a total loss. `BANKRUPT` in `backtest/financial/rules.py` is
-  the set of `(entry year, symbol)` pairs that get −100%. It is empty. The 37
-  early stops of the January study were checked: acquisitions, redemptions, SPAC
-  cash or warrants.
+- A bankruptcy is a total loss. `BANKRUPT` in `backtest/financial/rules.py`
+  holds `(symbol, day of loss)` pairs; a holding gets −100% only when its book's
+  window (after entry, through exit) contains that day. It is empty. The 37
+  early January-study stops were checked: acquisitions, redemptions, SPAC cash
+  or warrants.
+- A stored book row records only how a holding exited: `Scheduled exit`, `Last
+  available price` or `Bankruptcy`. The run shows `Marked to date` when its last
+  book ends on a mark, not a scheduled exit (`portfolio_results`).
 - The first usable day of a schedule or historical root is `rules.FIRST_DAY`
   (1996-01-01).
 
@@ -173,7 +175,8 @@ January from 1996, the top 50) is a 12-month fixed schedule from 1 January.
 or touches them. `summary-exits.txt` keeps a stock when trading stops; its 2026
 row is marked through its Through date. `results/legacy/` is an earlier pass
 that dropped early stops; do not quote it. `results/stops/stops-class.json`
-records SEC form types for the 37 stops; its merger flag is broad.
+records SEC form types for the 37 stops; its merger flag is broad. Deployment
+never installs or replaces the runtime copy of `summary-exits.txt`.
 
 ## Cache
 
@@ -198,13 +201,12 @@ work at about 16 at a time.
 ## Development check
 
 `python3 scripts/check.py` runs one Original custom run (12-month schedule from
-1 January 1996 to 2026-10-21, legacy pool, `ev_ebitda` ranks 1–50, default
-floors). It compares it with `backtest/engines/reference/revalue.calculate`, an
-independent cache-only engine, at full precision; it must find 0 differences.
-It also compares the annual rows with the frozen report; only its 2026 row
-differs. Run it on the real-data bench after a change to book policy. No build,
-startup or preparation runs it, and no module outside
-`backtest/engines/reference/` imports that package.
+1 January 1996 to the frozen report's Through date, 2026-10-20, legacy pool,
+`ev_ebitda` ranks 1–50, default floors). It compares it with the independent
+`backtest/engines/reference/revalue.calculate` at full precision, and its annual
+rows with the frozen report. It passes with 0 differences. Run it on the bench
+after a change to book policy. No build, startup or preparation runs it, and no
+app module imports `backtest/engines/reference`.
 
 ## Project layout
 
@@ -249,13 +251,13 @@ The linked documents hold the detail.
 `data/research.sqlite` (research schema 14) from the raw cache: companies,
 annual reports, typed facts and the latest book. Every build is a full build. It
 writes a temporary file and replaces the database atomically; a failure keeps
-the previous database. Research holds no January books, report binding or
-reuse. It deletes the stale `data/research.sqlite.publication.json`.
-`research.calculation_sources()` lists only code that computes prepared rows or
-books, never the reference engine or the development check. The `legacy` pool
-keeps the original 250-candidate pre-price screen; the `cached` pool covers
-cached-price companies only. Checks: `tests/test_research.py`,
-`tests/test_prepared_facts.py` and `tests/test_research_inventory.py`. See
+the previous database. `research.calculation_sources()` is the one list of code
+that computes prepared rows or books; the research signature, the facts policy
+and the daily book identity bind it. The `legacy` pool keeps the original
+250-candidate pre-price screen; the `cached` pool covers cached-price companies
+only. Checks:
+`tests/test_research.py`, `tests/test_prepared_facts.py` and
+`tests/test_research_inventory.py`. See
 [docs/research-workflow.md](docs/research-workflow.md).
 
 **Website screening.** `website/rendering/data.py` embeds the latest screen of

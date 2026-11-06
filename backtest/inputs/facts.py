@@ -239,12 +239,11 @@ def policy_binding():
 
 @functools.cache
 def _policy_binding():
-    # Hashed once per process: deployment restarts the server on source change.
-    from backtest import measure_observations
-    from backtest.inputs import financial_inputs
-    paths = (Path(__file__), Path(financial_inputs.__file__), Path(books.__file__), Path(rules.__file__),
-             Path(measure_observations.__file__), Path(__file__).with_name('research.py'), Path(parameters.__file__))
-    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+    # The research signature binds the same list, so an edit that rejects
+    # these facts also makes research.prepare rebuild them. Hashed once per
+    # process: deployment restarts the server on source change.
+    from backtest.inputs import research
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in research.calculation_sources()}
 
 
 def finish(db, latest_date, *, inputs, scopes):

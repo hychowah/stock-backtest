@@ -83,13 +83,20 @@ def validate_plan(sessions, recorded, *, checkpoint=None):
 
 
 def periods(sessions, options, *, checkpoint=None):
+    """Return (pairs, first, marked, selection, metadata).
+
+    marked is True when the last period ends on a mark to date, not on a
+    scheduled exit. Explicit trades always end on the final mark.
+    """
     configuration,selection,meta=decode_request(options)
     calendar=c.SessionCalendar(sessions)
     if 'dates' in selection:
         first,_,pairs=calendar.explicit(selection.pop('dates'),configuration.start,configuration.end,checkpoint=checkpoint)
+        marked=True
     else:
         first=None;pairs=calendar.fixed(configuration,checkpoint=checkpoint)
-    return pairs,first,selection,meta
+        marked=not calendar.scheduled_final(configuration)
+    return pairs,first,marked,selection,meta
 
 
 def validate_submitted(options, plan):

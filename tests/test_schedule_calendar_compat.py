@@ -15,7 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'scripts'), str(ROOT)]
 from backtest.financial import rules
 from backtest.inputs import market, fmp_download, cache_assets
-from backtest.engines.reference import legacy
 fmp_download.KEY_PATH = ROOT/'tmp/cb08/nonexistent-key'
 from backtest.engines.original import schedules as s
 from backtest.engines.original import robustness as r

@@ -160,6 +160,20 @@ class SessionCalendar:
                 entries.append(actual)
         return list(zip(entries, entries[1:] + [final]))
 
+    def scheduled_final(self, configuration):
+        """Whether the final mark of fixed(configuration) is also a scheduled exit.
+
+        It is when a nominal target rolls forward to the final session.
+        Otherwise the last period ends on a mark to date.
+        """
+        configuration = decode_configuration(configuration)
+        _, final = self.window(configuration.start, configuration.end)
+        previous = self.sessions[bisect_left(self.sessions, final) - 1]
+        lower, number = _day(configuration.start), 1
+        while (target := self._target(lower, configuration.interval, number)) <= previous:
+            number += 1
+        return target <= final
+
     def sample(self, configuration, trials, seed, *, checkpoint=None):
         """Return a calendar handoff, not a financial result or saved record.
 

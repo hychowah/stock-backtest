@@ -28,7 +28,8 @@ with tempfile.TemporaryDirectory() as scratch:
             assert market.cache_path_for('TEST.A') == ROOT / 'raw/px/TEST.A.json'
             for file in ['universe.json', 'metrics.jsonl', 'treasury.json', 'spy-div.json']:
                 assert (paths.RAW / file).is_file()
-            for file in ['summary-exits.txt', 'legacy/summary.txt', 'legacy/picks.csv', 'stops/stops.json', 'stops/stops-class.json']:
+            # Deployment never installs the frozen report (results/summary-exits.txt).
+            for file in ['legacy/summary.txt', 'legacy/picks.csv', 'stops/stops.json', 'stops/stops-class.json']:
                 assert (paths.RESULTS / file).is_file()
     finally:
         os.chdir(previous)
@@ -37,4 +38,4 @@ with tempfile.TemporaryDirectory() as scratch:
 for folder in ['scripts', 'tools', 'website', 'tests', 'backtest']:
     for source in (ROOT / folder).rglob('*.py'):
         compile(source.read_text(), str(source), 'exec')
-print('Passed: command imports, external working directory, cache and frozen report paths, no credentials/network, and Python syntax.')
+print('Passed: command imports, external working directory, cache and frozen record paths, no credentials/network, and Python syntax.')

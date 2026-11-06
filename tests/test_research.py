@@ -120,7 +120,9 @@ class ResearchTests(unittest.TestCase):
         self.assertEqual(row['metric_multiple'],10)
         self.assertEqual(row['metric_yield'],.1)
         # Same history, different screening-date EV must produce a different value.
+        # Preparation fills an empty table, so each rerun here empties it first.
         self.db.execute("UPDATE latest_snapshots SET enterprise_value=400e6")
+        self.db.execute('DELETE FROM screening_metrics')
         r.prepare_metrics(self.db)
         self.assertEqual(screening.latest(self.db,metric='ev_ebitda_3y')[0]['metric_multiple'],20)
         for row in screening.latest(self.db):
@@ -128,6 +130,7 @@ class ResearchTests(unittest.TestCase):
             self.assertEqual(row['metric_yield'],row['ebitda_yield'])
         # A different formula needs only registration, without selector changes.
         with patch.dict(r.metrics.METRICS,{'test_signal':dict(label='Test signal')}), patch.dict(r.metrics.CALCULATORS,{'test_signal':lambda observation,history:(2.,.5)}):
+            self.db.execute('DELETE FROM screening_metrics')
             r.prepare_metrics(self.db)
             self.assertEqual(len(screening.latest(self.db,metric='test_signal')),3)
 
@@ -277,12 +280,8 @@ class PreparationTests(unittest.TestCase):
         self.assertAlmostEqual(stocks[0]['market_cap'], 220e6)
 
     def test_success_publishes_database_without_january_books(self):
-        # A journal that the removed January publication left is cleaned up.
-        journal = self.path.with_name(self.path.name + '.publication.json')
-        journal.parent.mkdir(parents=True); journal.write_text('{}')
         r.prepare(self.path)
         self.assertTrue(self.path.is_file())
-        self.assertFalse(journal.exists())
         self.assertFalse(self.path.with_name(self.path.name + '.building').exists())
         db = r.connect(self.path, full_prices=True)
         try:
@@ -409,6 +408,20 @@ for(let i=0;i<cases.length;i++){
             r.prepare(self.path)
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(self.path.stat().st_mtime_ns, timestamp)
+
+    def test_inputs_changed_during_preparation_keep_the_previous_database(self):
+        r.prepare(self.path)
+        before = self.path.read_bytes()
+        calls = []
+        def changing():
+            calls.append(None)
+            return {'fixture': len(calls)}  # The second inspection differs from the first.
+        with patch.object(r, 'signature', side_effect=changing):
+            with self.assertRaisesRegex(ValueError, 'Inputs changed during preparation'):
+                r.prepare(self.path, force=True)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertFalse(self.path.with_name(self.path.name + '.building').exists())
 
     def test_failed_preparation_preserves_existing_database(self):
         r.prepare(self.path)

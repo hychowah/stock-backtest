@@ -51,7 +51,7 @@ def plan(db,configuration,book_selection=None):
     sessions=[date.fromisoformat(row[0]) for row in db.execute('SELECT day FROM sessions ORDER BY day')]
     seen=set();jobs=[];trials=[]
     for dates in configuration['samples']:
-        periods,first,_,_=calendar_requests.periods(sessions,dict(calendar_requests.request_fields(configuration),dates=dates),checkpoint=backtest_control.checkpoint)
+        periods,_,_,_,_=calendar_requests.periods(sessions,dict(calendar_requests.request_fields(configuration),dates=dates),checkpoint=backtest_control.checkpoint)
         new=[]
         for entry,exit_day in periods:
             key=(str(entry),str(exit_day),pool)

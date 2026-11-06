@@ -511,10 +511,9 @@ class AnnualTransportTests(unittest.TestCase):
             facts._policy_binding.cache_clear()
         # Signature must include the actual semantic source as an independent
         # dependency, even when financial resolver source remains unchanged.
-        from backtest import measure_observations
         with ExitStack() as context:
             modules = (research, research.metrics, research.books, research.rules, research.cache_assets,
-                research.market, financial, parameters, measure_observations, facts)
+                research.market, financial, parameters, facts)
             for module in modules:
                 file = research.ROOT/Path(module.__file__).name
                 file.write_bytes(Path(module.__file__).read_bytes())

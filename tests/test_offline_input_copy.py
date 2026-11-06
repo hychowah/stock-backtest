@@ -156,7 +156,7 @@ class OfflineInputCopyTests(unittest.TestCase):
         self.assert_incomplete(self.run_copy(),'deferred','unqualified_ownership_source')
 
     def test_pending_publications_and_sidecars_defer(self):
-        for name in ('deployment.pending.json','research.sqlite.publication.json','research.sqlite-wal',
+        for name in ('deployment.pending.json','research.sqlite-wal',
                      'research.sqlite-shm','research.sqlite-journal','schedules.sqlite-wal'):
             path=self.source/'data'/name;path.write_bytes(b'pending')
             self.assert_incomplete(self.run_copy(),'deferred')

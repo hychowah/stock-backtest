@@ -80,8 +80,7 @@ def _hash(path, check):
 
 
 def _pending(root):
-    if any((root/'data'/name).exists() for name in
-           ('deployment.pending.json', 'research.sqlite.publication.json')):
+    if (root/'data'/'deployment.pending.json').exists():
         raise Deferred('pending_publication')
     for name in ('research.sqlite', 'schedules.sqlite'):
         if any((root/'data'/(name+suffix)).exists() for suffix in ('-wal', '-shm', '-journal')):

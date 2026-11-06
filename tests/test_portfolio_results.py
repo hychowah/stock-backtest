@@ -56,6 +56,25 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(first['holdings'][0]['candidate_rank'],None)
         self.assertEqual(json.loads(json.dumps(result)),result)
 
+    def test_the_run_labels_only_its_final_mark(self):
+        # A stored book records only how a holding exited.
+        def books():
+            rows = [holding('A', 1, .1), holding('B', 1, .2, entry=str(self.b), exit=str(self.c)),
+                    holding('C', 2, .3, entry=str(self.b), exit='2020-02-20'),
+                    holding('D', 3, -1., entry=str(self.b), exit=str(self.c))]
+            for row, status in zip(rows, ('Scheduled exit', 'Scheduled exit', 'Last available price', 'Bankruptcy')):
+                row['status'] = status
+            return [dict(entry=str(self.a), exit=str(self.b), holdings=rows[:1], spy=.1),
+                    dict(entry=str(self.b), exit=str(self.c), holdings=rows[1:], spy=.1)]
+        labels = {}
+        for final_mark in (False, True):
+            stored = books()
+            result = p.evaluate([(self.a, self.b), (self.b, self.c)], lambda a, b: stored[a == self.b], final_mark=final_mark)
+            labels[final_mark] = [[h['status'] for h in period['holdings']] for period in result['periods']]
+            self.assertEqual(stored, books())  # The label belongs to the run, never to the stored book.
+        self.assertEqual(labels[False], [['Scheduled exit'], ['Scheduled exit', 'Last available price', 'Bankruptcy']])
+        self.assertEqual(labels[True], [['Scheduled exit'], ['Marked to date', 'Last available price', 'Bankruptcy']])
+
     def test_common_window_cash_empty_short_and_total_loss(self):
         rows = [holding('LOSS',2,-1.)]
         rows[0]['status']='Bankruptcy'

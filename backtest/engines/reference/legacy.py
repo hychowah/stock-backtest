@@ -10,12 +10,47 @@ from datetime import date, timedelta
 import json
 from backtest.paths import RAW
 from backtest.financial.rules import (MIN_MARKET_CAP, MIN_EV, BUFFER, LAG, parse_day, num, latest_statement)
-from backtest.inputs.market import load_bars, asof_yield, session_on_or_after, load_price_pair
+from backtest.inputs.market import load_bars, asof_yield, cache_path_for
 
 FIRST_YEAR = 1996
 LAST_YEAR = 2026
 ASOF = date(2026, 10, 21)
 HOLD = 50
+
+def session_on_or_after(days: list[date], day: date) -> date | None:
+    lo, hi = 0, len(days)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if days[mid] < day:
+            lo = mid + 1
+        else:
+            hi = mid
+    if lo >= len(days):
+        return None
+    return days[lo]
+
+def load_price_pair(symbol: str) -> tuple[list[tuple[date, float]], list[tuple[date, float]]]:
+    path = cache_path_for(symbol)
+    if not path.exists():
+        return [], []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    light = []
+    div = []
+    for row in payload.get("light") or []:
+        if isinstance(row, dict):
+            day = parse_day(row.get("date"))
+            price = num(row.get("price") if row.get("price") is not None else row.get("close"))
+            if day is not None and price is not None and price > 0:
+                light.append((day, price))
+    for row in payload.get("div") or []:
+        if isinstance(row, dict):
+            day = parse_day(row.get("date"))
+            price = num(row.get("adjClose"))
+            if day is not None and price is not None and price > 0:
+                div.append((day, price))
+    light.sort()
+    div.sort()
+    return light, div
 
 def first_on_or_after(bars: list[tuple[date, float]], day: date, slack: int) -> tuple[date, float] | None:
     lo, hi = 0, len(bars)
