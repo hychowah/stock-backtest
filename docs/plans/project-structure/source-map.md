@@ -38,9 +38,10 @@ contracts. These modules own the feature.
 - `backtest/measure_observations.py` and `backtest/variables/measures.py`:
   bounded financial-owner evidence and exact-reference measure bundles.
 - `backtest/variables/definitions.py`: formula validation, normalization,
-  identities, unit inference and resolved dependency programs.
+  identities, unit inference and resolved dependency programs; its
+  `require_program` is the one formula gate.
 - `backtest/variables/columns.py`: the one formula evaluator, values only or
-  explained, and the one formula gate (`require_program`).
+  explained, for the whole language.
 - `backtest/selection.py`: pure finite-scalar ranking and conditions.
 - `backtest/variables/library.py`: the durable variable repository in
   `data/variable-library.sqlite`, with capture and checked restore.

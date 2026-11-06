@@ -6,13 +6,12 @@ Current Phase 11 source exposes owner descriptions for all 52 direct inputs,
 existing-policy adapters and 33 exact named measures through the shared editor.
 Categories, search, units and supported history choices use the same semantic
 owners as execution. The [close-out summary](master-plan.md) owns the completion
-status and limits. Catalog recognition, implemented
-observations, backend qualification, installed readiness and observed coverage
-remain separate.
+status and limits. A catalog entry does not establish installed readiness or
+observed coverage.
 
-Qualified captured programs run through Original in Latest, January, fixed and
-random modes. The fixed backend inventory contains 77 IDs. A capture retains the
-32-definition ceiling. Eager scalar execution remains unsupported. Inspection evaluates complete recorded
+Captured programs run through Original in Latest, January, fixed and random
+modes. Catalog `/3` contains 77 IDs. A capture retains the 32-definition
+ceiling. Eager scalar execution remains unsupported. Inspection evaluates complete recorded
 January/latest scopes with their generation, denominator and unavailable reasons.
 These source capabilities establish no installed readiness or live-cache coverage.
 
@@ -44,7 +43,7 @@ validated projection included only:
   `totalCurrentLiabilities`, `totalDebt`.
 - Cash flow: `freeCashFlow`.
 
-Phases 8–11 add validation, conflict resolution, prepared evidence and qualified
+Phases 8–11 add validation, conflict resolution, prepared evidence and
 execution for the remaining mapped fields. A raw field
 must not become usable merely because the downloader retained it. Reuse valid
 saved responses first. Missing data stays unavailable. Downloads remain an

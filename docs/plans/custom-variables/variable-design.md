@@ -50,9 +50,9 @@ for current revenue, prior-year revenue and average revenue. Do not add an item
 only because a broad accounting category contains it. Show the definition, such
 as **Total debt / total assets**, not an ambiguous name such as "debt ratio".
 
-Keep these states separate: recognized by the catalog, supported by the provider,
-qualified for an engine, ready in an installation and observed for a company and
-date. A raw provider field never becomes usable only because the downloader saved it.
+A catalog entry does not prove that an installation is ready or that a company
+and date have an observation. A raw provider field never becomes usable only
+because the downloader saved it.
 
 ### Units
 
@@ -187,7 +187,7 @@ definitions. Restoring a capture never reads the registry.
 | Pool | Default `legacy`; `cached` also accepted |
 | Bounds | Minimum cap $100 million, minimum EV $50 million, no maximum cap, no sector or exchange condition |
 
-Any qualified scalar can rank or filter. A custom ranking gets no hidden
+Any captured scalar can rank or filter. A custom ranking gets no hidden
 "minimum yield = 0" condition. A multiple or yield condition must be an explicit
 condition. Ties use candidate rank ascending, null first, then symbol. Signed
 zeros tie. A missing ranking value excludes the stock before either selection
@@ -210,12 +210,14 @@ example, the distinct display values `13.501116090704034` and
 `13.501116090704036` both become `0.13501116090704035` after division by 100.
 Old requests and saved records are not rewritten.
 
-The one formula gate is `columns.require_program` in
-`backtest/variables/columns.py`. It admits the evaluator's own inventory of 77
-IDs: the 52 direct inputs, two adapters, six reported fields and 17 owner lanes.
-It admits definition versions 1–3 with catalogs `/1`–`/3` and temporal policy
+The one formula gate is the language check, `definitions.require_program`. It
+admits definition versions 1–3 with catalogs `/1`–`/3` and temporal policy
 `annual-lag90/1`. Every captured definition is checked, including unused and
-constant-only entries. Catalog recognition alone grants no qualification.
+constant-only entries. The column evaluator in `backtest/variables/columns.py`
+implements the whole language. Catalog `/3` has 77 IDs: the 52 direct inputs,
+two adapters, six reported fields and 17 owner lanes. A guard test in
+`tests/test_parameter_admission.py` evaluates every operation, statistic and
+`/3` parameter.
 
 ## Library and reproducibility
 

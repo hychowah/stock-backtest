@@ -10,12 +10,9 @@ from backtest.application import strategy_requests
 
 
 def catalog():
-    """Editor descriptors; each support flag comes from the one formula gate's inventory."""
+    """Editor descriptors from the language, parameter and measure owners."""
     available = {item['id']: item for item in columns.catalog()}
     admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
-    expanded = parameters.catalog(parameters.V3)
-    for item in expanded:
-        item['support']=dict(original=item['id'] in available)
     terms = []
     for descriptor in measures.catalog():
         bundle = measures.bundle([descriptor['id']])
@@ -23,17 +20,10 @@ def catalog():
         for entry in bundle['definitions']:
             found = measures.exact(entry['variable_id'], entry['revision'])
             labels.append(dict(variable_id=entry['variable_id'], revision=entry['revision'], name=found['name']))
-        program=definitions.validate(bundle)
-        try:
-            strategy_requests.require_formula_support(program,'original')
-            original=True
-        except definitions.FormulaError:
-            original=False
-        terms.append(dict(descriptor, submitted=bundle['definitions'], labels=labels,
-            support=dict(original=original)))
+        terms.append(dict(descriptor, submitted=bundle['definitions'], labels=labels))
     return dict(parameters=admitted, builtins=strategy_requests.builtin_catalog(),
-                expanded_parameters=expanded, version2_parameters=parameters.catalog(parameters.V2), measures=terms, units=parameters.units(parameters.V3),
-                operations=sorted(columns.OPERATIONS),
+                expanded_parameters=parameters.catalog(parameters.V3), version2_parameters=parameters.catalog(parameters.V2), measures=terms, units=parameters.units(parameters.V3),
+                operations=sorted(definitions.OPERATIONS),
                 namespaces=[parameters.V1,parameters.V2,parameters.V3],
                 displays={unit:details['displays'] for unit,details in parameters.units(parameters.V3).items()},
                 preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,

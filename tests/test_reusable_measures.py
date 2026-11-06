@@ -167,7 +167,7 @@ class CaptureAndAdmission(unittest.TestCase):
         new = lang.entry(new_definition, 'new')
         for roots in ([lang.root(old)], [lang.root(new)]):
             program = d.validate(lang.bundle(old, new, roots=roots))
-            self.assertEqual(columns.require_program(program), program.to_dict())
+            self.assertEqual(columns.Formulas(program).projection, program.to_dict())
         from backtest.application import strategy_requests
         import test_strategy_requests as requests
         capture = strategy_requests.capture_strategy(requests.intent(requests.formula(new)), submitted=[new]).to_dict()

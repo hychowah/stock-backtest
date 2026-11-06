@@ -47,12 +47,10 @@ The design contract is in [variable design](variable-design.md).
   `/1`–`/3` keep their recorded meaning. New formulas use version 3 and catalog
   `/3`. Old formulas need an explicit upgrade. Stored rounding, old immutable
   bytes, queue records and durable formats are unchanged.
-- **One correctness authority.** The Python reference evaluator defines results.
-  The deleted numerical engine compiled supported programs behind the same
-  scalar boundary. Unsupported work fails before execution, with no fallback.
-- **One qualification gate.** `columns.require_program` in
-  `backtest/variables/columns.py` admits a fixed 77-ID inventory. Catalog
-  recognition alone grants no application qualification.
+- **One formula gate and one evaluator.** The language check,
+  `definitions.require_program`, is the one formula gate. The column evaluator
+  in `backtest/variables/columns.py` implements the whole language. Invalid
+  work fails before execution, with no fallback.
 - **Conservative library retention (Phase 5).** Delete hides an entry. Revisions
   stay. There is no eviction. A damaged store is preserved and reported.
 - **Exact authoring content.** Owners produce the editor descriptors. One

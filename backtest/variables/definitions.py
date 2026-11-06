@@ -15,7 +15,6 @@ from decimal import Decimal, localcontext
 import hashlib
 import json
 import math
-from pathlib import Path
 import re
 from types import MappingProxyType
 
@@ -25,7 +24,6 @@ VERSION = 1  # Bundle and program envelope; definition versions evolve separatel
 DEFINITION_VERSIONS = (1, 2, 3)
 CATALOG = 'financial-parameters/1'
 TEMPORAL_POLICY = 'annual-lag90/1'
-_LOADED_POLICY = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 CEILINGS = MappingProxyType(dict(nodes=256, depth=32, definitions=32,
     dependency_depth=8, bytes=256 * 1024, literal=64, expanded_literal=1024))
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
@@ -37,17 +35,13 @@ _SHAPES = {'parameter': ('op', 'id'), 'constant': ('op', 'value', 'unit'),
     'annual': ('op', 'stat', 'count', 'parameter')}
 for _op in ('add', 'sub', 'mul', 'div', 'positive_div'):
     _SHAPES[_op] = ('op', 'left', 'right')
+OPERATIONS = frozenset(_SHAPES)  # The language's operations; the editor lists them.
 
 
 def canonical(value):
     """Canonical JSON for validated content; this function grants no capability."""
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
                       allow_nan=False)
-
-
-def policy_fingerprint():
-    """Identify this loaded language implementation."""
-    return hashlib.sha256(canonical(dict(definitions=_LOADED_POLICY, parameters=parameters.policy_fingerprint())).encode()).hexdigest()
 
 
 def _hash(document):
@@ -572,6 +566,9 @@ def resolve(roots, lookup, *, submitted=None, limits=None, checkpoint=lambda: No
 
 def require_program(program):
     """Reconstruct and check a program before execution; return detached content.
+
+    This is the one formula gate. The column evaluator implements every
+    program it returns.
 
     This restore path admits canonical expanded literals only inside a complete
     FormulaProgram. Every identity, edge, unit, requirement and limit is rebuilt

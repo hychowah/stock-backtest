@@ -7,7 +7,6 @@ import hashlib
 import json
 import subprocess
 import unittest
-from unittest.mock import patch
 from backtest.variables import definitions as d, parameters as p
 from test_variable_definitions import definition, constant, entry, root, reference, binary, bundle
 
@@ -210,10 +209,7 @@ class ParameterTests(unittest.TestCase):
             changed=original.to_dict();change(changed)
             with self.assertRaises(d.FormulaError):d.require_program(d.FormulaProgram(d.canonical(changed)))
 
-    def test_source_binding_and_financial_free_semantic_import(self):
-        old=d.policy_fingerprint()
-        with patch.object(p,'policy_fingerprint',return_value='a'*64):
-            self.assertNotEqual(d.policy_fingerprint(),old)
+    def test_financial_free_semantic_import(self):
         code='''import importlib.abc,sys
 class Block(importlib.abc.MetaPathFinder):
  def find_spec(self,name,*args):

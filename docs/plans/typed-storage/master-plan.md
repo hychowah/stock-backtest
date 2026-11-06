@@ -109,18 +109,15 @@ These are binding (2026-11-05/06).
 
 ## Phases
 
-### P1. Cleanup (done, 6367bef)
+### P1. Cleanup (done, 6367bef and the review follow-up)
 
-- One formula gate: `columns.require_program` with the fixed namespace list.
-  `variables/selection.py` is deleted. The gate runs
-  `definitions.require_program` once. Tests cover the full catalog, every
-  operation and every statistic.
+- One formula gate: the language check, `definitions.require_program`.
+  Deleted: `variables/selection.py`; after the P1 review also
+  `columns.require_program` (it could refuse nothing) and the always-true
+  catalog support flags. A guard test evaluates every operation, statistic and
+  /3 parameter through `columns.Formulas`.
 - `research.signature()` leaves out `raw/download-coverage.json`.
 - The named leftovers and stale docs are removed or fixed.
-- Deviation: the three always-equal catalog support flags became one
-  `original` flag from the gate's inventory.
-- Left for P4: `columns.Formulas` and `variable_coverage` check the program
-  again after the gate.
 
 ### P2. Single-source baseline (D2)
 
@@ -295,6 +292,13 @@ Scope:
   Detail mode builds evidence for selected rows only. Keep the explanation
   block shape.
 - One operating-margin formula in `metrics.py` (today also in `columns.py`).
+- One formula check per operation. `Formulas` takes the projection that the
+  capture restore produced instead of calling `definitions.require_program`
+  again. `variable_coverage.inspect` drops its extra calls. `Original.preview`
+  restores the capture once (today `check_options` and `check_preview` both
+  call `require_strategy`). `Executor.__init__` keeps its restore: it is the
+  execution boundary for queued rows, whose code may have changed since
+  admission.
 - Then profile 20 scopes and the user test, and list what is left:
   scope-row reads, report dates parsed again per root, `filter_values` reads,
   first-run book computation, result encoding (78 MB). Compact book rows (old
@@ -304,9 +308,10 @@ Deletes: dated re-admission in `Executor._admit`; the admission chain in
 `View.admit` for scope roots; evidence building in values-only owner lanes;
 `_OWNER_BYTES`, the `budget=` parameters and the JSON byte counting in
 `broad_reports`, `legacy_financial_history` and `measure_observations.dated`;
-the `View` members that only served them.
+the `View` members that only served them; the repeated formula checks.
 
 Owns: `scalar_execution.py`, `columns.py`, `facts.py` (`View`),
+`original_calculations.py` (`preview`),
 `measure_observations.py`, `financial/metrics.py` (operating margin),
 `scalar_runs.py`, `variable_coverage.py` (admission), their tests.
 

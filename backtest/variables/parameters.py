@@ -1,10 +1,10 @@
-"""Versioned financial meaning, separate from observations and backend support.
+"""Versioned financial meaning, separate from observations.
 
-Catalog recognition never grants execution or company/date availability. Annual
-facts use one selected fiscal period, strict fiscal-plus-90 availability before
-the context date and an 800-day anchor limit. Complete consecutive annual
-histories permit mean/min/max over 1–10 periods. Catalogs /1 and /2 retain their
-existing descriptors. Catalog /3 also describes annual growth and CAGR over
+The language admits exactly these parameters; a catalog entry never proves
+company/date availability. Annual facts use one selected fiscal period, strict
+fiscal-plus-90 availability before the context date and an 800-day anchor
+limit. Complete consecutive annual histories permit mean/min/max over 1–10
+periods. Catalogs /1 and /2 retain their existing descriptors. Catalog /3 also describes annual growth and CAGR over
 2–10 complete consecutive observations. Missing selected-period fields
 cannot be filled from newer reports, another endpoint or a different aggregate.
 
@@ -15,13 +15,10 @@ reasons, never zero. Calendar statistics, quarterly and TTM operations remain
 excluded. All public projections are detached JSON-compatible values.
 """
 import copy
-import hashlib
-from pathlib import Path
 
 V1 = 'financial-parameters/1'
 V2 = 'financial-parameters/2'
 V3 = 'financial-parameters/3'
-_LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _UNITS = {
     'scalar': dict(dimensions={}, displays=['number', 'multiple', 'percent', 'percentage_points']),
     'USD': dict(dimensions={'USD': 1}, displays=['usd', 'usd_million']),
@@ -133,7 +130,6 @@ def _build():
 
 _ALL = _build()
 # Version 3 names distinct reported fields and existing owner-policy lanes.
-# These descriptors grant semantic recognition, not backend qualification.
 _V3_EXTRA = {}
 for _identity, _field, _description, _endpoint, _unit in (
     ('ebit', 'ebit', 'Reported EBIT', 'income-statement', 'USD'),
@@ -172,7 +168,7 @@ def _version(identity):
 
 
 def catalog(identity):
-    """Return recognized meanings, never current provider/backend capabilities."""
+    """Return the meanings of one catalog; they prove no company/date coverage."""
     _version(identity)
     values = [_ALL[key] for key in (_V1_IDS if identity == V1 else _ALL)]
     if identity == V3:
@@ -204,8 +200,3 @@ def unit(identity, name):
     if type(name) is not str or name not in values:
         raise ValueError('Unknown semantic unit.')
     return values[name]
-
-
-def policy_fingerprint():
-    """Identify the loaded parameter meaning."""
-    return _LOADED

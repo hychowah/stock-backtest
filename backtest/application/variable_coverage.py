@@ -42,7 +42,6 @@ def inspect(capture, scope, source, view, checkpoint=backtest_control.checkpoint
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     program=library.VariableCapture(definitions.canonical(checked['variables'])).program
-    strategy_requests.require_formula_support(program, checkpoint=checkpoint)
     latest=scope['mode']=='latest'
     rows,roots=scalar_execution._scope(source,view,checked,None if latest else scope['book'],scope['context_date'],
         latest=latest,owner_scope=dict(kind='prepared',book=scope['book']))

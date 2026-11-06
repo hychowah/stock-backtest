@@ -6,7 +6,8 @@ thousands of rows evaluates in milliseconds. Formulas.explain returns the
 detached evaluation block of a few roots, with every input, date, reason,
 source digest and operation, in the shape website/browser/variable-evidence.js
 reads. Both run the same code, so an explanation shows the values that ranked
-a stock.
+a stock. The evaluator implements the whole language: every program that
+definitions.require_program (the one formula gate) returns.
 
 Observation rules: a report is known strictly 90 days after its fiscal date
 and the current anchor is the financial-policy report at most 800 days old.
@@ -61,43 +62,13 @@ for _key, _item in _MEANINGS.items():
         _CATALOG[_key] = (_item['unit'], _item['description'])
 for _key in (*_ANNUAL, *_DATED):
     _CATALOG.setdefault(_key, (_MEANINGS[_key]['unit'], _MEANINGS[_key]['description']))
-OPERATIONS = frozenset(('constant', 'parameter', 'annual', 'ref', 'at', 'lookback',
-                        'neg', 'add', 'sub', 'mul', 'div', 'positive_div'))
-STATISTICS = frozenset(('mean', 'min', 'max', 'growth', 'cagr'))
-# Fixed (definition version, parameter catalog, temporal policy) combinations;
-# a new language version does not qualify until it is listed here.
-NAMESPACES = frozenset((version, 'financial-parameters/' + str(catalog), 'annual-lag90/1')
-                       for version in (1, 2, 3) for catalog in (1, 2, 3))
 
 
 def catalog():
-    """The observed parameters: 52 direct inputs and the adapters; support does not prove coverage."""
+    """The observed parameters: 52 direct inputs and the adapters; a listing proves no coverage."""
     return [dict(id=key, unit=value[0], description=value[1],
                  counts=dict(minimum=1, maximum=10 if key.startswith('annual.') else 1),
                  contexts=['root', 'at', 'lookback']) for key, value in _CATALOG.items()]
-
-
-def require_program(program, *, checkpoint=lambda: None):
-    """The one formula gate: admit a checked program that this evaluator implements.
-
-    It runs before readiness or any financial input. Every captured definition,
-    including unused and constant-only entries, needs a listed namespace; every
-    node needs an implemented operation, statistic and catalog parameter.
-    """
-    checkpoint()
-    checked = definitions.require_program(program)
-    if checked['version'] != 1 or any(
-            (item['definition']['version'], item['definition']['parameter_catalog'],
-             item['definition']['temporal_policy']) not in NAMESPACES
-            for item in checked['bundle']['definitions']):
-        _fail('UNSUPPORTED_CAPABILITY', '/variables', 'Unsupported Original formula namespace.')
-    for node in checked['nodes']:
-        checkpoint()
-        if node['op'] not in OPERATIONS or (node['op'] == 'annual' and node['stat'] not in STATISTICS):
-            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original formula operation.')
-        if node['op'] in ('parameter', 'annual') and node['parameter'] not in _CATALOG:
-            _fail('UNSUPPORTED_CAPABILITY', node['path'], 'Unsupported Original observation parameter.')
-    return checked
 
 
 _SYMBOL_CHARACTERS = frozenset('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789^._-')

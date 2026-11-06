@@ -411,21 +411,20 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         if expected is None or any(descriptor[key] != expected[key] for key in ('unit', 'display', 'storage')):
             _fail('UNSUPPORTED_CAPABILITY', '/builtins', 'Captured scalar semantics are unsupported by the current backend.')
     if checked['variables'] is not None:
-        require_formula_support(library.VariableCapture(
-            definitions.canonical(checked['variables'])).program, engine, checkpoint=checkpoint)
+        require_formula_support(engine)
     return checked
 
 
-def require_formula_support(program, engine='original', *, checkpoint=backtest_control.checkpoint):
+def require_formula_support(engine):
     """Check the pinned backend before readiness or financial access.
 
     Only Original runs formulas. Original's preflight refuses another engine
     before it calls check_options; a direct call that names one fails here.
+    require_strategy has already restored the program through the language
+    check, the one formula gate.
     """
     if engine != 'original':
         _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Unsupported calculation engine.')
-    from backtest.variables import columns
-    return columns.require_program(program, checkpoint=checkpoint)
 
 
 def preview_engine(engine='original'):

@@ -46,11 +46,11 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(program.to_json(),read('program.json'))
         self.assertEqual(d.canonical(d.require_program(d.FormulaProgram(read('program.json')))),read('program.json'))
         self.assertEqual(d.authored_bundle(program)['roots'],authored['roots'])
-        self.assertEqual(columns.require_program(program),program.to_dict())
+        self.assertEqual(columns.Formulas(program).projection,program.to_dict())
 
     def test_variable_and_strategy_capture_bytes_without_library_or_capability(self):
         with patch.object(library.Store,'_transaction',side_effect=AssertionError('No current library')), \
-             patch.object(columns,'require_program',side_effect=AssertionError('No execution admission')), \
+             patch.object(columns,'Formulas',side_effect=AssertionError('No evaluator')), \
              patch.object(s,'builtin_catalog',side_effect=AssertionError('No current catalog')):
             variable=library.VariableCapture(read('variable-capture.json'))
             strategy=s.CapturedStrategy(read('strategy-capture.json'))
@@ -105,7 +105,7 @@ class CompatibilityTests(unittest.TestCase):
                 before=db.execute('SELECT id,spec,configuration,plan,state FROM jobs ORDER BY id').fetchall()
             with patch.object(library.Store,'_transaction',side_effect=AssertionError('No variable library')), \
                  patch.object(s,'builtin_catalog',side_effect=AssertionError('No current catalog')), \
-                 patch.object(columns,'require_program',side_effect=AssertionError('No calculation')), \
+                 patch.object(columns,'Formulas',side_effect=AssertionError('No calculation')), \
                  patch.object(original_calculations.Original,'calculate',side_effect=AssertionError('No calculation')), \
                  patch.object(original_calculations.Original,'calculate_into',side_effect=AssertionError('No calculation')), \
                  patch.object(research,'prepare',side_effect=AssertionError('No preparation')), \
@@ -138,7 +138,7 @@ class CompatibilityTests(unittest.TestCase):
                 before=(db.execute('SELECT * FROM records').fetchall(),db.execute('SELECT * FROM evidence_chunks').fetchall())
             with patch.object(library.Store,'_transaction',side_effect=AssertionError('No variable library')), \
                  patch.object(s,'builtin_catalog',side_effect=AssertionError('No current catalog')), \
-                 patch.object(columns,'require_program',side_effect=AssertionError('No calculation')), \
+                 patch.object(columns,'Formulas',side_effect=AssertionError('No calculation')), \
                  patch.object(original_calculations.Original,'calculate',side_effect=AssertionError('No calculation')), \
                  patch.object(original_calculations.Original,'calculate_into',side_effect=AssertionError('No calculation')), \
                  patch.object(research,'prepare',side_effect=AssertionError('No preparation')), \
@@ -153,7 +153,7 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_old_completed_scalar_bytes_open_and_export_without_current_state(self):
         data=(FIXTURES/'completed-scalar.bin').read_bytes()
-        with patch.object(columns,'require_program',side_effect=AssertionError('No execution admission')), \
+        with patch.object(columns,'Formulas',side_effect=AssertionError('No evaluator')), \
              patch.object(s,'builtin_catalog',side_effect=AssertionError('No current catalog')), \
              patch.object(library.Store,'_transaction',side_effect=AssertionError('No current library')):
             reader=result_evidence.open_reader(io.BytesIO(data),max_bytes=16*1024**2)

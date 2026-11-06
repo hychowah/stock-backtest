@@ -419,9 +419,11 @@ typed facts of `backtest/inputs/facts.py` (research only; the daily cache does
 not copy them). One code path computes the values and their explanations. The
 parity harness on the bench is a development tool outside the repository. New
 formulas use version 3 and catalog `/3`; old formulas need an explicit upgrade.
-`columns.require_program` is the one formula gate: a fixed namespace list and
-the evaluator's own operations and parameters, checked before readiness or
-financial input. Eager scalar execution and numerical sample preview are
+The language check, `definitions.require_program`, is the one formula gate. It
+runs when a capture is restored, before readiness or financial input. The one
+evaluator implements the whole language; a guard test in
+`tests/test_parameter_admission.py` evaluates every operation, statistic and /3
+parameter. Eager scalar execution and numerical sample preview are
 unsupported. Derived `at` and `lookback` contexts use dated owner policy, even
 at an equal date. Preserve the 32-definition closure ceiling and signed zero in
 typed value columns. Original scalar operations hold inputs through

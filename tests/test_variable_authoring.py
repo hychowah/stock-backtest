@@ -23,7 +23,6 @@ class AuthoringTests(unittest.TestCase):
     def test_all_exact_measures_validate_save_reopen_capture_without_import(self):
         catalog=a.catalog();descriptors=catalog['measures'];self.assertEqual(len(descriptors),33)
         self.assertEqual({item['id'] for item in catalog['expanded_parameters']},{item['id'] for item in columns.catalog()})
-        self.assertTrue(all(item['support']==dict(original=True) for item in catalog['expanded_parameters']+descriptors))
         for measure in descriptors:
             with self.subTest(measure=measure['id']):
                 root=measure['root']

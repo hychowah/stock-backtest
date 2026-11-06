@@ -70,7 +70,6 @@ def check_preview(capture, roots, *, checkpoint=backtest_control.checkpoint):
     if checked['variables'] is None:
         raise definitions.FormulaError('INVALID_STRATEGY', '/preview', 'A formula preview requires captured formula roots.')
     program = library.VariableCapture(definitions.canonical(checked['variables'])).program
-    strategy_requests.require_formula_support(program, checkpoint=checkpoint)
     columns.require_roots(roots)
     columns.Formulas(program).require_contexts(roots)
     return program
@@ -122,13 +121,12 @@ class Executor:
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
                  checkpoint=backtest_control.checkpoint, explain=True):
+        # The execution boundary of a queued row: restore it with the current code.
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
         self.number = 0; self.explain = explain
         self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
-        if self.program is not None:
-            strategy_requests.require_formula_support(self.program, checkpoint=checkpoint)
         self.formulas = columns.Formulas(self.program) if self.program is not None else None
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
 

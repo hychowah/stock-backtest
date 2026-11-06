@@ -402,18 +402,18 @@ class ColumnTests(unittest.TestCase):
         for catalog in (parameters.V1, parameters.V2):
             for count in (2, 10):
                 checked = d.validate(language.bundle(language.entry(make(count=count, catalog=catalog))))
-                self.assertEqual(columns.require_program(checked), checked.to_dict())
+                self.assertEqual(columns.Formulas(checked).projection, checked.to_dict())
         wrong = make(); wrong['output'] = dict(unit='USD', display='usd')
         with self.assertRaises(d.FormulaError):
             d.validate(language.bundle(language.entry(wrong)))
 
-    def test_mixed_definition_versions_follow_the_original_gate(self):
+    def test_mixed_definition_versions_evaluate(self):
         old = language.entry(language.definition(c('2')), 'old')
         newer = language.definition(language.reference(old)); newer['version'] = 2
         new = language.entry(newer, 'new')
         for roots in ([language.root(old)], [language.root(new)]):
             checked = d.validate(language.bundle(old, new, roots=roots))
-            self.assertEqual(columns.require_program(checked), checked.to_dict())
+            self.assertEqual(columns.Formulas(checked).projection, checked.to_dict())
             self.assertEqual(self.explain(checked)['results'][0]['value'], 2.)
         definition = language.definition(c('2')); definition['version'] = 2
         entry = language.entry(definition, 'version2')
