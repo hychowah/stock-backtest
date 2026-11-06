@@ -37,7 +37,24 @@ parity against fd043e3, 0 mismatches (24,489,611 price days, 1,378 dated books,
 75,346,082 filter values). Cold build 365 s (research 260, daily 104);
 `research.sqlite` 1.81 GB; user test 512.8/193.9 s.
 
-P3a follow-up: see its record below.
+P3a follow-up (e62f012; facts 3, research schema 16, daily 8): the four
+digests equal 42ad9f8 (result bytes differ by 9 and 2 bytes of embedded
+timings; the two user-test runs of one code differ by 59); dev check 0
+differences. Parity against the 42ad9f8 databases, 0 mismatches: every research
+table; the observation fields and the valid values against the old book
+columns (24,489,611 price days, SPY 8,004, both yields 7,955, no signed zero);
+daily prices, sessions and yields; `company_facts` (11,054, 5,986 listed);
+the latest book in the book store (3,409 rows, 6,129 pairs, 58,890 filters,
+`candidates` 3,366); `books.book` through `book_store.store` for all 1,378
+dated books (75,346,082 filter values; 233 s, 8 workers). Reasons, old to new,
+with equal values: latest (22,108 decisions) legacy `MISSING_PRICE` to
+`OUTSIDE_LEGACY_BUFFER` 2,775 and to `MISSING_PRICE` 8, `POOL_INELIGIBLE` to
+`INELIGIBLE_VALUATION` 9, the rest unchanged; dated (5,705,115 candidates)
+every denial equals the old admission reason, with no exit denial. Cold build
+305 s: research 188 (companies 185), daily 117 (prices 111, latest book 1.9).
+`research.sqlite` 1.32 GB (`stock_days` 1.11 GB, 0.49 GB less);
+`schedules.sqlite` 0.86 GB before books, 10.55 GB after. User test 533.1 s
+computed, 200.4 s saved (a quiet rerun saved 188.5 s; P3a 512.8/193.9).
 
 ## Decisions
 
@@ -245,7 +262,7 @@ lookups through a recording facts port. Dated books move into the book store.
 The website build reads the latest book from the book store (asof = entry,
 eligible financials = `candidates`) and binds the latest book's identity, not
 the `schedules.sqlite` file stamp; `website/build.py` alone then needs the
-daily cache.
+daily cache. `research.py status` reads the latest book too.
 
 ### P4. Book rows read in place
 
@@ -338,4 +355,4 @@ review (M1, M2, S1–S3 and the small items: adopted in the follow-up).
 
 ## Next
 
-The P3a follow-up real-copy evidence, then P3b after its review.
+P3b, after the review of the P3a follow-up.
