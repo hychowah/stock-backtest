@@ -35,6 +35,15 @@ user test 514/191 s on a busier machine (every stage ~7% slower; same-day
 saved digest 192.8 s on P2b code, 189.4 s on P2c). P2c relabels `Marked to
 date` as `Scheduled exit` (random 30,091, custom 450 holdings).
 
+P3a (f3312b7, schema 15, facts 2): digests and result bytes equal P2c; dev
+check 0 differences. Row parity against the fd043e3 databases, 0 mismatches:
+every research table, the observation and book columns (24,489,611 price
+days), legacy values (7,231 companies), the latest book (3,409 rows) and
+`books.book` over the facts for all 1,378 stored dated books (75,346,082
+filter values; 157 s, 8 workers). Cold build 365 s: research 260 (one parse
+256, latest book 1.4), daily 104 (prices 100). `research.sqlite` 1.81 GB
+(`stock_days` 1.60 GB: sorted inserts). User test 512.8/193.9 s.
+
 ## Decisions
 
 These are binding (2026-11-05/06).
@@ -235,7 +244,7 @@ mismatches); harness parity; digests equal; the dev check passes. Then: cold
 build time; sizes; kept books after a one-session append (T0: 1,343 of 1,346)
 and after a nightly update that adds some annual reports.
 
-#### P3a. Store written (done)
+#### P3a. Store written (done, f3312b7)
 
 Steps 1–3. The readers still read the old tables; nothing is deleted.
 
@@ -371,4 +380,4 @@ Reviews of 8de87fb (A design, B implementation), 227cdd1 and 4db98dc.
 
 ## Next
 
-The P3a real-copy evidence; then P3b after the independent review of P3a.
+P3b after the independent review of P3a.
