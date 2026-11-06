@@ -24,7 +24,9 @@ T1–T3 are complete on this branch:
 - T3 deletes the JSON observation tables, the provider and the reference
   evaluator.
 
-Measured on the bench at the T3 code (research schema 13, daily cache 6):
+## Measurements
+
+Bench, research schema 13, daily cache 6. T3 code:
 
 - Cold build 490 s. Research 396 s: inputs 3, companies 172, dated facts 192,
   independent verification 21, publication 6. Daily 93 s: copy 1, prices 90.
@@ -35,6 +37,13 @@ Measured on the bench at the T3 code (research schema 13, daily cache 6):
   140 ms per date over 1,326 dates. The formula arithmetic is well under 1 ms
   of it.
 - The four whole-result digests equal T2.
+
+P1 code (6367bef), cold build:
+
+- Four digests equal T3. Cold build 462 s. Research 377 s: inputs 3,
+  companies 163, dated facts 184, verification 19, publication 5. Daily
+  84 s: prices 82. Sizes unchanged. P1 changed no preparation step.
+- User test 474.3 s with books computed (1,326 books) and 180.8 s saved.
 
 ## Decisions
 
@@ -100,40 +109,18 @@ These are binding (2026-11-05/06).
 
 ## Phases
 
-### P1. Cleanup
+### P1. Cleanup (done, 6367bef)
 
-Scope:
-
-- One formula gate. `variables/selection.py` and `columns.require_program`
-  hold the same inventory (77 parameters). Keep one gate with the namespace
-  check. Run `definitions.require_program` once per check. Derive the catalog
-  support flags that `variable-workspace.js` shows from that gate.
-- Remove `raw/download-coverage.json` from `research.signature()`. No
-  preparation reads it.
-- Stale docs: `docs/plans/project-structure/source-map.md` (six deleted
-  modules); "Original reference execution" in
-  `website/browser/variable-workspace.html`; the guide's "Both backends
-  support…", "Phase 7 adds callable compiled arithmetic", "observation_identity
-  stage" and coverage-ledger freshness sentence; the AGENTS sentence that calls
-  the bench harness the oracle (it is a development tool outside the
-  repository).
-- Dead and test-only leftovers: `measure_observations.policy_fingerprint` and
-  `_LOADED`, the test-only `scalar_execution.preview`, `facts.TABLES`, the
-  `facts.prepared_view` pass-through, the `_Trace` note about the deleted
-  reference evaluator's numbering.
-
-Deletes: the second gate, the ledger signature entry, the leftovers.
-
-Owns: `backtest/variables/selection.py`, the gate in `columns.py`,
-`variable_authoring.py`, the gate call in `strategy_requests.py`,
-`research.signature`, the named leftovers and docs, the AGENTS Custom
-variables paragraph and the tests of removed helpers.
-
-Risks: the gate must refuse every parameter and operation that the column
-evaluator lacks; test the full catalog. The signature change rebuilds prepared
-data once.
-
-Exit: the protocol checks. Real copy: four digests equal; cold build time.
+- One formula gate: `columns.require_program` with the fixed namespace list.
+  `variables/selection.py` is deleted. The gate runs
+  `definitions.require_program` once. Tests cover the full catalog, every
+  operation and every statistic.
+- `research.signature()` leaves out `raw/download-coverage.json`.
+- The named leftovers and stale docs are removed or fixed.
+- Deviation: the three always-equal catalog support flags became one
+  `original` flag from the gate's inventory.
+- Left for P4: `columns.Formulas` and `variable_coverage` check the program
+  again after the gate.
 
 ### P2. Single-source baseline (D2)
 
@@ -404,5 +391,4 @@ Resolved: B.1 (real-copy parity at T2 and the T3 digests).
 
 ## Next
 
-A fresh agent runs P1, then P2. The user answers the P3 question before P3
-starts.
+P2 after the independent review of P1.
