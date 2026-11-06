@@ -54,7 +54,7 @@ class AdmissionTests(unittest.TestCase):
             program=d.validate(bundle(*entries,roots=[root(entries[0])]))
             inputs=Mock();inputs.admit.side_effect=AssertionError('Column evaluation reached inputs')
             with self.assertRaisesRegex(AssertionError,'Column evaluation reached inputs'):
-                scalar_execution.evaluate_preview(program,ROOTS,inputs)
+                scalar_execution.evaluate_preview(d.require_program(program),ROOTS,inputs)
             inputs.admit.assert_called_once()
 
     def test_the_evaluator_implements_every_operation_statistic_and_parameter(self):
@@ -98,7 +98,7 @@ class AdmissionTests(unittest.TestCase):
             self.assertTrue(decisions[0]['admitted'])
             for name,entries,expected in cases:
                 with self.subTest(case=name):
-                    formulas=columns.Formulas(d.validate(bundle(*entries)))
+                    formulas=columns.Formulas(d.require_program(d.validate(bundle(*entries))))
                     formulas.require_contexts(roots)
                     values=formulas.evaluate(roots,view,lambda:None,decisions=decisions)[0]
                     block=formulas.explain(roots,view,lambda:None,decisions=decisions)
@@ -138,7 +138,7 @@ from backtest.application import strategy_requests as s
 from backtest.variables import library,definitions as d,columns
 for entries in expanded_cases():
  c=capture(entries);s.check_options(dict(strategy=c.to_dict(),engine='original'))
- columns.Formulas(library.VariableCapture(d.canonical(c.to_dict()['variables'])).program)
+ columns.Formulas(d.require_program(library.VariableCapture(d.canonical(c.to_dict()['variables'])).program))
 '''
         subprocess.run([sys.executable,'-B','-c',code],cwd=Path(__file__).resolve().parent,
                        env={**__import__('os').environ,'PYTHONPATH':str(Path(__file__).resolve().parents[1])},check=True)

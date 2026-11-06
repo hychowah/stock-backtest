@@ -1,28 +1,29 @@
 """Complete prepared scopes to scalar selected books and detached explanations.
 
 Only this adapter combines captured source lanes. The borrowed view
-(backtest/inputs/fact_view.View) owns admission and financial meanings; the
-column evaluator (backtest/variables/columns.py) owns formula values and their
-explanations. One global scalar selection follows complete evaluation of the
-prepared scope. A prepared scope is one complete pool of a stored book, named
-by its book id and checked once by book_store.require_scope. The caller owns
-the admitted connection and view, cancellation and the evidence sink.
+(backtest/inputs/fact_view.View) owns financial meanings and the admission of
+explicit preview roots; the column evaluator (backtest/variables/columns.py)
+owns formula values and their explanations. One global scalar selection
+follows complete evaluation of the prepared scope. A prepared scope is one
+complete pool of a stored book, named by its book id and checked once by
+book_store.require_scope. A stored row is its root's admission: books.book
+stored only the companies that books.Screen.decide admitted, with their
+candidate rank and entry valuation. The caller owns the admitted connection
+and view, cancellation and the evidence sink.
 """
 from copy import deepcopy
 from decimal import Decimal
 import hashlib
-import json
 import math
 from pathlib import Path
 
 _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 from backtest import selection
-from backtest.financial import books
 from backtest.inputs import book_store
 from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
-from backtest.variables import columns, definitions, library
+from backtest.variables import columns, definitions
 
 MAX_CANDIDATES = selection.MAX_CANDIDATES
 MAX_PREVIEW_BYTES = 16 * 1024 * 1024
@@ -52,21 +53,21 @@ def scope_rows(db, *, pool, book):
     return rows
 
 
-def check_preview(capture, roots, *, checkpoint=backtest_control.checkpoint):
-    """Check a sample preview before financial ownership; return its program.
+def check_preview(checked, roots):
+    """Check a sample preview of a restored strategy before financial ownership; return its program projection.
 
-    A preview evaluates 1–16 explicit company/date roots and never certifies
+    checked is the strategy that strategy_requests.check_options restored. A
+    preview evaluates 1–16 explicit company/date roots and never certifies
     pool coverage.
     """
-    checked = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
     if type(roots) is not list or not 1 <= len(roots) <= 16:
         raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Preview needs 1–16 explicit company/date roots.')
     if checked['variables'] is None:
         raise definitions.FormulaError('INVALID_STRATEGY', '/preview', 'A formula preview requires captured formula roots.')
-    program = library.VariableCapture(definitions.canonical(checked['variables'])).program
+    projection = checked['variables']['program']
     columns.require_roots(roots)
-    columns.Formulas(program).require_contexts(roots)
-    return program
+    columns.Formulas(projection).require_contexts(roots)
+    return projection
 
 
 def _require(db, book, pool, day, latest, path):
@@ -77,12 +78,13 @@ def _require(db, book, pool, day, latest, path):
         raise definitions.FormulaError('INVALID_SHAPE', path, 'Prepared owner scope does not match the admitted projection.') from None
 
 
-def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkpoint):
+def evaluate_preview(projection, roots, view, *, checkpoint=backtest_control.checkpoint):
     """Explain explicit checked roots with the column evaluator; no complete-pool claim is made.
 
-    Only a latest root has a stored owner book: a prepared owner scope must name
-    the open book (book_store.require_scope); the root's date is checked by the
-    view's latest admission.
+    A request names no dated book: a book id is a handle (book_store). A
+    prepared owner scope must name the open book on a latest root
+    (book_store.require_scope); the root's date is checked by the view's
+    latest admission.
     """
     for index, root in enumerate(roots):
         scope = root.get('owner_scope')
@@ -91,27 +93,52 @@ def evaluate_preview(program, roots, view, *, checkpoint=backtest_control.checkp
             if root['mode'] != 'latest':
                 raise definitions.FormulaError('INVALID_SHAPE', path, 'Only a latest root has a stored owner book.')
             _require(view.db, scope['book'], root['pool'], root['date'], True, path)
-    block = columns.Formulas(program).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
+    block = columns.Formulas(projection).explain(roots, view, checkpoint, decisions=view.admit(roots, checkpoint))
     if _size(block) > MAX_PREVIEW_BYTES:
         raise definitions.FormulaError('WORK_LIMIT', '/preview', 'Complete preview exceeds its encoded byte ceiling.')
     return dict(population='explicit-request-scopes', requested=roots, evaluations=[block])
 
 
 def _scope(db, capture, book, entry, *, latest):
-    """Return one complete prepared scope's rows, roots and owner scope, after its one check.
+    """Return one complete prepared scope's rows and the admission of row i, after the scope's one check.
 
     The scope is one complete pool of the stored book (book_store.require_scope);
-    a latest scope names the open book. Its roots carry the prepared owner scope
-    of that book, whose stored lanes the owner parameters read; a dated
-    scope's roots read the dated owner lanes.
+    a latest scope names the open book. admission(i) is (root, decision): the
+    root carries the prepared owner scope of that book, whose stored lanes the
+    owner parameters read, and the decision admits the stored row with its
+    candidate rank and entry valuation. A latest decision also names its
+    report, as the open book's screen chose it.
     """
     pool = capture['pool']
     _require(db, book, pool, entry, latest, '/owner_scope')
-    owner_scope = dict(kind='prepared', book=book) if latest else dict(kind='dated')
+    owner_scope = dict(kind='prepared', book=book)
+    mode, day = 'latest' if latest else 'historical', str(entry)
     rows = scope_rows(db, pool=pool, book=book)
-    roots = [dict(symbol=row['symbol'], pool=pool, mode='latest' if latest else 'historical', date=str(entry),
-                  owner_scope=owner_scope) for row in rows]
-    return rows, roots, owner_scope
+    # The latest row shape has no EBITDA; its stored valuation does.
+    stored = book_store.valuations(db, book, pool) if latest else None
+
+    def admission(i):
+        row = rows[i]
+        valuation = (dict(zip(('market_cap', 'enterprise_value', 'ebitda'), stored[row['symbol']])) if latest
+                     else dict(market_cap=row['market_cap'], enterprise_value=row['enterprise_value'], ebitda=row['ebitda']))
+        decision = dict(root='r' + str(i), symbol=row['symbol'], pool=pool, mode=mode, date=day, admitted=True,
+                        reason=None, candidate_rank=row['candidate_rank'], owner_scope=owner_scope, valuation=valuation)
+        if latest:
+            decision['statement'] = dict(fiscal=row['fiscal'], known=row['known'])
+        return dict(symbol=row['symbol'], pool=pool, mode=mode, date=day, owner_scope=owner_scope), decision
+    return rows, admission
+
+
+def _usable(value, scale):
+    """A stored lane value that is a valid input, else None: finite, and finite in canonical units.
+
+    scale is the decimal exponent to canonical units; only a positive scale can overflow.
+    """
+    if type(value) not in (int, float) or not math.isfinite(value):
+        return None
+    if scale > 0 and not math.isfinite(float(Decimal(str(value)).scaleb(scale))):
+        return None
+    return value
 
 
 class Executor:
@@ -121,7 +148,8 @@ class Executor:
     can still be selected. With explain, the same evaluator then traces the
     selected rows only: inputs, dates, reasons, source digests and operations.
     Without it (random-date runs), selected rows keep their formula values and
-    reasons but no step trace.
+    reasons but no step trace. Stored lanes build their evidence for the
+    selected rows only.
     """
     contract = 2
     def __init__(self, capture, view, sink, *, record_bytes=8 * 1024 * 1024,
@@ -131,55 +159,26 @@ class Executor:
         self.pool = self.capture['pool']; self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
         self.number = 0; self.explain = explain
-        self.program = library.VariableCapture(definitions.canonical(self.capture['variables'])).program if self.capture['variables'] else None
-        self.formulas = columns.Formulas(self.program) if self.program is not None else None
+        # The restore checked the program; its projection is the evaluator's input.
+        variables = self.capture['variables']
+        self.formulas = columns.Formulas(variables['program']) if variables is not None else None
         self.descriptors = {item['id']: item for item in self.capture['builtins']}
-
-    def _admit(self, rows, roots, entry, owner_scope, dated):
-        """Admission decisions in row order.
-
-        Dated scopes apply the view's admission rules (eligible report, legacy buffer,
-        cached prices, eligible valuation) and take the entry valuation from the
-        book row: books.book derived it with the same rule and prices.
-        The latest scope uses the view's admission (books.Screen.decide).
-        """
-        if dated:
-            statements, ranks = self.view.candidates(str(entry), self.checkpoint)
-            decisions = []
-            for i,row in enumerate(rows):
-                symbol = row['symbol']; rank = ranks.get(symbol)
-                reason = ('NO_ELIGIBLE_REPORT' if statements[self.pool].get(symbol) is None
-                          else 'OUTSIDE_LEGACY_BUFFER' if self.pool == 'legacy' and rank is None
-                          else 'MISSING_CACHED_PRICES' if not self.view.is_cached(symbol)
-                          else 'INELIGIBLE_VALUATION' if not books.eligible(self.pool, row['market_cap'], row['enterprise_value'])
-                          else None)
-                decisions.append(dict(root='r'+str(i), symbol=symbol, pool=self.pool, mode='historical', date=str(entry),
-                    admitted=reason is None, reason=reason, candidate_rank=rank, owner_scope=owner_scope,
-                    valuation=None if reason else dict(market_cap=row['market_cap'], enterprise_value=row['enterprise_value'], ebitda=row['ebitda'])))
-            return decisions
-        decisions = self.view.admit(roots, self.checkpoint)
-        for decision in decisions:
-            decision['owner_scope'] = owner_scope
-        return decisions
 
     def select(self, db, book, entry, exit_day=None, *, latest=False):
         """Select one complete prepared scope: the pool of the stored book named by its id (the open book when latest)."""
         self.checkpoint()
-        rows, roots, owner_scope = _scope(db, self.capture, book, entry, latest=latest)
+        rows, admission = _scope(db, self.capture, book, entry, latest=latest)
         self.number += 1; identity = 'scope:' + str(self.number)
         specification = deepcopy(self.capture['selection'])
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
         lane_of = lambda role: 'ranking' if role == 0 else 'c' + str(role - 1)
         mode = 'latest' if latest else 'historical'
-        decisions = self._admit(rows, roots, entry, owner_scope, not latest)
-        admitted = sum(decision['admitted'] for decision in decisions)
         receipt = dict(policy=dict(executor=_LOADED,selection=selection.policy_fingerprint()),id=identity,
             population='complete-prepared-scope', mode=mode, pool=self.pool, date=str(entry),
             exit=str(exit_day) if exit_day is not None else None, prepared_period=None if latest else book,
             input=self.view.identity, rows=len(rows), source_population=self.view.bounds['population'],
-            provider_admitted_in_prepared_scope=admitted,
+            provider_admitted_in_prepared_scope=len(rows),
             selection_population='prepared rows with usable return evidence' if not latest else 'prepared exact-session latest rows')
-        values = [{} for row in rows]
         # One read per stored table for the whole scope (book_store.lanes);
         # primary keys make each symbol's value unique, as per-row lookups read.
         stored = {}
@@ -195,51 +194,55 @@ class Executor:
                             if storage['metric'] in found}
         for role, storage in fields.items():
             stored[role] = {symbol: found[storage['field']] for symbol, found in filters.items() if storage['field'] in found}
+        usable = {lane_of(role): {symbol: _usable(value, self.descriptors[role_sources[role]['id']]['storage']['scale'])
+                                  for symbol, value in found.items()} for role, found in stored.items()}
         def builtin(role, symbol):
+            """The evidence of one stored lane of a selected row."""
             source = role_sources[role]
             descriptor = self.descriptors[source['id']]; storage = descriptor['storage']
             value = stored[role].get(symbol)
             canonical = float(Decimal(str(value)).scaleb(storage['scale'])) if value is not None else None
             valid = type(value) in (int,float) and math.isfinite(value) and canonical is not None and math.isfinite(canonical)
-            return value if valid else None, dict(scope=identity, symbol=symbol, source=source, stored=value if valid else None,
+            return dict(scope=identity, symbol=symbol, source=source, stored=value if valid else None,
                 canonical=canonical if valid else None, unit=descriptor['unit'], valid=valid,
                 reason=None if valid else 'MISSING_INPUT')
-        for index, row in enumerate(rows):
-            for role in stored:
-                values[index][lane_of(role)] = builtin(role, row['symbol'])[0]
-            if not decisions[index]['admitted']:
-                values[index]['ranking'] = None
+        # Each row's lanes: its usable stored values and the bound fields.
+        values = []
+        for row in rows:
+            symbol = row['symbol']
+            item = {lane: found.get(symbol) for lane, found in usable.items()}
+            item.update({key: row.get(key) for key in ('market_cap', 'enterprise_value', 'sector', 'exchange')})
+            values.append(item)
         conditions = [dict(lane='c'+str(i),op=item['op'],value=item['storage_comparison_value']) for i,item in enumerate(specification['conditions'])]
         bounds = self.capture['bounds']
         for field, op in [('min_cap','ge'),('max_cap','le'),('min_ev','ge'),('sector','eq'),('exchange','eq')]:
             if bounds[field] is not None:
                 lane = {'min_cap':'market_cap','max_cap':'market_cap','min_ev':'enterprise_value'}.get(field,field)
                 conditions.append(dict(lane=lane,op=op,value=bounds[field]))
-        def row_values(i):
-            return dict(values[i], **{key:rows[i].get(key) for key in ('market_cap','enterprise_value','sector','exchange')})
         formula_roles = [role for role, source in enumerate(role_sources) if source['kind'] == 'formula']
         if formula_roles:
-            # With a stored ranking and filter-first order, a row that is not
-            # admitted, has no ranking value or fails a stored condition can
-            # never be selected; formulas run only for the remaining rows.
+            # With a stored ranking and filter-first order, a row that has no
+            # ranking value or fails a stored condition can never be selected;
+            # formulas run only for the remaining rows.
             if role_sources[0]['kind'] == 'builtin' and specification['selection_order'] == 'filter_first':
                 formula_lanes = {lane_of(role) for role in formula_roles}
                 stored_conditions = [item for item in conditions if item['lane'] not in formula_lanes]
-                needed = [i for i in range(len(rows)) if decisions[i]['admitted'] and selection.finite(values[i].get('ranking')) is not None
-                          and selection.passes(row_values(i), stored_conditions, self.checkpoint)]
+                needed = []
+                for i, item in enumerate(values):
+                    self.checkpoint()
+                    if selection.finite(item.get('ranking')) is not None and selection.passes(item, stored_conditions):
+                        needed.append(i)
             else:
                 needed = list(range(len(rows)))
-            outputs = self.formulas.evaluate([roots[i] for i in needed], self.view, self.checkpoint,
-                                             decisions=[decisions[i] for i in needed])
+            roots, decisions = zip(*map(admission, needed)) if needed else ((), ())
+            outputs = self.formulas.evaluate(list(roots), self.view, self.checkpoint, decisions=list(decisions))
             computed = dict(zip(needed, outputs))
             for i, output in computed.items():
                 for role in formula_roles:
                     source = role_sources[role]
                     value, valid, reason = output[(source['variable_id'], source['revision'])]
                     values[i][lane_of(role)] = value if valid else None
-                    if role == 0 and not decisions[i]['admitted']:
-                        values[i]['ranking'] = None
-        candidates = [dict(symbol=row['symbol'], candidate_rank=row['candidate_rank'], values=row_values(i)) for i,row in enumerate(rows)]
+        candidates = [dict(symbol=row['symbol'], candidate_rank=row['candidate_rank'], values=values[i]) for i,row in enumerate(rows)]
         selected = selection.select(candidates, dict(ranking=dict(lane='ranking',direction=specification['ranking']['direction']),
             conditions=conditions, **{key:specification[key] for key in ('rank_from','rank_to','selection_order')}), self.checkpoint)
         chosen = [item['index'] for item in selected['selected']]
@@ -259,8 +262,8 @@ class Executor:
             # mode. A block larger than one evidence record is split in half.
             def explain(indices):
                 self.checkpoint()
-                block = self.formulas.explain([roots[i] for i in indices], self.view, self.checkpoint,
-                                              decisions=[decisions[i] for i in indices])
+                roots, decisions = zip(*map(admission, indices))
+                block = self.formulas.explain(list(roots), self.view, self.checkpoint, decisions=list(decisions))
                 if _size(block) > self.record_bytes - 4096:
                     if len(indices) == 1:
                         raise definitions.FormulaError('WORK_LIMIT', '/execution',
@@ -283,7 +286,7 @@ class Executor:
         # Each holding carries its stored lane values; no separate lanes record repeats them.
         for index in chosen:
             for role in stored:
-                references[index][lane_of(role)] = builtin(role, rows[index]['symbol'])[1]
+                references[index][lane_of(role)] = builtin(role, rows[index]['symbol'])
         output = []
         ranking_source = specification['ranking']['source']
         if ranking_source['kind'] == 'builtin':

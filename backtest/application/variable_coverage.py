@@ -1,7 +1,8 @@
 """Complete stored-book inspection under a borrowed prepared view.
 
-Every stored row of one latest scope (the open book's pool) is admitted and
-evaluated values-only by the column evaluator; counts are exact.
+Every stored row of one latest scope (the open book's pool) is its root's
+admission and is evaluated values-only by the column evaluator; counts are
+exact.
 """
 import hashlib
 from datetime import date
@@ -9,13 +10,14 @@ from datetime import date
 from backtest.application import scalar_execution, strategy_requests
 from backtest.inputs import book_store
 from backtest.runtime import backtest_control
-from backtest.variables import columns, definitions, library
+from backtest.variables import columns, definitions
 
 
 def scopes(db, view):
     """Discover the inspectable scopes: each completed pool of the stored open book, including empty pools.
 
-    Dated books are not listed: their owner lanes use the dated owner policy.
+    Dated books are not listed: no caller inspects one, and a request never
+    names a dated book id (a book id is a handle, book_store).
     """
     view.validate()
     generation=hashlib.sha256(definitions.canonical(dict(input=view.identity,projection=view.projection)).encode()).hexdigest()
@@ -48,22 +50,19 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
     checked=strategy_requests.require_strategy(capture,checkpoint=checkpoint)
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
-    program=library.VariableCapture(definitions.canonical(checked['variables'])).program
-    rows,roots,owner_scope=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True)
+    # The restore checked the program; its projection is the evaluator's input.
+    projection=checked['variables']['program']
+    rows,admission=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True)
     outputs=[]; seen=set()
-    for root in definitions.require_program(program)['bundle']['roots']:
+    for root in projection['bundle']['roots']:
         identity=root['variable_id'],root['revision']
         if identity in seen:continue
         seen.add(identity)
         outputs.append(dict(variable_id=root['variable_id'],revision=root['revision'],valid=0,unavailable=0,reasons={}))
     by_id={(item['variable_id'],item['revision']):item for item in outputs}
-    decisions=view.admit(roots,checkpoint)
-    admitted=0;admission_reasons={}
-    for decision in decisions:
-        if decision['admitted']:admitted+=1
-        else:admission_reasons[decision['reason']]=admission_reasons.get(decision['reason'],0)+1
-    for decision in decisions:decision['owner_scope']=owner_scope
-    for values in columns.Formulas(program).evaluate(roots,view,checkpoint,decisions=decisions):
+    # A stored row is its root's admission.
+    roots,decisions=(list(items) for items in zip(*map(admission,range(len(rows))))) if rows else ([],[])
+    for values in columns.Formulas(projection).evaluate(roots,view,checkpoint,decisions=decisions):
         for key,(value,valid,reason) in values.items():
             output=by_id[key]
             if valid:output['valid']+=1
@@ -72,5 +71,5 @@ def inspect(capture, scope, db, view, checkpoint=backtest_control.checkpoint):
                 if reason!='ROOT_NOT_ADMITTED':output['reasons'][reason]=output['reasons'].get(reason,0)+1
     view.validate();checkpoint()
     return dict(generation=discovery['generation'],scope=exact,projection=view.projection,
-        program=definitions.require_program(program)['bundle_revision'],population=len(rows),
-        provider_admitted=admitted,provider_unavailable=len(rows)-admitted,provider_reasons=admission_reasons,outputs=outputs)
+        program=projection['bundle_revision'],population=len(rows),
+        provider_admitted=len(rows),provider_unavailable=0,provider_reasons={},outputs=outputs)

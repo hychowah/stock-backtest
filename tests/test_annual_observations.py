@@ -85,7 +85,7 @@ def field(identity, *, wrap=None, count=None, stat='mean', catalog=parameters.V3
 def formulas(*values):
     """Checked formulas whose roots are every given definition, in order."""
     entries = [language.entry(value, f'draft:{index}') for index, value in enumerate(values)]
-    return columns.Formulas(definitions.validate(language.bundle(*entries, roots=[language.root(e) for e in entries])))
+    return columns.Formulas(definitions.require_program(definitions.validate(language.bundle(*entries, roots=[language.root(e) for e in entries]))))
 
 
 def values(program, view, roots, checkpoint=lambda: None):
@@ -483,7 +483,7 @@ class AnnualTransportTests(unittest.TestCase):
                 for result in results:
                     self.assertEqual(result, [(rows[endpoint][0][name], None) for endpoint, name, _ in chunk])
             from backtest.variables import measures
-            program = columns.Formulas(definitions.validate(measures.bundle(['ev_ebitda', 'ebitda_yield'])))
+            program = columns.Formulas(definitions.require_program(definitions.validate(measures.bundle(['ev_ebitda', 'ebitda_yield']))))
             # The latest root reads the stored latest book; the dated root
             # values the report at its entry price (20, fiscal price 10).
             self.assertEqual(values(program, view, roots[1:]), [[(metrics[0], None), (metrics[1], None)]])

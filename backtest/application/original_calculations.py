@@ -131,15 +131,14 @@ class Original(Control):
         """Explain explicit Original samples under ordinary input lifetime."""
         from backtest.application import scalar_execution, strategy_requests
         from backtest.inputs import fact_view, operation_inputs
-        options={'strategy':capture}
         strategy_requests.preview_engine(engine)
-        strategy_requests.check_options(options)
-        program=scalar_execution.check_preview(strategy_requests.from_wire(capture),roots)
+        # One restore of the capture; the preview reuses its checked program.
+        projection=scalar_execution.check_preview(strategy_requests.check_options({'strategy':capture}),roots)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
                 with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint) as view:
-                    value=scalar_execution.evaluate_preview(program,roots,view,checkpoint=self._checkpoint)
+                    value=scalar_execution.evaluate_preview(projection,roots,view,checkpoint=self._checkpoint)
         return dict(value,producer=dict(engine='original',label='Original sample preview'))
 
     def coverage(self, capture=None, scope=None, *, admission='interactive'):

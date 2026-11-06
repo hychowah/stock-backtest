@@ -56,14 +56,15 @@ class View:
     """Borrowed daily connection of one operation: research facts and the book store.
 
     The facts supply the reports, prices, saved sessions and typed facts
-    through BookFacts; the book store supplies the stored latest book. The
-    view's input identity is the daily binding (daily.binding) and its
-    projection the research identity. Admission is books.Screen.decide for
-    every root: an open-book screen at the latest date for a latest root, a
-    dated screen for a historical root. Each company, day and source is read
-    once per view: neither database can change while it is open. validate()
-    is the operation's boundary check: the freshness callback, the daily
-    binding and the research identity.
+    through BookFacts; the book store supplies the stored owner lanes of a
+    stored-book root (prepared). The view's input identity is the daily
+    binding (daily.binding) and its projection the research identity. A
+    stored book row is its root's admission (scalar_execution); admit()
+    decides explicit roots with books.Screen.decide: an open-book screen at
+    the latest date for a latest root, a dated screen for a historical root.
+    Each company, day and source is read once per view: neither database can
+    change while it is open. validate() is the operation's boundary check: the
+    freshness callback, the daily binding and the research identity.
     """
 
     def __init__(self, db, freshness, checkpoint):
@@ -100,6 +101,12 @@ class View:
     @property
     def bounds(self):
         return dict(self._bounds)
+
+    @property
+    def facts(self):
+        """The facts port (facts.BookFacts) of the books' own reads; formula contexts without a stored book use it."""
+        self._open()
+        return self._facts
 
     @property
     def open_book(self):
@@ -143,16 +150,6 @@ class View:
             self._screens[key] = books.Screen(date.fromisoformat(day), self._recorder, open_book=open_book)
         return self._screens[key]
 
-    def candidates(self, day, checkpoint=lambda: None):
-        """Return (statements by pool, legacy ranks) at one saved screen date."""
-        self._open()
-        screen = self._screen(day, False, checkpoint)
-        return screen.statements, screen.ranks
-
-    def is_cached(self, symbol):
-        self._open()
-        return symbol in self._facts.cached()
-
     def reports(self, symbol, pool):
         self._open()
         key = symbol, pool
@@ -162,7 +159,7 @@ class View:
         return self._reports[key]
 
     def admit(self, roots, checkpoint=lambda: None):
-        """Admission decisions in root order: books.Screen.decide, with its reason.
+        """Admission decisions of explicit roots in order: books.Screen.decide, with its reason.
 
         A latest root must be on the latest date and uses the open book's
         screen (listed companies, the exact session). A historical root, on a
@@ -223,41 +220,6 @@ class View:
         fiscal, entry, cap, ev, ebitda = value
         return dict(market_cap=cap, enterprise_value=ev, ebitda=ebitda,
                     fiscal_price=[str(fiscal[0]), fiscal[1]], valuation_price=[str(entry[0]), entry[1]]), evidence
-
-    def lookup(self, symbol, day, forward=False, slack=None):
-        """(day, valid adjusted close) of one company (BookFacts.price); facts.observe keeps only positive values."""
-        self._open()
-        if not isinstance(day, date):
-            raise ValueError('Invalid observation price lookup.')
-        return self._facts.price(symbol, day, forward, slack)
-
-    def broad_reports(self, symbol, checkpoint=lambda: None, *, budget=None):
-        self._open()
-        checkpoint()
-        reports = self.reports(symbol, 'cached')
-        if budget is not None and len(facts.encoded(reports).encode('utf-8')) > budget:
-            raise ValueError('Observation report history exceeds its byte bound.')
-        return reports
-
-    def legacy_financial_history(self, symbol, checkpoint=lambda: None, *, budget=None):
-        """facts.legacy_annual() of one company; the byte bound counts each date's JSON text."""
-        self._open()
-        result = facts.legacy_annual(self.db, symbol, checkpoint)
-        if len(result) > facts.MAX_HISTORY:
-            raise ValueError('Prepared observation history exceeds its bound.')
-        size = 0
-        for fiscal, values in result.items():
-            checkpoint()
-            size += len(symbol) + len(fiscal) + len(json.dumps(values))
-            if budget is not None and size > budget:
-                raise ValueError('Observation financial history exceeds its byte bound.')
-        return result
-
-    def legacy_treasury(self, day, checkpoint=lambda: None):
-        self._open()
-        checkpoint()
-        row = facts.ten_year(self.db, day)
-        return dict(day=row[0], value=row[1]) if row else None
 
     # Typed facts.
 
@@ -336,26 +298,29 @@ class View:
         return self._sources[key]
 
     def prepared(self, decision):
-        """Owner values of a latest root's row in its stored book (book_store.lanes).
+        """Owner values of a stored-book root's row (book_store.lanes and valuations).
 
-        The book is the root's prepared owner scope, else the open book; each
-        book pool is read once per view. A missing row is unavailable; it never
-        falls back to a recalculation.
+        The book is the root's prepared owner scope, else the open book of a
+        latest root; whoever names the scope checked it (book_store.require_scope).
+        One book pool is held at a time: an operation reads its scopes in turn.
+        A missing row is unavailable; it never falls back to a recalculation.
         """
         self._open()
-        if decision['mode'] != 'latest':
-            raise ValueError('Only a latest root has a stored owner book.')
         scope = decision.get('owner_scope')
-        book = scope['book'] if scope is not None and scope['kind'] == 'prepared' else self.open_book
+        if scope is not None and scope['kind'] == 'prepared':
+            book = scope['book']
+        elif decision['mode'] == 'latest':
+            book = self.open_book
+        else:
+            raise ValueError('Only a stored-book root has stored owner lanes.')
         key = book, decision['pool']
         if key not in self._lanes:
-            self._lanes[key] = ({row['symbol']: row['market_cap'] for row in book_store.rows(self.db, *key)},
-                                *book_store.lanes(self.db, *key))
+            self._lanes = {key: (book_store.valuations(self.db, *key), *book_store.lanes(self.db, *key))}
         rows, pairs, values = self._lanes[key]
         symbol = decision['symbol']
         if symbol not in rows:
             return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
-        return dict(reason=None, evidence=dict(snapshot=dict(market_cap=rows[symbol]),
+        return dict(reason=None, evidence=dict(snapshot=dict(market_cap=rows[symbol][0]),
                     metrics={metric: list(pair) for metric, pair in pairs.get(symbol, {}).items()},
                     filters=dict(values.get(symbol, {}))))
 

@@ -19,8 +19,8 @@ import book_store_fixture as store
 
 
 def preview(capture, roots, view):
-    """Check, then explain explicit roots, as Original.preview does under cache ownership."""
-    return x.evaluate_preview(x.check_preview(capture, roots), roots, view)
+    """Restore, check, then explain explicit roots, as Original.preview does under cache ownership."""
+    return x.evaluate_preview(x.check_preview(s.require_strategy(capture), roots), roots, view)
 
 
 def state(value, reason=None):
@@ -144,14 +144,43 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(stocks,[])
         stocks,_=self.fixture.select(self.fixture.capture(conditions=[c],order='filter_first'))
         self.assertEqual(len(stocks),5)
-    def test_legacy_buffer_denies_prepared_rows_outside_250(self):
-        stocks,_=self.fixture.select(self.fixture.capture(pool='legacy'))
-        self.assertEqual(stocks[0]['symbol'],'A0249')
-        builtin=requests.intent();builtin['pool']='legacy'
-        stocks,records=self.fixture.select(s.capture_strategy(builtin))
-        self.assertEqual(len(stocks),50)
-        receipt=next(r['value'] for r in records if r['type']=='scope')
-        self.assertEqual(receipt['provider_admitted_in_prepared_scope'],250)
+    def test_a_stored_row_is_its_roots_admission(self):
+        # books.book stored only admitted rows; no scope re-screens them, even
+        # the fixture's legacy rows outside the 250-report buffer.
+        from backtest.financial import books
+        with patch.object(books,'Screen',side_effect=AssertionError('re-admitted')), \
+                patch.object(fact_view.View,'admit',side_effect=AssertionError('re-admitted')):
+            for latest in (False,True):
+                stocks,records=self.fixture.select(self.fixture.capture(pool='legacy'),latest=latest)
+                self.assertEqual(stocks[0]['symbol'],'A0299')
+                receipt=next(r['value'] for r in records if r['type']=='scope')
+                self.assertEqual(receipt['provider_admitted_in_prepared_scope'],300)
+                block=next(r['value']['block'] for r in records if r['type']=='evaluation')
+                admission=block['observations']['roots'][0]
+                self.assertEqual((admission['admitted'],admission['candidate_rank']),(True,300))
+                self.assertEqual(admission['valuation'],dict(market_cap=150e6,enterprise_value=180e6,ebitda=54e6))
+    def test_owner_lanes_of_every_scope_read_its_stored_book(self):
+        from backtest import measure_observations
+        from backtest.variables import parameters
+        definition=language.definition(dict(op='parameter',id='owner.profit_margin'),'scalar','number')
+        definition.update(version=3,parameter_catalog=parameters.V3)
+        authored=language.entry(definition,'draft:margin')
+        intent=requests.intent(requests.formula(authored),None,rank_from=1,rank_to=5);intent['pool']='cached'
+        capture=s.capture_strategy(intent,submitted=[authored])
+        for latest,book,margin in ((False,self.fixture.dated,1.49),(True,self.fixture.latest,None)):
+            with patch.object(measure_observations,'dated',side_effect=AssertionError('recalculated')):
+                stocks,records=self.fixture.select(capture,latest=latest)
+            if margin is None:
+                # The latest book stores no profit margin: unavailable, never recalculated.
+                self.assertEqual(stocks,[])
+                continue
+            block=next(r['value']['block'] for r in records if r['type']=='evaluation')
+            self.assertTrue(all(item['owner_scope']==dict(kind='prepared',book=book) for item in block['requests']))
+            self.assertEqual((stocks[0]['symbol'],stocks[0]['ranking_value']),('A0299',margin))
+            [observation]=[item for item in block['observations']['results'] if item['root']==block['results'][0]['root']]
+            self.assertEqual((observation['anchor'],observation['members'][0]['fiscal_date']),('2014-06-30','2014-06-30'))
+            self.assertEqual(observation['members'][0]['evidence'],dict(source='filters',key='profit_margin',stored=149.,
+                                                                        conversion='percent-divided-by-100'))
     def test_missing_only_active_source_excludes(self):
         self.fixture.db.research.execute("DELETE FROM annual_facts WHERE symbol='A0299'")
         stocks,_=self.fixture.select(self.fixture.capture())

@@ -16,8 +16,8 @@ the schema, the writer or a reader here drops every saved book.
 
 Writers: store() and delete() (daily preparation drops the books that the
 change-day rule, books.kept, does not keep). Readers: stored(), record(),
-open_book(), completed(), find(), rows(), lanes(), require_scope() and
-counts(). A book's rows keep the row shape that results
+open_book(), completed(), find(), rows(), lanes(), valuations(),
+require_scope() and counts(). A book's rows keep the row shape that results
 and the website keep, chosen by the book itself: LATEST for the open book (the
 old research latest snapshot) and DATED otherwise (the old daily snapshot).
 screening.select is the one SQL consumer outside this module; it takes the
@@ -171,6 +171,12 @@ def lanes(db, book, pool, metrics=None, fields=None):
         for symbol, field, value in _read(db, FILTERS, 'field', 'value', book, pool, fields):
             values.setdefault(symbol, {})[field] = value
     return pairs, values
+
+
+def valuations(db, book, pool):
+    """{symbol: (market_cap, enterprise_value, ebitda)}: the stored entry valuation of each row of one book pool."""
+    return {symbol: (cap, ev, ebitda) for symbol, cap, ev, ebitda in db.execute(
+        f'SELECT symbol,market_cap,enterprise_value,ebitda FROM {ROWS} WHERE book=? AND pool=?', (book, pool))}
 
 
 def _read(db, table, key, columns, book, pool, names):

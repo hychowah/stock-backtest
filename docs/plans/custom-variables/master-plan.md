@@ -34,8 +34,9 @@ The design contract is in [variable design](variable-design.md).
   availability-before-date and 800-day anchor limit apply at every observation.
   The full requested history is required. A newer report never fills a missing
   value. Missing, conflicting and nonfinite facts are unavailable with a reason.
-- **Context ownership.** A latest root reads the stored latest owner lanes;
-  every other root uses dated owner policy. Derived `at` and `lookback` contexts use dated owner
+- **Context ownership.** A stored-book root (every root of a latest or dated
+  scope, and a latest preview root) reads its book's stored owner lanes; other
+  roots use dated owner policy. Derived `at` and `lookback` contexts use dated owner
   policy, even at an equal date. A missing prepared company or lane never falls
   back to another calculation.
 - **Legacy settings keep stored comparison scale (Phase 4).** The Phase 1

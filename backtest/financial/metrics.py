@@ -136,6 +136,11 @@ def filter_values(observation, pairs, day, lookup, financials=None, treasury10=N
     return values
 
 
+def operating_margin(income, revenue):
+    """Operating income / revenue, or None when revenue is not positive; signed income stays signed."""
+    return income/revenue if revenue>0 else None
+
+
 def operating_yield_spread(observation, reports, treasury10):
     """Selected annual sales × mean of three annual margins / current EV.
 
@@ -155,8 +160,9 @@ def operating_yield_spread(observation, reports, treasury10):
     for year in range(int(fiscal[:4])-2,int(fiscal[:4])+1):
         report=by_year.get(year,{})
         revenue=report.get('revenue');income=report.get('operatingIncome')
-        if revenue is None or revenue<=0 or income is None:return None
-        margins.append(income/revenue)
+        margin=None if revenue is None or income is None else operating_margin(income,revenue)
+        if margin is None:return None
+        margins.append(margin)
     value=sales*statistics.mean(margins)/ev*100-treasury10
     return value if math.isfinite(value) else None
 

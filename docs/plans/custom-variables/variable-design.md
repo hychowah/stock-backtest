@@ -108,8 +108,9 @@ supported. A three-month lookback is not a quarterly statement.
 
 Context ownership is strict:
 
-- A latest root reads the stored latest owner lanes. Every other root, January
-  sessions included, uses dated owner policy.
+- A stored-book root reads its book's stored owner lanes: every root of a
+  latest or dated scope, and a latest preview root. An explicit historical
+  preview root uses dated owner policy.
 - Derived `at` and `lookback` contexts use dated owner policy, even when their
   date equals the root date.
 - A missing prepared company or lane is unavailable. It never falls back to

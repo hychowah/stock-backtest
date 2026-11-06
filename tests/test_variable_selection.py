@@ -80,6 +80,8 @@ class FormulaRootAdmissionTests(unittest.TestCase):
     def test_admission_denials_survive_constant_only_selection(self):
         fixture=Fixture(4);self.addCleanup(fixture.close)
         fixture.db.research.execute("UPDATE companies SET listed=0 WHERE symbol='A0000'")
+        # The open book stores listed companies only (books.book); a stored row is its root's admission.
+        fixture.db.execute("DELETE FROM book_rows WHERE book=? AND symbol='A0000'",(fixture.latest,))
         constant=fixture.capture(language.constant('7'))
         stocks,_=fixture.select(constant,latest=True)
         self.assertEqual([row['symbol'] for row in stocks],['A0001','A0002','A0003'])

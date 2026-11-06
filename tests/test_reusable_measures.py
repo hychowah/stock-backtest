@@ -102,7 +102,7 @@ class InventoryExecution(unittest.TestCase):
                 outer = lang.entry(term(expression, descriptor['unit'], descriptor['display']), 'outer')
                 bundle['definitions'].append(outer)
                 bundle['roots'] = [lang.root(outer)]
-                program = annual.columns.Formulas(d.validate(bundle))
+                program = annual.columns.Formulas(d.require_program(d.validate(bundle)))
                 with patch.object(annual.columns.measure_observations, 'dated', side_effect=AssertionError('recalculated')):
                     self.assertEqual(values(program, view, [latest]), [[(expected[key], None)]])
 
@@ -118,7 +118,7 @@ class InventoryExecution(unittest.TestCase):
         roots = [latest, root(mode='latest', day=day, owner_scope=dict(kind='prepared', book=view.open_book)),
                  root(mode='latest', day=day, owner_scope=dict(kind='dated'))]
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper, \
-                patch.object(view, 'lookup', wraps=view.lookup) as lookup:
+                patch.object(view.facts, 'price', wraps=view.facts.price) as lookup:
             results = values(formulas(field('owner.pe')), view, roots) + values(same, view, roots[:1])
         self.assertEqual(results, [[(9., None)], [(9., None)], [(15e6, None)], [(15e6, None)]])
         self.assertEqual(helper.call_count, 2)
@@ -171,7 +171,7 @@ class CaptureAndAdmission(unittest.TestCase):
         new = lang.entry(new_definition, 'new')
         for roots in ([lang.root(old)], [lang.root(new)]):
             program = d.validate(lang.bundle(old, new, roots=roots))
-            self.assertEqual(columns.Formulas(program).projection, program.to_dict())
+            self.assertEqual(d.require_program(program), program.to_dict())
         from backtest.application import strategy_requests
         import test_strategy_requests as requests
         capture = strategy_requests.capture_strategy(requests.intent(requests.formula(new)), submitted=[new]).to_dict()

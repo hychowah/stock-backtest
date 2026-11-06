@@ -1,8 +1,8 @@
 """Formula evaluation over typed prepared facts: values only, or explained.
 
 Formulas.evaluate returns one (value, valid, reason) per root and output for
-complete prepared scopes; it keeps no per-candidate evidence, so one scope of
-thousands of rows evaluates in milliseconds. Formulas.explain returns the
+complete prepared scopes; it builds no evidence, so one scope of thousands of
+rows evaluates in milliseconds. Formulas.explain returns the
 detached evaluation block of a few roots, with every input, date, reason,
 source digest and operation, in the shape website/browser/variable-evidence.js
 reads. Both run the same code, so an explanation shows the values that ranked
@@ -15,8 +15,9 @@ One income fiscal spine selects annual periods before any endpoint join;
 other endpoints join those exact dates. Price and volume use the stock's own
 saved row at the SPY session on or before the context, within seven days.
 Treasury uses the latest saved day on or before the context and divides
-provider percent by 100. A latest root reads its stored latest owner lanes;
-other roots and derived contexts use dated owner policy. Arithmetic is binary64
+provider percent by 100. A stored-book root (a prepared owner scope, or a
+latest root) reads its book's stored owner lanes; other roots and derived
+contexts use dated owner policy. Arithmetic is binary64
 in tree order; mean adds oldest first; min/max keep the oldest equal member;
 growth and CAGR need a positive first (and, for CAGR, last) member; the first
 unavailable operand's reason wins; a nonfinite result is unavailable.
@@ -31,11 +32,10 @@ import math
 from pathlib import Path
 
 from backtest import measure_observations
-from backtest.financial import rules
+from backtest.financial import metrics, rules
 from backtest.inputs.facts import TREASURY
 from backtest.variables import definitions, parameters
 
-_OWNER_BYTES = 16 * 1024 * 1024
 _LOADED = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
@@ -145,7 +145,8 @@ def _periods(facts, anchor, day, count, checkpoint):
     return periods
 
 
-def _annual(parameter, facts, periods, checkpoint):
+def _annual(parameter, facts, periods, checkpoint, detail):
+    """One member per period; detail adds each member's evidence (source, field states, known date)."""
     members = []
     source = _ANNUAL.get(parameter)
     endpoint = source['endpoint'] if source else 'income-statement'
@@ -153,32 +154,31 @@ def _annual(parameter, facts, periods, checkpoint):
     for year, fiscal in periods:
         checkpoint()
         row = facts['annual'].get(endpoint, {}).get(fiscal) if fiscal else None
-        evidence = dict(source=facts['sources'].get(endpoint), fields={},
-                        known_date=str(date.fromisoformat(fiscal) + rules.LAG) if fiscal else None,
-                        availability_model='fiscal-plus-90-strict; saved statements are not filing vintages')
         reason, value = None, None
         for field in fields:
             state = row.get(field) if row else None
-            evidence['fields'][field] = state
             if reason is None and (state is None or not state['valid']):
                 reason = state['reason'] if state else ('MISSING_FISCAL_YEAR' if fiscal is None else 'MISSING_INPUT')
         if reason is None:
             if parameter == 'annual.operating_margin':
-                revenue, income = row['revenue']['value'], row['operatingIncome']['value']
-                if revenue <= 0:
+                value = metrics.operating_margin(row['operatingIncome']['value'], row['revenue']['value'])
+                if value is None:
                     reason = 'NONPOSITIVE_DENOMINATOR'
-                else:
-                    value = income / revenue
             else:
                 value = row[fields[0]]['value']
             if value is not None and not math.isfinite(value):
                 value, reason = None, 'NONFINITE_RESULT'
-        members.append(dict(value=value, valid=reason is None, reason=reason,
-                            fiscal_date=fiscal, fiscal_year=year, evidence=evidence))
+        member = dict(value=value, valid=reason is None, reason=reason, fiscal_date=fiscal, fiscal_year=year)
+        if detail:
+            member['evidence'] = dict(source=facts['sources'].get(endpoint),
+                fields={field: row.get(field) if row else None for field in fields},
+                known_date=str(date.fromisoformat(fiscal) + rules.LAG) if fiscal else None,
+                availability_model='fiscal-plus-90-strict; saved statements are not filing vintages')
+        members.append(member)
     return members
 
 
-def _report_ebitda(reports, anchor, count, checkpoint):
+def _report_ebitda(reports, anchor, count, checkpoint, detail):
     # The anchor remains the pool-selected report. Earlier values come from the
     # broad accepted report spine, without requiring statement endpoint rows.
     by_year = {}
@@ -196,10 +196,12 @@ def _report_ebitda(reports, anchor, count, checkpoint):
         reason = 'MISSING_FISCAL_YEAR' if row is None else 'MISSING_INPUT' if value is None else None
         if value is not None and not math.isfinite(value):
             value, reason = None, 'NONFINITE_RESULT'
-        result.append(dict(value=value, valid=reason is None, reason=reason,
-            fiscal_date=str(row['fiscal']) if row else None, fiscal_year=year,
-            evidence=dict(policy='accepted-report-ebitda', report={key: str(v) if isinstance(v, date) else v
-                                                                    for key, v in row.items()} if row else None)))
+        member = dict(value=value, valid=reason is None, reason=reason,
+                      fiscal_date=str(row['fiscal']) if row else None, fiscal_year=year)
+        if detail:
+            member['evidence'] = dict(policy='accepted-report-ebitda', report={
+                key: str(v) if isinstance(v, date) else v for key, v in row.items()} if row else None)
+        result.append(member)
     return result
 
 
@@ -259,10 +261,14 @@ class _Trace:
 
 
 class Formulas:
-    """One checked program, evaluated values-only over ordered roots, or explained in detail."""
+    """One checked program, evaluated values-only over ordered roots, or explained in detail.
 
-    def __init__(self, program):
-        self.projection = definitions.require_program(program)
+    projection is the checked program content that the language check
+    (definitions.require_program) returned when its capture was restored.
+    """
+
+    def __init__(self, projection):
+        self.projection = projection
         self.nodes = {node['id']: node for node in self.projection['nodes']}
         self.outputs = [self.projection['definitions'][index] for index in self.projection['roots']]
         # Annual fields each company needs, unioned over the program.
@@ -278,8 +284,8 @@ class Formulas:
     def evaluate(self, roots, view, checkpoint, *, decisions):
         """Return one {(variable_id, revision): (value, valid, reason)} per root.
 
-        decisions are the roots' admission decisions in order (view.admit, or a
-        dated scope's book admission).
+        decisions are the roots' admission decisions in order (view.admit, or
+        the stored rows of a prepared scope).
         """
         return [self._root(root, decision, view, checkpoint) for root, decision in zip(roots, decisions)]
 
@@ -485,7 +491,12 @@ class Formulas:
             if context_key not in owner:
                 checkpoint()
                 owner[context_key] = view.prepared(decision)
-            members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1], checkpoint)]
+            members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1])]
+            if detail:
+                # The stored row's report is the root's anchor (books.Screen.decide chose it).
+                if context_key not in state['anchors']:
+                    state['anchors'][context_key] = _anchor(view.company(root['symbol'], root['pool'], self.requirements), day)
+                anchor = state['anchors'][context_key][0]
         elif parameter == 'market.enterprise_value' and is_root:
             members = [dict(value=decision['valuation']['enterprise_value'], valid=True, reason=None)]
             if detail:
@@ -511,16 +522,15 @@ class Formulas:
             if anchor is not None:
                 if parameter == 'annual.report_ebitda':
                     members = _report_ebitda(view.reports(root['symbol'], 'cached'), anchor,
-                                                          node['count'], checkpoint)
+                                             node['count'], checkpoint, detail)
                 elif parameter.startswith('owner.'):
                     owner = state.setdefault('owner', {})
                     if context_key not in owner:
-                        owner[context_key] = measure_observations.dated(view, decision, context, anchor, checkpoint,
-                                                                        budget=_OWNER_BYTES)
-                    members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1], checkpoint)]
+                        owner[context_key] = measure_observations.dated(view, decision, context, anchor, checkpoint)
+                    members = [measure_observations.lane(owner[context_key], parameter.split('.', 1)[1])]
                 elif parameter.startswith('annual.'):
                     periods = _periods(company, anchor, day, node['count'], checkpoint)
-                    members = _annual(parameter, company, periods, checkpoint)
+                    members = _annual(parameter, company, periods, checkpoint, detail)
                 else:
                     valuation, evidence = view.entry(root['symbol'], anchor, day)
                     members = [dict(value=valuation['enterprise_value'] if valuation else None,
@@ -528,10 +538,9 @@ class Formulas:
                     if detail:
                         members[0].update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year,
                                           evidence=evidence)
-                if detail and parameter.startswith('owner.'):
-                    members[0].update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year)
-        if detail and parameter.startswith('owner.') and anchor is None and members:
-            members[0].update(fiscal_date=None, fiscal_year=None)
+        if detail and parameter.startswith('owner.') and members:
+            members[0].update(fiscal_date=None if anchor is None else str(anchor['fiscal']),
+                              fiscal_year=None if anchor is None else anchor['fiscal'].year)
         if members:
             reason = next((member['reason'] for member in members if not member['valid']), None)
         elif reason is None:

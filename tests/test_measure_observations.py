@@ -38,7 +38,8 @@ class PreparedMeasureTests(unittest.TestCase):
         self.assertEqual(bridge.lane(context, 'ebitda_yield')['value'], .33333333333333337)
         margin = bridge.lane(context, 'profit_margin')
         self.assertEqual(margin['value'], .125)
-        self.assertEqual(margin['evidence']['stored'], 12.5)
+        self.assertEqual(margin['evidence'], dict(source='filters', key='profit_margin', stored=12.5,
+                                                  conversion='percent-divided-by-100'))
         self.assertEqual(bridge.lane(context, 'roe')['reason'], 'LEGACY_MEASURE_UNAVAILABLE')
         self.assertEqual(bridge.lane(dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None), 'pe')['reason'],
                          'PREPARED_MEASURE_CONTEXT_UNAVAILABLE')
@@ -112,31 +113,28 @@ class OwnerExtractionTests(unittest.TestCase):
     def test_dated_owner_parity_with_no_future_lookups(self):
         day = date(2020, 1, 2)
         anchor = dict(fiscal=date(2018, 12, 31), known=date(2019, 3, 31), market_cap=100., enterprise=150., ebitda=30., **{'yield': .2})
-        reports = [dict(fiscal=f'{year}-12-31', ebitda=value) for year, value in ((2016, 10.), (2017, 20.), (2018, 30.))]
+        reports = [dict(fiscal=date(year, 12, 31), known=date(year, 12, 31) + rules.LAG, ebitda=value)
+                   for year, value in ((2016, 10.), (2017, 20.), (2018, 30.))]
         financials = {f'{year}-12-31': dict(revenue=100., operatingIncome=20., netIncome=10., totalStockholdersEquity=50., freeCashFlow=5., totalCurrentAssets=30., totalCurrentLiabilities=10., ebit=12., interestExpense=3., totalDebt=25., epsDiluted=eps)
                       for year, eps in ((2015, 1.), (2016, 2.), (2017, 3.), (2018, 4.))}
-        inputs = Mock()
-        inputs.entry.return_value = (dict(market_cap=200., enterprise_value=250., ebitda=30.), dict(reason=None))
-        inputs.broad_reports.return_value = reports
-        inputs.legacy_financial_history.return_value = financials
-        inputs.legacy_treasury.return_value = dict(day='2020-01-01', value=2.)
-        inputs.lookup.side_effect = lambda symbol, date_, forward, slack: (date_, 10. if date_ < day else 15.)
-        root = dict(symbol='A')
-        context = dict(date=str(day))
+        port = Port(reports, financials, lambda when: (when, 10. if when < day else 20.))
+        root, context = dict(symbol='A'), dict(date=str(day))
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper:
-            owner = bridge.dated(inputs, root, context, anchor, lambda: None, budget=1000000)
+            owner = bridge.dated(Mock(facts=port), root, context, anchor, lambda: None)
+        # The entry valuation rescales the report to the entry price: cap 200, EV 250.
         helper.assert_called_once_with(30., 250.)
         obs = dict(fiscal='2018-12-31', market_cap=200., enterprise_value=250., ebitda_yield=30./250., ev_ebitda=250./30.)
-        pairs = metrics.evaluate(obs, reports)
-        expected = metrics.filter_values(obs, pairs, day, lambda when, forward, slack: (when, 10. if when < day else 15.), financials, 2.)
+        history = [dict(row, fiscal=str(row['fiscal']), known=str(row['known'])) for row in reports]
+        pairs = metrics.evaluate(obs, history)
+        expected = metrics.filter_values(obs, pairs, day, lambda when, forward, slack: (when, 10. if when < day else 20.), financials, 2.)
         self.assertEqual(owner['evidence']['metrics'], {key:list(value) for key,value in pairs.items()})
         self.assertEqual(owner['evidence']['filters'], expected)
         self.assertEqual(bridge.lane(owner, 'pe')['value'], 20.)
         self.assertEqual(bridge.lane(owner, 'profit_margin')['value'], .1)
-        self.assertEqual(bridge.lane(owner, 'return_1y')['value'], .5)
-        self.assertTrue(all(call.args[1] <= day for call in inputs.lookup.call_args_list))
-        inputs.entry.return_value[0]['ebitda'] = 0.
-        missing = bridge.dated(inputs, root, context, anchor, lambda: None, budget=1000000)
+        self.assertEqual(bridge.lane(owner, 'return_1y')['value'], 1.)
+        self.assertEqual(port.years, [day])
+        self.assertTrue(all(when <= day for when, forward, slack in port.calls if not forward))
+        missing = bridge.dated(Mock(facts=port), root, context, dict(anchor, **{'yield': 0.}), lambda: None)
         self.assertEqual(missing['reason'], 'LEGACY_MEASURE_UNAVAILABLE')
 
     def test_entry_valuation_needs_no_holding_or_exit_prices(self):
@@ -151,43 +149,40 @@ class OwnerExtractionTests(unittest.TestCase):
         self.assertEqual(calls,[(statement['fiscal'],False,7),(date(2015,1,2),True,4)])
         self.assertEqual((fiscal,entry),((statement['fiscal'],10.),(date(2015,1,2),20.)))
 
-    def test_leap_day_trailing_and_legacy_treasury_asof(self):
-        view = Mock()
+    def test_leap_day_trailing_and_ten_year_asof(self):
         day = date(2020,2,29)
-        anchor = dict(fiscal=date(2018,12,31))
-        view.entry.return_value = (dict(market_cap=100.,enterprise_value=150.,ebitda=30.),dict(reason=None))
-        view.broad_reports.return_value = [dict(fiscal='2018-12-31',ebitda=30.)]
-        view.legacy_financial_history.return_value = {}
-        view.legacy_treasury.return_value = dict(day='2020-02-27',value=2.)
-        view.lookup.side_effect = lambda symbol,when,forward,slack:(when,10.)
-        owner=bridge.dated(view,dict(symbol='A'),dict(date=str(day)),anchor,lambda:None,budget=100000)
-        dates=[x['requested_date'] for x in owner['evidence']['lookups']]
-        self.assertEqual(dates,['2020-02-29','2019-02-28','2017-02-28'])
-        self.assertEqual(owner['evidence']['treasury'],dict(day='2020-02-27',value=2.))
+        anchor = dict(fiscal=date(2018,12,31),known=date(2019,3,31),market_cap=100.,enterprise=150.,**{'yield':.2})
+        port = Port([dict(fiscal=date(2018,12,31),known=date(2019,3,31),ebitda=30.)], {}, lambda when:(when,10.))
+        owner = bridge.dated(Mock(facts=port),dict(symbol='A'),dict(date=str(day)),anchor,lambda:None)
+        self.assertIsNone(owner['reason'])
+        # The fiscal and entry prices, then the trailing-return endpoints; 29 February clamps.
+        self.assertEqual([str(when) for when, forward, slack in port.calls],
+                         ['2018-12-31','2020-02-29','2020-02-29','2019-02-28','2017-02-28'])
+        self.assertEqual(port.years,[day])
+        self.assertEqual(bridge.detached(float('inf')),'Infinity')
+        self.assertEqual(bridge.detached(-float('inf')),'-Infinity')
+        self.assertEqual(bridge.detached(float('nan')),'NaN')
+        self.assertEqual(bridge.detached(1.5),1.5)
 
-    def test_owner_history_views_preserve_order_and_checkpoint_inside_scans(self):
-        reports = [{'fiscal':'2018-01-01'}, {'fiscal':'2018-12-31'}]
-        financials = {'2018-01-01': {'revenue':1}, '2018-12-31': {'revenue':2}}
-        ticks=[]
-        checked_reports = bridge._CheckedReports(reports, lambda:ticks.append('r'))
-        checked_financials = bridge._CheckedFinancials(financials, lambda:ticks.append('f'))
-        self.assertEqual(list(checked_reports),reports)
-        self.assertEqual(list(checked_financials.items()),list(financials.items()))
-        self.assertEqual(checked_financials.get('2018-01-01'), financials['2018-01-01'])
-        self.assertEqual(len(checked_financials),len(financials))
-        self.assertEqual(ticks,['r','r','f','f'])
-        calls=[]
-        def cancel():
-            calls.append(1)
-            if len(calls)==2: raise RuntimeError('cancelled during owner scan')
-        with self.assertRaisesRegex(RuntimeError,'owner scan'):
-            list(bridge._CheckedReports(reports,cancel))
-        calls.clear()
-        with self.assertRaisesRegex(RuntimeError,'owner scan'):
-            list(bridge._CheckedFinancials(financials,cancel).items())
-        calls.clear()
-        with self.assertRaisesRegex(RuntimeError,'owner scan'):
-            bridge.detached({'a':[1,2]},cancel)
+
+class Port:
+    """A facts port (facts.BookFacts) of company A: reports, legacy annual values, prices and a 2% 10-year yield."""
+    def __init__(self, reports, financials, price):
+        self.rows, self.financials, self.quote, self.calls, self.years = reports, financials, price, [], []
+
+    def reports(self):
+        return dict(A=self.rows), {}
+
+    def legacy_annual(self, symbol):
+        return self.financials
+
+    def price(self, symbol, day, forward=False, slack=None):
+        self.calls.append((day, forward, slack))
+        return self.quote(day)
+
+    def ten_year(self, day):
+        self.years.append(day)
+        return 2.
 
 
 class DatedOwnerTests(unittest.TestCase):
@@ -210,27 +205,6 @@ class DatedOwnerTests(unittest.TestCase):
         self.assertEqual(trailing, (None, 'LEGACY_MEASURE_UNAVAILABLE'))
         # Admission entry and exit only.
         self.assertEqual(validate.call_count, 2)
-
-    def test_owner_leaf_reads_are_bounded_and_cancellable(self):
-        self.company.annual, self.company.financials = {}, {'2014-06-30': {'revenue': 100}}
-        view = self.company.view()
-        self.assertEqual(view.legacy_financial_history('A'), {'2014-06-30': {'revenue': 100}})
-        with self.assertRaisesRegex(ValueError, 'byte bound'):
-            view.legacy_financial_history('A', budget=1)
-        with patch.object(facts, 'MAX_HISTORY', 0), self.assertRaisesRegex(ValueError, 'history exceeds'):
-            view.legacy_financial_history('A')
-        self.assertEqual(len(view.broad_reports('A')), 3)
-        with self.assertRaisesRegex(ValueError, 'byte bound'):
-            view.broad_reports('A', budget=1)
-        def cancelled():
-            raise RuntimeError('cancelled')
-        with self.assertRaisesRegex(RuntimeError, 'cancelled'):
-            view.broad_reports('A', cancelled)
-        with self.assertRaisesRegex(RuntimeError, 'cancelled'):
-            view.legacy_treasury(date(2015, 1, 2), cancelled)
-        self.assertEqual(view.legacy_treasury(date(2015, 1, 2)), dict(day='2014-12-31', value=2.))
-        self.assertIsNone(view.legacy_treasury(date(2014, 12, 30)))
-
 
 class PreparedTransportTests(unittest.TestCase):
     def prepared(self, configure=None):
@@ -290,17 +264,17 @@ class PreparedTransportTests(unittest.TestCase):
             [decision] = view.admit([root('TEST', 'cached', owner_scope=dict(kind='dated'))])
             reports = [dict(row, fiscal=date.fromisoformat(row['fiscal']), known=date.fromisoformat(row['known']))
                        for row in view.reports('TEST', 'cached')]
-            owner = bridge.dated(view, decision, dict(date=str(day)), rules.latest_statement(reports, day),
-                                 lambda: None, budget=1024 * 1024)
-        evidence = owner['evidence']
+            with patch.object(view.facts, 'price', wraps=view.facts.price) as price, \
+                    patch.object(view.facts, 'ten_year', wraps=view.facts.ten_year) as ten_year:
+                owner = bridge.dated(view, decision, dict(date=str(day)), rules.latest_statement(reports, day), lambda: None)
+                # The dated owner reads the context date, never the later 9% day.
+                self.assertEqual(ten_year.call_args_list, [((day,),)])
+            self.assertEqual(view.facts.ten_year(day), 3.)
         self.assertIsNone(owner['reason'])
-        # The dated owner reads the context date, never the later 9% day.
-        self.assertEqual(evidence['treasury'], dict(day='2014-12-31', value=3.))
-        lookups = evidence['valuation']['lookups']
-        self.assertEqual([item['requested_date'] for item in lookups], ['2014-06-30', '2015-01-02'])
-        self.assertEqual(lookups[1]['observation'], ['2015-01-05', 20.])
-        self.assertEqual(evidence['lookups'][0]['requested_date'], '2015-01-02')
-        self.assertTrue(all(item['requested_date'] <= str(day) for item in evidence['lookups']))
+        calls = [call.args[1:3] for call in price.call_args_list]
+        # The fiscal price, then the entry price up to four days later (2015-01-05).
+        self.assertEqual(calls[:2], [(date(2014, 6, 30), False), (day, True)])
+        self.assertTrue(all(when <= day for when, forward in calls if not forward))
 
 
 if __name__ == '__main__':

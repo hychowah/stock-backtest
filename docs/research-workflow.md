@@ -62,9 +62,10 @@ these denial reasons (`books.REASONS`): `UNKNOWN_COMPANY`, `NOT_LISTED` (latest
 book only), `NO_ELIGIBLE_REPORT`, `OUTSIDE_LEGACY_BUFFER`,
 `MISSING_CACHED_PRICES`, then the entry valuation (`MISSING_PRICE`,
 `NONPOSITIVE_VALUATION`, `NONFINITE_RESULT`), `INELIGIBLE_VALUATION`, and for a
-dated book `ENTRY_NOT_BEFORE_EXIT` and `MISSING_EXIT_PRICE`. Formula roots
-(`fact_view.View.admit`) and saved results show these reasons; results saved
-earlier keep the reasons they stored.
+dated book `ENTRY_NOT_BEFORE_EXIT` and `MISSING_EXIT_PRICE`. A stored book
+row is its root's admission: a scope never screens its rows again. Explicit
+preview roots (`fact_view.View.admit`) and saved results show these reasons;
+results saved earlier keep the reasons they stored.
 
 Preparation reuses the existing 90-day lag and 800-day report-age rule. A report
 must become available strictly before the buy date, matching the original code.
@@ -845,8 +846,9 @@ reports by pool, cached companies (from `fact_sources`), listing (from
   whether it is listed now.
 - `facts.legacy_annual` derives the legacy annual values
   (`financial_inputs.ENDPOINTS`, valid values only) from `annual_facts`, and
-  `facts.ten_year` reads the valid 10-year values. `books.book` and the dated
-  owner policy read them through these two functions.
+  `facts.ten_year` reads the valid 10-year values. `books.owner_values`, the
+  owner values of a book row and of the dated owner policy, reads them through
+  these two functions.
 - `annual_facts(symbol, endpoint, fiscal, <field>, <field>_reason, ...)`: one row
   per company, statement endpoint and fiscal date, with one value and one
   reason column for each annual catalog field (parameter id without `annual.`).
@@ -866,12 +868,18 @@ the open book, and `book_store.require_scope` is its one check. A book id is a
 handle, not a durable name: it names one book only while the cache keeps it,
 and SQLite can reuse a deleted id. A recorded `owner_scope.book` is a label,
 never a lookup key outside the operation or coverage generation that made it.
-Prepared latest owner lanes are that book's stored lanes (`book_store.rows` and
-`lanes`, one read per book pool), read in place; a missing row never falls back
-to a recalculation. A formula root is admitted by `books.Screen.decide`: a latest
-root by the latest book's screen (listed companies, the exact session), a
-historical root by its date's screen. A historical decision that reaches the
-entry valuation keeps the lookups that the view's recording facts port saw.
+The owner lanes of a stored-book root are that book's stored lanes
+(`book_store.valuations` and `lanes`, one read per book pool), read in place; a
+missing row never falls back to a recalculation. Every root of a latest or
+dated scope names its book in a prepared owner scope; a latest preview root
+reads the open book. A scope root's admission is its stored row, with the
+stored candidate rank and entry valuation. An explicit preview root is
+admitted by `books.Screen.decide`: a latest root by the latest book's screen
+(listed companies, the exact session), a historical root by its date's
+screen. A historical decision that reaches the entry valuation keeps the
+lookups that the view's recording facts port saw. A request never names a
+dated book: a preview's prepared owner scope must name the open book, and
+coverage discovery lists the open book's pools only.
 
 Annual resolution (`financial_inputs.resolve_history`) keeps every admitted
 endpoint and fiscal date, even when every requested field is unavailable.
@@ -919,9 +927,11 @@ operation. The borrowed view reads each company, day and source once.
 
 The evaluator supports all 52 direct inputs plus operating margin, existing
 dated EV and the reusable measure adapters. The 33 named measures use immutable
-ordinary definitions and exact references. A latest root consumes its stored
-latest owner lanes. Every other root, January sessions included, and every
-derived context use dated owner policy, even at the root date. Report EBITDA uses broad accepted report history.
+ordinary definitions and exact references. A stored-book root consumes its
+book's stored owner lanes. An explicit historical preview root and every
+derived context use dated owner policy (`books.owner_values` at the context
+date), even at the root date. Values-only evaluation builds no evidence;
+detail mode explains the selected rows only. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
 dates. Only those named annual adapters support annual history. Research schema
 18 and daily cache 10 require incompatible caches to rebuild;

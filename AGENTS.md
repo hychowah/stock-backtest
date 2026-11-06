@@ -329,8 +329,8 @@ to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
 Reuse `screening.select` and `metrics.evaluate`; never duplicate formulas. Label
 dated period returns, not annual returns. The daily binding names the research
 and book identities; it updates in place in one transaction and `books.kept`
-keeps unaffected books. `book_store` owns every read of its tables. A latest root reads the stored latest owner lanes;
-every other root uses the dated owner policy. Check
+keeps unaffected books. `book_store` owns every read of its tables. Latest and
+scope roots read their stored book's owner lanes; other roots use the dated owner policy. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).
 

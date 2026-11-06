@@ -1,30 +1,26 @@
 """Bounded bridge from formula contexts to existing financial owners.
 
-Prepared scope membership is explicit: a latest root, or a root with a prepared
-owner scope (named by its stored book id), reads its row of that stored book
-(fact_view.View.prepared; the open book without an owner scope), and a missing
-row never falls back to a recalculation. Other contexts use the dated owner
-policy here. One resolved context serves every requested lane of that context.
+Prepared scope membership is explicit: the root context of a stored-book root
+(a prepared owner scope names its book by id; a latest root without one names
+the open book) reads that book's stored owner lanes (fact_view.View.prepared),
+and a missing row never falls back to a recalculation. Every other context
+uses the dated owner policy here: books.owner_values at the context date. One
+resolved context serves every requested lane of that context. Values carry no
+evidence beyond the lane's own source, key and stored value.
 """
-import json
 import math
 from datetime import date
 
-from backtest.financial import books, metrics
+from backtest.financial import books
 
 _PERCENT = frozenset(('profit_margin', 'fcf_yield', 'roe', 'return_1y',
                        'return_3y', 'operating_yield_spread_3y'))
 
 
-def detached(value, checkpoint=lambda: None):
-    """Detach evidence with cancellation and explicit nonfinite JSON states."""
-    checkpoint()
+def detached(value):
+    """One stored value as an explanation keeps it: a nonfinite float as its JSON state name."""
     if isinstance(value, float) and not math.isfinite(value):
         return 'NaN' if math.isnan(value) else 'Infinity' if value > 0 else '-Infinity'
-    if isinstance(value, dict):
-        return {key: detached(item, checkpoint) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [detached(item, checkpoint) for item in value]
     return value
 
 
@@ -38,73 +34,37 @@ def prepared_scope(root, context):
     return root['mode'] == 'latest'
 
 
-class _CheckedReports(list):
-    def __init__(self, rows, checkpoint):
-        super().__init__(rows)
-        self.checkpoint = checkpoint
+def dated(view, root, context, anchor, checkpoint):
+    """Resolve the dated owner policy once at the context date, without an exit observation.
 
-    def __iter__(self):
-        for row in super().__iter__():
-            self.checkpoint()
-            yield row
-
-
-class _CheckedFinancials(dict):
-    def __init__(self, values, checkpoint):
-        super().__init__(values)
-        self.checkpoint = checkpoint
-
-    def items(self):
-        for item in super().items():
-            self.checkpoint()
-            yield item
-
-
-def dated(inputs, root, context, anchor, checkpoint, *, budget):
-    """Resolve existing dated owners once, without an exit observation."""
+    The entry valuation of the anchor report (books.admit) feeds
+    books.owner_values over the view's facts port.
+    """
     checkpoint()
     day = date.fromisoformat(context['date'])
-    valuation, valuation_evidence = inputs.entry(root['symbol'], anchor, day)
-    if valuation is None:
-        return dict(reason='LEGACY_MEASURE_UNAVAILABLE', evidence=dict(
-            policy='dated-owner', valuation=valuation_evidence))
-    reports = inputs.broad_reports(root['symbol'], checkpoint, budget=budget)
-    remaining = budget - len(json.dumps(reports, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8'))
-    if remaining < 0:
-        raise ValueError('Observation owner facts exceed their byte bound.')
-    financials = inputs.legacy_financial_history(root['symbol'], checkpoint, budget=remaining)
-    treasury = inputs.legacy_treasury(day, checkpoint)
-    lookups = []
+    symbol, facts = root['symbol'], view.facts
+    unavailable = dict(reason='LEGACY_MEASURE_UNAVAILABLE', evidence=dict(policy='dated-owner'))
+
     def lookup(when, forward, slack):
-        checkpoint()
-        result = inputs.lookup(root['symbol'], when, forward, slack)
-        # 'adjusted' is the stored explanation label of a return lookup.
-        lookups.append(dict(requested_date=str(when), column='adjusted', forward=forward,
-            slack=slack, observation=[str(result[0]), result[1]] if result else None))
-        return result
+        return facts.price(symbol, when, forward, slack)
+    reason, valuation = books.admit(anchor, day, lookup, books.ENTRY_SLACK)
+    if valuation is None:
+        return unavailable
+    _, _, cap, ev, ebitda = valuation
     try:
-        yield_value, multiple = books.ebitda_yield_and_multiple(
-            valuation['ebitda'], valuation['enterprise_value'])
-        if not math.isfinite(yield_value) or not math.isfinite(multiple):
-            return dict(reason='NONFINITE_RESULT', evidence=dict(
-                policy='dated-owner', valuation=valuation_evidence, treasury=treasury, lookups=lookups))
-        observation = dict(fiscal=str(anchor['fiscal']), market_cap=valuation['market_cap'],
-            enterprise_value=valuation['enterprise_value'], ebitda_yield=yield_value,
-            ev_ebitda=multiple)
-        pairs = metrics.evaluate(observation, _CheckedReports(reports, checkpoint))
-        filters = metrics.filter_values(observation, pairs, day, lookup, _CheckedFinancials(financials, checkpoint),
-                                        treasury['value'] if treasury else None)
+        yield_value, multiple, pairs, filters = books.owner_values(
+            symbol, str(anchor['fiscal']), day, cap, ev, ebitda, facts, facts.ten_year(day))
     except (ArithmeticError, OverflowError):
-        return dict(reason='LEGACY_MEASURE_UNAVAILABLE', evidence=dict(
-            policy='dated-owner', valuation=valuation_evidence, treasury=treasury, lookups=lookups))
-    checkpoint()
-    return dict(reason=None, evidence=detached(dict(policy='dated-owner', valuation=valuation_evidence,
-        treasury=treasury, lookups=lookups, reports=reports, financials=financials,
-        snapshot=observation, metrics=pairs, filters=filters), checkpoint))
+        return unavailable
+    if not math.isfinite(yield_value) or not math.isfinite(multiple):
+        return dict(reason='NONFINITE_RESULT', evidence=dict(policy='dated-owner'))
+    return dict(reason=None, evidence=dict(policy='dated-owner', snapshot=dict(market_cap=cap),
+                                           metrics={metric: list(pair) for metric, pair in pairs.items()},
+                                           filters=filters))
 
 
-def lane(owner, name, checkpoint=lambda: None):
-    """Detach one lane, including its original scale and conversion."""
+def lane(owner, name):
+    """One lane of a resolved owner context, with its original scale and conversion."""
     evidence = owner['evidence']
     if owner['reason']:
         return dict(value=None, valid=False, reason=owner['reason'], evidence=evidence)
@@ -119,10 +79,10 @@ def lane(owner, name, checkpoint=lambda: None):
         source, key = 'filters', name
         stored = evidence['filters'].get(key)
     conversion = 'percent-divided-by-100' if name in _PERCENT else 'identity'
-    nonfinite = stored in ('NaN', 'Infinity', '-Infinity')
+    nonfinite = isinstance(stored, float) and not math.isfinite(stored)
     value = (stored / 100 if name in _PERCENT else stored) if stored is not None and not nonfinite else None
     reason = 'NONFINITE_RESULT' if nonfinite else 'LEGACY_MEASURE_UNAVAILABLE' if value is None else None
     if value is not None and not math.isfinite(value):
         value, reason = None, 'NONFINITE_RESULT'
     return dict(value=value, valid=reason is None, reason=reason,
-        evidence=dict(owner=detached(evidence, checkpoint), source=source, key=key, stored=stored, conversion=conversion))
+                evidence=dict(source=source, key=key, stored=stored, conversion=conversion))

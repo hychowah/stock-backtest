@@ -46,7 +46,7 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(program.to_json(),read('program.json'))
         self.assertEqual(d.canonical(d.require_program(d.FormulaProgram(read('program.json')))),read('program.json'))
         self.assertEqual(d.authored_bundle(program)['roots'],authored['roots'])
-        self.assertEqual(columns.Formulas(program).projection,program.to_dict())
+        self.assertEqual(d.require_program(program),program.to_dict())
 
     def test_variable_and_strategy_capture_bytes_without_library_or_capability(self):
         with patch.object(library.Store,'_transaction',side_effect=AssertionError('No current library')), \

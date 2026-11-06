@@ -6,6 +6,8 @@ Screen.decide() the per-company decision, with its denial reason, of an open
 one pool of a book from prepared facts through the facts port
 (facts.BookFacts); daily preparation writes the latest book and
 schedules.prepare_period and the book workers write the dated books with it.
+owner_values() is the per-company owner-value composition of a book row and
+of a formula context without a stored book.
 Price lookups return (date, positive dividend-adjusted close) or None within
 the given tolerance. kept() is the change-day rule that decides which stored
 books stay after the facts change. Storage, calendar planning and SQL
@@ -229,17 +231,17 @@ def book(entry, exit_day, pool, facts, checkpoint=lambda: None):
     """Compute one pool of a book: its record, rows, ranking pairs and filter values.
 
     exit_day None is the open (latest) book. The rows are the companies with an
-    available report that Screen.decide admits. facts is the facts port
+    available report that Screen.decide admits; owner_values() gives each
+    row's ranking pairs and filter values. facts is the facts port
     (facts.BookFacts); the book also reads spy(day) on an exact session,
-    treasury(day) (3-month, as a fraction, on or before), ten_year(day)
-    (percent, on or before) and legacy_annual(symbol). candidates counts the
-    cached-pool reports of the entry day.
+    treasury(day) (3-month, as a fraction, on or before) and ten_year(day)
+    (percent, on or before). candidates counts the cached-pool reports of the
+    entry day.
     """
     screen=Screen(entry,facts,open_book=exit_day is None)
     treasury=facts.treasury(entry)
     treasury=0. if treasury is None else treasury
     ten_year=facts.ten_year(entry)
-    broad=facts.reports()[0]
     rows,pairs,filters=[],[],[]
     for symbol in screen.statements[pool]:
         checkpoint()
@@ -247,21 +249,34 @@ def book(entry, exit_day, pool, facts, checkpoint=lambda: None):
         if held is None:continue
         statement,cap,ev,ebitda,end=held['statement'],held['market_cap'],held['enterprise_value'],held['ebitda'],held['exit']
         fiscal=str(statement['fiscal'])
-        yield_value,multiple=ebitda_yield_and_multiple(ebitda,ev)
+        yield_value,multiple,evaluated,values=owner_values(symbol,fiscal,entry,cap,ev,ebitda,facts,ten_year)
         rows.append((symbol,held['rank'],fiscal,str(statement['known']),str(held['entry'][0]),held['entry'][1],
                      None if end is None else str(end[0]),cap,ev,ebitda,yield_value,multiple,
                      yield_spread(yield_value,treasury),held['return_value'],held['status']))
-        observation=dict(symbol=symbol,fiscal=fiscal,market_cap=cap,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
-        history=[dict(report,fiscal=str(report['fiscal']),known=str(report['known'])) for report in broad[symbol]]
-        evaluated=metrics.evaluate(observation,history)
-        def lookup(day,forward,slack,symbol=symbol):
-            return facts.price(symbol,day,forward,slack)
-        values=metrics.filter_values(observation,evaluated,entry,lookup,facts.legacy_annual(symbol),ten_year)
         filters.extend((symbol,key,value) for key,value in values.items())
         pairs.extend((symbol,metric,multiple,value) for metric,(multiple,value) in evaluated.items())
     spy=None if exit_day is None else benchmark_return(facts.spy(entry),facts.spy(exit_day))
     return dict(entry=str(entry),exit=None if exit_day is None else str(exit_day),pool=pool,spy=spy,
                 candidates=len(screen.statements['cached']),rows=rows,metrics=pairs,filters=filters)
+
+
+def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
+    """(yield, multiple, pairs, filters) of one company valued at day: the owner values a book row stores.
+
+    fiscal is the selected report's fiscal date as text; cap, ev and ebitda
+    are its entry valuation (admit). pairs are metrics.evaluate over the
+    company's accepted reports, filters metrics.filter_values with its legacy
+    annual values and ten_year, the 10-year yield in percent on or before day
+    (None omits its spread). book() and a formula context without a stored
+    book (measure_observations.dated) call it; prices are read on or before day.
+    """
+    yield_value,multiple=ebitda_yield_and_multiple(ebitda,ev)
+    observation=dict(fiscal=fiscal,market_cap=cap,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
+    history=[dict(report,fiscal=str(report['fiscal']),known=str(report['known'])) for report in facts.reports()[0][symbol]]
+    pairs=metrics.evaluate(observation,history)
+    def lookup(when,forward,slack):
+        return facts.price(symbol,when,forward,slack)
+    return yield_value,multiple,pairs,metrics.filter_values(observation,pairs,day,lookup,facts.legacy_annual(symbol),ten_year)
 
 
 def benchmark_return(entry_price, exit_price):

@@ -160,7 +160,7 @@ class ColumnTests(unittest.TestCase):
     def explain(self, checked, roots=None, *, view=None):
         """Return the explanation block; its results must equal the values-only evaluation."""
         roots = columns.require_roots(roots or [self.root()])
-        formulas = columns.Formulas(checked)
+        formulas = columns.Formulas(d.require_program(checked))
         formulas.require_contexts(roots)
         if view is None:
             with self.company.view() as view:
@@ -289,7 +289,7 @@ class ColumnTests(unittest.TestCase):
                 view.admit([self.latest()])
 
     def test_cancellation_staleness_and_closed_views_fail_the_operation(self):
-        formulas, roots = columns.Formulas(program(parameter(), 'USD')), [self.root()]
+        formulas, roots = columns.Formulas(d.require_program(program(parameter(), 'USD'))), [self.root()]
         def cancel():
             raise RuntimeError('cancelled')
         with self.company.view() as view:
@@ -415,7 +415,7 @@ class ColumnTests(unittest.TestCase):
         for catalog in (parameters.V1, parameters.V2):
             for count in (2, 10):
                 checked = d.validate(language.bundle(language.entry(make(count=count, catalog=catalog))))
-                self.assertEqual(columns.Formulas(checked).projection, checked.to_dict())
+                self.assertEqual(d.require_program(checked), checked.to_dict())
         wrong = make(); wrong['output'] = dict(unit='USD', display='usd')
         with self.assertRaises(d.FormulaError):
             d.validate(language.bundle(language.entry(wrong)))
@@ -426,7 +426,7 @@ class ColumnTests(unittest.TestCase):
         new = language.entry(newer, 'new')
         for roots in ([language.root(old)], [language.root(new)]):
             checked = d.validate(language.bundle(old, new, roots=roots))
-            self.assertEqual(columns.Formulas(checked).projection, checked.to_dict())
+            self.assertEqual(d.require_program(checked), checked.to_dict())
             self.assertEqual(self.explain(checked)['results'][0]['value'], 2.)
         definition = language.definition(c('2')); definition['version'] = 2
         entry = language.entry(definition, 'version2')
@@ -529,14 +529,14 @@ class ColumnTests(unittest.TestCase):
     def test_future_dates_calendar_floor_and_depth_fail_before_inputs(self):
         roots = [self.root(date='2024-05-31')]
         nested = dict(op='lookback', months=3, arg=dict(op='at', date='2024-03-01', arg=c()))
-        error = self.error('FUTURE_DATE', columns.Formulas(program(nested)).require_contexts, roots)
+        error = self.error('FUTURE_DATE', columns.Formulas(d.require_program(program(nested))).require_contexts, roots)
         self.assertEqual(error.path, '/definitions/0/definition/expression/arg/date')
         # A later root cannot make an earlier root's future date valid.
-        later = columns.Formulas(program(dict(op='at', date='2024-05-31', arg=c())))
+        later = columns.Formulas(d.require_program(program(dict(op='at', date='2024-05-31', arg=c()))))
         self.error('FUTURE_DATE', later.require_contexts, [self.root(date='2024-05-30')] + roots)
-        self.error('INVALID_DATE', columns.Formulas(program(dict(op='lookback', months=1, arg=c()))).require_contexts,
+        self.error('INVALID_DATE', columns.Formulas(d.require_program(program(dict(op='lookback', months=1, arg=c())))).require_contexts,
                    [self.root(date='0001-01-31')])
-        future = columns.Formulas(program(dict(op='at', date='2015-01-03', arg=c())))
+        future = columns.Formulas(d.require_program(program(dict(op='at', date='2015-01-03', arg=c()))))
         with self.company.view() as view:
             decisions = view.admit([self.root()])
             self.error('FUTURE_DATE', lambda: future.evaluate([self.root()], view, lambda: None, decisions=decisions))
