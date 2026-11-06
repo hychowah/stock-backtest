@@ -248,15 +248,15 @@ Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
 **Research database.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 14) from the raw cache: companies,
+`data/research.sqlite` (research schema 15) from the raw cache: companies,
 annual reports, typed facts and the latest book. Every build is a full build. It
 writes a temporary file and replaces the database atomically; a failure keeps
-the previous database. `research.calculation_sources()` is the one list of code
+the previous database. `books.book` is the book-row rule. `research.calculation_sources()` is the one list of code
 that computes prepared rows or books; the research signature, the facts policy
 and the daily book identity bind it. The `legacy` pool keeps the original
 250-candidate pre-price screen; the `cached` pool covers cached-price companies
 only. Checks:
-`tests/test_research.py`, `tests/test_prepared_facts.py` and
+`tests/test_research.py`, `tests/test_prepared_facts.py`, `tests/test_books.py` and
 `tests/test_research_inventory.py`. See
 [docs/research-workflow.md](docs/research-workflow.md).
 

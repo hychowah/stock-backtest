@@ -6,7 +6,7 @@ from backtest.inputs import market
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
-from backtest.inputs import daily, research
+from backtest.inputs import daily, facts, research
 from backtest.runtime import cache_access, diagnostics
 from backtest.financial import rules, books as financial_books, metrics
 from backtest import calendar as schedule_calendar, portfolio_results
@@ -429,7 +429,7 @@ class PreparationTests(unittest.TestCase):
         daily.prepare(self.path,self.source);original=self.path.read_bytes()
         # Changed bytes are parsed again; the parse fails.
         (research.RAW/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=11)])))
-        with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(research,'bars',side_effect=ValueError('bad fixture')):
+        with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(facts,'bars',side_effect=ValueError('bad fixture')):
             with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())

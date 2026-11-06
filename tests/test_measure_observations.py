@@ -100,7 +100,7 @@ class OwnerExtractionTests(unittest.TestCase):
             return [str(statement['fiscal']), str(start[0]), str(end[0]), cap, ev,
                     ebitda, ebitda / ev, ev / ebitda, ret, status]
         fiscal, entry = date(2018, 12, 31), date(2020, 1, 2)
-        statement = dict(fiscal=fiscal, market_cap=101., enterprise=153., yield_=.1)
+        statement = dict(fiscal=fiscal, known=fiscal + rules.LAG, market_cap=101., enterprise=153., yield_=.1)
         statement['yield'] = statement.pop('yield_')
         for label, exit_day, missing, bankrupt, zero in (
                 ('scheduled', date(2021, 1, 2), None, False, False),
@@ -235,7 +235,7 @@ class DatedOwnerTests(unittest.TestCase):
         self.assertEqual(validate.call_count, 2)
 
     def test_owner_leaf_reads_are_bounded_and_cancellable(self):
-        self.company.financials = {'2014-06-30': {'revenue': 100}}
+        self.company.annual, self.company.financials = {}, {'2014-06-30': {'revenue': 100}}
         view = self.company.view()
         self.assertEqual(view.legacy_financial_history('A'), {'2014-06-30': {'revenue': 100}})
         with self.assertRaisesRegex(ValueError, 'byte bound'):

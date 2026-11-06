@@ -182,7 +182,7 @@ class ResearchTests(unittest.TestCase):
         self.assertIsNone(rules.latest_statement([statement],date(2018,1,1)))
 
     def test_early_stop_bankruptcy_and_valuation(self):
-        statement={'fiscal':date(2014,6,30),'market_cap':100e6,'enterprise':150e6,'yield':.2}
+        statement={'fiscal':date(2014,6,30),'known':date(2014,9,28),'market_cap':100e6,'enterprise':150e6,'yield':.2}
         prices=[(date(2014,6,30),10.),(date(2015,1,2),20.),(date(2015,6,1),5.)]
         lookup=lambda day,column,forward,slack:(r.after if forward else r.before)(prices,day,slack)
         result=r.books.snapshot(statement,date(2015,1,2),date(2016,1,4),lookup,False)

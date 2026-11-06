@@ -77,6 +77,20 @@ def series(rows, field):
     return [result[day] for day in sorted(result)]
 
 
+def checked_series(payload,field,*,stock=False):
+    """Return (valid, usable rows) of one parsed price or yield file.
+
+    A stock file keeps its rows under 'div'. Valid rows are all mappings, and
+    a nonempty response with no usable data is an invalid asset, not a valid
+    empty history. Real empty histories are represented by [].
+    """
+    values=payload.get('div') if stock and isinstance(payload,dict) else payload if not stock else None
+    valid=isinstance(values,list) and all(isinstance(row,dict) for row in values)
+    values=payload.get('div',[]) if stock and isinstance(payload,dict) else payload if not stock else []
+    rows=series(values,field)
+    return valid and not (values and not rows),rows
+
+
 def missing_spans(rows,field,start,end,checked):
     """Find unrequested ranges outside the actual saved span.
 
@@ -109,19 +123,15 @@ class SeriesAsset:
         self.path=path;self.field=field;self.stock=stock
         self.key='px/'+path.name if stock else path.name
         self.payload={} if stock else [];self.valid=False;self.digest=None
+        content=None
         if path.exists():
             content=path.read_bytes()
             try:
                 self.payload=json.loads(content)
-                values=self.payload.get('div') if stock and isinstance(self.payload,dict) else self.payload if not stock else None
-                self.valid=isinstance(values,list) and all(isinstance(row,dict) for row in values)
-                if self.valid:self.digest=hashlib.sha256(content).hexdigest()
-            except (ValueError,UnicodeDecodeError):pass
-        values=self.payload.get('div',[]) if stock and isinstance(self.payload,dict) else self.payload if not stock else []
-        self.rows=series(values,field)
-        # A nonempty response with no usable data is an invalid asset, not a
-        # valid empty history. Real empty histories are represented by [].
-        if values and not self.rows:self.valid=False;self.digest=None
+            except (ValueError,UnicodeDecodeError):content=None
+        valid,self.rows=checked_series(self.payload,field,stock=stock)
+        if content is not None and valid:
+            self.valid=True;self.digest=hashlib.sha256(content).hexdigest()
 
     def evidence(self,ledger):
         if not self.valid:return {}

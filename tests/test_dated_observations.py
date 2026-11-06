@@ -68,15 +68,16 @@ class ResolutionTests(unittest.TestCase):
             self.assertEqual(resolved['dated']['2015-01-02']['adjClose']['reason'],'NON_USD_INPUT')
             self.assertEqual(resolved['dated']['2015-01-02']['volume']['value'],1)
 
-    def test_digest_cannot_bind_a_second_read_of_changed_asset_bytes(self):
-        self.resolve([dict(date='2015-01-02',adjClose=10)])
-        original=facts.cache_assets.SeriesAsset
-        def changed(*args,**kwargs):
-            self.path.write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=99)])))
-            return original(*args,**kwargs)
-        with patch.object(facts.cache_assets,'SeriesAsset',side_effect=changed):
-            with self.assertRaisesRegex(ValueError,'changed during preparation'):
-                facts.resolve(self.path,facts.STOCK,stock=True)
+    def test_one_read_binds_the_digest_to_the_facts_and_book_columns(self):
+        self.path.write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=10)],
+                                             light=[dict(date='2015-01-02',price=4),dict(date='2015-01-02',close=5)])))
+        with patch.object(Path,'read_bytes',autospec=True,side_effect=Path.read_bytes) as read:
+            resolved=facts.resolve(self.path,facts.STOCK,stock=True)
+        read.assert_called_once()
+        self.assertEqual(resolved['source']['sha256'],hashlib.sha256(self.path.read_bytes()).hexdigest())
+        self.assertEqual(resolved['dated']['2015-01-02']['adjClose']['value'],10)
+        # A light series values the book price; the last light price of a day wins.
+        self.assertEqual(resolved['book'],{'2015-01-02':(5.,10.)})
 
     def test_signed_rates_and_latest_null_field_states(self):
         dated=self.resolve([dict(date='2015-01-01',month3=-1,year10=0),
@@ -96,7 +97,7 @@ class ResolutionTests(unittest.TestCase):
 
     def test_missing_unreadable_source_no_repairs(self):
         self.assertEqual(facts.resolve(self.path,facts.STOCK,stock=True),
-                         dict(source=dict(endpoint=facts.STOCK,sha256=None,disposition='missing'),dated={}))
+                         dict(source=dict(endpoint=facts.STOCK,sha256=None,disposition='missing'),dated={},book={}))
         self.path.write_bytes(b'{invalid');before=self.path.read_bytes()
         resolved=facts.resolve(self.path,facts.STOCK,stock=True)
         self.assertEqual(resolved['source'],dict(endpoint=facts.STOCK,sha256=hashlib.sha256(before).hexdigest(),disposition='unreadable'))
@@ -122,12 +123,13 @@ class ResolutionTests(unittest.TestCase):
             facts.store_stock(db,'A',stock)
             facts.store_market(db,shared)
             rows=db.execute('SELECT * FROM stock_days ORDER BY day').fetchall()
-            self.assertEqual(rows,[('A','2015-01-02',10,None,0,None),('A','2015-01-03',None,'INVALID_INPUT',None,'MISSING_INPUT'),
-                                   ('A','2015-01-04',None,'CONFLICTING_INPUT',2,None)])
+            # Book columns: the largest positive adjusted close of a duplicate day.
+            self.assertEqual(rows,[('A','2015-01-02',10,None,0,None,10,10),('A','2015-01-03',None,'INVALID_INPUT',None,'MISSING_INPUT',None,None),
+                                   ('A','2015-01-04',None,'CONFLICTING_INPUT',2,None,11,11)])
             self.assertEqual(math.copysign(1,rows[0][4]),-1)
             # Only valid SPY sessions are market days; Treasury days keep their reasons.
             self.assertEqual(db.execute('SELECT * FROM market_days ORDER BY day').fetchall(),
-                             [('2015-01-02',100,-1,None,None,'MISSING_INPUT'),('2015-01-05',None,2,None,3,None)])
+                             [('2015-01-02',100,-1,None,None,'MISSING_INPUT',100,-1,None),('2015-01-05',None,2,None,3,None,None,2,3)])
             self.assertEqual(db.execute('SELECT * FROM fact_sources ORDER BY symbol,endpoint').fetchall(),
                 [('','spy-calendar',hashlib.sha256((folder/'spy-div.json').read_bytes()).hexdigest(),'valid'),
                  ('','treasury-rates',hashlib.sha256((folder/'treasury.json').read_bytes()).hexdigest(),'valid'),
@@ -330,7 +332,7 @@ class TransportTests(unittest.TestCase):
         inputs=self.prepared()
         view=self.view(inputs)
         with closing(sqlite3.connect(inputs.source)) as db:
-            for version in (0,2):
+            for version in (facts.VERSION-1,facts.VERSION+1):
                 db.execute('UPDATE fact_metadata SET value=? WHERE key=?',(json.dumps(version),'version'))
                 with self.assertRaisesRegex(ValueError,'stale'):facts.require(db)
             db.execute('UPDATE fact_metadata SET value=? WHERE key=?',(json.dumps(facts.VERSION),'version'))

@@ -119,8 +119,10 @@ class Company:
     facts.View. reports are statements rows; annual maps endpoint, fiscal date
     and field to a resolved state; books maps a pool to its stored latest book
     row (market_cap, metrics, filters). Every report fiscal date, the root date and
-    the latest date have a price of 10. financials and treasury10 feed the
-    dated owner policy. Set stale to fail the view's freshness callback.
+    the latest date have a price of 10. financials (legacy values by fiscal
+    date, written as annual states over annual) and treasury10 ((day, percent)
+    10-year values) feed the dated owner policy. Set stale to fail the view's
+    freshness callback.
     """
 
     def __init__(self):
@@ -154,12 +156,15 @@ class Company:
         db.executemany('INSERT INTO sessions VALUES(?,?)', [(day, 100.) for day in sorted({self.root_date, self.latest_date})])
         db.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
             inputs=dict(fixture=max(self.root_date, self.latest_date)))),))
-        db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',
-                       [('A', fiscal, json.dumps(values)) for fiscal, values in self.financials.items()])
-        db.executemany('INSERT INTO treasury10 VALUES(?,?)', self.treasury10)
-        facts.store_annual(db, 'A', dict(annual=self.annual, sources={
+        db.executemany('INSERT INTO market_days(day,book_year10) VALUES(?,?)', self.treasury10)
+        annual = {endpoint: {fiscal: dict(fields) for fiscal, fields in dates.items()} for endpoint, dates in self.annual.items()}
+        for fiscal, values in self.financials.items():
+            for name, value in values.items():
+                endpoint = next(endpoint for endpoint, names in financial.ENDPOINTS.items() if name in names)
+                annual.setdefault(endpoint, {}).setdefault(fiscal, {})[name] = state(value)
+        facts.store_annual(db, 'A', dict(annual=annual, sources={
             endpoint: dict(endpoint=endpoint, sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid')
-            for endpoint in self.annual}))
+            for endpoint in annual}))
         last = self.reports[-1]
         for pool in ('legacy', 'cached'):
             facts.store_latest(db, 'A', pool, dict(admitted=True, reason=None, candidate_rank=1,
@@ -477,7 +482,7 @@ class AnnualTransportTests(unittest.TestCase):
     def test_incompatible_facts_version_is_rejected_by_borrowing(self):
         inputs = self.prepared()
         with closing(sqlite3.connect(inputs.source)) as db:
-            db.execute("UPDATE fact_metadata SET value='2' WHERE key='version'")
+            db.execute("UPDATE fact_metadata SET value=? WHERE key='version'", (json.dumps(facts.VERSION + 1),))
             db.commit()
             with self.assertRaisesRegex(ValueError, 'incompatible'):
                 facts.require(db)

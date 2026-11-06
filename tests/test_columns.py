@@ -106,12 +106,12 @@ class Company:
         db.execute('INSERT INTO sessions VALUES(?,?)', (self.root_date, 100.))
         facts.store_annual(db, 'A', dict(sources={'income-statement': SOURCE}, annual={'income-statement': self.annual}))
         facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c'*64, disposition='valid'),
-                                        dated=self.stock))
+                                        dated=self.stock, book={}))
         facts.store_market(db, {
             facts.TREASURY: dict(source=dict(endpoint=facts.TREASURY, sha256='d'*64, disposition='valid'),
-                                 dated=self.treasury),
+                                 dated=self.treasury, book={}),
             facts.CALENDAR: dict(source=dict(endpoint=facts.CALENDAR, sha256='e'*64, disposition='valid'),
-                                 dated={day: dict(adjClose=state(100.)) for day in self.spy})})
+                                 dated={day: dict(adjClose=state(100.)) for day in self.spy}, book={})})
         for pool in ('legacy', 'cached'):
             facts.store_latest(db, 'A', pool, self.latest)
         db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",

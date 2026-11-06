@@ -18,7 +18,7 @@ per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
 publishes no report; the development check (`python3 scripts/check.py`) compares
 the book code with the independent reference on the real-data bench.
 
-Research schema 14 stores:
+Research schema 15 stores:
 
 - Company name, exchange, sector (cached metadata, not historical profiles).
 - Financial period end, assumed availability date, report market cap, enterprise
@@ -29,6 +29,15 @@ Research schema 14 stores:
   availability dates and entry-style valuations for cached currently-listed
   companies (`latest_snapshots`), with their ranking pairs and filter values. No
   future holding return is attached to these picks.
+- The same latest book in the one book row shape that dated books will share:
+  `books(book, entry, exit, spy, treasury, legacy_candidates,
+  cached_candidates)`, `book_pools(book, pool)`, `book_rows` (one row per pool
+  and company: rank, fiscal and known dates, entry date and price, exit,
+  valuation, EBITDA, yield, multiple, spread, return and status),
+  `book_metrics` and `book_filters`. One `book` id replaces the year column; a
+  latest book has no exit, return or status. `books.book` computes these rows
+  from the typed facts through `facts.BookFacts`, and `research.store_book`
+  writes them. The readers still read `latest_snapshots` and the daily cache.
 - The typed facts below.
 
 Dated books (entry and exit dates, SPY return, Treasury yield, entry valuations,
@@ -94,7 +103,7 @@ The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot su
 
 ## Current-date preparation
 
-`latest_snapshots` and latest-date metadata hold the latest book. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
+`latest_snapshots` (and the `book_*` tables) and latest-date metadata hold the latest book. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
 
 Updating a database and rebuilding HTML are separate from fetching missing or new market data.
 
@@ -740,15 +749,25 @@ Annual responses can contain repeated fiscal dates. Keep every returned row, inc
 
 Research preparation writes the inputs of custom-variable formulas as typed
 tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. Typed facts
-version 1 belongs to research schema 14; older caches rebuild. The daily cache
+version 2 belongs to research schema 15; older caches rebuild. The daily cache
 does not copy them: Original reads them on the operation's research
-connection.
+connection. Preparation reads and parses each saved price, SPY and Treasury
+file once, into the observation fields and the book columns.
 
-- `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason)`:
-  one row per company and saved price day.
-- `market_days(day, spy, month3, month3_reason, year10, year10_reason)`: `spy`
-  is set on a valid SPY session; a saved Treasury day has a value or a reason
-  for both fields.
+- `stock_days(symbol, day, adjusted, adjusted_reason, volume, volume_reason,
+  book_price, book_adjusted)`: one row per company and saved price day.
+- `market_days(day, spy, month3, month3_reason, year10, year10_reason,
+  book_spy, book_month3, book_year10)`: `spy` is set on a valid SPY session; a
+  saved Treasury day has a value or a reason for both fields.
+- The book columns keep the book rules, which differ from the observation
+  rules only on a duplicate day, a foreign-currency row or a light series:
+  the day's largest positive adjusted close; the last light price in file
+  order when a file has a light series, otherwise the adjusted close; the
+  largest SPY close; the last 3-month and 10-year values in file order (both in
+  percent). `facts.BookFacts` reads them for books. `facts.legacy_annual`
+  derives the legacy annual values (`financial_inputs.ENDPOINTS`, valid values
+  only) from `annual_facts`, and `facts.ten_year` reads the 10-year column;
+  books and the dated owner policy use only these two readers.
 - `annual_facts(symbol, endpoint, fiscal, <field>, <field>_reason, ...)`: one row
   per company, statement endpoint and fiscal date, with one value and one
   reason column for each annual catalog field (parameter id without `annual.`).
@@ -819,8 +838,8 @@ ordinary definitions and exact references. A latest root consumes its stored
 latest owner lanes. Every other root, January sessions included, and every
 derived context use dated owner policy, even at the root date. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
-dates. Only those named annual adapters support annual history. Typed facts 1,
-research schema 14 and daily cache 7 require incompatible caches to rebuild;
+dates. Only those named annual adapters support annual history. Typed facts 2,
+research schema 15 and daily cache 7 require incompatible caches to rebuild;
 durable records keep their formats. Version-3 authoring exposes all 52 direct
 inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,

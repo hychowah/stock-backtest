@@ -47,7 +47,7 @@ SCHEMA = r.SHARED_SCHEMA + DATED_SCHEMA
 
 COPIED_TABLES = ('companies','statements','financial_inputs','treasury10')
 BOOK_TABLES = ('snapshots','filter_values','screening_metrics')
-PRICE_SOURCES = (Path(__file__),Path(r.__file__),Path(rules.__file__),Path(market.__file__))
+PRICE_SOURCES = (Path(__file__),Path(r.__file__),Path(facts.__file__),Path(rules.__file__),Path(market.__file__))
 
 
 def _engine_sources():
@@ -83,18 +83,8 @@ def connect(path=DATABASE,source=None):
 
 
 def _price_rows(payload):
-    """Return (day, valuation price, adjusted price) rows for one saved company file.
-
-    Match existing valuation policy: use the entire light series when supplied,
-    otherwise the adjusted series. Never mix their scales.
-    """
-    adjusted=dict(r.bars(payload.get('div') or [],'adjClose'))
-    light={}
-    for row in payload.get('light') or []:
-        value=row.get('price') if row.get('price') is not None else row.get('close')
-        light.update(r.bars([dict(date=row.get('date'),value=value)],'value'))
-    valuation=light or adjusted
-    return [(str(day),valuation.get(day),adjusted.get(day)) for day in sorted(valuation.keys()|adjusted.keys())]
+    """Return (day, valuation price, adjusted price) rows for one saved company file (facts.book_prices)."""
+    return [(day,*prices) for day,prices in facts.book_prices(payload).items()]
 
 
 def _digest(value):
