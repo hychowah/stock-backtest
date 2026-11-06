@@ -27,7 +27,7 @@ from backtest.inputs import facts
 from backtest.runtime import backtest_control
 from backtest.runtime import diagnostics
 from backtest.runtime import cache_access as cache_access
-from backtest.engines.reference import revalue as revalue
+from backtest.engines.reference import check, revalue as revalue
 from backtest.inputs import baseline as baseline
 from backtest.paths import ROOT, RAW, RESULTS
 
@@ -714,7 +714,7 @@ def prepared_baseline(db):
         holdings=[]
         for stock in group['holdings']:
             prices=dict(db.execute('SELECT * FROM baseline_prices WHERE year=? AND symbol=?',(year,stock['symbol'])).fetchone())
-            holdings.append({key:(prices[key] if key in baseline.PRICE_FIELDS else stock[key]) for key in baseline.HOLDING_FIELDS})
+            holdings.append({key:(prices[key] if key in check.PRICE_FIELDS else stock[key]) for key in check.HOLDING_FIELDS})
         years.append(dict(year=year,entry=period['entry'],exit=period['exit'],spy_entry=period['spy_entry'],spy_exit=period['spy_exit'],
                           spy_entry_price=period['spy_entry_price'],spy_exit_price=period['spy_exit_price'],
                           spy=period['spy'],portfolio=group['portfolio'],holdings=holdings))
@@ -725,7 +725,7 @@ def prepared_baseline(db):
 def verify_reference(db):
     result=prepared_baseline(db)
     independent=revalue.calculate(date.fromisoformat(result['through']))
-    baseline.agree(result,independent)
+    check.agree(result,independent)
     print(f'Verified {len(result["years"])} January books, holdings, prices and returns with the independent engine.',flush=True)
     return result
 

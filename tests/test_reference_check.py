@@ -1,0 +1,63 @@
+"""The development check: a dated 12-month run against revalue and the frozen report."""
+from pathlib import Path as _TestPath
+import sys as _test_sys
+_test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
+
+from copy import deepcopy
+from datetime import date
+import unittest
+from unittest.mock import patch
+
+from backtest.engines.reference import check, revalue
+from backtest.inputs import research
+from backtest.runtime import cache_access
+from prepared_inputs_fixture import PreparedInputs, history
+
+
+class ReferenceCheckTests(unittest.TestCase):
+    def setUp(self):
+        inputs = PreparedInputs(configure=history(12, 2014, 2016))
+        self.addCleanup(inputs.close)
+        inputs.context.enter_context(patch.object(revalue, 'RAW', research.RAW))
+        self.through = date(2016, 10, 20)
+        with cache_access.access():
+            self.result = check.dated(self.through)
+            self.reference = revalue.calculate(self.through)
+        self.adapted = check.adapt(self.result, self.through)
+
+    def test_dated_run_equals_the_independent_reference(self):
+        self.assertEqual(check.options(self.through), dict(start='2014-01-01', end='2016-10-20', months=12,
+                         pool='legacy', metric='ev_ebitda', rank_from=1, rank_to=50))
+        self.assertEqual([year['year'] for year in self.adapted['years']], [2014, 2015, 2016])
+        self.assertEqual([len(year['holdings']) for year in self.adapted['years']], [12, 12, 12])
+        self.assertEqual(check.differences(self.adapted, self.reference), [])
+
+    def test_each_difference_is_named(self):
+        altered = deepcopy(self.reference)
+        year = altered['years'][1]
+        year['holdings'][0]['return_value'] += 1e-9
+        year['holdings'][1]['symbol'] = 'OTHER'
+        year['spy'] += 1e-9
+        del altered['years'][2]
+        found = check.differences(self.adapted, altered)
+        first, second = self.adapted['years'][1]['holdings'][0], self.adapted['years'][1]['holdings'][1]
+        self.assertEqual(found, [
+            dict(kind='year_field', year=2015, field='spy', dated=self.adapted['years'][1]['spy'], reference=year['spy']),
+            dict(kind='holding_only_dated', year=2015, symbol=second['symbol'], rank=second['rank']),
+            dict(kind='holding_only_reference', year=2015, symbol='OTHER', rank=second['rank']),
+            dict(kind='holding_field', year=2015, symbol=first['symbol'], field='return_value',
+                 dated=first['return_value'], reference=year['holdings'][0]['return_value']),
+            dict(kind='year_missing', year=2016, side='reference')])
+
+    def test_frozen_report_rows_compare_at_four_decimals(self):
+        rows = ''.join(f'{y["year"]},{y["portfolio"]:.4f},{y["spy"]:.4f},{len(y["holdings"])},0,0\n'
+                       for y in self.adapted['years'])
+        text = 'Through 2016-10-20\n\nyear,portfolio,spy,names,stopped,bankrupt\n' + rows
+        self.assertEqual(check.report_rows(self.adapted, text), [])
+        changed = text.replace('2016,', '2016,9', 1)
+        self.assertEqual([(item['year'], item['field']) for item in check.report_rows(self.adapted, changed)],
+                         [(2016, 'portfolio')])
+
+
+if __name__ == '__main__':
+    unittest.main()

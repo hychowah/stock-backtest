@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from backtest.inputs import baseline as b
+from backtest.engines.reference import check
 from backtest.inputs import research as r
 import test_research as fixtures
 
@@ -82,9 +83,9 @@ class BaselineTests(unittest.TestCase):
         r.prepare(self.path);result=self.result()
         for key,value in [('entry_price',99),('return_value',float('nan')),('rank',2),('symbol','OTHER'),('status','Bankruptcy')]:
             altered=deepcopy(result);altered['years'][0]['holdings'][0][key]=value
-            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'engines disagree'):b.agree(result,altered)
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'engines disagree'):check.agree(result,altered)
         altered=deepcopy(result);altered['years']=[]
-        with self.assertRaisesRegex(ValueError,'coverage'):b.agree(result,altered)
+        with self.assertRaisesRegex(ValueError,'coverage'):check.agree(result,altered)
 
     def test_disagreement_keeps_report_database_and_history_unchanged(self):
         r.prepare(self.path);old=self.path.read_bytes();report=self.owner.report.read_bytes();history=self.history()

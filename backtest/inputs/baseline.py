@@ -12,7 +12,6 @@ import csv
 import hashlib
 import io
 import json
-import math
 from pathlib import Path
 import re
 import sqlite3
@@ -22,43 +21,13 @@ import uuid
 from backtest.inputs import cache_assets as cache_assets
 from backtest.financial import rules
 
-# Full-precision engines may differ only by floating-point roundoff. The much
-# larger legacy text tolerance applies only to four-decimal archived reports.
-REL_TOL=1e-12
-ABS_TOL=1e-12
-PRICE_FIELDS=('fiscal_price_date','valuation_date','fiscal_price','valuation_price','entry_price','exit_price')
-HOLDING_FIELDS=('symbol','rank','fiscal','entry','exit',*PRICE_FIELDS,'market_cap','enterprise_value','ebitda','return_value','status')
-YEAR_FIELDS=('year','entry','exit','spy_entry','spy_exit','spy_entry_price','spy_exit_price','spy','portfolio')
+from backtest.engines.reference.check import HOLDING_FIELDS, YEAR_FIELDS, same as _same
 
 
 def cutoff(text):
     match=re.search(r'^Through (\d{4}-\d{2}-\d{2})\s*$',text,re.MULTILINE)
     if match is None: raise ValueError('Current reference report is missing its Through date.')
     return min(rules.ASOF,date.fromisoformat(match[1]))
-
-
-def _same(a,b):
-    if type(a) in (int,float) and type(b) in (int,float):
-        return math.isfinite(a) and math.isfinite(b) and math.isclose(a,b,rel_tol=REL_TOL,abs_tol=ABS_TOL)
-    return a==b
-
-
-def agree(prepared,independent):
-    """Reject any difference in coverage, holdings, prices or annual results.
-
-    Equal annual averages cannot conceal swapped or incorrectly priced holdings.
-    Values in this comparison are unrounded; nonfinite numbers always fail.
-    """
-    if prepared['through']!=independent['through'] or [y['year'] for y in prepared['years']]!=list(range(rules.FIRST_YEAR,rules.LAST_YEAR+1)) or [y['year'] for y in prepared['years']]!=[y['year'] for y in independent['years']]:
-        raise ValueError('Baseline engines disagree on historical coverage. Existing results were kept.')
-    for a,b in zip(prepared['years'],independent['years']):
-        context=str(a['year'])
-        for key in YEAR_FIELDS:
-            if not _same(a[key],b[key]): raise ValueError(f'Baseline engines disagree for {context}: {key}. Existing results were kept.')
-        if len(a['holdings'])!=len(b['holdings']): raise ValueError(f'Baseline engines disagree for {context}: holding count. Existing results were kept.')
-        for x,y in zip(a['holdings'],b['holdings']):
-            for key in HOLDING_FIELDS:
-                if not _same(x[key],y[key]): raise ValueError(f'Baseline engines disagree for {context}, {x["symbol"]}: {key}. Existing results were kept.')
 
 
 def render(result):
