@@ -9,8 +9,10 @@ book, the eligible financials that the latest screen reports). The book
 identity (research.code_identity('books')) binds this module, so an edit to
 the schema, the writer or a reader here drops every saved book.
 
-Readers: record(), open_book(), completed(), find(), rows(), lanes(),
-require_scope() and counts(). A book's rows keep the row shape that results
+Writers: store() and delete() (daily preparation drops the books that the
+change-day rule, books.kept, does not keep). Readers: stored(), record(),
+open_book(), completed(), find(), rows(), lanes(), require_scope() and
+counts(). A book's rows keep the row shape that results
 and the website keep, chosen by the book itself: LATEST for the open book (the
 old research latest snapshot) and DATED otherwise (the old daily snapshot).
 screening.select is the one SQL consumer outside this module; it takes the
@@ -65,6 +67,22 @@ def store(db, book):
     db.executemany('INSERT INTO book_filters VALUES(?,?,?,?,?)', ((book_id, pool, *row) for row in book['filters']))
     db.execute('INSERT INTO book_pools VALUES(?,?)', (book_id, pool))
     return book_id
+
+
+def delete(db, books):
+    """Delete the given book ids from every table, in the caller's transaction."""
+    db.execute('CREATE TEMP TABLE dropped_books(book INTEGER PRIMARY KEY)')
+    try:
+        db.executemany('INSERT INTO temp.dropped_books VALUES(?)', ((book,) for book in books))
+        for table in reversed(TABLES):
+            db.execute(f'DELETE FROM main.{table} WHERE book IN (SELECT book FROM temp.dropped_books)')
+    finally:
+        db.execute('DROP TABLE temp.dropped_books')
+
+
+def stored(db):
+    """[(book, entry, exit)] of every stored book, by book id; exit None is the open book."""
+    return [tuple(row) for row in db.execute('SELECT book,entry,exit FROM books ORDER BY book')]
 
 
 def record(db, book):

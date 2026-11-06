@@ -248,8 +248,8 @@ class ProjectionTests(unittest.TestCase):
              patch.object(daily.backtest_control, 'checkpoint', side_effect=cancelled):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
                 daily.prepare(self.path, self.source)
+        # The in-place update rolls back: the previous cache, byte for byte.
         self.assertEqual(self.path.read_bytes(), before)
-        self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
 
 
 

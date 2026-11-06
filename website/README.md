@@ -147,7 +147,9 @@ Prices, financial availability, filters and valuation calculations use the saved
 cache. Dated books are persisted, so changing filters does not reparse prices.
 Each run prepares only its selected stock universe. Switching universes can take
 longer the first time because it prepares the other pool; later runs reuse it.
-The launcher retains existing completed books when upgrading the daily cache.
+Daily preparation keeps each saved dated book that new data cannot change; the
+others are calculated again when a run needs them. An older daily-cache version
+or a book-code change starts with no saved dated book.
 
 Custom schedules require the local service; opening the HTML directly continues
 to support latest picks. Daily preparation adds a local SQLite index; it never

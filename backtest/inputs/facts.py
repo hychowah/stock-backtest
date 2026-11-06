@@ -208,11 +208,12 @@ def store_annual(db, symbol, resolution):
 
 
 def store_stock(db, symbol, resolution):
-    """Write the saved days of one price file."""
+    """Write the saved days of one price file; return its stock_days rows without the symbol, by day."""
     _source(db, symbol, resolution['source'])
     dated = resolution['dated']
-    db.executemany('INSERT INTO stock_days VALUES(?,?,?,?,?,?)', (
-        (symbol, day, *_pair(dated[day]['adjClose']), *_pair(dated[day]['volume'])) for day in sorted(dated)))
+    rows = [(day, *_pair(dated[day]['adjClose']), *_pair(dated[day]['volume'])) for day in sorted(dated)]
+    db.executemany('INSERT INTO stock_days VALUES(?,?,?,?,?,?)', ((symbol, *row) for row in rows))
+    return rows
 
 
 def store_market(db, resolutions):
@@ -240,17 +241,19 @@ def store_companies(db, universe):
 # Book facts: what books.book, books.Screen and the derived-context readers read,
 # through the 'research' schema of a daily connection.
 
-def legacy_annual(db, symbol, checkpoint=lambda: None):
+def legacy_annual(db, symbol, checkpoint=lambda: None, schema='research'):
     """{fiscal: {field: value}} of the valid legacy annual values of one company.
 
     The fields are financial_inputs.ENDPOINTS, in its endpoint and field order;
     a fiscal date without a valid value is left out. This equals the
     values-only projection of financial_inputs.resolve_history bit for bit.
+    schema names the research facts on db: 'research' on a daily connection;
+    research preparation's fact diff reads 'main' and 'old'.
     """
     columns = [column for _, fields in _LEGACY for _, column in fields]
     found = {}
     for endpoint, fiscal, *values in db.execute(
-            f'SELECT endpoint,fiscal,{",".join(columns)} FROM research.annual_facts WHERE symbol=? AND endpoint IN '
+            f'SELECT endpoint,fiscal,{",".join(columns)} FROM {schema}.annual_facts WHERE symbol=? AND endpoint IN '
             f'({",".join("?" * len(_LEGACY))}) ORDER BY fiscal', (symbol, *(endpoint for endpoint, _ in _LEGACY))):
         checkpoint()
         found.setdefault(fiscal, {})[endpoint] = dict(zip(columns, values))

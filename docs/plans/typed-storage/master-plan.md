@@ -219,31 +219,33 @@ per schema).
   `research.sqlite` 1.31 GB; `schedules.sqlite` 0.80 GB before books, 5.26 GB
   with 1,378 books. User test 381.1 s computed, 153.0 s saved.
 
-#### P3c2. Kept books, the in-place cache and the deletes
+#### P3c2. Kept books, the in-place cache and the deletes (code done)
 
-- The change-day rule lives in `books.py`, next to `FORWARD_REACH`. Research
-  produces only a fact diff: changed rows by kind, with unchanged files
-  skipped by their `fact_sources` sha256. Use the company set only, not
-  `listed`, name or sector: dated books read only whether a company exists,
-  and selection reads sector live. Visible day: a price, SPY or Treasury row
-  its own day; a statement or legacy annual value its known day; an added or
-  removed price file its first row day; an added or removed company its
-  earliest known statement. A book stays when max(exit, entry +
-  FORWARD_REACH) is before the first change day; the open book never stays.
-- Measure "recompute all" (option B) for comparison.
-- One test per fact kind just after the horizon.
-- The in-place one-transaction book cache update ("Yes").
-- Delete: daily `prices`, `sessions`, `treasuries`, the copied `treasury10`;
-  research `treasury10` and `financial_inputs`; `daily._price_rows`,
-  `_prices`, `_book_inputs`, `_first_difference`, `_dated_change`,
-  `_keep_books`; `research._replace` for one `cache_assets` replace helper
-  (with the Windows sharing retry) that serves `publish_bytes` and
-  `research.prepare`.
-- Real-copy evidence includes `book_filters` parity (P3b did not compare it)
-  and kept-book measurements after a one-session append (T0: 1,343 of 1,346)
-  and after a nightly update that adds annual reports.
-- Exit: the protocol checks, heavy tier included; digests equal; dev check;
-  harness parity; cold build time; sizes.
+- Rule (`books.py`): `horizon(entry, exit)` = max(exit, entry +
+  `FORWARD_REACH`); `VISIBLE` maps a diff kind's key to its visible day
+  (`prices`, `market`: the day; `statements`, `annual`, `companies`: fiscal +
+  `LAG`); `change_day(diff)`; `kept(entry, exit, day)` (open book never).
+- Research schema 19 records `changes` = {base, rows}: per kind and company
+  the earliest changed row key against the replaced file (attached `old`).
+  Price and annual files with an equal sha256 and fact-row code are skipped;
+  statements, the company set and SPY/Treasury rows are always compared.
+- Daily 11, one transaction in place: `book_store.delete` of the dropped books
+  and the old open book, rebind, the new open book. Another VERSION or book
+  identity empties the file first.
+- Deleted: daily `prices`, `sessions`, `treasuries`, `treasury10`, the refresh
+  evidence, `BOOK_INPUTS`, `_price_rows`, `_prices`, `_book_inputs`,
+  `_first_difference` (now the diff's row comparison), `_dated_change`,
+  `_keep_books`; research `treasury10`, `financial_inputs`, `_replace`
+  (`cache_assets.replace` serves it and `publish_bytes`).
+- Deviations: the `MAX_HISTORY` reader bounds stay (no code they guard went,
+  B.10; `test_variable_coverage` requires bounded leaf reads); a diff whose
+  base is not the bound research (two research builds before one daily
+  update) keeps no book; a build whose tables differ from the replaced
+  file's (a schema or catalog change) has no base; equal values compare
+  equal (0.0 = -0.0; book tables are REAL).
+- Tests: `KeptBookTests` (one per kind just after the horizon, company
+  removal, names and listing, one-session append, short reach, interrupted
+  update, book identity, older version, another base, current cache).
 
 ### P4. Book rows read in place
 
@@ -336,4 +338,5 @@ review and the P3 review at 1e3596d (P3c1 scope items 1–6).
 
 ## Next
 
-P3c2.
+P3c2 real-copy evidence on the bench; then P4 after the independent review
+of P3c.

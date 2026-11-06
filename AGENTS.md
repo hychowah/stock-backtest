@@ -248,7 +248,7 @@ Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
 **Research database.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 18) from the raw cache: companies,
+`data/research.sqlite` (research schema 19) from the raw cache: companies,
 annual reports and typed facts, no book. Every build is a full build. It
 writes a temporary file and replaces the database atomically; a failure keeps
 the previous database. `books.Screen.decide` admits; `books.book` builds books.
@@ -323,13 +323,13 @@ and `results/experiments/fmp-throughput-2026-10-23.json`. Do not present old
 timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
-daily book store (version 10), attaching research read-only. It prepares only the
+daily book store (version 11), attaching research read-only. It prepares only the
 requested pool and records completion in `book_pools` with the rows. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
 Reuse `screening.select` and `metrics.evaluate`; never duplicate formulas. Label
 dated period returns, not annual returns. The daily binding names the research
-and book identities; older caches rebuild and refreshes keep only unaffected
-books. `book_store` owns every read of its tables. A latest root reads the stored latest owner lanes;
+and book identities; it updates in place in one transaction and `books.kept`
+keeps unaffected books. `book_store` owns every read of its tables. A latest root reads the stored latest owner lanes;
 every other root uses the dated owner policy. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).

@@ -15,18 +15,18 @@ from backtest.financial import rules
 PUBLISH_RETRY_DELAYS=(.05,.1,.2,.4,.4,.4,.4)
 
 
-def publish_bytes(path,content):
-    """Replace atomically; retry Windows sharing/access locks for under 2s.
+def replace(temporary,path,content=None):
+    """Replace path with temporary atomically, first writing content to temporary when given.
 
-    File indexers can briefly deny either temporary-file writes or replacement.
-    Keep the old destination and pending file on failure. Other OS errors fail
+    The one replace helper of saved files and the research database. File
+    indexers can briefly deny either the temporary write or the replacement:
+    Windows sharing/access locks are retried for under 2s. Keep the old
+    destination and the pending file on failure. Other OS errors fail
     immediately. The caller retains cache ownership throughout these retries.
     """
-    path.parent.mkdir(parents=True,exist_ok=True)
-    temporary=path.with_name(path.name+'.download')
     for attempt in range(len(PUBLISH_RETRY_DELAYS)+1):
         try:
-            temporary.write_bytes(content)
+            if content is not None:temporary.write_bytes(content)
             temporary.replace(path)
             return
         except PermissionError as error:
@@ -34,6 +34,12 @@ def publish_bytes(path,content):
             diagnostics.event('cache.publish_retry',asset=diagnostics.relative_path(path),attempt=attempt+1,
                               winerror=error.winerror,delay=PUBLISH_RETRY_DELAYS[attempt])
             time.sleep(PUBLISH_RETRY_DELAYS[attempt])
+
+
+def publish_bytes(path,content):
+    """Write content to a '.download' file beside path and replace path with it (replace)."""
+    path.parent.mkdir(parents=True,exist_ok=True)
+    replace(path.with_name(path.name+'.download'),path,content)
 
 
 def read_json(path, default=None):

@@ -30,6 +30,11 @@ def exact(rows):
     return [repr(tuple(row)) for row in rows]
 
 
+def companies(db):
+    """The saved companies with annual reports, in symbol order."""
+    return [row[0] for row in db.execute('SELECT DISTINCT symbol FROM statements ORDER BY symbol')]
+
+
 def configure(inputs):
     """Twenty companies 2013-2016 with every latest denial, bad rows and more annual endpoints."""
     history(20, 2013, 2016)(inputs)
@@ -87,24 +92,22 @@ class BookTests(unittest.TestCase):
         cls.buffer.stop()
 
     def test_one_value_rule_for_prices_and_yields(self):
-        # A conflicting price day has no value in the facts and in the daily prices.
+        # A conflicting price day has no value in the facts.
         row = self.research.execute("SELECT adjusted,adjusted_reason FROM stock_days WHERE symbol='Q0002' AND day='2015-01-05'").fetchone()
         self.assertEqual(tuple(row), (None, 'CONFLICTING_INPUT'))
-        self.assertIsNone(self.daily.execute("SELECT 1 FROM prices WHERE symbol='Q0002' AND day='2015-01-05'").fetchone())
         book_facts = facts.BookFacts(self.attached)
         self.assertEqual(book_facts.price('Q0002', date(2015, 1, 5), True, 4)[0], date(2015, 1, 6))
-        valid = self.research.execute('SELECT symbol,day,adjusted FROM stock_days WHERE adjusted IS NOT NULL ORDER BY symbol,day')
-        self.assertEqual(exact(valid), exact(self.daily.execute('SELECT * FROM prices ORDER BY symbol,day')))
         # The conflicting weekend 3-month yield is skipped; the signed zero keeps its sign.
         self.assertEqual(book_facts.treasury(date(2015, 1, 4)), .02)
         self.assertEqual(facts.ten_year(self.attached, '2015-01-04'), ('2015-01-03', -0.0))
         self.assertEqual(math.copysign(1, facts.ten_year(self.attached, '2015-01-04')[1]), -1)
+        # The 10-year yield on or before a day is the saved file's latest year10 value then.
+        saved = sorted((row['date'], row['year10']) for row in json.loads((research.RAW / 'treasury.json').read_text())
+                       if row.get('year10') is not None)
         for day in ('2013-01-01', '2015-01-02', '2015-01-04', '2016-10-20'):
             row = facts.ten_year(self.attached, day)
-            saved = self.research.execute('SELECT yield_percent FROM treasury10 WHERE day<=? ORDER BY day DESC LIMIT 1', (day,)).fetchone()
-            self.assertEqual(None if row is None else row[1], None if saved is None else saved[0])
-        sessions = self.research.execute('SELECT day,spy FROM market_days WHERE spy IS NOT NULL ORDER BY day')
-        self.assertEqual(exact(sessions), exact(self.daily.execute('SELECT * FROM sessions ORDER BY day')))
+            expected = [value for when, value in saved if when <= day]
+            self.assertEqual(exact([(None if row is None else row[1],)]), exact([(expected[-1] if expected else None,)]))
 
     def test_listing_and_cached_prices_are_company_facts(self):
         book_facts = facts.BookFacts(self.attached)
@@ -112,14 +115,12 @@ class BookTests(unittest.TestCase):
         self.assertEqual(len(companies), 20)
         self.assertEqual({symbol for symbol, listed in companies.items() if not listed}, {'Q0006'})
         self.assertEqual(book_facts.cached(), {f'Q{i:04d}' for i in range(20)} - {'Q0008'})
-        self.assertEqual(book_facts.cached(), {row[0] for row in self.daily.execute('SELECT DISTINCT symbol FROM prices')})
+        self.assertEqual(book_facts.cached(), {path.stem for path in (research.RAW / 'px').glob('*.json')})
         # Listing is a column of the one companies table, beside the names.
         self.assertEqual(tuple(self.research.execute("SELECT * FROM companies WHERE symbol='Q0006'").fetchone())[4], 0)
 
-    def test_legacy_annual_values_equal_the_saved_json_bit_for_bit(self):
-        saved = {}
-        for symbol, fiscal, values in self.research.execute('SELECT symbol,fiscal,values_json FROM financial_inputs ORDER BY symbol,fiscal'):
-            saved.setdefault(symbol, {})[fiscal] = json.loads(values)
+    def test_legacy_annual_values_equal_the_values_only_projection_bit_for_bit(self):
+        saved = {symbol: research.financial_inputs.history(research.RAW, symbol) for symbol in companies(self.research)}
         self.assertEqual(json.dumps(saved['Q0003']['2015-06-30']), json.dumps(
             {'revenue': saved['Q0003']['2015-06-30']['revenue'], 'operatingIncome': saved['Q0003']['2015-06-30']['operatingIncome'],
              'totalStockholdersEquity': 80e6, 'totalDebt': -0.0, 'freeCashFlow': 9e6}))

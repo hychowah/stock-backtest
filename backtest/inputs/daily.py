@@ -2,8 +2,7 @@
 
 A daily connection attaches the research database read-only as the schema
 'research'. Books, sessions and company names are read from there (facts and
-book_store); the daily cache keeps only the books and what its kept-book check
-compares.
+book_store); the daily cache holds only the book store and its binding.
 
 The daily binding (metadata 'daily_inputs') names what the books were computed
 from: this cache's VERSION, the research content identity and the book
@@ -12,7 +11,6 @@ connect() admits a cache whose binding equals the current one.
 """
 from contextlib import closing
 from datetime import date
-import hashlib
 from pathlib import Path
 import json
 import sqlite3
@@ -23,28 +21,15 @@ from backtest.runtime import cache_access as cache_access
 from backtest.financial import books as financial_books
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
-from backtest.inputs import market
 from backtest.inputs import facts
 from backtest.inputs import book_store
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 10
-# The book store (book_store.SCHEMA) holds the latest and dated books. The
-# daily price, session and Treasury rows and the copied 10-year yields are
-# read only by the kept-book check of a refresh (_prices, _dated_change);
-# VERSION covers their rules.
+VERSION = 11
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE prices(symbol TEXT, day TEXT, adjusted REAL NOT NULL, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
-CREATE TABLE sessions(day TEXT PRIMARY KEY, price REAL) WITHOUT ROWID;
-CREATE TABLE treasuries(day TEXT PRIMARY KEY, yield_value REAL) WITHOUT ROWID;
-CREATE TABLE treasury10 (day TEXT PRIMARY KEY, yield_percent REAL NOT NULL) WITHOUT ROWID;
 ''' + book_store.SCHEMA
-
-
-# The research tables whose rows every dated book reads; a change drops every book.
-BOOK_INPUTS = ('companies','statements','financial_inputs')
 
 
 def binding(db):
@@ -53,13 +38,9 @@ def binding(db):
     return None if row is None else row[0]
 
 
-def current(db,schema='research'):
-    """The daily binding of the current research record and book code.
-
-    schema names the research database on db: 'research' on a daily
-    connection, 'main' on preparation's research connection.
-    """
-    return dict(version=VERSION,research=r.identity(db,schema)['content'],books=r.code_identity('books'))
+def current(db):
+    """The daily binding of the current research record (attached as 'research') and book code."""
+    return dict(version=VERSION,research=r.identity(db,'research')['content'],books=r.code_identity('books'))
 
 
 def attach(db,source):
@@ -86,132 +67,43 @@ def connect(path=DATABASE,source=None):
     return db
 
 
-def _price_rows(payload):
-    """Return the (day, adjusted close) rows of one saved company file: its valid values (facts.observe)."""
-    rows=payload.get('div') if isinstance(payload,dict) else None
-    if not isinstance(rows,list):
-        raise ValueError('A saved price file is unreadable. Use the data panel to download it again.')
-    return [(day,states['adjClose']['value']) for day,states in sorted(facts.observe(rows,('adjClose',)).items())
-            if states['adjClose']['valid']]
+def _saved(path):
+    """The saved binding of an existing cache, or None when it has none or cannot be read.
 
-
-def _digest(value):
-    return hashlib.sha256(json.dumps(value,separators=(',',':')).encode()).hexdigest()
-
-
-def _book_inputs(reference,db):
-    """Copy the 10-year yields for the kept-book check; return the identity of the undated book inputs."""
-    db.execute('INSERT INTO main.treasury10 SELECT * FROM research.treasury10')
-    digest=hashlib.sha256()
-    for table in BOOK_INPUTS:
-        digest.update(table.encode()+b'\n')
-        for row in reference.execute('SELECT * FROM '+table):
-            backtest_control.checkpoint()
-            digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
-    return digest.hexdigest()
-
-
-def _previous(path):
-    """Return the saved binding and refresh evidence of an existing cache.
-
-    Old rows are read only when the evidence has this VERSION and the saved
-    book identity equals the current one.
+    Read-write, like connect(): a book write interrupted by a crash leaves a
+    hot journal that only a writable connection rolls back.
     """
-    # Read-write, like connect(): a book write interrupted by a crash leaves a
-    # hot journal that only a writable connection rolls back.
-    with closing(sqlite3.connect(path,timeout=60)) as db:
-        saved=dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('daily_inputs','refresh')"))
+    if not path.exists():
+        return None
     try:
-        current=json.loads(saved['daily_inputs']) if 'daily_inputs' in saved else None
-        evidence=json.loads(saved['refresh']) if 'refresh' in saved else None
-    except ValueError:
-        return None,None
-    return current,(evidence if isinstance(evidence,dict) and evidence.get('version')==VERSION else None)
+        with closing(sqlite3.connect(path,timeout=60)) as db:
+            saved=binding(db)
+        return json.loads(saved) if saved is not None else None
+    except (sqlite3.Error,ValueError):
+        return None
 
 
-def _first_difference(old,new):
-    """Return the first day whose dated row differs, or None when both match."""
-    for a,b in zip(old,new):
-        if a!=b:return min(a[0],b[0])
-    if len(old)!=len(new):
-        return (old if len(old)>len(new) else new)[min(len(old),len(new))][0]
-    return None
-
-
-def _prices(db,symbols,saved,same_code):
-    """Store company prices; return their evidence and the first changed days.
-
-    With an attached previous cache of the same book identity (which binds
-    facts.observe), equal file bytes copy the stored rows without parsing.
-    Bytes, not stamps, decide: downloads rewrite checked files with equal
-    bytes, and a copy can keep old stamps. A saved digest of the stored rows
-    proves a pure append without reading them back; otherwise the rows are
-    compared.
-    """
-    previous=saved['prices'] if saved else {}
-    units={};earliest=[]
-    for i,symbol in enumerate(symbols,1):
-        backtest_control.checkpoint()
-        # Parse the hashed bytes themselves: no later check sees an in-place
-        # rewrite of one price file.
-        data=market.cache_path_for(symbol).read_bytes()
-        content=hashlib.sha256(data).hexdigest()
-        old=previous.get(symbol)
-        if same_code and old is not None and old['content']==content:
-            db.execute('INSERT INTO prices SELECT * FROM old.prices WHERE symbol=?',(symbol,))
-            units[symbol]=old
-            diagnostics.count('prices_copied')
-        else:
-            diagnostics.count('prices_parsed')
-            rows=_price_rows(json.loads(data))
-            db.executemany('INSERT INTO prices VALUES(?,?,?)',[(symbol,*row) for row in rows])
-            units[symbol]=dict(content=content,last=rows[-1][0] if rows else None,digest=_digest(rows))
-            if same_code:
-                if old is not None and _digest([row for row in rows if old['last'] is not None and row[0]<=old['last']])==old['digest']:
-                    later=[row for row in rows if old['last'] is None or row[0]>old['last']]
-                    changed=later[0][0] if later else None
-                else:
-                    changed=_first_difference([tuple(row) for row in db.execute('SELECT day,adjusted FROM old.prices WHERE symbol=? ORDER BY day',(symbol,))],rows)
-                if changed is not None:earliest.append(changed)
-        if i%200==0 or i==len(symbols):
-            print(f'Prepared daily prices {i}/{len(symbols)}',flush=True)
-    # A removed company changes the cached set, which drops every book.
-    return units,earliest
-
-
-def _dated_change(db,table):
-    """First day where a small dated table differs from the previous cache."""
-    rows=lambda schema:[tuple(row) for row in db.execute(f'SELECT * FROM {schema}.{table} ORDER BY day')]
-    return _first_difference(rows('old'),rows('main'))
-
-
-def _keep_books(db,since):
-    """Copy saved dated books that read no input changed on or after since, with their book ids.
-
-    A book reads no price, session or yield after max(exit, entry+FORWARD_REACH).
-    None keeps every dated book. The latest book is never kept.
-    """
-    previous=db.execute('SELECT book,entry,exit FROM old.books WHERE exit IS NOT NULL').fetchall()
-    kept=[(book,) for book,entry,exit_day in previous
-          if since is None or max(date.fromisoformat(exit_day),date.fromisoformat(entry)+financial_books.FORWARD_REACH)<date.fromisoformat(since)]
-    diagnostics.note(books_previous=len(previous),books_kept=len(kept),changed_from=since)
-    if not kept:return
-    db.execute('CREATE TEMP TABLE kept_books(book INTEGER PRIMARY KEY)')
-    db.executemany('INSERT INTO temp.kept_books VALUES(?)',kept)
-    for table in book_store.TABLES:
-        db.execute(f'INSERT INTO main.{table} SELECT * FROM old.{table} WHERE book IN (SELECT book FROM temp.kept_books)')
-    db.execute('DROP TABLE temp.kept_books')
+def _empty(path):
+    """Replace the cache at path with an empty one of this VERSION."""
+    # _saved has rolled back any hot journal; a stale journal must not meet the new file.
+    for name in (path,path.with_name(path.name+'-journal')):
+        name.unlink(missing_ok=True)
+    with closing(sqlite3.connect(path)) as db:
+        db.executescript(SCHEMA)
 
 
 @diagnostics.operation('prepare.daily')
 @cache_access.exclusive
 def prepare(path=DATABASE, source=r.DATABASE):
-    """Parse changed raw prices only; keep the previous cache if publication fails.
+    """Bring the book store up to date in place, in one transaction.
 
-    A stale cache with refresh evidence and the current layout supplies its
-    unchanged company prices and every saved dated book that cannot read a
-    changed input. The latest book is computed afresh. The result matches a
-    full build of the same inputs plus those books.
+    Research preparation runs first. A cache of this VERSION and book identity
+    keeps every dated book that books.kept keeps after research's fact diff
+    (research.changes): it deletes the other books and the old open book,
+    rebinds, then writes the new open book at research's latest date. A diff
+    from another base than the bound research content keeps no book. A
+    missing cache, an older version or another book identity is rebuilt from
+    empty. A failure rolls the transaction back: the previous cache stays.
     """
     started=time.perf_counter()
     diagnostics.lap('admission')
@@ -220,61 +112,53 @@ def prepare(path=DATABASE, source=r.DATABASE):
     # need to discover and run the dependency chain themselves.
     r.prepare(source)
     diagnostics.lap('research')
-    reference=r.connect(source,full_prices=True)
-    # research.prepare has just inspected the raw files; this preparation reads raw prices too.
+    # research.prepare has just inspected the raw files.
     raw=r.accepted_signature()
-    inputs=current(reference,'main')
-    saved=previous=None
-    if path.exists():
-        # Compare the saved binding with this operation's own. connect()
-        # would compute it again and ask no new freshness question.
-        previous,saved=_previous(path)
-        if previous==inputs:
-            reference.close();print('Daily cache already current; no prices parsed.')
-            diagnostics.note(outcome='current');return
-    # Saved books and price rows are reused only under the same book identity.
-    same_code=saved is not None and isinstance(previous,dict) and previous.get('books')==inputs['books']
-    diagnostics.lap('input_check')
     path.parent.mkdir(parents=True,exist_ok=True)
-    temporary=path.with_name(path.name+'.building')
-    temporary.unlink(missing_ok=True)
-    # URI support lets the previous cache attach read-only.
-    db=sqlite3.connect(temporary.resolve().as_uri(),uri=True)
+    previous=_saved(path)
+    if previous is None or previous.get('version')!=VERSION or previous.get('books')!=r.code_identity('books'):
+        # Only a change in the book identity (or this VERSION) drops every book.
+        _empty(path)
+        previous=None
+    db=sqlite3.connect(path.resolve().as_uri(),uri=True,timeout=60)
     try:
-        db.executescript(SCHEMA)
-        if saved is not None:
-            db.execute('ATTACH DATABASE ? AS old',(path.resolve().as_uri()+'?mode=ro',))
         attach(db,source)
-        tables=_book_inputs(reference,db)
-        diagnostics.lap('copy_research')
-        symbols=[row[0] for row in reference.execute('SELECT DISTINCT symbol FROM statements') if market.cache_path_for(row[0]).exists()]
-        units,earliest=_prices(db,symbols,saved,same_code)
-        diagnostics.lap('prices')
-        db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')])
-        db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None])
-        diagnostics.lap('market')
-        books=_digest(dict(tables=tables,symbols=symbols))
-        if same_code and books==saved['books']:
-            earliest+=[day for table in ('sessions','treasuries','treasury10') if (day:=_dated_change(db,table)) is not None]
-            _keep_books(db,min(earliest) if earliest else None)
-            diagnostics.lap('keep_books')
-        # The latest book: the open book at research's latest date, from its
-        # facts. Kept dated books keep their ids; the latest book takes the next.
+        # The research record admits its raw signature, its code and each price file's stamps.
+        latest=date.fromisoformat(r.identity(db,'research',prices=True)['latest_date'])
+        inputs=current(db)
+        if previous==inputs:
+            print('Daily cache already current; no book changed.')
+            diagnostics.note(outcome='current');return
+        diagnostics.lap('input_check')
+        db.execute('BEGIN IMMEDIATE')
+        changed=None
+        stored=book_store.stored(db)
+        if previous is not None:
+            record=r.changes(db,'research')
+            # A diff from another base can hide any change: no book enters before FIRST_DAY.
+            changed=(financial_books.change_day(record['rows']) if record['base']==previous['research']
+                     else rules.FIRST_DAY)
+        dropped=[book for book,entry,exit_day in stored if not financial_books.kept(
+            date.fromisoformat(entry),exit_day and date.fromisoformat(exit_day),changed)]
+        book_store.delete(db,dropped)
+        diagnostics.note(books_previous=len(stored),books_kept=len(stored)-len(dropped),
+                         changed_from=None if changed is None else str(changed))
+        diagnostics.lap('drop_books')
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('daily_inputs',?)",(json.dumps(inputs),))
+        # The open book at research's latest date, from its facts. Kept dated
+        # books keep their ids; the open book takes the next.
         book_facts=facts.BookFacts(db)
-        latest=date.fromisoformat(r.identity(reference)['latest_date'])
         for pool in ('legacy','cached'):
             book_store.store(db,financial_books.book(latest,None,pool,book_facts,backtest_control.checkpoint))
         diagnostics.lap('latest_book')
-        if inputs!=current(reference,'main') or raw!=r.signature():
+        if inputs!=current(db) or raw!=r.signature():
             raise ValueError('Inputs changed during daily preparation; retry.')
-        evidence=dict(version=VERSION,books=books,prices=units)
-        for key,value in dict(daily_inputs=inputs,refresh=evidence).items():
-            db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         db.commit()
-        db.close();reference.close();temporary.replace(path)
     except BaseException:
-        db.close();reference.close();temporary.unlink(missing_ok=True);raise
-    action='refreshed' if saved is not None else 'prepared'
-    diagnostics.lap('publication')
-    diagnostics.note(outcome=action,symbols=len(symbols),database_bytes=path.stat().st_size)
+        db.rollback();raise
+    finally:
+        db.close()
+    action='refreshed' if previous is not None else 'prepared'
+    diagnostics.lap('commit')
+    diagnostics.note(outcome=action,database_bytes=path.stat().st_size)
     print(f'Daily cache {path.stat().st_size/1e6:.1f} MB {action} in {time.perf_counter()-started:.1f}s',flush=True)

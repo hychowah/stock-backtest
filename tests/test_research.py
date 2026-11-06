@@ -318,7 +318,7 @@ class PreparationTests(unittest.TestCase):
             if len(calls) == 1:
                 error = PermissionError('sharing violation'); error.winerror = 32; raise error
             return replace(source, target)
-        with patch.object(Path, 'replace', flaky), patch.object(r.time, 'sleep'):
+        with patch.object(Path, 'replace', flaky), patch.object(r.cache_assets.time, 'sleep'):
             r.prepare(self.path)
         self.assertEqual(len(calls), 2)
         self.verify_fixture()
@@ -371,7 +371,7 @@ for(let i=0;i<cases.length;i++){
             r.financial_inputs.publish(r.RAW,'TEST',endpoint,[dict(date='2014-06-30',reportedCurrency='USD',**fields)],ledger,r.RAW/'coverage.json')
         r.prepare(self.path)
         with closing(r.connect(self.path)) as db:
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM financial_inputs').fetchone()[0],1)
+            self.assertEqual(db.execute('SELECT COUNT(DISTINCT fiscal) FROM annual_facts').fetchone()[0],1)
         selected=self.latest(filters=[dict(field='pe',op='lt',value=12),dict(field='profit_margin',op='gt',value=19)])
         self.assertEqual([h['symbol'] for h in selected],['TEST'])
         latest=self.latest(filters=[dict(field='pe',op='gt',value=10)])

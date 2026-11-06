@@ -7,20 +7,58 @@ one pool of a book from prepared facts through the facts port
 (facts.BookFacts); daily preparation writes the latest book and
 schedules.prepare_period and the book workers write the dated books with it.
 Price lookups return (date, positive dividend-adjusted close) or None within
-the given tolerance. Storage, calendar planning and SQL insertion stay outside
-this module. A change to book policy must pass the development check
+the given tolerance. kept() is the change-day rule that decides which stored
+books stay after the facts change. Storage, calendar planning and SQL
+insertion stay outside this module. A change to book policy must pass the development check
 (python3 scripts/check.py) on the real-data bench.
 """
-from datetime import timedelta
+from datetime import date, timedelta
 import math
 
 from backtest.financial import metrics
 from backtest.financial import rules as run
 
 # The entry price is the first session up to ENTRY_SLACK days after the entry
-# day. No book reads a price later than max(exit, entry+FORWARD_REACH).
+# day. No book reads a price later than max(exit, entry+FORWARD_REACH) (horizon).
 ENTRY_SLACK=4
 FORWARD_REACH=timedelta(days=ENTRY_SLACK)
+
+
+def horizon(entry, exit_day):
+    """The last day a dated book reads: max(exit, entry + FORWARD_REACH)."""
+    return max(exit_day, entry+FORWARD_REACH)
+
+
+# The change-day rule of kept books. The research fact diff (research.changes)
+# names, per kind and company, the earliest changed row key; VISIBLE maps it
+# to the first day a book can read the change. Every mapping is monotonic, so
+# the earliest key gives the earliest visible day.
+# - prices: a stock_days row, its own day. An added or removed price file
+#   changes all its rows: its first row day.
+# - market: a SPY or Treasury row (market_days), its own day.
+# - statements: a statement, its known day (fiscal + LAG).
+# - annual: a legacy annual value (facts.legacy_annual), its known day.
+# - companies: an added or removed company, its earliest known statement.
+# Only the company set is an input: dated books read only whether a company
+# exists, and selection reads names and sectors live. The open book also
+# reads listed, but it is never kept.
+VISIBLE=dict(prices=lambda day:day,market=lambda day:day,statements=lambda fiscal:fiscal+run.LAG,
+             annual=lambda fiscal:fiscal+run.LAG,companies=lambda fiscal:fiscal+run.LAG)
+
+
+def change_day(changes):
+    """The first day on which a book can read any changed fact of the diff, or None when nothing changed."""
+    return min((VISIBLE[kind](date.fromisoformat(key)) for kind,rows in changes.items() for key in rows.values()),default=None)
+
+
+def kept(entry, exit_day, changed):
+    """Whether a stored book stays after facts change first visibly on changed (None: no change).
+
+    A dated book stays when its horizon is before the change day. The open
+    book (exit_day None) never stays. Only a change in the book identity drops
+    every book (daily.prepare).
+    """
+    return exit_day is not None and (changed is None or horizon(entry,exit_day)<changed)
 
 # The denial reasons of Screen.decide, in gate order. A company has a book
 # row, and a formula root is admitted, only when every gate passes.

@@ -18,20 +18,19 @@ per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
 publishes no report; the development check (`python3 scripts/check.py`) compares
 the book code with the independent reference on the real-data bench.
 
-Research schema 18 stores facts only, no book:
+Research schema 19 stores facts only, no book:
 
 - Each saved company with its name, exchange and sector (cached metadata, not
   historical profiles) and whether it is listed now (`companies`).
 - Financial period end, assumed availability date, report market cap, enterprise
-  value, inferred EBITDA, and EBITDA/EV for valid USD reports, and the extra
-  annual inputs in `financial_inputs`.
-- Saved 10-year Treasury yields in `treasury10`.
-- The typed facts below.
+  value, inferred EBITDA, and EBITDA/EV for valid USD reports (`statements`).
+- The typed facts below: the extra annual inputs and the 10-year Treasury
+  yields are typed facts too (`annual_facts`, `market_days.year10`).
 - The one research record (`metadata`): the schema version, the accepted
-  raw-file signature (`inputs`), each price file's size and time (`prices`)
-  and the identity (below).
+  raw-file signature (`inputs`), each price file's size and time (`prices`),
+  the identity (below) and the fact diff (`changes`, below).
 
-The daily cache, `data/schedules.sqlite` (version 10), holds the book store
+The daily cache, `data/schedules.sqlite` (version 11), holds the book store
 (`backtest/inputs/book_store.py`): one row shape, one writer and every read of
 its tables: `record`, `open_book` (the one book without an exit), `completed`,
 `find`, `rows`, `lanes`, `require_scope` and `counts`. The ranked selection of
@@ -52,8 +51,8 @@ cache copies no research table. Each operation reads research only through
 this one connection. A book's rows keep the row shape that results and the
 website keep, chosen by the book itself: a dated row has the old daily
 snapshot columns and the open book's row the old latest snapshot columns
-(`price_date` is the entry session). The daily cache also keeps parsed prices, SPY sessions, 3-month
-and copied 10-year yields; only its kept-book check reads them.
+(`price_date` is the entry session). The daily cache holds only the book store
+and its binding.
 
 `books.Screen(day, facts)` is the one admission rule, and
 `Screen(...).decide(symbol, pool, exit_day)` decides one company of the latest
@@ -236,37 +235,44 @@ dated results. It owns equal weights, signed contributions, compounding and
 common-window cash. It reads no files. The
 [financial result contract](portfolio-results.md) preserves complete holding
 rows and existing application envelopes.
-`data/schedules.sqlite` is ignored. It is replaced atomically when the daily
-binding changes (the research content identity or the book code), and
-preparation refreshes it from the previous cache (below). Repeated preparation
+`data/schedules.sqlite` is ignored. When the daily binding changes, daily
+preparation updates it in place, in one transaction (below). Repeated preparation
 validates source freshness without parsing prices. Newly requested entry/exit pairs are computed once and persisted;
 filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
 does not recompute the completed pool. Empty pools are recorded as complete too.
 The book store tracks this in `book_pools`. Normal daily connections do not scan
-raw prices. An older cache, a cache without this binding or one without refresh
-evidence takes the full build path. This affects derived data only; durable
-library and queue snapshots remain independent.
+raw prices. This affects derived data only; durable library and queue snapshots
+remain independent.
 
-When the daily binding changes, preparation writes a new daily cache from the
-previous one. Prices of a company whose file bytes are unchanged are copied
-without parsing when the book identity (which binds the value rule of these
-rows, `facts.observe`) is unchanged too. A changed file is parsed, and its
-first changed day is found from a saved digest of its rows or from a row
-comparison. Saved dated books are kept as follows:
+Kept books. Every research build compares its facts with the research file it
+replaces and records the fact diff (`research.changes`): its base (the replaced
+content identity) and, per kind and company, the earliest changed row key. A
+price or annual file whose `fact_sources` sha256 and the fact-row code are both
+unchanged is not compared; the statements, the company set and the SPY and
+Treasury rows always are. Research does not decide which books stay. The
+change-day rule lives in `books.py`, next to `FORWARD_REACH`:
 
-- All books are dropped when the book code changes, or when a book input
-  without dates changes: the research companies, statements or financial
-  inputs, or the cached company set.
-- Otherwise a book is kept when it reads no input on or after the earliest
-  changed day of any price, SPY session, Treasury yield or 10-year yield. A book
-  reads nothing after the later of its exit and its entry plus
-  `books.FORWARD_REACH` (four days: the forward entry lookup).
+- Visible day (`books.VISIBLE`): a price, SPY or Treasury row, its own day; a
+  statement or a legacy annual value, its known day (fiscal + 90 days); an
+  added or removed price file, its first row day; an added or removed company,
+  its earliest known statement. Only the company set counts: dated books read
+  only whether a company exists, and selection reads names and sectors live.
+- `books.change_day` is the first visible day of the diff. `books.kept` keeps a
+  dated book when its horizon, `books.horizon` (the later of its exit and its
+  entry plus `FORWARD_REACH`, four days), is before that day. The open book is
+  never kept.
 
-A daily download therefore keeps every book whose reach ends before the new
-session. The refreshed cache equals a full build of the same inputs, and each
-kept book equals the book a full build calculates.
+Daily preparation then updates the cache in one transaction: it deletes the
+dropped books and the old open book (`book_store.delete`), rebinds the
+identity and writes the new open book. There is no temporary file and no copy
+of kept books; a failure rolls back and leaves the previous cache, through
+SQLite's own journal. A diff whose base is not the bound research content
+(research rebuilt twice before one daily update) keeps no book. A changed book
+identity, or a cache from an older version, empties the cache first. A daily
+download therefore keeps every book whose horizon ends before the new
+session, and each kept book equals the book a full build calculates.
 
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
@@ -592,11 +598,10 @@ session. Dated books use their entry session, even if a stock's first buy price
 is a later session. The filter uses
 percentage points: enter `5` for a spread above or below 5 pp.
 
-Research keeps `treasury10(day, yield_percent)` from saved `year10` fields in
-`raw/treasury.json`; books read the valid 10-year values of `market_days`
-(`facts.ten_year`). Prepared
-`financial_inputs` now includes unambiguous USD `operatingIncome` values from
-full annual income statements. Both pools and all four website modes share
+Books read the valid 10-year values that research keeps in `market_days` from
+the saved `year10` fields of `raw/treasury.json` (`facts.ten_year`). The legacy
+annual values (`facts.legacy_annual`, from `annual_facts`) include unambiguous
+USD `operatingIncome` values from full annual income statements. Both pools and all four website modes share
 `metrics.operating_yield_spread`. Missing history or Treasury values omit only
 this field. A stock fails only a condition that requires the missing field.
 Existing 3-month Treasury spreads and ranking metrics keep their formulas.
@@ -783,8 +788,9 @@ asset by a content hash. Valid full responses are reused. Invalid originals are
 backed up before repair. Interrupted publication retains a receipt for the saved
 generation. Workers fetch; one owner publishes under the shared cache lock.
 
-Schema version 7 adds `financial_inputs` for eligible numerical inputs. The raw
-cache retains the other fields for future metric preparation. Selected annual
+The legacy annual values (`financial_inputs.ENDPOINTS`, read through
+`facts.legacy_annual`) are the eligible numerical inputs. The raw cache retains
+the other fields for future metric preparation. Selected annual
 inputs must match the report selected by the original eligibility rules. No newer
 report fills an older report's missing fields. P/E and P/B use screen-date market
 cap. ROE uses average positive equity from the selected and prior fiscal years.
@@ -801,7 +807,7 @@ Annual responses can contain repeated fiscal dates. Keep every returned row, inc
 
 Research preparation writes the inputs of custom-variable formulas as typed
 tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. Research
-schema 18 versions them (the separate typed-facts version is gone); older
+schema 19 versions them (the separate typed-facts version is gone); older
 caches rebuild. The daily cache does not copy them: formulas and books read
 them through the `research` schema that the operation's one daily connection
 attaches. Preparation reads and parses each saved price, SPY and Treasury

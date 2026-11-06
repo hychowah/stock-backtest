@@ -6,7 +6,7 @@ from backtest.inputs import market
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
-from backtest.inputs import daily, facts, financial_inputs, research
+from backtest.inputs import book_store, daily, facts, financial_inputs, research
 from backtest.runtime import cache_access, diagnostics
 from backtest.financial import rules, books as financial_books, metrics
 from backtest import calendar as schedule_calendar, portfolio_results
@@ -19,7 +19,6 @@ import subprocess
 import time
 from contextlib import ExitStack,closing,redirect_stdout
 import io
-import os
 import sys
 import unittest
 from unittest.mock import patch
@@ -28,37 +27,6 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from backtest.engines.original import schedules as s
 import book_store_fixture as store
-
-
-def rows(db):
-    """A connection with named rows, as research.connect returns."""
-    db.row_factory = sqlite3.Row
-    return db
-
-
-def research_facts(db, raw, symbols):
-    """Write the typed facts that research preparation would write for a hand-built source.
-
-    Every company is a listed NYSE energy company named by its symbol. Called
-    again, it replaces the dated facts with those of the saved files now.
-    """
-    db.executescript(facts.SCHEMA.replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS '))
-    for table in ('stock_days', 'market_days', 'fact_sources', 'companies'):
-        db.execute('DELETE FROM ' + table)
-    facts.store_market(db, facts.shared(raw))
-    facts.store_companies(db, {symbol: dict(name=symbol, exchange='NYSE', sector='Energy', listed=True) for symbol in symbols})
-    for symbol in symbols:
-        facts.store_stock(db, symbol, facts.stock(raw, symbol))
-
-
-def identify(db, content):
-    """Write the research record of a hand-built source: a fixture signature and content identity."""
-    latest = db.execute('SELECT MAX(day) FROM market_days WHERE spy IS NOT NULL').fetchone()[0]
-    db.execute("DELETE FROM metadata WHERE key IN ('version','inputs','identity')")
-    db.executemany('INSERT INTO metadata VALUES(?,?)', [(key, json.dumps(value)) for key, value in dict(
-        version=research.SCHEMA_VERSION, inputs={'fixture': 1}, identity=dict(
-            version=research.SCHEMA_VERSION, latest_date=latest, code=research.code_identity('facts'),
-            content=content)).items()])
 
 
 def legacy(db, symbol, fiscal, **values):
@@ -444,121 +412,66 @@ s.backtest(db,start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
             finally:recovered.close()
 
 
-class PreparationTests(unittest.TestCase):
-    def setUp(self):
-        self.context=ExitStack();self.addCleanup(self.context.close)
-        root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
-        self.path=root/'daily.sqlite';self.source=root/'research.sqlite'
-        raw=root/'raw';(raw/'px').mkdir(parents=True)
-        (raw/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=10)])))
-        (raw/'spy-div.json').write_text(json.dumps([dict(date='2015-01-02',adjClose=100)]))
-        (raw/'treasury.json').write_text('[]')
-        db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
-        db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
-        research_facts(db,raw,['A']);identify(db,'first')
-        db.commit();db.close()
-        self.context.enter_context(patch.object(research,'RAW',raw))
-        self.context.enter_context(patch.object(research,'DATABASE',self.source))
-        self.context.enter_context(patch.object(market,'RAW',raw))
-        self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(research,'signature',return_value={'fixture':1}))
-        research.forget_signature();self.addCleanup(research.forget_signature)
-        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:rows(sqlite3.connect(self.source))))
+class KeptBookTests(unittest.TestCase):
+    """The in-place book cache after research's fact diff: the change-day rule (books.kept) through daily.prepare.
 
-    def test_publish_and_unchanged_skip(self):
-        db=sqlite3.connect(self.source)
-        db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)");db.commit();db.close()
-        with patch.object(research,'prepare') as prerequisite:
-            daily.prepare(self.path,self.source)
-        prerequisite.assert_called_once_with(self.source)
-        original=self.path.read_bytes()
-        db=daily.connect(self.path)
-        self.assertEqual([tuple(row) for row in db.execute('SELECT * FROM main.treasury10')],[('2014-12-31',3.)])
-        self.assertEqual(db.execute('SELECT COUNT(*) FROM prices').fetchone()[0],1)
-        # The latest book of the one company, and no copied research table.
-        self.assertEqual([tuple(row) for row in db.execute('SELECT entry,exit FROM books')],[('2015-01-02',None)])
-        tables={row[0] for row in db.execute("SELECT name FROM main.sqlite_master WHERE type='table'")}
-        self.assertFalse(tables&{'companies','statements','financial_inputs','periods','snapshots','period_pools'})
-        db.close()
-        read=Path.read_bytes
-        def source_only(path):
-            # The code identities read source files, never a saved raw file.
-            if path.is_relative_to(research.RAW):raise AssertionError('Unchanged preparation must not read prices')
-            return read(path)
-        with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')), \
-                patch.object(Path,'read_bytes',source_only):
-            daily.prepare(self.path,self.source)
-        self.assertEqual(self.path.read_bytes(),original)
-
-    def test_failure_preserves_previous_cache(self):
-        daily.prepare(self.path,self.source);original=self.path.read_bytes()
-        # Changed bytes are parsed again; the parse fails.
-        (research.RAW/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=11)])))
-        with closing(sqlite3.connect(self.source)) as db,db:identify(db,'second')
-        with patch.object(facts,'observe',side_effect=ValueError('bad fixture')):
-            with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
-        self.assertEqual(self.path.read_bytes(),original)
-        self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
-
-
-class RefreshTests(unittest.TestCase):
-    """A stale cache with refresh evidence must equal a full build of the same inputs."""
+    Each test edits the private raw cache once, as a download would, and runs
+    the nightly preparation: research's full build, then the book cache in
+    place. DAY is just after the horizon of the third monthly book (2015-03-02
+    to 2015-04-01): that book and the two before it stay, the later three go.
+    """
     SESSIONS=['2015-01-02','2015-02-02','2015-03-02','2015-04-01','2015-05-01','2015-06-01','2015-07-01']
     OPTIONS=dict(start='2015-01-01',end='2015-07-01',months=1,rank_to=3,min_cap=0,min_ev=0)
-    TABLES={'prices':'symbol,day','sessions':'day','treasuries':'day','treasury10':'day'}
+    DAY='2015-04-02'
+    # A fiscal date whose known day (fiscal + rules.LAG) is DAY.
+    FISCAL='2015-01-02'
 
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
         self.root=root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
-        self.path=root/'daily.sqlite';self.source=root/'research.sqlite'
         self.raw=raw=root/'raw';(raw/'px').mkdir(parents=True)
+        self.source=root/'data'/'research.sqlite';self.path=root/'data'/'schedules.sqlite'
         days=['2014-06-30']+self.SESSIONS
         for symbol,prices in [('A',[10,20,22,24,26,28,30,32]),('B',[10,10,11,12,13,12,11,10]),('C',[10,10,10,10,10,10,10,10])]:
-            (raw/'px'/f'{symbol}.json').write_text(json.dumps(dict(div=[dict(date=d,adjClose=p) for d,p in zip(days,prices)])))
-        (raw/'spy-div.json').write_text(json.dumps([dict(date=d,adjClose=100+i) for i,d in enumerate(self.SESSIONS)]))
-        (raw/'treasury.json').write_text(json.dumps([dict(date=d,month3=2) for d in self.SESSIONS]))
-        db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
-        for symbol,ebitda in [('A',30e6),('B',20e6),('C',10e6)]:
-            db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
-        db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)")
-        db.execute("INSERT INTO metadata VALUES('prices','{}')")
-        research_facts(db,raw,['A','B','C'])
-        db.commit();db.close()
+            self.write('px/'+symbol+'.json',dict(div=[dict(date=d,adjClose=p) for d,p in zip(days,prices)]))
+        self.write('universe.json',[dict(symbol=symbol,name=symbol,exchange='NYSE',sector='Energy',listed=True) for symbol in 'ABC'])
+        self.reports={symbol:[self.report('2014-06-30',ebitda)] for symbol,ebitda in [('A',30e6),('B',20e6),('C',10e6)]}
+        self.write_reports()
+        self.write('spy-div.json',[dict(date=d,adjClose=100+i) for i,d in enumerate(self.SESSIONS)])
+        self.write('treasury.json',[dict(date=d,month3=2,year10=3) for d in self.SESSIONS])
+        self.annual('A',[dict(date='2014-06-30',reportedCurrency='USD',revenue=100e6,netIncome=10e6)])
         self.generation=0
-        for owner,key,value in [(research,'RAW',raw),(market,'RAW',raw),(research,'DATABASE',self.source)]:
+        for owner,key,value in [(research,'ROOT',root),(research,'RAW',raw),(market,'RAW',raw)]:
             self.context.enter_context(patch.object(owner,key,value))
         self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(research,'signature',return_value={'fixture':1}))
+        # Each edit is a new accepted raw signature, as a data-panel action gives.
+        self.context.enter_context(patch.object(research,'signature',side_effect=lambda:{'fixture':self.generation}))
         research.forget_signature();self.addCleanup(research.forget_signature)
-        # Research preparation rewrites the dated facts from the saved files, as a full build would.
-        self.context.enter_context(patch.object(research,'prepare',side_effect=lambda source:self.research_facts()))
-        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:rows(sqlite3.connect(self.source))))
         self.context.enter_context(redirect_stdout(io.StringIO()))
-        self.accept_prices()
         daily.prepare(self.path,self.source)
-        with closing(daily.connect(self.path)) as cache:
-            self.books=s.backtest(cache,**self.OPTIONS)['periods']
-            self.saved=self.book_rows(cache)
+        self.saved=self.backtest()
         self.assertEqual(len(self.saved),6)
+        self.before=[key for key in self.saved if key[1]<self.DAY]
+        self.assertEqual(len(self.before),3)
 
-    def research_facts(self):
-        with closing(sqlite3.connect(self.source)) as db,db:
-            research_facts(db,self.raw,['A','B','C']);identify(db,str(self.generation))
+    @staticmethod
+    def report(fiscal,ebitda=20e6):
+        return dict(date=fiscal,marketCap=100e6,enterpriseValue=150e6,evToEBITDA=150e6/ebitda,reportedCurrency='USD')
 
-    def accept_prices(self):
-        """Record the price inventory as research preparation would, then make the cache stale."""
-        with closing(sqlite3.connect(self.source)) as db,db:
-            db.execute("UPDATE metadata SET value=? WHERE key='prices'",(json.dumps(research.price_sources()),))
-        self.generation+=1
+    def write(self,name,value):
+        (self.raw/name).write_text(json.dumps(value))
 
-    def append(self,day='2015-08-03'):
-        for name in ('A','B'):
-            path=self.raw/'px'/f'{name}.json';payload=json.loads(path.read_text())
-            payload['div'].insert(0,dict(date=day,adjClose=40));path.write_text(json.dumps(payload))
-        for name,row in [('spy-div.json',dict(date=day,adjClose=120)),('treasury.json',dict(date=day,month3=2.5))]:
-            path=self.raw/name;rows=json.loads(path.read_text());path.write_text(json.dumps(rows+[row]))
-        with closing(sqlite3.connect(self.source)) as db,db:db.execute('INSERT INTO treasury10 VALUES(?,4)',(day,))
-        self.accept_prices()
+    def edit(self,name,change):
+        """Change one saved JSON file; change(value) edits its parsed value."""
+        path=self.raw/name;value=json.loads(path.read_text());change(value);path.write_text(json.dumps(value))
+
+    def write_reports(self):
+        with (self.raw/'metrics.jsonl').open('w') as handle:
+            for symbol,rows in self.reports.items():
+                handle.write(json.dumps(dict(symbol=symbol,rows=rows))+'\n')
+
+    def annual(self,symbol,rows):
+        financial_inputs.publish(self.raw,symbol,'income-statement',rows,{},self.raw/'coverage.json')
 
     @staticmethod
     def book_rows(db):
@@ -571,138 +484,177 @@ class RefreshTests(unittest.TestCase):
                     for table in ('book_rows','book_filters','book_metrics')]
         return books
 
-    def contents(self,path):
-        with closing(sqlite3.connect(path)) as db:
-            return {table:sorted((tuple(row) for row in db.execute(f'SELECT * FROM {table} ORDER BY {order}')),key=repr) for table,order in self.TABLES.items()}
+    def stored(self,path=None):
+        with closing(sqlite3.connect(path or self.path)) as db:
+            return self.book_rows(db)
 
-    def full_build(self):
-        """A fresh cache of the same inputs, with the same books computed from scratch."""
-        path=self.root/'fresh.sqlite'
-        path.unlink(missing_ok=True)
-        daily.prepare(path,self.source)
-        with closing(daily.connect(path)) as fresh:
-            periods=s.backtest(fresh,**self.OPTIONS)['periods']
-            return path,periods,self.book_rows(fresh)
+    def backtest(self,path=None):
+        """Run the monthly test on a cache; return its stored dated books."""
+        with closing(daily.connect(path or self.path,self.source)) as cache:
+            s.backtest(cache,**self.OPTIONS)
+            return self.book_rows(cache)
 
-    def refresh(self):
-        """Refresh the cache; return the price files whose rows were parsed."""
-        parsed=[]
-        original=daily._price_rows
-        def recorded(payload):
-            parsed.extend(p.name for p in sorted((self.raw/'px').glob('*.json')) if json.loads(p.read_bytes())==payload)
-            return original(payload)
-        with patch.object(daily,'_price_rows',side_effect=recorded):
-            daily.prepare(self.path,self.source)
-        return parsed
+    def update(self):
+        """The nightly preparation after one edit; return research's fact diff rows."""
+        self.generation+=1
+        daily.prepare(self.path,self.source)
+        with closing(sqlite3.connect(self.source)) as db:
+            return research.changes(db)['rows']
 
-    def assert_matches_full_build(self,kept):
-        with closing(daily.connect(self.path)) as cache:
-            # Kept books are the saved originals, unchanged.
-            stored=self.book_rows(cache)
-            self.assertEqual(stored,kept)
-            periods=s.backtest(cache,**self.OPTIONS)['periods']
-            after=self.book_rows(cache)
-        path,expected,fresh=self.full_build()
-        self.assertEqual(self.contents(self.path),self.contents(path))
-        self.assertEqual(periods,expected)
-        self.assertEqual(after,fresh)
-        for key in kept:self.assertEqual(stored[key],fresh[key])
+    def assert_kept(self,kept):
+        """Exactly kept stay, unchanged; one open book at the latest date; a rerun equals a full build."""
+        self.assertEqual(self.stored(),{key:self.saved[key] for key in kept})
+        with closing(daily.connect(self.path,self.source)) as cache:
+            self.assertEqual([row[0] for row in cache.execute('SELECT entry FROM books WHERE exit IS NULL')],
+                             [research.identity(cache,'research')['latest_date']])
+        rerun=self.backtest()
+        fresh=self.root/'data'/'fresh.sqlite'
+        daily.prepare(fresh,self.source)
+        self.assertEqual(rerun,self.backtest(fresh))
 
-    def test_pure_append_keeps_every_book_and_unchanged_files_unparsed(self):
-        self.append()
-        reads=self.refresh()
-        self.assertNotIn('C.json',reads)
-        self.assertIn('A.json',reads)
-        with closing(daily.connect(self.path)) as cache:
-            self.assertEqual(cache.execute("SELECT adjusted FROM prices WHERE symbol='A' AND day='2015-08-03'").fetchone()[0],40)
-            with patch.object(financial_books,'book',side_effect=AssertionError('Kept books must be reused')):
-                self.assertEqual(s.backtest(cache,**self.OPTIONS)['periods'],self.books)
-        self.assert_matches_full_build(self.saved)
+    def test_price_row_just_after_the_horizon_keeps_the_book_and_on_it_drops_it(self):
+        self.edit('px/A.json',lambda value:value['div'].append(dict(date=self.DAY,adjClose=25)))
+        self.assertEqual(self.update(),dict(prices={'A':self.DAY},market={},statements={},annual={},companies={}))
+        self.assert_kept(self.before)
+        self.saved=self.stored()
+        self.edit('px/B.json',lambda value:next(row for row in value['div'] if row['date']=='2015-04-01').update(adjClose=99))
+        self.assertEqual(self.update()['prices'],{'B':'2015-04-01'})
+        self.assert_kept(self.before[:2])
 
-    def test_refresh_logs_copied_and_parsed_prices_and_kept_books(self):
+    def test_market_row_just_after_the_horizon_keeps_the_book(self):
+        self.edit('treasury.json',lambda rows:rows.append(dict(date=self.DAY,month3=2.5,year10=3)))
+        self.assertEqual(self.update()['market'],{'':self.DAY})
+        self.assert_kept(self.before)
+
+    def test_statement_known_just_after_the_horizon_keeps_the_book(self):
+        self.reports['B'].append(self.report(self.FISCAL,25e6));self.write_reports()
+        self.assertEqual(self.update(),dict(prices={},market={},statements={'B':self.FISCAL},annual={},companies={}))
+        self.assert_kept(self.before)
+
+    def test_legacy_annual_value_known_just_after_the_horizon_keeps_the_book(self):
+        self.annual('A',[dict(date=self.FISCAL,reportedCurrency='USD',revenue=120e6,netIncome=12e6)])
+        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={'A':self.FISCAL},companies={}))
+        self.assert_kept(self.before)
+
+    def test_added_company_is_visible_from_its_earliest_known_statement(self):
+        self.edit('universe.json',lambda rows:rows.append(dict(symbol='D',name='D',exchange='NYSE',sector='Energy',listed=True)))
+        self.reports['D']=[self.report(self.FISCAL)];self.write_reports()
+        changes=self.update()
+        self.assertEqual((changes['companies'],changes['statements']),({'D':self.FISCAL},{'D':self.FISCAL}))
+        self.assert_kept(self.before)
+
+    def test_removed_company_and_its_price_file_drop_every_book_it_could_read(self):
+        self.edit('universe.json',lambda rows:rows.pop())
+        changes=self.update()
+        self.assertEqual((changes['companies'],changes['prices']),({'C':'2014-06-30'},{'C':'2014-06-30'}))
+        self.assert_kept([])
+
+    def test_names_sectors_and_listing_are_not_book_inputs(self):
+        self.edit('universe.json',lambda rows:rows[0].update(name='Renamed',sector='Utilities',listed=False))
+        self.assertEqual(self.update(),dict(prices={},market={},statements={},annual={},companies={}))
+        self.assert_kept(list(self.saved))
+
+    def test_one_session_append_keeps_every_book_and_skips_unchanged_files(self):
         folder=self.root/'logs';self.addCleanup(diagnostics.close);diagnostics.configure(folder)
-        self.append();self.refresh()
-        daily.prepare(self.path,self.source)
-        refreshed,current=[record for record in diagnostics.records(folder) if record['event']=='prepare.daily']
-        counts=refreshed['counts']
-        self.assertEqual((refreshed['outcome'],refreshed['symbols'],counts['prices_copied'],counts['prices_parsed']),('refreshed',3,1,2))
-        self.assertEqual((refreshed['books_previous'],refreshed['books_kept'],refreshed['changed_from']),(6,6,'2015-08-03'))
-        self.assertLessEqual({'admission','research','input_check','copy_research','prices','market','keep_books','publication'},refreshed['stages'].keys())
-        self.assertEqual(current['outcome'],'current')
-
-    def test_historical_edit_drops_only_books_that_can_read_it(self):
-        path=self.raw/'px'/'A.json';payload=json.loads(path.read_text())
-        next(row for row in payload['div'] if row['date']=='2015-04-01')['adjClose']=99
-        path.write_text(json.dumps(payload));self.accept_prices()
-        self.refresh()
-        # Books that exit on or after the edited day, or whose entry window
-        # reaches it, are dropped; earlier books are kept unchanged.
-        kept={key:value for key,value in self.saved.items() if key[1]<'2015-04-01'}
-        self.assertEqual(len(kept),2)
-        self.assert_matches_full_build(kept)
-
-    def test_changed_bytes_with_a_kept_stamp_are_parsed(self):
-        # A restore that keeps size and timestamps must not hide changed rows.
-        path=self.raw/'px'/'A.json';text=path.read_text();stamp=path.stat()
-        path.write_text(text.replace('"adjClose": 26','"adjClose": 62'))
-        os.utime(path,ns=(stamp.st_atime_ns,stamp.st_mtime_ns))
-        self.assertEqual([path.stat().st_size,path.stat().st_mtime_ns],[stamp.st_size,stamp.st_mtime_ns])
-        self.generation+=1
-        self.assertIn('A.json',self.refresh())
-        self.assert_matches_full_build({key:value for key,value in self.saved.items() if key[1]<'2015-04-01'})
-
-    def test_statement_change_drops_every_book(self):
-        with closing(sqlite3.connect(self.source)) as db,db:
-            db.execute("UPDATE statements SET ebitda=40e6,ebitda_yield=40e6/150e6 WHERE symbol='B'")
-        self.generation+=1
-        self.refresh()
-        self.assert_matches_full_build({})
-
-    def test_changed_book_code_drops_books_and_their_price_rows(self):
-        # The book identity binds facts.observe, the rule of the daily price rows too.
-        with closing(sqlite3.connect(self.path)) as db,db:
-            binding=json.loads(daily.binding(db));binding['books']='0'*64
-            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(binding),))
-        reads=self.refresh()
-        self.assertEqual({'A.json','B.json','C.json'},set(reads))
-        self.assert_matches_full_build({})
-
-    def test_cache_without_refresh_evidence_is_rebuilt(self):
-        with closing(sqlite3.connect(self.path)) as db,db:db.execute("DELETE FROM metadata WHERE key='refresh'")
-        self.append()
-        daily.prepare(self.path,self.source)
-        self.assert_matches_full_build({})
-
-    def test_failed_refresh_keeps_previous_cache_and_books(self):
-        before=self.contents(self.path)
-        self.append()
-        with patch.object(daily,'_dated_change',side_effect=ValueError('bad fixture')):
-            with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
-        self.assertEqual(self.contents(self.path),before)
-        self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
-        with closing(sqlite3.connect(self.path)) as db:self.assertEqual(self.book_rows(db),self.saved)
+        day='2015-08-03'
+        for name in ('A','B'):
+            self.edit(f'px/{name}.json',lambda value:value['div'].insert(0,dict(date=day,adjClose=40)))
+        self.edit('spy-div.json',lambda rows:rows.append(dict(date=day,adjClose=120)))
+        self.edit('treasury.json',lambda rows:rows.append(dict(date=day,month3=2.5,year10=4)))
+        self.assertEqual(self.update(),dict(prices={'A':day,'B':day},market={'':day},statements={},annual={},companies={}))
+        with closing(daily.connect(self.path,self.source)) as cache:
+            with patch.object(financial_books,'book',side_effect=AssertionError('Kept books must be reused')):
+                s.backtest(cache,**self.OPTIONS)
+        self.assert_kept(list(self.saved))
+        prepared=[record for record in diagnostics.records(folder) if record['event'] in ('prepare.research','prepare.daily')]
+        built,refreshed=prepared[0],prepared[1]
+        self.assertEqual((built['counts']['price_files_compared'],built['counts']['price_files_skipped']),(2,1))
+        self.assertEqual((refreshed['outcome'],refreshed['books_previous'],refreshed['books_kept'],refreshed['changed_from']),
+                         ('refreshed',7,6,day))
+        self.assertLessEqual({'research','input_check','drop_books','latest_book','commit'},refreshed['stages'].keys())
 
     def test_short_book_reach_covers_prices_after_its_exit(self):
         for name,price in [('A',23),('B',11),('C',10)]:
-            path=self.raw/'px'/f'{name}.json';payload=json.loads(path.read_text())
-            payload['div'].append(dict(date='2015-03-04',adjClose=price));path.write_text(json.dumps(payload))
-        path=self.raw/'spy-div.json';rows=json.loads(path.read_text())
-        path.write_text(json.dumps(rows+[dict(date='2015-03-04',adjClose=103)]))
-        self.accept_prices();self.refresh()
+            self.edit(f'px/{name}.json',lambda value:value['div'].append(dict(date='2015-03-04',adjClose=price)))
+        self.edit('spy-div.json',lambda rows:rows.append(dict(date='2015-03-04',adjClose=103)))
+        self.update()
         short=dict(dates=['2015-03-02'],start='2015-03-01',end='2015-03-04',rank_to=3,min_cap=0,min_ev=0)
-        with closing(daily.connect(self.path)) as cache:
+        with closing(daily.connect(self.path,self.source)) as cache:
             s.backtest_dates(cache,**short)
-            before=self.book_rows(cache)
-        self.assertIn(('2015-03-02','2015-03-04','legacy'),before)
-        # A price after the two-day book's exit, but within its entry reach.
-        path=self.raw/'px'/'A.json';payload=json.loads(path.read_text())
-        payload['div'].append(dict(date='2015-03-06',adjClose=23.5));path.write_text(json.dumps(payload))
-        self.accept_prices();self.refresh()
-        with closing(daily.connect(self.path)) as cache:after=self.book_rows(cache)
-        self.assertNotIn(('2015-03-02','2015-03-04','legacy'),after)
-        self.assertEqual(after,{key:value for key,value in before.items()
-            if max(date.fromisoformat(key[1]),date.fromisoformat(key[0])+financial_books.FORWARD_REACH)<date(2015,3,6)})
-        self.assertEqual(len(after),2)
+        before=self.stored()
+        key=('2015-03-02','2015-03-04','legacy')
+        self.assertEqual(financial_books.horizon(date(2015,3,2),date(2015,3,4)),date(2015,3,6))
+        # A price after the two-day book's exit and after its entry reach keeps it; one within the reach drops it.
+        for day,stays in (('2015-03-07',True),('2015-03-06',False)):
+            self.edit('px/A.json',lambda value:value['div'].append(dict(date=day,adjClose=23.5)))
+            self.update()
+            after=self.stored()
+            self.assertEqual(key in after,stays,day)
+            self.assertEqual(after,{book:value for book,value in before.items()
+                if financial_books.horizon(date.fromisoformat(book[0]),date.fromisoformat(book[1]))<date.fromisoformat(day)})
+            before=after
+
+    def test_interrupted_update_leaves_the_previous_cache(self):
+        before=self.path.read_bytes()
+        self.edit('px/A.json',lambda value:value['div'].append(dict(date=self.DAY,adjClose=25)))
+        original=financial_books.book
+        def interrupted(entry,exit_day,*args):
+            if exit_day is None:raise KeyboardInterrupt()
+            return original(entry,exit_day,*args)
+        self.generation+=1
+        with patch.object(financial_books,'book',side_effect=interrupted):
+            with self.assertRaises(KeyboardInterrupt):daily.prepare(self.path,self.source)
+        # The deletes, the binding and the open book roll back together.
+        self.assertEqual(self.path.read_bytes(),before)
+        self.assertFalse(self.path.with_name(self.path.name+'-journal').exists())
+        self.assertEqual(self.stored(),self.saved)
+        daily.prepare(self.path,self.source)
+        self.assert_kept(self.before)
+
+    def test_book_identity_change_empties_and_refills_the_cache(self):
+        with closing(sqlite3.connect(self.path)) as db,db:
+            binding=json.loads(daily.binding(db));binding['books']='0'*64
+            db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(binding),))
+        daily.prepare(self.path,self.source)
+        self.assertEqual(self.stored(),{})
+        self.assertEqual(self.backtest(),self.saved)
+
+    def test_older_version_cache_is_rebuilt_from_empty(self):
+        self.path.unlink()
+        with closing(sqlite3.connect(self.path)) as db,db:
+            db.executescript('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);'
+                             'CREATE TABLE prices(symbol TEXT,day TEXT,adjusted REAL,PRIMARY KEY(symbol,day)) WITHOUT ROWID;')
+            db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",(json.dumps(dict(version=daily.VERSION-1,research='old',books='old')),))
+        daily.prepare(self.path,self.source)
+        with closing(daily.connect(self.path,self.source)) as cache:
+            self.assertNotIn('prices',{row[0] for row in cache.execute("SELECT name FROM main.sqlite_master WHERE type='table'")})
+            self.assertEqual(json.loads(daily.binding(cache))['version'],daily.VERSION)
+        self.assertEqual(self.backtest(),self.saved)
+
+    def test_a_diff_from_another_base_keeps_no_book(self):
+        # Two research builds before one book-cache update: the second diff's base is not the bound research.
+        for day in ('2015-08-03','2015-09-01'):
+            self.edit('px/A.json',lambda value:value['div'].append(dict(date=day,adjClose=25)))
+            self.generation+=1
+            research.prepare(self.source)
+        daily.prepare(self.path,self.source)
+        self.assert_kept([])
+
+    def test_current_cache_reads_no_raw_file(self):
+        original=self.path.read_bytes()
+        read=Path.read_bytes
+        def source_only(path):
+            # The code identities read source files, never a saved raw file.
+            if path.is_relative_to(self.raw):raise AssertionError('Unchanged preparation must not read prices')
+            return read(path)
+        with patch.object(Path,'read_text',side_effect=AssertionError('Unchanged preparation must not parse prices')), \
+                patch.object(Path,'read_bytes',source_only):
+            daily.prepare(self.path,self.source)
+        self.assertEqual(self.path.read_bytes(),original)
+        with closing(sqlite3.connect(self.path)) as db:
+            # The daily cache holds the book store and its binding only.
+            self.assertEqual({row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")},
+                             {'metadata',*book_store.TABLES})
 
 
 if __name__=='__main__':unittest.main()

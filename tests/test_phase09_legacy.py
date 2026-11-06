@@ -6,7 +6,8 @@ projections and completion, financial rows, latest filter rows, and both
 selection orders over latest and dated book rows. P3b moved the latest book into
 the daily cache's book store: its filter rows keep the frozen
 (mode, pool, year 0, symbol, field, value) form, and a dated row no longer
-carries the private period id (year).
+carries the private period id (year). P3c2 deleted the research financial_inputs
+table: the financial rows are the typed annual facts' values-only projection.
 """
 import sys
 from pathlib import Path
@@ -17,7 +18,7 @@ import json
 import unittest
 
 from backtest import screening
-from backtest.inputs import book_store, daily, financial_inputs as financial, research
+from backtest.inputs import book_store, daily, facts, financial_inputs as financial, research
 import test_research
 import test_selection_order
 
@@ -37,11 +38,12 @@ def replay():
         projections = {symbol: financial.history(research.RAW, symbol) for symbol in inputs}
         completion = {symbol: {endpoint: financial.completed(research.RAW, symbol, endpoint, ledger)
                               for endpoint in financial.ENDPOINTS} for symbol in inputs}
-        research.prepare(fixture.path)
-        with closing(research.connect(fixture.path)) as db:
-            financial_rows = [tuple(row) for row in db.execute('SELECT * FROM financial_inputs ORDER BY symbol,fiscal')]
         daily.prepare(fixture.daily, fixture.path)
         with closing(daily.connect(fixture.daily, fixture.path)) as db:
+            # The legacy values-only rows (symbol, fiscal, JSON), now read from the typed annual facts.
+            financial_rows = [(symbol, fiscal, json.dumps(values))
+                              for symbol, in db.execute('SELECT DISTINCT symbol FROM research.annual_facts ORDER BY symbol')
+                              for fiscal, values in sorted(facts.legacy_annual(db, symbol).items())]
             book = book_store.open_book(db)
             filters = sorted(('latest', pool, 0, symbol, field, value) for pool in ('legacy', 'cached')
                              for symbol, found in book_store.lanes(db, book, pool)[1].items() for field, value in found.items())
