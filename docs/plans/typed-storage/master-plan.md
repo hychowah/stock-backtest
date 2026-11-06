@@ -176,7 +176,7 @@ per schema).
   (holdings, ranks and traces do not); a latest `INELIGIBLE_VALUATION` root
   (9) carries no valuation.
 
-#### P3c1. One identity per role, the store's reads, scopes by id (done)
+#### P3c1. One identity per role, the store's reads, scopes by id (done, 56d9483)
 
 - Identities (`research.code_sources(role)`, the one role rule): content
   digests. Research (`facts`): `research.py`, `facts.py`, `books.py`,
@@ -209,7 +209,15 @@ per schema).
   deletes it); a book-code change also re-parses the daily price rows (the
   book identity binds `facts.observe`); latest receipts keep
   `prepared_period` null; coverage report version 4 drops `price_binding`.
-- Evidence: see the P3c1 commits.
+- Evidence (56d9483, cold build): the four digests equal 1e3596d (rows,
+  summaries, traces). Record by record, the only differing fields are the
+  listed ones: latest `owner_scope.book` 0 to the open book id (30 requests,
+  contexts and roots), `input`, `projection`, receipt `policy.executor`,
+  block `generation`/`projection`/`policy`, timings. Dev check 0
+  differences; harness 16 runs, 0 different; real-data website checks pass.
+  Cold build 251 s: research 153 (companies 150), daily 98 (prices 94).
+  `research.sqlite` 1.31 GB; `schedules.sqlite` 0.80 GB before books, 5.26 GB
+  with 1,378 books. User test 381.1 s computed, 153.0 s saved.
 
 #### P3c2. Kept books, the in-place cache and the deletes
 
