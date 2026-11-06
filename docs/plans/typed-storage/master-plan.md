@@ -41,6 +41,13 @@ research 249 s (companies 65, dated facts 182), daily 86 s. `research.sqlite`
 2.06 GB (−172 MB); `schedules.sqlite` 1.10 GB before books, 10.80 GB after.
 User test 483.1 s computed, 180.6 s saved: no change.
 
+P2c (83a40dc, cold build): digests equal P2b; rows equal apart from status.
+`Marked to date` → `Scheduled exit`: random 30,091, custom 450, dev-check run 0.
+Dev check: 0 differences from revalue and the frozen report. Cold build 360 s
+(research 269, daily 91); user test 513.5 s computed, 190.6 and 196.5 s saved.
+Every stage ran ~7% slower than P2b (busier machine); same-day saved digest:
+192.8 s on P2b code, 189.4 s on P2c.
+
 ## Decisions
 
 These are binding (2026-11-05/06).
@@ -170,7 +177,7 @@ agent each. Re-check every dependency by grep first.
   bootstrap report, `test_offline_preparation`, `results/README.md`,
   `test_phase09_legacy`.
 
-#### P2c. Review follow-up and two user decisions (done)
+#### P2c. Review follow-up and two user decisions (done, 83a40dc)
 
 - Labels ("follow your recommendation"): a stored book row records only how a
   holding exited (`Scheduled exit`, `Last available price`, `Bankruptcy`).
