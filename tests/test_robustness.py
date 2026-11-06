@@ -31,12 +31,12 @@ class RobustnessTests(unittest.TestCase):
         self.db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         self.db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
         self.db.execute("INSERT INTO statements VALUES('A','2015-06-30','2015-09-28',100000000,150000000,30000000,.2)")
-        self.db.execute("INSERT INTO prices VALUES('A','2014-06-30',10,10)")
+        self.db.execute("INSERT INTO prices VALUES('A','2014-06-30',10)")
         day=date(2015,1,1);i=0
         while day<=date(2016,12,30):
             if day.weekday()<5:
                 self.db.execute('INSERT INTO sessions VALUES(?,?)',(str(day),100+i*.02))
-                self.db.execute("INSERT INTO prices VALUES('A',?,?,?)",(str(day),10+i*.01,10+i*.01));i+=1
+                self.db.execute("INSERT INTO prices VALUES('A',?,?)",(str(day),10+i*.01));i+=1
             day+=timedelta(days=1)
         self.db.commit()
 
@@ -116,7 +116,7 @@ class RobustnessTests(unittest.TestCase):
     def test_selection_order_survives_plan_and_reuses_random_books(self):
         self.db.execute("INSERT INTO companies VALUES('B','B','NYSE','Technology')")
         self.db.execute("INSERT INTO statements SELECT 'B',fiscal,known,market_cap,enterprise_value,ebitda/2,ebitda_yield/2 FROM statements WHERE symbol='A'")
-        self.db.execute("INSERT INTO prices SELECT 'B',day,price,adjusted FROM prices WHERE symbol='A'")
+        self.db.execute("INSERT INTO prices SELECT 'B',day,adjusted FROM prices WHERE symbol='A'")
         self.db.commit()
         options=dict(trials=2,seed=11,pool='cached',sector='Technology')
         first=self.config(**options);captured=[]

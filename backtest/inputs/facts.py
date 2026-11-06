@@ -2,15 +2,15 @@
 
 Research preparation resolves saved files into these tables in its build
 transaction. Annual statements use financial_inputs.resolve_history; saved
-stock, Treasury and SPY rows use resolve() below, which parses each file once
-into the observation fields and the book columns.
+stock, Treasury and SPY rows use resolve() below, which parses each file once.
 
-- stock_days: one row per company and saved price day, keyed by date: the
-  observation fields and the book columns book_price and book_adjusted.
-- market_days: valid SPY sessions (spy), saved Treasury days and the book
-  columns book_spy, book_month3 and book_year10 (both yields in percent).
+- stock_days: one row per company and saved price day, keyed by date, with the
+  observation fields.
+- market_days: valid SPY sessions (spy) and saved Treasury days (both yields
+  in percent).
 - annual_facts: one row per company, statement endpoint and fiscal date, with
   one value and one reason column per annual catalog field.
+- company_facts: whether each saved company is currently listed.
 - fact_sources: the source file digest and disposition per company and
   endpoint; the empty symbol names the shared Treasury and SPY files.
 - latest_admission: latest-root admission and its valuation per company and pool.
@@ -20,16 +20,15 @@ A field is valid when its value is present; otherwise its reason column names
 the provider reason. A saved day or fiscal date always has a value or a reason
 for each of its endpoint's fields. Value columns have no declared type, so
 SQLite keeps the binary64 bits exactly, including -0.0, which a REAL column
-stores as the integer 0. Prepared owner lanes are the stored latest book
-(latest_snapshots, screening_metrics, filter_values); they are read in place.
+stores as the integer 0. The readers still read the stored latest book from
+latest_snapshots, screening_metrics and filter_values (typed-storage P3b
+switches them).
 
-Book columns follow the book rules, which differ from the observation rules
-on a duplicate day: the largest adjusted close, the last light price and the
-last Treasury value in file order, with no currency check. A company with a
-light series values its book price from that series only. A day can have book
-columns and no observation fields, and the reverse. BookFacts is the one
-price-lookup interface that books read; legacy_annual() and ten_year() are
-the only readers of legacy annual values and the 10-year yield.
+One rule gives a day its value: equal admissible values agree, and a
+conflicting, non-USD or invalid value gives no value and a reason. books.book
+reads the valid values through BookFacts. Today books.book (the latest book of
+the daily cache) and the View's derived-context readers call legacy_annual()
+and ten_year(); the dated books of the daily cache still read its copied tables.
 
 A View borrows the operation's daily and research connections. The caller's
 cache ownership keeps both unchanged while the view is open.
@@ -46,7 +45,7 @@ from backtest.financial import books, rules
 from backtest.inputs import cache_assets, financial_inputs, market
 from backtest.variables import parameters
 
-VERSION = 2
+VERSION = 3
 MAX_HISTORY = 16384
 STOCK = 'historical-price-eod/dividend-adjusted'
 TREASURY = 'treasury-rates'
@@ -71,12 +70,12 @@ _LEGACY = tuple((endpoint, tuple((field, _BY_FIELD[endpoint, field]) for field i
 
 SCHEMA = '''
 CREATE TABLE stock_days(symbol TEXT, day TEXT, adjusted, adjusted_reason TEXT, volume, volume_reason TEXT,
- book_price REAL, book_adjusted REAL, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
-CREATE TABLE market_days(day TEXT PRIMARY KEY, spy, month3, month3_reason TEXT, year10, year10_reason TEXT,
- book_spy REAL, book_month3 REAL, book_year10 REAL) WITHOUT ROWID;
+ PRIMARY KEY(symbol,day)) WITHOUT ROWID;
+CREATE TABLE market_days(day TEXT PRIMARY KEY, spy, month3, month3_reason TEXT, year10, year10_reason TEXT) WITHOUT ROWID;
 CREATE TABLE annual_facts(symbol TEXT, endpoint TEXT, fiscal TEXT, ''' + ', '.join(
     column + ', ' + column + '_reason TEXT' for column, _, _ in ANNUAL) + ''',
  PRIMARY KEY(symbol,endpoint,fiscal)) WITHOUT ROWID;
+CREATE TABLE company_facts(symbol TEXT PRIMARY KEY, listed INTEGER NOT NULL) WITHOUT ROWID;
 CREATE TABLE fact_sources(symbol TEXT, endpoint TEXT, sha256 TEXT, disposition TEXT NOT NULL,
  PRIMARY KEY(symbol,endpoint)) WITHOUT ROWID;
 CREATE TABLE latest_admission(symbol TEXT, pool TEXT, admitted INTEGER NOT NULL, reason TEXT,
@@ -111,113 +110,19 @@ def row_day(row):
         return None
 
 
-def _book_number(value):
-    """rules.num, with a number too large for a float unavailable."""
-    try:
-        return rules.num(value)
-    except OverflowError:
-        return None
+def observe(rows, fields, checkpoint=lambda: None):
+    """{day: {field: state}} of saved dated rows: the one value rule of a day.
 
-
-def bars(payload, key):
-    """(day, value) of every saved row with a positive value, in date order."""
-    result = []
-    for row in payload:
-        if not isinstance(row, dict):
-            continue
-        value = _book_number(row.get(key))
-        try:
-            day = date.fromisoformat(str(row.get('date', ''))[:10])
-        except ValueError:
-            continue
-        if value is not None and value > 0:
-            result.append((day, value))
-    return sorted(result)
-
-
-def book_prices(payload):
-    """{day: (price, adjusted)} of one parsed price file, in date order: the book rule.
-
-    adjusted is the day's largest positive adjusted close. price is the last
-    positive light price (price, else close) in file order when the file has
-    a light series, otherwise adjusted; the two scales never mix.
+    Equal admissible values agree; different ones are CONFLICTING_INPUT. An
+    explicit foreign currency disqualifies only a price, never volume. A
+    price must be positive, a volume non-negative; all signed rates are valid.
     """
-    adjusted = dict(bars(payload.get('div') or [], 'adjClose'))
-    light = {}
-    rows = payload.get('light')
-    for row in rows if isinstance(rows, list) else []:
-        if isinstance(row, dict):
-            value = row.get('price') if row.get('price') is not None else row.get('close')
-            light.update(bars([dict(date=row.get('date'), value=value)], 'value'))
-    valuation = light or adjusted
-    return {str(day): (valuation.get(day), adjusted.get(day)) for day in sorted(valuation.keys() | adjusted.keys())}
-
-
-def _book_market(endpoint, rows):
-    """Book values of the SPY rows ({day: close}) or the Treasury rows ({day: (month3, year10)}).
-
-    SPY keeps the day's largest positive close; each Treasury field keeps its
-    last finite value in file order.
-    """
-    if endpoint == CALENDAR:
-        closes = []
-        for row in rows:
-            if isinstance(row, dict) and (day := rules.parse_day(row.get('date'))) is not None \
-                    and (value := _book_number(row.get('adjClose'))) is not None and value > 0:
-                closes.append((day, value))
-        return {str(day): value for day, value in sorted(closes)}
-    fields = dict(month3={}, year10={})
-    for row in rows:
-        if isinstance(row, dict) and (day := rules.parse_day(row.get('date'))) is not None:
-            for name, values in fields.items():
-                if (value := _book_number(row.get(name))) is not None:
-                    values[str(day)] = value
-    return {day: (fields['month3'].get(day), fields['year10'].get(day))
-            for day in sorted(fields['month3'].keys() | fields['year10'].keys())}
-
-
-def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None):
-    """Return the source, the field states of each saved day and the book values of one file.
-
-    The file is read and parsed once. Equal admissible values agree; different
-    ones are CONFLICTING_INPUT. Currency-free stock routes use the admitted
-    USD-company/share basis. Explicit foreign currency disqualifies only price,
-    never volume. All signed rates are valid. The source is always complete.
-    book holds book_prices() of a stock file, or the SPY or Treasury book values.
-    """
-    source = dict(endpoint=endpoint, sha256=None, disposition='missing')
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        return dict(source=source, dated={}, book={})
-    checkpoint()
-    source.update(sha256=hashlib.sha256(content).hexdigest(), disposition='unreadable')
-    try:
-        payload = json.loads(content)
-        rows = payload.get('div') if stock and isinstance(payload, dict) else payload
-        if endpoint == CALENDAR and isinstance(rows, dict):
-            # Match the retained SPY reader. Wrapper metadata is not a receipt.
-            rows = rows.get('historical') or rows.get('data') or []
-        if not isinstance(rows, list):
-            return dict(source=source, dated={}, book={})
-    except (ValueError, UnicodeDecodeError):
-        return dict(source=source, dated={}, book={})
-    if len(rows) > MAX_HISTORY:
-        raise ValueError('Prepared observation history exceeds its bound.')
-    field = 'month3' if endpoint == TREASURY else 'adjClose'
-    try:
-        valid = cache_assets.checked_series(payload, field, stock=stock)[0]
-    except (ValueError, TypeError, OverflowError):
-        valid = False
-    source['disposition'] = 'valid' if valid else 'salvaged'
-    book = (book_prices(payload) if isinstance(payload, dict) else {}) if stock else _book_market(endpoint, rows)
     grouped = {}
     for row in rows:
         day = row_day(row)
         if day is not None:
             grouped.setdefault(day, []).append(row)
     dated = {}
-    fields = ('month3', 'year10') if endpoint == TREASURY else ('adjClose', 'volume') if stock else ('adjClose',)
     for day, variants in grouped.items():
         checkpoint()
         states = {}
@@ -238,7 +143,42 @@ def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None):
             states[field] = dict(value=next(iter(candidates)) if reason is None else None,
                                  valid=reason is None, reason=reason)
         dated[day] = states
-    return dict(source=source, dated=dated, book=book)
+    return dated
+
+
+def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None):
+    """Return the source and the field states of each saved day of one file.
+
+    The file is read and parsed once. A stock file is a mapping whose 'div'
+    rows are dated; any other content is unreadable. Currency-free stock routes
+    use the admitted USD-company/share basis. The source is always complete.
+    """
+    source = dict(endpoint=endpoint, sha256=None, disposition='missing')
+    try:
+        content = path.read_bytes()
+    except FileNotFoundError:
+        return dict(source=source, dated={})
+    checkpoint()
+    source.update(sha256=hashlib.sha256(content).hexdigest(), disposition='unreadable')
+    try:
+        payload = json.loads(content)
+    except (ValueError, UnicodeDecodeError):
+        return dict(source=source, dated={})
+    rows = (payload.get('div') if isinstance(payload, dict) else None) if stock else payload
+    if endpoint == CALENDAR and isinstance(rows, dict):
+        # Match the retained SPY reader. Wrapper metadata is not a receipt.
+        rows = rows.get('historical') or rows.get('data') or []
+    if not isinstance(rows, list):
+        return dict(source=source, dated={})
+    if len(rows) > MAX_HISTORY:
+        raise ValueError('Prepared observation history exceeds its bound.')
+    try:
+        valid = cache_assets.valid_series(payload, 'month3' if endpoint == TREASURY else 'adjClose', stock=stock)
+    except (ValueError, TypeError, OverflowError):
+        valid = False
+    source['disposition'] = 'valid' if valid else 'salvaged'
+    fields = ('month3', 'year10') if endpoint == TREASURY else ('adjClose', 'volume') if stock else ('adjClose',)
+    return dict(source=source, dated=observe(rows, fields, checkpoint))
 
 
 def stock(raw, symbol, checkpoint=lambda: None):
@@ -279,12 +219,11 @@ def store_annual(db, symbol, resolution):
 
 
 def store_stock(db, symbol, resolution):
-    """Write the saved days of one price file: observation fields and book columns."""
+    """Write the saved days of one price file."""
     _source(db, symbol, resolution['source'])
-    dated, book = resolution['dated'], resolution['book']
-    db.executemany('INSERT INTO stock_days VALUES(?,?,?,?,?,?,?,?)', (
-        (symbol, day, *((*_pair(dated[day]['adjClose']), *_pair(dated[day]['volume'])) if day in dated else (None,) * 4),
-         *book.get(day, (None, None))) for day in sorted(dated.keys() | book.keys())))
+    dated = resolution['dated']
+    db.executemany('INSERT INTO stock_days VALUES(?,?,?,?,?,?)', (
+        (symbol, day, *_pair(dated[day]['adjClose']), *_pair(dated[day]['volume'])) for day in sorted(dated)))
 
 
 def store_market(db, resolutions):
@@ -299,10 +238,13 @@ def store_market(db, resolutions):
     for day, states in treasury['dated'].items():
         row = days.setdefault(day, [None, None, None, None, None])
         row[1:] = [*_pair(states['month3']), *_pair(states['year10'])]
-    spy, yields = calendar['book'], treasury['book']
-    db.executemany('INSERT INTO market_days VALUES(?,?,?,?,?,?,?,?,?)', (
-        (day, *days.get(day, (None,) * 5), spy.get(day), *yields.get(day, (None, None)))
-        for day in sorted(days.keys() | spy.keys() | yields.keys())))
+    db.executemany('INSERT INTO market_days VALUES(?,?,?,?,?,?)', ((day, *days[day]) for day in sorted(days)))
+
+
+def store_companies(db, universe):
+    """Write whether each saved company is currently listed (universe 'listed' is True)."""
+    db.executemany('INSERT INTO company_facts VALUES(?,?)',
+                   ((symbol, int(company.get('listed') is True)) for symbol, company in universe.items()))
 
 
 def store_latest(db, symbol, pool, evidence):
@@ -314,7 +256,7 @@ def store_latest(db, symbol, pool, evidence):
                 valuation.get('enterprise_value'), valuation.get('ebitda')))
 
 
-# Book facts: the only readers of legacy annual values and the 10-year yield.
+# Book facts: what books.book and the derived-context readers read.
 
 def legacy_annual(db, symbol, checkpoint=lambda: None):
     """{fiscal: {field: value}} of the valid legacy annual values of one company.
@@ -340,42 +282,62 @@ def legacy_annual(db, symbol, checkpoint=lambda: None):
 
 
 def ten_year(db, day):
-    """(day, percent) of the latest saved 10-year Treasury value on or before day, or None."""
-    row = db.execute('SELECT day,book_year10 FROM market_days WHERE day<=? AND book_year10 IS NOT NULL '
+    """(day, percent) of the latest valid 10-year Treasury value on or before day, or None."""
+    row = db.execute('SELECT day,year10 FROM market_days WHERE day<=? AND year10 IS NOT NULL '
                      'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
     return None if row is None else (row[0], row[1])
 
 
 class BookFacts:
-    """The one price-lookup interface of books.book over a research connection.
+    """The facts port of books.Screen and books.book over a research connection.
 
-    Reads the book columns only. Each company's legacy annual values are read
-    once per instance; the caller keeps the connection unchanged while it is used.
+    reports() is (broad, legacy) as books.pools gives it; cached() holds the
+    companies with a saved price file; companies() maps each saved company to
+    whether it is listed. price() reads the valid adjusted closes, spy() a
+    valid SPY session, treasury() and ten_year() the valid yields. Each input
+    is read once per instance; the caller keeps the connection unchanged while
+    it is used.
     """
-    _COLUMNS = dict(price='book_price', adjusted='book_adjusted')
 
     def __init__(self, db):
         self.db = db
-        self._annual = {}
+        self._annual, self._reports, self._cached, self._companies = {}, None, None, None
 
-    def price(self, symbol, day, column, forward=False, slack=None):
-        """(day, value) of the nearest saved book price on or before (after, if forward) day within slack days."""
-        name = self._COLUMNS[column]
+    def reports(self):
+        if self._reports is None:
+            from backtest.inputs import daily
+            self._reports = daily.histories(self.db)
+        return self._reports
+
+    def cached(self):
+        if self._cached is None:
+            self._cached = {row[0] for row in self.db.execute(
+                "SELECT symbol FROM fact_sources WHERE endpoint=? AND disposition!='missing'", (STOCK,))}
+        return self._cached
+
+    def companies(self):
+        if self._companies is None:
+            self._companies = {symbol: bool(listed) for symbol, listed in self.db.execute(
+                'SELECT symbol,listed FROM company_facts')}
+        return self._companies
+
+    def price(self, symbol, day, forward=False, slack=None):
+        """(day, adjusted close) nearest on or before (on or after, if forward) day within slack days, or None."""
         operator, order = ('>=', 'ASC') if forward else ('<=', 'DESC')
-        row = self.db.execute(f'SELECT day,{name} FROM stock_days WHERE symbol=? AND day{operator}? AND {name} IS NOT NULL '
-                              f'ORDER BY day {order} LIMIT 1', (symbol, str(day))).fetchone()
+        row = self.db.execute(f'SELECT day,adjusted FROM stock_days WHERE symbol=? AND day{operator}? '
+                              f'AND adjusted IS NOT NULL ORDER BY day {order} LIMIT 1', (symbol, str(day))).fetchone()
         if row is None:
             return None
         result = (date.fromisoformat(row[0]), row[1])
         return result if slack is None or abs((result[0] - day).days) <= slack else None
 
     def spy(self, day):
-        row = self.db.execute('SELECT book_spy FROM market_days WHERE day=? AND book_spy IS NOT NULL', (str(day),)).fetchone()
+        row = self.db.execute('SELECT spy FROM market_days WHERE day=? AND spy IS NOT NULL', (str(day),)).fetchone()
         return None if row is None else row[0]
 
     def treasury(self, day):
-        """The latest saved 3-month Treasury yield on or before day, as a fraction, or None."""
-        row = self.db.execute('SELECT book_month3 FROM market_days WHERE day<=? AND book_month3 IS NOT NULL '
+        """The latest valid 3-month Treasury yield on or before day, as a fraction, or None."""
+        row = self.db.execute('SELECT month3 FROM market_days WHERE day<=? AND month3 IS NOT NULL '
                               'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
         return None if row is None else row[0] / 100
 
@@ -612,29 +574,27 @@ class View:
         self._open()
         calls = []
 
-        def lookup(when, column, forward, slack):
-            result = self.lookup(symbol, when, column, forward, slack)
-            calls.append(dict(requested_date=str(when), column=column, forward=forward, slack=slack,
+        def lookup(when, forward, slack):
+            result = self.lookup(symbol, when, forward, slack)
+            # 'price' is the stored explanation label of a valuation lookup.
+            calls.append(dict(requested_date=str(when), column='price', forward=forward, slack=slack,
                               observation=[str(result[0]), result[1]] if result else None))
             return result
-        value = books.entry_valuation(statement, day, lookup)
+        reason, value = books.admit(statement, day, lookup, books.ENTRY_SLACK)
         evidence = dict(lookup_policy='existing-entry-valuation', lookups=calls, statement=_detached(statement),
-                        reason=None if value else ('MISSING_PRICE' if any(c['observation'] is None for c in calls)
-                                                  else 'NONPOSITIVE_VALUATION'))
+                        reason=reason)
         if value is None:
             return None, evidence
         fiscal, entry, cap, ev, ebitda = value
-        if not all(math.isfinite(number) for number in (cap, ev, ebitda)):
-            return None, dict(evidence, reason='NONFINITE_RESULT')
         return dict(market_cap=cap, enterprise_value=ev, ebitda=ebitda,
                     fiscal_price=[str(fiscal[0]), fiscal[1]], valuation_price=[str(entry[0]), entry[1]]), evidence
 
-    def lookup(self, symbol, day, column, forward=False, slack=None):
+    def lookup(self, symbol, day, forward=False, slack=None):
         self._open()
         from backtest.inputs import daily
-        if column not in ('price', 'adjusted') or not isinstance(day, date):
+        if not isinstance(day, date):
             raise ValueError('Invalid observation price lookup.')
-        value = daily.price(self._db, symbol, day, column, forward, slack)
+        value = daily.price(self._db, symbol, day, forward, slack)
         if value is not None and (not math.isfinite(value[1]) or value[1] <= 0):
             raise ValueError('Prepared observation price is invalid.')
         return value
@@ -720,8 +680,7 @@ class View:
         if key not in self._stock:
             row = self.db.execute('SELECT adjusted,adjusted_reason,volume,volume_reason FROM stock_days '
                                   'WHERE symbol=? AND day=?', (symbol, str(day))).fetchone()
-            # A day with book columns only is no saved observation day.
-            self._stock[key] = (None if row is None else _states(adjClose=row[0:2], volume=row[2:4])) or None
+            self._stock[key] = None if row is None else _states(adjClose=row[0:2], volume=row[2:4])
         return self._stock[key]
 
     def treasury(self, day):

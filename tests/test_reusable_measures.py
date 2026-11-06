@@ -122,7 +122,7 @@ class InventoryExecution(unittest.TestCase):
             results = values(formulas(field('owner.pe')), view, roots) + values(same, view, roots[:1])
         self.assertEqual(results, [[(9., None)], [(9., None)], [(15e6, None)], [(15e6, None)]])
         self.assertEqual(helper.call_count, 2)
-        backward = [call.args[1] for call in lookup.call_args_list if not call.args[3]]
+        backward = [call.args[1] for call in lookup.call_args_list if not call.args[2]]
         self.assertTrue(backward)
         self.assertTrue(all(day <= date.fromisoformat(self.company.latest_date) for day in backward))
         # A historical root has no stored owner book: it uses the dated owner policy.
@@ -149,8 +149,8 @@ class InventoryExecution(unittest.TestCase):
         roots = [root(pool='cached', day='2019-06-03')]
         self.assertEqual(view.admit(roots)[0]['valuation']['ebitda'], (1 / multiple) * ev)
         self.assertEqual(values(formulas(field('annual.report_ebitda')), view, roots), [[(ev / multiple, None)]])
-        entry = books.entry_valuation(dict(fiscal=date(2018, 12, 31), market_cap=ev, enterprise=ev,
-            **{'yield': 1 / multiple}), date(2019, 6, 1), lambda day, *args: (day, 1.))
+        entry = books.admit(dict(fiscal=date(2018, 12, 31), market_cap=ev, enterprise=ev,
+            **{'yield': 1 / multiple}), date(2019, 6, 1), lambda day, *args: (day, 1.), books.ENTRY_SLACK)[1]
         self.assertEqual(entry[-1], (1 / multiple) * ev)
 
 

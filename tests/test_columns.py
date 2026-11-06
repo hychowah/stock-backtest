@@ -92,8 +92,8 @@ class Company:
                 prices[str(day)] = 10.
                 day += timedelta(days=1)
         prices.update(self.prices)
-        db.executemany('INSERT INTO prices VALUES(?,?,?,?)',
-                       [('A', day, price, price) for day, price in prices.items() if price is not None])
+        db.executemany('INSERT INTO prices VALUES(?,?,?)',
+                       [('A', day, price) for day, price in prices.items() if price is not None])
         for index in range(self.population):
             # Higher yield than A; Z000-Z009 have no cached prices.
             symbol = f'Z{index:03d}'
@@ -101,8 +101,8 @@ class Company:
             db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',
                        (symbol, '2014-06-30', '2014-09-28', 150e6, 180e6, 162e6, .9))
             if index >= 10:
-                db.executemany('INSERT INTO prices VALUES(?,?,?,?)',
-                               [(symbol, day, 10., 10.) for day in ('2014-06-30', '2015-01-02')])
+                db.executemany('INSERT INTO prices VALUES(?,?,?)',
+                               [(symbol, day, 10.) for day in ('2014-06-30', '2015-01-02')])
         db.execute('INSERT INTO sessions VALUES(?,?)', (self.root_date, 100.))
         facts.store_annual(db, 'A', dict(sources={'income-statement': SOURCE}, annual={'income-statement': self.annual}))
         facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c'*64, disposition='valid'),
@@ -301,8 +301,8 @@ class ColumnTests(unittest.TestCase):
             ev = self.explain(program(parameter('market.enterprise_value'), 'USD'), [roots[-1]], view=view)
             db = view.db
             selected, ranks = books.candidates(daily.histories(db), date(2015, 1, 2))
-            expected = books.entry_valuation(selected['legacy']['Z249'], date(2015, 1, 2),
-                lambda day, column, forward, slack: daily.price(db, 'Z249', day, column, forward, slack))
+            expected = books.admit(selected['legacy']['Z249'], date(2015, 1, 2),
+                lambda day, forward, slack: daily.price(db, 'Z249', day, forward, slack), books.ENTRY_SLACK)[1]
         admitted = block['observations']['roots']
         self.assertEqual([item['valid'] for item in block['results']], [True, False, False, True])
         self.assertEqual([item['reason'] for item in admitted], [None, 'OUTSIDE_LEGACY_BUFFER', 'MISSING_CACHED_PRICES', None])
@@ -557,8 +557,8 @@ class ColumnTests(unittest.TestCase):
         self.assertEqual(block['results'][0]['reason'], 'ROOT_NOT_ADMITTED')
         self.company.prices = {'2014-06-28': 3., '2015-01-05': 7.}
         statement = dict(fiscal=date(2014, 6, 30), market_cap=150e6, enterprise=180e6, **{'yield': .3})
-        expected = books.entry_valuation(statement, date(2015, 1, 2), lambda day, column, forward, slack:
-                                         (date(2015, 1, 5), 7.) if forward else (date(2014, 6, 28), 3.))
+        expected = books.admit(statement, date(2015, 1, 2), lambda day, forward, slack:
+                               (date(2015, 1, 5), 7.) if forward else (date(2014, 6, 28), 3.), books.ENTRY_SLACK)[1]
         member = self.observation(parameter('market.enterprise_value'), 'USD')['members'][0]
         self.assertEqual(member['value'], expected[3])
         lookups = member['evidence']['lookups']

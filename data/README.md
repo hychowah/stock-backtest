@@ -6,9 +6,9 @@
 python3 scripts/research.py prepare
 ```
 
-Every preparation is a full build (research schema 15). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
+Every preparation is a full build (research schema 16). It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
 
-The database contains company metadata, cleaned annual financial observations with availability dates, typed facts for custom variables, and the latest book: latest-session valuations for cached currently-listed companies with an exact-date price, with their ranking pairs and filter values, stored in `latest_snapshots` and again in the `book_*` tables of the one book row shape. It holds no January books; dated books live in `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
+The database contains company metadata, cleaned annual financial observations with availability dates, typed facts for custom variables and books, and the latest book that the readers use: latest-session valuations for cached currently-listed companies with an exact-date price, with their ranking pairs and filter values, in `latest_snapshots`. It holds no January books; dated books live in `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
 The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Missing prices are not downloaded automatically. Run `python3 scripts/research.py status` to inspect annual coverage.
 
@@ -26,11 +26,13 @@ values. Missing history omits a pair. Consumers join or export these values;
 they never reconstruct formulas. Catalog and calculator code in
 `backtest/financial/metrics.py` participates in freshness checks.
 
-`schedules.sqlite` (version 7) is the separate rebuildable daily-price index and
+`schedules.sqlite` (version 8) is the separate rebuildable daily-price index and
 dated-book cache, prepared by `python3 scripts/schedules.py prepare`. It stores
 only existing cached price histories plus research financials, SPY sessions,
 Treasury yields and reusable entry/exit books (`periods`, `snapshots`,
-`period_pools`). The local website service computes missing books
+`period_pools`). Its book store (`books`, `book_pools`, `book_rows`,
+`book_metrics`, `book_filters`) holds the latest book in the one book row shape
+that dated books will share. The local website service computes missing books
 and persists them here; original `research.sqlite` remains read-only. Daily-cache
 freshness includes the schedule engine and research calculation fingerprints.
 

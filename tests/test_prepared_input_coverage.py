@@ -31,7 +31,7 @@ class CoverageTests(unittest.TestCase):
             row=(f'S{i}','2014-01-01','2014-04-01',i*100e6,200e6,100e6/i,.5/i)
             for db in (self.research,self.daily):db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',row)
             for day in ('2014-01-01','2015-01-02','2016-01-02','2017-01-02'):
-                self.daily.execute('INSERT INTO prices VALUES(?,?,?,?)',(f'S{i}',day,10,10))
+                self.daily.execute('INSERT INTO prices VALUES(?,?,?)',(f'S{i}',day,10))
         self.spy=[dict(date=d,adjClose=100) for d in ('2015-01-02','2015-07-01','2016-01-02','2017-01-02')]
         self.treasury=[dict(date='2014-01-01',month3=1)]
         self.daily.executemany('INSERT INTO sessions VALUES(?,?)',[(r['date'],100) for r in self.spy])

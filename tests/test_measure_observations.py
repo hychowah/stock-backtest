@@ -83,18 +83,20 @@ class PreparedMeasureTests(unittest.TestCase):
 class OwnerExtractionTests(unittest.TestCase):
     def test_snapshot_preserves_predecessor_and_lookup_order(self):
         def predecessor(statement, entry_day, exit_day, lookup, bankruptcy):
-            valuation = books.entry_valuation(statement, entry_day, lookup)
-            if valuation is None: return None
-            fiscal_px, entry_px, cap, ev, ebitda = valuation
-            start = lookup(entry_px[0], 'adjusted', True, 4)
-            if start is None or start[0] >= exit_day: return None
-            end = lookup(exit_day, 'adjusted', False, 10)
+            # One dividend-adjusted series: the entry valuation price is the buy price.
+            fiscal_px, start = lookup(statement['fiscal'], False, 7), lookup(entry_day, True, 4)
+            if fiscal_px is None or start is None: return None
+            cap = statement['market_cap'] * (start[1] / fiscal_px[1])
+            ev = cap + (statement['enterprise'] - statement['market_cap'])
+            if ev <= 0 or cap <= 0: return None
+            ebitda = statement['yield'] * statement['enterprise']
+            if start[0] >= exit_day: return None
+            end = lookup(exit_day, False, 10)
             status = 'Scheduled exit'  # A book records only how a holding exited.
             if end is None:
-                end = lookup(exit_day, 'adjusted', False, 100000)
-                if end is None or end[0] < start[0]: return None
+                end = lookup(exit_day, False, 100000)
                 status = 'Last available price'
-            if end[0] < start[0]: return None
+            if end is None or end[0] < start[0]: return None
             ret = -1. if bankruptcy else end[1] / start[1] - 1
             if bankruptcy: status = 'Bankruptcy'
             return [str(statement['fiscal']), str(start[0]), str(end[0]), cap, ev,
@@ -109,20 +111,21 @@ class OwnerExtractionTests(unittest.TestCase):
                 ('bankrupt', date(2021, 1, 2), None, True, False),
                 ('no exit', date(2021, 1, 2), 'all_exit', False, True),
                 ('zero', date(2021, 1, 2), None, False, True),
-                ('no valuation', date(2021, 1, 2), 'valuation', False, False),
-                ('no start', date(2021, 1, 2), 'start', False, False)):
+                ('no fiscal price', date(2021, 1, 2), 'fiscal', False, False),
+                ('no entry price', date(2021, 1, 2), 'entry', False, False),
+                ('entry at exit', entry, None, False, False)):
             with self.subTest(label=label):
                 report = dict(statement, **{'yield': 0. if zero else .1})
                 results, histories = [], []
                 for fn in (predecessor, books.snapshot):
                     calls = []
-                    def lookup(day, column, forward, slack):
-                        calls.append((day, column, forward, slack))
-                        if missing == 'valuation' and column == 'price': return None
-                        if missing == 'start' and column == 'adjusted' and forward: return None
-                        if missing == 'all_exit' and column == 'adjusted' and not forward: return None
-                        if missing == 10 and column == 'adjusted' and not forward and slack == 10: return None
-                        return day, 10. if column == 'price' else 12.
+                    def lookup(day, forward, slack):
+                        calls.append((day, forward, slack))
+                        if missing == 'fiscal' and slack == 7: return None
+                        if missing == 'entry' and forward: return None
+                        if missing == 'all_exit' and not forward and slack != 7: return None
+                        if missing == 10 and not forward and slack == 10: return None
+                        return day, 10. if day <= entry else 12.
                     try: results.append(('value', fn(report, entry, exit_day, lookup, bankrupt)))
                     except ArithmeticError as exc: results.append(('error', type(exc)))
                     histories.append(calls)
@@ -143,7 +146,7 @@ class OwnerExtractionTests(unittest.TestCase):
         inputs.broad_reports.return_value = reports
         inputs.legacy_financial_history.return_value = financials
         inputs.legacy_treasury.return_value = dict(day='2020-01-01', value=2.)
-        inputs.lookup.side_effect = lambda symbol, date_, column, forward, slack: (date_, 10. if date_ < day else 15.)
+        inputs.lookup.side_effect = lambda symbol, date_, forward, slack: (date_, 10. if date_ < day else 15.)
         root = dict(symbol='A')
         context = dict(date=str(day))
         with patch.object(books, 'ebitda_yield_and_multiple', wraps=books.ebitda_yield_and_multiple) as helper:
@@ -151,7 +154,7 @@ class OwnerExtractionTests(unittest.TestCase):
         helper.assert_called_once_with(30., 250.)
         obs = dict(fiscal='2018-12-31', market_cap=200., enterprise_value=250., ebitda_yield=30./250., ev_ebitda=250./30.)
         pairs = metrics.evaluate(obs, reports)
-        expected = metrics.filter_values(obs, pairs, day, lambda when, column, forward, slack: (when, 10. if when < day else 15.), financials, 2.)
+        expected = metrics.filter_values(obs, pairs, day, lambda when, forward, slack: (when, 10. if when < day else 15.), financials, 2.)
         self.assertEqual(owner['evidence']['metrics'], {key:list(value) for key,value in pairs.items()})
         self.assertEqual(owner['evidence']['filters'], expected)
         self.assertEqual(bridge.lane(owner, 'pe')['value'], 20.)
@@ -165,13 +168,13 @@ class OwnerExtractionTests(unittest.TestCase):
     def test_entry_valuation_needs_no_holding_or_exit_prices(self):
         statement=dict(fiscal=date(2014,6,30),market_cap=100e6,enterprise=150e6,**{'yield':.2})
         calls=[]
-        def lookup(day,column,forward,slack):
-            calls.append((day,column,forward,slack))
-            self.assertEqual(column,'price')
+        def lookup(day,forward,slack):
+            calls.append((day,forward,slack))
             return day,10. if day==statement['fiscal'] else 20.
-        fiscal,entry,cap,ev,ebitda=books.entry_valuation(statement,date(2015,1,2),lookup)
+        reason,(fiscal,entry,cap,ev,ebitda)=books.admit(statement,date(2015,1,2),lookup,books.ENTRY_SLACK)
+        self.assertIsNone(reason)
         self.assertEqual((cap,ev,ebitda),(200e6,250e6,30e6))
-        self.assertEqual(calls,[(statement['fiscal'],'price',False,7),(date(2015,1,2),'price',True,4)])
+        self.assertEqual(calls,[(statement['fiscal'],False,7),(date(2015,1,2),True,4)])
         self.assertEqual((fiscal,entry),((statement['fiscal'],10.),(date(2015,1,2),20.)))
 
     def test_leap_day_trailing_and_legacy_treasury_asof(self):
@@ -182,7 +185,7 @@ class OwnerExtractionTests(unittest.TestCase):
         view.broad_reports.return_value = [dict(fiscal='2018-12-31',ebitda=30.)]
         view.legacy_financial_history.return_value = {}
         view.legacy_treasury.return_value = dict(day='2020-02-27',value=2.)
-        view.lookup.side_effect = lambda symbol,when,column,forward,slack:(when,10.)
+        view.lookup.side_effect = lambda symbol,when,forward,slack:(when,10.)
         owner=bridge.dated(view,dict(symbol='A'),dict(date=str(day)),anchor,lambda:None,budget=100000)
         dates=[x['requested_date'] for x in owner['evidence']['lookups']]
         self.assertEqual(dates,['2020-02-29','2019-02-28','2017-02-28'])

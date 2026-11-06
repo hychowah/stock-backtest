@@ -16,14 +16,16 @@ from backtest import calendar as schedule_calendar
 from backtest import portfolio_results as portfolio_results
 from backtest.inputs import market
 from backtest.inputs import facts
+from backtest.inputs import book_store
 from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 7
+VERSION = 8
 # Tables only the daily cache has: dated books and the daily price, session
 # and Treasury rows. A period id (periods.year) names one entry and exit;
 # period_pools records each completed pool. Latest and dated books share
-# research's screening_metrics and filter_values definitions.
+# research's screening_metrics and filter_values definitions. The book store
+# (book_store.SCHEMA) holds the latest book in the one book row shape.
 DATED_SCHEMA = '''
 CREATE TABLE periods (year INTEGER PRIMARY KEY, entry TEXT, exit TEXT, spy REAL, treasury REAL, legacy_candidates INTEGER, cached_candidates INTEGER);
 CREATE TABLE snapshots (
@@ -37,12 +39,11 @@ CREATE TABLE period_pools(
  period_id INTEGER, pool TEXT CHECK(pool IN ('cached','legacy')),
  PRIMARY KEY(period_id,pool), FOREIGN KEY(period_id) REFERENCES periods(year)
 ) WITHOUT ROWID;
-CREATE TABLE prices(symbol TEXT, day TEXT, price REAL, adjusted REAL,
- PRIMARY KEY(symbol,day)) WITHOUT ROWID;
+CREATE TABLE prices(symbol TEXT, day TEXT, adjusted REAL NOT NULL, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
 CREATE TABLE sessions(day TEXT PRIMARY KEY, price REAL) WITHOUT ROWID;
 CREATE TABLE treasuries(day TEXT PRIMARY KEY, yield_value REAL) WITHOUT ROWID;
 '''
-SCHEMA = r.SHARED_SCHEMA + DATED_SCHEMA
+SCHEMA = r.SHARED_SCHEMA + DATED_SCHEMA + book_store.SCHEMA
 
 
 COPIED_TABLES = ('companies','statements','financial_inputs','treasury10')
@@ -83,8 +84,12 @@ def connect(path=DATABASE,source=None):
 
 
 def _price_rows(payload):
-    """Return (day, valuation price, adjusted price) rows for one saved company file (facts.book_prices)."""
-    return [(day,*prices) for day,prices in facts.book_prices(payload).items()]
+    """Return the (day, adjusted close) rows of one saved company file: its valid values (facts.observe)."""
+    rows=payload.get('div') if isinstance(payload,dict) else None
+    if not isinstance(rows,list):
+        raise ValueError('A saved price file is unreadable. Use the data panel to download it again.')
+    return [(day,states['adjClose']['value']) for day,states in sorted(facts.observe(rows,('adjClose',)).items())
+            if states['adjClose']['valid']]
 
 
 def _digest(value):
@@ -171,14 +176,14 @@ def _prices(db,symbols,saved,code):
         else:
             diagnostics.count('prices_parsed')
             rows=_price_rows(json.loads(data))
-            db.executemany('INSERT INTO prices VALUES(?,?,?,?)',[(symbol,*row) for row in rows])
+            db.executemany('INSERT INTO prices VALUES(?,?,?)',[(symbol,*row) for row in rows])
             units[symbol]=dict(content=content,last=rows[-1][0] if rows else None,digest=_digest(rows))
             if same_code:
                 if old is not None and _digest([row for row in rows if old['last'] is not None and row[0]<=old['last']])==old['digest']:
                     later=[row for row in rows if old['last'] is None or row[0]>old['last']]
                     changed=later[0][0] if later else None
                 else:
-                    changed=_first_difference([tuple(row) for row in db.execute('SELECT day,price,adjusted FROM old.prices WHERE symbol=? ORDER BY day',(symbol,))],rows)
+                    changed=_first_difference([tuple(row) for row in db.execute('SELECT day,adjusted FROM old.prices WHERE symbol=? ORDER BY day',(symbol,))],rows)
                 if changed is not None:earliest.append(changed)
         if i%200==0 or i==len(symbols):
             print(f'Prepared daily prices {i}/{len(symbols)}',flush=True)
@@ -258,6 +263,12 @@ def prepare(path=DATABASE, source=r.DATABASE):
         db.executemany('INSERT INTO sessions VALUES(?,?)',[(str(d),v) for d,v in market.load_bars(r.RAW/'spy-div.json','adjClose')])
         db.executemany('INSERT OR REPLACE INTO treasuries VALUES(?,?)',[(row['date'][:10],row['month3']/100) for row in json.loads((r.RAW/'treasury.json').read_text()) if rules.parse_day(row.get('date')) is not None and rules.num(row.get('month3')) is not None])
         diagnostics.lap('market')
+        # The latest book: the open book at research's latest date, from its facts.
+        book_facts=facts.BookFacts(reference)
+        for pool in ('legacy','cached'):
+            book_store.store(db,financial_books.book(date.fromisoformat(inputs['facts']['latest_date']),None,pool,
+                                                     book_facts,backtest_control.checkpoint))
+        diagnostics.lap('latest_book')
         books=_digest(dict(tables=tables,symbols=symbols))
         if saved is not None and code['books']==saved['code']['books'] and books==saved['books']:
             earliest+=[day for table in ('sessions','treasuries','treasury10') if (day:=_dated_change(db,table)) is not None]
@@ -277,10 +288,9 @@ def prepare(path=DATABASE, source=r.DATABASE):
     diagnostics.note(outcome=action,symbols=len(symbols),database_bytes=path.stat().st_size)
     print(f'Daily cache {path.stat().st_size/1e6:.1f} MB {action} in {time.perf_counter()-started:.1f}s',flush=True)
 
-def price(db,symbol,day,column,forward=False,slack=None):
-    # column is internal, never request data.
+def price(db,symbol,day,forward=False,slack=None):
     operator,order=('>=','ASC') if forward else ('<=','DESC')
-    row=db.execute(f'SELECT day,{column} FROM prices WHERE symbol=? AND day{operator}? AND {column} IS NOT NULL ORDER BY day {order} LIMIT 1',(symbol,str(day))).fetchone()
+    row=db.execute(f'SELECT day,adjusted FROM prices WHERE symbol=? AND day{operator}? ORDER BY day {order} LIMIT 1',(symbol,str(day))).fetchone()
     if row is None:
         return None
     result=(date.fromisoformat(row[0]),row[1])

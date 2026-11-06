@@ -1,4 +1,8 @@
-"""Offline research database: companies, reports, typed facts and the latest book.
+"""Offline research database: companies, reports and typed facts.
+
+It still holds the old latest-book tables (latest_snapshots and the year-0
+screening_metrics and filter_values rows) that the readers read until
+typed-storage P3b; the book store of the daily cache holds the new latest book.
 
 Every preparation is a full build. It writes a temporary file and replaces the
 published database atomically; the previous database stays on any failure.
@@ -29,7 +33,7 @@ from backtest.runtime import cache_access as cache_access
 from backtest.paths import ROOT, RAW
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 # Tables that research and the daily cache both create. Daily copies the four
 # after metadata; latest and dated books share screening_metrics and filter_values.
 SHARED_SCHEMA = '''
@@ -41,31 +45,13 @@ CREATE TABLE treasury10 (day TEXT PRIMARY KEY, yield_percent REAL NOT NULL) WITH
 CREATE TABLE screening_metrics (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, metric TEXT, multiple REAL NOT NULL, yield_value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,metric));
 CREATE TABLE filter_values (mode TEXT, pool TEXT, year INTEGER, symbol TEXT, field TEXT, value REAL NOT NULL, PRIMARY KEY(mode,pool,year,symbol,field));
 '''
-# One row shape for latest and dated books, written by store_book from
-# books.book. A book id names one entry and exit (a latest book has no exit);
-# book_pools marks each completed pool. Research holds the latest book here,
-# beside latest_snapshots, until the readers switch (typed-storage P3b).
-BOOK_SCHEMA = '''
-CREATE TABLE books(book INTEGER PRIMARY KEY, entry TEXT NOT NULL, exit TEXT, spy REAL, treasury REAL,
- legacy_candidates INTEGER, cached_candidates INTEGER);
-CREATE UNIQUE INDEX book_dates ON books(entry,exit);
-CREATE TABLE book_pools(book INTEGER REFERENCES books(book), pool TEXT CHECK(pool IN ('cached','legacy')),
- PRIMARY KEY(book,pool)) WITHOUT ROWID;
-CREATE TABLE book_rows(book INTEGER, pool TEXT, symbol TEXT, candidate_rank INTEGER, fiscal TEXT, known TEXT,
- entry TEXT, price REAL, exit TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL,
- ev_ebitda REAL, spread REAL, return_value REAL, status TEXT, PRIMARY KEY(book,pool,symbol)) WITHOUT ROWID;
-CREATE TABLE book_metrics(book INTEGER, pool TEXT, symbol TEXT, metric TEXT, multiple REAL NOT NULL,
- yield_value REAL NOT NULL, PRIMARY KEY(book,pool,symbol,metric)) WITHOUT ROWID;
-CREATE TABLE book_filters(book INTEGER, pool TEXT, symbol TEXT, field TEXT, value REAL NOT NULL,
- PRIMARY KEY(book,pool,symbol,field)) WITHOUT ROWID;
-'''
 SCHEMA = SHARED_SCHEMA + '''
 CREATE TABLE latest_snapshots (
  pool TEXT, symbol TEXT, candidate_rank INTEGER, fiscal TEXT, known TEXT,
  price_date TEXT, price REAL, market_cap REAL, enterprise_value REAL,
  ebitda_yield REAL, ev_ebitda REAL, spread REAL, PRIMARY KEY(pool,symbol));
 CREATE INDEX latest_lookup ON latest_snapshots(pool,ebitda_yield DESC);
-''' + BOOK_SCHEMA
+'''
 
 
 def _metadata_entries(directory, pattern):
@@ -244,38 +230,27 @@ def ten_year_yield(db, day):
     return row[0] if row else None
 
 
-def latest_snapshot(statement, day, light, div):
+def latest_snapshot(statement, day, div):
     """Value at this exact session; never carry a stopped stock's old price."""
     if statement['known'] >= day or day-statement['fiscal'] > rules.MAX_AGE:
         return None
-    adjusted=before(div,day,0)
-    fiscal_px=before(light or div,statement['fiscal'],7)
-    current_px=before(light or div,day,0)
-    if adjusted is None or fiscal_px is None or current_px is None:
+    fiscal_px=before(div,statement['fiscal'],7)
+    current_px=before(div,day,0)
+    if fiscal_px is None or current_px is None:
         return None
     cap=statement['market_cap']*(current_px[1]/fiscal_px[1])
     ev=cap+(statement['enterprise']-statement['market_cap'])
     ebitda=statement['yield']*statement['enterprise']
     if cap<=0 or ev<=0 or ebitda<=0:
         return None
-    return [str(statement['fiscal']),str(statement['known']),str(adjusted[0]),adjusted[1],cap,ev,ebitda/ev,ev/ebitda]
+    return [str(statement['fiscal']),str(statement['known']),str(current_px[0]),current_px[1],cap,ev,ebitda/ev,ev/ebitda]
 
 
-def store_book(db, book):
-    """Write one pool of books.book() in the caller's transaction; return its book id.
-
-    The pool's rows and its book_pools marker commit together; an empty pool is
-    complete too. The pools of one entry and exit share one book id.
-    """
-    row=db.execute('SELECT book FROM books WHERE entry=? AND exit IS ?',(book['entry'],book['exit'])).fetchone()
-    book_id=row[0] if row is not None else db.execute(
-        'INSERT INTO books(entry,exit,spy,treasury,legacy_candidates,cached_candidates) VALUES(?,?,?,?,?,?)',book['book']).lastrowid
-    pool=book['pool']
-    db.executemany('INSERT INTO book_rows VALUES('+','.join('?'*17)+')',((book_id,pool,*row) for row in book['rows']))
-    db.executemany('INSERT INTO book_metrics VALUES(?,?,?,?,?,?)',((book_id,pool,*row) for row in book['metrics']))
-    db.executemany('INSERT INTO book_filters VALUES(?,?,?,?,?)',((book_id,pool,*row) for row in book['filters']))
-    db.execute('INSERT INTO book_pools VALUES(?,?)',(book_id,pool))
-    return book_id
+def _readable(resolution, name):
+    """Return one resolved price or yield file; an unreadable saved file stops preparation."""
+    if resolution['source']['disposition']=='unreadable':
+        raise ValueError(f'Saved file raw/{name} is unreadable. Use the data panel to download it again.')
+    return resolution
 
 
 @cache_access.exclusive
@@ -301,17 +276,20 @@ def prepare(path=DATABASE, force=False):
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
     universe={r['symbol']:r for r in json.loads((RAW/'universe.json').read_text())}
-    # Each saved file is parsed once, into its observation fields and book columns.
+    # Each saved file is parsed once, into its typed facts.
     market_facts=facts.shared(RAW,backtest_control.checkpoint)
-    spy_book,yield_book=market_facts[facts.CALENDAR]['book'],market_facts[facts.TREASURY]['book']
-    yields=sorted((date.fromisoformat(day),month3/100) for day,(month3,_) in yield_book.items() if month3 is not None)
+    for name,endpoint in (('spy-div.json',facts.CALENDAR),('treasury.json',facts.TREASURY)):
+        _readable(market_facts[endpoint],name)
+    valid={field:{day:states[field]['value'] for day,states in market_facts[endpoint]['dated'].items() if states[field]['valid']}
+           for endpoint,field in ((facts.CALENDAR,'adjClose'),(facts.TREASURY,'month3'),(facts.TREASURY,'year10'))}
+    yields=sorted((date.fromisoformat(day),month3/100) for day,month3 in valid['month3'].items())
     records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
     if invalid:raise ValueError('Annual financial cache contains invalid records. Use the data panel to repair annual financials.')
     broad=books.statements(records,universe)
     financials=[(symbol,str(row['fiscal']),str(row['known']),row['market_cap'],row['enterprise'],row['ebitda'],row['yield'])
                 for symbol,rows in broad.items() for row in rows]
     broad,book=books.pools(broad)
-    latest_day=date.fromisoformat(max(spy_book))
+    latest_day=date.fromisoformat(max(valid['adjClose']))
     active={s for s,r in universe.items() if r.get('listed') is True}
     latest_reports=tuple({s:rows for s,rows in pool.items() if s in active} for pool in (broad,book))
     latest_statements,latest_ranks=books.candidates(latest_reports,latest_day)
@@ -327,9 +305,10 @@ def prepare(path=DATABASE, force=False):
     try:
         db.executescript(SCHEMA+facts.SCHEMA)
         units={}
-        db.executemany('INSERT INTO treasury10 VALUES(?,?)',[(day,year10) for day,(_,year10) in yield_book.items() if year10 is not None])
+        db.executemany('INSERT INTO treasury10 VALUES(?,?)',sorted(valid['year10'].items()))
         latest_treasury10=ten_year_yield(db,latest_day)
         db.executemany('INSERT INTO companies VALUES(?,?,?,?)',[(s,r.get('name') or 'Unavailable',r.get('exchange') or 'Unavailable',r.get('sector') or 'Unavailable') for s,r in universe.items()])
+        facts.store_companies(db,universe)
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
         # Denials are first-class preparation facts: every company and pool has
         # a latest-root decision, with its reason.
@@ -347,8 +326,8 @@ def prepare(path=DATABASE, force=False):
         cached=set(cached_symbols)
         for number,symbol in enumerate(sorted(broad),1):
             backtest_control.checkpoint()
-            # One parse of the price file gives its typed facts and book columns.
-            stock=facts.stock(RAW,symbol,backtest_control.checkpoint)
+            # One parse of the price file gives its typed facts.
+            stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint),'px/'+market.cache_path_for(symbol).name)
             facts.store_stock(db,symbol,stock)
             resolved=financial_inputs.resolve_history(RAW,symbol)
             facts.store_annual(db,symbol,resolved)
@@ -358,22 +337,18 @@ def prepare(path=DATABASE, force=False):
             # The facts identity binds each price file's bytes. An unlisted
             # company has no latest root, so it has no latest row.
             units[symbol]=stock['source']['sha256']
-            prices=stock['book']
-            div=[(date.fromisoformat(day),adjusted) for day,(_,adjusted) in prices.items() if adjusted is not None]
-            light=[(date.fromisoformat(day),price) for day,(price,_) in prices.items() if price is not None]
             if symbol in active:
+                div=sorted((date.fromisoformat(day),states['adjClose']['value'])
+                           for day,states in stock['dated'].items() if states['adjClose']['valid'])
                 for pool in ['legacy','cached']:
                     statement=latest_statements[pool].get(symbol)
                     candidate=latest_ranks.get(symbol)
                     if statement is None or (pool=='legacy' and candidate is None):
                         continue
-                    row=latest_snapshot(statement,latest_day,light,div)
+                    row=latest_snapshot(statement,latest_day,div)
                     evidence=latest_admission[(symbol,pool)]
-                    adjusted=before(div,latest_day,0)
-                    fiscal_px=before(light or div,statement['fiscal'],7)
-                    current_px=before(light or div,latest_day,0)
                     if row is None:
-                        if adjusted is not None and fiscal_px is not None and current_px is not None:
+                        if before(div,statement['fiscal'],7) is not None and before(div,latest_day,0) is not None:
                             evidence['reason']='NONPOSITIVE_VALUATION'
                         continue
                     evidence['valuation']=dict(market_cap=row[4],enterprise_value=row[5],
@@ -382,17 +357,16 @@ def prepare(path=DATABASE, force=False):
                         evidence['reason']='POOL_INELIGIBLE';continue
                     evidence.update(admitted=True,reason=None)
                     db.execute('INSERT INTO latest_snapshots VALUES('+','.join('?'*12)+')',[pool,symbol,candidate]+row+[row[6]-(latest_treasury or 0.)])
-            financial_history=resolved['values']
-            db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in financial_history.items()])
-            history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
-            def lookup(day,column,forward,slack):
-                return (after if forward else before)(div,day,slack)
-            for saved in db.execute('SELECT * FROM latest_snapshots WHERE symbol=?',(symbol,)).fetchall():
-                observation=dict(saved)
-                pairs=metrics.evaluate(observation,history)
-                values=metrics.filter_values(observation,pairs,date.fromisoformat(saved['price_date']),lookup,financial_history,latest_treasury10)
-                db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
-                    [('latest',saved['pool'],0,symbol,key,value) for key,value in values.items()])
+                history=[dict(fiscal=str(row['fiscal']),ebitda=row['ebitda']) for row in broad[symbol]]
+                def lookup(day,forward,slack):
+                    return (after if forward else before)(div,day,slack)
+                for saved in db.execute('SELECT * FROM latest_snapshots WHERE symbol=?',(symbol,)).fetchall():
+                    observation=dict(saved)
+                    pairs=metrics.evaluate(observation,history)
+                    values=metrics.filter_values(observation,pairs,date.fromisoformat(saved['price_date']),lookup,resolved['values'],latest_treasury10)
+                    db.executemany('INSERT INTO filter_values VALUES(?,?,?,?,?,?)',
+                        [('latest',saved['pool'],0,symbol,key,value) for key,value in values.items()])
+            db.executemany('INSERT INTO financial_inputs VALUES(?,?,?)',[(symbol,fiscal,json.dumps(values)) for fiscal,values in resolved['values'].items()])
         diagnostics.lap('companies')
         diagnostics.note(companies=len(cached_symbols))
         for (symbol,pool),evidence in latest_admission.items():
@@ -401,12 +375,6 @@ def prepare(path=DATABASE, force=False):
         diagnostics.lap('dated_facts')
         prepare_metrics(db)
         diagnostics.lap('metrics')
-        # The one book rule writes the latest book from the stored facts,
-        # beside latest_snapshots until the readers switch.
-        book_facts=facts.BookFacts(db)
-        for pool in ('legacy','cached'):
-            store_book(db,books.book(latest_reports,latest_day,None,pool,cached,book_facts,backtest_control.checkpoint))
-        diagnostics.lap('books')
         scopes=[dict(mode='latest',pool=pool,context_date=str(latest_day),book=0) for pool in ('legacy','cached')]
         # Rows follow from the raw signature and each price file's bytes.
         facts.finish(db,latest_day,scopes=scopes,inputs=dict(signature=inputs,prices=units))

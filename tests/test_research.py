@@ -148,7 +148,7 @@ class ResearchTests(unittest.TestCase):
 
     def test_trailing_returns_use_only_past_prices_and_require_history(self):
         prices=[(date(2017,2,28),50),(date(2019,2,28),80),(date(2020,2,28),100),(date(2020,3,2),1000)]
-        lookup=lambda day,column,forward,slack:r.before(prices,day,slack)
+        lookup=lambda day,forward,slack:r.before(prices,day,slack)
         observation=dict(market_cap=100e6,enterprise_value=200e6,ebitda_yield=.1)
         values=r.metrics.filter_values(observation,{},date(2020,2,29),lookup)
         self.assertEqual(values['return_1y'],25)
@@ -184,7 +184,7 @@ class ResearchTests(unittest.TestCase):
     def test_early_stop_bankruptcy_and_valuation(self):
         statement={'fiscal':date(2014,6,30),'known':date(2014,9,28),'market_cap':100e6,'enterprise':150e6,'yield':.2}
         prices=[(date(2014,6,30),10.),(date(2015,1,2),20.),(date(2015,6,1),5.)]
-        lookup=lambda day,column,forward,slack:(r.after if forward else r.before)(prices,day,slack)
+        lookup=lambda day,forward,slack:(r.after if forward else r.before)(prices,day,slack)
         result=r.books.snapshot(statement,date(2015,1,2),date(2016,1,4),lookup,False)
         self.assertEqual(result[3],200e6)
         self.assertEqual(result[4],250e6)
@@ -199,15 +199,15 @@ class ResearchTests(unittest.TestCase):
         statement=dict(fiscal=date(2025,12,31),known=date(2026,3,31),market_cap=100e6,enterprise=150e6)
         statement['yield']=.2
         prices=[(date(2025,12,31),10.),(date(2026,10,19),20.),(date(2026,10,21),100.)]
-        self.assertIsNone(r.latest_snapshot(statement,day,[],prices))
+        self.assertIsNone(r.latest_snapshot(statement,day,prices))
         prices=sorted(prices+[(day,30.)])
-        row=r.latest_snapshot(statement,day,[],prices)
+        row=r.latest_snapshot(statement,day,prices)
         self.assertEqual(row[2],'2026-10-20')
         self.assertEqual(row[3],30.)
         self.assertEqual(row[4],300e6)
         self.assertEqual(row[5],350e6)
-        self.assertIsNone(r.latest_snapshot(dict(statement,known=day),day,[],prices))
-        self.assertIsNone(r.latest_snapshot(dict(statement,fiscal=date(2023,1,1),known=date(2023,4,1)),day,[],prices))
+        self.assertIsNone(r.latest_snapshot(dict(statement,known=day),day,prices))
+        self.assertIsNone(r.latest_snapshot(dict(statement,fiscal=date(2023,1,1),known=date(2023,4,1)),day,prices))
 
     def test_latest_filters_before_ranking_without_future_returns(self):
         for i in range(1,4):
@@ -436,6 +436,24 @@ for(let i=0;i<cases.length;i++){
             self.verify_fixture(db)
         finally:
             db.close()
+
+    def test_unreadable_saved_price_file_stops_preparation(self):
+        r.prepare(self.path)
+        before = self.path.read_bytes()
+        # Invalid JSON, a list and a mapping without a 'div' list, as metrics.jsonl fails closed.
+        for name, content in (('px/TEST.json', b'{invalid'), ('px/TEST.json', b'[]'), ('px/TEST.json', b'{"light":[]}'),
+                              ('spy-div.json', b'{invalid'), ('treasury.json', b'{"rows":[]}')):
+            with self.subTest(name=name, content=content):
+                path = r.RAW / name
+                original = path.read_bytes()
+                path.write_bytes(content)
+                try:
+                    with self.assertRaisesRegex(ValueError, f'raw/{name} is unreadable. Use the data panel'):
+                        r.prepare(self.path, force=True)
+                finally:
+                    path.write_bytes(original)
+                self.assertEqual(self.path.read_bytes(), before)
+                self.assertFalse(self.path.with_name(self.path.name + '.building').exists())
 
 
 class SavedDateTests(unittest.TestCase):

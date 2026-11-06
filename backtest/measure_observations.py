@@ -74,10 +74,11 @@ def dated(inputs, root, context, anchor, checkpoint, *, budget):
     financials = inputs.legacy_financial_history(root['symbol'], checkpoint, budget=remaining)
     treasury = inputs.legacy_treasury(day, checkpoint)
     lookups = []
-    def lookup(when, column, forward, slack):
+    def lookup(when, forward, slack):
         checkpoint()
-        result = inputs.lookup(root['symbol'], when, column, forward, slack)
-        lookups.append(dict(requested_date=str(when), column=column, forward=forward,
+        result = inputs.lookup(root['symbol'], when, forward, slack)
+        # 'adjusted' is the stored explanation label of a return lookup.
+        lookups.append(dict(requested_date=str(when), column='adjusted', forward=forward,
             slack=slack, observation=[str(result[0]), result[1]] if result else None))
         return result
     try:

@@ -45,7 +45,7 @@ def calculate(through: date):
             if day is not None and value is not None: yields.append((day,value/100.))
         yields.sort()
         picks = run.screen(book,yields,sessions)
-    prices = {symbol: run.load_price_pair(symbol) for symbol in sorted({r['symbol'] for rows in picks.values() for r in rows})}
+    prices = {symbol: run.load_prices(symbol) for symbol in sorted({r['symbol'] for rows in picks.values() for r in rows})}
     years = []
     for year in range(run.FIRST_YEAR,run.LAST_YEAR+1):
         rows = picks.get(year) or []
@@ -55,13 +55,12 @@ def calculate(through: date):
         if end is None: raise ValueError('Reference calculation lacks an exit session for '+str(year))
         refreshed = []
         for row in rows:
-            light, div = prices[row['symbol']]
-            scaled = run.rescale(row,light or div)
+            scaled = run.rescale(row,prices[row['symbol']])
             if scaled is not None: refreshed.append(scaled)
         refreshed.sort(key=lambda r:r['spread'],reverse=True)
         holdings = []
         for rank,row in enumerate(refreshed[:run.HOLD],1):
-            _, div = prices[row['symbol']]
+            div = prices[row['symbol']]
             start = run.first_on_or_after(div,row['entry_day'],4)
             if start is None: continue
             finish = run.last_on_or_before(div,end,10)

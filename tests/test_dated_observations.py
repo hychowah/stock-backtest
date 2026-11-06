@@ -68,16 +68,16 @@ class ResolutionTests(unittest.TestCase):
             self.assertEqual(resolved['dated']['2015-01-02']['adjClose']['reason'],'NON_USD_INPUT')
             self.assertEqual(resolved['dated']['2015-01-02']['volume']['value'],1)
 
-    def test_one_read_binds_the_digest_to_the_facts_and_book_columns(self):
+    def test_one_read_binds_the_digest_to_the_facts(self):
+        # Another saved key, here an old light series, is no price series.
         self.path.write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=10)],
-                                             light=[dict(date='2015-01-02',price=4),dict(date='2015-01-02',close=5)])))
+                                             light=[dict(date='2015-01-02',price=4)])))
         with patch.object(Path,'read_bytes',autospec=True,side_effect=Path.read_bytes) as read:
             resolved=facts.resolve(self.path,facts.STOCK,stock=True)
         read.assert_called_once()
         self.assertEqual(resolved['source']['sha256'],hashlib.sha256(self.path.read_bytes()).hexdigest())
-        self.assertEqual(resolved['dated']['2015-01-02']['adjClose']['value'],10)
-        # A light series values the book price; the last light price of a day wins.
-        self.assertEqual(resolved['book'],{'2015-01-02':(5.,10.)})
+        self.assertEqual(resolved['dated'],{'2015-01-02':dict(adjClose=dict(value=10.,valid=True,reason=None),
+                                                              volume=dict(value=None,valid=False,reason='MISSING_INPUT'))})
 
     def test_signed_rates_and_latest_null_field_states(self):
         dated=self.resolve([dict(date='2015-01-01',month3=-1,year10=0),
@@ -97,12 +97,15 @@ class ResolutionTests(unittest.TestCase):
 
     def test_missing_unreadable_source_no_repairs(self):
         self.assertEqual(facts.resolve(self.path,facts.STOCK,stock=True),
-                         dict(source=dict(endpoint=facts.STOCK,sha256=None,disposition='missing'),dated={},book={}))
-        self.path.write_bytes(b'{invalid');before=self.path.read_bytes()
-        resolved=facts.resolve(self.path,facts.STOCK,stock=True)
-        self.assertEqual(resolved['source'],dict(endpoint=facts.STOCK,sha256=hashlib.sha256(before).hexdigest(),disposition='unreadable'))
-        self.assertEqual(resolved['dated'],{})
-        self.assertEqual(self.path.read_bytes(),before)
+                         dict(source=dict(endpoint=facts.STOCK,sha256=None,disposition='missing'),dated={}))
+        # Invalid JSON, a stock file that is no mapping, and a missing or non-list 'div' are unreadable.
+        for content in (b'{invalid',b'[{"date":"2015-01-02","adjClose":10}]',b'{}',b'{"div":{"date":"2015-01-02"}}'):
+            with self.subTest(content=content):
+                self.path.write_bytes(content);before=self.path.read_bytes()
+                resolved=facts.resolve(self.path,facts.STOCK,stock=True)
+                self.assertEqual(resolved['source'],dict(endpoint=facts.STOCK,sha256=hashlib.sha256(before).hexdigest(),disposition='unreadable'))
+                self.assertEqual(resolved['dated'],{})
+                self.assertEqual(self.path.read_bytes(),before)
 
     def test_history_bound_and_cancellation(self):
         self.path.write_text(json.dumps(dict(div=[dict(date=f'2015-01-0{day}',volume=1) for day in (2,3,4,5)])))
@@ -123,13 +126,13 @@ class ResolutionTests(unittest.TestCase):
             facts.store_stock(db,'A',stock)
             facts.store_market(db,shared)
             rows=db.execute('SELECT * FROM stock_days ORDER BY day').fetchall()
-            # Book columns: the largest positive adjusted close of a duplicate day.
-            self.assertEqual(rows,[('A','2015-01-02',10,None,0,None,10,10),('A','2015-01-03',None,'INVALID_INPUT',None,'MISSING_INPUT',None,None),
-                                   ('A','2015-01-04',None,'CONFLICTING_INPUT',2,None,11,11)])
+            # A conflicting day has no adjusted close, only its reason.
+            self.assertEqual(rows,[('A','2015-01-02',10,None,0,None),('A','2015-01-03',None,'INVALID_INPUT',None,'MISSING_INPUT'),
+                                   ('A','2015-01-04',None,'CONFLICTING_INPUT',2,None)])
             self.assertEqual(math.copysign(1,rows[0][4]),-1)
             # Only valid SPY sessions are market days; Treasury days keep their reasons.
             self.assertEqual(db.execute('SELECT * FROM market_days ORDER BY day').fetchall(),
-                             [('2015-01-02',100,-1,None,None,'MISSING_INPUT',100,-1,None),('2015-01-05',None,2,None,3,None,None,2,3)])
+                             [('2015-01-02',100,-1,None,None,'MISSING_INPUT'),('2015-01-05',None,2,None,3,None)])
             self.assertEqual(db.execute('SELECT * FROM fact_sources ORDER BY symbol,endpoint').fetchall(),
                 [('','spy-calendar',hashlib.sha256((folder/'spy-div.json').read_bytes()).hexdigest(),'valid'),
                  ('','treasury-rates',hashlib.sha256((folder/'treasury.json').read_bytes()).hexdigest(),'valid'),

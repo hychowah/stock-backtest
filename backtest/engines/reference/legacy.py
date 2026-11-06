@@ -29,28 +29,21 @@ def session_on_or_after(days: list[date], day: date) -> date | None:
         return None
     return days[lo]
 
-def load_price_pair(symbol: str) -> tuple[list[tuple[date, float]], list[tuple[date, float]]]:
+def load_prices(symbol: str) -> list[tuple[date, float]]:
+    """Dividend-adjusted closes of one saved price file, in date order."""
     path = cache_path_for(symbol)
     if not path.exists():
-        return [], []
+        return []
     payload = json.loads(path.read_text(encoding="utf-8"))
-    light = []
     div = []
-    for row in payload.get("light") or []:
-        if isinstance(row, dict):
-            day = parse_day(row.get("date"))
-            price = num(row.get("price") if row.get("price") is not None else row.get("close"))
-            if day is not None and price is not None and price > 0:
-                light.append((day, price))
     for row in payload.get("div") or []:
         if isinstance(row, dict):
             day = parse_day(row.get("date"))
             price = num(row.get("adjClose"))
             if day is not None and price is not None and price > 0:
                 div.append((day, price))
-    light.sort()
     div.sort()
-    return light, div
+    return div
 
 def first_on_or_after(bars: list[tuple[date, float]], day: date, slack: int) -> tuple[date, float] | None:
     lo, hi = 0, len(bars)
@@ -149,9 +142,9 @@ def screen(book: dict[str, list[dict]], yields: list[tuple[date, float]], sessio
         print(f"screen {year} candidates={len(ranked)} kept={len(picks[year])}", flush=True)
     return picks
 
-def rescale(row: dict, light: list[tuple[date, float]]) -> dict | None:
-    fiscal_px = last_on_or_before(light, row["fiscal"], 7)
-    entry_px = first_on_or_after(light, row["rebalance"], 4)
+def rescale(row: dict, prices: list[tuple[date, float]]) -> dict | None:
+    fiscal_px = last_on_or_before(prices, row["fiscal"], 7)
+    entry_px = first_on_or_after(prices, row["rebalance"], 4)
     if fiscal_px is None or entry_px is None or fiscal_px[1] <= 0:
         return None
     equity_now = row["market_cap"] * (entry_px[1] / fiscal_px[1])

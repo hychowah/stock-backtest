@@ -248,10 +248,10 @@ Each paragraph lists invariants that are easy to break and the checks to run.
 The linked documents hold the detail.
 
 **Research database.** `scripts/research.py prepare` builds
-`data/research.sqlite` (research schema 15) from the raw cache: companies,
+`data/research.sqlite` (research schema 16) from the raw cache: companies,
 annual reports, typed facts and the latest book. Every build is a full build. It
 writes a temporary file and replaces the database atomically; a failure keeps
-the previous database. `books.book` is the book-row rule. `research.calculation_sources()` is the one list of code
+the previous database. `books.Screen.decide` admits; `books.book` builds books. `research.calculation_sources()` is the one list of code
 that computes prepared rows or books; the research signature, the facts policy
 and the daily book identity bind it. The `legacy` pool keeps the original
 250-candidate pre-price screen; the `cached` pool covers cached-price companies
@@ -322,7 +322,7 @@ and `results/experiments/fmp-throughput-2026-10-23.json`. Do not present old
 timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
-daily SQLite cache (version 7) after research preparation. It prepares only the
+daily SQLite cache (version 8) after research preparation. It prepares only the
 requested pool and records completion in `period_pools` in the same transaction
 as the rows. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.

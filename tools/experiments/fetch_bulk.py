@@ -44,13 +44,6 @@ def jobs() -> list[tuple[str, dict, str]]:
             "spy-div.json",
         )
     )
-    work.append(
-        (
-            "historical-price-eod/light",
-            {"symbol": "SPY", "from": "1995-12-01", "to": "2026-10-21"},
-            "spy-light.json",
-        )
-    )
     return work
 
 

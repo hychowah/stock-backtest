@@ -44,7 +44,7 @@ def compute_period(db,entry,exit_day,books,cached,pool,financials=None):
     for symbol,s in statements[pool].items():
         backtest_control.checkpoint()
         if symbol not in cached or (pool=='legacy' and symbol not in ranks):continue
-        lookup=lambda day,column,forward,slack:daily.price(db,symbol,day,column,forward=forward,slack=slack)
+        lookup=lambda day,forward,slack:daily.price(db,symbol,day,forward=forward,slack=slack)
         row=financial_books.snapshot(s,entry,exit_day,lookup,rules.bankrupt(symbol,entry,exit_day))
         if row is None:continue
         fiscal,entry_date,end_date,cap,ev,ebitda,yield_value,multiple,ret,status=row

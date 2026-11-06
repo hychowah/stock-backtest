@@ -114,7 +114,8 @@ def filter_values(observation, pairs, day, lookup, financials=None, treasury10=N
     """Prepare threshold inputs at the screen date, never the future exit.
 
     Annual lookbacks use the same calendar day (Feb 29 clamps to Feb 28).
-    Each endpoint uses an adjusted close on or before that day, within 7 days.
+    Each endpoint uses an adjusted close on or before that day, within 7 days:
+    lookup(day, forward, slack) returns (day, adjusted close) or None.
     Missing endpoints omit the value and exclude a stock only if filtered on it.
     treasury10 is the saved 10-year yield in percent; None omits its spread.
     """
@@ -122,10 +123,10 @@ def filter_values(observation, pairs, day, lookup, financials=None, treasury10=N
     values={k:observation[k]/1e6 for k in ('market_cap','enterprise_value')}
     values['ebitda_yield']=observation['ebitda_yield']*100
     values.update({k:pair[0] for k,pair in pairs.items() if k in FILTERS})
-    end=lookup(day,'adjusted',False,7)
+    end=lookup(day,False,7)
     for years in (1,3):
         target=day.replace(year=day.year-years,day=min(day.day,monthrange(day.year-years,day.month)[1]))
-        start=lookup(target,'adjusted',False,7)
+        start=lookup(target,False,7)
         if end and start and start[1]>0:
             values[f'return_{years}y']=(end[1]/start[1]-1)*100
     if financials:

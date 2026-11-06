@@ -28,6 +28,21 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from backtest.engines.original import schedules as s
 
 
+def rows(db):
+    """A connection with named rows, as research.connect returns."""
+    db.row_factory = sqlite3.Row
+    return db
+
+
+def research_facts(db, raw, symbols):
+    """Write the typed facts that research preparation would write for a hand-built source."""
+    db.executescript(facts.SCHEMA)
+    facts.store_market(db, facts.shared(raw))
+    facts.store_companies(db, {symbol: dict(listed=True) for symbol in symbols})
+    for symbol in symbols:
+        facts.store_stock(db, symbol, facts.stock(raw, symbol))
+
+
 class CalendarTests(unittest.TestCase):
     def test_daily_binding_and_connect_use_explicit_research_source(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -96,7 +111,7 @@ class BacktestTests(unittest.TestCase):
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Energy'))
             self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
             for day,price in zip(['2014-06-30','2015-01-02','2015-04-01','2015-07-01'],prices):
-                self.db.execute('INSERT INTO prices VALUES(?,?,?,?)',(symbol,day,price,price))
+                self.db.execute('INSERT INTO prices VALUES(?,?,?)',(symbol,day,price))
         self.db.commit()
 
     def test_weekly_dates_use_ordinary_financial_evaluation_with_legacy_metadata(self):
@@ -178,10 +193,10 @@ class BacktestTests(unittest.TestCase):
     def test_array_and_sql_price_adapters_share_financial_policy(self):
         statement=daily.histories(self.db)[0]['A'][0]
         entry,exit_day=date(2015,1,2),date(2015,7,1)
-        series=[(date.fromisoformat(row[0]),row[1]) for row in self.db.execute("SELECT day,price FROM prices WHERE symbol='A' ORDER BY day")]
-        bisected=lambda day,column,forward,slack:(research.after if forward else research.before)(series,day,slack)
+        series=[(date.fromisoformat(row[0]),row[1]) for row in self.db.execute("SELECT day,adjusted FROM prices WHERE symbol='A' ORDER BY day")]
+        bisected=lambda day,forward,slack:(research.after if forward else research.before)(series,day,slack)
         array=financial_books.snapshot(statement,entry,exit_day,bisected,False)
-        lookup=lambda day,column,forward,slack:daily.price(self.db,'A',day,column,forward=forward,slack=slack)
+        lookup=lambda day,forward,slack:daily.price(self.db,'A',day,forward=forward,slack=slack)
         self.assertEqual(array,financial_books.snapshot(statement,entry,exit_day,lookup,False))
         # A stopped holding is retained, and a declared bankruptcy overrides price.
         self.db.execute("DELETE FROM prices WHERE symbol='A' AND day='2015-07-01'")
@@ -246,7 +261,7 @@ class BacktestTests(unittest.TestCase):
         self.db.execute("INSERT INTO companies VALUES('C','C','NYSE','Energy')")
         self.db.execute("INSERT INTO statements VALUES('C','2014-06-30','2014-09-28',50000000,75000000,60000000,.8)")
         for day in ('2014-06-30','2015-01-02','2015-04-01','2015-07-01'):
-            self.db.execute("INSERT INTO prices VALUES('C',?,10,10)",(day,))
+            self.db.execute("INSERT INTO prices VALUES('C',?,10)",(day,))
         self.db.commit()
         options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1,min_cap=0,min_ev=0)
         original=s.backtest(self.db,pool='legacy',**options)
@@ -403,12 +418,13 @@ class PreparationTests(unittest.TestCase):
         db=sqlite3.connect(self.source);db.executescript(research.SCHEMA)
         db.execute("INSERT INTO companies VALUES('A','A','NYSE','Energy')")
         db.execute("INSERT INTO statements VALUES('A','2014-06-30','2014-09-28',100000000,150000000,30000000,.2)")
+        research_facts(db,raw,['A'])
         db.commit();db.close()
         self.context.enter_context(patch.object(research,'RAW',raw))
         self.context.enter_context(patch.object(market,'RAW',raw))
         self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(daily,'fingerprint',return_value={'fixture':1}))
-        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
+        self.context.enter_context(patch.object(daily,'fingerprint',return_value={'fixture':1,'facts':dict(latest_date='2015-01-02')}))
+        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:rows(sqlite3.connect(self.source))))
 
     def test_publish_and_unchanged_skip(self):
         db=sqlite3.connect(self.source)
@@ -429,7 +445,7 @@ class PreparationTests(unittest.TestCase):
         daily.prepare(self.path,self.source);original=self.path.read_bytes()
         # Changed bytes are parsed again; the parse fails.
         (research.RAW/'px'/'A.json').write_text(json.dumps(dict(div=[dict(date='2015-01-02',adjClose=11)])))
-        with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(facts,'bars',side_effect=ValueError('bad fixture')):
+        with patch.object(daily,'fingerprint',return_value={'fixture':2}),patch.object(facts,'observe',side_effect=ValueError('bad fixture')):
             with self.assertRaisesRegex(ValueError,'bad fixture'):daily.prepare(self.path,self.source)
         self.assertEqual(self.path.read_bytes(),original)
         self.assertFalse(self.path.with_name(self.path.name+'.building').exists())
@@ -458,14 +474,16 @@ class RefreshTests(unittest.TestCase):
             db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',100e6,150e6,ebitda,ebitda/150e6))
         db.execute("INSERT INTO treasury10 VALUES('2014-12-31',3)")
         db.execute("INSERT INTO metadata VALUES('prices','{}')")
+        research_facts(db,raw,['A','B','C'])
         db.commit();db.close()
         self.generation=0
         for owner,key,value in [(research,'RAW',raw),(market,'RAW',raw)]:
             self.context.enter_context(patch.object(owner,key,value))
         self.context.enter_context(patch.object(cache_access,'workspace',cache_access.WorkspaceAccess(root/'cache.lock')))
-        self.context.enter_context(patch.object(daily,'fingerprint',side_effect=lambda source=None,**kw:{'fixture':self.generation}))
+        self.context.enter_context(patch.object(daily,'fingerprint',side_effect=lambda source=None,**kw:{
+            'fixture':self.generation,'facts':dict(latest_date=self.SESSIONS[-1])}))
         self.context.enter_context(patch.object(research,'prepare'))
-        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:sqlite3.connect(self.source)))
+        self.context.enter_context(patch.object(research,'connect',side_effect=lambda *args,**kwargs:rows(sqlite3.connect(self.source))))
         self.context.enter_context(redirect_stdout(io.StringIO()))
         self.accept_prices()
         daily.prepare(self.path,self.source)
@@ -546,7 +564,7 @@ class RefreshTests(unittest.TestCase):
         self.assertNotIn('C.json',reads)
         self.assertIn('A.json',reads)
         with closing(daily.connect(self.path)) as cache:
-            self.assertEqual(cache.execute("SELECT price FROM prices WHERE symbol='A' AND day='2015-08-03'").fetchone()[0],40)
+            self.assertEqual(cache.execute("SELECT adjusted FROM prices WHERE symbol='A' AND day='2015-08-03'").fetchone()[0],40)
             with patch.object(s,'compute_period',side_effect=AssertionError('Kept books must be reused')):
                 self.assertEqual(s.backtest(cache,**self.OPTIONS)['periods'],self.books)
         self.assert_matches_full_build(self.saved)

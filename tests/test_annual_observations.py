@@ -152,11 +152,11 @@ class Company:
             ('A', row['fiscal'], row['known'], row['market_cap'], row['enterprise_value'], row['ebitda'],
              row['ebitda_yield']) for row in self.reports])
         days = {row['fiscal'] for row in self.reports} | {self.root_date, self.latest_date}
-        db.executemany('INSERT INTO prices VALUES(?,?,?,?)', [('A', day, 10., 10.) for day in sorted(days)])
+        db.executemany('INSERT INTO prices VALUES(?,?,?)', [('A', day, 10.) for day in sorted(days)])
         db.executemany('INSERT INTO sessions VALUES(?,?)', [(day, 100.) for day in sorted({self.root_date, self.latest_date})])
         db.execute("INSERT INTO metadata VALUES('daily_inputs',?)", (json.dumps(dict(
             inputs=dict(fixture=max(self.root_date, self.latest_date)))),))
-        db.executemany('INSERT INTO market_days(day,book_year10) VALUES(?,?)', self.treasury10)
+        db.executemany('INSERT INTO market_days(day,year10) VALUES(?,?)', self.treasury10)
         annual = {endpoint: {fiscal: dict(fields) for fiscal, fields in dates.items()} for endpoint, dates in self.annual.items()}
         for fiscal, values in self.financials.items():
             for name, value in values.items():

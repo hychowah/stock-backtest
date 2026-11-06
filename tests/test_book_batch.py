@@ -35,9 +35,9 @@ class BookBatchTests(unittest.TestCase):
         fixtures.RobustnessTests.setUp(self)
         self.db.execute("INSERT INTO companies VALUES('B','Stopped company','NYSE','Energy')")
         self.db.execute("INSERT INTO companies VALUES('C','Small company','NASDAQ','Technology')")
-        self.db.execute("INSERT INTO prices VALUES('B','2014-06-30',10,10)")
-        self.db.execute("INSERT INTO prices SELECT 'C',day,price,adjusted FROM prices WHERE symbol='A'")
-        self.db.execute("INSERT INTO prices SELECT 'B',day,price,adjusted FROM prices WHERE symbol='A' AND day>='2015-01-01' AND day<'2015-09-01'")
+        self.db.execute("INSERT INTO prices VALUES('B','2014-06-30',10)")
+        self.db.execute("INSERT INTO prices SELECT 'C',day,adjusted FROM prices WHERE symbol='A'")
+        self.db.execute("INSERT INTO prices SELECT 'B',day,adjusted FROM prices WHERE symbol='A' AND day>='2015-01-01' AND day<'2015-09-01'")
         for year in (2012,2013,2014,2015):
             self.db.execute('INSERT OR IGNORE INTO statements VALUES(?,?,?,?,?,?,?)',('A',f'{year}-06-30',f'{year}-09-28',100e6,150e6,30e6,.2))
             self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',('B',f'{year}-06-30',f'{year}-09-28',100e6,150e6,35e6,.23))

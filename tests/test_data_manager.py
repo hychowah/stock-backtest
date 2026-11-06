@@ -49,14 +49,14 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(spans,[(date(2020,9,2),date(2020,12,31))])
         self.assertEqual(list(d.spans(date(2020,1,15),date(2020,3,1),True)),[('2020-01-15','2020-01-31'),('2020-02-01','2020-02-29'),('2020-03-01','2020-03-01')])
 
-    def test_existing_records_and_light_prices_are_preserved(self):
-        payload=dict(div=self.prices([('2020-01-01',10),('2020-06-30',20)]),light=[dict(date='2020-06-30',price=21)])
+    def test_existing_records_and_other_saved_keys_are_preserved(self):
+        payload=dict(div=self.prices([('2020-01-01',10),('2020-06-30',20)]),extra=[dict(date='2020-06-30',price=21)])
         self.put('px/A.json',payload)
         with patch.object(d,'request_json',return_value=self.prices([('2020-12-31',30)])) as get:
             d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_args.args[1],dict(symbol='A',**{'from':'2020-07-01','to':'2020-12-31'}))
         saved=d.read_json(self.raw/'px/A.json')
-        self.assertEqual(saved['light'],payload['light'])
+        self.assertEqual(saved['extra'],payload['extra'])
         self.assertEqual(saved['div'][-1],payload['div'][0])
 
     def test_noop_needs_no_key_and_makes_no_requests(self):
@@ -85,7 +85,7 @@ class CacheTests(unittest.TestCase):
         self.assertFalse(d.COVERAGE.exists())
 
     def test_nonpositive_prices_keep_good_rows_and_persistent_warnings(self):
-        self.put('px/A.json',dict(div=[],light=[dict(date='2020-01-03',price=13)]))
+        self.put('px/A.json',dict(div=[],extra=[dict(date='2020-01-03',price=13)]))
         batch=self.prices([('2020-01-02',0),('2020-01-03',12),('2020-01-06',-1)])
         events=[];ledger={}
         with patch.object(d,'request_json',return_value=batch) as get:
@@ -94,7 +94,7 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(get.call_count,1)
         saved=d.read_json(self.raw/'px/A.json')
         self.assertEqual(saved['div'],self.prices([('2020-01-03',12)]))
-        self.assertEqual(saved['light'],[dict(date='2020-01-03',price=13)])
+        self.assertEqual(saved['extra'],[dict(date='2020-01-03',price=13)])
         self.assertTrue(any('2020-01-02' in event.get('warning','') for event in events))
         report=d.inspect(self.o)
         self.assertEqual(report['prices'][0]['skipped_dates'],['2020-01-02','2020-01-06'])
@@ -161,9 +161,9 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(again['warnings'],report['warnings'])
         self.assertIn('A: skipped 2',report['warnings'][0])
 
-    def test_all_nonpositive_response_preserves_saved_prices_and_light_history(self):
+    def test_all_nonpositive_response_preserves_saved_prices_and_other_keys(self):
         self.o['start']='2020-01-02'
-        payload=dict(div=self.prices([('2020-01-02',12)]),light=[dict(date='2020-01-02',price=13)])
+        payload=dict(div=self.prices([('2020-01-02',12)]),extra=[dict(date='2020-01-02',price=13)])
         self.put('px/A.json',payload)
         batch=self.prices([('2020-12-31',0)])
         with patch.object(d,'request_json',return_value=batch):

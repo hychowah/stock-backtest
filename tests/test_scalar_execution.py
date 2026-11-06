@@ -39,7 +39,7 @@ class Fixture:
             symbol=f'A{i:04d}'
             self.db.execute('INSERT INTO companies VALUES(?,?,?,?)',(symbol,symbol,'NYSE','Technology'))
             self.db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',(symbol,'2014-06-30','2014-09-28',150e6,180e6,54e6,.3))
-            self.db.executemany('INSERT INTO prices VALUES(?,?,?,?)',[(symbol,day,10.,10.) for day in ['2014-06-30','2015-01-02','2015-01-05']])
+            self.db.executemany('INSERT INTO prices VALUES(?,?,?)',[(symbol,day,10.) for day in ['2014-06-30','2015-01-02','2015-01-05']])
             for pool in ('legacy','cached'):
                 self.db.execute('INSERT INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(pool,1,symbol,i+1,'2014-06-30','2015-01-02','2015-01-05',150e6,180e6,54e6,.3,3.,.28,i/1000,'Scheduled exit'))
                 self.db.execute('INSERT INTO latest_snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(pool,symbol,i+1,'2014-06-30','2014-09-28','2015-01-05',10.,150e6,180e6,.3,3.,.28))

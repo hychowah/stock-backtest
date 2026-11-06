@@ -77,18 +77,22 @@ def series(rows, field):
     return [result[day] for day in sorted(result)]
 
 
-def checked_series(payload,field,*,stock=False):
-    """Return (valid, usable rows) of one parsed price or yield file.
+def valid_series(payload,field,*,stock=False):
+    """Whether one parsed price or yield file is a valid asset; builds no rows.
 
     A stock file keeps its rows under 'div'. Valid rows are all mappings, and
     a nonempty response with no usable data is an invalid asset, not a valid
     empty history. Real empty histories are represented by [].
     """
     values=payload.get('div') if stock and isinstance(payload,dict) else payload if not stock else None
-    valid=isinstance(values,list) and all(isinstance(row,dict) for row in values)
+    return (isinstance(values,list) and all(isinstance(row,dict) for row in values)
+            and (not values or any(series([row],field) for row in values)))
+
+
+def checked_series(payload,field,*,stock=False):
+    """Return (valid_series(), usable rows) of one parsed price or yield file."""
     values=payload.get('div',[]) if stock and isinstance(payload,dict) else payload if not stock else []
-    rows=series(values,field)
-    return valid and not (values and not rows),rows
+    return valid_series(payload,field,stock=stock),series(values,field)
 
 
 def missing_spans(rows,field,start,end,checked):
@@ -114,7 +118,7 @@ def missing_spans(rows,field,start,end,checked):
 class SeriesAsset:
     """Own one price/yield file, its normalized rows and request provenance.
 
-    Publication preserves saved values and light prices. Evidence names the
+    Publication preserves saved values and the file's other keys. Evidence names the
     expected file content and original saved span. A half-published update
     cannot match the wrong file. Unfinished managed windows remain missing
     even if parallel results extend the actual date span on both sides.
