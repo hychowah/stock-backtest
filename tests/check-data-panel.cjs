@@ -32,7 +32,10 @@ const run=code=>vm.runInContext(code,ctx);
  ctx.fetch=async()=>({ok:false,status:404});await run('DataPanel.refresh()');assert(node('data-connection').textContent.includes('Restart start.cmd'));assert(node('data-download').disabled);
  ctx.location.protocol='file:';run('DataPanel.init()');assert(node('data-connection').textContent.includes('start.cmd'));assert(node('data-check').disabled);
  assert.equal(node('data-end').value,'2020-12-31','A chosen end date is kept.');
- node('data-end').value='';run('DataPanel.init()');assert.equal(node('data-end').value,new Date().toISOString().slice(0,10),'The default end is the latest available day.');
+ // 22:30 on 6 November in New York is already 7 November in UTC; the server's local date is 6 November.
+ process.env.TZ='America/New_York';const instant=Date.parse('2026-11-07T03:30:00Z');
+ ctx.Date=class extends Date{constructor(...args){super(...(args.length?args:[instant]));}};
+ node('data-end').value='';run('DataPanel.init()');assert.equal(node('data-end').value,'2026-11-06','The default end is the local date, the latest available day.');
  assert(!elements.has('data-prepare')&&!elements.has('data-candidate'),'The panel offers no experimental engine preparation.');
- console.log('Passed: status-only startup, today as the default end date, selected download request, progress/polling, coverage rendering, escaping, missing-key state, validation and offline/older-server instructions.');
+ console.log('Passed: status-only startup, the local date as the default end date, selected download request, progress/polling, coverage rendering, escaping, missing-key state, validation and offline/older-server instructions.');
 })().catch(error=>{console.error(error);process.exitCode=1});

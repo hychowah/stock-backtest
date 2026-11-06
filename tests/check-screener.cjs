@@ -9,6 +9,9 @@ const latestCases=[{}, {pool:'cached',rank_to:100},{pool:'cached',min_cap:500e6,
 latestCases.push({pool:'cached',filters:[{field:'fcf_yield',op:'gt',value:5}]});
 latestCases.push({pool:'cached',filters:[{field:'return_1y',op:'gt',value:-10},{field:'return_3y',op:'lt',value:100}]});
 latestCases.push({pool:'cached',filters:[{field:'operating_yield_spread_3y',op:'gt',value:5}]});
+latestCases.push({filters:[{field:'pe',op:'lt',value:20}]});
+latestCases.push({pool:'cached',filters:[{field:'roe',op:'gt',value:10},{field:'debt_equity',op:'lt',value:1}]});
+latestCases.push({filters:[{field:'market_cap',op:'gt',value:500},{field:'market_cap',op:'lt',value:500}]});
 latestCases.push(...latestCases.map(options=>({...options,selection_order:'rank_first'})));
 for(let i=0;i<latestCases.length;i++){
  const result=engine.latestScreen(dataset,latestCases[i]),expected=references.latest[i];

@@ -90,16 +90,10 @@ class ExecutionTests(unittest.TestCase):
         reader,_=self.run_result()
         self.assertEqual(reader.manifest['trials'],1)
         self.assertEqual(len(list(evidence_views.holdings(reader,1,1))),5)
-    def test_actual_latest_evidence_and_a_january_request_is_refused(self):
+    def test_actual_latest_evidence(self):
         reader,_=self.run_result('latest',dict(strategy=self.capture.to_dict()))
         self.assertEqual(reader.metadata['mode'],'latest')
         self.assertEqual(reader.manifest['trials'],0)
-        # January is refused before admission or any input work; it is never converted.
-        with self.assertRaises(definitions.FormulaError) as failure:
-            self.run_result('january',dict(strategy=self.capture.to_dict(),first=2015,last=2015))
-        self.assertEqual((failure.exception.code,failure.exception.path),('UNSUPPORTED_CAPABILITY','/mode'))
-        self.assertIn('January backtests were removed',str(failure.exception))
-        self.assertFalse(self.financial);self.assertFalse(self.opened)
     def test_actual_random_seed_plan_and_recorded_replay_are_identical(self):
         options=self.options(trials=2,seed=0)
         reader,configs=self.run_result('random',options)

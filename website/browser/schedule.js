@@ -84,13 +84,12 @@ const ScheduleView=(()=>{
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
     node('schedule-period').value=String(result.periods.length-1);stocks();
   }
-  async function run(options,override=null,replay=null){
+  async function run(filters,override=null,replay=null){
     if(running)return;
     if(typeof location==='undefined' || location.protocol==='file:'){
       node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
     }
     try{
-    const {first,last,...filters}=options;
     const random=!!replay || (!override && node('date-testing').value==='random');
     const {engine:replayEngine,...plan}=replay||{};
     const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,engine:replayEngine??'original'}:

@@ -34,7 +34,7 @@ vm.runInContext('updateResultsState=()=>{};',context);
 // The page's own list listeners, including the picker binding.
 vm.runInContext(source.slice(source.indexOf("document.getElementById('add-filter').addEventListener"),source.indexOf('\nconst autoRun=')),context);
 for(const [key,id] of Object.entries({selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'}))node(id).value=defaults[key]===null?'':String(key==='min_cap'||key==='min_ev'?defaults[key]/1e6:defaults[key]);
-node('rank-from').value='1';node('rank-to').value='50';node('from-year').value='2015';node('to-year').value='2015';
+node('rank-from').value='1';node('rank-to').value='50';
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve)),later=()=>new Promise(resolve=>setTimeout(resolve,5));
 const list=node('filter-conditions');
 const fire=(type,target,extra={})=>{for(const handler of list.handlers[type]||[])handler({target,preventDefault(){},stopPropagation(){},...extra});};

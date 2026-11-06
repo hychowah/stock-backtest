@@ -130,41 +130,32 @@ agent each. Re-check every dependency by grep first.
 
 #### P2a. Dev check and readers (done, e48c97a and 67e0e5f)
 
-- Dev check: `backtest/engines/reference/check.py` holds the moved
-  `baseline.agree` and the dated-run adapter (one Original custom run, 12
-  months from 1 January 1996, legacy pool, `ev_ebitda` ranks 1–50, default
-  floors). `books.py` names it. Step 1: see Starting point.
+- Dev check: `backtest/engines/reference/check.py`, one Original custom run
+  (12 months from 1 January 1996, legacy pool, `ev_ebitda` ranks 1–50, default
+  floors) in the `revalue.calculate` shape. `books.py` names it.
 - Readers removed: the January mode (`require_mode` refuses it at `/mode` in
-  the run route, `jobs._start` and `calculate_into`), `scalar_runs.prepared`,
-  the browser January view and static year sections, the January pools and
-  exports, `screener.js` historical selection, `attribution.py`, the January
-  prepared scopes and `historical_through` readers, the missing-report
-  recovery and report row, the baseline audit, the `baseline` data scope
-  (default: cached-price stocks through today), `--collect-report` with
-  `--native-export`, the `runtime-baseline-*` rule, `research.py screen` and
-  the January status table, and the January and report parts of the coverage
-  tool (version 2). `ResultArtifacts.decode` projects saved January results of
-  versions 1–2 into dated periods; a repeated save sends the stored record.
-- Deviations (code over plan): deployment keeps its REPORT special cases,
-  because the writer still rewrites the runtime report and a managed REPORT
-  would then stop deployment; they move to P2b. A latest root without an owner
-  scope keeps the stored latest lanes; every other root uses the dated owner
-  policy. The page embeds sector and exchange choices from all companies,
-  because latest companies lack the `Unavailable` sector that dated runs can
-  use. `check.py` stays out of `calculation_sources` (verbatim move). Opening
-  Historical backtest no longer auto-runs a server backtest.
-- Unlisted readers: the bench harness `january:<year>` scope (removed);
-  `offline_input_copy.py` copies the report and `research.connect` checks its
-  binding, both for the writer (P2b).
-- Visible changes: coverage lists only latest scopes until P3; previews on
-  January sessions use the dated owner policy; Historical backtest opens
-  without a run; the data panel defaults to cached-price stocks through today
-  and has no baseline audit; saved January results open in the dated view
-  with a notice; the build writes no `returns.csv`, `holdings.csv` or
-  `valuations.json`.
+  the run route), `scalar_runs.prepared`, the browser January view, pools,
+  exports and historical selection, `attribution.py`, the January prepared
+  scopes and `historical_through` readers, the report recovery and row, the
+  baseline audit and data scope, `--collect-report`, `research.py screen` and
+  the January parts of the coverage tool (version 2). `ResultArtifacts.decode`
+  projects saved January results (versions 1–2) into dated periods.
+- Deviations (code over plan): deploy kept its REPORT special cases for P2b,
+  because the writer still rewrote the runtime report; an owner-less latest
+  root keeps stored latest lanes; sector and exchange choices come from all
+  companies; Historical backtest opens without a run; `check.py` stayed out of
+  `calculation_sources`.
+- Unlisted readers: the bench harness January scope; the report copy in
+  `offline_input_copy.py` and the `research.connect` binding (P2b).
+- Visible changes: coverage lists latest scopes only until P3; previews on
+  January sessions use the dated owner policy; the data panel defaults to
+  cached-price stocks through today; the build writes no `returns.csv`,
+  `holdings.csv` or `valuations.json`.
 
 #### P2b. Writer, reuse and study constants
 
+- First, the P2a review follow-up: one January refusal, at the run route;
+  stale docs and CSS; the local default end date; three latest parity cases.
 - The writer: the January loop in `research.prepare` (January `snapshots`,
   `baseline_prices`, `periods`, `baseline_periods`, January `filter_values`
   and `screening_metrics`), `verify_reference`, `prepared_baseline`,
@@ -188,6 +179,14 @@ agent each. Re-check every dependency by grep first.
   reference engine. `rules.py` keeps only the policy that dated and latest
   books use. The 1996 floor (twice in `calendar.py`, and `View.admit` through
   `FIRST_YEAR`) becomes one constant in `rules.py`.
+- The dev check becomes a leaf. `check.agree`, `HOLDING_FIELDS`,
+  `YEAR_FIELDS` and `PRICE_FIELDS` go with the verification; `differences` and
+  the dated field lists stay. `scripts/check.py` runs it.
+  `research.calculation_sources()` lists only code that computes prepared rows
+  or books, so an edit to the reference engine keeps saved books. No module
+  under `backtest/` outside `engines/reference/` imports it.
+- Bench: remove the `january:*` scopes from `~/bench/harness/fixtures.py` and
+  `parity.py`, so that P3's harness parity runs.
 - Rewrite the AGENTS study sections ("What the test does" to "How to
   continue", "Research database and baseline", "Website screening",
   "Selection order") and the guide. Keep the

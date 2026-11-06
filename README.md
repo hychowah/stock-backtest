@@ -74,7 +74,7 @@ Choose **Manage backtest data** to inspect saved files and date coverage.
 Choose a stock group or enter symbols. **Download missing data** fills missing
 financial symbols and price ranges with your local FMP key. **Rebuild prepared
 data + website** applies saved changes offline. Existing records are kept.
-A rebuild compares SQL results with the independent reference engine at the saved historical cutoff. When they agree, it updates the report and preserves revision evidence in `results/baseline-history/`. Engine disagreement stops publication. Use **Export baseline revision** in the data panel to inspect changed holdings and prices. No download starts when the panel opens. If essential source files are missing,
+A rebuild compares SQL results with the independent reference engine at the saved historical cutoff. When they agree, it updates the report and preserves revision evidence in `results/baseline-history/`. Engine disagreement stops publication. No download starts when the panel opens. If essential source files are missing,
 startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
 
 Random-date batches plan missing books once, calculate ahead with separate Python
@@ -180,7 +180,7 @@ git --git-dir=.git-local --work-tree=. log --oneline
 
 Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
 
-Source and reviewed reports are versioned. The portable export in `website/dist/` is ignored. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. Collect a changed verified runtime report with `python3 tools/deploy.py --collect-report` before reviewing and committing it. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
+Source and reviewed reports are versioned. The portable export in `website/dist/` is ignored. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
 
 ## Local builds and portable snapshots
 

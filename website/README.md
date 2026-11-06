@@ -359,7 +359,8 @@ HTML embeds these assets. The latest view still works without a server.
 `website/rendering/data.py` loads detached page data from one verified prepared
 connection. It closes the connection before rendering. `page.py` builds static
 markup. `assets.py` owns asset order and the source-only recovery page.
-`rendering/build.py` writes the HTML and baseline exports. `rendering/state.py`
+`rendering/build.py` writes the HTML, the latest picks CSV, the data panel and
+the snapshot provenance. `rendering/state.py`
 checks explicit nested source inventories and the prepared database generation.
 The executable command remains `python3 website/build.py`.
 

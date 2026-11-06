@@ -60,7 +60,6 @@ class Jobs:
     def _start(self,identifier,mode,options,*,planned=None,limits=None):
         if not re.fullmatch(r'[a-f0-9]{32}',identifier):
             raise ValueError('Invalid backtest run ID.')
-        strategy_requests.require_mode(mode)
         scalar=isinstance(options,dict) and 'strategy' in options
         options=strategy_requests.canonical_options(options)
         accepted=scalar and self.accepted(identifier)

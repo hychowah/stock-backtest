@@ -24,6 +24,9 @@ def main():
         latest_cases.append(dict(pool='cached',filters=[dict(field='fcf_yield',op='gt',value=5)]))
         latest_cases.append(dict(pool='cached',filters=[dict(field='return_1y',op='gt',value=-10),dict(field='return_3y',op='lt',value=100)]))
         latest_cases.append(dict(pool='cached',filters=[dict(field='operating_yield_spread_3y',op='gt',value=5)]))
+        latest_cases.append(dict(filters=[dict(field='pe',op='lt',value=20)]))
+        latest_cases.append(dict(pool='cached',filters=[dict(field='roe',op='gt',value=10),dict(field='debt_equity',op='lt',value=1)]))
+        latest_cases.append(dict(filters=[dict(field='market_cap',op='gt',value=500),dict(field='market_cap',op='lt',value=500)]))
         latest_cases += [dict(options,selection_order='rank_first') for options in latest_cases]
         expected = dict(latest=[screening.latest(db,**options) for options in latest_cases])
     finally:

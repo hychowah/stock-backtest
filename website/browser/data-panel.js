@@ -60,7 +60,9 @@ const DataPanel=(()=>{
   function init(){
     node('data-connect').addEventListener('click',refresh);
     // An empty range end defaults to the latest day a download can return.
-    node('data-end').max=new Date().toISOString().slice(0,10);
+    // The server checks it against its local date, so use the local date, not UTC.
+    const now=new Date();
+    node('data-end').max=[now.getFullYear(),now.getMonth()+1,now.getDate()].map(n=>String(n).padStart(2,'0')).join('-');
     if(!node('data-end').value)node('data-end').value=node('data-end').max;
     for(const action of ['check','download','rebuild','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
     node('data-scope').addEventListener('change',()=>node('data-symbols').disabled=node('data-scope').value!=='symbols');
