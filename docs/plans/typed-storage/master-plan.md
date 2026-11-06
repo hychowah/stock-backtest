@@ -17,7 +17,7 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`, read through `facts.View`), T2
 (detail-mode explanations, D1), T3 (JSON observation tables and reference
-evaluator deleted), P1, P2 (P2a, P2b, P2c) and P3a with its follow-up.
+evaluator deleted), P1, P2 (P2a, P2b, P2c), P3a with its follow-up, and P3b.
 
 Bench, P1 code (6367bef, research schema 13, daily 6): cold build 462 s
 (research 377, daily 84). `research.sqlite` 2.24 GB; `schedules.sqlite` 1.10 GB
@@ -37,24 +37,28 @@ parity against fd043e3, 0 mismatches (24,489,611 price days, 1,378 dated books,
 75,346,082 filter values). Cold build 365 s (research 260, daily 104);
 `research.sqlite` 1.81 GB; user test 512.8/193.9 s.
 
-P3a follow-up (e62f012; facts 3, research schema 16, daily 8): the four
-digests equal 42ad9f8 (result bytes differ by 9 and 2 bytes of embedded
-timings; the two user-test runs of one code differ by 59); dev check 0
-differences. Parity against the 42ad9f8 databases, 0 mismatches: every research
-table; the observation fields and the valid values against the old book
-columns (24,489,611 price days, SPY 8,004, both yields 7,955, no signed zero);
-daily prices, sessions and yields; `company_facts` (11,054, 5,986 listed);
-the latest book in the book store (3,409 rows, 6,129 pairs, 58,890 filters,
-`candidates` 3,366); `books.book` through `book_store.store` for all 1,378
-dated books (75,346,082 filter values; 233 s, 8 workers). Reasons, old to new,
-with equal values: latest (22,108 decisions) legacy `MISSING_PRICE` to
-`OUTSIDE_LEGACY_BUFFER` 2,775 and to `MISSING_PRICE` 8, `POOL_INELIGIBLE` to
-`INELIGIBLE_VALUATION` 9, the rest unchanged; dated (5,705,115 candidates)
-every denial equals the old admission reason, with no exit denial. Cold build
-305 s: research 188 (companies 185), daily 117 (prices 111, latest book 1.9).
-`research.sqlite` 1.32 GB (`stock_days` 1.11 GB, 0.49 GB less);
-`schedules.sqlite` 0.86 GB before books, 10.55 GB after. User test 533.1 s
-computed, 200.4 s saved (a quiet rerun saved 188.5 s; P3a 512.8/193.9).
+P3a follow-up (e62f012; facts 3, research schema 16, daily 8): digests equal
+42ad9f8; parity against the 42ad9f8 databases, 0 mismatches (every research
+table; valid values = old book columns; `books.book` through `book_store.store`
+= all 1,378 dated books, 75,346,082 filter values). Latest reasons, old to
+new: legacy `MISSING_PRICE` to `OUTSIDE_LEGACY_BUFFER` 2,775, `POOL_INELIGIBLE`
+to `INELIGIBLE_VALUATION` 9; dated denials equal. Cold build 305 s (research
+188, daily 117); `research.sqlite` 1.32 GB; `schedules.sqlite` 0.86 GB before
+books, 10.55 GB after. User test 533.1/200.4 s (quiet saved rerun 188.5).
+
+P3b (3af5a28; facts 4, research schema 17, daily 9): the four digests equal
+62b912d, latest traces included; result bytes differ only in timings. Dev
+check 0 differences. Latest roots (22,108, `View.admit`): 0 admission, rank,
+report or value mismatches; changed reasons exactly legacy `MISSING_PRICE` to
+`OUTSIDE_LEGACY_BUFFER` 2,775 and `POOL_INELIGIBLE` to `INELIGIBLE_VALUATION`
+9; an unknown historical root is `UNKNOWN_COMPANY`. Book store after the user
+test = old snapshots and pairs (1,378 book pools, 4,371,522 rows, 7,939,836
+pairs, SPY and candidates; 0 mismatches); harness parity 16 runs, 0
+different. Cold build 264 s: research 158
+(companies 156), daily 106 (prices 101, latest book 1.5). `research.sqlite`
+1.31 GB; `schedules.sqlite` 0.80 GB before books, 5.27 GB with 1,378 books
+(`book_filters` 3.31 GB, no separate index). User test 398.3 s computed,
+166.0 s saved. Real-data website checks pass.
 
 ## Decisions
 
@@ -144,8 +148,8 @@ exchange choices, the offline-copy manifest version 2) are in the P2 commits.
 
 ### P3. One fact store and one book function
 
-P3a (steps 1–3) writes the store; P3b (steps 4–5 and the kept-book rule)
-switches the readers and deletes.
+P3a (steps 1–3) wrote the store; P3b switched the readers (step 4, first
+part); P3c finishes step 4, the kept-book rule and step 5.
 
 1. Measure the duplicate-day rows (done in P3a).
 2. Parse each raw file once into the facts (done).
@@ -155,22 +159,15 @@ switches the readers and deletes.
    valuation) and `books.close` (exit); `books.book(entry, exit, pool, facts)`;
    `facts.BookFacts` (reports, cached, companies, price, spy, treasury,
    ten_year, legacy_annual); `book_store.store` writes the one row shape.
-4. Switch the readers. `daily`, `View` (admission and preview roots through
-   `Screen.decide`), `compute_period` and the book workers read the research
-   facts read-only and the book store.
+4. Switch the readers (P3b done; the rest is P3c).
    - One identity record in research: schema version, accepted raw signature
      (with each price file), the content identity of the row code, and the
      latest date. The daily binding names it and the book code. Editing a
-     reader must not invalidate books.
+     reader must not invalidate books. Results fill `input` and `projection`
+     from it.
    - A prepared scope is a stored book (period row and pool), named by book id
      instead of a threaded `owner_scope`. One check in the book store; coverage
      discovery lists stored books.
-   - One `book` id replaces `periods.year`, `snapshots.year`,
-     `screening_metrics.year`, `filter_values.year` and `period_pools.period_id`;
-     the constant `mode` column goes. `screening.select(db, book=None)` and
-     `scalar_execution.scope_rows` take one book: no inclusive range, no
-     `PARTITION BY s.year`, no `historical` flag. Tests stop building one
-     database from `research.SCHEMA + daily.DATED_SCHEMA`.
    - One atomic-replace helper in `cache_assets`, with the Windows sharing
      retry, serves `publish_bytes`, `research.prepare` and `daily.prepare`.
    - The kept-book rule below.
@@ -191,17 +188,14 @@ Kept books, one change-day rule for every input that a book reads:
 - If a measurement shows that recomputing the dropped books costs little,
   delete the kept-book rule instead.
 
-Deletes: `prepare_metrics`, `latest_snapshot`, `before`, `after`,
-`ten_year_yield`, `books.snapshot`; daily `prices`, `sessions`, `treasuries`,
-`periods`, `snapshots`, `period_pools` and the copied tables;
-`daily._price_rows`, `_prices`, `_copy_research`, `_first_difference`,
-`_dated_change`, `histories`; research `latest_snapshots`, `treasury10`,
-`financial_inputs` and the year-0 latest rows; `fact_metadata`,
-`facts.require`, `policy_binding`, `prepared_bindings`,
-`prepared_price_binding`, the daily engine stats and `_code` digests;
-`latest_admission`; the scope list with `MAX_SCOPES` and
+Deletes left for P3c (P3b deleted the rest of the list): daily `prices`,
+`sessions`, `treasuries` and the copied `treasury10`; `daily._price_rows`,
+`_prices`, `_book_inputs`, `_first_difference`, `_dated_change`; research
+`treasury10` and `financial_inputs`; `fact_metadata`, `facts.require`,
+`policy_binding`, `prepared_bindings`, `prepared_price_binding`, the daily
+engine stats and `_code` digests; the scope list with `MAX_SCOPES` and
 `MAX_METADATA_BYTES`; the `MAX_HISTORY` checks in the replaced readers; the
-three owner-scope checks; `research._replace`; the `mode` columns.
+three owner-scope checks; `research._replace`.
 
 Owns: `research.py`, `daily.py`, `facts.py`, `books.py`, `book_store.py`,
 `schedules.py`, `book_batch.py`, `screening.py`, the `cache_assets` replace
@@ -250,19 +244,38 @@ and after a nightly update that adds some annual reports.
   (`price` for valuation, `adjusted` for returns); the old-rule test oracle
   and the unused `tests/daily_fixture.py` are deleted now; the reference
   engine reads `div` only and `fetch_bulk.py` no longer fetches SPY `light`;
-  daily `sessions` and `treasuries` keep their own parse until P3b.
+  daily `sessions` and `treasuries` keep their own parse until P3c.
 
-#### P3b. Readers switched, then deletions
+#### P3b. Readers switched (done, 3af5a28)
 
-Steps 4–5 and the kept-book rule. `View.admit` and `latest_admission` switch to
-`Screen.decide`, so the visible reasons change (old `MISSING_PRICE` splits into
-`OUTSIDE_LEGACY_BUFFER`, `MISSING_CACHED_PRICES` and `MISSING_PRICE`; an
-unknown historical root becomes `UNKNOWN_COMPANY`). View evidence records its
-lookups through a recording facts port. Dated books move into the book store.
-The website build reads the latest book from the book store (asof = entry,
-eligible financials = `candidates`) and binds the latest book's identity, not
-the `schedules.sqlite` file stamp; `website/build.py` alone then needs the
-daily cache. `research.py status` reads the latest book too.
+- `View.admit` is `Screen.decide` for every root (the open-book screen for a
+  latest root); `View.entry` and historical admission evidence use a recording
+  facts port. `latest_admission` and the research latest tables went.
+- Dated books: `books.book` through `book_store.store`
+  (`schedules.prepare_period`, the book workers); `book_store.find`, `latest`
+  and the kept row shapes `DATED` and `LATEST`. `screening.select(db,
+  book=None)` and `scope_rows(db, pool, book=None)` take one book.
+- `daily.connect` and the workers attach research read-only as `research`;
+  `BookFacts` takes the schema; `facts.sessions` serves every sessions reader.
+  `company_facts` is merged into `companies`. The website build and
+  `research.py status` read the latest book; the build stamp binds the daily
+  generation; standalone `website/build.py` needs the daily cache.
+- Deviations: scopes stay named by book 0 with the owner-scope checks (they
+  belong with the one identity); the old kept-book check stays, over the book
+  store, until P3c; dated scope rows are in symbol order, so receipts'
+  `prepared_period` is the book-store id and selection indices change
+  (holdings, ranks and traces do not); a latest `INELIGIBLE_VALUATION` root
+  (9) carries no valuation, as historical roots never did.
+
+#### P3c. Identity, kept books and deletes
+
+The one identity (step 4, first bullet; results' `input` and `projection`),
+scopes named by book id with one check in the book store and coverage listing
+stored books (`scalar_execution._scope`/`evaluate_preview`,
+`measure_observations.prepared_scope`, `columns.require_roots`,
+`View.bounds`, `scalar_runs`, `variable_coverage`), the change-day rule in
+research preparation, the atomic-replace helper, the deletes above, and the
+kept-book measurements of the P3 exit.
 
 ### P4. Book rows read in place
 
@@ -355,4 +368,5 @@ review (M1, M2, S1–S3 and the small items: adopted in the follow-up).
 
 ## Next
 
-P3b, after the review of the P3a follow-up.
+P3c (one identity, kept-book rule, atomic-replace helper, deletes) after the
+independent review of P3.
