@@ -372,11 +372,13 @@ def prepare(path=DATABASE, force=False):
         facts.store_companies(db,universe)
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
         cached={s for s in broad if market.cache_path_for(s).name in sources}
+        spiked=[]
         for number,symbol in enumerate(sorted(broad),1):
             backtest_control.checkpoint()
             # One parse of the price file gives its typed facts.
             stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint),'px/'+market.cache_path_for(symbol).name)
             rows=facts.store_stock(db,symbol,stock)
+            if any(row[2]==facts.INCONSISTENT_SERIES for row in rows):spiked.append(symbol)
             resolved=financial_inputs.resolve_history(RAW,symbol)
             facts.store_annual(db,symbol,resolved)
             if diff is not None:
@@ -384,7 +386,9 @@ def prepare(path=DATABASE, force=False):
             if number%200==0 or number==len(broad):
                 print(f'Prepared {number}/{len(broad)} companies',flush=True)
         diagnostics.lap('companies')
-        diagnostics.note(companies=len(cached))
+        if spiked:
+            print(f'Left out {len(spiked)} price series with an isolated price spike: {", ".join(spiked)}',flush=True)
+        diagnostics.note(companies=len(cached),spiked_series=len(spiked))
         facts.store_market(db,market_facts)
         diagnostics.lap('dated_facts')
         changed=dict(base=None,rows={})

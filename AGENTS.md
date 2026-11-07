@@ -154,6 +154,9 @@ January from 1996, the top 50) is a 12-month fixed schedule from 1 January.
 - Default floors: market cap at least $100 million, enterprise value at least
   $50 million. The `legacy` pool applies them before ranking. Currency USD. A
   stock with no entry price is left out.
+- A saved price series with an isolated spike (a close at least 8× or at most
+  1/8 of both neighbouring closes) mixes price scales. Preparation keeps none
+  of its closes (`facts.stock`), so that stock is left out.
 - If trading stops before the scheduled exit, the exit is the last price. That
   covers an acquisition, a called note and a SPAC that returns cash. A stock
   that still has a price at the exit keeps it; a later delisting changes nothing.

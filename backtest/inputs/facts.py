@@ -23,7 +23,8 @@ declared type, so SQLite keeps the binary64 bits exactly, including -0.0,
 which a REAL column stores as the integer 0.
 
 One rule gives a day its value: equal admissible values agree, and a
-conflicting, non-USD or invalid value gives no value and a reason. Books
+conflicting, non-USD or invalid value gives no value and a reason. A stock
+series with an isolated price spike keeps no close (stock()). Books
 (books.book) and admission (books.Screen) read the valid values through
 BookFacts. Every reader reads the facts through the 'research' schema that a
 daily connection attaches (daily.attach). The book store of the daily cache
@@ -43,6 +44,9 @@ MAX_HISTORY = 16384
 STOCK = 'historical-price-eod/dividend-adjusted'
 TREASURY = 'treasury-rates'
 CALENDAR = 'spy-calendar'
+# The isolated price spike of stock() and the reason it gives every close.
+SPIKE = 8
+INCONSISTENT_SERIES = 'INCONSISTENT_SERIES'
 
 
 def _annual_columns():
@@ -172,8 +176,28 @@ def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None):
     return dict(source=source, dated=observe(rows, fields, checkpoint))
 
 
+def _spiked(closes):
+    """Whether one close is at least SPIKE times, or at most 1/SPIKE of, both neighbouring closes."""
+    for before, middle, after in zip(closes, closes[1:], closes[2:]):
+        up, down = middle / before, middle / after
+        if min(up, down) >= SPIKE or max(up, down) <= 1 / SPIKE:
+            return True
+    return False
+
+
 def stock(raw, symbol, checkpoint=lambda: None):
-    return resolve(raw / 'px' / market.cache_path_for(symbol).name, STOCK, stock=True, checkpoint=checkpoint)
+    """Resolve one saved price file; a series with an isolated spike keeps no close.
+
+    Such a spike mixes two price scales in one provider series, so no close of
+    it is usable: every valid close becomes INCONSISTENT_SERIES and the company
+    has no price. Neighbours are the adjacent valid closes in day order.
+    """
+    resolution = resolve(raw / 'px' / market.cache_path_for(symbol).name, STOCK, stock=True, checkpoint=checkpoint)
+    closes = [states['adjClose'] for _, states in sorted(resolution['dated'].items()) if states['adjClose']['valid']]
+    if _spiked([state['value'] for state in closes]):
+        for state in closes:
+            state.update(value=None, valid=False, reason=INCONSISTENT_SERIES)
+    return resolution
 
 
 def shared(raw, checkpoint=lambda: None):

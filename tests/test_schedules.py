@@ -522,7 +522,7 @@ class KeptBookTests(unittest.TestCase):
         self.assertEqual(self.update(),dict(prices={'A':self.DAY},market={},statements={},annual={}))
         self.assert_kept(self.before)
         self.saved=self.stored()
-        self.edit('px/B.json',lambda value:next(row for row in value['div'] if row['date']=='2015-04-01').update(adjClose=99))
+        self.edit('px/B.json',lambda value:next(row for row in value['div'] if row['date']=='2015-04-01').update(adjClose=50))
         self.assertEqual(self.update()['prices'],{'B':'2015-04-01'})
         self.assert_kept(self.before[:2])
 

@@ -107,6 +107,28 @@ class ResolutionTests(unittest.TestCase):
                 self.assertEqual(resolved['dated'],{})
                 self.assertEqual(self.path.read_bytes(),before)
 
+    def stock(self, closes):
+        """facts.stock of one saved price file with these closes on consecutive days."""
+        raw = Path(self.folder.name); (raw/'px').mkdir(exist_ok=True)
+        rows = [dict(date=f'2015-01-{day:02d}', adjClose=close, volume=1) for day, close in enumerate(closes, 2)]
+        (raw/'px'/'A.json').write_text(json.dumps(dict(div=rows)))
+        dated = facts.stock(raw, 'A')['dated']
+        return [(dated[day]['adjClose']['value'], dated[day]['adjClose']['reason'], dated[day]['volume']['value'])
+                for day in sorted(dated)]
+
+    def test_a_series_with_an_isolated_spike_keeps_no_close(self):
+        # 8x or 1/8 of both valid neighbours, skipping an invalid day; volumes and other reasons stay.
+        for closes in ([10, 10, 80, 10], [10, 1.25, 10], [10, 80, -1, 10]):
+            with self.subTest(closes=closes):
+                self.assertEqual(self.stock(closes), [
+                    (None, 'INVALID_INPUT' if close <= 0 else facts.INCONSISTENT_SERIES, 1) for close in closes])
+
+    def test_a_smaller_or_lasting_jump_keeps_every_close(self):
+        # Below 8x, a jump that stays, and a jump on an end day with one neighbour.
+        for closes in ([10, 79, 10], [10, 80, 80, 80], [80, 10, 10], [10, 10, 80]):
+            with self.subTest(closes=closes):
+                self.assertEqual(self.stock(closes), [(close, None, 1) for close in closes])
+
     def test_history_bound_and_cancellation(self):
         self.path.write_text(json.dumps(dict(div=[dict(date=f'2015-01-0{day}',volume=1) for day in (2,3,4,5)])))
         with patch.object(facts,'MAX_HISTORY',3),self.assertRaisesRegex(ValueError,'history'):

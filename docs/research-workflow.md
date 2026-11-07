@@ -866,10 +866,14 @@ The research record (`metadata`, above) names their version and content
 identity.
 
 A field is valid when its value is present; otherwise its reason column names
-the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
-`INVALID_INPUT`). Value columns have no declared type, so SQLite keeps the
-binary64 bits exactly, including -0.0, which a REAL column stores as the
-integer 0. Days are keyed by date, never by raw-file row. A prepared scope is
+the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT`,
+`INVALID_INPUT` or `INCONSISTENT_SERIES`). A stock price series with an
+isolated spike, a close at least 8 times or at most 1/8 of both neighbouring
+valid closes, mixes two provider price scales: `facts.stock` gives every valid
+close of that series `INCONSISTENT_SERIES`, so the company has no price, and
+preparation prints the symbols it left out. Value columns have no declared
+type, so SQLite keeps the binary64 bits exactly, including -0.0, which a REAL
+column stores as the integer 0. Days are keyed by date, never by raw-file row. A prepared scope is
 one complete pool of a stored book, named by its book id; a latest scope names
 the open book, and `book_store.require_scope` is its one check. A book id is a
 handle, not a durable name: it names one book only while the cache keeps it,
