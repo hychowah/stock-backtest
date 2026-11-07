@@ -153,8 +153,14 @@ The research tests cover availability dates, rank selection before future return
 ## Measured performance
 
 Research and daily preparation of the real cache were measured on the private
-bench copy; the typed-storage plan records the stage times and sizes. These are
-observed timings, not guarantees. See also `results/experiments/performance.json`
+WSL bench copy of the runtime's raw cache, with the current code and while the
+machine had other load. A cold build took 176 s (research 172 s, daily 3 s).
+`research.sqlite` is 1.26 GB; `schedules.sqlite` is 3.2 MB before books and
+4.47 GB with about 1,380 books. The user's random-date test (24 quarterly
+trials, 2013–2026, 1,344 periods, ranks 1–30, the cached pool, three built-in
+conditions and one custom variable) took 326.6 s with its 1,326 books
+computed and 62.7 s with them saved. These are observed timings, not
+guarantees. See also `results/experiments/performance.json`
 for older measurements of a smaller January-only database.
 
 The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot supply a complete top-100 book. The wider pool also has incomplete price coverage of the universe. The engine reports insufficient matches instead of claiming 100 names in every period.

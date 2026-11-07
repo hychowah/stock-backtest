@@ -27,7 +27,7 @@ assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidd
 assert.equal(el('run-screen').textContent,'Run backtest');assert.equal(run('ScheduleView.isRunning()'),false);assert.equal(el('screen-error').textContent,'');
 assert.equal(run('ResultArtifacts.forView("custom")'),undefined);
 run("switchMode('latest')");
-console.log('Passed: default latest mode, embedded sector/exchange choices, no January engine or pools, and the dated view opening without a run.');
+console.log('Passed: default latest mode, embedded sector/exchange choices and the dated view opening without a run.');
 // CSV downloads use the displayed result.
 let savedCsv='',downloadName='';
 ctx.Blob=class{constructor(parts){this.parts=parts;}};
