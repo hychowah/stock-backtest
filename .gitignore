@@ -73,3 +73,9 @@ data/workspace-*.json
 data/deployment*.json
 data/website-source.lock
 .deployment/
+
+# Agent session state: worktrees, local settings. Not project source.
+.claude/
+
+# Other-tool hosting metadata; not used by this project's GitHub flow.
+.openai/
