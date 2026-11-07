@@ -33,26 +33,6 @@ def _size(value):
     return len(definitions.canonical(value).encode('ascii'))
 
 
-def scope_rows(db, *, pool, book):
-    """Read one complete pool of one stored book in its row shape (book_store.rows), in symbol order.
-
-    db is a daily connection that attaches research. MAX_CANDIDATES bounds the
-    rows; a scope of that size retains a few MB.
-    """
-    rows = []
-    try:
-        for row in book_store.rows(db, book, pool):
-            backtest_control.checkpoint()
-            if len(rows) == MAX_CANDIDATES:
-                raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
-            rows.append(row)
-    except definitions.FormulaError:
-        raise
-    except ValueError:
-        raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.') from None
-    return rows
-
-
 def check_preview(checked, roots):
     """Check a sample preview of a restored strategy before financial ownership; return its program projection.
 
@@ -87,11 +67,13 @@ def _scope(db, capture, book, entry, *, latest):
     """Return one complete prepared scope's rows and the admission of row i, after the scope's one check.
 
     The scope is one complete pool of the stored book (book_store.require_scope);
-    a latest scope names the open book. admission(i) is (root, decision): the
-    root carries the prepared owner scope of that book, whose stored lanes the
-    owner parameters read, and the decision admits the stored row with its
-    candidate rank and entry valuation. A latest decision also names its
-    report, as the open book's screen chose it.
+    a latest scope names the open book. Its rows are the selection fields of
+    every stored row (book_store.scope), in symbol order; MAX_CANDIDATES bounds
+    them. admission(i) is (root, decision): the root carries the prepared owner
+    scope of that book, whose stored lanes the owner parameters read, and the
+    decision admits the stored row with its candidate rank and entry
+    valuation. A latest decision also names its report, as the open book's
+    screen chose it.
     """
     pool = capture['pool']
     try:
@@ -100,19 +82,21 @@ def _scope(db, capture, book, entry, *, latest):
         raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.') from None
     owner_scope = dict(kind='prepared', book=book)
     mode, day = 'latest' if latest else 'historical', str(entry)
-    rows = scope_rows(db, pool=pool, book=book)
-    # The latest row shape has no EBITDA; its stored valuation does.
-    stored = book_store.valuations(db, book, pool) if latest else None
+    try:
+        rows = book_store.scope(db, book, pool, MAX_CANDIDATES + 1)
+    except ValueError:
+        raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.') from None
+    if len(rows) > MAX_CANDIDATES:
+        raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
 
     def admission(i):
-        row = rows[i]
-        valuation = (dict(zip(('market_cap', 'enterprise_value', 'ebitda'), stored[row['symbol']])) if latest
-                     else dict(market_cap=row['market_cap'], enterprise_value=row['enterprise_value'], ebitda=row['ebitda']))
-        decision = dict(root='r' + str(i), symbol=row['symbol'], pool=pool, mode=mode, date=day, admitted=True,
-                        reason=None, candidate_rank=row['candidate_rank'], owner_scope=owner_scope, valuation=valuation)
+        symbol, candidate_rank, fiscal, known, market_cap, enterprise_value, ebitda, _, _ = rows[i]
+        decision = dict(root='r' + str(i), symbol=symbol, pool=pool, mode=mode, date=day, admitted=True, reason=None,
+                        candidate_rank=candidate_rank, owner_scope=owner_scope,
+                        valuation=dict(market_cap=market_cap, enterprise_value=enterprise_value, ebitda=ebitda))
         if latest:
-            decision['statement'] = dict(fiscal=row['fiscal'], known=row['known'])
-        return dict(symbol=row['symbol'], pool=pool, mode=mode, date=day, owner_scope=owner_scope), decision
+            decision['statement'] = dict(fiscal=fiscal, known=known)
+        return dict(symbol=symbol, pool=pool, mode=mode, date=day, owner_scope=owner_scope), decision
     return rows, admission
 
 
@@ -167,8 +151,8 @@ class Executor:
             # A recorded receipt field: a stored row is admitted, so it equals rows by construction.
             provider_admitted_in_prepared_scope=len(rows),
             selection_population='prepared rows with usable return evidence' if not latest else 'prepared exact-session latest rows')
-        # One read per stored table for the whole scope (book_store.lanes);
-        # primary keys make each symbol's value unique, as per-row lookups read.
+        # One read per stored table for the whole scope (book_store.lanes), one
+        # {symbol: value} map per lane; primary keys make each value unique.
         stored = {}
         metrics = {role: self.descriptors[source['id']]['storage'] for role, source in enumerate(role_sources)
                    if source['kind'] == 'builtin' and self.descriptors[source['id']]['storage']['kind'] == 'metric'}
@@ -177,11 +161,9 @@ class Executor:
         pairs, filters = book_store.lanes(db, book, self.pool, [storage['metric'] for storage in metrics.values()],
                                           [storage['field'] for storage in fields.values()])
         for role, storage in metrics.items():
-            column = 1 if storage['component'] == 'yield' else 0
-            stored[role] = {symbol: found[storage['metric']][column] for symbol, found in pairs.items()
-                            if storage['metric'] in found}
+            stored[role] = pairs[storage['metric']][1 if storage['component'] == 'yield' else 0]
         for role, storage in fields.items():
-            stored[role] = {symbol: found[storage['field']] for symbol, found in filters.items() if storage['field'] in found}
+            stored[role] = filters[storage['field']]
         scales = {role: self.descriptors[role_sources[role]['id']]['storage']['scale'] for role in stored}
         # Selection compares stored values. A finite value cannot overflow at a
         # scale of 0 or below, so the row check converts only at a positive scale.
@@ -197,10 +179,9 @@ class Executor:
                 reason=None if valid else 'MISSING_INPUT')
         # Each row's lanes: its usable stored values and the bound fields.
         values = []
-        for row in rows:
-            symbol = row['symbol']
+        for symbol, _, _, _, market_cap, enterprise_value, _, sector, exchange in rows:
             item = {lane: found.get(symbol) for lane, found in usable.items()}
-            item.update({key: row.get(key) for key in ('market_cap', 'enterprise_value', 'sector', 'exchange')})
+            item.update(market_cap=market_cap, enterprise_value=enterprise_value, sector=sector, exchange=exchange)
             values.append(item)
         conditions = [dict(lane='c'+str(i),op=item['op'],value=item['storage_comparison_value']) for i,item in enumerate(specification['conditions'])]
         bounds = self.capture['bounds']
@@ -209,20 +190,21 @@ class Executor:
                 lane = {'min_cap':'market_cap','max_cap':'market_cap','min_ev':'enterprise_value'}.get(field,field)
                 conditions.append(dict(lane=lane,op=op,value=bounds[field]))
         formula_roles = [role for role, source in enumerate(role_sources) if source['kind'] == 'formula']
+        # With a stored ranking and filter-first order, a row that has no
+        # ranking value or fails a stored condition can never be selected.
+        # The stored conditions are checked here, once per row; formulas and
+        # the selection see only the remaining rows, with the formula conditions.
+        needed = list(range(len(rows)))
+        if role_sources[0]['kind'] == 'builtin' and specification['selection_order'] == 'filter_first':
+            formula_lanes = {lane_of(role) for role in formula_roles}
+            stored_conditions = [item for item in conditions if item['lane'] not in formula_lanes]
+            conditions = [item for item in conditions if item['lane'] in formula_lanes]
+            needed = []
+            for i, item in enumerate(values):
+                self.checkpoint()
+                if selection.finite(item.get('ranking')) is not None and selection.passes(item, stored_conditions):
+                    needed.append(i)
         if formula_roles:
-            # With a stored ranking and filter-first order, a row that has no
-            # ranking value or fails a stored condition can never be selected;
-            # formulas run only for the remaining rows.
-            if role_sources[0]['kind'] == 'builtin' and specification['selection_order'] == 'filter_first':
-                formula_lanes = {lane_of(role) for role in formula_roles}
-                stored_conditions = [item for item in conditions if item['lane'] not in formula_lanes]
-                needed = []
-                for i, item in enumerate(values):
-                    self.checkpoint()
-                    if selection.finite(item.get('ranking')) is not None and selection.passes(item, stored_conditions):
-                        needed.append(i)
-            else:
-                needed = list(range(len(rows)))
             roots, decisions = zip(*map(admission, needed)) if needed else ((), ())
             outputs = self.formulas.evaluate(list(roots), self.view, self.checkpoint, decisions=list(decisions))
             computed = dict(zip(needed, outputs))
@@ -231,9 +213,12 @@ class Executor:
                     source = role_sources[role]
                     value, valid, reason = output[(source['variable_id'], source['revision'])]
                     values[i][lane_of(role)] = value if valid else None
-        candidates = [dict(symbol=row['symbol'], candidate_rank=row['candidate_rank'], values=values[i]) for i,row in enumerate(rows)]
+        candidates = [dict(symbol=rows[i][0], candidate_rank=rows[i][1], values=values[i]) for i in needed]
         selected = selection.select(candidates, dict(ranking=dict(lane='ranking',direction=specification['ranking']['direction']),
             conditions=conditions, **{key:specification[key] for key in ('rank_from','rank_to','selection_order')}), self.checkpoint)
+        # The recorded indexes address the scope's rows.
+        for item in selected['selected']:
+            item['index'] = needed[item['index']]
         chosen = [item['index'] for item in selected['selected']]
         references = {index: {} for index in chosen}
         records = []
@@ -275,7 +260,9 @@ class Executor:
         # Each holding carries its stored lane values; no separate lanes record repeats them.
         for index in chosen:
             for role in stored:
-                references[index][lane_of(role)] = builtin(role, rows[index]['symbol'])
+                references[index][lane_of(role)] = builtin(role, rows[index][0])
+        # Full rows (book_store.rows) for the selected rows only.
+        full = {row['symbol']: row for row in book_store.rows(db, book, self.pool, [rows[index][0] for index in chosen])}
         output = []
         ranking_source = specification['ranking']['source']
         if ranking_source['kind'] == 'builtin':
@@ -283,14 +270,14 @@ class Executor:
         else:
             descriptor = next(item for item in self.capture['variables']['program']['definitions'] if item['variable_id']==ranking_source['variable_id'] and item['revision']==ranking_source['revision'])
         for item in selected['selected']:
-            index = item['index']; original = rows[index]
+            index = item['index']; original = full[rows[index][0]]
             value = item['value']
             if ranking_source['kind']=='builtin':value=_canonical(value,descriptor['storage']['scale'])
             output.append(dict(original, rank=item['rank'], ranking_value=value, ranking_unit=descriptor['unit'],
                 ranking_display=descriptor['display'], ranking_direction=specification['ranking']['direction'],
                 scalar_evidence=dict(scope=identity, lanes=references[index])))
         records.append(dict(type='selection',value=dict(scope=identity, selected=selected, requested=specification,
-            unavailable_ranking=sum(candidate['values'].get('ranking') is None for candidate in candidates))))
+            unavailable_ranking=sum(item.get('ranking') is None for item in values))))
         for record in records:
             self.checkpoint()
             self.sink(record)

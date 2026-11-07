@@ -194,6 +194,12 @@ class ScalarTests(unittest.TestCase):
         lane=stocks[0]['scalar_evidence']['lanes']['ranking']
         self.assertEqual((lane['stored'],lane['canonical']),(149.,1.49))
         self.assertFalse(any(r['type']=='evaluation' for r in records))
+        # Stored conditions run before selection (rows A0000-A0050 fail); recorded indexes address the scope's rows.
+        intent=requests.intent(requests.builtin('filter:profit_margin'),[requests.condition(requests.builtin('filter:profit_margin'),'-100','percent',op='gt')])
+        intent['pool']='cached'
+        stocks,records=self.fixture.select(s.capture_strategy(intent))
+        selection=next(r['value']['selected'] for r in records if r['type']=='selection')
+        self.assertEqual((stocks[0]['symbol'],selection['selected'][0]['index'],selection['matches']),('A0299',299,249))
     def test_explicit_preview_never_claims_pool_coverage(self):
         capture=self.fixture.capture()
         with self.fixture.view() as view:

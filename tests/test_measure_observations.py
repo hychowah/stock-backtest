@@ -262,8 +262,7 @@ class PreparedTransportTests(unittest.TestCase):
         day = date(2015, 1, 2)
         with self.prepared(configure).view() as view:
             [decision] = view.admit([root('TEST', 'cached')])
-            reports = [dict(row, fiscal=date.fromisoformat(row['fiscal']), known=date.fromisoformat(row['known']))
-                       for row in view.reports('TEST', 'cached')]
+            reports = view.reports('TEST', 'cached')
             with patch.object(view.facts, 'price', wraps=view.facts.price) as price, \
                     patch.object(view.facts, 'ten_year', wraps=view.facts.ten_year) as ten_year:
                 owner = bridge.dated(view, decision, dict(date=str(day)), rules.latest_statement(reports, day), lambda: None)

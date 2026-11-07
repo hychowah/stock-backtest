@@ -10,6 +10,7 @@ Null candidate ranks sort first. Equal binary64 values, including signed zero,
 tie by candidate rank then symbol. Rank-first never adds replacement survivors.
 """
 import math
+import operator
 import re
 import hashlib
 from pathlib import Path
@@ -93,20 +94,19 @@ def validate(specification):
                 selection_order=order, conditions=conditions)
 
 
-def passes(values, conditions, checkpoint=lambda: None):
+_COMPARE = {'lt': operator.lt, 'gt': operator.gt, 'le': operator.le, 'ge': operator.ge}
+
+
+def passes(values, conditions):
     """Test active conditions; an unavailable required lane always fails."""
     for item in conditions:
-        checkpoint()
         value = values.get(item['lane'])
-        op, threshold = item['op'], item['value']
-        if op == 'eq':
-            if type(value) is not str or value != threshold:
+        if item['op'] == 'eq':
+            if type(value) is not str or value != item['value']:
                 return False
             continue
         value = finite(value)
-        if value is None or not {'lt': lambda: value < threshold,
-                'gt': lambda: value > threshold, 'le': lambda: value <= threshold,
-                'ge': lambda: value >= threshold}[op]():
+        if value is None or not _COMPARE[item['op']](value, item['value']):
             return False
     return True
 
@@ -134,10 +134,8 @@ def select(candidates, specification, checkpoint=lambda: None):
             _fail('/candidates/' + str(index), 'A company can occur only once in a scope.')
         symbols.add(row['symbol'])
         value = finite(row['values'].get(spec['ranking']['lane']))
-        if value is not None:
+        if value is not None and (spec['selection_order'] == 'rank_first' or passes(row['values'], spec['conditions'])):
             eligible.append((index, value))
-    if spec['selection_order'] == 'filter_first':
-        eligible = [item for item in eligible if passes(candidates[item[0]]['values'], spec['conditions'], checkpoint)]
     def ordering(item):
         row = candidates[item[0]]
         rank = row['candidate_rank']
@@ -148,7 +146,7 @@ def select(candidates, specification, checkpoint=lambda: None):
     for rank, (index, value) in enumerate(eligible, 1):
         checkpoint()
         if spec['rank_from'] <= rank <= spec['rank_to']:
-            if spec['selection_order'] == 'filter_first' or passes(candidates[index]['values'], spec['conditions'], checkpoint):
+            if spec['selection_order'] == 'filter_first' or passes(candidates[index]['values'], spec['conditions']):
                 selected.append(dict(index=index, rank=rank, value=value))
     checkpoint()
     return dict(selected=selected, matches=len(selected) if spec['selection_order'] == 'rank_first' else len(eligible))

@@ -16,7 +16,7 @@ the schema, the writer or a reader here drops every saved book.
 
 Writers: store() and delete() (daily preparation drops the books that the
 change-day rule, books.kept, does not keep). Readers: stored(), record(),
-open_book(), completed(), find(), rows(), lanes(), valuations(),
+open_book(), completed(), find(), rows(), scope(), lanes(), valuations(),
 require_scope() and counts(). A book's rows keep the row shape that results
 and the website keep, chosen by the book itself: LATEST for the open book (the
 old research latest snapshot) and DATED otherwise (the old daily snapshot).
@@ -139,15 +139,17 @@ def columns(db, book):
                     for name in (LATEST if found['exit'] is None else DATED))
 
 
-def rows(db, book, pool):
+def rows(db, book, pool, symbols=None):
     """Yield the rows of one book pool in symbol order: dicts in the book's row shape plus name, sector and exchange.
 
-    A caller may stop early, which bounds the read. A row whose company is not
-    a saved research company fails.
+    symbols names the rows to read; None reads every row. A caller may stop
+    early, which bounds the read. A row whose company is not a saved research
+    company fails.
     """
+    named = '' if symbols is None else f' AND s.symbol IN ({",".join("?" * len(symbols))})'
     cursor = db.execute(f'SELECT {columns(db, book)},c.name,c.sector,c.exchange,c.symbol AS _company '
-                        'FROM book_rows s LEFT JOIN research.companies c USING(symbol) WHERE s.book=? AND s.pool=? '
-                        'ORDER BY s.symbol', (book, pool))
+                        f'FROM book_rows s LEFT JOIN research.companies c USING(symbol) WHERE s.book=? AND s.pool=?{named} '
+                        'ORDER BY s.symbol', (book, pool, *(symbols or ())))
     names = [item[0] for item in cursor.description]
     for row in cursor:
         detached = dict(zip(names, row))
@@ -156,21 +158,45 @@ def rows(db, book, pool):
         yield detached
 
 
-def lanes(db, book, pool, metrics=None, fields=None):
-    """The stored ranking pairs and filter values of one book pool: one read per table.
+def scope(db, book, pool, limit):
+    """The selection fields of the first limit rows of one book pool, in symbol order.
 
-    Return (pairs, values): pairs {symbol: {metric: (multiple, yield)}} and
-    values {symbol: {field: value}}. metrics and fields name what to read;
-    None reads every metric or field, and an empty sequence reads nothing.
+    Each row holds, in order and unpacked like a tuple, (symbol,
+    candidate_rank, fiscal, known, market_cap, enterprise_value, ebitda,
+    sector, exchange). Every book stores these columns, whatever its row
+    shape; sector and exchange are the saved research company's. A row whose
+    company is not a saved research company fails.
     """
-    pairs, values = {}, {}
+    found = db.execute('SELECT c.symbol,s.candidate_rank,s.fiscal,s.known,s.market_cap,s.enterprise_value,s.ebitda,'
+                       'c.sector,c.exchange FROM book_rows s LEFT JOIN research.companies c USING(symbol) '
+                       'WHERE s.book=? AND s.pool=? ORDER BY s.symbol LIMIT ?', (book, pool, limit)).fetchall()
+    if any(row[0] is None for row in found):
+        raise ValueError('A stored book row has no saved company.')
+    return found
+
+
+def lanes(db, book, pool, metrics=None, fields=None):
+    """One {symbol: value} map per stored lane of one book pool: one read per table.
+
+    Return (pairs, values), in name order: pairs {metric: (multiples,
+    yields)}, one map for each component of the stored ranking pair, and
+    values {field: {symbol: value}}. metrics and fields name the lanes to
+    read; each named lane has a map, empty when it has no rows. None reads
+    every stored metric or field, and an empty sequence reads nothing.
+    """
+    pairs = {metric: ({}, {}) for metric in metrics or ()}
+    values = {field: {} for field in fields or ()}
     if metrics is None or metrics:
         for symbol, metric, multiple, value in _read(db, METRICS, 'metric', 'multiple,yield_value', book, pool, metrics):
-            pairs.setdefault(symbol, {})[metric] = multiple, value
+            if metric not in pairs:
+                pairs[metric] = {}, {}
+            pairs[metric][0][symbol], pairs[metric][1][symbol] = multiple, value
     if fields is None or fields:
         for symbol, field, value in _read(db, FILTERS, 'field', 'value', book, pool, fields):
-            values.setdefault(symbol, {})[field] = value
-    return pairs, values
+            if field not in values:
+                values[field] = {}
+            values[field][symbol] = value
+    return dict(sorted(pairs.items())), dict(sorted(values.items()))
 
 
 def valuations(db, book, pool):

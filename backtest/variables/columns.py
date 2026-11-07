@@ -109,12 +109,8 @@ def _subtract(day, months):
     return date(year, month + 1, min(day.day, calendar.monthrange(year, month + 1)[1]))
 
 
-def _report(row):
-    return dict(row, fiscal=date.fromisoformat(row['fiscal']), known=date.fromisoformat(row['known']))
-
-
 def _anchor(facts, day):
-    rows = [_report(row) for row in facts['reports']]
+    rows = facts['reports']
     anchor = rules.latest_statement(rows, day)
     reason = None if anchor else ('STALE_REPORT' if any(row['known'] < day for row in rows)
                                  else 'NO_ELIGIBLE_REPORT')
@@ -182,9 +178,8 @@ def _report_ebitda(reports, anchor, count, checkpoint, detail):
     by_year = {}
     for row in reports:
         checkpoint()
-        fiscal = date.fromisoformat(row['fiscal'])
-        if fiscal <= anchor['fiscal']:
-            by_year[fiscal.year] = row
+        if row['fiscal'] <= anchor['fiscal']:
+            by_year[row['fiscal'].year] = row
     by_year[anchor['fiscal'].year] = anchor
     result = []
     for year in range(anchor['fiscal'].year - count + 1, anchor['fiscal'].year + 1):
@@ -501,7 +496,7 @@ class Formulas:
                 if statement is None:
                     anchor = _anchor(view.company(root['symbol'], root['pool'], self.requirements), day)[0]
                 else:
-                    anchor = _report(_dates(statement))
+                    anchor = dict(fiscal=date.fromisoformat(statement['fiscal']), known=date.fromisoformat(statement['known']))
                 evidence = decision.get('admission_evidence')
                 if evidence is None and statement is None:
                     evidence = view.entry(root['symbol'], anchor, day)[1]

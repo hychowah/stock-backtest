@@ -33,7 +33,9 @@ Research schema 19 stores facts only, no book:
 The daily cache, `data/schedules.sqlite` (version 11), holds the book store
 (`backtest/inputs/book_store.py`): one row shape, one writer and every read of
 its tables: `record`, `open_book` (the one book without an exit), `completed`,
-`find`, `rows`, `lanes`, `require_scope` and `counts`. The ranked selection of
+`find`, `rows` (full rows, every row or the named ones), `scope` (the selection
+fields of every row), `lanes` (one {symbol: value} map per stored lane),
+`valuations`, `require_scope` and `counts`. The ranked selection of
 `screening.select` is the one other reader of these tables; it takes their
 names and the book's row shape from the store. `books(book, entry, exit, spy, candidates)` names one
 entry and exit, in one book-id space; `book_pools(book, pool)` marks each

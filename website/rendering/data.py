@@ -21,11 +21,12 @@ def load_screening_data(db=None):
         names.update((row['symbol'],[row['name'],row['exchange'],row['sector']]) for row in rows)
     for pool in ('cached','legacy'):
         pairs,values=book_store.lanes(db,book,pool)
-        # The browser keys keep their old 'latest:<pool>:0:<symbol>' form.
-        for symbol,found in pairs.items():
-            metric_values[f'latest:{pool}:0:{symbol}']={metric:list(pair) for metric,pair in found.items()}
-        for symbol,found in values.items():
-            filter_values[f'latest:{pool}:0:{symbol}']=dict(found)
+        # Per symbol, in symbol order; the browser keys keep their old 'latest:<pool>:0:<symbol>' form.
+        for symbol in sorted(set().union(*(multiples for multiples,_ in pairs.values()))):
+            metric_values[f'latest:{pool}:0:{symbol}']={metric:[multiples[symbol],yields[symbol]]
+                for metric,(multiples,yields) in pairs.items() if symbol in multiples}
+        for symbol in sorted(set().union(*values.values())):
+            filter_values[f'latest:{pool}:0:{symbol}']={field:found[symbol] for field,found in values.items() if symbol in found}
     # In saved-company order, as the embedded page always listed them.
     companies={row[0]:names[row[0]] for row in db.execute('SELECT symbol FROM research.companies') if row[0] in names}
     latest['metadata']=dict(asof=record['entry'],eligible_financials=record['candidates'])

@@ -85,7 +85,7 @@ class View:
             raise ValueError('Prepared observation history exceeds its bound.')
         self._pools = dict(cached=broad, legacy=legacy)
         self._bounds = dict(latest_date=self._projection['latest_date'], population=len(broad))
-        self._screens, self._reports, self._companies, self._lanes, self._open_book = {}, {}, {}, {}, None
+        self._screens, self._companies, self._lanes, self._open_book = {}, {}, {}, None
         self._sessions, self._stock, self._treasury, self._sources = {}, {}, {}, {}
         self.closed = False
 
@@ -151,12 +151,9 @@ class View:
         return self._screens[key]
 
     def reports(self, symbol, pool):
+        """A company's accepted reports in one pool, oldest first, with date-typed fiscal and known dates; callers do not change them."""
         self._open()
-        key = symbol, pool
-        if key not in self._reports:
-            self._reports[key] = [dict(row, fiscal=str(row['fiscal']), known=str(row['known']))
-                                  for row in self._pools[pool].get(symbol, [])]
-        return self._reports[key]
+        return self._pools[pool].get(symbol, [])
 
     def admit(self, roots, checkpoint=lambda: None):
         """Admission decisions of explicit roots in order: books.Screen.decide, with its reason.
@@ -321,8 +318,9 @@ class View:
         if symbol not in rows:
             return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
         return dict(reason=None, evidence=dict(snapshot=dict(market_cap=rows[symbol][0]),
-                    metrics={metric: list(pair) for metric, pair in pairs.get(symbol, {}).items()},
-                    filters=dict(values.get(symbol, {}))))
+                    metrics={metric: [multiples[symbol], yields[symbol]] for metric, (multiples, yields) in pairs.items()
+                             if symbol in multiples},
+                    filters={field: found[symbol] for field, found in values.items() if symbol in found}))
 
 
 def _detached(statement):

@@ -46,7 +46,7 @@ def replay():
                               for fiscal, values in sorted(facts.legacy_annual(db, symbol).items())]
             book = book_store.open_book(db)
             filters = sorted(('latest', pool, 0, symbol, field, value) for pool in ('legacy', 'cached')
-                             for symbol, found in book_store.lanes(db, book, pool)[1].items() for field, value in found.items())
+                             for field, found in book_store.lanes(db, book, pool)[1].items() for symbol, value in found.items())
     finally:
         fixture.doCleanups()
     selection = test_selection_order.SelectionOrderTests('test_filter_first_default_and_rank_first_does_not_refill')
