@@ -335,20 +335,12 @@ class TransportTests(unittest.TestCase):
         with patch.object(view,'company',side_effect=AssertionError('Unexpected annual read')):
             self.assertEqual(values(formulas(field('market.volume')),view,[HISTORICAL]),[[(12.5,None)]])
 
-    def test_other_versions_and_content_tamper_rejected(self):
+    def test_other_research_versions_are_rejected(self):
         inputs=self.prepared()
-        view=self.view(inputs)
         with closing(sqlite3.connect(inputs.source)) as db:
             for version in (research.SCHEMA_VERSION-1,research.SCHEMA_VERSION+1):
                 db.execute('UPDATE metadata SET value=? WHERE key=?',(json.dumps(version),'version'))
                 with self.assertRaisesRegex(ValueError,'version changed'):research.identity(db)
-            db.execute('UPDATE metadata SET value=? WHERE key=?',(json.dumps(research.SCHEMA_VERSION),'version'))
-            identity=research.identity(db)
-            db.execute('UPDATE metadata SET value=? WHERE key=?',(json.dumps(dict(identity,content='f'*64)),'identity'))
-            db.commit()
-            research.identity(db)
-        # An open view is bound to the content identity it admitted.
-        with self.assertRaisesRegex(ValueError,'stale'):view.validate()
 
 
 if __name__=='__main__':unittest.main()

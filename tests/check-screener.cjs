@@ -20,28 +20,24 @@ for(let i=0;i<latestCases.length;i++){
  assert(result.stocks.every(h=>h.price_date===result.asof && h.known<result.asof && !('return_value' in h)));
 }
 console.log(`Passed: browser/SQLite latest-date parity across ${latestCases.length} screens, prices, valuations, combined filters and no future returns.`);
-// The browser engine has no January selection and ignores year fields.
-assert(!('screen' in engine)&&!('pools' in dataset)&&!('periods' in dataset));
-assert.deepStrictEqual(engine.latestScreen(dataset,{first:2030,last:1900}).stocks,engine.latestScreen(dataset,{}).stocks);
 assert.throws(()=>engine.latestScreen(dataset,{rank_to:1.5}),/whole numbers/);
 assert.throws(()=>engine.latestScreen(dataset,{min_cap:1e9,max_cap:100}),/Maximum market cap/);
 assert.throws(()=>engine.latestScreen(dataset,{min_yield:NaN}),/non-negative/);
 // Consumers accept an arbitrary prepared signal, without formula knowledge.
 const custom=JSON.parse(JSON.stringify(dataset));
 custom.metrics.test_signal={label:'Test signal'};
-for(const values of Object.values(custom.metric_values))values.test_signal=[7,.125];
+for(const pool of Object.values(custom.metric_values))for(const values of Object.values(pool))values.test_signal=[7,.125];
 assert(engine.latestScreen(custom,{metric:'test_signal',pool:'cached'}).stocks.length>0);
 assert(engine.latestScreen(custom,{metric:'test_signal',pool:'cached'}).stocks.every(h=>h.metric_multiple===7 && h.metric_yield===.125));
 
 // Nonempty financial input fixtures exercise threshold values, missing data and ties.
 const financial=JSON.parse(JSON.stringify(dataset));
-financial.filter_values={};
+financial.filter_values={cached:{}};
 const selected=engine.latestScreen(financial,{pool:'cached',rank_to:2}).stocks;
 assert.equal(selected.length,2);
 for (const [i,h] of selected.entries()) {
- const key='latest:cached:0:'+h.symbol;
- financial.filter_values[key]??={};
- Object.assign(financial.filter_values[key],{pe:10+i,roe:20,fcf_yield:-5});
+ financial.filter_values.cached[h.symbol]??={};
+ Object.assign(financial.filter_values.cached[h.symbol],{pe:10+i,roe:20,fcf_yield:-5});
 }
 const financialOptions={pool:'cached',filters:[{field:'pe',op:'lt',value:11},{field:'roe',op:'gt',value:10},{field:'fcf_yield',op:'lt',value:0}]};
 assert.deepStrictEqual(engine.latestScreen(financial,financialOptions).stocks.map(h=>h.symbol),[selected[0].symbol]);

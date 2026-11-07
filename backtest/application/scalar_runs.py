@@ -94,8 +94,9 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
         return summary
     if mode != 'custom':raise ValueError('Unsupported scalar execution mode.')
     if 'months' in options and 'calendar' not in options and 'dates' not in options:
-        sessions = facts.sessions(db)
-        check_size(writer, executor, len(schedules.schedule(options['start'], options['end'], options['months'], sessions)))
+        periods = calendar_requests.periods(facts.sessions(db), {key: options[key] for key in ('start', 'end', 'months')},
+                                            checkpoint=checkpoint)[0]
+        check_size(writer, executor, len(periods))
     sink.start_trial(1)
     evaluator = schedules.backtest_calendar if 'calendar' in options else schedules.backtest_dates if 'dates' in options else schedules.backtest
     summary = evaluator(db,book_selection=executor,emit_period=sink.period,**options)

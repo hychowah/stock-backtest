@@ -26,7 +26,6 @@ const run=code=>vm.runInContext(code,ctx);
  assert.equal(node('data-warnings').textContent,'');
  assert(!node('data-download').disabled);assert(node('data-cancel').hidden);assert(!node('data-export').disabled);
  assert(node('data-prices').innerHTML.includes('&lt;A&gt;'));assert(node('data-key').textContent.includes('missing'));assert(node('data-derived').innerHTML.includes('needs rebuild'));
- assert(!elements.has('data-baseline')&&!elements.has('data-baseline-export'),'The panel has no January baseline audit.');
  node('data-search').value='missing';node('data-search').handlers.input();assert(node('data-prices').innerHTML.includes('&lt;A&gt;'));
  node('data-symbols').value='';await run("DataPanel.start('check')");assert(node('data-error').textContent.includes('Enter the stock symbols'));
  ctx.fetch=async()=>({ok:false,status:404});await run('DataPanel.refresh()');assert(node('data-connection').textContent.includes('Restart start.cmd'));assert(node('data-download').disabled);

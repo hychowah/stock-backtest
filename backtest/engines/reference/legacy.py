@@ -8,14 +8,41 @@ code imports this package; revalue.calculate and the development check
 from __future__ import annotations
 from datetime import date, timedelta
 import json
+from pathlib import Path
 from backtest.paths import RAW
 from backtest.financial.rules import (MIN_MARKET_CAP, MIN_EV, BUFFER, LAG, parse_day, num, latest_statement)
-from backtest.inputs.market import load_bars, asof_yield, cache_path_for
+from backtest.inputs.market import cache_path_for
 
 FIRST_YEAR = 1996
 LAST_YEAR = 2026
 ASOF = date(2026, 10, 21)
 HOLD = 50
+
+def load_bars(path: Path, price_key: str) -> list[tuple[date, float]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    bars = []
+    if isinstance(payload, dict):
+        payload = payload.get("historical") or payload.get("data") or []
+    for row in payload:
+        day = parse_day(row.get("date"))
+        price = num(row.get(price_key))
+        if day is not None and price is not None and price > 0:
+            bars.append((day, price))
+    bars.sort()
+    return bars
+
+def asof_yield(points: list[tuple[date, float]], day: date) -> float | None:
+    # points sorted ascending
+    lo, hi = 0, len(points)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if points[mid][0] <= day:
+            lo = mid + 1
+        else:
+            hi = mid
+    if lo == 0:
+        return None
+    return points[lo - 1][1]
 
 def session_on_or_after(days: list[date], day: date) -> date | None:
     lo, hi = 0, len(days)

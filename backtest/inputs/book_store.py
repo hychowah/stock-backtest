@@ -16,10 +16,10 @@ the schema, the writer or a reader here drops every saved book.
 
 Writers: store() and delete() (daily preparation drops the books that the
 change-day rule, books.kept, does not keep). Readers: stored(), record(),
-open_book(), completed(), find(), rows(), scope(), lanes(), valuations(),
+open_book(), completed(), find(), rows(), scope(), lanes(), market_caps(),
 require_scope() and counts(). A book's rows keep the row shape that results
-and the website keep, chosen by the book itself: LATEST for the open book (the
-old research latest snapshot) and DATED otherwise (the old daily snapshot).
+and the website keep, chosen by the book itself: LATEST for the open book and
+DATED otherwise.
 screening.select is the one SQL consumer outside this module; it takes the
 table names (ROWS, METRICS, FILTERS) and columns() from here. A daily
 connection attaches the research database as the schema 'research', which
@@ -53,16 +53,12 @@ def store(db, book):
     """Write one pool of books.book() in the caller's transaction; return its book id.
 
     The pool's rows and its book_pools marker commit together; an empty pool is
-    complete too. The pools of one entry and exit share one book id. A pool
-    that is already complete is not written again. There is at most one open
-    book: its entry is research's latest date.
+    complete too. The pools of one entry and exit share one book id. The caller
+    holds exclusive cache ownership and writes only a pool that is not
+    complete (the primary keys refuse a second write); daily preparation
+    deletes the old open book before it writes the new one (open_book()).
     """
-    completed = find(db, book['entry'], book['exit'], book['pool'])
-    if completed is not None:
-        return completed
     row = db.execute('SELECT book FROM books WHERE entry=? AND exit IS ?', (book['entry'], book['exit'])).fetchone()
-    if row is None and book['exit'] is None and db.execute('SELECT 1 FROM books WHERE exit IS NULL').fetchone():
-        raise ValueError('The book store already holds an open book.')
     book_id = row[0] if row is not None else db.execute(
         'INSERT INTO books(entry,exit,spy,candidates) VALUES(?,?,?,?)',
         (book['entry'], book['exit'], book['spy'], book['candidates'])).lastrowid
@@ -97,7 +93,10 @@ def record(db, book):
 
 
 def open_book(db):
-    """The id of the open (latest) book that daily preparation wrote: the one book without an exit."""
+    """The id of the open (latest) book that daily preparation wrote: the one book without an exit.
+
+    This is the one check that the store holds at most one open book.
+    """
     found = db.execute('SELECT book FROM books WHERE exit IS NULL LIMIT 2').fetchall()
     if not found:
         raise ValueError('The latest book is missing. Run: python3 scripts/schedules.py prepare')
@@ -199,10 +198,9 @@ def lanes(db, book, pool, metrics=None, fields=None):
     return dict(sorted(pairs.items())), dict(sorted(values.items()))
 
 
-def valuations(db, book, pool):
-    """{symbol: (market_cap, enterprise_value, ebitda)}: the stored entry valuation of each row of one book pool."""
-    return {symbol: (cap, ev, ebitda) for symbol, cap, ev, ebitda in db.execute(
-        f'SELECT symbol,market_cap,enterprise_value,ebitda FROM {ROWS} WHERE book=? AND pool=?', (book, pool))}
+def market_caps(db, book, pool):
+    """{symbol: market_cap}: the stored entry market cap of each row of one book pool."""
+    return dict(db.execute(f'SELECT symbol,market_cap FROM {ROWS} WHERE book=? AND pool=?', (book, pool)))
 
 
 def _read(db, table, key, columns, book, pool, names):

@@ -335,7 +335,7 @@ def prepare(path=DATABASE, force=False):
             pass
         else:
             db.close()
-            print(f'Database already current ({time.perf_counter()-started:.2f}s); no JSON prices parsed.')
+            print(f'Database already current ({time.perf_counter()-started:.2f}s); only file metadata was checked.')
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
     code=code_identity('facts')

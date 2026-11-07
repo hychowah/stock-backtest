@@ -57,9 +57,10 @@ The design contract is in [variable design](variable-design.md).
 - **Exact authoring content.** Owners produce the editor descriptors. One
   resolution boundary serves Save, reopening and capture. See
   [decision 0001](phases/phase-11/decisions/0001-exact-authoring-content.md).
-- **Complete recorded-scope coverage.** A separate owner counts every snapshot
-  row in a recorded scope. It does not extend preview, which stays at 1–16
-  roots. See [decision 0002](phases/phase-11/decisions/0002-complete-recorded-scope-coverage.md).
+- **Complete recorded-scope coverage.** A separate owner counts every row in
+  a recorded scope. It does not extend preview, which stays at 1–16 roots.
+  Decision 0002 recorded the first design; the
+  [typed-storage summary](../typed-storage/master-plan.md) supersedes it.
 - **Compatibility at existing owners (Phase 12).** Historical definitions,
   queue plans and saved evidence are checked through their current owners. No
   compatibility gateway was added. See
@@ -78,17 +79,16 @@ The design contract is in [variable design](variable-design.md).
   operations, formula language, measures, strategy intent, library, execution
   and editor.
 - [FMP source map](parameter-catalog.md): provider fields and excluded items.
-- Decision records: [exact authoring content](phases/phase-11/decisions/0001-exact-authoring-content.md),
-  [complete recorded-scope coverage](phases/phase-11/decisions/0002-complete-recorded-scope-coverage.md)
+- Decision records: [exact authoring content](phases/phase-11/decisions/0001-exact-authoring-content.md)
   and [compatibility boundaries](phases/phase-12/decisions/0001-compatibility-boundaries.md).
 - [Source map](../project-structure/source-map.md) and the
   [architecture guide](../../architecture-guide/dist/index.html).
 - Root [AGENTS.md](../../../AGENTS.md#feature-contracts): the Custom variables
   contract and the standing engineering rules.
-- Code owners: `backtest/variables/`, `backtest/observations.py` and
-  `backtest/measure_observations.py`, plus `strategy_requests.py`,
-  `variable_authoring.py`, `variable_coverage.py` and `scalar_execution.py` in
-  `backtest/application/`.
+- Code owners: `backtest/variables/`, `backtest/inputs/facts.py`,
+  `backtest/inputs/fact_view.py` and `backtest/measure_observations.py`, plus
+  `strategy_requests.py`, `variable_authoring.py`, `variable_coverage.py` and
+  `scalar_execution.py` in `backtest/application/`.
 
 ## Known limits and open items
 

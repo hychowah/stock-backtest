@@ -1,13 +1,12 @@
-"""Replay frozen Phase 9 entry evidence; never regenerate expected results here.
+"""Replay the frozen Phase 9 entry evidence; never regenerate expected results here.
 
-P2b removed the January books, their baseline and the report. The replay
-compares every part that still exists with the frozen values: financial
-projections and completion, financial rows, latest filter rows, and both
-selection orders over latest and dated book rows. P3b moved the latest book into
-the daily cache's book store: its filter rows keep the frozen
-(mode, pool, year 0, symbol, field, value) form, and a dated row no longer
-carries the private period id (year). P3c2 deleted the research financial_inputs
-table: the financial rows are the typed annual facts' values-only projection.
+The replay runs the current owners on private synthetic assets and compares
+them with the frozen values: the financial projections and their completion,
+the legacy annual values-only rows of the typed annual facts, the latest
+book's filter values by pool and symbol, and both selection orders over the
+latest and dated book rows. The frozen January baseline and report, the
+frozen dated filter rows and the selection rows' private period id (year)
+have no current counterpart and are left out.
 """
 import sys
 from pathlib import Path
@@ -40,12 +39,12 @@ def replay():
                               for endpoint in financial.ENDPOINTS} for symbol in inputs}
         daily.prepare(fixture.daily, fixture.path)
         with closing(daily.connect(fixture.daily, fixture.path)) as db:
-            # The legacy values-only rows (symbol, fiscal, JSON), now read from the typed annual facts.
+            # The legacy values-only rows (symbol, fiscal, JSON) of the typed annual facts.
             financial_rows = [(symbol, fiscal, json.dumps(values))
                               for symbol, in db.execute('SELECT DISTINCT symbol FROM research.annual_facts ORDER BY symbol')
                               for fiscal, values in sorted(facts.legacy_annual(db, symbol).items())]
             book = book_store.open_book(db)
-            filters = sorted(('latest', pool, 0, symbol, field, value) for pool in ('legacy', 'cached')
+            filters = sorted((pool, symbol, field, value) for pool in ('legacy', 'cached')
                              for field, found in book_store.lanes(db, book, pool)[1].items() for symbol, value in found.items())
     finally:
         fixture.doCleanups()
@@ -80,7 +79,9 @@ class FrozenLegacyTests(unittest.TestCase):
         expected = json.loads((FIXTURES/'expected.json').read_text())
         for removed in ('baseline', 'report'):
             del expected[removed]
-        expected['filters'] = [row for row in expected['filters'] if row[0] == 'latest']
+        # A frozen filter row is (mode, pool, year 0, symbol, field, value); the latest book keys it by pool, then symbol.
+        expected['filters'] = [[pool, symbol, field, value] for mode, pool, _, symbol, field, value in expected['filters']
+                               if mode == 'latest']
         for name, rows in expected['selections'].items():
             for row in rows:
                 row.pop('year', None)

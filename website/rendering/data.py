@@ -14,21 +14,18 @@ def load_screening_data(db=None):
     book=book_store.open_book(db);record=book_store.record(db,book)
     # A latest row is the book's LATEST shape without its pool, in that order.
     fields=book_store.LATEST[1:]
-    names,latest,metric_values,filter_values={},{},{},{}
+    companies,latest,metric_values,filter_values={},{},{},{}
     for pool in ('legacy','cached'):
         rows=list(book_store.rows(db,book,pool))
         latest[pool]=[[row[field] for field in fields] for row in rows]
-        names.update((row['symbol'],[row['name'],row['exchange'],row['sector']]) for row in rows)
-    for pool in ('cached','legacy'):
+        companies.update((row['symbol'],[row['name'],row['exchange'],row['sector']]) for row in rows)
+        # By pool, then symbol in symbol order.
         pairs,values=book_store.lanes(db,book,pool)
-        # Per symbol, in symbol order; the browser keys keep their old 'latest:<pool>:0:<symbol>' form.
-        for symbol in sorted(set().union(*(multiples for multiples,_ in pairs.values()))):
-            metric_values[f'latest:{pool}:0:{symbol}']={metric:[multiples[symbol],yields[symbol]]
-                for metric,(multiples,yields) in pairs.items() if symbol in multiples}
-        for symbol in sorted(set().union(*values.values())):
-            filter_values[f'latest:{pool}:0:{symbol}']={field:found[symbol] for field,found in values.items() if symbol in found}
-    # In saved-company order, as the embedded page always listed them.
-    companies={row[0]:names[row[0]] for row in db.execute('SELECT symbol FROM research.companies') if row[0] in names}
+        metric_values[pool]={symbol:{metric:[multiples[symbol],yields[symbol]] for metric,(multiples,yields) in pairs.items()
+                                     if symbol in multiples}
+                             for symbol in sorted(set().union(*(multiples for multiples,_ in pairs.values())))}
+        filter_values[pool]={symbol:{field:found[symbol] for field,found in values.items() if symbol in found}
+                             for symbol in sorted(set().union(*values.values()))}
     latest['metadata']=dict(asof=record['entry'],eligible_financials=record['candidates'])
     # Sector and exchange choices cover every saved company, for dated runs too.
     choices={column:[row[0] for row in db.execute(f'SELECT DISTINCT {column} FROM research.companies ORDER BY {column}')]

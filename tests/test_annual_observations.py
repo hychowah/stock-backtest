@@ -3,14 +3,14 @@
 Synthetic files live in TemporaryDirectory (the source-bound runner places it
 outside the checkout). No expected legacy immutable bytes are written.
 
-`Company` is a shared in-memory fixture: one SQLite database serves as the
-daily cache and the research facts of one company, A. `formulas`, `values`
-and `explained` evaluate checked programs with the column evaluator.
+`Company` (book_store_fixture) is company A in a private research file with
+an in-memory daily cache per view. `formulas`, `values` and `explained`
+evaluate checked programs with the column evaluator.
 """
 import sys
 from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parent)]
-from contextlib import closing, ExitStack
+from contextlib import closing
 from datetime import date, timedelta
 import hashlib
 import json
@@ -20,12 +20,11 @@ import unittest
 from unittest.mock import patch
 
 from backtest.application import variable_authoring
-from backtest.financial import rules
 from backtest.inputs import financial_inputs as financial, facts
-from backtest.inputs import book_store, daily, fact_view, research
+from backtest.inputs import daily, fact_view, research
 from backtest.variables import columns, definitions, parameters
 from prepared_inputs_fixture import PreparedInputs
-import book_store_fixture as store
+from book_store_fixture import Company, state, statement
 import test_prepared_facts
 import test_variable_definitions as language
 from test_parameter_contract import ORACLE as DIRECT_ORACLE
@@ -101,97 +100,6 @@ def explained(program, view, roots):
 
 def root(symbol='A', pool='legacy', mode='historical', day='2015-01-02'):
     return dict(symbol=symbol, pool=pool, mode=mode, date=day)
-
-
-def state(value, reason=None):
-    return dict(value=value, valid=reason is None, reason=reason)
-
-
-def statement(fiscal, *, earnings_yield=.3, market_cap=150e6, enterprise=180e6, ebitda=None):
-    day = date.fromisoformat(fiscal)
-    return dict(fiscal=fiscal, known=str(day + rules.LAG), market_cap=market_cap, enterprise_value=enterprise,
-                ebitda=enterprise * earnings_yield if ebitda is None else ebitda, ebitda_yield=earnings_yield)
-
-
-class Company:
-    """A private research file of company A and an in-memory daily cache that attaches it.
-
-    Set the attributes, then call view(): it writes them and borrows a
-    fact_view.View. reports are statements rows; annual maps endpoint, fiscal date
-    and field to a resolved state; books maps a pool to its stored latest book
-    row (market_cap, metrics, filters). Every report fiscal date, the root date and
-    the latest date have a price of 10. financials (legacy values by fiscal
-    date, written as annual states over annual) and treasury10 ((day, percent)
-    10-year values) feed the dated owner policy. Set stale to fail the view's
-    freshness callback.
-    """
-
-    def __init__(self):
-        self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.path = Path(self.folder.name) / 'research.sqlite'
-        self.db = sqlite3.connect(self.path)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute('PRAGMA synchronous=OFF')  # A private fixture file needs no durability.
-        self.db.executescript(research.SCHEMA + facts.SCHEMA)
-        self.daily = []
-        self.reports = [statement(f'{year}-06-30') for year in (2012, 2013, 2014)]
-        self.annual = {'income-statement': {f'{year}-06-30': dict(revenue=state(100.), operatingIncome=state(income))
-                                            for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}}
-        self.root_date, self.latest_date = '2015-01-02', '2015-01-05'
-        self.books, self.financials, self.treasury10 = {}, {}, []
-        self.stale = False
-
-    def close(self):
-        for db in (*self.daily, self.db):
-            db.close()
-        self.folder.cleanup()
-
-    def freshness(self):
-        if self.stale:
-            raise ValueError('Fixture attachment is stale.')
-
-    def view(self):
-        db = self.db
-        for (table,) in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall():
-            db.execute('DELETE FROM ' + table)
-        db.execute("INSERT INTO companies VALUES('A','A','NYSE','Technology',1)")
-        db.executemany('INSERT INTO statements VALUES(?,?,?,?,?,?,?)', [
-            ('A', row['fiscal'], row['known'], row['market_cap'], row['enterprise_value'], row['ebitda'],
-             row['ebitda_yield']) for row in self.reports])
-        days = {row['fiscal'] for row in self.reports} | {self.root_date, self.latest_date}
-        facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c' * 64, disposition='valid'), dated={
-            day: dict(adjClose=state(10.), volume=state(None, 'MISSING_INPUT')) for day in sorted(days)}))
-        # Admission needs saved SPY sessions at the root and latest dates.
-        sessions = {self.root_date, self.latest_date}
-        db.executemany('INSERT INTO market_days(day,spy,year10) VALUES(?,?,?)',
-                       [(day, 100. if day in sessions else None, value) for day, value in self.treasury10])
-        db.executemany('INSERT OR IGNORE INTO market_days(day,spy) VALUES(?,?)', [(day, 100.) for day in sorted(sessions)])
-        annual = {endpoint: {fiscal: dict(fields) for fiscal, fields in dates.items()} for endpoint, dates in self.annual.items()}
-        for fiscal, values in self.financials.items():
-            for name, value in values.items():
-                endpoint = next(endpoint for endpoint, names in financial.ENDPOINTS.items() if name in names)
-                annual.setdefault(endpoint, {}).setdefault(fiscal, {})[name] = state(value)
-        facts.store_annual(db, 'A', dict(annual=annual, sources={
-            endpoint: dict(endpoint=endpoint, sha256=hashlib.sha256(endpoint.encode()).hexdigest(), disposition='valid')
-            for endpoint in annual}))
-        last = self.reports[-1]
-        cache = sqlite3.connect(':memory:', uri=True)
-        cache.row_factory = sqlite3.Row
-        self.daily.append(cache)
-        cache.executescript(daily.SCHEMA)
-        store.record(db, cache, self.latest_date)
-        db.commit()
-        daily.attach(cache, self.path)
-        # The open book of both pools; a pool without a row is stored empty.
-        for pool in ('legacy', 'cached'):
-            row = self.books.get(pool)
-            book_store.store(cache, dict(entry=self.latest_date, exit=None, pool=pool, spy=None, candidates=1,
-                rows=[] if row is None else [('A', 1, last['fiscal'], last['known'], self.latest_date, 10., None,
-                                               row['market_cap'], 190e6, 54e6, .3, 3., .28, None, None)],
-                metrics=[] if row is None else [('A', metric, *pair) for metric, pair in row['metrics'].items()],
-                filters=[] if row is None else [('A', name, value) for name, value in row['filters'].items()]))
-        cache.commit()
-        return fact_view.View(cache, self.freshness, lambda: None)
 
 
 class AnnualResolutionTests(unittest.TestCase):

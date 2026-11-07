@@ -90,7 +90,8 @@ class AdmissionTests(unittest.TestCase):
                 cases.append((('annual',item['id']),[version3(dict(op='annual',stat='mean',count=2,
                                                                    parameter=item['id']),item['unit'])],None))
         company=Company()
-        company.annual={f'{year}-06-30':annual(revenue,10.) for year,revenue in ((2012,100.),(2013,200.),(2014,400.))}
+        company.fill=True
+        company.annual['income-statement']={f'{year}-06-30':annual(revenue,10.) for year,revenue in ((2012,100.),(2013,200.),(2014,400.))}
         self.addCleanup(company.close)
         roots=[dict(symbol='A',pool='legacy',mode='historical',date=company.root_date)]
         with company.view() as view:

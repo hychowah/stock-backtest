@@ -1,7 +1,7 @@
 """Prepared daily storage: the book store; connections and transactions belong to callers.
 
 A daily connection attaches the research database read-only as the schema
-'research'. Books, sessions and company names are read from there (facts and
+'research'. Facts, sessions and company names are read from there (facts and
 book_store); the daily cache holds only the book store and its binding.
 
 The daily binding (metadata 'daily_inputs') names what the books were computed

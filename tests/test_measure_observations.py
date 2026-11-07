@@ -191,7 +191,7 @@ class DatedOwnerTests(unittest.TestCase):
         self.addCleanup(self.company.close)
         self.company.financials = {f'{year}-06-30': dict(revenue=100., operatingIncome=20., netIncome=10.,
                                    totalStockholdersEquity=50., epsDiluted=year-2010.) for year in (2012, 2013, 2014)}
-        self.company.treasury10 = [('2014-12-31', 2.)]
+        self.company.treasury = {'2014-12-31': dict(month3=annual.state(None, 'MISSING_INPUT'), year10=annual.state(2.))}
 
     def test_memoized_dated_context_and_fixed_boundary_validations(self):
         view = self.company.view()

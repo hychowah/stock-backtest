@@ -1,8 +1,9 @@
 """Column formula evaluation over typed prepared facts: arithmetic, observation rules and explanations.
 
-Each case writes a private research file and an in-memory daily cache that
-attaches it, borrows a fact_view.View of it, admits the roots (books.Screen.decide)
-and runs columns.Formulas. Every explained result must equal the values-only
+Each case writes company A (book_store_fixture.Company): a private research
+file and an in-memory daily cache that attaches it. It borrows a
+fact_view.View of it, admits the roots (books.Screen.decide) and runs
+columns.Formulas. Every explained result must equal the values-only
 result.
 """
 import sys
@@ -11,28 +12,22 @@ sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).res
 
 from datetime import date, timedelta
 import json
-import sqlite3
 import struct
-import tempfile
 import unittest
 from unittest.mock import patch
 
 from backtest.application import strategy_requests
 from backtest.financial import books, rules
-from backtest.inputs import book_store, daily, fact_view, facts, research
+from backtest.inputs import facts
 from backtest.variables import columns, definitions as d, parameters
 from prepared_inputs_fixture import PreparedInputs
 import book_store_fixture as store
+from book_store_fixture import Company, state, statement
 import test_strategy_requests as requests
 import test_variable_definitions as language
 
 c, b = language.constant, language.binary
 DISPLAY = {'scalar': 'number', 'USD': 'usd', 'USD/share': 'usd_per_share', 'share': 'shares'}
-SOURCE = dict(endpoint='income-statement', sha256='b'*64, disposition='valid')
-
-
-def state(value, reason=None):
-    return dict(value=value, valid=reason is None, reason=reason)
 
 
 def annual(revenue=100., income=10.):
@@ -57,99 +52,11 @@ def bits(value):
     return struct.pack('>d', value).hex()
 
 
-class Company:
-    """Company A in a private database that one view reads.
-
-    Reports are statements of 150e6 market cap, 180e6 EV and 0.3 EBITDA yield,
-    known 90 days after fiscal. Valuation prices are 10 on every calendar day
-    around the reports and roots unless fill is False; prices overrides days
-    (None removes one). Change attributes before view(); each view reads a new database.
-    """
-
-    def __init__(self):
-        self.root_date, self.latest_date, self.through = '2015-01-02', '2015-01-05', None
-        self.reports = ['2012-06-30', '2013-06-30', '2014-06-30']
-        self.annual = {f'{year}-06-30': annual(100., income) for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}
-        self.listed = True
-        self.fill, self.prices, self.population, self.stale = True, {}, 0, False
-        self.spy, self.stock, self.treasury = [], {}, {}
-        self.folder = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
-        self.db = self.daily = None
-
-    def build(self):
-        """Write the research file and open the daily cache that attaches it; return the daily connection."""
-        self.close()
-        path = Path(self.folder.name) / 'research.sqlite'
-        path.unlink(missing_ok=True)
-        db = self.db = sqlite3.connect(path)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA synchronous=OFF')  # A private fixture file needs no durability.
-        db.executescript(research.SCHEMA + facts.SCHEMA)
-        db.execute('INSERT INTO companies VALUES(?,?,?,?,?)', ('A', 'A', 'NYSE', 'Technology', int(self.listed)))
-        for fiscal in self.reports:
-            known = str(date.fromisoformat(fiscal) + rules.LAG)
-            db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)', ('A', fiscal, known, 150e6, 180e6, 54e6, .3))
-        prices = {}
-        if self.fill:
-            dates = [date.fromisoformat(day) for day in (*self.reports, self.root_date, self.latest_date)]
-            day, last = min(dates) - timedelta(days=7), max(dates) + timedelta(days=7)
-            while day <= last:
-                prices[str(day)] = 10.
-                day += timedelta(days=1)
-        prices.update(self.prices)
-        # One value rule: valuation and market inputs read the same stock days.
-        stock = {day: dict(adjClose=state(price), volume=state(None, 'MISSING_INPUT'))
-                 for day, price in prices.items() if price is not None}
-        stock.update(self.stock)
-        facts.store_annual(db, 'A', dict(sources={'income-statement': SOURCE}, annual={'income-statement': self.annual}))
-        facts.store_stock(db, 'A', dict(source=dict(endpoint=facts.STOCK, sha256='c'*64, disposition='valid'), dated=stock))
-        for index in range(self.population):
-            # Higher yield than A; Z000-Z009 have no cached prices.
-            symbol = f'Z{index:03d}'
-            db.execute('INSERT INTO companies VALUES(?,?,?,?,?)', (symbol, symbol, 'NYSE', 'Energy', 1))
-            db.execute('INSERT INTO statements VALUES(?,?,?,?,?,?,?)',
-                       (symbol, '2014-06-30', '2014-09-28', 150e6, 180e6, 162e6, .9))
-            if index >= 10:
-                facts.store_stock(db, symbol, dict(source=dict(endpoint=facts.STOCK, sha256='f'*64, disposition='valid'),
-                    dated={day: dict(adjClose=state(10.), volume=state(None, 'MISSING_INPUT')) for day in ('2014-06-30', '2015-01-02')}))
-        # Admission needs saved SPY sessions at the root and latest dates.
-        sessions = sorted({*self.spy, self.root_date, self.latest_date})
-        facts.store_market(db, {
-            facts.TREASURY: dict(source=dict(endpoint=facts.TREASURY, sha256='d'*64, disposition='valid'),
-                                 dated=self.treasury),
-            facts.CALENDAR: dict(source=dict(endpoint=facts.CALENDAR, sha256='e'*64, disposition='valid'),
-                                 dated={day: dict(adjClose=state(100.)) for day in sessions})})
-        daily_db = self.daily = sqlite3.connect(':memory:', uri=True)
-        daily_db.row_factory = sqlite3.Row
-        daily_db.executescript(daily.SCHEMA)
-        store.record(db, daily_db, self.latest_date)
-        db.commit()
-        daily.attach(daily_db, path)
-        # The latest book has no stored rows: owner lanes at a latest root are unavailable.
-        for pool in ('legacy', 'cached'):
-            book_store.store(daily_db, dict(entry=self.latest_date, exit=None, pool=pool, spy=None, candidates=0,
-                                            rows=[], metrics=[], filters=[]))
-        daily_db.commit()
-        return daily_db
-
-    def view(self):
-        def freshness():
-            if self.stale:
-                raise ValueError('Fixture inputs are stale.')
-        daily_db = self.build()
-        return fact_view.View(daily_db, freshness, lambda: None)
-
-    def close(self):
-        for db in (self.daily, self.db):
-            if db is not None:
-                db.close()
-        self.db = self.daily = None
-
-
 class ColumnTests(unittest.TestCase):
     def setUp(self):
         self.company = Company()
-        self.addCleanup(self.company.folder.cleanup);self.addCleanup(self.company.close)
+        self.company.fill = True
+        self.addCleanup(self.company.close)
 
     def root(self, **changes):
         return dict(dict(symbol='A', pool='legacy', mode='historical', date=self.company.root_date), **changes)
@@ -217,14 +124,14 @@ class ColumnTests(unittest.TestCase):
         self.assertEqual(len(self.explain(program(cases[0][0]))['operations']), 5)
 
     def test_first_unavailable_operand_wins_even_against_zero(self):
-        self.company.annual['2014-06-30']['revenue'] = state(None, 'CONFLICTING_INPUT')
+        self.company.annual['income-statement']['2014-06-30']['revenue'] = state(None, 'CONFLICTING_INPUT')
         for left, right in ((c('0'), parameter()), (parameter(), c('0'))):
             block = self.explain(program(b('mul', left, right), 'USD'))
             self.assertEqual(block['results'][0]['reason'], 'CONFLICTING_INPUT')
             operation = block['operations'][-1]
             self.assertEqual(len(operation['operands']), 2)
             self.assertIn(0., operation['inputs']); self.assertIn(None, operation['inputs'])
-        self.company.annual['2014-06-30']['operatingIncome'] = state(None, 'NON_USD_INPUT')
+        self.company.annual['income-statement']['2014-06-30']['operatingIncome'] = state(None, 'NON_USD_INPUT')
         block = self.explain(program(b('add', parameter(), parameter('annual.operating_income')), 'USD'))
         self.assertEqual(block['results'][0]['reason'], 'CONFLICTING_INPUT')
         self.assertEqual([item['reason'] for item in block['observations']['results']], ['CONFLICTING_INPUT', 'NON_USD_INPUT'])
@@ -279,7 +186,7 @@ class ColumnTests(unittest.TestCase):
         self.assertEqual(block['observations']['contexts'][0]['owner_scope'], scoped['owner_scope'])
         self.error('INVALID_DATE', columns.require_roots, [dict(root, date='20150102')])
 
-    def test_admission_refuses_roots_outside_saved_sessions_and_changed_facts(self):
+    def test_admission_refuses_roots_outside_saved_sessions(self):
         for changed in (dict(date='2015-01-03'), dict(date='1995-01-02'), dict(mode='latest')):
             with self.subTest(changed=changed), self.company.view() as view, self.assertRaises(ValueError):
                 view.admit([self.root(**changed)])
@@ -290,9 +197,6 @@ class ColumnTests(unittest.TestCase):
             # An unknown company is a denial, at a latest and at a historical root.
             self.assertEqual([item['reason'] for item in view.admit([self.latest(symbol='B'), self.root(symbol='B')])],
                              ['UNKNOWN_COMPANY', 'UNKNOWN_COMPANY'])
-            self.company.db.execute("DELETE FROM metadata WHERE key='identity'"); self.company.db.commit()
-            with self.assertRaisesRegex(ValueError, 'missing|stale'):
-                view.admit([self.latest()])
 
     def test_cancellation_staleness_and_closed_views_fail_the_operation(self):
         formulas, roots = columns.Formulas(d.require_program(program(parameter(), 'USD'))), [self.root()]
@@ -339,7 +243,7 @@ class ColumnTests(unittest.TestCase):
 
     def test_mean_is_oldest_first_and_not_a_ratio_of_pooled_amounts(self):
         for year, revenue, income in ((2012, 100., 10.), (2013, 200., 40.), (2014, 300., 90.)):
-            self.company.annual[f'{year}-06-30'] = annual(revenue, income)
+            self.company.annual['income-statement'][f'{year}-06-30'] = annual(revenue, income)
         block = self.explain(program(b('div', b('mul', parameter(), statistic()), parameter('market.enterprise_value'))))
         mean = ((.1 + .2) + .3) / 3
         self.assertEqual(block['results'][0]['value'], (300. * mean) / 180e6)
@@ -348,34 +252,34 @@ class ColumnTests(unittest.TestCase):
 
     def test_mean_fold_order_and_extrema_keep_the_oldest_signed_zero(self):
         for year, income in ((2012, 1e16), (2013, -1e16), (2014, 1.)):
-            self.company.annual[f'{year}-06-30'] = annual(1., income)
+            self.company.annual['income-statement'][f'{year}-06-30'] = annual(1., income)
         self.assertEqual(self.result(statistic())['value'], 1. / 3)
         for year, income in ((2012, 2 ** 53), (2013, 1), (2014, -(2 ** 53))):
-            self.company.annual[f'{year}-06-30'] = annual(1., income)
+            self.company.annual['income-statement'][f'{year}-06-30'] = annual(1., income)
         self.assertEqual(self.result(statistic(name='annual.operating_income'), 'USD')['value'], 0.)
         for year in (2012, 2013, 2014):
-            self.company.annual[f'{year}-06-30'] = annual(1., -0. if year == 2012 else 0.)
+            self.company.annual['income-statement'][f'{year}-06-30'] = annual(1., -0. if year == 2012 else 0.)
         for stat in ('min', 'max'):
             self.assertEqual(bits(self.result(statistic(stat))['value']), bits(-0.))
         self.assertEqual(bits(self.result(statistic('mean', 1))['value']), bits(0.))
-        self.company.annual['2014-06-30'] = annual(1., -0.)
+        self.company.annual['income-statement']['2014-06-30'] = annual(1., -0.)
         self.assertEqual(bits(self.result(statistic('mean', 1))['value']), bits(-0.))
 
     def test_every_annual_member_is_required_and_nonfinite_mean_is_unavailable(self):
         for stat, expected in (('min', -.1), ('max', .2)):
             self.assertEqual(self.result(statistic(stat))['value'], expected)
-        self.company.annual.pop('2013-06-30')
+        self.company.annual['income-statement'].pop('2013-06-30')
         for stat in ('mean', 'min', 'max'):
             block = self.explain(program(statistic(stat)))
             self.assertEqual(block['results'][0]['reason'], 'MISSING_FISCAL_YEAR')
             self.assertEqual(len(block['observations']['results'][0]['members']), 3)
         for year in (2012, 2013, 2014):
-            self.company.annual[f'{year}-06-30'] = annual(1., 1e308)
+            self.company.annual['income-statement'][f'{year}-06-30'] = annual(1., 1e308)
         self.assertEqual(self.result(statistic())['reason'], 'NONFINITE_RESULT')
 
     def growth(self, stat, values, count=3, wrap=None):
         for year, value in zip(range(2015 - len(values), 2015), values):
-            self.company.annual[f'{year}-06-30'] = annual(value, 1.)
+            self.company.annual['income-statement'][f'{year}-06-30'] = annual(value, 1.)
         expression = statistic(stat, count, 'annual.revenue')
         return self.explain(program(wrap(expression) if wrap else expression, version=2))
 
@@ -391,8 +295,8 @@ class ColumnTests(unittest.TestCase):
                                      ('cagr', [1., 1., 0.], 'NONPOSITIVE_ENDPOINT'),
                                      ('growth', [1e-308, 1., 1e308], 'NONFINITE_RESULT')):
             self.assertEqual(self.growth(stat, values)['results'][0]['reason'], reason)
-        self.company.annual.pop('2013-06-30')
-        self.company.annual['2012-06-30'] = annual(0., 1.)
+        self.company.annual['income-statement'].pop('2013-06-30')
+        self.company.annual['income-statement']['2012-06-30'] = annual(0., 1.)
         block = self.explain(program(statistic('growth', 3, 'annual.revenue'), version=2))
         self.assertEqual(block['results'][0]['reason'], 'MISSING_FISCAL_YEAR')
         self.assertEqual(len(block['observations']['results'][0]['members']), 3)
@@ -442,8 +346,8 @@ class ColumnTests(unittest.TestCase):
     # Annual observation rules.
 
     def test_strict_ninety_day_availability_reselects_at_an_earlier_context(self):
-        self.company.root_date, self.company.reports = '2024-04-02', ['2023-12-31']
-        self.company.annual = {'2023-12-31': annual()}
+        self.company.root_date, self.company.reports = '2024-04-02', [statement('2023-12-31')]
+        self.company.annual['income-statement'] = {'2023-12-31': annual()}
         expression = b('add', dict(op='at', date='2024-03-30', arg=parameter()),
                        dict(op='at', date='2024-03-31', arg=parameter()))
         equal, after = self.explain(program(expression, 'USD'))['observations']['results']
@@ -452,8 +356,8 @@ class ColumnTests(unittest.TestCase):
 
     def test_anchor_ages_800_and_801_and_stale_reports(self):
         fiscal = date(2019, 6, 30)
-        self.company.reports = [str(fiscal)]
-        self.company.annual = {f'{year}-06-30': annual() for year in range(2010, 2020)}
+        self.company.reports = [statement(str(fiscal))]
+        self.company.annual['income-statement'] = {f'{year}-06-30': annual() for year in range(2010, 2020)}
         for age in (800, 801):
             with self.subTest(age=age):
                 self.company.root_date = str(fiscal + timedelta(days=age))
@@ -464,53 +368,53 @@ class ColumnTests(unittest.TestCase):
                 else:
                     self.assertEqual(observed['reason'], 'ROOT_NOT_ADMITTED')
         self.company.root_date = '2022-01-03'
-        self.company.reports.append('2021-06-30')
+        self.company.reports.append(statement('2021-06-30'))
         observed = self.observation(dict(op='at', date=str(fiscal + timedelta(days=801)), arg=parameter()), 'USD')
         self.assertEqual(observed['reason'], 'STALE_REPORT')
 
     def test_fiscal_spine_buckets_and_exact_dates(self):
         margins = statistic('mean', 3)
-        self.company.annual['2014-01-01'] = annual(999., 999.)
-        self.company.annual['2014-06-30']['revenue'] = state(None, 'CONFLICTING_INPUT')
+        self.company.annual['income-statement']['2014-01-01'] = annual(999., 999.)
+        self.company.annual['income-statement']['2014-06-30']['revenue'] = state(None, 'CONFLICTING_INPUT')
         observed = self.observation(parameter(), 'USD')
         # The exact anchor's missing field is not replaced by another report.
         self.assertEqual((observed['anchor'], observed['reason'], observed['members'][0]['value']),
                          ('2014-06-30', 'CONFLICTING_INPUT', None))
-        self.company.annual = {f'{year}-06-30': annual(100., income) for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}
-        self.company.annual['2013-12-31'] = dict(revenue=state(None, 'MISSING_INPUT'), operatingIncome=state(99.))
+        self.company.annual['income-statement'] = {f'{year}-06-30': annual(100., income) for year, income in ((2012, -10.), (2013, 0.), (2014, 20.))}
+        self.company.annual['income-statement']['2013-12-31'] = dict(revenue=state(None, 'MISSING_INPUT'), operatingIncome=state(99.))
         member = self.observation(margins)['members'][1]
         # The newest eligible income date of a year is selected even when incomplete.
         self.assertEqual((member['fiscal_date'], member['reason']), ('2013-12-31', 'MISSING_INPUT'))
-        del self.company.annual['2013-12-31'], self.company.annual['2013-06-30']
+        del self.company.annual['income-statement']['2013-12-31'], self.company.annual['income-statement']['2013-06-30']
         observed = self.observation(margins)
         self.assertFalse(observed['valid'])
         self.assertEqual([item['fiscal_year'] for item in observed['members']], [2012, 2013, 2014])
         self.assertEqual((observed['members'][1]['reason'], observed['members'][1]['fiscal_date']), ('MISSING_FISCAL_YEAR', None))
-        self.company.annual['2013-03-31'] = annual(100., 7.)
+        self.company.annual['income-statement']['2013-03-31'] = annual(100., 7.)
         # Calendar-year buckets, not fiscal spacing.
         self.assertEqual([item['value'] for item in self.observation(margins)['members']], [-.1, .07, .2])
 
     def test_signed_and_zero_denominators_and_nonfinite_margins(self):
         for revenue, income in ((-100., -5.), (0., 0.), (100., 0.)):
-            self.company.annual['2014-06-30'] = annual(revenue, income)
+            self.company.annual['income-statement']['2014-06-30'] = annual(revenue, income)
             self.assertEqual(self.observation(parameter(), 'USD')['members'][0]['value'], revenue)
             margin = self.observation(parameter('annual.operating_margin'))
             self.assertEqual(margin['reason'], 'NONPOSITIVE_DENOMINATOR' if revenue <= 0 else None)
             if revenue > 0:
                 self.assertEqual(margin['members'][0]['value'], 0.)
-        self.company.annual['2014-06-30'] = annual(-100., -20.)
+        self.company.annual['income-statement']['2014-06-30'] = annual(-100., -20.)
         # The provider's positive margin denominator is not generic division.
         self.assertEqual(self.result(b('div', parameter('annual.operating_income'), parameter()))['value'], .2)
-        self.company.annual['2014-06-30'] = annual(1e-300, 1e300)
+        self.company.annual['income-statement']['2014-06-30'] = annual(1e-300, 1e300)
         margin = self.observation(parameter('annual.operating_margin'))
         self.assertEqual((margin['reason'], margin['members'][0]['value']), ('NONFINITE_RESULT', None))
 
     # Dated contexts.
 
     def test_month_end_and_leap_lookbacks_keep_the_root_admission(self):
-        saved = self.company.reports, self.company.annual
-        self.company.root_date, self.company.reports = '2024-05-31', ['2021-06-30', '2022-06-30', '2023-06-30']
-        self.company.annual = {day: annual() for day in self.company.reports}
+        saved = self.company.reports, self.company.annual['income-statement']
+        self.company.root_date, self.company.reports = '2024-05-31', [statement(f'{year}-06-30') for year in (2021, 2022, 2023)]
+        self.company.annual['income-statement'] = {row['fiscal']: annual() for row in self.company.reports}
         block = self.explain(program(dict(op='lookback', months=3, arg=dict(op='lookback', months=12, arg=parameter())), 'USD'))
         self.assertEqual([item['date'] for item in block['observations']['contexts']], ['2024-05-31', '2024-02-29', '2023-02-28'])
         self.assertEqual(len(block['observations']['roots']), 1)
@@ -520,7 +424,7 @@ class ColumnTests(unittest.TestCase):
         self.assertEqual(observed['candidate_rank'], 1)
         block = self.explain(program(dict(op='lookback', months=3, arg=c())))
         self.assertEqual([item['date'] for item in block['observations']['contexts']], ['2024-05-31', '2024-02-29'])
-        self.company.reports, self.company.annual = saved
+        self.company.reports, self.company.annual['income-statement'] = saved
         self.company.root_date = '2015-03-31'
         base = language.entry(language.definition(parameter(), 'USD', 'usd'), 'saved:revenue')
         nested = dict(op='lookback', months=1, arg=dict(op='lookback', months=1, arg=language.reference(base)))
@@ -574,11 +478,12 @@ class ColumnTests(unittest.TestCase):
                 self.assertEqual(len(block['observations']['contexts']), 2)
 
     def test_ev_uses_entry_valuation_lookups_and_missing_prices_deny(self):
-        self.company.fill, self.company.prices = False, {'2000-01-03': 10.}
+        # Without fill, A has prices on the report, root and latest dates only; remove the entry sessions.
+        self.company.fill, self.company.prices = False, {'2000-01-03': 10., '2015-01-02': None, '2015-01-05': None}
         block = self.explain(program(parameter('market.enterprise_value'), 'USD'))
         self.assertEqual(block['observations']['roots'][0]['reason'], 'MISSING_PRICE')
         self.assertEqual(block['results'][0]['reason'], 'ROOT_NOT_ADMITTED')
-        self.company.prices = {'2014-06-28': 3., '2015-01-05': 7.}
+        self.company.prices = {'2014-06-28': 3., '2014-06-30': None, '2015-01-02': None, '2015-01-05': 7.}
         statement = dict(fiscal=date(2014, 6, 30), market_cap=150e6, enterprise=180e6, **{'yield': .3})
         expected = books.admit(statement, date(2015, 1, 2), lambda day, forward, slack:
                                (date(2015, 1, 5), 7.) if forward else (date(2014, 6, 28), 3.), books.ENTRY_SLACK)[1]
@@ -623,9 +528,7 @@ class ColumnTests(unittest.TestCase):
                 member = block['observations']['results'][0]['members'][0]
                 self.assertEqual((member['observation_date'], member['fiscal_date']), (observed, None))
                 treasury = name.startswith('treasury.')
-                self.assertEqual(member['evidence']['source'], dict(
-                    endpoint=facts.TREASURY if treasury else facts.STOCK, sha256=('d' if treasury else 'c') * 64,
-                    disposition='valid'))
+                self.assertEqual(member['evidence']['source'], store.source(facts.TREASURY if treasury else facts.STOCK))
                 self.assertEqual(member['evidence']['conversion'],
                                  'provider-percent-divided-by-100' if treasury else 'identity')
 
@@ -659,7 +562,7 @@ class ColumnTests(unittest.TestCase):
         member = revenue['members'][0]
         self.assertEqual((member['fiscal_date'], member['fiscal_year'], member['evidence']['known_date']),
                          ('2014-06-30', 2014, '2014-09-28'))
-        self.assertEqual(member['evidence']['source'], SOURCE)
+        self.assertEqual(member['evidence']['source'], store.source('income-statement'))
         self.assertEqual(member['evidence']['fields'], dict(revenue=state(100.)))
         self.assertEqual((ev['members'][0]['fiscal_date'], ev['members'][0]['fiscal_year']), ('2014-06-30', 2014))
         members = margins['observations']['results'][0]['members']

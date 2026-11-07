@@ -63,21 +63,22 @@ class View:
     decides explicit roots with books.Screen.decide: an open-book screen at
     the latest date for a latest root, a dated screen for a historical root.
     Each company, day and source is read once per view: neither database can
-    change while it is open. validate() is the operation's boundary check: the
-    freshness callback, the daily binding and the research identity.
+    change while it is open. validate() is the operation's between-step check:
+    the checkpoint and the freshness callback (operation_inputs: one file
+    status).
     """
 
     def __init__(self, db, freshness, checkpoint):
         freshness()
         self.db, self._freshness, self._checkpoint = db, freshness, checkpoint
-        self._binding = daily.binding(db)
-        if self._binding is None:
+        binding = daily.binding(db)
+        if binding is None:
             raise ValueError('Admitted daily input identity is missing.')
-        self._record = self._identity()
-        if self._record is None:
+        record = db.execute("SELECT value FROM research.metadata WHERE key='identity'").fetchone()
+        if record is None:
             raise ValueError('Prepared facts are missing, incompatible or stale. Retry offline preparation.')
-        self.identity = 'sqlite:' + hashlib.sha256(facts.encoded(dict(inputs=json.loads(self._binding))).encode()).hexdigest()
-        self._projection = json.loads(self._record)
+        self.identity = 'sqlite:' + hashlib.sha256(facts.encoded(dict(inputs=json.loads(binding))).encode()).hexdigest()
+        self._projection = json.loads(record[0])
         self._facts = facts.BookFacts(db)
         self._recorder = _Recorder(self._facts)
         broad, legacy = self._facts.reports()
@@ -88,10 +89,6 @@ class View:
         self._screens, self._companies, self._lanes, self._open_book = {}, {}, {}, None
         self._sessions, self._stock, self._treasury, self._sources = {}, {}, {}, {}
         self.closed = False
-
-    def _identity(self):
-        row = self.db.execute("SELECT value FROM research.metadata WHERE key='identity'").fetchone()
-        return None if row is None else row[0]
 
     @property
     def projection(self):
@@ -117,18 +114,13 @@ class View:
         return self._open_book
 
     def validate(self):
-        if self.closed:
-            raise ValueError('Observation input view is closed.')
+        self._open()
         self._checkpoint()
         self._freshness()
-        if daily.binding(self.db) != self._binding:
-            raise ValueError('Admitted daily input identity changed.')
-        if self._identity() != self._record:
-            raise ValueError('Prepared facts are missing, incompatible or stale. Retry offline preparation.')
 
     def _open(self):
         if self.closed:
-            raise ValueError('Observation input view is closed.')
+            raise ValueError('The prepared input view is closed.')
 
     def close(self):
         self.closed = True
@@ -183,12 +175,11 @@ class View:
                             date=root['date'], admitted=held is not None, reason=reason,
                             candidate_rank=screen.ranks.get(symbol), statement=None, valuation=None)
             if statement is not None:
-                decision['statement'] = (dict(fiscal=str(statement['fiscal']), known=str(statement['known']))
-                                         if latest else _detached(statement))
+                decision['statement'] = dict(fiscal=str(statement['fiscal']), known=str(statement['known']))
             if not latest and lookups:
                 decision['admission_evidence'] = dict(
                     lookup_policy='existing-entry-valuation', lookups=lookups,
-                    statement=_detached(statement), reason=None if reason == 'INELIGIBLE_VALUATION' else reason)
+                    reason=None if reason == 'INELIGIBLE_VALUATION' else reason)
             if held is not None:
                 valuation = dict(market_cap=held['market_cap'], enterprise_value=held['enterprise_value'],
                                  ebitda=held['ebitda'])
@@ -210,8 +201,7 @@ class View:
             lookups.append(_call(when, forward, slack, result))
             return result
         reason, value = books.admit(statement, day, lookup, books.ENTRY_SLACK)
-        evidence = dict(lookup_policy='existing-entry-valuation', lookups=lookups, statement=_detached(statement),
-                        reason=reason)
+        evidence = dict(lookup_policy='existing-entry-valuation', lookups=lookups, reason=reason)
         if value is None:
             return None, evidence
         fiscal, entry, cap, ev, ebitda = value
@@ -295,7 +285,7 @@ class View:
         return self._sources[key]
 
     def prepared(self, decision):
-        """Owner values of a stored-book root's row (book_store.lanes and valuations).
+        """Owner values of a stored-book root's row (book_store.lanes and market_caps).
 
         The book is the decision's owner scope, which only a prepared scope
         names after its check (scalar_execution._scope and
@@ -312,16 +302,12 @@ class View:
             raise ValueError('Only a stored-book root has stored owner lanes.')
         key = book, decision['pool']
         if key not in self._lanes:
-            self._lanes = {key: (book_store.valuations(self.db, *key), *book_store.lanes(self.db, *key))}
-        rows, pairs, values = self._lanes[key]
+            self._lanes = {key: (book_store.market_caps(self.db, *key), *book_store.lanes(self.db, *key))}
+        caps, pairs, values = self._lanes[key]
         symbol = decision['symbol']
-        if symbol not in rows:
+        if symbol not in caps:
             return dict(reason='PREPARED_MEASURE_CONTEXT_UNAVAILABLE', evidence=None)
-        return dict(reason=None, evidence=dict(snapshot=dict(market_cap=rows[symbol][0]),
+        return dict(reason=None, evidence=dict(snapshot=dict(market_cap=caps[symbol]),
                     metrics={metric: [multiples[symbol], yields[symbol]] for metric, (multiples, yields) in pairs.items()
                              if symbol in multiples},
                     filters={field: found[symbol] for field, found in values.items() if symbol in found}))
-
-
-def _detached(statement):
-    return {key: str(value) if isinstance(value, date) else value for key, value in statement.items()}

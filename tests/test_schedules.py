@@ -9,7 +9,7 @@ _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import book_store, daily, facts, financial_inputs, research
 from backtest.runtime import cache_access, diagnostics
 from backtest.financial import rules, books as financial_books, metrics
-from backtest import calendar as schedule_calendar, portfolio_results
+from backtest import calendar as schedule_calendar, calendar_requests, portfolio_results
 from datetime import date, timedelta
 from pathlib import Path
 import sqlite3
@@ -49,6 +49,11 @@ def research_file(path, content):
         db.commit()
 
 
+def fixed(start, end, months, sessions):
+    """The fixed monthly periods of a legacy request (calendar_requests.periods)."""
+    return calendar_requests.periods(sessions,dict(start=start,end=end,months=months))[0]
+
+
 class CalendarTests(unittest.TestCase):
     def test_daily_binding_and_connect_use_explicit_research_source(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -86,7 +91,7 @@ class CalendarTests(unittest.TestCase):
 
     def test_month_end_anchor_and_rolling(self):
         sessions=self.sessions(date(2020,1,1),date(2021,4,1))
-        periods=s.schedule('2020-01-31','2020-05-31',1,sessions)
+        periods=fixed('2020-01-31','2020-05-31',1,sessions)
         self.assertEqual([a for a,b in periods],[date(2020,1,31),date(2020,3,2),date(2020,3,31),date(2020,4,30)])
         self.assertEqual(periods[-1][1],date(2020,5,29))
         self.assertTrue(all(periods[i][1]==periods[i+1][0] for i in range(len(periods)-1)))
@@ -94,14 +99,14 @@ class CalendarTests(unittest.TestCase):
     def test_supported_intervals(self):
         sessions=self.sessions(date(2015,1,1),date(2016,1,1))
         for months,count in [(1,12),(3,4),(6,2),(12,1),(24,1)]:
-            self.assertEqual(len(s.schedule('2015-01-01','2016-01-01',months,sessions)),count)
+            self.assertEqual(len(fixed('2015-01-01','2016-01-01',months,sessions)),count)
 
     def test_leap_anniversary_and_invalid_dates(self):
         sessions=self.sessions(date(2020,1,1),date(2022,1,1))
-        periods=s.schedule('2020-02-29','2021-12-31',12,sessions)
+        periods=fixed('2020-02-29','2021-12-31',12,sessions)
         self.assertEqual([a for a,b in periods],[date(2020,3,2),date(2021,3,1)])
         for start,end,months in [('2020-01-01','2020-02-01',2),('2020-02-01','2020-01-01',1),('2020-01-01','2023-01-01',1)]:
-            with self.assertRaises(ValueError):s.schedule(start,end,months,sessions)
+            with self.assertRaises(ValueError):fixed(start,end,months,sessions)
 
 
 class BacktestTests(unittest.TestCase):
@@ -133,7 +138,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(dates,['2015-01-02','2015-04-01'])
         self.assertEqual(calendar.sample(configuration,1,42)['samples'][0],dates)
         # Explicit evaluation has no reason to reconstruct a monthly schedule.
-        with patch.object(s,'schedule',side_effect=AssertionError('No nominal schedule for explicit trades')):
+        with patch.object(schedule_calendar.SessionCalendar,'fixed',side_effect=AssertionError('No nominal schedule for explicit trades')):
             result=s.backtest_dates(self.db,dates=dates,start=configuration['start'],end=configuration['end'],rank_to=1)
         self.assertEqual(result['months'],12)  # Existing evaluator metadata; no weekly result claim.
         self.assertEqual([p['portfolio'] for p in result['periods']],[.5,-.5])

@@ -82,12 +82,11 @@ def _coverage(db,spy_payload,treasury_payload,checkpoint,histories=None):
 def report(research_path=None,daily_path=None,*,checkpoint=lambda:None):
     """Report coverage from current ordinary prepared data.
 
-    Version 2 has no January book counts or report digest. Version 3 reads the
-    stock sessions from the research facts and counts the book store's books,
-    pools and rows (the latest book included). Version 4 reads both through one
+    Version 4 reads the stock sessions from the research facts and counts the
+    book store's books, pools and rows (the latest book included), through one
     daily connection (daily.connect checks its binding and each price file's
-    stamps) and drops the price-inventory digest. Missing observations remain
-    explicit.
+    stamps). It replaces version 1, which counted January books and named a
+    report digest. Missing observations remain explicit.
     """
     research_path=Path(research_path or r.DATABASE);daily_path=Path(daily_path or daily_inputs.DATABASE)
     with cache_access.access(),closing(daily_inputs.connect(daily_path,research_path)) as db:

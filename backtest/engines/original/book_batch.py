@@ -195,8 +195,7 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
                         calculated+=1;notice()
                     staged.seek(0);writing=time.perf_counter()
                     with diagnostics.stage('book_write'),db:
-                        # Take the writer lock only after the whole trial is
-                        # calculated. A second server may have saved a shared book.
+                        # Take the writer lock only after the whole trial is calculated.
                         if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
                         for unused in missing:
                             backtest_control.checkpoint()

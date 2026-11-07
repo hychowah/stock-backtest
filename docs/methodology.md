@@ -1,6 +1,6 @@
 # US EBITDA/EV book, 1996–2026
 
-This document describes the original 30-year January study and its frozen result. The app now runs it as a 12-month dated schedule from 1 January. The folder does not depend on `tmp/`. Move the whole folder, including `raw/`. Scripts resolve the project root from their own location and read the shared `raw/` cache.
+This document describes the original 30-year January study and its frozen result. The app runs it as a 12-month dated schedule from 1 January. The folder does not depend on `tmp/`. Move the whole folder, including `raw/`. Scripts resolve the project root from their own location and read the shared `raw/` cache.
 
 The FMP key is read from `~/.grok/secrets/fmp_api_key` only for API requests. Cache-only backtests and website builds require no key.
 
@@ -44,7 +44,7 @@ A stock that still trades on the January sale date keeps that price. Being delis
 
 | Path | Role |
 |---|---|
-| `scripts/check.py` | The development check: compares a 12-month dated run with the independent reference engine at full precision, and with the frozen report. |
+| `scripts/check.py` | The development check ([research workflow](research-workflow.md#development-check)). |
 | `backtest/engines/reference/revalue.py` | Independently calculates the study from saved files. It never publishes or downloads. |
 | `backtest/engines/reference/legacy.py` | Owns the study constants and the independent original arithmetic. |
 | `results/summary-exits.txt` | The frozen year-by-year result. |
@@ -71,7 +71,7 @@ Financial companies are included. EBITDA/EV is a weak description of a bank or a
 
 ## Continue
 
-Run the study as a custom schedule every 12 months from 1 January 1996 on the website or in the queue. It uses the saved data and does not call FMP. On a real-data copy, `python3 scripts/check.py` confirms that this run equals the independent reference engine.
+Run the study as a custom schedule every 12 months from 1 January 1996 on the website or in the queue. It uses the saved data and does not call FMP. On a real-data copy, `python3 scripts/check.py` confirms that this run equals the independent reference engine ([development check](research-workflow.md#development-check)).
 
 To count a bankruptcy as a total loss, add the ticker and the day of the loss to `BANKRUPT` in `backtest/financial/rules.py` and rebuild the prepared data. A holding returns −100% only in a book whose window contains that day: after the entry day, through the exit day.
 

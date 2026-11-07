@@ -21,8 +21,6 @@ assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.asof'),latestDate)
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),latestCount(50));
 for(const [id,key] of [['sector-filter','sector'],['exchange-filter','exchange']])
  for(const value of prepared.choices[key])assert(el(id).innerHTML.includes('value="'+value.replace(/&/g,'&amp;')+'"'),id+' '+value);
-assert(!('screen' in screener)&&!('pools' in prepared)&&!('periods' in prepared),'No January selection engine or January pools remain.');
-assert(!html.includes('backtest-view')&&!html.includes('holdings-1996')&&!html.includes('schedule-kind'));
 // Opening the dated view starts nothing; it shows the schedule controls.
 run("switchMode('backtest')");
 assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);assert.equal(el('schedule-controls').hidden,false);
@@ -355,7 +353,7 @@ assert.throws(()=>run('readOptions()'),/Enter a value/);
 el('filter-conditions').handlers.input({target:{dataset:{index:'0',key:'value'},value:'0'}});
 assert.equal(run('readOptions().filters[0].value'),0);
 run('applyRange()');
-assert(run("ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>screeningData.filter_values['latest:'+ResultArtifacts.forView(LATEST_VIEW).result.options.pool+':0:'+h.symbol].return_1y>0)"));
+assert(run("ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>screeningData.filter_values[ResultArtifacts.forView(LATEST_VIEW).result.options.pool][h.symbol].return_1y>0)"));
 el('remove-filter-0').dataset={remove:'0'};el('filter-conditions').handlers.click({target:el('remove-filter-0')});
 assert.equal(run('readOptions().filters.length'),0);
 console.log('Passed: add/edit/remove filter controls and numeric thresholds.');

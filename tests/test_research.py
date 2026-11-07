@@ -292,10 +292,6 @@ class PreparationTests(unittest.TestCase):
         db = r.connect(self.path, full_prices=True)
         try:
             tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            # Research holds facts only: no January, latest or dated book.
-            self.assertFalse(tables & {'periods', 'snapshots', 'baseline_prices', 'baseline_periods', 'latest_snapshots',
-                                       'latest_admission', 'screening_metrics', 'filter_values', 'company_facts'})
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM metadata WHERE key IN ('historical_through','reuse','baseline_result','latest')").fetchone()[0], 0)
             self.assertEqual(tuple(db.execute('SELECT * FROM companies').fetchone()), ('TEST', 'Test Company', 'NYSE', 'Technology', 1))
         finally:
             db.close()

@@ -85,7 +85,7 @@ def _scope(db, capture, book, entry, *, latest):
     try:
         rows = book_store.scope(db, book, pool, MAX_CANDIDATES + 1)
     except ValueError:
-        raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a snapshot without a company.') from None
+        raise definitions.FormulaError('INVALID_SHAPE', '/population', 'Prepared scope has a book row without a saved company.') from None
     if len(rows) > MAX_CANDIDATES:
         raise definitions.FormulaError('WORK_LIMIT', '/population', 'Complete pool exceeds the scalar candidate ceiling.')
 

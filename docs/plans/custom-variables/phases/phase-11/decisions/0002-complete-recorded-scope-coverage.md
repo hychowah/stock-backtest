@@ -1,5 +1,10 @@
 # Complete recorded-scope coverage
 
+Superseded by the [typed-storage summary](../../../../typed-storage/master-plan.md):
+coverage discovers only the open book's pools, reports no provider admission
+counts and reserves no work. The current contract is in the
+[variable design](../../../variable-design.md).
+
 ## Context
 
 Preview evaluates 1–16 named roots. Phase 11 needs separate bounded inspection

@@ -243,7 +243,7 @@ def store_companies(db, universe):
 # Book facts: what books.book, books.Screen and the derived-context readers read,
 # through the 'research' schema of a daily connection.
 
-def legacy_annual(db, symbol, checkpoint=lambda: None, schema='research'):
+def legacy_annual(db, symbol, schema='research'):
     """{fiscal: {field: value}} of the valid legacy annual values of one company.
 
     The fields are LEGACY (financial_inputs.ENDPOINTS), in its endpoint and
@@ -260,7 +260,6 @@ def legacy_annual(db, symbol, checkpoint=lambda: None, schema='research'):
     for endpoint, fiscal, *values in db.execute(
             f'SELECT endpoint,fiscal,{",".join(columns)} FROM {schema}.annual_facts WHERE symbol=? AND endpoint IN '
             f'({",".join("?" * len(LEGACY))}) ORDER BY fiscal LIMIT ?', (symbol, *(endpoint for endpoint, _ in LEGACY), bound + 1)):
-        checkpoint()
         count += 1
         if count > bound:
             raise ValueError('Prepared observation history exceeds its bound.')
@@ -311,9 +310,10 @@ class BookFacts:
             for symbol, fiscal, known, cap, ev, ebitda, ebitda_yield in self.db.execute(
                     'SELECT symbol,fiscal,known,market_cap,enterprise_value,ebitda,ebitda_yield '
                     'FROM research.statements ORDER BY rowid'):
+                # The names of books.statements, which books and metrics read.
                 broad.setdefault(symbol, []).append(dict(
                     fiscal=date.fromisoformat(fiscal), known=date.fromisoformat(known), market_cap=cap,
-                    enterprise_value=ev, ebitda=ebitda, ebitda_yield=ebitda_yield, enterprise=ev, **{'yield': ebitda_yield}))
+                    enterprise=ev, ebitda=ebitda, **{'yield': ebitda_yield}))
             for rows in broad.values():
                 rows.sort(key=lambda row: row['fiscal'])
             self._reports = books.pools(broad)

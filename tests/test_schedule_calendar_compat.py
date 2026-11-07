@@ -14,6 +14,7 @@ sys.path[:0] = [str(ROOT/'scripts'), str(ROOT)]
 from backtest.financial import rules
 from backtest.inputs import market, fmp_download, cache_assets
 fmp_download.KEY_PATH = ROOT/'tmp/cb08/nonexistent-key'
+from backtest import calendar_requests
 from backtest.engines.original import schedules as s
 from backtest.engines.original import robustness as r
 sys.path.insert(0, str(ROOT/'tests'))
@@ -39,7 +40,8 @@ class MonthlyCompatibilityTests(unittest.TestCase):
         self.assertEqual(len(fixture['cases']),60)
         for case in fixture['cases']:
             with self.subTest(start=case['start'],months=case['months'],seed=case['seed']):
-                periods = [[str(a),str(b)] for a,b in s.schedule(case['start'],fixture['end'],case['months'],sessions)]
+                periods = [[str(a),str(b)] for a,b in calendar_requests.periods(
+                    sessions,dict(start=case['start'],end=fixture['end'],months=case['months']))[0]]
                 configuration = r.plan(db,start=case['start'],end=fixture['end'],months=case['months'],
                                        trials=fixture['trials'],seed=case['seed'])
                 self.assertEqual(digest(periods),case['periods_sha256'])

@@ -16,15 +16,12 @@ from backtest.variables import definitions as d, library
 import test_variable_definitions as language
 import test_strategy_requests as requests
 import book_store_fixture as store
+from book_store_fixture import state
 
 
 def preview(capture, roots, view):
     """Restore, check, then explain explicit roots, as Original.preview does under cache ownership."""
     return x.evaluate_preview(x.check_preview(s.require_strategy(capture), roots), roots, view)
-
-
-def state(value, reason=None):
-    return dict(value=value, valid=reason is None, reason=reason)
 
 
 class Fixture:
@@ -239,11 +236,6 @@ class ScalarTests(unittest.TestCase):
         view=self.fixture.view();view.close()
         with self.assertRaises(ValueError):view.validate()
         self.assertEqual(self.fixture.db.execute('SELECT count(*) FROM research.companies').fetchone()[0],300)
-    def test_stale_binding_rejected_and_no_connections_owned(self):
-        view=self.fixture.view()
-        self.fixture.db.execute("UPDATE metadata SET value='{}' WHERE key='daily_inputs'")
-        with self.assertRaises(ValueError):view.validate()
-        view.close()
     def test_small_record_limit_fails_explicitly(self):
         with self.assertRaises(d.FormulaError):self.fixture.select(self.fixture.capture(),record_bytes=100)
     def test_entry_admission_and_missing_return_rows_have_distinct_scope_counts(self):

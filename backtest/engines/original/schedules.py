@@ -11,12 +11,6 @@ from backtest import portfolio_results as portfolio_results
 
 from backtest.inputs import book_store, facts
 
-def schedule(start, end, months, sessions):
-    """Adapt the established monthly interface to the shared pure calendar."""
-    configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
-    return schedule_calendar.SessionCalendar(sessions).fixed(
-        configuration,checkpoint=backtest_control.checkpoint)
-
 def prepare_period(db,entry,exit_day,pool,book_facts):
     """Return the book id of a dated pool, computing and storing it once (books.book).
 

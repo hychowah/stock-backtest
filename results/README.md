@@ -9,7 +9,8 @@ or changes them.
 - `baseline-history/<generation>/` is ignored by Git and stays on the runtime. Each revision there retains the report that an earlier preparation replaced, its priced snapshots and `audit.json`.
 
 Run the study again as a custom schedule every 12 months from 1 January. On a
-real-data copy, `python3 scripts/check.py` compares that run with the
-independent reference engine and with `summary-exits.txt`.
+real-data copy, the [development check](../docs/research-workflow.md#development-check)
+compares that run with the independent reference engine and with
+`summary-exits.txt`.
 
 `experiments/` holds small cited experiment summaries.

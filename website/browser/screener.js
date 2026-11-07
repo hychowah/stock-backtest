@@ -58,11 +58,11 @@
     if(!Object.hasOwn(dataset.metrics,o.metric))throw Error('Choose a valid ranking metric.');
     for(const c of o.filters??[])if(!dataset.filter_catalog?.[c.field]?.available)throw Error('Choose an available filter metric.');
     observations=observations.map(h=>{
-      const value=dataset.metric_values['latest:'+o.pool+':0:'+h.symbol]?.[o.metric];
+      const value=dataset.metric_values[o.pool]?.[h.symbol]?.[o.metric];
       return value?{...h,metric_multiple:value[0],metric_yield:value[1]}:null;
     }).filter(h=>h!==null);
     const candidates=observations.map(h=>({symbol:h.symbol,candidate_rank:h.candidate_rank,values:{...h,
-      ...Object.fromEntries(Object.entries(dataset.filter_values?.['latest:'+o.pool+':0:'+h.symbol]??{}).map(([field,value])=>['filter.'+field,value]))}}));
+      ...Object.fromEntries(Object.entries(dataset.filter_values?.[o.pool]?.[h.symbol]??{}).map(([field,value])=>['filter.'+field,value]))}}));
     const result=selectValues(candidates,legacySpecification(o));
     return {stocks:result.selected.map(item=>({...observations[item.index],rank:item.rank})),matches:result.matches};
   }
@@ -80,7 +80,7 @@
     const ranks=`Ranks ${options.rank_from??defaults.rank_from}–${options.rank_to??defaults.rank_to}`;
     return options.selection_order==='rank_first'?ranks+' selected before filters. No replacements; original ranks retained. Equal weight across passing stocks.':ranks+' after filtering, equal weight.';
   }
-  const api={defaults,validate,median,latestScreen,selectionDescription,selectValues};
+  const api={defaults,latestScreen,selectionDescription,selectValues};
   if(typeof module==='object' && module.exports)module.exports=api;
   root.StockScreener=api;
 })(globalThis);

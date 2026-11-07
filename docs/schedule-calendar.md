@@ -109,8 +109,8 @@ It does not reconstruct a nominal schedule.
 
 ## Monthly compatibility and freshness
 
-`schedules.schedule` and `robustness.plan` adapt their existing monthly requests
-to the calendar. Their monthly envelopes, defaults and sampled draw order stay
+`calendar_requests.periods` and `robustness.plan` adapt the existing monthly
+requests to the calendar. Their monthly envelopes, defaults and sampled draw order stay
 the same. In particular, random configurations retain `months`, `options`,
 the original requested bounds and every complete sample. `schedules.dated_periods`
 still validates the legacy monthly argument before independent explicit-date

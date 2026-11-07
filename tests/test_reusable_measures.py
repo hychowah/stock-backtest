@@ -109,7 +109,7 @@ class InventoryExecution(unittest.TestCase):
     def test_derived_equal_date_uses_owner_and_never_exit(self):
         self.company.financials = {f'{year}-06-30': dict(revenue=100., operatingIncome=20., netIncome=10.,
             totalStockholdersEquity=50., epsDiluted=year-2010.) for year in (2012, 2013, 2014)}
-        self.company.treasury10 = [('2015-01-01', 2.)]
+        self.company.treasury = {'2015-01-01': dict(month3=state(None, 'MISSING_INPUT'), year10=state(2.))}
         self.company.books['legacy'] = dict(market_cap=123., metrics=dict(ev_ebitda=[4., .25]), filters=dict(pe=9.))
         view = self.company.view()
         day = self.company.latest_date

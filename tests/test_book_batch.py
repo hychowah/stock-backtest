@@ -166,13 +166,12 @@ class BookBatchTests(unittest.TestCase):
         db.rollback()
         with self.assertRaisesRegex(ValueError,'changed'):b.open_reader(path,self.research,'different generation')
 
-    def test_another_writer_completing_the_same_book_is_idempotent(self):
+    def test_a_complete_pool_is_never_written_twice(self):
         entry=date(2015,1,1);end=date(2015,7,1)
         book=books.book(entry,end,'legacy',facts.BookFacts(self.db))
-        with self.db:one=book_store.store(self.db,book)
+        with self.db:book_store.store(self.db,book)
         before=[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')]
-        with self.db:two=book_store.store(self.db,book)
-        self.assertEqual(one,two)
+        with self.assertRaises(sqlite3.IntegrityError),self.db:book_store.store(self.db,book)
         self.assertEqual(before,[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')])
 
     def test_book_read_transaction_releases_on_success_and_failure(self):

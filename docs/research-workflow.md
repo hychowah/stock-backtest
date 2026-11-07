@@ -18,7 +18,9 @@ per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
 publishes no report; the development check (`python3 scripts/check.py`) compares
 the book code with the independent reference on the real-data bench.
 
-Research schema 19 stores facts only, no book:
+Research schema 19 stores facts only, no book. This section owns the current
+research schema and daily cache versions; other documents link here.
+
 
 - Each saved company with its name, exchange and sector (cached metadata, not
   historical profiles) and whether it is listed now (`companies`).
@@ -35,7 +37,7 @@ The daily cache, `data/schedules.sqlite` (version 11), holds the book store
 its tables: `record`, `open_book` (the one book without an exit), `completed`,
 `find`, `rows` (full rows, every row or the named ones), `scope` (the selection
 fields of every row), `lanes` (one {symbol: value} map per stored lane),
-`valuations`, `require_scope` and `counts`. The ranked selection of
+`market_caps`, `require_scope` and `counts`. The ranked selection of
 `screening.select` is the one other reader of these tables; it takes their
 names and the book's row shape from the store. `books(book, entry, exit, spy, candidates)` names one
 entry and exit, in one book-id space; `book_pools(book, pool)` marks each
@@ -51,9 +53,9 @@ function when a backtest first needs them. A daily connection
 `research`: books, sessions and company names come from there, and the daily
 cache copies no research table. Each operation reads research only through
 this one connection. A book's rows keep the row shape that results and the
-website keep, chosen by the book itself: a dated row has the old daily
-snapshot columns and the open book's row the old latest snapshot columns
-(`price_date` is the entry session). The daily cache holds only the book store
+website keep, chosen by the book itself: a dated row has the `DATED` columns
+and the open book's row the `LATEST` columns (`price_date` is the entry
+session). The daily cache holds only the book store
 and its binding.
 
 `books.Screen(day, facts)` is the one admission rule, and
@@ -115,7 +117,7 @@ binding's digest as `input` and the research identity as `projection`.
 python3 scripts/research.py status
 ```
 
-The January `screen` command was removed with the January mode. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). **Rank first, then filter** selects the requested ranks before applying user filters. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
+There is no January screen command. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). **Rank first, then filter** selects the requested ranks before applying user filters. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
 `legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: both pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides (keyed by symbol and day of loss; a book whose window contains the day takes the loss). This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
@@ -129,7 +131,7 @@ Expanded selections may include early stops outside the original 37-name review,
 python3 website/build.py
 ```
 
-Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the tracked `website/dist/` snapshot unchanged. Refresh that portable snapshot only with `python3 website/build.py --snapshot`. Review its generated files and the `snapshot.json` latest date and source hashes before committing. Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable snapshot instead.
+Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the ignored portable export `website/dist/` unchanged. Only `python3 website/build.py --snapshot` writes it, with `snapshot.json` (its latest date and source hashes). Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable export instead.
 
 The website builder reads the latest book of the daily cache and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. Strategy CAGR and cumulative growth are unavailable if any period has no matching stocks; SPY remains for the full selected period.
 
@@ -300,13 +302,9 @@ listener. Backtest calculations use saved data only. The separate data panel can
 `website/browser/schedule.js` renders dated periods without assuming one book per year.
 Run `python3 tests/test_schedules.py` in addition to the existing checks.
 
-Before requested-pool preparation, observed in this workspace: the one-time daily index took 174 seconds and
-occupied 430 MB. Building a previously unseen 20-period quarterly schedule took
-52 seconds in a direct engine run; changing its metric and rank bounds reused
-the books in 1.4 seconds. A 31-period 12-month schedule from January 1996
-through October 2026 matched every reference selection and annual return. The local service
-uses a larger SQLite page cache for new-book calculations. Timings depend on disk
-and schedule length; new dates can require additional book preparation.
+The local service uses a larger SQLite page cache for new-book calculations.
+Timings depend on disk and schedule length; new dates can require additional
+book preparation.
 
 The applied requested-pool engine was verified on native Windows Python 3.12:
 100 annual random-date trials over the full cached history took 133.1 seconds,
@@ -314,8 +312,7 @@ versus 467.0 seconds for the saved eager reference (3.5× faster). The original
 candidate pool, top 50 and seed 20261022 were used, ending on 2026-10-20. Loading
 and per-trial saving were included; test-only cloning/reset was excluded. Every
 selected holding, valuation, exit status and trial outcome matched exactly.
-The [experiment summaries](../results/experiments/README.md) keep these numbers. The real daily cache
-upgraded in place, retaining all 300 existing books without parsing JSON prices.
+The [experiment summaries](../results/experiments/README.md) keep these numbers.
 
 ### Running and interrupted backtests
 
@@ -776,6 +773,8 @@ provider fixtures and temporary caches; they make no live FMP calls.
 `results/stops/` are a frozen record of the January study. Nothing regenerates,
 collects or changes them.
 
+### Development check
+
 The development check, `python3 scripts/check.py [--through YYYY-MM-DD] [--json
 OUT]`, runs one Original custom run: every 12 months from 1 January 1996 to the
 through date (default: the frozen report's Through date, 2026-10-20), legacy
@@ -824,8 +823,8 @@ Annual responses can contain repeated fiscal dates. Keep every returned row, inc
 ### Typed prepared facts
 
 Research preparation writes the inputs of custom-variable formulas as typed
-tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. Research
-schema 19 versions them (the separate typed-facts version is gone); older
+tables in `research.sqlite`, owned by `backtest/inputs/facts.py`. The
+research schema version ([Prepare once](#prepare-once)) covers them; older
 caches rebuild. The daily cache does not copy them: formulas and books read
 them through the `research` schema that the operation's one daily connection
 attaches. Preparation reads and parses each saved price, SPY and Treasury
@@ -858,7 +857,7 @@ reports by pool, cached companies (from `fact_sources`), listing (from
   annual, price, Treasury (`''`) and SPY (`''`) source file.
 
 The research record (`metadata`, above) names their version and content
-identity; there is no separate facts metadata table.
+identity.
 
 A field is valid when its value is present; otherwise its reason column names
 the reason (`MISSING_INPUT`, `CONFLICTING_INPUT`, `NON_USD_INPUT` or
@@ -871,7 +870,7 @@ handle, not a durable name: it names one book only while the cache keeps it,
 and SQLite can reuse a deleted id. A recorded `owner_scope.book` is a label,
 never a lookup key outside the operation or coverage generation that made it.
 The owner lanes of a stored-book root are that book's stored lanes
-(`book_store.valuations` and `lanes`, one read per book pool), read in place; a
+(`book_store.market_caps` and `lanes`, one read per book pool), read in place; a
 missing row never falls back to a recalculation. Every root of a latest or
 dated scope names its book in a prepared owner scope; a latest preview root
 reads the open book. A scope root's admission is its stored row, with the
@@ -928,7 +927,7 @@ Between steps, Original checks one research-file status at each view boundary.
 The exclusive cache lock keeps the prepared rows unchanged for the whole
 operation. The borrowed view reads each company, day and source once.
 
-The evaluator supports all 52 direct inputs plus operating margin, existing
+The evaluator supports all 57 direct inputs plus operating margin, existing
 dated EV and the reusable measure adapters. The 33 named measures use immutable
 ordinary definitions and exact references. A stored-book root consumes its
 book's stored owner lanes. An explicit historical preview root and every
@@ -936,9 +935,10 @@ derived context use dated owner policy (`books.owner_values` at the context
 date), even at the root date. Values-only evaluation builds no evidence;
 detail mode explains the selected rows only. Report EBITDA uses broad accepted report history.
 Reported EBIT, FCF, debt and EPS use the income fiscal spine and exact endpoint
-dates. Only those named annual adapters support annual history. Research schema
-19 and daily cache 11 require incompatible caches to rebuild;
-durable records keep their formats. Version-3 authoring exposes all 52 direct
+dates. Only those named annual adapters support annual history. A new research
+schema or daily cache version ([Prepare once](#prepare-once)) makes
+incompatible caches rebuild; durable records keep their formats. Version-3
+authoring exposes all 57 direct
 inputs, policy adapters and 33 exact measures. The original four-item catalog
 remains available for legacy definitions. The language check,
 `definitions.require_program()`, is the one formula gate, and the one evaluator

@@ -65,7 +65,7 @@ for _key in (*_ANNUAL, *_DATED):
 
 
 def catalog():
-    """The observed parameters: 52 direct inputs and the adapters; a listing proves no coverage."""
+    """The observed parameters: 57 direct inputs and the adapters; a listing proves no coverage."""
     return [dict(id=key, unit=value[0], description=value[1],
                  counts=dict(minimum=1, maximum=10 if key.startswith('annual.') else 1),
                  contexts=['root', 'at', 'lookback']) for key, value in _CATALOG.items()]

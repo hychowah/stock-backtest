@@ -118,11 +118,6 @@ class ProjectionTests(unittest.TestCase):
             # The daily binding names the research content identity and the book code.
             self.assertEqual(json.loads(daily.binding(copied)), dict(version=daily.VERSION, research=first['content'],
                                                                      books=research.code_identity('books')))
-            # The daily cache binds the facts and attaches them; it holds no copy of them.
-            names = {row[0] for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            self.assertFalse(names & {'stock_days', 'market_days', 'annual_facts', 'fact_sources', 'companies',
-                                       'statements', 'financial_inputs', 'fact_metadata'})
-            self.assertFalse([name for name in names if name.startswith('observation_')])
             row = original.execute("SELECT operating_income,operating_income_reason,revenue FROM annual_facts "
                                    "WHERE symbol='TEST' AND fiscal='2014-06-30'").fetchone()
             self.assertEqual(tuple(row), (None, 'MISSING_INPUT', 100e6))

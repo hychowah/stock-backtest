@@ -127,7 +127,7 @@ python3 tests/check_paths.py
 
 Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records.
 
-The development check, `python3 scripts/check.py`, compares a 12-month dated run from 1 January 1996 to the frozen report's Through date with the independent reference engine (`backtest/engines/reference/revalue.py`, which reads raw prices) at full precision, and its annual rows with the frozen report. It passes with 0 differences. Run it on a real-data copy after a change to book policy; no build or startup runs it.
+After a change to book policy, run the development check, `python3 scripts/check.py`, on a real-data copy; it must find 0 differences. See [the research workflow](docs/research-workflow.md#development-check).
 
 ## Project layout
 
