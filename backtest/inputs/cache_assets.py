@@ -121,11 +121,22 @@ def missing_spans(rows,field,start,end,checked):
     return gaps
 
 
+def coalesce_windows(windows):
+    """Combine overlapping or adjacent ISO-date windows."""
+    result=[]
+    for start,end in sorted(windows):
+        if result and (date.fromisoformat(start)-date.fromisoformat(result[-1][1])).days<=1:
+            result[-1][1]=max(result[-1][1],end)
+        else:result.append([start,end])
+    return result
+
+
 class SeriesAsset:
     """Own one price/yield file, its normalized rows and request provenance.
 
-    Publication preserves saved values and the file's other keys. Evidence names the
-    expected file content and original saved span. A half-published update
+    Missing-only publication preserves saved values. Refresh updates admitted
+    overlapping rows and excludes returned nonpositive prices. Both keep other
+    file keys. Evidence names the expected file content and original saved span. A half-published update
     cannot match the wrong file. Unfinished managed windows remain missing
     even if parallel results extend the actual date span on both sides.
     """
@@ -181,14 +192,8 @@ class SeriesAsset:
         if not isinstance(values,list):return []
         return sorted({str(day) for value in values if (day:=rules.parse_day(value))})
 
-    def publish(self,batch,start,end,ledger,ledger_path):
-        """Save usable values and record dated price exclusions, even if all.
-
-        A checked request can have no usable prices. Exclusion dates distinguish
-        that result from an empty provider response without making prices up.
-        Malformed records, missing/nonfinite values and out-of-window dates
-        still fail before publication.
-        """
+    def validate(self,batch,start,end):
+        """Admit one response before either missing-only or refresh publication."""
         def fail(reason):
             raise ValueError(f'{self.key}, {start} to {end}: {reason} Saved files were kept.')
         if not isinstance(batch,list):fail('The provider returned invalid dated values.')
@@ -204,6 +209,11 @@ class SeriesAsset:
             else:candidates.append(row)
         valid=series(candidates,self.field)
         if len(valid)!=len(candidates):fail('The provider returned invalid or duplicate dated values.')
+        return valid,skipped
+
+    def publish(self,batch,start,end,ledger,ledger_path):
+        """Fill missing values and record exclusions, with content-bound evidence."""
+        valid,skipped=self.validate(batch,start,end)
         windows=self.checked(ledger)+[[start,end]]
         by_day={row['date'][:10]:row for row in self.rows}
         for row in valid:by_day.setdefault(row['date'][:10],row)
@@ -212,6 +222,23 @@ class SeriesAsset:
         exclusions=sorted((set(self.skipped_dates(ledger))|set(skipped))-by_day.keys())
         self._store(merged,windows,ledger,ledger_path,skipped_dates=exclusions)
         return skipped
+
+    def refresh(self,batches,ledger,ledger_path):
+        """Publish windows already admitted by validate(), as one history.
+
+        The caller checks adjusted-price continuity before publication. Empty
+        responses keep saved rows. Explicit nonpositive prices remove their old
+        value and record its exclusion. Windows are coalesced so daily refreshes
+        do not grow the receipt without bound.
+        """
+        by_day={row['date'][:10]:row for row in self.rows}
+        exclusions=set(self.skipped_dates(ledger));windows=self.checked(ledger)
+        for start,end,valid,skipped in batches:
+            for day in skipped:by_day.pop(day,None)
+            for row in valid:by_day[row['date'][:10]]=row
+            exclusions.update(skipped);windows.append([start,end])
+        self._store([by_day[day] for day in sorted(by_day,reverse=True)],coalesce_windows(windows),
+                    ledger,ledger_path,skipped_dates=sorted(exclusions-by_day.keys()))
 
     def repair(self,ledger,ledger_path):
         """Normalize salvageable rows without claiming any new requested dates."""
@@ -227,8 +254,12 @@ class SeriesAsset:
             backup=ledger_path.parent/'archive'/(self.path.name+'.before-data-repair')
             if not backup.exists():backup.parent.mkdir(parents=True,exist_ok=True);backup.write_bytes(self.path.read_bytes())
         base=self.base_span(ledger)
-        content=json.dumps(value,allow_nan=False).encode('utf-8')
-        digest=hashlib.sha256(content).hexdigest()
+        if self.valid and series(merged,self.field)==self.rows:
+            value=self.payload
+            content=None;digest=self.digest
+        else:
+            content=json.dumps(value,allow_nan=False).encode('utf-8')
+            digest=hashlib.sha256(content).hexdigest()
         entry=dict(sha256=digest,windows=windows,base_span=base[0] if base else None)
         if skipped_dates:entry['skipped_dates']=skipped_dates
         previous=self.evidence(ledger)
@@ -237,7 +268,7 @@ class SeriesAsset:
         # Publish its expected hash first: a crash before asset replacement
         # leaves a mismatch, while a crash after it retains all known holes.
         write_json(ledger_path,{**ledger,self.key:entry})
-        publish_bytes(self.path,content)
+        if digest!=self.digest:publish_bytes(self.path,content)
         self.payload=value;self.rows=series(merged,self.field);self.valid=True;self.digest=digest
         ledger[self.key]=entry
 

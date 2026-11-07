@@ -21,11 +21,18 @@ python3 tools/deploy.py --start
 
 Deployment exports one selected Git commit. It does not copy working-tree edits.
 Running `backtest-web.cmd` or `python3 tools/deploy.py --start` serves the
-installed revision. A restart never installs a newer commit, so it never causes a
-database rebuild. Once a day at 01:00 local time the watcher reads committed
+installed revision. An ordinary restart does not select a newer commit or fetch
+data. Once a day at 07:00 Hong Kong time the watcher reads committed
 `main`. If the tip differs from the installed commit, it stages source, gracefully
 stops the current native server, publishes the commit and starts its replacement
-in the same terminal. Any number of commits in one day cause one restart. Add
+in the same terminal. It refreshes FMP inputs before accepting requests or queue
+work, even if main has no new commit. Refresh uses the installed source under
+shared source ownership, then exclusive financial-cache ownership. Ordinary
+preparation and the website build run after downloading. Saved results remain
+unchanged. A missed 07:00 minute waits until the next day, including after launch
+or resume. The terminal must stay running. Any number of commits in one day cause
+one scheduled maintenance cycle. Existing terminals keep their loaded behavior.
+Add
 `--latest` (`backtest-web.cmd --latest`) to install the current `main` tip at
 launch. A runtime with nothing installed installs the tip. Refresh an open
 browser page to load the new HTML. Restarts do not open another browser tab.
@@ -59,8 +66,23 @@ then uses the existing source-before-financial lock order. A timeout preserves
 ownership and retries. No forced process kill bypasses cleanup. Active manual
 runs stop. Interrupted queued tests return to waiting and retain their recorded
 dates. Saved results and user data survive. A missing Git observation keeps the
-current server. A failed update retries automatically; pending journals stay in
+installed revision; the scheduled data refresh still runs. A failed source
+publication retries automatically; pending journals stay in
 place for recovery. A staging failure leaves the old server serving.
+
+The supervisor forwards scheduled refresh intent through `EBITDA_WEB_REFRESH`.
+Older source revisions ignore it, so moving main back does not introduce an
+unknown startup argument. Ordinary launches clear scheduled refresh intent.
+Direct startup without the explicit `--refresh-data` option remains offline.
+The same operation is
+available as **Refresh data + website** on the data panel. Its fixed coverage
+and outcome are described in the [data workflow](research-workflow.md#data-control-panel).
+One company's provider failure does not stop other stocks or market series.
+Provider failures keep completed downloads. Publication I/O failures stop
+further downloads. The replacement prepares the valid
+saved inputs and reports a partial refresh. Preparation failure prevents service
+startup. `data/data-refresh.json` stores the attempt, last success, latest SPY
+session and pending new stocks. It contains no credentials or provider URLs.
 
 The source has no experimental engine. The website neither prepares nor runs
 it.

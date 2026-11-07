@@ -30,7 +30,9 @@ const DataPanel=(()=>{
   }
   function render(state){
     const job=state.job;busy=job.running;
-    for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=!connected||busy;
+    const update=state.refresh??{};
+    node('data-refresh-status').textContent=update.started_at?`Last refresh: ${update.outcome??'incomplete'} · ${new Date(update.started_at).toLocaleString()}. Last successful refresh: ${update.last_success?new Date(update.last_success).toLocaleString():'none'}. Latest cached SPY session: ${update.latest_session??'unknown'}. New stocks awaiting inputs: ${(update.pending_symbols??[]).length}. ${update.error??''}`:(update.error??'No data refresh has been recorded.');
+    for(const id of ['data-check','data-download','data-rebuild','data-refresh'])node(id).disabled=!connected||busy;
     node('data-cancel').hidden=!busy;
     node('data-progress').hidden=!job.action;
     node('data-message').textContent=job.message;
@@ -51,11 +53,11 @@ const DataPanel=(()=>{
   }
   async function refresh(){
     try{const state=await api('status');connected=true;node('data-connection').textContent='Connected to the local data service.';render(state);}
-    catch(error){connected=false;node('data-connection').textContent=error.message+' Open this panel through start.cmd to connect.';for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=true;}
+    catch(error){connected=false;node('data-connection').textContent=error.message+' Open this panel through start.cmd to connect.';for(const id of ['data-check','data-download','data-rebuild','data-refresh'])node(id).disabled=true;}
   }
   async function start(action){
-    try{node('data-error').textContent='';const request=action==='cancel'?{}:read();for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=true;render(await api(action,request));}
-    catch(error){node('data-error').textContent=error.message;for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=!connected||busy;}
+    try{node('data-error').textContent='';const request=['cancel','refresh'].includes(action)?{}:read();for(const id of ['data-check','data-download','data-rebuild','data-refresh'])node(id).disabled=true;render(await api(action,request));}
+    catch(error){node('data-error').textContent=error.message;for(const id of ['data-check','data-download','data-rebuild','data-refresh'])node(id).disabled=!connected||busy;}
   }
   function init(){
     node('data-connect').addEventListener('click',refresh);
@@ -64,7 +66,7 @@ const DataPanel=(()=>{
     const now=new Date();
     node('data-end').max=[now.getFullYear(),now.getMonth()+1,now.getDate()].map(n=>String(n).padStart(2,'0')).join('-');
     if(!node('data-end').value)node('data-end').value=node('data-end').max;
-    for(const action of ['check','download','rebuild','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
+    for(const action of ['check','download','rebuild','refresh','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
     node('data-scope').addEventListener('change',()=>node('data-symbols').disabled=node('data-scope').value!=='symbols');
     node('data-search').addEventListener('input',stocks);
     node('data-export').addEventListener('click',()=>{
@@ -72,7 +74,7 @@ const DataPanel=(()=>{
     });
     if(location.protocol==='file:'){
       node('data-connection').textContent='Open start.cmd, then choose Manage backtest data. This saved page needs the local service to inspect or change files.';
-      for(const id of ['data-check','data-download','data-rebuild'])node(id).disabled=true;
+      for(const id of ['data-check','data-download','data-rebuild','data-refresh'])node(id).disabled=true;
     }else refresh();
   }
   return {init,read,render,refresh,start};

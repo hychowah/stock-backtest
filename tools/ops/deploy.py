@@ -19,7 +19,7 @@ import sys
 import tarfile
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Extracted native helpers use explicit stage/target paths until support is bound.
 ROOT = (None if '--native-publish' in sys.argv else Path(__file__).resolve().parents[2])
@@ -32,8 +32,10 @@ MANIFEST = 'data/deployment.json'
 PENDING = 'data/deployment.pending.json'
 CONFIG = 'data/workspace.json'
 UPDATE_POLL_SECONDS = 2
-UPDATE_HOUR = 1
+UPDATE_HOUR = 7
+HONG_KONG = timezone(timedelta(hours=8), 'Hong Kong')
 SUPERVISOR_ENV = 'EBITDA_WEB_SUPERVISOR'
+REFRESH_ENV = 'EBITDA_WEB_REFRESH'
 
 
 def digest(path):
@@ -347,11 +349,15 @@ def install_latest(config, commit, *, before_publish=None):
 
 def spawn_server(config, arguments, supervisor):
     """Keep native output in this terminal; mark only this controller's child."""
-    env = dict(os.environ, **{SUPERVISOR_ENV: supervisor})
+    # Older main revisions ignore the maintenance environment instead of
+    # rejecting a new command-line flag when main is deliberately moved back.
+    env = dict(os.environ, **{SUPERVISOR_ENV: supervisor,
+                             REFRESH_ENV:'1' if '--refresh-data' in arguments else '0'})
+    arguments=[argument for argument in arguments if argument!='--refresh-data']
     # WSL forwards custom variables to Windows only when WSLENV names them.
     shared = [part for part in env.get('WSLENV', '').split(':') if part]
-    if not any(part.split('/')[0].upper() == SUPERVISOR_ENV for part in shared):
-        shared.append(SUPERVISOR_ENV)
+    for name in (SUPERVISOR_ENV,REFRESH_ENV):
+        if not any(part.split('/')[0].upper() == name for part in shared):shared.append(name)
     env['WSLENV'] = ':'.join(shared)
     return subprocess.Popen([str(linux_path(config['python'])), '-X', 'utf8', '-B',
                              config['runtime'] + '/website/serve.py', '--managed', *arguments],
@@ -390,7 +396,8 @@ def say(message, *, error=False):
 
 
 def next_update_time(now):
-    """The first 01:00 local time after now."""
+    """The first 07:00 Hong Kong time after now, without a catch-up launch."""
+    if now.tzinfo is not None:now=now.astimezone(HONG_KONG)
     due = now.replace(hour=UPDATE_HOUR, minute=0, second=0, microsecond=0)
     return due if due > now else due + timedelta(days=1)
 
@@ -416,7 +423,7 @@ def starting_commit(config, latest):
 
 
 def follow_main(config, arguments, *, check=False, latest=False):
-    """Serve the installed revision; update to committed main once a day at 01:00.
+    """Update source and refresh inputs once a day at 07:00 Hong Kong time.
 
     A launch with `latest` installs the main tip first. Publication owns
     shutdown, worker cleanup and source/cache locks. A failed update retries its
@@ -428,8 +435,8 @@ def follow_main(config, arguments, *, check=False, latest=False):
     if check:
         verify_installed(config)
     supervisor = uuid.uuid4().hex
-    due = next_update_time(datetime.now())
-    say('Daily updates on: committed main is checked at %02d:00 local time. Restart with --latest to update now. Ctrl+C stops this server.' % UPDATE_HOUR)
+    due = next_update_time(datetime.now(HONG_KONG))
+    say('Daily updates on: committed main and FMP data are checked at 07:00 Hong Kong time. Missed schedules wait until the next day. Ctrl+C stops this server.')
     child = spawn_server(config, arguments, supervisor)
     pending = None
     warned = None
@@ -439,21 +446,23 @@ def follow_main(config, arguments, *, check=False, latest=False):
                 return child.returncode
             time.sleep(UPDATE_POLL_SECONDS)
             if pending is None:
-                now = datetime.now()
+                now = datetime.now(HONG_KONG)
                 if now < due:
                     continue
+                scheduled=due
+                due=next_update_time(now)
+                if now-scheduled>=timedelta(minutes=1):
+                    say('Daily update was missed; waiting until the next 07:00 Hong Kong time.')
+                    continue
                 tip = main_revision()
-                if tip is None:
-                    continue
-                due = next_update_time(now)
-                if tip == commit:
-                    continue
                 if child.poll() is not None:
                     return child.returncode
-                pending = tip
-                say('Daily update: main commit ' + pending[:12] + '; updating and restarting the website.')
+                pending = tip or commit
+                say('Daily maintenance: checking source and refreshing FMP data before restarting the website.')
             try:
-                install_latest(config, pending, before_publish=lambda: stop_child(config, child, supervisor))
+                if pending!=commit or (linux_path(config['runtime']) / PENDING).exists():
+                    install_latest(config, pending, before_publish=lambda: stop_child(config, child, supervisor))
+                stop_child(config, child, supervisor)
             except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
                 notice = (pending, type(error).__name__)
                 if warned != notice:
@@ -461,10 +470,11 @@ def follow_main(config, arguments, *, check=False, latest=False):
                     warned = notice
                 continue
             commit, pending, warned = pending, None, None
-            stop_child(config, child, supervisor)
             # The first launch opens the browser. Subsequent replacements keep
             # the terminal visible without opening another tab for every commit.
-            restart_arguments = arguments if '--no-browser' in arguments else [*arguments, '--no-browser']
+            restart_arguments = [*arguments]
+            for flag in ('--no-browser','--refresh-data'):
+                if flag not in restart_arguments:restart_arguments.append(flag)
             supervisor = uuid.uuid4().hex
             child = spawn_server(config, restart_arguments, supervisor)
     except KeyboardInterrupt:
@@ -587,7 +597,7 @@ def main():
         os.environ['PYTHONUTF8'] = '1'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', help='Select a committed revision; with --start, freeze this launch instead of following main')
-    parser.add_argument('--start', action='store_true', help='Serve the installed revision and update to committed main daily at 01:00; --revision freezes the launch')
+    parser.add_argument('--start', action='store_true', help='Update committed main and FMP data daily at 07:00 Hong Kong time; --revision freezes the launch')
     parser.add_argument('--latest', action='store_true', help='With --start, install the latest committed main now instead of the installed revision')
     parser.add_argument('--check', action='store_true', help='Deploy, then check installed native Windows paths and lifecycle')
     parser.add_argument('--native-publish', nargs=2, help=argparse.SUPPRESS)

@@ -153,6 +153,45 @@ def request_json(endpoint,params,stop,client=None):
     with fmp_download.Client(stop) as session:return session.request(endpoint,params)
 
 
+def fetch_universe(stop,client):
+    """Fetch a complete eligible universe before replacing any saved listing."""
+    universe={}
+    for exchange in ('NYSE','NASDAQ','AMEX'):
+        returned=0
+        for page in range(30):
+            stop()
+            rows=request_json('company-screener',dict(exchange=exchange,isEtf='false',isFund='false',isActivelyTrading='true',limit=1000,page=page),stop,client)
+            returned+=len(rows)
+            for row in rows:
+                symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '')
+                ex=str(row.get('exchangeShortName') or row.get('exchange') or exchange)
+                if rules.common_stock(symbol,name) and rules.us_exchange(ex) and not row.get('isEtf') and not row.get('isFund'):
+                    universe[symbol]=dict(symbol=symbol,exchange=ex,sector=row.get('sector') or '',name=name,listed=True)
+            if len(rows)<1000:break
+        else:raise ValueError('US stock universe exceeded the page limit. No partial universe was saved.')
+        if not returned:raise ValueError('An exchange returned no listings. No partial universe was saved.')
+    if not universe:raise ValueError('No active US stock universe was returned. Saved files were kept.')
+    for page in range(1000):
+        stop()
+        rows=request_json('delisted-companies',dict(page=page,limit=100),stop,client)
+        for row in rows:
+            symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '');ex=str(row.get('exchange') or '')
+            if rules.common_stock(symbol,name) and rules.us_exchange(ex):
+                universe.setdefault(symbol,dict(symbol=symbol,exchange=ex,sector='',name=name,listed=False))
+        if len(rows)<100:break
+    else:raise ValueError('Delisted list exceeded the page limit. No partial universe was saved.')
+    return universe
+
+
+def append_financial(record):
+    """Append one full symbol record, preserving existing JSONL bytes."""
+    path=RAW/'metrics.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
+    needs_newline=path.exists() and path.stat().st_size>0
+    if needs_newline:
+        with path.open('rb') as handle:handle.seek(-1,2);needs_newline=handle.read(1)!=b'\n'
+    with path.open('a',encoding='utf-8') as handle:handle.write(('\n' if needs_newline else '')+json.dumps(record,allow_nan=False)+'\n')
+
+
 def fill_series(file,field,endpoint,o,ledger,emit,stop,symbol=None):
     specs=[(file,field,endpoint,symbol)]
     with fmp_download.Client(stop,emit) as client:
@@ -212,27 +251,7 @@ def _download(o,emit,stop,client):
     except (ValueError,TypeError):universe={}
     if 'universe' in selected and not universe:
         emit(message='Downloading US stock universe')
-        universe={}
-        # Reuse stock eligibility rules; fail on provider errors before publishing.
-        for exchange in ('NYSE','NASDAQ','AMEX'):
-            for page in range(30):
-                rows=request_json('company-screener',dict(exchange=exchange,isEtf='false',isFund='false',isActivelyTrading='true',limit=1000,page=page),stop,client)
-                for row in rows:
-                    symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '')
-                    ex=str(row.get('exchangeShortName') or row.get('exchange') or exchange)
-                    if rules.common_stock(symbol,name) and rules.us_exchange(ex) and not row.get('isEtf') and not row.get('isFund'):
-                        universe[symbol]=dict(symbol=symbol,exchange=ex,sector=row.get('sector') or '',name=name,listed=True)
-                if len(rows)<1000:break
-            else:raise ValueError('US stock universe exceeded the page limit. No partial universe was saved.')
-        for page in range(1000):
-            rows=request_json('delisted-companies',dict(page=page,limit=100),stop,client)
-            for row in rows:
-                symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '');ex=str(row.get('exchange') or '')
-                if rules.common_stock(symbol,name) and rules.us_exchange(ex):
-                    universe.setdefault(symbol,dict(symbol=symbol,exchange=ex,sector='',name=name,listed=False))
-            if len(rows)<100:break
-        else:raise ValueError('Delisted list exceeded the page limit. No partial universe was saved.')
-        if not universe:raise ValueError('No US stock universe was returned. Saved files were kept.')
+        universe=fetch_universe(stop,client)
         path=RAW/'universe.json'
         if path.exists():
             backup=RAW/'archive'/'universe.json.before-data-repair'
@@ -255,12 +274,7 @@ def _download(o,emit,stop,client):
         for completed,(symbol,rows) in enumerate(client.map(pending,lambda symbol:request_json('key-metrics',dict(symbol=symbol,period='annual',limit=40),stop,client)),1):
             stop()
             record=cache_assets.financial_record(symbol,rows)
-            path=RAW/'metrics.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
-            # A valid final JSONL record need not end with a newline.
-            needs_newline=path.exists() and path.stat().st_size>0
-            if needs_newline:
-                with path.open('rb') as handle:handle.seek(-1,2);needs_newline=handle.read(1)!=b'\n'
-            with path.open('a',encoding='utf-8') as handle:handle.write(('\n' if needs_newline else '')+json.dumps(record)+'\n')
+            append_financial(record)
             records[symbol]=record
             emit(message=f'Saved annual financials {completed}/{len(pending)} · up to {client.workers} parallel requests.',completed=completed,total=len(pending),workers=client.workers)
     if 'fundamentals' in selected:
@@ -287,6 +301,16 @@ def _download(o,emit,stop,client):
     return inspect(o,emit,stop)
 
 
+def rebuild(emit,stop):
+    """The one dependency chain for manual rebuilds and complete refreshes."""
+    emit(message='Preparing research and custom-date databases…')
+    daily.prepare();stop()
+    diagnostics.lap('prepare')
+    emit(message='Rebuilding the website…')
+    subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    diagnostics.lap('website_build')
+
+
 class Jobs:
     def __init__(self):
         self.lock=Lock();self.cancel=Event()
@@ -295,8 +319,9 @@ class Jobs:
         self.state=dict(running=False,action=None,message='Check the saved data to see coverage.',completed=0,total=0,error=None,warning='')
 
     def snapshot(self):
+        from website.server import data_refresh
         path=diagnostics.log_path()
-        with self.lock:return dict(job=dict(self.state),report=self.report,log_file=diagnostics.relative_path(path) if path else None)
+        with self.lock:return dict(job=dict(self.state),report=self.report,refresh=data_refresh.status(),log_file=diagnostics.relative_path(path) if path else None)
 
     def emit(self,**values):
         with self.lock:self.state.update(values)
@@ -305,7 +330,8 @@ class Jobs:
         if self.cancel.is_set():raise Cancelled()
 
     def start(self,action,request):
-        if action not in ('check','download','rebuild'):raise ValueError('Choose check, download or rebuild.')
+        if action not in ('check','download','rebuild','refresh'):raise ValueError('Choose check, download, refresh or rebuild.')
+        if action=='refresh' and request:raise ValueError('Refresh updates the complete managed coverage. It takes no range options.')
         o=options(request)
         with self.lock:
             if self.closing:raise ValueError('The server is stopping. Reopen the data panel after restart.')
@@ -336,13 +362,15 @@ class Jobs:
             diagnostics.lap('admission')
             try:
                 self.stop()
-                if action=='rebuild':
-                    self.emit(message='Preparing research and custom-date databases…')
-                    daily.prepare();self.stop()
-                    diagnostics.lap('prepare')
-                    self.emit(message='Rebuilding the website…')
-                    subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                    diagnostics.lap('website_build')
+                if action=='refresh':
+                    from website.server import data_refresh
+                    self.rebuilt=False
+                    refreshed=data_refresh.run(self.emit,self.stop)
+                    self.rebuilt=True
+                    report=inspect(o,self.emit,self.stop)
+                    self.emit(error=refreshed['error'],message='Refresh incomplete. Prepared saved inputs are ready.' if refreshed['error'] else 'Refresh complete. Open the strategy page to load the new data.')
+                elif action=='rebuild':
+                    rebuild(self.emit,self.stop)
                     self.rebuilt=True
                     report=inspect(o,self.emit,self.stop)
                 elif action=='download':
@@ -352,7 +380,8 @@ class Jobs:
                 diagnostics.lap('download' if action=='download' else 'inspect')
                 with self.lock:self.report=report
                 self.emit(warning=' '.join(report.get('warnings',[])))
-                self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
+                if action!='refresh':
+                    self.emit(message='Rebuild complete. Open the strategy page to load the new data.' if action=='rebuild' else 'Download complete. Rebuild prepared data to use new files.' if action=='download' else 'Data check complete.')
             finally:
                 # Readers compare raw inputs again after every data action.
                 r.forget_signature()

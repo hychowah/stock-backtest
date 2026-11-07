@@ -520,6 +520,10 @@ class CacheTests(unittest.TestCase):
 
 
 class HttpTests(unittest.TestCase):
+    def setUp(self):
+        folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
+        owner=patch.object(d,'ROOT',Path(folder.name));owner.start();self.addCleanup(owner.stop)
+
     def handler(self,method,path,body=None,origin=None,client='127.0.0.1',host='127.0.0.1:3000'):
         handler=object.__new__(serve.Handler)
         handler.path=path;handler.client_address=(client,5555)
@@ -541,6 +545,8 @@ class HttpTests(unittest.TestCase):
         with patch.object(serve.DATA_JOBS,'start',return_value={'job':{}}) as start:
             self.assertEqual(self.handler('POST','/api/data/check',dict(scope='cached'))[0][0],202)
             start.assert_called_once_with('check',dict(scope='cached'))
+            self.assertEqual(self.handler('POST','/api/data/refresh',{})[0][0],202)
+            self.assertEqual(start.call_args.args,('refresh',{}))
             self.assertEqual(self.handler('POST','/api/data/arbitrary')[0][0],404)
             self.assertEqual(self.handler('POST','/api/data/prepare')[0][0],404)
         self.assertNotIn('candidate',serve.DATA_JOBS.snapshot())

@@ -99,8 +99,8 @@ and the architecture guide.
 - Explained owner lanes at latest roots show their report dates, as dated
   roots do.
 - Coverage discovery covers only the open book's pools.
-- Automatic nightly downloads are an open future decision. They would end the
-  explicit-button rule and must run after the 01:00 supervisor or in its step.
+- [Nightly data refresh](../nightly-data-refresh/master-plan.md) resolves the
+  automatic-download decision with maintenance at 07:00 Hong Kong time.
 - The native Windows checks (attach, file replace, spawned workers) are
   pending.
 - The first deployment rebuilds research and recomputes every saved book once.

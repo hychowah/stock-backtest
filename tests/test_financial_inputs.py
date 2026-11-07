@@ -103,7 +103,7 @@ class FinancialTests(unittest.TestCase):
             with self.assertRaises(ValueError):f.publish(raw,'A',endpoint,[dict(rows[0],netIncome=float('nan'))],ledger,receipt)
             self.assertEqual(path.read_bytes(),before)
             with patch.object(f.cache_assets,'publish_bytes',side_effect=PermissionError):
-                with self.assertRaises(PermissionError):f.publish(raw,'A',endpoint,rows,ledger,receipt)
+                with self.assertRaises(PermissionError):f.publish(raw,'A',endpoint,[dict(rows[0],date='2020-12-31')],ledger,receipt)
             self.assertTrue(f.completed(raw,'A',endpoint,ledger))
             path.unlink();self.assertFalse(f.completed(raw,'A',endpoint,ledger))
 

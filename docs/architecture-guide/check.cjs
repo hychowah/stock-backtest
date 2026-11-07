@@ -18,7 +18,7 @@ assert(html.includes('WSL source') && html.includes('Windows runtime') && html.i
 assert(html.includes('server/app.py') && html.includes('runtime_access.py') && html.includes('The tracked report is a frozen record.'), 'Explain native ownership and the frozen report');
 assert(html.includes('scripts/check.py') && html.includes('Every preparation is a full build.') && html.includes('Nothing regenerates or changes it.'), 'Explain the development check, full research builds and the frozen January record');
 assert(html.includes('there is no January mode') && html.includes('A saved January result opens in the dated view.') && html.includes('at <code>/mode</code>'), 'Explain the removed January mode, saved January results and the refusal');
-assert(html.includes('checks main once a day at 01:00') && html.includes('website-update-stop-') && html.includes('without automatic updates'), 'Explain automatic main updates, owned cleanup and fixed launches');
+assert(html.includes('checks main once a day at 07:00 Hong Kong time') && html.includes('website-update-stop-') && html.includes('without automatic updates'), 'Explain automatic main updates, owned cleanup and fixed launches');
 assert(html.includes('backtest/application/jobs.py') && html.includes('backtest-runs.js') && html.includes('/api/backtest-runs/*') && html.includes('24 hours, up to four recent runs') && html.includes('same browser storage'), 'Explain server-owned runs, reconnection and temporary result limits');
 assert(html.includes('All calculation routes share one ordinary admission owner.') && html.includes('Callers no longer prehold financial ownership.') && html.includes('Late request bodies cannot begin calculation.'), 'Explain shared application admission and ordinary routing');
 assert(html.includes('backtest-queue.sqlite') && html.includes('backtest/application/queue.py') && html.includes('100 records') && html.includes('Held edits stay held') && html.includes('consumer lock'), 'Explain durable queue records, editing and single-consumer recovery');
@@ -28,6 +28,8 @@ assert(html.includes('Completed — waiting for saved slot') && html.includes('T
 assert(html.includes('The library has 100 slots.') && html.includes('stable UUID database ID') && html.includes('Sort saved backtests') && html.includes('Renaming changes only the name.') && html.includes('lists scroll inside bounded regions'), 'Explain library capacity, identity, rename, performance sort and bounded lists');
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
+
+assert(html.includes('Refresh data + website') && html.includes('data/data-refresh.json') && html.includes('A missed schedule waits until the next day.') && html.includes('Future precomputed sheets belong in that flow') && html.includes('A changed adjusted price needs a consistent replacement'), 'Explain scheduled refresh, pending additions, price continuity and preparation ownership');
 
 assert(html.includes('Multiple records can have the same fiscal date.') && html.includes('Conflicting values stay unavailable.'), 'Explain duplicate annual response preservation and input ambiguity');
 

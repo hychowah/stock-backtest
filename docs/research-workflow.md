@@ -701,9 +701,62 @@ and the website build without network requests. Every research build is a full
 build. Open the
 strategy page after rebuilding to load the new embedded data.
 
+**Refresh data + website** refreshes the full managed coverage and runs that
+same preparation chain. It ignores the check/download range controls. It
+refreshes US listings while retaining historical companies. It checks annual
+key metrics across the universe, including existing companies. New fiscal dates
+enter the valuation records; saved fiscal-date valuations stay unchanged. Full
+annual input responses retain every variant under the existing conflict rules.
+Every returned key-metric response is retained in the full-data cache, including
+responses for companies without saved prices. This does not backfill their
+prices unless they are newly discovered or first become eligible.
+Statements and ratios refresh for saved-price stocks and pending additions.
+New listings and newly eligible companies receive price histories from 1995.
+Pending additions survive interruption and retry on later refreshes.
+
+Prices and Treasury yields resume known unfinished windows and recheck a
+seven-day overlap from their last saved date. Empty histories reuse checked old
+windows and recheck recent dates, so delayed provider rows can arrive later.
+This does not infer gaps inside an imported saved span. Overlapping Treasury
+and price rows may be updated. If an adjusted price
+differs, refresh requests the complete saved history in bounded windows. It
+publishes that history only when all saved and newly returned dates are present
+and the recently returned prices still agree. Equivalent numeric representations
+do not trigger a history replacement.
+An incomplete replacement keeps the original file. Other stock-file keys stay
+intact. Each response is validated once before publication. Unchanged assets
+keep their bytes and timestamps. Coverage receipts retain their current format;
+refresh coalesces requested windows. Recent overlap checks do not audit arbitrary
+corrections elsewhere in historical data. Annual requests retain the 40-report
+limit and do not prove complete provider history.
+
+Manual refresh waits until 22:00 UTC to request that US date. This cutoff is
+after the regular US close in both seasons.
+The supervisor runs the same operation before startup at 07:00 Hong Kong time,
+after optional source publication. Data refresh runs with no new commit too.
+A missed schedule waits until the next day. Neither ordinary startup nor resume
+catches up. The supervisor must be running. Fixed-revision launches have no
+automatic maintenance. Ordinary direct startup remains offline; an explicit
+`--refresh-data` requests this operation before accepting work.
+
+The panel shows the last attempt, last successful refresh, latest cached SPY
+session and count of pending new stocks. `data/data-refresh.json` owns this
+status and pending list. A completed request with no new rows does not advance
+the latest session. A failed company or history does not stop unrelated assets.
+The failed-asset count is recorded. Publication I/O failures stop further
+downloads. A partial refresh keeps completed downloads and prepares valid saved
+inputs, with a visible partial outcome. A preparation
+failure cannot mark the refresh successful or admit calculations. Cancellation
+joins fetch workers before releasing cache ownership and retains completed
+downloads. Stored library and queue records are never rewritten by refresh.
+New annual reports use the existing 90-day eligibility policy. Preparation owns
+fact changes and book invalidation. A later precomputed-sheet stage belongs in
+that preparation path; the scheduler has no sheet rules.
+
 `website/server/data_manager.py` owns the inventory and background job. The local
 service exposes `/api/data/status` and the POST actions
-`check`, `download`, `rebuild`, and `cancel`. Data endpoints accept only local,
+`check`, `download`, `refresh`, `rebuild`, and `cancel`. Refresh takes an empty
+options object. Data endpoints accept only local,
 same-origin requests. `backtest/runtime/cache_access.py` owns one project-wide resource
 coordinator, backed by ignored `data/website-data-0.lock`. Startup, standalone
 research/daily preparation, data jobs, fixed schedules and random batches use

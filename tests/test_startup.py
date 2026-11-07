@@ -61,6 +61,26 @@ class StartupTests(unittest.TestCase):
         self.assertTrue(lines)
         for line in lines:self.assertRegex(line,r'^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \S')
 
+    def test_scheduled_refresh_finishes_before_binding_and_queue_admission(self):
+        from website.server import data_refresh
+        calls=[];server=Mock();server.server_address=('127.0.0.1',8765)
+        with patch.object(data_refresh,'startup',side_effect=lambda *args:calls.append('refresh_and_prepare') or dict(error=None)),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'Server',side_effect=lambda *args:calls.append('bind') or server):
+            serve.main(arguments=['--no-browser','--refresh-data'])
+        self.assertEqual(calls,['refresh_and_prepare','bind']);prepare.assert_not_called()
+
+    def test_failed_refresh_preparation_cannot_start_a_server(self):
+        from website.server import data_refresh
+        with patch.object(data_refresh,'startup',side_effect=ValueError('preparation failed')),patch.object(serve,'Server') as server,self.assertRaises(SystemExit):
+            serve.main(arguments=['--no-browser','--refresh-data'])
+        server.assert_not_called()
+
+    def test_supervisor_environment_requests_refresh_before_binding(self):
+        from website.server import data_refresh
+        server=Mock();server.server_address=('127.0.0.1',8765)
+        with patch.dict(serve.os.environ,{'EBITDA_WEB_REFRESH':'1'}),patch.object(data_refresh,'startup',return_value=dict(error=None)) as refresh,patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'Server',return_value=server):
+            serve.main(arguments=['--no-browser'])
+        refresh.assert_called_once();prepare.assert_not_called();server.serve_forever.assert_called_once()
+
     def test_missing_sources_open_recovery_panel_without_preparation(self):
         server=Mock();server.server_address=('127.0.0.1',3000)
         with patch.object(sys,'argv',['serve.py','--no-browser']),patch.object(serve.cache_assets,'source_problem',return_value=True),patch.object(serve,'ensure_ready') as prepare,patch.object(serve,'Server',return_value=server):

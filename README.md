@@ -8,8 +8,9 @@ Source development lives in this repository's WSL checkout; edit and commit ther
 The native Windows runtime is a separate deployed export of the same source.
 Start the native runtime with `python3 tools/deploy.py --start`, or run the
 installed `backtest-web.cmd` from Windows Terminal. Startup serves the installed
-revision. It updates to committed `main` daily at 01:00 local time; add
-`--latest` to update at launch. See [workspace commands and ownership](docs/workspaces.md).
+revision. At 07:00 Hong Kong time it updates committed `main`, refreshes FMP
+data and prepares the website. A missed schedule waits until the next day.
+Add `--latest` to update source at launch. See [workspace commands and ownership](docs/workspaces.md).
 
 Use `python3 tools/deploy.py --revision <commit> --start` to fix one launch to
 that revision. Standalone publication without `--start` retains the installed

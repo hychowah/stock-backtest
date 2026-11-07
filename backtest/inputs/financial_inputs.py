@@ -1,5 +1,6 @@
 """Annual statement assets and dated financial filter inputs. No network here."""
 import functools
+from collections import Counter
 import hashlib
 import json
 
@@ -120,6 +121,7 @@ def completed(raw,symbol,endpoint,ledger):
 
 
 def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
+    """Publish the full response and return its admitted rows."""
     rows=normalize(rows,symbol,endpoint)
     path=asset_path(raw,symbol,endpoint)
     old,digest=read(raw,symbol,endpoint)
@@ -127,16 +129,21 @@ def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
         backup=path.with_suffix('.json.before-repair')
         if not backup.exists():cache_assets.publish_bytes(backup,path.read_bytes())
     # Keep the complete response, including repeated dates and exact duplicates.
-    # Repair also retains every distinct saved variant. Never collapse by date.
+    # Keep prior variants and their duplicate counts too. Rechecking an identical
+    # response must not accumulate another copy of every report each night.
     merged=list(rows)
-    saved={json.dumps(row,sort_keys=True,allow_nan=False) for row in merged}
+    saved=Counter(json.dumps(row,sort_keys=True,allow_nan=False) for row in merged)
+    seen=Counter()
     for row in old:
         identity=json.dumps(row,sort_keys=True,allow_nan=False)
-        if identity not in saved:
-            merged.append(row);saved.add(identity)
+        seen[identity]+=1
+        if seen[identity]>saved[identity]:
+            merged.append(row);saved[identity]+=1
     content=json.dumps(dict(version=2,full_response=True,symbol=symbol,endpoint=endpoint,rows=merged),allow_nan=False).encode()
     key=path.relative_to(raw).as_posix();previous=ledger.get(key,{})
     receipt=dict(sha256=hashlib.sha256(content).hexdigest())
+    if receipt['sha256']==digest and isinstance(previous,dict) and any(
+            isinstance(entry,dict) and entry.get('sha256')==digest for entry in (previous,previous.get('previous',{}))):return rows
     if isinstance(previous,dict):
         for candidate in (previous,previous.get('previous',{})):
             if isinstance(candidate,dict) and digest and candidate.get('sha256')==digest:
@@ -144,7 +151,8 @@ def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
                 break
     ledger[key]=receipt
     cache_assets.write_json(ledger_path,ledger)
-    cache_assets.publish_bytes(path,content)
+    if receipt['sha256']!=digest:cache_assets.publish_bytes(path,content)
+    return rows
 
 
 def resolve_history(raw,symbol):

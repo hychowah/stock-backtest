@@ -34,7 +34,7 @@ installed readiness or real-cache coverage.
 Do long work on a branch or linked worktree. Integrate into `main` only with the
 user's authorization. Push, deployment, installed-runtime restart, downloads and
 live runtime, cache or durable-store access each need explicit authorization. A
-running supervisor publishes `main` at 01:00. Before advancing or
+supervisor can publish `main` automatically (see Launcher below). Before advancing or
 rewriting `main`, check read-only process metadata for `tools/deploy.py --start`
 and native project servers. Preserve unrelated uncommitted files in the main
 checkout. Verify with private synthetic fixtures, never the live cache.
@@ -60,8 +60,8 @@ renames and formatting changes in these areas.
   prepared company or lane never falls back to another calculation.
 - Preserve operation-boundary freshness, bounded leaf reads, cancellation,
   worker/writer and lock ownership, attachment lifetime and resource ceilings.
-- Strategy calculations never fetch market data. Downloads need an explicit
-  data-panel action.
+- Strategy calculations never fetch market data. Downloads start from an
+  explicit data-panel action or the authorized scheduled maintenance cycle.
 - Python uses the standard library. The JavaScript checks need Node.js.
   Cache-only workflows need no API key.
 
@@ -114,7 +114,8 @@ a separate deployed export, not a second repository. `python3 tools/deploy.py`
 exports committed source there; uncommitted edits are excluded. A fresh
 standalone publication needs an explicit `--revision`. A valid pending
 publication selects its recorded commit for recovery. `--start` serves the
-installed revision and updates to `main` at 01:00. `--revision <commit>
+installed revision and updates source and FMP inputs at 07:00 Hong Kong time.
+Missed schedules wait until the next day. `--revision <commit>
 --start` fixes one launch. `--check` deploys and runs the installed Windows
 checks. Windows `backtest-web.cmd` runs the same flow through WSL.
 Local paths live in ignored `data/workspace.json`.
@@ -183,7 +184,8 @@ never installs or replaces the runtime copy of `summary-exits.txt`.
 
 ## Cache
 
-Do not refetch data that is already here. Keep `raw/` with the Windows runtime.
+Keep `raw/` with the Windows runtime. Missing-only downloads reuse saved data.
+Explicit refresh may recheck saved inputs.
 
 - `raw/universe.json`: about 11,054 US names, including 5,068 delisted names
   without sector or delisted date.
@@ -297,20 +299,20 @@ denominators must be positive. A calculation change needs offline preparation,
 a rebuild, and temporal and SQL/browser parity checks. Check
 `python3 tests/test_financial_inputs.py`.
 
-**Data panel and raw cache.** `/data.html` checks and rebuilds from saved files.
-Downloads start only from an explicit button and fill only missing data.
-`backtest/inputs/cache_assets.py` owns normalized records, validation, atomic
-publication and content-bound receipts in `raw/download-coverage.json`. Publish
-the receipt before replacing an asset. A missing, replaced or unbound file never
-inherits completion evidence. Keep every returned field and row in
-`raw/financial-inputs/`; conflicting inputs stay absent. Finite non-positive
-adjusted prices are excluded and recorded as `skipped_dates`.
-`backtest/runtime/cache_access.py` owns coordination: process lock, then project
-file lock, then database connections and worker pools. Hold ownership through
-worker completion and database closure. Do not replace it with a thread lock.
-Keep the key and provider URLs out of status responses. Checks:
-`tests/test_data_manager.py` and `tests/test_cache_access.py` (also native
-Windows), and `node tests/check-data-panel.cjs`.
+**Data panel and raw cache.** See the [data workflow](docs/research-workflow.md#data-control-panel).
+`website/server/data_refresh.py` owns refresh and pending additions. Refresh
+uses ordinary preparation. `backtest/inputs/cache_assets.py` owns validation,
+atomic publication and content-bound receipts in `raw/download-coverage.json`.
+Publish receipts before assets. Missing, replaced or unbound files inherit no
+completion evidence. Keep every returned field and row in
+`raw/financial-inputs/`; conflicts stay absent. Exclude finite non-positive
+adjusted prices and record `skipped_dates`. `backtest/runtime/cache_access.py`
+owns coordination: process lock, project file lock, then connections and worker
+pools. Hold ownership through worker completion and database closure; a thread
+lock is insufficient. Keep keys and provider URLs out of status. Checks:
+`tests/test_data_manager.py`, `tests/test_data_refresh.py`,
+`tests/test_cache_access.py` (also native Windows), and
+`node tests/check-data-panel.cjs`.
 
 **FMP downloads.** `backtest/inputs/fmp_download.py` owns transport: 32 workers,
 reusable gzip connections and a shared cap of 45 starts per second. At most
@@ -348,19 +350,19 @@ batches stay serial. Workers watch the parent's lifetime. Checks:
 `tests/test_robustness.py`, `node tests/check-robustness.cjs` and
 `tests/test_book_batch.py` (also native Windows spawn).
 
-**Launcher and automatic updates.** `website/server/launcher.py` owns identity
-publication, control requests, the per-port startup lock and the lifetime lock.
-Never stop an unknown port owner. An unreachable endpoint does not prove the
-old server has finished; replacement waits up to 30 seconds. The default
-listener is `0.0.0.0:3000`. Open the browser only after preparation and binding.
-`tools/deploy.py --start` serves the installed revision. At 01:00 it resolves a
-changed `refs/heads/main` tip to one commit, stages source before stopping the
-child and completes pending publication first. Never force-kill a server or replace source on
-timeout. `backtest/runtime/diagnostics.py` writes per-process logs in
-`data/logs/`. Never log exception text, keys, provider URLs or response bodies.
-Checks: `tests/test_startup.py`, `tests/test_auto_update.py`,
-`tests/test_deployment.py` and `tests/test_diagnostics.py`, on WSL and
-native Windows. Use private repositories and runtimes.
+**Launcher and automatic updates.** `website/server/launcher.py` owns identity,
+control requests, per-port startup and lifetime locks. Never stop an unknown
+port owner. An unreachable endpoint proves no shutdown; replacement waits up
+to 30 seconds. Listen on `0.0.0.0:3000` by default. Open the browser after
+preparation and binding. At 07:00 Hong Kong time, `tools/deploy.py --start`
+resolves main, stages source before stopping its child, completes pending
+publication, and refreshes data before admission. Refresh runs without new
+commits. Missed schedules wait until tomorrow. Existing terminals retain their
+loaded behavior. Never force-kill or replace source on timeout.
+`backtest/runtime/diagnostics.py` writes per-process `data/logs/`; never log
+exception text, keys, provider URLs or bodies. Checks: `tests/test_startup.py`,
+`tests/test_auto_update.py`, `tests/test_deployment.py`,
+`tests/test_diagnostics.py`, on WSL and native Windows with private runtimes.
 
 **Saved library and queue.** `data/saved-backtests.sqlite`
 (`backtest/application/library.py`) and `data/backtest-queue.sqlite`

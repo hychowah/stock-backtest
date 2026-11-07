@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from threading import Thread
 import unittest
 from unittest.mock import Mock, patch
@@ -36,7 +36,7 @@ class UpdateTests(unittest.TestCase):
         self.root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
         self.config=dict(runtime=str(self.root),python=sys.executable,source='/fixture/source',distro='Fixture')
         self.context.enter_context(patch.object(d,'linux_path',side_effect=Path))
-        self.due=self.context.enter_context(patch.object(d,'next_update_time',return_value=datetime.min))
+        self.due=self.context.enter_context(patch.object(d,'next_update_time',side_effect=lambda now:now))
 
     def test_main_poll_uses_committed_branch_and_bounds_git_wait(self):
         with patch.object(d.subprocess,'check_output',return_value=b'a'*40+b'\n') as git:
@@ -47,11 +47,11 @@ class UpdateTests(unittest.TestCase):
             with patch.object(d.subprocess,'check_output',side_effect=failure):self.assertIsNone(d.main_revision())
         with patch.object(d.subprocess,'check_output',return_value=b'not-a-commit'):self.assertIsNone(d.main_revision())
 
-    def test_update_time_is_the_next_one_am(self):
-        self.assertEqual(next_update_time(datetime(2026,11,5,0,59)),datetime(2026,11,5,1,0))
-        self.assertEqual(next_update_time(datetime(2026,11,5,1,0)),datetime(2026,11,6,1,0))
-        self.assertEqual(next_update_time(datetime(2026,11,5,23,30)),datetime(2026,11,6,1,0))
-        self.assertEqual(next_update_time(datetime(2026,12,31,12,0)),datetime(2027,1,1,1,0))
+    def test_update_time_is_the_next_seven_am_hong_kong(self):
+        self.assertEqual(next_update_time(datetime(2026,11,5,6,59)),datetime(2026,11,5,7,0))
+        self.assertEqual(next_update_time(datetime(2026,11,5,7,0)),datetime(2026,11,6,7,0))
+        self.assertEqual(next_update_time(datetime(2026,11,5,23,30)),datetime(2026,11,6,7,0))
+        self.assertEqual(next_update_time(datetime(2026,12,31,12,0)),datetime(2027,1,1,7,0))
 
     def test_starting_commit_serves_installed_unless_latest_or_fresh(self):
         data=self.root/'data';data.mkdir()
@@ -69,17 +69,35 @@ class UpdateTests(unittest.TestCase):
     def run_days(self,times,tip):
         """Follow with a scripted local clock; return how often main was read and installed."""
         clock=Mock();clock.now.side_effect=times
-        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',side_effect=tip) as read,patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',return_value=Child()),patch.object(d.time,'sleep',side_effect=[None]*(len(times)-1)+[KeyboardInterrupt]):
+        with patch.object(d,'next_update_time',next_update_time),patch.object(d,'datetime',clock),patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',side_effect=tip) as read,patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',side_effect=lambda *args:Child()),patch.object(d.time,'sleep',side_effect=[None]*(len(times)-1)+[KeyboardInterrupt]):
             self.assertEqual(d.follow_main(self.config,[]),130)
         return read.call_count,install.called
 
-    def test_main_is_read_once_after_one_am_and_not_before(self):
-        times=[datetime(2026,11,5,0,58),datetime(2026,11,5,0,59),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1)]
+    def test_main_is_read_once_at_seven_am_and_not_before(self):
+        times=[datetime(2026,11,5,6,58),datetime(2026,11,5,6,59),datetime(2026,11,5,7,0),datetime(2026,11,5,7,1)]
         self.assertEqual(self.run_days(times,['a'*40]),(1,False))
 
-    def test_unreadable_main_is_retried_instead_of_skipping_the_day(self):
-        times=[datetime(2026,11,5,0,58),datetime(2026,11,5,1,0),datetime(2026,11,5,1,1),datetime(2026,11,5,1,2)]
-        self.assertEqual(self.run_days(times,[None,'a'*40]),(2,False))
+    def test_unreadable_main_keeps_revision_and_still_refreshes(self):
+        times=[datetime(2026,11,5,6,58),datetime(2026,11,5,7,0),datetime(2026,11,5,7,1),datetime(2026,11,5,7,2)]
+        self.assertEqual(self.run_days(times,[None]),(1,False))
+
+    def test_missed_schedule_waits_for_next_day_on_resume(self):
+        times=[datetime(2026,11,5,6,58),datetime(2026,11,5,9,0),
+               datetime(2026,11,6,6,59),datetime(2026,11,6,7,0)]
+        self.assertEqual(self.run_days(times,['a'*40]),(1,False))
+
+    def test_schedule_uses_hong_kong_when_host_timezone_differs(self):
+        now=datetime(2026,11,5,22,59,tzinfo=timezone.utc)
+        self.assertEqual(next_update_time(now),datetime(2026,11,6,7,0,tzinfo=d.HONG_KONG))
+        self.assertEqual(next_update_time(datetime(2026,11,5,23,0,tzinfo=timezone.utc)),
+                         datetime(2026,11,7,7,0,tzinfo=d.HONG_KONG))
+
+    def test_unchanged_commit_still_stops_and_launches_refresh(self):
+        old,new=Child(),Child(0)
+        with patch.object(d,'starting_commit',return_value='a'*40),patch.object(d,'main_revision',return_value='a'*40),patch.object(d,'install_latest') as install,patch.object(d,'spawn_server',side_effect=[old,new]) as spawn,patch.object(d.time,'sleep'):
+            self.assertEqual(d.follow_main(self.config,[]),0)
+        install.assert_not_called();self.assertEqual(old.waits,[30])
+        self.assertEqual(spawn.call_args.args[1],['--no-browser','--refresh-data'])
 
     def test_update_replaces_once_and_unknown_git_keeps_serving(self):
         old,new=Child(),Child(0);tokens=[];installed=[]
@@ -91,10 +109,10 @@ class UpdateTests(unittest.TestCase):
                 self.assertEqual(old.waits,[30])
                 self.assertFalse((self.root/'data'/('website-update-stop-'+tokens[0])).exists())
                 old.returncode=0
-        with patch.object(d,'main_revision',side_effect=['a'*40,None,'a'*40,'b'*40]),patch.object(d,'install_latest',side_effect=install),patch.object(d,'spawn_server',side_effect=spawn) as run,patch.object(d.time,'sleep'):
+        with patch.object(d,'main_revision',side_effect=['a'*40,'b'*40]),patch.object(d,'install_latest',side_effect=install),patch.object(d,'spawn_server',side_effect=spawn) as run,patch.object(d.time,'sleep'):
             self.assertEqual(d.follow_main(self.config,['--port','4312']),0)
         self.assertEqual(installed,['a'*40,'b'*40]);self.assertEqual(run.call_count,2)
-        self.assertEqual(run.call_args.args[1],['--port','4312','--no-browser'])
+        self.assertEqual(run.call_args.args[1],['--port','4312','--no-browser','--refresh-data'])
         self.assertNotEqual(tokens[0],tokens[1])
         self.assertFalse((self.root/'data'/('website-update-stop-'+tokens[0])).exists())
 
@@ -140,8 +158,16 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(command[0],sys.executable)
         self.assertEqual(command[-2:],['--managed','--no-browser'])
         self.assertEqual(run.call_args.kwargs['env'][d.SUPERVISOR_ENV],'a'*32)
+        self.assertEqual(run.call_args.kwargs['env'][d.REFRESH_ENV],'0')
         self.assertIn(d.SUPERVISOR_ENV,run.call_args.kwargs['env']['WSLENV'].split(':'))
         self.assertNotIn('stdout',run.call_args.kwargs)
+
+    def test_scheduled_refresh_does_not_require_a_new_flag_in_older_applications(self):
+        with patch.object(d.subprocess,'Popen',return_value=Child()) as run:
+            d.spawn_server(self.config,['--no-browser','--refresh-data'],'a'*32)
+        self.assertNotIn('--refresh-data',run.call_args.args[0])
+        self.assertEqual(run.call_args.kwargs['env']['EBITDA_WEB_REFRESH'],'1')
+        self.assertIn('EBITDA_WEB_REFRESH',run.call_args.kwargs['env']['WSLENV'].split(':'))
 
     def test_latest_requires_start_and_conflicts_with_revision(self):
         with patch.object(d.os,'name','posix'),patch.object(d,'configuration',return_value=self.config),patch.object(d,'follow_main',return_value=0) as follow:
@@ -282,8 +308,9 @@ class CommittedUpdateTests(unittest.TestCase):
             shutil.copytree(ROOT/'backtest',source/'backtest',ignore=shutil.ignore_patterns('__pycache__'))
             for name in ('serve.py','runtime_access.py','server/launcher.py'):shutil.copy2(ROOT/'website'/name,website/name)
             def app(version):
-                return ('from pathlib import Path\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\nfrom website.server import launcher\n'
+                return ('from pathlib import Path\nimport argparse\nfrom http.server import BaseHTTPRequestHandler,ThreadingHTTPServer\nfrom website.server import launcher\n'
                         'def main():\n'
+                        ' parser=argparse.ArgumentParser()\n parser.add_argument("--managed",action="store_true")\n parser.add_argument("--no-browser",action="store_true")\n parser.parse_args()\n'
                         ' class Handler(BaseHTTPRequestHandler):\n'
                         '  def do_GET(self): launcher_owner.control(self)\n'
                         '  def do_POST(self): launcher_owner.control(self)\n'
@@ -321,7 +348,8 @@ class CommittedUpdateTests(unittest.TestCase):
             def version(expected):
                 try:return (runtime/'served-version').read_text()==expected
                 except FileNotFoundError:return False
-            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03),patch.object(d,'next_update_time',return_value=datetime.min):
+            clock=Mock();clock.now.return_value=datetime(2026,11,5,6,59,tzinfo=d.HONG_KONG)
+            with patch.object(d,'ROOT',source),patch.object(d,'git_command',side_effect=command),patch.object(d,'windows_path',side_effect=str),patch.object(d,'linux_path',side_effect=Path),patch.object(d,'native',side_effect=publish),patch.object(d,'UPDATE_POLL_SECONDS',.03),patch.object(d,'datetime',clock):
                 thread=Thread(target=run,daemon=True);thread.start()
                 try:
                     until(lambda:version('first'))
@@ -332,6 +360,7 @@ class CommittedUpdateTests(unittest.TestCase):
                     subprocess.run(command('add','website/server/app.py'),check=True)
                     subprocess.run(command('commit','-qm','Second fixture'),check=True)
                     second=subprocess.check_output(command('rev-parse','HEAD')).decode().strip()
+                    clock.now.return_value=datetime(2026,11,5,7,0,tzinfo=d.HONG_KONG)
                     until(lambda:version('second'))
                     self.assertEqual(d.read_json(runtime/d.MANIFEST)['commit'],second)
                     for name in ('raw/keep.json','data/research.sqlite','data/saved-backtests.sqlite','data/backtest-queue.sqlite','results/summary-exits.txt'):

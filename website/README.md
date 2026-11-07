@@ -5,8 +5,10 @@ Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from t
 ## Automatic updates
 
 The registered Windows `backtest-web.cmd` serves the installed revision and
-updates to committed main daily at 01:00 local time (`--latest` updates at
-launch). The update restarts the native server in the same terminal. Uncommitted saves
+updates committed main and refreshes FMP data daily at 07:00 Hong Kong time.
+It refreshes data even when main has no new commit. A missed schedule waits
+until the next day; launch and resume do not catch up. `--latest` updates
+source at launch. Maintenance restarts the native server in the same terminal. Uncommitted saves
 and other branches do not trigger updates. Remote history is not fetched or pulled.
 Refresh the browser page after the server reports it is ready. Subsequent
 restarts do not open another tab.
@@ -14,7 +16,8 @@ restarts do not open another tab.
 The archive is staged before shutdown. Server cleanup finishes before source
 replacement. An active manual run stops; interrupted queued work returns to
 waiting with its recorded dates. Saved backtests and raw data are preserved.
-Unavailable Git keeps the current server; a failed update retries automatically.
+Unavailable Git keeps the installed source revision; data refresh still runs.
+A failed source publication retries automatically.
 Use `python3 tools/deploy.py --revision <commit> --start` from WSL for a fixed
 revision without watching. Ctrl+C stops the watcher and its server.
 
@@ -49,8 +52,35 @@ are decoded before validation; plain responses also work. A 429 response pauses
 all workers and reduces the start rate. One writer saves each result. Cancel keeps completed windows, stops new requests and interrupts retry waits. A retry also fills unfinished managed windows inside an expanded date span.
 Completion evidence belongs to the exact saved file; loss or corruption cannot
 leave missing data falsely complete. Short histories may reflect IPOs or stops.
-The downloader does not refresh existing reports/profiles or repair internal
+The missing-only downloader does not refresh existing reports/profiles or repair internal
 price gaps. Full annual financial data downloads income, balance-sheet, cash-flow, key-metrics and ratios responses for the chosen group. It retains every returned field, null, currency and filing metadata in the raw cache. New key-metric records also keep full responses. Older trimmed key metrics can be backfilled separately. Prepared calculations use eligible USD inputs; future metrics can reuse the other saved fields.
+
+**Refresh data + website** checks all saved-price stocks and new eligible
+listings. It adds newly eligible companies when their first usable annual
+metrics arrive. New stocks receive histories from 1995 and annual input assets.
+Incomplete additions remain pending for the next refresh. This action uses
+complete managed coverage, independent of the range controls. It checks annual
+key metrics across the universe and annual statements for the managed stocks.
+Every key-metric response is retained, including companies without saved prices.
+New reports keep the existing 90-day policy. Existing valuation reports retain
+their values; full annual input variants keep the ordinary conflict rules.
+Prices and Treasury yields resume known unfinished windows and recheck a
+seven-day overlap. Checked empty histories reuse old windows. A changed adjusted
+price requires a consistent full saved history that keeps newly returned dates
+and prices before publication. Unchanged
+assets keep their bytes and timestamps. Refresh then prepares both databases
+and rebuilds the website. It does not edit saved backtests or queue records.
+
+The panel shows the last attempt, last successful refresh, latest cached SPY
+session and pending additions. These dates are separate: an empty successful
+provider response does not advance market coverage. Completed downloads survive
+failure. One failed company or history does not stop unrelated assets. Publication
+I/O errors stop further downloads. A partial refresh prepares valid saved inputs
+and reports the failure.
+Preparation failure cannot start the calculation service. Historical coverage
+is bounded by provider responses; recent overlap checks do not audit every old
+provider correction. Installed timing and real-data coverage need separate
+verification. Existing terminals keep their loaded behavior until restarted.
 
 If essential source files are missing or invalid, startup opens this panel for
 recovery. The page is served from current source at `/data.html`; opening the

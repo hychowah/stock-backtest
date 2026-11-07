@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import errno
 import json
+import os
 import re
 import sqlite3
 import select
@@ -192,6 +193,7 @@ def main(*,arguments=None):
     parser.add_argument('--host',default='0.0.0.0')
     parser.add_argument('--no-browser',action='store_true',help='Start without opening a browser')
     parser.add_argument('--managed',action='store_true',help='Replace this project’s previous server and keep this terminal attached')
+    parser.add_argument('--refresh-data',action='store_true',default=os.environ.get('EBITDA_WEB_REFRESH')=='1',help='Refresh FMP inputs and prepare before accepting work')
     args=parser.parse_args(arguments)
     started=time.perf_counter()
     sys.stdout,sys.stderr=diagnostics.Stamped(sys.stdout),diagnostics.Stamped(sys.stderr)
@@ -215,12 +217,23 @@ def run_server(args,lifecycle,parser,started):
     try:
         with diagnostics.operation('startup.prepare'),cache_access.access():
             diagnostics.lap('admission')
+            if args.refresh_data:
+                from website.server import data_refresh
+                print('Refreshing FMP inputs before startup…',flush=True)
+                last_notice=0
+                def refresh_progress(**values):
+                    nonlocal last_notice
+                    now=time.monotonic()
+                    if 'message' in values and now-last_notice>=1:
+                        print(values['message'],flush=True);last_notice=now
+                refreshed=data_refresh.startup(refresh_progress)
+                if refreshed['error']:print(refreshed['error'],flush=True)
             recovery=cache_assets.source_problem()
             diagnostics.lap('source_check')
             if recovery:
                 diagnostics.note(outcome='recovery')
                 print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
-            else:ensure_ready()
+            elif not args.refresh_data:ensure_ready()
     except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
         diagnostics.failure('startup.failed',error)
         parser.exit(1,'Could not prepare the local website: '+str(error)+'\n')
