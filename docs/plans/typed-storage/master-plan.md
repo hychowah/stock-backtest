@@ -17,8 +17,8 @@ and removes the largest measured cost.
 
 Done: T1 (typed facts in `research.sqlite`), T2 (detail-mode explanations,
 D1), T3 (JSON observation tables and reference evaluator deleted), P1, P2
-(P2a, P2b, P2c), P3 (P3a with its follow-up, P3b, P3c1, P3c2, P3c3), P4 and
-the P4 review cleanup (P4c).
+(P2a, P2b, P2c), P3 (P3a with its follow-up, P3b, P3c1, P3c2, P3c3), P4,
+the P4 review cleanup (P4c) and P5, the last speed phase.
 
 Bench, P1 code (6367bef, research schema 13, daily 6): cold build 462 s
 (research 377, daily 84). `research.sqlite` 2.24 GB; `schedules.sqlite` 1.10 GB
@@ -34,46 +34,31 @@ Cold build, then the user test with books computed/saved: P2b 335 s,
 books and 4.47 GB with 1,378. A one-session nightly update takes 157 s and
 keeps 1,376 of 1,378 dated books.
 
-P4 (688602e; schemas unchanged; the new book identity recomputes every book
-once): cold build 168 s (research 165); user test 301.0/85.0 s. With books
-saved, 107 → 63 ms per date over 1,344 dates (143.8 s before, same quiet
-machine); the selection stage 139.9 → 81.1 s. P4c (a6095e6; its `facts.py`
-edit rebuilds research and recomputes every book once): cold build 160 s
+P4 (688602e; every book recomputes once): cold build 168 s; user test
+301.0/85.0 s; with books saved 107 → 63 ms per date over 1,344 dates. P4c
+(a6095e6; research rebuilds and every book recomputes once): cold build 160 s
 (research 157); user test 299.4 s (book writes 145.0, calculation wait 54.1,
-selection 75.0) and 84.6 s (selection 80.7), 63 ms per date.
+selection 75.0) and 84.6 s (selection 80.7). Its profile (books saved, ms per
+date, overlapping): formulas 11.1 (`columns._anchor` 4.5), `selection.select`
+11.5, stored-condition checks 11.7, `book_store.lanes` 7.9, Executor loops
+7.4, scope rows 7.1, writing 2.2.
 
-What remains (P4 profile of the user test with books saved, 85 s; time per
-date, share, the change it needs and its estimated gain):
+P5 (50125bf; schemas unchanged; every book recomputes once; research does not
+rebuild; all timings under user load, the user gaming on the machine): cold
+build 176 s (research 172); user test 326.6 s with books computed (book
+writes 180.8, calculation wait 57.1, selection 54.6) and 62.7 s with books
+saved (selection 57.5; 47 ms per date).
 
-1. Selection over every scope row, 17 ms (27%). The Executor's
-   stored-condition prefilter and `selection.select` check the stored
-   conditions twice per row, with a checkpoint per condition. Checking once
-   changes the `selection.select` contract (`selection.py`,
-   `scalar_execution.py`); about 8 s.
-2. Formula evaluation, 12 ms (18%). Report dates parsed again per root
-   (`columns._anchor`) are 5 ms of it. The view could keep date-typed
-   reports; deletes the per-root parse (a few lines); about 6 s.
-3. Stored-lane reads, `book_store.lanes`, 8 ms (13%): a nested dict per row,
-   reshaped per role. One {symbol: value} map per requested lane
-   (`book_store`, two readers); about 5 s.
-4. Executor per-row loops, 7 ms (11%), and scope-row reads,
-   `book_store.rows`, 6 ms (9%): every row becomes a dict with company names,
-   although 30 rows are output. Read the selection fields for every row and
-   full rows for the selected only; about 6 s.
-5. Result writing, 2 ms (3%; 78 MB per run): small.
+The speed work stops after P5 (user, 2026-11-07: later gains would be
+marginal). Left with books saved (P5 profile, ms per date): formulas 8.5,
+`book_store.lanes` 7.8 (mostly the SQLite read), Executor loops 6.6, scope
+rows 4.1, stored-condition checks 3.9, the lane rule 3.0, writing 3.0.
 
-The P4c profile of the same run keeps this order (ms per date, cumulative,
-overlapping): formulas 11.1 (`_anchor` 4.5), `selection.select` 11.5, stored
-condition checks 11.7 (prefilter and select), lanes 7.9, Executor loops 7.4
-(the lane rule 2.6 of it), scope rows 7.1, writing 2.2.
-
-- First-run books (user test with books computed, 301 s): book writes 147 s
-  (about 84 million rows, 86% of them in `book_filters`),
-  calculation wait 53 s. Compact book rows (old T5) would cut these writes
-  and items 3 and 4. They change the book store format, `screening.select`'s
-  SQL and the daily version. The user decides.
-- The research `cache_size` pragma is not a measured cost: SQLite stepping
-  sits inside items 3 and 4 and is small next to the Python object work.
+Not done: compact book rows (old T5). They would cut first-run book writes
+(P4c: 145 s, about 84 million rows, 86% in `book_filters`), but they change
+the book store format, `screening.select`'s SQL and the daily version and
+help first runs only; the user's reruns and the planned RL loop reuse saved
+books (user, 2026-11-07).
 
 ## Decisions
 
@@ -286,10 +271,38 @@ no wrong results.
   admission rows (every stored row) and 47,872 explained owner results equal;
   0 signed-zero changes. The website build and its four checks pass.
 
-### P5 and later (only if the user continues)
+### P5. Four local speed fixes (done, 50125bf)
 
-One measured cost per phase, with the same protocol. Stop when the gain
-becomes marginal.
+The P4c profile's selection, `_anchor`, lane and scope-row costs (user,
+2026-11-07). Gains: user test with books saved, warm page cache, mean of two
+interleaved rounds (97.3 s before; under user load).
+
+1. Stored conditions once per row: with a stored ranking and filter-first
+   order, the Executor checks the stored conditions and bounds;
+   `selection.select` gets the remaining rows with the formula conditions;
+   recorded indexes map back to the scope's rows. `selection.passes` lost its
+   per-condition checkpoint and lambda table. −16.0 s.
+2. `View.reports` returns date-typed reports; `columns._anchor` and
+   `_report_ebitda` parse no dates. −4.2 s.
+3. `book_store.lanes` returns one {symbol: value} map per lane (per pair
+   component for a metric), used as they are.
+4. `book_store.scope` reads the selection fields of every row in one read
+   bounded by `MAX_CANDIDATES` + 1; `book_store.rows(symbols)` reads full rows
+   for the selected rows only; `scalar_execution.scope_rows` is gone. Fixes 3
+   and 4: −14.4 s (warm runs 61.7 and 63.6 s).
+
+- Deviation: the plan named two `lanes` readers; the code had three (the
+  Executor, `View.prepared`, `data.py`), and all three changed. The embedded
+  page data stays byte-identical.
+- Evidence (bench, 50125bf against the P4c outputs of a6095e6; files in
+  `~/bench/out/p5-*`): the four digests equal; 26 record fields differ, all
+  identities (daily binding, executor, selection and evaluator), hashes,
+  timings and transfer bytes; dev check 0 differences; fixture harness 16
+  runs equal; real copy, 22 scopes × 64 rows: 1,161,856 values, 37,605
+  admission rows and 47,872 explained owner results equal, 0 signed-zero
+  changes; the website build and its four checks pass. Interleaved pair,
+  books saved, under user load: a6095e6 118.2/115.2 s, P5 78.2/76.5 s
+  (−34% in each round; `~/bench/out/p5_ab.sh` reruns it).
 
 ## Review candidates
 
@@ -304,8 +317,8 @@ review and the P3 review at 1e3596d (P3c1 scope items 1–6).
 - Rejected: numeric targets and cost-first ordering (user); deleting the
   dated-owner readers (derived contexts keep that policy; P4 removes their
   budgets and evidence cost); rewriting history.
-- Compact book rows (A.3, old T5): P4's profile puts them before the user
-  (measurements, first-run books).
+- Compact book rows (A.3, old T5): not done (user, 2026-11-07; see the
+  measurements).
 
 ## Bench and tools
 
@@ -327,12 +340,11 @@ review and the P3 review at 1e3596d (P3c1 scope items 1–6).
 
 - Deployment: a schema change bumps its version and rebuilds once. The 01:00
   supervisor deploys `main`.
-- Saved records: test every January artifact version in the dated view
-  before deleting the January view.
 - Native Windows: attach, file replace and spawn workers need the native checks
   that AGENTS names before a merge.
 - Scope creep: each phase stops at its exit. A new idea goes to the user first.
 
 ## Next
 
-User decides whether to continue (see the ranked remaining costs).
+Pre-merge: heavy tier, independent over-engineering and leftover audit, plan
+close-out, then the user's authorization for merge and deployment.
