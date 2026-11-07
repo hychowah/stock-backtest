@@ -15,6 +15,43 @@ summaries and complete evidence. Inspection and downloads need no current
 financial generation, calculation readiness or calculation. Automatic submission
 and queue execution remain eager. Current eager limits are unchanged.
 
+## Explore a completed result
+
+The dated result has an **Explore this result** panel. Choose an entry, an
+exit or mark, and an inclusive rank range within the original request. The
+dates are saved holding-period boundaries. Apply summarizes those periods
+without screening stocks, evaluating formulas, preparing inputs or downloading
+data. Random results offer this panel for the inspected trial.
+
+`backtest/application/result_exploration.py` owns selection checks and the
+summary. It uses the same Python return reduction as calculation in
+`backtest/portfolio_results.py`. Ranks keep their original meaning in each
+period. Missing ranks receive no replacements. A narrower rank range gives
+each surviving holding equal weight. An empty period makes strategy growth,
+total return and CAGR unavailable. SPY remains available. A window beginning
+at the original first period keeps its initial cash interval.
+
+An unchanged window and rank range use the recorded summary. This preserves
+older stored rounding. Partial time windows use the recorded period returns.
+Older January results can have year-only inner boundaries. Such a selection
+has a total return, but no CAGR when an exact boundary date is absent.
+
+The browser uses `ResultArtifacts.reader(...).explore(...)` for both existing
+representations. A browser-held eager trial is submitted to
+`POST /api/backtest-exploration`. Only the inspected trial is sent. The existing
+eager result byte limit applies. The request retains no server-side result.
+It reserves one of the same 32 request slots before decoding, and shutdown
+drains it before source ownership ends. Codec-backed results use
+`GET /api/backtest-runs/<reader-id>/reader/explore/<trial>/<first-period>/<last-period>/<first-rank>/<last-rank>`
+under the existing reader pin. Sequential scans keep bounded evidence records.
+
+`website/browser/result-explorer.js` owns temporary controls and summary state.
+It reads period pages only when the panel opens and retains date labels for
+the selectors. Edits cancel an outstanding summary request. Artifact, trial and
+selection checks discard obsolete replies. Reset restores the original summary.
+Charts, holding tables, downloads, comparisons and saving use the original
+artifact. Exploration creates no saved format or durable preference.
+
 ## Ownership
 
 `backtest.application.result_access.ResultAccess` owns a finite collection of

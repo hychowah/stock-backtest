@@ -112,6 +112,39 @@ def _holdings(book, entry, exit_day, contract=1):
     return stocks
 
 
+def mean_return(values):
+    """Mean of ordered holding returns, or None for an empty selection.
+
+    Consume once without retaining the values. Keep Python's sum arithmetic;
+    saved-result views and calculation use the same financial reduction.
+    """
+    count = 0
+    def counted():
+        nonlocal count
+        for value in values:
+            count += 1
+            yield value
+    total = sum(counted())
+    return total/count if count else None
+
+
+def reduce_returns(periods, *, start, end):
+    """Compound ordered (strategy, SPY) returns without retaining periods.
+
+    Inputs belong to the caller's validated result. An empty strategy period
+    makes its full-window return unavailable. Unknown legacy boundary dates
+    allow growth but no CAGR. This function opens no resources.
+    """
+    growth = spy_growth = 1.
+    for portfolio, spy in periods:
+        if growth is not None:growth=growth*(1+portfolio) if portfolio is not None else None
+        spy_growth *= 1+spy
+    duration = (end-start).days/365.25 if start is not None and end is not None else None
+    return dict(growth=growth, spy_growth=spy_growth,
+        cagr=growth**(1/duration)-1 if growth is not None and duration else None,
+        spy_cagr=spy_growth**(1/duration)-1 if duration else None)
+
+
 def evaluate(periods, select_period, *, common_start=None, checkpoint=None, contract=1, final_mark=False):
     """Collect the incremental reduction into the existing detached contract."""
     results = []
@@ -139,31 +172,28 @@ def evaluate_into(periods, select_period, emit_period, *, common_start=None, che
     """
     if type(contract) is not int or contract not in (1,2):raise ValueError('Unsupported selected-book contract.')
     periods = validate_periods(periods, common_start)
-    growth=spy_growth=1.
-    for entry, exit_day in periods:
+    def returns():
+        for entry, exit_day in periods:
+            if checkpoint is not None: checkpoint()
+            book = select_period(entry, exit_day)
+            stocks = _holdings(book, entry, exit_day, contract)
+            final = exit_day == periods[-1][1]
+            if final and final_mark:
+                for stock in stocks:
+                    if stock['status'] == 'Scheduled exit':
+                        stock['status'] = 'Marked to date'
+            period = dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
+                names=len(stocks), portfolio=mean_return(h['return_value'] for h in stocks),
+                spy=book['spy'], is_final_period=final)
+            portfolio, spy = period['portfolio'], period['spy']
+            emit_period(period)
+            # Retain only returns while reducing, never the previous book.
+            del period, stocks, book
+            yield portfolio, spy
         if checkpoint is not None: checkpoint()
-        book = select_period(entry, exit_day)
-        stocks = _holdings(book, entry, exit_day, contract)
-        final = exit_day == periods[-1][1]
-        if final and final_mark:
-            for stock in stocks:
-                if stock['status'] == 'Scheduled exit':
-                    stock['status'] = 'Marked to date'
-        period = dict(entry=str(entry), exit=str(exit_day), holdings=stocks,
-            names=len(stocks), portfolio=sum(h['return_value'] for h in stocks)/len(stocks) if stocks else None,
-            spy=book['spy'], is_final_period=final)
-        if growth is not None:growth=growth*(1+period['portfolio']) if period['portfolio'] is not None else None
-        spy_growth*=1+period['spy']
-        emit_period(period)
-        # A sink may retain its detached period. This reducer must not retain
-        # the previous provider book while acquiring the next one.
-        del period, stocks, book
-    if checkpoint is not None: checkpoint()
     first = periods[0][0] if common_start is None else common_start
-    duration=(periods[-1][1]-first).days/365.25
     result = dict(start=str(first), end=str(periods[-1][1]),
-        growth=growth, spy_growth=spy_growth, cagr=growth**(1/duration)-1 if growth is not None else None,
-        spy_cagr=spy_growth**(1/duration)-1, coverage=COVERAGE)
+        **reduce_returns(returns(), start=first, end=periods[-1][1]), coverage=COVERAGE)
     if common_start is not None:
         result.update(first_trade=str(periods[0][0]), cash_days=(periods[0][0]-first).days)
     return result

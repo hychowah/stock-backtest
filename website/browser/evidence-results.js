@@ -96,6 +96,7 @@ const EvidenceResults=(()=>{
     node('schedule-results').hidden=false;node('schedule-rows').innerHTML='';node('schedule-stock-body').innerHTML='';node('schedule-chart').innerHTML='';node('schedule-period').innerHTML='';node('schedule-attribution').textContent='Reading stored evidence…';
     try{
       state.info=await state.reader.trial(trial);if(!valid(state))return;
+      ResultExplorer.show(artifact,trial,state.info);
       const r=state.info.summary;
       node('schedule-dates').textContent=r.start+' → '+r.end+' · '+(artifact.kind==='january'?'January books':CalendarSettings.label(r));
       node('schedule-cagr').textContent=format(r.cagr);node('schedule-spy-cagr').textContent=format(r.spy_cagr);
@@ -149,6 +150,7 @@ const EvidenceResults=(()=>{
     }
   }
   function show(artifact,trial=1){
+    ResultExplorer.clear();
     showProducer(artifact);
     explanationSequence++;node('scalar-evidence-view').hidden=artifact.version!==4;node('scalar-explanation').open=false;
     if(artifact.version===4){

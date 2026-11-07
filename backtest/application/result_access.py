@@ -20,7 +20,7 @@ class ResultAccess:
     def __init__(self,jobs,library,queue_store,*,limit=16,requests=32):
         self.jobs=jobs;self.library=library;self.queue_store=queue_store
         self.limit=limit;self.request_limit=requests;self.entries={};self.condition=Condition(RLock());self.closed=False
-        self.released=[]
+        self.released=[];self.operations=0
 
     def acquire(self,identifier,request):
         """Acquire original evidence. Capture the entire request as retry identity.
@@ -116,7 +116,7 @@ class ResultAccess:
             entry=self.entries.get(identifier)
             if self.closed or entry is None or entry['opening'] or entry['released']:
                 raise ValueError('This evidence reader is no longer available.')
-            if sum(e['pins'] for e in self.entries.values())>=self.request_limit:
+            if self.operations+sum(e['pins'] for e in self.entries.values())>=self.request_limit:
                 raise ValueError('Evidence request capacity is exhausted. Retry after an active read finishes.')
             entry['pins']+=1
         try:
@@ -125,6 +125,22 @@ class ResultAccess:
         finally:
             with self.condition:entry['pins']-=1;self.condition.notify_all()
             self._collect(identifier,entry)
+
+    @contextmanager
+    def operation(self):
+        """Admit a request-owned eager view under the same ceiling and drain.
+
+        Nothing is acquired or retained after the request. Admission precedes
+        decoding so shutdown and request capacity cover the whole operation.
+        """
+        with self.condition:
+            if self.closed:raise ValueError('The server is stopping.')
+            if self.operations+sum(e['pins'] for e in self.entries.values())>=self.request_limit:
+                raise ValueError('Evidence request capacity is exhausted. Retry after an active read finishes.')
+            self.operations+=1
+        try:yield
+        finally:
+            with self.condition:self.operations-=1;self.condition.notify_all()
 
     def release(self,identifier):
         with self.condition:
@@ -149,12 +165,12 @@ class ResultAccess:
         self.close_admission()
         with self.condition:
             for entry in self.entries.values():entry['released']=True
-            while any(e['opening'] or e['pins'] or e['cleaning'] for e in self.entries.values()):
+            while self.operations or any(e['opening'] or e['pins'] or e['cleaning'] for e in self.entries.values()):
                 self.condition.wait(.05)
         for identifier,entry in list(self.entries.items()):self._collect(identifier,entry)
 
     def measurements(self):
         with self.condition:
             return dict(limit=self.limit,readers=len(self.entries),
-                requests=sum(e['pins'] for e in self.entries.values()),
+                requests=self.operations+sum(e['pins'] for e in self.entries.values()),
                 acquiring=sum(e['opening'] for e in self.entries.values()))

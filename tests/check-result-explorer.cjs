@@ -1,0 +1,95 @@
+'use strict';
+// Actual reader transport and explorer controller; only HTTP and DOM are fixtures.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const nodes=new Map(),requests=[],downloads=[];let deferred=null;
+const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textContent:'',hidden:false,open:false,handlers:{},addEventListener(event,fn){this.handlers[event]=fn;}});return nodes.get(id);};
+const periods=Array.from({length:70},(_,i)=>({entry:(1997+i)+'-01-02',exit:(1998+i)+'-01-02',names:30,portfolio:.1,spy:.05,
+ holdings:Array.from({length:30},(_,rank)=>({symbol:'S'+rank,rank:rank+1,return_value:.1}))}));
+const result={start:periods[0].entry,end:periods.at(-1).exit,periods,options:{rank_from:1,rank_to:30},growth:1.2,spy_growth:1.1,cagr:.01,spy_cagr:.005};
+const info={summary:result,periods:70,empty:0,short:0};
+const response=value=>({ok:true,headers:{get:()=>null},json:async()=>structuredClone(value)});
+const context=vm.createContext({AbortController,console,document:{getElementById:node,createElement:()=>({click(){downloads.push(this.href);}})},
+ fetch:async(url,options={})=>{
+  requests.push({url,options});
+  if(options.method==='DELETE')return response({released:true});
+  let selected,id;
+  if(url==='/api/backtest-exploration')selected=JSON.parse(options.body).selection;
+  else{
+   const parts=url.split('/');id=parts[3];
+   if(parts[5]==='explore'){
+    selected=Object.fromEntries(['trial','period_from','period_to','rank_from','rank_to'].map((key,i)=>[key,+parts[6+i]]));
+   }else{
+    assert.equal(parts[6],'periods');
+    const cursor=+parts[8],end=Math.min(cursor+64,periods.length);
+    return response({identity:id,rows:periods.slice(cursor,end).map(({holdings,...value},i)=>({number:cursor+i+1,value})),cursor,next:end<periods.length?end:null,total:70});
+   }
+  }
+  const value={...selected,identity:id,start:periods[selected.period_from-1].entry,end:periods[selected.period_to-1].exit,
+   periods:selected.period_to-selected.period_from+1,total_return:selected.rank_to/100,spy_total_return:.08,cagr:.03,spy_cagr:.02,empty:0,short:0};
+  if(deferred){const wait=deferred;deferred=null;await wait();}
+  return response(value);
+ }});
+for(const name of ['result-artifacts.js','result-explorer.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
+const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
+const input=id=>node('explore-'+id),panel=()=>node('result-explorer');
+const applied=()=>requests.filter(row=>row.url==='/api/backtest-exploration'||row.url.includes('/reader/explore/'));
+const change=(id,value)=>{input(id).value=String(value);input(id).handlers.input();};
+async function show(artifact,trial=1,details=info){
+ context.input=artifact;context.details=details;context.trial=trial;
+ run('{const published=ResultArtifacts.publish(input);ResultExplorer.show(published,trial,details)}');
+ panel().open=true;panel().handlers.toggle();await tick();await tick();
+}
+const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1,rank_to:30},result:structuredClone(result),presentation:{},catalog:{}});
+(async()=>{
+ run('ResultExplorer.init()');
+ const original=artifact(),before=JSON.stringify(original);
+ await show(original);
+ assert.equal(requests.length,0,'Opening eager exploration reads only the captured result');
+ assert(input('period-from').innerHTML.includes('2008-01-02'));assert(input('period-to').innerHTML.includes('2016-01-02'));
+ assert.equal(input('period-to').value,'70');assert.equal(input('rank-to').value,'30');
+ assert.equal(input('strategy-return').textContent,'20.00%');
+ change('period-from',12);change('period-to',19);change('rank-from',20);change('rank-to',30);
+ input('apply').handlers.click();await tick();
+ const first=JSON.parse(applied().at(-1).options.body);
+ assert.deepEqual(first.result,original.result);assert.deepEqual(first.selection,{trial:1,period_from:12,period_to:19,rank_from:20,rank_to:30});
+ assert(input('window').textContent.includes('2008-01-02 → 2016-01-02'));assert(input('window').textContent.includes('ranks 20–30'));
+ assert.equal(input('strategy-return').textContent,'30.00%');assert.equal(JSON.stringify(original),before);
+ const count=applied().length;change('rank-to',31);input('apply').handlers.click();await tick();assert.equal(applied().length,count);
+ assert(input('status').textContent.includes('within the original'));
+ input('reset').handlers.click();assert.equal(input('strategy-return').textContent,'20.00%');assert.equal(applied().length,count);
+ // Editing and applying a newer selection fences a late reply, even when HTTP ignores abort.
+ let resume;deferred=()=>new Promise(resolve=>resume=resolve);
+ change('rank-to',20);input('apply').handlers.click();await tick();const pending=applied().at(-1);
+ change('rank-to',10);assert(pending.options.signal.aborted);input('apply').handlers.click();await tick();
+ assert.equal(input('strategy-return').textContent,'10.00%');resume();await tick();assert.equal(input('strategy-return').textContent,'10.00%');
+ // Reset cancels pending work and restores recorded precision and window.
+ deferred=()=>new Promise(resolve=>resume=resolve);input('apply').handlers.click();await tick();
+ input('reset').handlers.click();resume();await tick();assert.equal(input('strategy-return').textContent,'20.00%');
+ // Random exploration sends only the inspected trial, never another trial or live form.
+ const random=artifact();random.kind='random';random.settings.mode='random';
+ const second=structuredClone(result);second.growth=1.42;
+ random.result={trial_results:[random.result,second]};
+ await show(random,2,{...info,summary:second});input('apply').handlers.click();await tick();
+ assert.deepEqual(JSON.parse(applied().at(-1).options.body).result,second);
+ assert.equal(JSON.parse(applied().at(-1).options.body).selection.trial,1);
+ // Bounded artifacts retain their existing reader and independent download capability.
+ for(const version of [3,4]){
+  const bounded=artifact();bounded.version=version;bounded.evidence={id:String(version).repeat(32),format_version:version===4?2:1,trials:1,periods:70,holdings:2100};
+  await show(bounded);
+  assert(requests.some(row=>row.url.endsWith('/page/periods/1/64')));
+  change('period-from',12);change('period-to',19);change('rank-to',10);input('apply').handlers.click();await tick();
+  assert(applied().at(-1).url.endsWith('/reader/explore/1/12/19/1/10'));
+  assert.equal(input('strategy-return').textContent,'10.00%');
+  run('ResultArtifacts.reader(ResultArtifacts.forView("custom")).download("holdings")');
+  assert(downloads.at(-1).endsWith('/reader/export/holdings/1'));
+ }
+ // Replacing a result releases its reader, aborts work and prevents late publication.
+ deferred=()=>new Promise(resolve=>resume=resolve);input('apply').handlers.click();await tick();
+ await show(artifact());const fresh=input('window').textContent;resume();await tick();assert.equal(input('window').textContent,fresh);
+ run('ResultExplorer.clear()');assert(panel().hidden);
+ assert(requests.every(row=>row.url==='/api/backtest-exploration'||row.url.includes('/reader')));
+ const html=fs.readFileSync(path.join(__dirname,'../website/browser/template.html'),'utf8');
+ assert(html.indexOf('id="result-explorer"')>html.indexOf('</form>'));
+ assert(html.includes('Save original backtest')&&html.includes('Download original holdings'));
+ console.log('Passed: saved date/rank controls, 64-row pages, eager and codec transports, inspected trials, validation, reset, abort and replacement fences, original artifacts and downloads.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

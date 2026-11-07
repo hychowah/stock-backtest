@@ -26,7 +26,7 @@ const context=vm.createContext({console,Date,Uint8Array,crypto:require('node:cry
   return response({error:'Requires reader',requires_reader:true},409);
  }
 });
-for(const file of ['result-artifacts.js','saved-backtests.js','queue.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
+for(const file of ['result-artifacts.js','saved-backtests.js','queue.js','result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
 const exec=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 context.open=artifact=>{if(refuse)throw Error('Save or cancel queued edit');exec('ResultArtifacts.publish')(artifact);if(afterPublish)throw Error('Presentation failed');};
 context.publishResult=context.open;

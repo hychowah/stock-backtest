@@ -48,6 +48,14 @@ original stored evidence without changing financial arithmetic or tolerance.
 
 ## Result fields
 
+`mean_return(values)` and `reduce_returns(periods, start=..., end=...)` own the
+shared return arithmetic. The first consumes ordered holding returns once. The
+second consumes ordered `(strategy, SPY)` period returns once. Neither keeps
+the input rows or opens resources. Calculation and saved-result exploration
+use these functions. Python's existing summation and compounding order stay
+unchanged. Unknown dates in older saved January records allow growth but no
+CAGR. Original calculation still requires complete validated dates.
+
 All dates below are canonical `YYYY-MM-DD` strings. Numbers use full precision.
 No intermediate return, weight or contribution is rounded.
 

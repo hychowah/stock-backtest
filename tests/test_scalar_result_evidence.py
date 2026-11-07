@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from backtest import result_evidence, scalar_result_evidence, portfolio_results
-from backtest.application import scalar_execution, scalar_runs, durable_evidence, evidence_views, result_exports, library
+from backtest.application import scalar_execution, scalar_runs, durable_evidence, evidence_views, result_exports, result_exploration, library
 from backtest.application import strategy_requests as s
 from test_scalar_execution import Fixture
 
@@ -41,6 +41,11 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(sum(h['weight'] for h in holdings),1.)
         self.assertTrue(all('metric_yield' not in h for h in holdings))
         self.assertEqual(evidence_views.trial(reader,1)['summary']['growth'],1+sum(h['return_value'] for h in holdings)/5)
+        chosen=holdings[:2]
+        selected=result_exploration.evidence(reader,dict(trial=1,period_from=1,period_to=1,
+            rank_from=chosen[0]['rank'],rank_to=chosen[-1]['rank']))
+        self.assertEqual(selected['growth'],1+sum(h['return_value'] for h in chosen)/len(chosen))
+        self.assertEqual(selected['empty'],0)
     def test_latest_screen_has_zero_trials_and_no_future_fields(self):
         stream,manifest=self.produce('latest')
         reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)

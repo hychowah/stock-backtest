@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const nodes=new Map();function node(id){if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',hidden:false,addEventListener(){}});return nodes.get(id)}
 let sent;
 const context=vm.createContext({document:{getElementById:node},console,location:{protocol:'http:'},ResultArtifacts:{forView:()=>null},BacktestRuns:{create(mode,options,planned){sent={mode,options,planned};throw Error('captured');}},fetch:async()=>({json:async()=>({calendar:null,engines:[{id:'original',calendar:1,status:{state:'current'}}]})})});
-for(const file of ['engine-controls.js','calendar-settings.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(require('path').join(__dirname,'../website/browser',file),'utf8'),context);
+for(const file of ['engine-controls.js','calendar-settings.js','result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(require('path').join(__dirname,'../website/browser',file),'utf8'),context);
 const run=code=>vm.runInContext(code,context);
 (async()=>{
  await run('EngineControls.init()');node('date-testing').value='random';

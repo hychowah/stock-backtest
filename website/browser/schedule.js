@@ -83,6 +83,8 @@ const ScheduleView=(()=>{
     node('schedule-rows').innerHTML=result.periods.map(p=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
     node('schedule-period').value=String(result.periods.length-1);stocks();
+    ResultExplorer.show(ResultArtifacts.forView('custom'),inspectedTrial===null?1:inspectedTrial+1,
+      {summary:result,periods:result.periods.length,short,empty});
   }
   async function run(filters,override=null,replay=null){
     if(running)return;
@@ -171,6 +173,7 @@ const ScheduleView=(()=>{
     node('schedule-download-holdings').addEventListener('click',()=>csv('holdings'));
     node('schedule-download-returns').addEventListener('click',()=>csv('returns'));
     EvidenceResults.init();
+    ResultExplorer.init();
   }
   async function resume(){
     if(typeof location==='undefined'||location.protocol==='file:')return;
@@ -188,6 +191,7 @@ const ScheduleView=(()=>{
   }
   function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if([3,4].includes(artifact?.version))EvidenceResults.show(artifact,index+1);else render();}
   function show(artifact){
+    ResultExplorer.clear();
     EvidenceResults.showProducer(artifact);
     inspectedTrial=null;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){

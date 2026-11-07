@@ -25,7 +25,7 @@ const context=vm.createContext({console,document:{getElementById:node,createElem
   else throw Error('Unexpected result route '+url);
   return {ok:true,headers:{get:()=>null},json:async()=>structuredClone({...value,identity:parts[3]})};
  }});
-for(const file of ['screener.js','contributions.js','result-artifacts.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
+for(const file of ['screener.js','contributions.js','result-artifacts.js','result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',file),'utf8'),context);
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 function artifact(kind='latest',version=4,id=currentId){return {version,kind,settings:{mode:kind,strategy},result:{...summary,producer:{engine:'original',label:'Original'},configuration:{seed:42},trials:[],distribution:{}},catalog:{metrics:{},filters:{}},presentation:{},evidence:{id,format_version:version===4?2:1,trials:kind==='latest'?0:1,periods:kind==='latest'?0:1,holdings:kind==='latest'?70:1}};}
 async function show(value){context.artifact=value;run('{const completed=ResultArtifacts.publish(artifact);EvidenceResults.show(completed)}');await tick();await tick();}

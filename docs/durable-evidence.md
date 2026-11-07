@@ -31,7 +31,7 @@ with library.open_evidence(record['id']) as opened:
 ```
 
 `Store.save_evidence(name, metadata, reader)` creates a complete independent
-library record. The library cap remains atomic at 20 across connections. It never
+library record. The library cap remains atomic at 100 across connections. It never
 evicts a record. As with eager `save`, a repeated call creates another record.
 
 `backtest.application.queue.Store.finish_evidence(id, metadata, reader)` completes an already

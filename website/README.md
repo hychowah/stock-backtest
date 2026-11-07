@@ -31,9 +31,29 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 The order choice applies to all user filters, including size, sector and additional conditions. Both options start from the same prepared stock pool. If 20 stocks pass after selecting the top 50, each receives 5% weight. Saved results and queued tests retain the submitted order. Older saved results restore filter-first. Changing the order reuses prepared books.
 
-Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **displayed result**. Sector and exchange are cached company metadata, not historical classifications.
+Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **original completed result**. Exploration selections do not change an export. Sector and exchange are cached company metadata, not historical classifications.
 
 If fewer stocks match than requested, the available picks receive equal weights and short periods are counted. A period with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a schedule containing an empty book. SPY continues to show the full selected period.
+
+## Explore a completed result
+
+Open **Explore this result** in the dated result panel. Choose **From entry**,
+**Through exit / mark**, **From rank** and **Through rank**, then select **Apply**.
+For example, a saved 1997–2025 top-30 test can show the periods from 2008 to
+2016 and ranks 20–30. Each date comes from an original holding-period boundary.
+The panel shows strategy and paired SPY total return and CAGR. It uses saved
+returns and runs no new backtest.
+
+Ranks retain their meaning at each rebalance. A smaller range gives equal
+weight to the holdings that remain. Missing ranks receive no replacements.
+An empty period makes strategy return and CAGR unavailable for that window.
+Older January results can have year-only boundaries; those selections have
+no CAGR when exact dates were not saved.
+
+**Reset to original** restores the recorded summary. Exploration changes only
+this temporary summary. Charts, holding tables, downloads, comparisons and
+**Save original backtest** continue to use the original completed result.
+For random-date results, first inspect a trial to explore its periods.
 
 ## Manage backtest data
 
@@ -108,7 +128,7 @@ python3 website/build.py
 
 Preparation is only needed after changing data or calculation code; the daily-cache command prepares research first. The builder reads the latest book of the book store in `data/schedules.sqlite` (which attaches `data/research.sqlite`), exports the latest screen of both pools as compact tuples, and embeds them in HTML. `website/build.py` alone needs a prepared daily cache. Changing latest screen parameters runs locally in JavaScript without reparsing prices.
 
-The default latest picks remain embedded as a static table for previews that block JavaScript. Interactive screening requires JavaScript. The build writes `index.html`, `latest-picks.csv`, `data.html` and `snapshot.json`; browser-generated CSV downloads contain the displayed result. The canonical report `../results/summary-exits.txt` is a frozen record that no screen reads or overwrites.
+The default latest picks remain embedded as a static table for previews that block JavaScript. Interactive screening requires JavaScript. The build writes `index.html`, `latest-picks.csv`, `data.html` and `snapshot.json`; browser-generated CSV downloads contain the original completed result. The canonical report `../results/summary-exits.txt` is a frozen record that no screen reads or overwrites.
 
 ## Checks
 
@@ -122,8 +142,6 @@ node tests/check-data-panel.cjs
 ```
 
 The first checks controls and rendering using a simulated DOM, including a saved January result in the dated view. The second compares browser latest selection directly with SQLite, including combined conditions and empty screens. It requires the current prepared database. These checks do not replace a real-browser appearance check.
-
-A private Sites project is registered in `.openai/hosting.json`. Hosted publication remains blocked by source-host access from this environment. Preserve the project ID when retrying.
 
 ## Return contributions
 
@@ -266,8 +284,8 @@ Range and SQL/browser parity checks use local output by default. To check the po
 
 ## Save and reopen completed backtests
 
-Use **Save displayed backtest** after a historical run. Give it a name if useful.
-The save keeps the settings used for the displayed result, all traded stocks,
+Use **Save original backtest** after a historical run. Give it a name if useful.
+The save keeps the submitted settings of the original result, all traded stocks,
 and all stock and period returns. Pending control edits are not included.
 A stopped or failed run does not replace the last completed result.
 

@@ -6,7 +6,33 @@ from backtest.runtime import diagnostics, backtest_control
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 from backtest.application import library as saved_backtests
-from backtest.application import durable_evidence, evidence_views, result_exports
+from backtest.application import durable_evidence, evidence_views, result_exports, result_exploration
+
+
+def exploration_request(self):
+    """Reduce one browser-held original trial; retain no server-side result."""
+    origin=self.headers.get('Origin')
+    if origin and origin!='http://'+self.headers.get('Host',''):
+        self.reply(403,dict(error='Open the website to explore results.'));return
+    if self.command!='POST':
+        self.reply(405,dict(error='Exploration requires a completed result.'));return
+    access=self.server.result_access
+    try:
+        with access.operation():
+            length=int(self.headers.get('Content-Length','0'))
+            if not 0<length<=saved_backtests.MAX_BYTES:raise ValueError('Completed result exceeds the request size limit.')
+            def invalid_constant(value):raise ValueError('Saved values must be finite.')
+            request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
+            if type(request) is not dict or set(request)!={'result','selection'}:
+                raise ValueError('Expected a completed result and a selection.')
+            disconnected=self.disconnect_check()
+            with backtest_control.cancel_when(lambda:access.closing or disconnected()):
+                value=result_exploration.eager(request['result'],request['selection'])
+            self.reply(200,value)
+    except backtest_control.Cancelled:self.reply(409,dict(error='Result exploration stopped.'))
+    except (ValueError,TypeError,KeyError,OverflowError,UnicodeError):
+        self.reply(400,dict(error='Could not explore this selection. Choose saved periods and ranks within the original result.'))
+    except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
 
 def evidence_request(self,identifier,path):
     """Explicit reader operations. Never acquire financial ownership or readiness."""
@@ -21,6 +47,12 @@ def evidence_request(self,identifier,path):
             self.reply(200,access.acquire(identifier,request));return
         if self.command!='GET':raise ValueError('Unsupported evidence operation.')
         with access.read(identifier) as (metadata,reader):
+            if len(path)==6 and path[0]=='explore':
+                selection=dict(zip(('trial','period_from','period_to','rank_from','rank_to'),map(int,path[1:])))
+                disconnected=self.disconnect_check()
+                with backtest_control.cancel_when(lambda:access.closing or disconnected()):
+                    value=result_exploration.evidence(reader,selection)
+                self.reply(200,dict(identity=identifier,**value));return
             if len(path)==3 and path[0]=='export':
                 kind=path[1];trial=int(path[2]);export=result_exports.prepare(reader,kind,trial)
                 name=export.filename
@@ -56,7 +88,8 @@ def evidence_request(self,identifier,path):
             value=dict(identity=identifier,**evidence_views.read(reader,selection))
             self.json_reply(200,evidence_views.encode(value))
     except (saved_backtests.Missing,backtest_queue.Missing,backtest_jobs.Missing) as error:self.reply(404,dict(error=str(error)))
-    except (ValueError,TypeError,KeyError) as error:
+    except backtest_control.Cancelled:self.reply(409,dict(error='Result exploration stopped.'))
+    except (ValueError,TypeError,KeyError,OverflowError) as error:
         if not started:self.reply(400,dict(error=str(error)))
         else:self.close_connection=True
     except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
@@ -105,7 +138,8 @@ def saved_backtest_request(self,store):
 def dispatch(handler,store):
     path=handler.path
     parts=path.removeprefix('/api/backtest-runs/').split('/')
-    if path.startswith('/api/backtest-runs/') and parts[1:2]==['reader']:
+    if path=='/api/backtest-exploration':exploration_request(handler)
+    elif path.startswith('/api/backtest-runs/') and parts[1:2]==['reader']:
         origin=handler.headers.get('Origin')
         if origin and origin!='http://'+handler.headers.get('Host',''):
             handler.reply(403,dict(error='Open the website to manage backtest runs.'))

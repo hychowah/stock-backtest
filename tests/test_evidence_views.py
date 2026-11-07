@@ -252,7 +252,7 @@ process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{
 const result=JSON.parse(input),nodes=new Map(),out=[];let csv='';
 const node=id=>{if(!nodes.has(id))nodes.set(id,{handlers:{},addEventListener(k,f){this.handlers[k]=f;}});return nodes.get(id);};
 const context=vm.createContext({ResultArtifacts:{forView:()=>({version:2,kind:'custom',result})},CalendarSettings:{init(){}},EngineControls:{init(){}},RobustnessView:{init(){}},document:{getElementById:node,createElement:()=>({click(){out.push({name:this.download,csv});}})},Blob:class{constructor(parts){this.parts=parts;}},URL:{createObjectURL(blob){csv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}}});
-for(const name of ['evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(path.dirname(process.argv[1]),name),'utf8'),context);
+for(const name of ['result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(path.dirname(process.argv[1]),name),'utf8'),context);
 vm.runInContext('ScheduleView.init()',context);
 for(const kind of ['holdings','returns'])node('schedule-download-'+kind).handlers.click();
 process.stdout.write(JSON.stringify(out));});"""
@@ -264,7 +264,7 @@ process.stdout.write(JSON.stringify(out));});"""
             self.assertEqual(result_exports.filename(reader,kind),golden['name'])
 
     def test_ordinary_http_open_export_save_delete_without_readiness_or_calculation(self):
-        record,metadata,_=self.stored('custom')
+        record,metadata,originals=self.stored('custom')
         class Handler(serve_app.Handler):
             def log_message(self,*args):pass
             def calculation_ready(self):raise AssertionError('Reading must not check readiness')
@@ -290,6 +290,13 @@ process.stdout.write(JSON.stringify(out));});"""
         self.assertEqual(status,200);self.assertEqual(json.loads(body)['settings'],metadata['settings'])
         status,_,body=request('GET',base+'/page/periods/1/0')
         self.assertEqual(status,200);self.assertEqual(len(json.loads(body)['rows']),3)
+        status,_,body=request('GET',base+'/explore/1/2/3/1/2')
+        self.assertEqual(status,200);bounded=json.loads(body);self.assertEqual(bounded.pop('identity'),'a'*32)
+        chosen=dict(trial=1,period_from=2,period_to=3,rank_from=1,rank_to=2)
+        status,_,body=request('POST','/api/backtest-exploration',dict(result=originals[0],selection=chosen))
+        self.assertEqual(status,200);self.assertEqual(json.loads(body),bounded)
+        self.assertEqual(request('GET','/api/backtest-exploration')[0],405)
+        self.assertEqual(request('POST','/api/backtest-exploration',dict(result=originals[0],selection=dict(chosen,rank_to=999)))[0],400)
         status,headers,body=request('GET',base+'/export/holdings/1')
         self.assertEqual(status,200);self.assertEqual(int(headers['Content-Length']),len(body))
         with self.store.open_evidence(record['id']) as opened:
@@ -299,7 +306,9 @@ process.stdout.write(JSON.stringify(out));});"""
         self.assertEqual(status,201);copy=json.loads(body)
         request('DELETE','/api/backtests/'+record['id'])
         self.assertEqual(request('GET',base+'/export/holdings/1')[0],200)
+        self.assertEqual(request('GET',base+'/explore/1/2/3/1/2')[0],200)
         self.assertEqual(request('DELETE',base)[0],200)
+        self.assertEqual(request('GET',base+'/explore/1/2/3/1/2')[0],400)
         self.assertEqual(request('GET',base+'/page/trial/1/0')[0],400)
         with self.store.open_evidence(copy['id']) as opened:self.assertEqual(opened.metadata,metadata)
         # Both old versions retain eager opening and are never rewritten.
@@ -309,6 +318,25 @@ process.stdout.write(JSON.stringify(out));});"""
                 snapshot['presentation']=dict(coverage='Original coverage',periodLabel='Original dates')
             row=self.store.save('Legacy',snapshot)
             self.assertEqual(json.loads(request('GET','/api/backtests/'+row['id'])[2])['snapshot'],snapshot)
+
+    def test_request_owned_exploration_shares_capacity_and_shutdown_drain(self):
+        self.access.request_limit=1
+        record,_,_=self.stored('custom')
+        self.access.acquire('a'*32,dict(source=dict(kind='saved',id=record['id'])))
+        finished=Event()
+        with self.access.operation():
+            self.assertEqual(self.access.measurements()['requests'],1)
+            with self.assertRaisesRegex(ValueError,'capacity'):
+                with self.access.read('a'*32):pass
+            with self.assertRaisesRegex(ValueError,'capacity'):
+                with self.access.operation():pass
+            thread=Thread(target=lambda:(self.access.close(),finished.set()))
+            thread.start()
+            self.assertFalse(finished.wait(.02))
+            with self.assertRaisesRegex(ValueError,'stopping'):
+                with self.access.operation():pass
+        thread.join(5)
+        self.assertTrue(finished.is_set());self.assertEqual(self.access.measurements()['requests'],0)
 
     def test_queue_reader_acquires_without_a_consumer_or_current_inputs(self):
         reader,metadata,_=source('random');store=backtest_queue.Store(self.root/'queue.sqlite',evidence_budget=self.budget)

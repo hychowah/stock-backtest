@@ -59,3 +59,7 @@ th{z-index:2}
 #calendar-controls > label{display:grid;gap:.35rem;margin-bottom:.6rem}
 #calendar-controls > label:first-child{display:flex;align-items:center;gap:.5rem}
 #calendar-controls > label:first-child input{margin:0}
+
+#result-explorer{margin-bottom:24px;padding:18px;border:1px solid #c8ded3;border-radius:8px;background:#f7fbf8}
+#result-explorer summary{font-weight:600;cursor:pointer;color:#244f43}
+#result-explorer th{position:static}

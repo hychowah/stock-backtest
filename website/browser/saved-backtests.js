@@ -20,7 +20,7 @@ const SavedBacktests=(()=>{
     node('refresh-backtests').disabled=busy||!available;
     node('saved-compare').disabled=busy||!available||comparisonLoading||comparisonIds.some(id=>!id)||comparisonIds[0]===comparisonIds[1];
     node('saved-compare-clear').disabled=!comparisonLoading&&!comparison&&comparisonIds.every(id=>!id);
-    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest to make room.':'Saves the displayed result and the settings used to run it. Pending setting changes are not included.';
+    node('save-backtest-hint').textContent=!snapshot||snapshot.kind==='latest'?'Run a historical backtest to save its settings, traded stocks and returns.':!complete(snapshot)?'This random result has no complete stock details. Run it with the updated server before saving.':records.length>=limit?'All '+limit+' slots are used. Delete a saved backtest to make room.':'Saves the original completed result and its submitted settings. Exploration summaries and pending settings are not included.';
   }
   // List order uses stored summary values only. Missing performance stays last.
   function ordered(){

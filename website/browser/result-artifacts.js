@@ -109,27 +109,31 @@ const ResultArtifacts=(()=>{
       return {
         async trial(number){const {periods,...summary}=requireTrial(number),n=(summary.options.rank_to??50)-(summary.options.rank_from??1)+1;return {summary,periods:periods.length,short:periods.filter(p=>p.names<n).length,empty:periods.filter(p=>!p.names).length};},
         async periods(number,cursor=0){return page(requireTrial(number).periods.map(({holdings,...value},i)=>({number:i+1,value})),cursor);},
-        async holdings(number,period,cursor=0){return page(requireTrial(number).periods[period-1].holdings,cursor);}
+        async holdings(number,period,cursor=0){return page(requireTrial(number).periods[period-1].holdings,cursor);},
+        explore(selection,{signal}={}){return transport('/api/backtest-exploration',{method:'POST',headers:{'Content-Type':'application/json'},signal,
+          body:JSON.stringify({result:requireTrial(selection.trial),selection:{...selection,trial:1}})});}
       };
     }
     const id=identity(artifact);if(readers.has(id))return readers.get(id).api;
     const state={closed:false,requests:new Set()};
-    async function request(path){
+    async function request(path,{signal}={}){
       if(state.closed)throw Error('This result view was replaced.');
       const controller=new AbortController();state.requests.add(controller);
+      const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
       try{
-        const value=await transport('/api/backtest-runs/'+id+'/reader/page/'+path,{signal:controller.signal});
+        const value=await transport('/api/backtest-runs/'+id+'/reader/'+path,{signal:controller.signal});
         if(state.closed||value.identity!==id)throw Error('This result view was replaced.');
         return freeze(value);
-      }finally{state.requests.delete(controller);}
+      }finally{state.requests.delete(controller);signal?.removeEventListener('abort',abort);}
     }
     state.api={
-      scopes:(cursor=0)=>request('scopes/1/'+cursor),
-      explanations:(cursor=0)=>request('explanations/1/'+cursor),
-      screen:(cursor=0)=>request('screen/1/'+cursor),
-      trial:number=>request('trial/'+number+'/0'),
-      periods:(number,cursor=0)=>request('periods/'+number+'/'+cursor),
-      holdings:(number,period,cursor=0)=>request('holdings/'+number+'/'+period+'/'+cursor),
+      scopes:(cursor=0)=>request('page/scopes/1/'+cursor),
+      explanations:(cursor=0)=>request('page/explanations/1/'+cursor),
+      screen:(cursor=0)=>request('page/screen/1/'+cursor),
+      trial:number=>request('page/trial/'+number+'/0'),
+      periods:(number,cursor=0)=>request('page/periods/'+number+'/'+cursor),
+      holdings:(number,period,cursor=0)=>request('page/holdings/'+number+'/'+period+'/'+cursor),
+      explore:(selection,options)=>request('explore/'+['trial','period_from','period_to','rank_from','rank_to'].map(key=>selection[key]).join('/'),options),
       download(kind,number=1){
         if(state.closed)throw Error('This result view was replaced.');
         const link=document.createElement('a');link.href='/api/backtest-runs/'+id+'/reader/export/'+kind+'/'+number;link.click();

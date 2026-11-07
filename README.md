@@ -37,8 +37,16 @@ Custom and random-date backtests run on the server. Locking your phone,
 refreshing, or closing the page does not stop them. Reopen the same address in
 the same browser to recover progress or the result. Use **Stop backtest** to
 cancel. Keep the server computer awake and its terminal open. Temporary results
-last 24 hours, up to four recent runs, until the server exits. Use **Save displayed
+last 24 hours, up to four recent runs, until the server exits. Use **Save original
 backtest** to keep a completed result in the library.
+
+Open **Explore this result** to inspect a shorter saved time window or a smaller
+rank range. For example, inspect 2008–2016 and ranks 20–30 within a 1997–2025,
+top-30 result. Dates are saved holding-period boundaries. Apply shows strategy
+and SPY total return and CAGR without running another backtest. Reset restores
+the original summary. Charts, holdings, downloads, comparisons and saving keep
+the original completed result. Random tests offer exploration for the inspected
+trial.
 
 Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
 tests. From latest mode, the first click opens the dated backtest settings
@@ -135,7 +143,7 @@ After a change to book policy, run the development check, `python3 scripts/check
 ```text
 scripts/             Data preparation, daily cache and the development check
 data/                Prepared local SQLite databases (generated; ignored by Git)
-website/             Website source, builder, hosting identity, and built output
+website/             Website source, builder, and built output
   local/             Ignored local server output
   dist/              Ignored portable export from build.py --snapshot
 results/             Frozen January record and cited experiment summaries
@@ -165,8 +173,6 @@ The frozen report of the original study is [results/summary-exits.txt](results/s
 Normal backtest and website runs are offline and reuse `raw/`. No API key is required for those operations. See [raw/README.md](raw/README.md) for cache contents.
 
 Fill missing data with **Download missing data** in the data panel. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when that downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
-
-The local website is ready to use. Hosted publication has not completed because the current environment cannot reach the Sites source server. Preserve `website/.openai/hosting.json` when retrying publication.
 
 ## Version control in this environment
 
