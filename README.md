@@ -4,8 +4,8 @@ A standalone US stock backtest and interactive results website. Screen US stocks
 
 ## Open the website
 
-Source development lives in WSL at `<wsl-checkout>`.
-The native Windows runtime is `<windows-runtime>`. Edit and commit in WSL.
+Source development lives in this repository's WSL checkout; edit and commit there.
+The native Windows runtime is a separate deployed export of the same source.
 Start the native runtime with `python3 tools/deploy.py --start`, or run the
 installed `backtest-web.cmd` from Windows Terminal. Startup serves the installed
 revision. It updates to committed `main` daily at 01:00 local time; add

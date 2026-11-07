@@ -21,8 +21,7 @@ The times are calculation-adapter clocks on native Windows.
 | 4×1 | 122.02 | 125.46 |
 
 Numba won on the final source, so the normal engine needs no Rust capability.
-The earlier CB-19F Rust advantage applied to its own source. `profiles-decision.json`
-keeps the order, resources and rationale.
+The earlier CB-19F Rust advantage applied to its own source.
 
 ## Final normal application
 

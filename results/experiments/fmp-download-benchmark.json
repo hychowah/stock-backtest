@@ -4,7 +4,7 @@
   "environment": {
     "python": "3.12",
     "platform": "native Windows",
-    "cache_location": "project tmp/ on the Windows-mounted legacy project volume"
+    "cache_location": "project tmp/ on the Windows-mounted project volume"
   },
   "scope": "Historical dividend-adjusted prices for distinct uncached stock/date pairs. Existing raw caches and canonical reports were not changed.",
   "limits": "Small samples, mixed companies and different historical periods. Network/provider load varies. These measurements do not establish a universal optimum or a matched-period speedup.",

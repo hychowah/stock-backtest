@@ -1,7 +1,7 @@
 # EBITDA/EV stock backtest
 
 This folder is a standalone US stock backtest with a local website. It is not a
-a different research session. Do not open the parent harness, do not invent a
+different research session. Do not open the parent harness, do not invent a
 fair value, and do not edit product code from a research session.
 
 The folder can move. Scripts resolve paths from their own file. The FMP key stays
@@ -94,8 +94,8 @@ load no numerical package.
 
 ## Git in this environment
 
-The authoritative source checkout is `<wsl-checkout>` in
-WSL. Its `.git` file points to the preserved `.git-local/` history. Ordinary Git
+The authoritative source checkout is this repository's own WSL checkout. Its
+`.git` file points to the preserved `.git-local/` history. Ordinary Git
 commands work there. The retained original Windows folder has an empty,
 read-only `.git/`; use the explicit form there:
 
@@ -109,8 +109,8 @@ back up `.git-local/` first.
 
 ## WSL development and native Windows runtime
 
-Edit and commit only in the WSL source checkout. `<windows-runtime>`
-is the native Windows runtime, not a second repository. `python3 tools/deploy.py`
+Edit and commit only in the WSL source checkout. The native Windows runtime is
+a separate deployed export, not a second repository. `python3 tools/deploy.py`
 exports committed source there; uncommitted edits are excluded. A fresh
 standalone publication needs an explicit `--revision`. A valid pending
 publication selects its recorded commit for recovery. `--start` serves the

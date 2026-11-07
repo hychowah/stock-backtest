@@ -1,8 +1,8 @@
 # WSL source and native Windows runtime
 
-Edit and commit source in WSL. Run the server, saved-data preparation and full-data checks with native Windows Python. The source checkout is `<wsl-checkout>`. The runtime is `<windows-runtime>`.
+Edit and commit source in WSL. Run the server, saved-data preparation and full-data checks with native Windows Python. The source checkout is a WSL clone of this repository. The runtime is a separate folder on the Windows filesystem, exported from a committed revision.
 
-The original legacy folder is retained as a fallback. It is not the active development checkout. The WSL repository preserves its saved history in `.git-local`. A `.git` pointer enables ordinary Git commands. The Windows runtime has no separate Git repository.
+An earlier, pre-deployment checkout may be retained as a fallback; it is not the active development checkout. The WSL repository preserves its saved history in `.git-local`. A `.git` pointer enables ordinary Git commands. The Windows runtime has no separate Git repository.
 
 Read [AGENTS.md](../AGENTS.md#current-state-and-authorization) before changing
 shared calculation, cache, worker, API or startup contracts. A feature branch or
@@ -68,7 +68,7 @@ it.
 For an already-installed revision without contacting WSL, run native Python directly:
 
 ```powershell
-cd <windows-runtime>
+cd <runtime folder>
 py -3 website\serve.py --managed
 ```
 

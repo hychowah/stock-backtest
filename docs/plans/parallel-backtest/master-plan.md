@@ -97,7 +97,6 @@ restarted no installed server.
   [short comparison](../../../results/experiments/parallel-comparison-2026-11-01/short-comparison.json),
   [long workload](../../../results/experiments/parallel-comparison-2026-11-01/long-workload.json).
 - G evidence: [README](../../../results/experiments/parallel-qualification-2026-11-01/README.md),
-  [backend decision](../../../results/experiments/parallel-qualification-2026-11-01/profiles-decision.json),
   [final qualification](../../../results/experiments/parallel-qualification-2026-11-01/final-qualification.json),
   [final comparison](../../../results/experiments/parallel-qualification-2026-11-01/final-comparison.json).
 - Source: deleted on 2026-11-05. It lived in `backtest/engines/numerical/`;
