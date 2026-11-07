@@ -145,7 +145,7 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
     return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=fmp_download.KEY_PATH.is_file() and fmp_download.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
                 target_count=len(targets),price_files=sum(1 for _ in (RAW/'px').glob('*.json')),prices_available=available,prices=prices,derived=derived_status(),
-                missing_ratio_inputs=fundamental_missing, unavailable_metrics=[])
+                missing_ratio_inputs=fundamental_missing)
 
 
 def request_json(endpoint,params,stop,client=None):

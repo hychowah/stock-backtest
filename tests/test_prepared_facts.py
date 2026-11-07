@@ -88,7 +88,7 @@ class ResolutionTests(unittest.TestCase):
 class ProjectionTests(unittest.TestCase):
     def setUp(self):
         self.real_signature = research.signature
-        self.fixture = research_fixtures.PreparationTests('test_success_publishes_database_without_january_books')
+        self.fixture = research_fixtures.PreparationTests('test_success_publishes_database')
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.source = self.fixture.path

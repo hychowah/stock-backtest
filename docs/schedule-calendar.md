@@ -140,18 +140,17 @@ weekends, holidays, leap dates, month ends and a final partial block.
 Run `tests/test_schedule_calendar.py` for independent calendar rules. Run
 `tests/test_schedule_calendar_compat.py` for exact old monthly expectations.
 The schedule, robustness and book-batch suites check financial evaluation,
-reuse, interruption and completed-trial recovery. Native and WSL qualification
-results belong to the CB-08 phase record. This document makes no new speed or
-production-capacity claim.
+reuse, interruption and completed-trial recovery. This document makes no new
+speed or production-capacity claim.
 
 
 ## Website requests and stored snapshots
 
 `backtest/calendar_requests.py` separates calendar settings from selection.
-Both engines import this canonical owner.
+Original imports this canonical owner.
 Send either legacy `start`, `end`, optional `months`, or one nested `calendar`
-with the version-1 configuration above. Mixed representations fail. Both
-website execution adapters accept canonical requests. Fixed results use `calendar`
+with the version-1 configuration above. Mixed representations fail. Original
+accepts canonical website requests. Fixed results use `calendar`
 instead of `months`; result `start` and `end` remain resolved session dates.
 Random plans use `calendar`, `window_start`, `window_end`, `seed`, `requested`,
 `options`, `blocks` and `samples`. No synthetic month count is added.

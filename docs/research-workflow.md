@@ -395,7 +395,7 @@ the local form session without leaving the controls reserved.
 Up to 100 records, including completed results, persist in
 `data/backtest-queue.sqlite`. There is no automatic eviction. Open a result to
 restore its immutable artifact and downloads without running it again. The queue
-is separate from the 20-record saved library. Delete confirms removal of only
+is separate from the 100-record saved library. Delete confirms removal of only
 the selected test/result. A deleted-ID receipt prevents a lost acknowledgement
 from recreating it. Keep the queue database during cache cleanup and deployment.
 
@@ -488,7 +488,7 @@ in old tabs instruct the user to relaunch and use the newly opened tab.
 
 Dated financial policy is shared in `backtest/financial/books.py`: report-pool eligibility,
 candidate buffering, entry valuation and holding returns. Latest preparation
-and the daily engine supply array and SQL price adapters respectively;
+and dated books both call `books.book` over `facts.BookFacts`;
 `revalue.py` remains the independent reference of the development check.
 
 Random streams publish their resolved configuration before executing trials.
@@ -550,7 +550,7 @@ positions; each survivor gets an equal share of the portfolio.
 
 Python screen functions and schedule options accept
 `selection_order='filter_first'` or `selection_order='rank_first'`.
-The CLI accepts `--selection-order rank_first`. Omitted values retain the original
+Omitted values retain the original
 filter-first behavior. Invalid values fail validation. Browser results, exports,
 background runs, queued settings, explicit-seed replay and saved artifacts retain
 the submitted order. Older saved records omit the field and restore filter-first
@@ -622,7 +622,7 @@ percentage points: enter `5` for a spread above or below 5 pp.
 Books read the valid 10-year values that research keeps in `market_days` from
 the saved `year10` fields of `raw/treasury.json` (`facts.ten_year`). The legacy
 annual values (`facts.legacy_annual`, from `annual_facts`) include unambiguous
-USD `operatingIncome` values from full annual income statements. Both pools and all four website modes share
+USD `operatingIncome` values from full annual income statements. Both pools and all three website modes (latest, custom and random) share
 `metrics.operating_yield_spread`. Missing history or Treasury values omit only
 this field. A stock fails only a condition that requires the missing field.
 Existing 3-month Treasury spreads and ranking metrics keep their formulas.
@@ -726,8 +726,7 @@ Check with `python3 tests/test_data_manager.py`, `node tests/check-data-panel.cj
 
 ### Download performance experiment
 
-The experiment lives in `tmp/2026-10-22-fmp-download/`. Temporary responses and
-disposable caches stay ignored. The durable record is
+Temporary responses and disposable caches stay ignored. The durable record is
 `results/experiments/fmp-download-benchmark.json`. It includes settings, per-request
 measurements, request counts and the selected implementation fingerprints.
 The run used native Windows Python 3.12. It did not replace active raw inputs.

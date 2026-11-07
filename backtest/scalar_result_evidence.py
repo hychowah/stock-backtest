@@ -20,7 +20,7 @@ class Order(framing._Order):
             raise ValueError('Scalar evidence follows completion.')
         if self.header is None:
             if (kind != 'header' or set(record) != {'type','format_version','result_contract','trials','metadata'}
-                    or type(record['format_version']) is not int or record['format_version'] != 2
+                    or type(record['format_version']) is not int or record['format_version'] != FORMAT_VERSION
                     or type(record['result_contract']) is not int or record['result_contract'] != 2
                     or type(record['metadata']) is not dict or record['metadata'].get('mode') not in ('latest','january','custom','random')
                     or type(record['trials']) is not int
@@ -114,7 +114,7 @@ class Writer(framing.Writer):
                  piece_bytes=framing.MAX_PIECE_BYTES, record_bytes=framing.MAX_RECORD_BYTES, checkpoint=None):
         self._initialize(stream,max_bytes,piece_bytes,record_bytes,checkpoint)
         self._order = Order()
-        self._write(dict(type='header',format_version=2,result_contract=2,trials=trials,metadata=metadata))
+        self._write(dict(type='header',format_version=FORMAT_VERSION,result_contract=2,trials=trials,metadata=metadata))
     def evidence(self, record):
         if record.get('type') not in EXTRA:
             raise ValueError('Unknown scalar explanation record.')

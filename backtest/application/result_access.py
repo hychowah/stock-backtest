@@ -8,7 +8,6 @@ from copy import deepcopy
 import json
 import re
 from threading import Condition, RLock
-from backtest import result_evidence
 
 
 class ResultAccess:

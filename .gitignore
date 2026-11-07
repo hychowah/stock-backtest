@@ -64,10 +64,8 @@ data/logs/
 # Disposable API experiments, response memoization and benchmark caches.
 tmp/
 
-# Local baseline revision evidence and interrupted publication receipts.
+# Local baseline revision evidence.
 results/baseline-history/
-data/*.publication.json
-data/*.publication.json.download
 
 # Local WSL/native-Windows workspace registration and publication receipts.
 data/workspace.json

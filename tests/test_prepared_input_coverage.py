@@ -39,7 +39,7 @@ class CoverageTests(unittest.TestCase):
 
     def report(self):return coverage._coverage(self.daily,self.spy,self.treasury,lambda:None)
 
-    def test_counts_without_january_books(self):
+    def test_counts_symbols_price_files_and_daily_books(self):
         report=self.report()
         self.assertEqual(report['version'],4)
         self.assertNotIn('years',report);self.assertNotIn('through',report);self.assertNotIn('price_binding',report)

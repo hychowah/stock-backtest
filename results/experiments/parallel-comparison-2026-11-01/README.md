@@ -47,5 +47,3 @@ comparison. These results do not qualify installed-runtime latency.
 - `long-comparison.json` and `short-comparison.json`: validators and timing
   groups.
 - `long-workload.json`: the long request settings.
-- `launch-history.json`: an approval delay and a repaired wrapper error, kept
-  separate from financial latency.

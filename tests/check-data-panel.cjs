@@ -21,7 +21,7 @@ const run=code=>vm.runInContext(code,ctx);
  assert.equal(timers.length,1);
  reply.job.warning='A: skipped 1 nonpositive adjusted price (2020-01-02).';
  await run('DataPanel.refresh()');assert(node('data-warnings').textContent.includes('2020-01-02'));
- reply={job:{running:false,action:'download',message:'Complete',completed:3,total:3,error:null},report:{checked_at:'2026-10-22T00:00:00Z',options:{start:'2020-01-01',end:'2020-12-31',scope:'symbols'},api_key_present:false,assets:[{name:'SPY',state:'saved',count:2,first:'2020-01-01',last:'2020-12-31'}],prices:[{symbol:'<A>',state:'missing',count:0,first:null,last:null,windows:1}],target_count:1,prices_available:0,price_files:0,financial_symbols:1,missing_financials:['B'],empty_financials:[],invalid_financial_lines:0,derived:[{name:'January',state:'needs rebuild',bytes:1000000}]}};
+ reply={job:{running:false,action:'download',message:'Complete',completed:3,total:3,error:null},report:{checked_at:'2026-10-22T00:00:00Z',options:{start:'2020-01-01',end:'2020-12-31',scope:'symbols'},api_key_present:false,assets:[{name:'SPY',state:'saved',count:2,first:'2020-01-01',last:'2020-12-31'}],prices:[{symbol:'<A>',state:'missing',count:0,first:null,last:null,windows:1}],target_count:1,prices_available:0,price_files:0,financial_symbols:1,missing_financials:['B'],empty_financials:[],invalid_financial_lines:0,derived:[{name:'Research database',state:'needs rebuild',bytes:1000000}]}};
  await run('DataPanel.refresh()');
  assert.equal(node('data-warnings').textContent,'');
  assert(!node('data-download').disabled);assert(node('data-cancel').hidden);assert(!node('data-export').disabled);

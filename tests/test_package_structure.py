@@ -98,7 +98,7 @@ for name in ('backtest.financial.rules','backtest.financial.books','backtest.fin
              'backtest.screening','backtest.calendar','backtest.calendar_requests','backtest.portfolio_results'):
     importlib.import_module(name)
 assert not any(name.split('.')[0] in ('scripts','tools','website','numpy','numba') for name in sys.modules)
-assert not any(name in sys.modules for name in ('run','research','schedules','numerical_policy'))
+assert not any(name in sys.modules for name in ('research','schedules'))
 """
         with tempfile.TemporaryDirectory() as folder:
             result=subprocess.run([sys.executable,'-I','-B','-c',code,str(ROOT)],cwd=folder,capture_output=True,text=True)

@@ -65,7 +65,7 @@ and end at the selected report. Subtract the latest saved US 10-year Treasury
 yield on or before the screen date. Enter 5 for a spread of 5 percentage points.
 Missing history or Treasury values fail this condition. Negative margins and
 spreads remain valid. This filter follows the chosen selection order in both pools and all
-four views. Installing this change requires an offline rebuild of research,
+three views. Installing this change requires an offline rebuild of research,
 daily data and the website. It reuses full annual statement assets and saved
 Treasury curves. See the [formula and data rules](../docs/research-workflow.md#sales-based-operating-yield-spread).
 
@@ -152,7 +152,7 @@ others are calculated again when a run needs them. An older daily-cache version
 or a book-code change starts with no saved dated book.
 
 Custom schedules require the local service; opening the HTML directly continues
-to support latest picks. Daily preparation adds a local SQLite index; it never
+to support latest picks. Daily preparation writes the book store; it never
 downloads data.
 See `../docs/research-workflow.md` for timing and calculation semantics.
 

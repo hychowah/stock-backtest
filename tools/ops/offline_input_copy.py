@@ -19,11 +19,9 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
-import sys
 import traceback
 from threading import Event
 
-SOURCE = Path(__file__).resolve().parents[2]
 from backtest.runtime import cache_access as cache_access
 from website import runtime_access
 FILES = ('raw/universe.json', 'raw/metrics.jsonl', 'raw/spy-div.json',

@@ -7,7 +7,7 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT/'tools'),str(ROOT/'tests')]
 from source_service_fixture import FictionalWorkspace
-from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
+from process_owner import OwnedProcess, ProcessLimits
 
 
 class CandidateService:

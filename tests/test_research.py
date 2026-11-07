@@ -285,13 +285,12 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual([(h['symbol'], h['price_date'], h['price']) for h in stocks], [('TEST', '2015-10-20', 22.)])
         self.assertAlmostEqual(stocks[0]['market_cap'], 220e6)
 
-    def test_success_publishes_database_without_january_books(self):
+    def test_success_publishes_database(self):
         r.prepare(self.path)
         self.assertTrue(self.path.is_file())
         self.assertFalse(self.path.with_name(self.path.name + '.building').exists())
         db = r.connect(self.path, full_prices=True)
         try:
-            tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             self.assertEqual(tuple(db.execute('SELECT * FROM companies').fetchone()), ('TEST', 'Test Company', 'NYSE', 'Technology', 1))
         finally:
             db.close()

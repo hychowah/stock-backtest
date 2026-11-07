@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from backtest.runtime.process_owner import OwnedProcess, ProcessLimits, _pending_processes
+from process_owner import OwnedProcess, ProcessLimits, _pending_processes
 
 
 class ResourceTests(unittest.TestCase):
@@ -109,7 +109,7 @@ class ResourceTests(unittest.TestCase):
             raise failure
         from contextlib import ExitStack
         with ExitStack() as scope:
-            scope.enter_context(patch('backtest.runtime.process_owner.Thread.start', fail_reader))
+            scope.enter_context(patch('process_owner.Thread.start', fail_reader))
             if fail_close is True:
                 scope.enter_context(patch.object(OwnedProcess, 'wait_empty', side_effect=TimeoutError('Synthetic closure')))
             elif fail_close == 'handles':

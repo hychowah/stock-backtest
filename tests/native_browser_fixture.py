@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from backtest.runtime.process_owner import OwnedProcess, ProcessLimits
+from process_owner import OwnedProcess, ProcessLimits
 
 MIB = 1024**2
 LIMITS = dict(committed_bytes=1024**3, processes=16, cpu_percent=25,

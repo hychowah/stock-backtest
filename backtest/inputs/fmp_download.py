@@ -19,7 +19,6 @@ from backtest.runtime import diagnostics as diagnostics
 
 from pathlib import Path
 KEY_PATH = Path.home().joinpath(".grok", "secrets", "fmp_api_key")
-BASE = "https://financialmodelingprep.com/stable/"
 
 WORKERS=32
 STARTS_PER_SECOND=45.0

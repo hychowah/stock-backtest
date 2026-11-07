@@ -18,7 +18,7 @@ EBITDA/EV is the earnings yield on enterprise value. A high number means the com
 
 From 2 January 1996 to 2 January 2026, $1 in the book grew to $143.88. The same dollar in SPY grew to $18.51. That is 18.0% a year against 10.2% a year.
 
-Through 20 October 2026, the book grew to $178.30 and SPY grew to $21.00. That is 18.3% a year against 10.4% a year.
+Through 20 October 2026, the book grew to $178.28 and SPY grew to $21.00. That is 18.3% a year against 10.4% a year.
 
 `results/legacy/summary.txt` and `results/legacy/picks.csv` are an earlier pass. That pass left out stocks whose trading stopped before the January sale. Do not use those two files as the latest numbers.
 

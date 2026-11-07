@@ -26,7 +26,7 @@ FIXTURES = Path(__file__).parent/'fixtures'/'phase09_legacy'
 
 def replay():
     """Run actual entry owners on private synthetic assets and SQL fixtures."""
-    fixture = test_research.PreparationTests('test_success_publishes_database_without_january_books')
+    fixture = test_research.PreparationTests('test_success_publishes_database')
     fixture.setUp()
     try:
         inputs = json.loads((FIXTURES/'inputs.json').read_text())

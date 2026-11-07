@@ -16,9 +16,6 @@ import uuid
 
 from backtest.paths import ROOT
 
-# A source-bound observer requires this protocol, not a directory marker.
-OBSERVATION_PROTOCOL = 1
-
 
 class Contention(ValueError):
     """Ownership was not acquired before the admission deadline."""

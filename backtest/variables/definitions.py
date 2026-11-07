@@ -22,7 +22,6 @@ from backtest.variables import parameters
 
 VERSION = 1  # Bundle and program envelope; definition versions evolve separately.
 DEFINITION_VERSIONS = (1, 2, 3)
-CATALOG = 'financial-parameters/1'
 TEMPORAL_POLICY = 'annual-lag90/1'
 CEILINGS = MappingProxyType(dict(nodes=256, depth=32, definitions=32,
     dependency_depth=8, bytes=256 * 1024, literal=64, expanded_literal=1024))

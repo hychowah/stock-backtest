@@ -6,11 +6,8 @@ from backtest.financial.metrics import METRICS, FILTERS
 from backtest import screening
 
 
-def load_screening_data(db=None):
+def load_screening_data(db):
     """The latest book's rows, ranking pairs and filter values; db is a daily connection that attaches research."""
-    if db is None:
-        with closing(daily.connect()) as acquired:
-            return load_screening_data(acquired)
     book=book_store.open_book(db);record=book_store.record(db,book)
     # A latest row is the book's LATEST shape without its pool, in that order.
     fields=book_store.LATEST[1:]

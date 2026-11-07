@@ -4,6 +4,10 @@ Status: complete
 
 The experimental engine was deleted on 2026-11-05. The website runs only Original.
 
+Superseded: typed-storage replaced the observation projection, research schema
+11 and daily cache 5 with typed facts and one book store. See the
+[typed-storage summary](../typed-storage/master-plan.md).
+
 ## Outcome
 
 Users can define a scalar variable once and use it to rank or filter stocks.
@@ -59,8 +63,8 @@ The design contract is in [variable design](variable-design.md).
   [decision 0001](phases/phase-11/decisions/0001-exact-authoring-content.md).
 - **Complete recorded-scope coverage.** A separate owner counts every row in
   a recorded scope. It does not extend preview, which stays at 1–16 roots.
-  Decision 0002 recorded the first design; the
-  [typed-storage summary](../typed-storage/master-plan.md) supersedes it.
+  The [typed-storage summary](../typed-storage/master-plan.md) supersedes its
+  first design.
 - **Compatibility at existing owners (Phase 12).** Historical definitions,
   queue plans and saved evidence are checked through their current owners. No
   compatibility gateway was added. See

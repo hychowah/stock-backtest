@@ -197,7 +197,7 @@ class OwnedProcess:
         if not self.kernel.GetHandleInformation(self.job, ctypes.byref(flags)):
             raise ctypes.WinError(ctypes.get_last_error())
         if not value.basic.flags & 0x2000 or flags.value & 1:
-            raise OSError('Experimental native lifetime ownership was not applied.')
+            raise OSError('Native lifetime ownership was not applied.')
         retained = dict(limit_flags=value.basic.flags, inheritable=False,
                         verified_before_resume=True)
         if self.limits is not None:
@@ -209,7 +209,7 @@ class OwnedProcess:
                     or value.basic.active_limit != self.limits.processes
                     or value.job_memory != self.limits.committed_bytes
                     or rate.flags != 5 or rate.rate != self.limits.cpu_percent*100):
-                raise OSError('Experimental native limits were not applied.')
+                raise OSError('Native limits were not applied.')
             retained.update(committed_bytes=value.job_memory, processes=value.basic.active_limit,
                             cpu_flags=rate.flags, cpu_rate=rate.rate)
         self._native_configuration = retained
@@ -224,7 +224,7 @@ class OwnedProcess:
                 raise ctypes.WinError(ctypes.get_last_error())
         ticks = user_cpu_ticks(self.limits.user_cpu_seconds)
         if not basic.flags & 0x4 or basic.job_time != ticks or action.value != 0:
-            raise OSError('Experimental job user CPU threshold was not applied.')
+            raise OSError('The job user CPU threshold was not applied.')
         self._user_cpu_configuration = dict(ticks=ticks, limit_flags=basic.flags,
                                             end_action=action.value, verified_before_resume=True)
 
@@ -283,12 +283,12 @@ class OwnedProcess:
         finally:
             kernel.CloseHandle(snapshot)
         if len(identities) != 1:
-            raise OSError('Suspended experimental primary thread is unavailable.')
+            raise OSError('The suspended primary thread is unavailable.')
         handle = kernel.OpenThread(0x2, False, identities[0])  # THREAD_SUSPEND_RESUME
         if not handle: raise ctypes.WinError(ctypes.get_last_error())
         try:
             if kernel.ResumeThread(handle) != 1:
-                raise OSError('Experimental primary thread was not suspended exactly once.')
+                raise OSError('The primary thread was not suspended exactly once.')
         finally:
             kernel.CloseHandle(handle)
 
@@ -392,7 +392,7 @@ class OwnedProcess:
                 deadline = time.monotonic() + self._close_seconds
                 while self._session_members():
                     if time.monotonic() > deadline:
-                        raise TimeoutError('Experimental session closure is unconfirmed.')
+                        raise TimeoutError('Session closure is unconfirmed.')
                     time.sleep(.01)
                 self.descendants_empty = True
             return
@@ -402,7 +402,7 @@ class OwnedProcess:
                 self.descendants_empty = True
                 return
             if time.monotonic()>deadline:
-                raise TimeoutError('Experimental descendants did not release their ownership.')
+                raise TimeoutError('Descendants did not release their ownership.')
             time.sleep(.05)
 
     def tree_usage(self):
@@ -420,7 +420,7 @@ class OwnedProcess:
             value = Pids()
             if self.job is None or not self.kernel.QueryInformationJobObject(
                     self.job, 3, ctypes.byref(value), ctypes.sizeof(value), None):
-                raise OSError('Experimental process membership is unavailable.')
+                raise OSError('Process membership is unavailable.')
             rows = windows_processes(include_pids=value.pids[:value.count])
             return dict(processes=len(rows), threads=sum(row['threads'] for row in rows.values()),
                         resident_bytes=sum(row['working_set'] for row in rows.values()),
@@ -484,7 +484,7 @@ class OwnedProcess:
             drained = 0
             while not self.eof:
                 if time.monotonic() > deadline or drained > (self.limits.output_bytes if self.limits else 8 * 1024**2):
-                    raise TimeoutError('Experimental output closure is unconfirmed.')
+                    raise TimeoutError('Output closure is unconfirmed.')
                 try: part = os.read(self.process.stdout.fileno(), 64 * 1024)
                 except BlockingIOError:
                     if os.name == 'nt' and self._pipe_eof():
@@ -494,12 +494,12 @@ class OwnedProcess:
                 if not part: self.eof = True
                 drained += len(part)
         if self.reader is not None and self.reader.is_alive():
-            raise TimeoutError('Experimental process log reader did not close.')
+            raise TimeoutError('The process log reader did not close.')
         self._close_handles()
         self.closed = (self.process.poll() is not None and self.eof
                        and self.descendants_empty and self.job is None)
         if not self.closed:
-            raise TimeoutError('Experimental closure is unconfirmed.')
+            raise TimeoutError('Process closure is unconfirmed.')
         _pending_processes.pop(id(self), None)
 
     def capabilities(self):

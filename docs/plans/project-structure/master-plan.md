@@ -2,6 +2,9 @@
 
 Status: complete
 
+Deleted: the benchmark capture and its protocol-7 tests were deleted on
+2026-11-04. Real benchmark admission does not exist.
+
 ## Outcome
 
 The program moved the source to owners organized by knowledge, in four phases.
@@ -115,9 +118,6 @@ initializers execute no operations. Later custom-variable work added
 - Source moves changed derived identities. Older checkpoints, generations and
   captured source bindings are incompatible and must rebuild. Durable library
   and queue records were not rewritten.
-- Retained benchmark capture still admits only research schema 7. Current
-  preparation is rejected. Retained comparison tests use manually constructed
-  protocol-7 fixtures. Real benchmark admission stays closed.
 - One native ancestor-lifetime case once failed on a generic limit. It passed on
   an isolated rerun with the same bounds (2,304 MiB committed memory, 16
   processes, 25% CPU rate, 180 user seconds). The trigger is unknown.

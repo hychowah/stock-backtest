@@ -2,6 +2,11 @@
 
 Status: complete
 
+Superseded: typed-storage deleted the observation identity, the JSON observation
+evidence, the reference formula evaluator and its parity harness, the
+reference-engine comparison in preparation and the baseline publication hashes.
+See the [typed-storage summary](../typed-storage/master-plan.md).
+
 ## Outcome
 
 Repeated custom-variable backtests, cancellation and preparation no longer pay

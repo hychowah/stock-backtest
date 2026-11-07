@@ -214,25 +214,24 @@ class PreparedTransportTests(unittest.TestCase):
 
     def test_prepared_owner_lanes_are_the_stored_book_rows(self):
         with self.prepared().view() as view:
-            for mode, day in (('latest', '2015-10-20'),):
-                for pool in ('legacy', 'cached'):
-                    with closing(daily.connect()) as cache:
-                        key = (book_store.open_book(cache), pool, 'TEST')
-                        pairs = {row[0]: [row[1], row[2]] for row in cache.execute(
-                            'SELECT metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND symbol=?', key)}
-                        stored = {row[0]: row[1] for row in cache.execute(
-                            'SELECT field,value FROM book_filters WHERE book=? AND pool=? AND symbol=?', key)}
-                        cap = cache.execute('SELECT market_cap FROM book_rows WHERE book=? AND pool=? AND symbol=?', key).fetchone()
-                    self.assertTrue(pairs and stored)
-                    roots = [root('TEST', pool, mode, day)]
-                    [decision] = view.admit(roots)
-                    owner = view.prepared(decision)
-                    self.assertEqual(owner, dict(reason=None, evidence=dict(snapshot=dict(market_cap=cap[0]),
-                                                                           metrics=pairs, filters=stored)))
-                    with patch.object(bridge, 'dated', side_effect=AssertionError('recalculated')):
-                        lanes = values(formulas(field('owner.ev_ebitda'), field('owner.ebitda_yield'),
-                                                field('owner.market_cap')), view, roots)
-                    self.assertEqual(lanes, [[(pairs['ev_ebitda'][0], None), (pairs['ev_ebitda'][1], None), (cap[0], None)]])
+            for pool in ('legacy', 'cached'):
+                with closing(daily.connect()) as cache:
+                    key = (book_store.open_book(cache), pool, 'TEST')
+                    pairs = {row[0]: [row[1], row[2]] for row in cache.execute(
+                        'SELECT metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND symbol=?', key)}
+                    stored = {row[0]: row[1] for row in cache.execute(
+                        'SELECT field,value FROM book_filters WHERE book=? AND pool=? AND symbol=?', key)}
+                    cap = cache.execute('SELECT market_cap FROM book_rows WHERE book=? AND pool=? AND symbol=?', key).fetchone()
+                self.assertTrue(pairs and stored)
+                roots = [root('TEST', pool, 'latest', '2015-10-20')]
+                [decision] = view.admit(roots)
+                owner = view.prepared(decision)
+                self.assertEqual(owner, dict(reason=None, evidence=dict(snapshot=dict(market_cap=cap[0]),
+                                                                       metrics=pairs, filters=stored)))
+                with patch.object(bridge, 'dated', side_effect=AssertionError('recalculated')):
+                    lanes = values(formulas(field('owner.ev_ebitda'), field('owner.ebitda_yield'),
+                                            field('owner.market_cap')), view, roots)
+                self.assertEqual(lanes, [[(pairs['ev_ebitda'][0], None), (pairs['ev_ebitda'][1], None), (cap[0], None)]])
 
     def test_real_prepared_view_missing_book_row_and_lane_never_fall_back(self):
         inputs = self.prepared()
