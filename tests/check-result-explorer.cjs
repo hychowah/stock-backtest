@@ -25,7 +25,7 @@ const context=vm.createContext({AbortController,console,document:{getElementById
    }
   }
   const value=selected.trial==='all'?{...projected,identity:id,exploration:{...selected,start:'2010-01-02',end:'2015-01-25',periods:5}}:{...selected,identity:id,start:periods[selected.period_from-1].entry,end:periods[selected.period_to-1].exit,
-   periods:selected.period_to-selected.period_from+1,total_return:selected.rank_to/100,spy_total_return:.08,cagr:.03,spy_cagr:.02,empty:0,short:0};
+   periods:selected.period_to-selected.period_from+1,total_return:selected.rank_to/100,spy_total_return:.08,growth:1+selected.rank_to/100,cagr:.03,spy_cagr:.02,empty:0,short:0};
   if(deferred){const wait=deferred;deferred=null;await wait();}
   return response(value);
  }});
@@ -83,6 +83,7 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
   trials:trialRows,distributions:distributions(.15),trial_results:Array.from({length:24},()=>structuredClone(result))};
  const batchBefore=JSON.stringify(batch);
  projected={...batch.result,note:'Selected',distributions:distributions(.42),trials:trialRows.map(row=>({...row,cagr:.42,periods:5,start:'2010-01-02',end:'2015-01-25'}))};
+ projected.trials[0].empty_periods=1;
  await show(batch,'all',{summary:batch.result,periods:25});
  assert(panel().open&&!panel().hidden);assert.equal(input('title').textContent,'Explore all 24 trials');
  assert(input('summary').hidden);assert.equal(node('robustness-mean').textContent,'15.00%');
@@ -94,6 +95,8 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  assert.equal(all.result.trial_results.length,24);
  assert.deepEqual(all.selection,{trial:'all',period_from:11,period_to:15,rank_from:20,rank_to:30});
  assert.equal(node('robustness-mean').textContent,'42.00%');
+ assert(input('coverage').textContent.includes('Trials with cash periods: 1.'));
+ assert(input('coverage').textContent.includes('SPY keeps its period return'));
  assert(node('robustness-trials').innerHTML.includes('2010-01-02'));
  assert(input('window').textContent.includes('ranks 20–30'));
  node('robustness-measure').value='cagr';
@@ -112,6 +115,15 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
   input('apply').handlers.click();await tick();assert(applied().at(-1).url.endsWith('/reader/explore/all/11/15/20/30'));
   assert.equal(node('robustness-mean').textContent,'42.00%');
  }
+ // Reset keeps old unavailable originals; Apply uses the server's cash summary.
+ const old=artifact();old.result.growth=null;old.result.cagr=null;
+ old.result.periods[0]={...old.result.periods[0],holdings:[],names:0,portfolio:null};
+ await show(old,1,{...info,summary:old.result,empty:1,short:1});
+ assert.equal(input('strategy-return').textContent,'—');
+ assert(input('coverage').textContent.includes('select Apply'));
+ input('apply').handlers.click();await tick();assert.equal(input('strategy-return').textContent,'30.00%');
+ input('reset').handlers.click();assert.equal(input('strategy-return').textContent,'—');
+ assert.equal(old.result.periods[0].portfolio,null);
  // Bounded artifacts retain their existing reader and independent download capability.
  for(const version of [3,4]){
   const bounded=artifact();bounded.version=version;bounded.evidence={id:String(version).repeat(32),format_version:version===4?2:1,trials:1,periods:70,holdings:2100};

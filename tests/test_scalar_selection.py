@@ -82,7 +82,8 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(result['periods'][0]['holdings'][0]['rank'],2)
         self.assertEqual(result['periods'][0]['portfolio'],-.1)
         self.assertEqual(result['periods'][1]['names'],0)
-        self.assertIsNone(result['growth']);self.assertIsNone(result['cagr'])
+        self.assertEqual(result['growth'],.9)
+        self.assertEqual(result['cagr'],.9**(1/((c-a).days/365.25))-1)
         self.assertEqual(rows[1]['rank'],2)
 
     def test_condition_and_candidate_count_ceilings(self):

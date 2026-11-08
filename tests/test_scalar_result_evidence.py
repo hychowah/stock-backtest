@@ -58,6 +58,24 @@ class EvidenceTests(unittest.TestCase):
             selected=result_exploration.evidence(reader,dict(trial='all',period_from=1,period_to=1,rank_from=2,rank_to=3))
         self.assertEqual(selected['valid'],3)
         self.assertEqual([row['growth'] for row in selected['trials']],expected)
+    def test_scalar_empty_selections_are_complete_cash_periods(self):
+        self.capture=self.fixture.capture(first=20,last=30)
+        for mode in ('custom','random'):
+            stream,manifest=self.produce(mode)
+            reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)
+            summary=manifest['summary']
+            if mode=='random':
+                self.assertEqual((summary['valid'],summary['incomplete']),(3,0))
+                self.assertTrue(all(row['empty_periods']==1 for row in summary['trials']))
+            else:
+                self.assertEqual((summary['growth'],summary['cagr']),(1.,0.))
+            periods=evidence_views.read(reader,dict(operation='periods',trial=1))['rows']
+            self.assertEqual((periods[0]['value']['names'],periods[0]['value']['portfolio']),(0,0.))
+            selected=result_exploration.evidence(reader,dict(trial='all' if mode=='random' else 1,
+                period_from=1,period_to=1,rank_from=20,rank_to=25))
+            row=selected['trials'][0] if mode=='random' else selected
+            self.assertEqual((row['growth'],row['cagr']),(1.,0.))
+            self.assertGreater(row['spy_growth'],1.)
     def test_latest_screen_has_zero_trials_and_no_future_fields(self):
         stream,manifest=self.produce('latest')
         reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)

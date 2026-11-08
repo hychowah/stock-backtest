@@ -53,8 +53,9 @@ shared return arithmetic. The first consumes ordered holding returns once. The
 second consumes ordered `(strategy, SPY)` period returns once. Neither keeps
 the input rows or opens resources. Calculation and saved-result exploration
 use these functions. Python's existing summation and compounding order stay
-unchanged. Unknown dates in older saved January records allow growth but no
-CAGR. Original calculation still requires complete validated dates.
+unchanged. Empty selections return zero. Unavailable returns still propagate
+as unavailable; a known empty book is distinct from missing evidence. Unknown
+dates in older saved January records allow growth but no CAGR. Original calculation still requires complete validated dates.
 
 All dates below are canonical `YYYY-MM-DD` strings. Numbers use full precision.
 No intermediate return, weight or contribution is rounded.
@@ -63,7 +64,7 @@ No intermediate return, weight or contribution is rounded.
 |---|---|
 | `periods` | Ordered list of complete period objects. It has one object per input pair. |
 | `start`, `end` | Common start and final mark dates. Without a common start, start is the first trade. |
-| `growth`, `spy_growth` | Compounded wealth multiples, starting at 1. Strategy growth is null if any period is empty. |
+| `growth`, `spy_growth` | Compounded wealth multiples, starting at 1. An empty selection contributes 0% strategy return. |
 | `cagr`, `spy_cagr` | Fractional annual growth over `(end - start).days / 365.25`. Strategy CAGR is null when growth is null. |
 | `coverage` | Existing coverage text. Cached-price companies are not the full universe. Additional early stops lack the original manual review. |
 | `first_trade`, `cash_days` | Present only for explicit-date/common-start results. Date of first trade and integer calendar days in zero-return cash before it. |
@@ -85,7 +86,7 @@ Each period has exactly the existing fields:
 | `entry`, `exit` | Requested holding boundaries. |
 | `holdings` | Ordered list of complete stock rows. Selection order remains unchanged. |
 | `names` | Actual integer holding count, including a short or empty selection. |
-| `portfolio` | Arithmetic mean of selected fractional returns. Null for an empty selection. |
+| `portfolio` | Arithmetic mean of selected fractional returns. Zero for an empty selection held in cash. |
 | `spy` | Fractional SPY total return for the same holding boundaries. |
 | `is_final_period` | Boolean. True only for the final period. |
 
@@ -111,9 +112,15 @@ without projection.
 The reducer preserves the original Python summation order and arithmetic
 expressions. It compounds periods in their supplied order. Stopped proceeds
 remain cash until the next rebalance. Cash before the first trade has zero
-return for both portfolios. Empty periods keep SPY growth available but make
-full-window strategy growth and CAGR unavailable. A total loss remains zero
-wealth and −100% CAGR.
+return for both portfolios. Empty periods hold cash at 0% until rebalance.
+SPY keeps its period return. CAGR includes the full elapsed window. A total
+loss remains zero wealth and −100% CAGR.
+
+Older saved originals can contain null returns for empty periods and null
+strategy totals. Opening, exporting or saving preserves those values. Apply in
+the result explorer derives a temporary cash-based summary from complete saved
+evidence. Reset restores the recorded totals. A missing return for a nonempty
+period or incomplete holdings still fails explicitly.
 
 Holding rows stay in SQL rank order. Attribution consumers retain their own
 existing signed-contribution order, with symbol ties. This module adds no

@@ -197,7 +197,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual([(h['symbol'],h['rank']) for h in first['periods'][0]['holdings']],[('B',1)])
         with patch.object(financial_books,'book',side_effect=AssertionError('Order must reuse books')):
             empty=s.backtest(self.db,**options,rank_to=1,selection_order='rank_first')
-            self.assertEqual(empty['periods'][0]['names'],0);self.assertIsNone(empty['cagr'])
+            self.assertEqual(empty['periods'][0]['names'],0);self.assertEqual(empty['cagr'],0.)
             result=s.backtest(self.db,**options,rank_to=2,selection_order='rank_first')
         survivor=result['periods'][0]['holdings'][0]
         self.assertEqual((survivor['symbol'],survivor['rank'],survivor['weight']),('B',2,1))
@@ -236,7 +236,7 @@ class BacktestTests(unittest.TestCase):
         result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
         self.assertEqual(result['periods'][0]['holdings'][0]['symbol'],'B')
         result=s.backtest(self.db,start='2015-01-01',end='2015-07-01',months=3,metric='ev_ebitda_3y')
-        self.assertIsNone(result['growth']);self.assertIsNone(result['cagr'])
+        self.assertEqual(result['growth'],1.);self.assertEqual(result['cagr'],0.)
         self.assertTrue(all(p['names']==0 for p in result['periods']))
 
     def test_a_bankruptcy_counts_only_in_the_book_whose_window_contains_its_day(self):
@@ -319,7 +319,7 @@ class BacktestTests(unittest.TestCase):
         self.db.research.execute('UPDATE statements SET market_cap=50000000')
         options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1,min_cap=0,min_ev=0)
         empty=s.backtest(self.db,pool='legacy',**options)
-        self.assertIsNone(empty['cagr'])
+        self.assertEqual(empty['cagr'],0.)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM book_rows').fetchone()[0],0)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],2)
         with patch.object(facts.BookFacts,'price',side_effect=AssertionError('Empty completed pool')),patch.object(facts.BookFacts,'reports',side_effect=AssertionError('Empty completed pool')):

@@ -58,6 +58,67 @@ def batch_fixture(trials=24, *, gaps=False):
 
 
 class ExplorationTests(unittest.TestCase):
+    def test_16_quarterly_trials_keep_cash_in_124_period_rank_selection(self):
+        trials=[];rows=[];samples=[]
+        for number in range(1,17):
+            days=[date(1996+i//4,1+3*(i%4),number+1) for i in range(124)]+[date(2026,10,21)]
+            def book(entry,exit_day):
+                # Fifteen trials once lack ranks 20–30; their other books have rank 20.
+                ranks=range(1,20) if number<16 and entry==days[number] else [20]
+                stocks=[holding('S'+str(rank),rank,.01,entry=str(entry),exit=str(exit_day)) for rank in ranks]
+                return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=.005)
+            trial=portfolio.evaluate(list(zip(days,days[1:])),book,common_start=date(1996,1,2))
+            trial.update(options=dict(rank_from=1,rank_to=50),seconds=0.)
+            dates=list(map(str,days[:-1]));samples.append(dates)
+            trials.append(trial);rows.append(robustness.summarize(trial,number,dates))
+        plan=dict(seed=42,requested=16,options=trials[0]['options'],samples=samples)
+        original=dict(robustness.summarize_trials(plan,rows,0),trial_results=trials)
+        actual=explore.eager(original,dict(trial='all',period_from=1,period_to=124,rank_from=20,rank_to=30))
+        self.assertEqual((actual['valid'],actual['incomplete']),(16,0))
+        self.assertEqual([row['empty_periods'] for row in actual['trials']],[1]*15+[0])
+        self.assertEqual(actual['distributions']['cagr']['n'],16)
+        self.assertEqual(actual['distributions']['spy_cagr']['n'],16)
+        for number,row in enumerate(actual['trials'],1):
+            growth=1.
+            for _ in range(123 if number<16 else 124):growth*=1.01
+            self.assertEqual(row['growth'],growth)
+            self.assertEqual((row['start'],row['end']),('1996-01-02','2026-10-21'))
+
+    def test_legacy_empty_periods_apply_cash_without_rewriting_saved_values(self):
+        original=batch_fixture(2)
+        for trial,row in zip(original['trial_results'],original['trials']):
+            trial['periods'][1].update(holdings=[],names=0,portfolio=None)
+            trial.update(growth=None,cagr=None)
+            row.update(growth=None,cagr=None,total_return=None,excess_cagr=None,empty_periods=1)
+        original.update(valid=0,incomplete=2)
+        before=json.dumps(original)
+        chosen=dict(trial='all',period_from=1,period_to=25,rank_from=1,rank_to=50)
+        eager=explore.eager(original,chosen)
+        self.assertEqual((eager['valid'],eager['incomplete']),(2,0))
+        stream=io.BytesIO()
+        writer=result_evidence.Writer(stream,trials=2,metadata=dict(mode='random'),max_bytes=16*1024**2)
+        for number,trial in enumerate(original['trial_results'],1):
+            writer.start_trial(number)
+            for period in trial['periods']:writer.period(period)
+            writer.end_trial({key:value for key,value in trial.items() if key!='periods'})
+        writer.finish({key:value for key,value in original.items() if key!='trial_results'})
+        encoded=stream.getvalue();reader=result_evidence.Reader(stream,max_bytes=16*1024**2)
+        bounded=explore.evidence(reader,chosen)
+        self.assertEqual(bounded['trials'],eager['trials'])
+        for number,trial in enumerate(original['trial_results'],1):
+            expected=1.
+            for period in trial['periods']:expected*=1+(period['portfolio'] or 0.)
+            value=explore.eager(trial,dict(chosen,trial=1))
+            self.assertEqual(value['growth'],expected)
+            self.assertEqual(bounded['trials'][number-1]['growth'],expected)
+        self.assertEqual(json.dumps(original),before);self.assertEqual(stream.getvalue(),encoded)
+        for names,holdings,value in ((1,[original['trial_results'][0]['periods'][0]['holdings'][0]],None),(0,[],.1)):
+            broken=deepcopy(original['trial_results'][0])
+            broken['periods'][1].update(names=names,holdings=holdings,portfolio=value)
+            with self.assertRaises(ValueError):explore.eager(broken,dict(chosen,trial=1))
+        broken=deepcopy(original['trial_results'][0]);del broken['periods'][1]['portfolio']
+        with self.assertRaises(ValueError):explore.eager(broken,dict(chosen,trial=1))
+
     def test_all_24_trials_date_rank_subsets_and_shared_window(self):
         original=batch_fixture();before=json.dumps(original)
         chosen=dict(trial='all',period_from=11,period_to=15,rank_from=20,rank_to=30)
@@ -87,7 +148,7 @@ class ExplorationTests(unittest.TestCase):
         self.assertEqual({key:value for key,value in whole.items() if key!='exploration'},
                          {key:value for key,value in original.items() if key!='trial_results'})
 
-    def test_batch_codec_agrees_in_two_scans_and_excludes_incomplete_pairs(self):
+    def test_batch_codec_agrees_in_two_scans_and_includes_cash_periods(self):
         original=batch_fixture(3,gaps=True);stream=io.BytesIO()
         writer=result_evidence.Writer(stream,trials=3,metadata=dict(mode='random'),max_bytes=16*1024**2)
         for number,trial in enumerate(original['trial_results'],1):
@@ -102,10 +163,10 @@ class ExplorationTests(unittest.TestCase):
         self.assertEqual(reads.call_count,2,'Two batch scans, independent of trial count')
         expected=explore.eager(original,chosen)
         actual.pop('seconds');expected.pop('seconds');self.assertEqual(actual,expected)
-        self.assertEqual((actual['valid'],actual['incomplete']),(2,1))
+        self.assertEqual((actual['valid'],actual['incomplete']),(3,0))
         self.assertEqual(actual['trials'][0]['empty_periods'],1)
-        self.assertIsNone(actual['trials'][0]['cagr'])
-        self.assertEqual(actual['distributions']['spy_cagr']['n'],2)
+        self.assertIsNotNone(actual['trials'][0]['cagr'])
+        self.assertEqual(actual['distributions']['spy_cagr']['n'],3)
         self.assertEqual(stream.getvalue(),before)
         for changes in ({'period_to':26},{'rank_to':51}):
             with self.assertRaises(ValueError):explore.evidence(reader,dict(chosen,**changes))
@@ -155,8 +216,8 @@ class ExplorationTests(unittest.TestCase):
         self.assertEqual(empty['cash_days'],4)
         chosen=dict(trial=1,period_from=2,period_to=3,rank_from=20,rank_to=30)
         empty=explore.eager(original,chosen)
-        self.assertEqual(empty['empty'],2);self.assertIsNone(empty['growth']);self.assertIsNone(empty['total_return'])
-        self.assertIsNone(empty['cagr']);self.assertIsNotNone(empty['spy_cagr']);self.assertEqual(empty['cash_days'],0)
+        self.assertEqual(empty['empty'],2);self.assertEqual(empty['growth'],1.);self.assertEqual(empty['total_return'],0.)
+        self.assertEqual(empty['cagr'],0.);self.assertIsNotNone(empty['spy_cagr']);self.assertEqual(empty['cash_days'],0)
         for period in original['periods']:
             period['holdings'][0]['return_value']=-1.
         loss=explore.eager(original,dict(chosen,rank_from=1,rank_to=1))

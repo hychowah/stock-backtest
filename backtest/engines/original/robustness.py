@@ -76,7 +76,7 @@ def summarize_trials(configuration, rows, started):
                 completed=len(rows),valid=len(complete),incomplete=len(rows)-len(complete),
                 distributions=distributions,beat_spy=sum(row['excess_cagr']>0 for row in complete),
                 unique_schedules=len({tuple(row['dates']) for row in rows}),seconds=time.perf_counter()-started,
-                note='Each trial independently samples one trading date in every rebalance block, including a final partial block. Actual holding intervals vary. All trials use the same window, with zero-return cash until their first trade for both strategy and paired SPY. Mean CAGR averages trial CAGRs; it is not the return of one portfolio. Incomplete trials remain listed and are excluded from paired statistics. Scenarios overlap; percentiles are not confidence intervals.')
+                note='Each trial independently samples one trading date in every rebalance block, including a final partial block. Actual holding intervals vary. All trials use the same window, with zero-return cash until their first trade for both strategy and paired SPY. Empty selections hold cash at 0% until rebalance; SPY keeps its period return. Mean CAGR averages trial CAGRs; it is not the return of one portfolio. Incomplete trials remain listed and are excluded from paired statistics. Scenarios overlap; percentiles are not confidence intervals.')
 
 
 def consume_trials(configuration, completed, *, capture=None, started=None):

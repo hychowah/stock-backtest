@@ -113,7 +113,7 @@ def _holdings(book, entry, exit_day, contract=1):
 
 
 def mean_return(values):
-    """Mean of ordered holding returns, or None for an empty selection.
+    """Mean of ordered holding returns, or zero for an empty cash selection.
 
     Consume once without retaining the values. Keep Python's sum arithmetic;
     saved-result views and calculation use the same financial reduction.
@@ -125,14 +125,14 @@ def mean_return(values):
             count += 1
             yield value
     total = sum(counted())
-    return total/count if count else None
+    return total/count if count else 0.
 
 
 def reduce_returns(periods, *, start, end):
     """Compound ordered (strategy, SPY) returns without retaining periods.
 
-    Inputs belong to the caller's validated result. An empty strategy period
-    makes its full-window return unavailable. Unknown legacy boundary dates
+    Inputs belong to the caller's validated result. An unavailable strategy
+    return makes full-window growth unavailable. Unknown legacy boundary dates
     allow growth but no CAGR. This function opens no resources.
     """
     growth = spy_growth = 1.
@@ -161,7 +161,7 @@ def evaluate_into(periods, select_period, emit_period, *, common_start=None, che
     successful emission transfers detached evidence to the caller's sink. Sink
     failures propagate. No partial completion summary is returned.
 
-    Empty books remain visible and make strategy growth/CAGR unavailable. A
+    Empty books remain visible and hold zero-return cash until rebalance. A
     common start adds the established explicit-date cash fields. Cash has zero
     return for both sides. Cancellation and provider errors propagate unchanged.
 

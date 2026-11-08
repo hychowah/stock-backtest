@@ -33,7 +33,7 @@ The order choice applies to all user filters, including size, sector and additio
 
 Backtests rebalance on the selected fixed or random schedule; a January study is a 12-month schedule from 1 January. There is no separate January view. A saved January result opens in the dated view without calculation: its book years become periods, labelled by book year where no period dates were stored. Charts, returns, CAGR, growth of $1 and stock tables update together. CSV download links export the **original completed result**. Exploration selections do not change an export. Sector and exchange are cached company metadata, not historical classifications.
 
-If fewer stocks match than requested, the available picks receive equal weights and short periods are counted. A period with no matches displays no strategy return; CAGR and cumulative strategy growth are unavailable for a schedule containing an empty book. SPY continues to show the full selected period.
+If fewer stocks match than requested, the available picks receive equal weights and short periods are counted. A complete period with no matches holds cash at 0% until the next rebalance. SPY keeps its period return. CAGR includes the full elapsed window.
 
 ## Explore a completed result
 
@@ -46,7 +46,9 @@ returns and runs no new backtest.
 
 Ranks retain their meaning at each rebalance. A smaller range gives equal
 weight to the holdings that remain. Missing ranks receive no replacements.
-An empty period makes strategy return and CAGR unavailable for that window.
+An empty selected period holds cash at 0%; SPY keeps its saved period return.
+The trial table reports empty-period counts. Older saved originals keep their
+recorded totals; select Apply to derive a cash-based summary.
 Older January results can have year-only boundaries; those selections have
 no CAGR when exact dates were not saved.
 

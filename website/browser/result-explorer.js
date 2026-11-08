@@ -16,7 +16,8 @@ const ResultExplorer=(()=>{
     if(active.trial==='all'){
       const view=value.exploration??{...value.configuration.options,start:value.trials[0]?.start,end:value.trials[0]?.end,periods:active.info.periods};
       node('window').textContent=view.start+' → '+view.end+' · ranks '+(view.rank_from??active.firstRank)+'–'+(view.rank_to??active.lastRank)+' · '+view.periods+' holding periods per trial · '+value.completed+' trials';
-      node('coverage').textContent=value.valid+' complete trials; '+value.incomplete+' incomplete trials. Each trial uses its own saved trades within one shared observation window. Strategy and SPY hold cash before the first selected trade and after the last selected exit.';
+      const cash=value.trials.filter(row=>row.empty_periods>0&&Number.isFinite(row.growth)).length;
+      node('coverage').textContent=value.valid+' complete trials; '+value.incomplete+' incomplete trials. Trials with cash periods: '+cash+'. Empty selections hold cash at 0%; SPY keeps its period return. Counts appear in the trial table. '+(value.trials.some(row=>row.empty_periods>0&&row.growth===null)?'Older recorded totals remain unavailable; select Apply for a cash-based summary.':'');
       node('status').textContent='Summary across all saved trials. No backtest was run.';
       RobustnessView.preview(value);return;
     }
@@ -25,7 +26,7 @@ const ResultExplorer=(()=>{
     node('spy-return').textContent=format(value.spy_total_return);
     node('strategy-cagr').textContent=format(value.cagr);
     node('spy-cagr').textContent=format(value.spy_cagr);
-    node('coverage').textContent=value.short+' short periods; '+value.empty+' empty periods.'+(value.empty?' Strategy return and CAGR are unavailable for this window.':'')+(value.cash_days?' Includes '+value.cash_days+' initial days in cash.':'')+(!value.empty&&value.cagr==null?' Exact boundary dates were not saved, so CAGR is unavailable.':'');
+    node('coverage').textContent=value.short+' short periods; '+value.empty+' empty periods.'+(value.empty?(value.growth==null?' Recorded return is unavailable; select Apply to treat empty periods as cash.':' Empty periods hold cash at 0%; SPY keeps its period return.'):'')+(value.cash_days?' Includes '+value.cash_days+' initial days in cash.':'')+(value.growth!=null&&value.cagr==null?' Exact boundary dates were not saved, so CAGR is unavailable.':'');
     node('status').textContent='Summary of saved returns. No backtest was run.';
   }
   function reset(){

@@ -45,6 +45,7 @@ def _require_trial(result):
         raise ValueError('Complete saved holding periods are required.')
     for period in result['periods']:
         if (type(period) is not dict or type(period.get('holdings')) is not list
+                or not {'entry','exit','portfolio','spy'}<=period.keys()
                 or type(period.get('names')) is not int or period['names']!=len(period['holdings'])):
             raise ValueError('Complete saved holdings are required.')
 
@@ -150,11 +151,16 @@ def _reduce(records, selection, metadata, window=None):
                 portfolio=portfolio_results.mean_return(values())
             else:
                 count=period['names'];portfolio=_number(period.get('portfolio'),nullable=True)
-                if (count==0)!=(portfolio is None):raise ValueError('Stored period return differs from its holding count.')
+                if count==0:
+                    # Older saved empty books have null returns. Only a known
+                    # empty book can become cash in this temporary summary.
+                    if portfolio not in (None,0.):raise ValueError('An empty saved period has a nonzero return.')
+                    portfolio=0.
+                elif portfolio is None:raise ValueError('A nonempty saved period has no return.')
             empty+=count==0;short+=count<upper-lower+1
             yield portfolio,_number(period.get('spy'))
     totals=portfolio_results.reduce_returns(returns(),start=start_day,end=end_day)
-    if window is None and first==1 and last==metadata['total'] and not narrowed:
+    if window is None and first==1 and last==metadata['total'] and not narrowed and not empty:
         totals={key:_number(value,nullable=key in ('growth','cagr')) for key,value in metadata['original'].items()}
     if any(value is not None and not math.isfinite(value) for value in totals.values()):
         raise ValueError('Selected return exceeds the supported numerical range.')
@@ -192,7 +198,8 @@ def _batch(read, original, selection):
     view=dict(selection,start=start,end=end,periods=selection['period_to']-selection['period_from']+1)
     unchanged=all(selection['period_from']==1 and selection['period_to']==item['total']
         and (selection['rank_from'],selection['rank_to'])==(item['lower'],item['upper']) for _,item in metadata)
-    if unchanged:return dict(original,exploration=view)
+    if unchanged and all(item['original']['growth'] is not None for _,item in metadata):
+        return dict(original,exploration=view)
     if type(original.get('trials')) is not list or len(original['trials'])!=len(metadata):
         raise ValueError('Original random-trial summaries are required.')
     rows=[]
@@ -209,6 +216,6 @@ def _batch(read, original, selection):
         rows.append(row)
     result=robustness.summarize_trials(original['configuration'],rows,started)
     result['exploration']=view
-    result['note']='Selected saved periods and original ranks across all trials. Actual trade dates vary. Strategy and paired SPY hold cash before the first selected trade and after the last selected exit to share one observation window. Incomplete trials remain listed and are excluded from paired statistics. Mean CAGR averages trial CAGRs; percentiles are not confidence intervals.'
+    result['note']='Selected saved periods and original ranks across all trials. Empty selections hold cash at 0% until the next rebalance; SPY keeps its saved period return. Actual trade dates vary. Strategy and paired SPY hold cash before the first selected trade and after the last selected exit to share one observation window. Incomplete trials remain listed and are excluded from paired statistics. Mean CAGR averages trial CAGRs; percentiles are not confidence intervals.'
     if 'producer' in original:result['producer']=original['producer']
     return result

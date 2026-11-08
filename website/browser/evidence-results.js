@@ -101,7 +101,7 @@ const EvidenceResults=(()=>{
       node('schedule-dates').textContent=r.start+' → '+r.end+' · '+(artifact.kind==='january'?'January books':CalendarSettings.label(r));
       node('schedule-cagr').textContent=format(r.cagr);node('schedule-spy-cagr').textContent=format(r.spy_cagr);
       node('schedule-growth').textContent=r.growth===null?'—':'$'+r.growth.toFixed(2);
-      node('schedule-coverage').textContent=r.coverage+' '+state.info.short+' short periods; '+state.info.empty+' empty periods. '+(state.info.empty?'Full-period strategy growth and CAGR unavailable. ':'')+'Computed in '+r.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(r.cash_days?' Both strategy and paired SPY hold cash until '+r.first_trade+' ('+r.cash_days+' days); CAGR uses the common window.':'');
+      node('schedule-coverage').textContent=r.coverage+' '+state.info.short+' short periods; '+state.info.empty+' empty periods. '+(state.info.empty?(r.growth==null?'Recorded totals are unavailable under the earlier empty-period rule. Select Apply in Explore this result for a cash-based summary. ':'Empty periods hold cash at 0%; SPY keeps its period return. '):'')+'Computed in '+r.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(r.cash_days?' Both strategy and paired SPY hold cash until '+r.first_trade+' ('+r.cash_days+' days); CAGR uses the common window.':'');
       await storedPeriods(state);
     }catch(error){readError(state,error);}
   }

@@ -88,10 +88,22 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(result['spy_cagr'],1.1**(1/((self.b-first).days/365.25))-1)
         self.assertEqual(result['periods'][0]['holdings'][0]['contribution_pp'],-100.)
         result=p.evaluate([(self.a,self.b),(self.b,self.c)],lambda a,b:dict(entry=str(a),exit=str(b),holdings=[],spy=.1))
-        self.assertIsNone(result['growth']);self.assertIsNone(result['cagr'])
+        self.assertEqual(result['growth'],1.);self.assertEqual(result['cagr'],0.)
         self.assertEqual([v['names'] for v in result['periods']],[0,0])
-        self.assertEqual([v['portfolio'] for v in result['periods']],[None,None])
+        self.assertEqual([v['portfolio'] for v in result['periods']],[0.,0.])
         self.assertEqual(result['spy_growth'],1.1*1.1)
+
+    def test_empty_middle_period_holds_cash_and_resumes_at_next_rebalance(self):
+        end=date(2020,4,2)
+        def book(entry,exit_day):
+            ret={self.a:.1,self.c:-.05}.get(entry)
+            rows=[] if ret is None else [holding('A',1,ret,entry=str(entry),exit=str(exit_day))]
+            return dict(entry=str(entry),exit=str(exit_day),holdings=rows,spy=.02)
+        result=p.evaluate([(self.a,self.b),(self.b,self.c),(self.c,end)],book)
+        self.assertEqual([row['portfolio'] for row in result['periods']],[.1,0.,-.05])
+        self.assertEqual(result['growth'],1.1*.95)
+        self.assertEqual(result['cagr'],(1.1*.95)**(1/((end-self.a).days/365.25))-1)
+        self.assertEqual(result['spy_growth'],1.02*1.02*1.02)
 
     def test_invalid_request_never_calls_provider(self):
         provider=Mock(side_effect=AssertionError('provider must not run'))
@@ -157,7 +169,7 @@ class PortfolioTests(unittest.TestCase):
             return book
         summary=p.evaluate_into([(self.a,self.b),(self.b,self.c)],select,lambda value:None)
         self.assertEqual(calls,[self.a,self.b]);self.assertIsNone(previous())
-        self.assertIsNone(summary['cagr'])
+        self.assertEqual(summary['cagr'],0.)
         calls.clear();error=OSError('fictional sink failure')
         with self.assertRaises(OSError) as raised:
             p.evaluate_into([(self.a,self.b),(self.b,self.c)],select,Mock(side_effect=error))

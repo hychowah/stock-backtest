@@ -110,12 +110,13 @@ class RobustnessTests(unittest.TestCase):
             repeat=r.run(self.db,config)
         self.assertEqual([t['cagr'] for t in repeat['trials']],expected)
 
-    def test_incomplete_trials_are_visible_and_not_counted_as_zero(self):
+    def test_all_cash_trials_keep_full_window_and_paired_spy(self):
         result=r.run(self.db,self.config(trials=3,sector='No matches'))
-        self.assertEqual(result['valid'],0);self.assertEqual(result['incomplete'],3)
+        self.assertEqual(result['valid'],3);self.assertEqual(result['incomplete'],0)
         self.assertEqual(len(result['trials']),3)
-        self.assertIsNone(result['distributions']['cagr']['mean'])
-        self.assertEqual(result['distributions']['spy_cagr']['n'],0)
+        self.assertEqual(result['distributions']['cagr']['mean'],0.)
+        self.assertEqual(result['distributions']['spy_cagr']['n'],3)
+        self.assertTrue(all(row['growth']==1. and row['cagr']==0. and row['spy_cagr']>0 for row in result['trials']))
         self.assertTrue(all(row['empty_periods']>0 for row in result['trials']))
 
     def test_selection_order_survives_plan_and_reuses_random_books(self):
@@ -134,7 +135,7 @@ class RobustnessTests(unittest.TestCase):
         captured=[]
         with patch.object(financial_books,'book',side_effect=AssertionError('Reuse prepared random books')):
             result=r.run(self.db,after,capture=lambda number,result:captured.append(result))
-        self.assertEqual(result['incomplete'],2)
+        self.assertEqual(result['incomplete'],0)
         self.assertTrue(all(p['names']==0 for trial in captured for p in trial['periods']))
         self.assertTrue(all(trial['options']['selection_order']=='rank_first' for trial in captured))
 

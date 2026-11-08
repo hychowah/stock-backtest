@@ -176,7 +176,7 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(financial_result(replay),financial_result(actual))
         empty=self.service.calculate('custom',dict(self.options,min_cap=1e12),None,None)
         self.assertTrue(all(not period['holdings'] for period in empty['periods']))
-        self.assertIsNone(empty['cagr'])
+        self.assertEqual(empty['cagr'],0.)
 
     def test_stop_during_canonical_planning_precedes_configuration_and_execution(self):
         from backtest import calendar_requests as calendar_requests

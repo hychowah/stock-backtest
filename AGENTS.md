@@ -272,7 +272,8 @@ backtest on the local service; there is no January mode. A January request is
 refused at `/mode`, never converted. Saved January results (versions 1–2) open
 in the dated view: `ResultArtifacts.decode` projects their book years into
 periods at read time and never rewrites the record. Show short or empty
-periods. Do not calculate a full-period CAGR when any period is empty. Top
+periods. A complete empty selection holds cash at 0% until rebalance; keep the full
+window for CAGR and SPY. Existing saved originals retain their recorded totals. Top
 contributors are the first `min(10, selected count)` stocks by signed
 contribution, ties by symbol. Gain and loss pies are normalized separately and
 never show negative slices. Checks: `python3 tests/check_screener.py` after

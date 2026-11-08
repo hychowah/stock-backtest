@@ -46,7 +46,8 @@ opens above the combined summary. For example, select 2010–2015 and ranks 20�
 within a saved 24-trial, 2000–2025, top-50 result. Apply updates each trial,
 combined statistics and the distribution chart. Dates select saved rebalance
 blocks; the summary shows the actual shared window. Reset restores the original
-summary. Holding details, downloads, comparisons and saving use the original
+summary. Empty selections hold cash at 0% until rebalance; SPY keeps its period
+return. Holding details, downloads, comparisons and saving use the original
 completed result.
 
 Select **Add to queue** beside **Run backtest** for overnight fixed or random-date

@@ -33,9 +33,12 @@ CAGR remains an average of trial CAGRs, not one portfolio return.
 `backtest/application/result_exploration.py` checks selections and uses the shared
 Python mean, compounding and CAGR in `backtest/portfolio_results.py`. Ranks keep
 their original meaning at each rebalance. Surviving holdings have equal weight;
-missing ranks receive no replacements. An empty period makes the strategy
-summary unavailable. SPY remains available. Unchanged ranges use recorded totals
-to preserve rounding. Older January year labels allow total return but no CAGR
+missing ranks receive no replacements. A complete empty selection holds cash
+at 0% until rebalance. SPY keeps its saved period return, and CAGR includes the
+full elapsed window. Missing holdings or returns still fail explicitly. Apply
+also supports older empty periods stored with null returns, without changing
+the original artifact. Unchanged ranges without old empty-period nulls use
+recorded totals to preserve rounding. Older January year labels allow total return but no CAGR
 when exact boundary dates are absent.
 
 `ResultArtifacts.reader(...).explore(...)` serves both representations. Eager

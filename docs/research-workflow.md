@@ -133,7 +133,7 @@ python3 website/build.py
 
 Normal builds write ignored `website/local/`, which the local server serves. Startup and data-panel rebuilds leave the ignored portable export `website/dist/` unchanged. Only `python3 website/build.py --snapshot` writes it, with `snapshot.json` (its latest date and source hashes). Range and SQL/browser parity checks default to local output; pass `website/dist` to check the portable export instead.
 
-The website builder reads the latest book of the daily cache and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. Strategy CAGR and cumulative growth are unavailable if any period has no matching stocks; SPY remains for the full selected period.
+The website builder reads the latest book of the daily cache and embeds the latest-session candidate pools in self-contained HTML. It opens in Latest stock picks mode; switch to Historical backtest for dated schedules on the local service. Latest screening uses exact-date prices and cached currently-listed status, excluding older stopped prices. The browser supports portfolio ranks and size (including top 100), market-cap bounds, minimum EV, minimum selected metric yield, maximum selected multiple, sector, exchange and pool filters. Click Screen latest or Run backtest to apply financial filters in the chosen mode. Each dated period has gain/loss contribution pies and the top 10 stocks ranked by signed equal-weight return contribution (or all stocks when fewer than 10 are selected). Saved January results open in the dated view without calculation. See `website/README.md` for units and controls. A complete period with no matching stocks holds cash at 0% until rebalance. SPY keeps its period return, and CAGR uses the full elapsed window. Saved originals retain their recorded totals.
 
 `backtest/engines/reference/revalue.py` remains a slower, independent cache-based calculation of the January study. Only the development check uses it; no build, startup or preparation runs it. After editing raw data, run preparation again. Queries detect changed core data files, price-directory changes, bankruptcy overrides and calculation code; preparation also detects edits to existing individual price files. Run one preparation process at a time. Choose the portfolio size with the ranks in the strategy builder.
 
@@ -232,9 +232,9 @@ weights stocks. Stopped holdings use the last price and hold cash proceeds until
 the next rebalance; transaction costs remain zero.
 
 The custom chart shows returns **per holding period**, not annualized period
-returns. Full-period CAGR uses actual elapsed days. Empty books make strategy
-CAGR and growth unavailable. Choose any period to see its stocks, valuations,
-return contributions and top-10 gain/loss pies. CSV exports include period dates,
+returns. Full-period CAGR uses actual elapsed days, including complete empty
+periods held in cash at 0%. SPY keeps its period return. Choose any period to see
+its stocks, valuations, return contributions and top-10 gain/loss pies. CSV exports include period dates,
 actual stock entry/exit dates, selected metrics, weights and contributions.
 
 `backtest/calendar.py` owns calendar configuration, anchored boundaries,
@@ -446,8 +446,10 @@ elapsed window, with zero-return cash before the first trade for both strategy
 and paired SPY. Average CAGR is the arithmetic average of complete-trial CAGRs;
 there is no compounding of the average. P10/P25/P75/P90 use linear interpolation
 on ordered values; standard deviation is the population dispersion of the sampled
-scenarios. Empty-book trials stay in the table and are excluded from both sides
-of paired averages. Percentiles are scenario descriptions, not confidence limits.
+scenarios. Complete empty periods hold cash at 0%, keeping the full CAGR window
+and SPY period returns. Their trials remain in both paired averages. Unavailable
+trial results stay listed and are excluded from both averages. Percentiles are
+scenario descriptions, not confidence limits.
 
 The browser submits each run to the loopback `/api/backtest-runs/<id>` service and
 polls its status; progress counts real completed trials, and the run continues on
@@ -544,9 +546,10 @@ nulls first, then symbol ascending. Each dated book ranks independently.
 
 Both orders reuse the same prepared records and dated books. Changing this
 setting needs no data download or new dated-book calculation. Source installation
-still needs the usual freshness check and offline rebuild. Empty and short books
-retain their existing warnings and CAGR rules. No cash allocation fills removed
-positions; each survivor gets an equal share of the portfolio.
+still needs the usual freshness check and offline rebuild. Short books give
+survivors equal shares of the portfolio. No cash allocation fills removed
+positions while any survivors remain. With zero survivors, the strategy holds
+cash at 0% until rebalance.
 
 Python screen functions and schedule options accept
 `selection_order='filter_first'` or `selection_order='rank_first'`.
