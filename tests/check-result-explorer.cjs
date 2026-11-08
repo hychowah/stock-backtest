@@ -1,7 +1,7 @@
 'use strict';
 // Actual reader transport and explorer controller; only HTTP and DOM are fixtures.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const nodes=new Map(),requests=[],downloads=[];let deferred=null;
+const nodes=new Map(),requests=[],downloads=[];let deferred=null,projected=null;
 const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',innerHTML:'',textContent:'',hidden:false,open:false,handlers:{},addEventListener(event,fn){this.handlers[event]=fn;}});return nodes.get(id);};
 const periods=Array.from({length:70},(_,i)=>({entry:(1997+i)+'-01-02',exit:(1998+i)+'-01-02',names:30,portfolio:.1,spy:.05,
  holdings:Array.from({length:30},(_,rank)=>({symbol:'S'+rank,rank:rank+1,return_value:.1}))}));
@@ -17,19 +17,19 @@ const context=vm.createContext({AbortController,console,document:{getElementById
   else{
    const parts=url.split('/');id=parts[3];
    if(parts[5]==='explore'){
-    selected=Object.fromEntries(['trial','period_from','period_to','rank_from','rank_to'].map((key,i)=>[key,+parts[6+i]]));
+    selected=Object.fromEntries(['trial','period_from','period_to','rank_from','rank_to'].map((key,i)=>[key,i===0&&parts[6]==='all'?'all':+parts[6+i]]));
    }else{
     assert.equal(parts[6],'periods');
     const cursor=+parts[8],end=Math.min(cursor+64,periods.length);
     return response({identity:id,rows:periods.slice(cursor,end).map(({holdings,...value},i)=>({number:cursor+i+1,value})),cursor,next:end<periods.length?end:null,total:70});
    }
   }
-  const value={...selected,identity:id,start:periods[selected.period_from-1].entry,end:periods[selected.period_to-1].exit,
+  const value=selected.trial==='all'?{...projected,identity:id,exploration:{...selected,start:'2010-01-02',end:'2015-01-25',periods:5}}:{...selected,identity:id,start:periods[selected.period_from-1].entry,end:periods[selected.period_to-1].exit,
    periods:selected.period_to-selected.period_from+1,total_return:selected.rank_to/100,spy_total_return:.08,cagr:.03,spy_cagr:.02,empty:0,short:0};
   if(deferred){const wait=deferred;deferred=null;await wait();}
   return response(value);
  }});
-for(const name of ['result-artifacts.js','result-explorer.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
+for(const name of ['result-artifacts.js','robustness.js','result-explorer.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 const input=id=>node('explore-'+id),panel=()=>node('result-explorer');
 const applied=()=>requests.filter(row=>row.url==='/api/backtest-exploration'||row.url.includes('/reader/explore/'));
@@ -65,13 +65,53 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  // Reset cancels pending work and restores recorded precision and window.
  deferred=()=>new Promise(resolve=>resume=resolve);input('apply').handlers.click();await tick();
  input('reset').handlers.click();resume();await tick();assert.equal(input('strategy-return').textContent,'20.00%');
- // Random exploration sends only the inspected trial, never another trial or live form.
+ // The reader can still summarize a single original trial independently.
  const random=artifact();random.kind='random';random.settings.mode='random';
  const second=structuredClone(result);second.growth=1.42;
  random.result={trial_results:[random.result,second]};
  await show(random,2,{...info,summary:second});input('apply').handlers.click();await tick();
  assert.deepEqual(JSON.parse(applied().at(-1).options.body).result,second);
  assert.equal(JSON.parse(applied().at(-1).options.body).selection.trial,1);
+ // Opening a saved 24-trial result exposes all-trial controls immediately.
+ const stats=mean=>({n:24,mean,median:mean,p10:mean,p25:mean,p75:mean,p90:mean,min:mean,max:mean,stddev:0});
+ const distributions=mean=>Object.fromEntries(['cagr','spy_cagr','excess_cagr','total_return','growth'].map(key=>[key,stats(mean)]));
+ const batch=artifact();batch.kind='random';batch.settings={mode:'random',rank_from:1,rank_to:50};
+ const trialRows=Array.from({length:24},(_,i)=>({trial:i+1,start:'2000-01-01',end:'2025-01-27',first_trade:'2000-01-02',periods:25,
+  dates:Array.from({length:25},(_,j)=>(2000+j)+'-01-02'),cagr:.15,spy_cagr:.08,spy_growth:2,excess_cagr:.07,total_return:3,growth:4,empty_periods:0,short_periods:0}));
+ batch.result={completed:24,valid:24,incomplete:0,unique_schedules:24,beat_spy:24,note:'Original',
+  configuration:{seed:42,options:{rank_from:1,rank_to:50},blocks:Array.from({length:25},(_,i)=>({start:(2000+i)+'-01-01'}))},
+  trials:trialRows,distributions:distributions(.15),trial_results:Array.from({length:24},()=>structuredClone(result))};
+ const batchBefore=JSON.stringify(batch);
+ projected={...batch.result,note:'Selected',distributions:distributions(.42),trials:trialRows.map(row=>({...row,cagr:.42,periods:5,start:'2010-01-02',end:'2015-01-25'}))};
+ await show(batch,'all',{summary:batch.result,periods:25});
+ assert(panel().open&&!panel().hidden);assert.equal(input('title').textContent,'Explore all 24 trials');
+ assert(input('summary').hidden);assert.equal(node('robustness-mean').textContent,'15.00%');
+ assert(input('period-from').innerHTML.includes('2010-01-01'));
+ assert(input('period-to').innerHTML.includes('2015-01-01'));
+ change('period-from',11);change('period-to',15);change('rank-from',20);change('rank-to',30);
+ input('apply').handlers.click();await tick();
+ const all=JSON.parse(applied().at(-1).options.body);
+ assert.equal(all.result.trial_results.length,24);
+ assert.deepEqual(all.selection,{trial:'all',period_from:11,period_to:15,rank_from:20,rank_to:30});
+ assert.equal(node('robustness-mean').textContent,'42.00%');
+ assert(node('robustness-trials').innerHTML.includes('2010-01-02'));
+ assert(input('window').textContent.includes('ranks 20–30'));
+ node('robustness-measure').value='cagr';
+ run('RobustnessView.init(()=>{},()=>{})');
+ node('robustness-measure').handlers.change();assert(node('robustness-chart').innerHTML.includes('mean 42.00%'));
+ const allCount=applied().length;input('reset').handlers.click();
+ assert.equal(node('robustness-mean').textContent,'15.00%');assert.equal(applied().length,allCount);
+ assert.equal(JSON.stringify(batch),batchBefore);
+ for(const version of [3,4]){
+  const bounded=structuredClone(batch);bounded.version=version;delete bounded.result.trial_results;
+  bounded.evidence={id:String(version).repeat(32),format_version:version===4?2:1,trials:24,periods:600,holdings:30000};
+  const pageCount=requests.filter(row=>row.url.includes('/page/')).length;
+  await show(bounded,'all',{summary:bounded.result,periods:25});
+  assert.equal(requests.filter(row=>row.url.includes('/page/')).length,pageCount,'Batch controls use saved date metadata');
+  change('period-from',11);change('period-to',15);change('rank-from',20);change('rank-to',30);
+  input('apply').handlers.click();await tick();assert(applied().at(-1).url.endsWith('/reader/explore/all/11/15/20/30'));
+  assert.equal(node('robustness-mean').textContent,'42.00%');
+ }
  // Bounded artifacts retain their existing reader and independent download capability.
  for(const version of [3,4]){
   const bounded=artifact();bounded.version=version;bounded.evidence={id:String(version).repeat(32),format_version:version===4?2:1,trials:1,periods:70,holdings:2100};
@@ -91,5 +131,6 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
  const html=fs.readFileSync(path.join(__dirname,'../website/browser/template.html'),'utf8');
  assert(html.indexOf('id="result-explorer"')>html.indexOf('</form>'));
  assert(html.includes('Save original backtest')&&html.includes('Download original holdings'));
- console.log('Passed: saved date/rank controls, 64-row pages, eager and codec transports, inspected trials, validation, reset, abort and replacement fences, original artifacts and downloads.');
+ assert(html.indexOf('id="result-explorer"')<html.indexOf('id="robustness-results"'));
+ console.log('Passed: visible all-24-trial date/rank controls, combined statistics and chart, eager and both codec transports, original artifacts, reset, validation and cancellation.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

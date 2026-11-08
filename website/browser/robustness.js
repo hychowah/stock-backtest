@@ -4,7 +4,7 @@ const RobustnessView=(()=>{
   const node=id=>document.getElementById(id);
   const pct=v=>v===null?'—':(v*100).toFixed(2)+'%';
   const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let configuration=null,getResult=()=>null;
+  let configuration=null,getResult=()=>null,displayed=null;
   function remember(next,engine){
     configuration=engine?{...next,engine}:next;
     try{localStorage.setItem('backtest-experiment',JSON.stringify(configuration));}catch(_){}
@@ -60,8 +60,11 @@ const RobustnessView=(()=>{
     if(series.every(s=>!s.sd))node('robustness-chart-note').textContent+=' Each series has identical returns; no bell curves are fitted.';
   }
   function render(next,engine){
-    const result=next;node('robustness-results').hidden=false;
-    remember(result.configuration,engine);
+    remember(next.configuration,engine);
+    preview(next);
+  }
+  function preview(result){
+    displayed=result;node('robustness-results').hidden=false;
     chart(result);
     const d=result.distributions;
     node('robustness-mean').textContent=pct(d.cagr.mean);
@@ -90,9 +93,9 @@ const RobustnessView=(()=>{
     getResult=readResult;
     try{const saved=JSON.parse(localStorage.getItem('backtest-experiment'));if(saved)remember(saved);}catch(_){}
     node('robustness-replay').addEventListener('click',()=>configuration?replay(configuration):undefined);
-    node('robustness-measure').addEventListener('change',()=>{const result=getResult();if(result)chart(result);});
+    node('robustness-measure').addEventListener('change',()=>{const result=displayed??getResult();if(result)chart(result);});
     node('robustness-download').addEventListener('click',download);
     node('robustness-inspect').addEventListener('click',()=>{const result=getResult(),index=+node('robustness-trial').value;return result?inspect(result.trials[index],result.configuration,result.trial_results?.[index],index):undefined;});
   }
-  return {render,init,remember};
+  return {render,preview,init,remember};
 })();

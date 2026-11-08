@@ -43,6 +43,12 @@ const batch={kind:'random_dates',completed:2,valid:2,incomplete:0,unique_schedul
  assert(node('robustness-chart').innerHTML.includes('No complete trials'));
  batch.trials=[{trial:1,start:'2015-01-02',first_trade:'2015-03-02',dates:['2015-03-02','2017-07-03'],cagr:.1}];
  call('RobustnessView.render(batch)');
+ const remembered=saved.get('backtest-experiment');
+ ctx.preview={...batch,configuration:{...batch.configuration,seed:999},trials:[{...batch.trials[0],cagr:.9}]};
+ call('RobustnessView.preview(preview)');
+ node('robustness-measure').value='cagr';node('robustness-measure').handlers.change();
+ assert(node('robustness-chart').innerHTML.includes('mean 90.00%'));
+ assert.equal(saved.get('backtest-experiment'),remembered,'Preview preserves original replay settings');
  node('robustness-download').handlers.click();assert(csv.includes('2015-03-02;2017-07-03'));assert(csv.includes('"42"'));assert.equal(download,'random-dates-seed-42.csv');
  node('robustness-trial').value='0';node('robustness-inspect').handlers.click();assert.equal(inspected.trial.trial,1);assert.equal(inspected.config.months,24);
  console.log('Passed: remembered replay settings, repeat seed, distribution rendering, reproducible CSV and trial inspection.');

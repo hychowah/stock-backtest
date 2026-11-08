@@ -2,6 +2,7 @@
 from copy import deepcopy
 from datetime import date
 import json
+import io
 from pathlib import Path
 import random
 import sys
@@ -10,7 +11,9 @@ from unittest.mock import patch
 
 sys.path[:0]=[str(Path(__file__).resolve().parents[1]),str(Path(__file__).resolve().parent)]
 from backtest import portfolio_results as portfolio
+from backtest import result_evidence
 from backtest.application import result_exploration as explore
+from backtest.engines.original import robustness
 from backtest.runtime import backtest_control
 from test_portfolio_results import holding
 from test_durable_evidence import source
@@ -33,7 +36,83 @@ def fixture(order='filter_first'):
     return result
 
 
+def batch_fixture(trials=24, *, gaps=False):
+    """Fictional 2000–2025 top-50 batch, independent of financial inputs."""
+    originals=[];rows=[];samples=[]
+    for trial in range(1,trials+1):
+        days=[date(year,1,trial+1) for year in range(2000,2025)]+[date(2025,1,27)]
+        pairs=list(zip(days,days[1:]))
+        def book(entry,exit_day):
+            holdings=[holding('S'+str(rank),rank,(rank-20+trial+(entry.year-2000)%4)/100,
+                entry=str(entry),exit=str(exit_day)) for rank in range(1,51)
+                if not gaps or rank%4 and not (trial==1 and entry.year==2012 and 20<=rank<=30)]
+            return dict(entry=str(entry),exit=str(exit_day),holdings=holdings,spy=.02+(entry.year%3)/100)
+        result=portfolio.evaluate(pairs,book,common_start=date(2000,1,1))
+        result.update(options=dict(rank_from=1,rank_to=50,selection_order='rank_first'),seconds=.1)
+        dates=[str(day) for day in days[:-1]]
+        originals.append(result);samples.append(dates);rows.append(robustness.summarize(result,trial,dates))
+    plan=dict(seed=42,requested=trials,start='2000-01-01',end='2025-01-27',months=12,
+        window_start='2000-01-01',window_end='2025-01-27',options=originals[0]['options'],samples=samples,
+        blocks=[dict(start=str(date(year,1,1))) for year in range(2000,2025)])
+    return dict(robustness.summarize_trials(plan,rows,0),trial_results=originals)
+
+
 class ExplorationTests(unittest.TestCase):
+    def test_all_24_trials_date_rank_subsets_and_shared_window(self):
+        original=batch_fixture();before=json.dumps(original)
+        chosen=dict(trial='all',period_from=11,period_to=15,rank_from=20,rank_to=30)
+        with patch('sqlite3.connect',side_effect=AssertionError('No inputs or stores')):
+            actual=explore.eager(original,chosen)
+        self.assertEqual((actual['completed'],actual['valid'],actual['incomplete']),(24,24,0))
+        self.assertEqual(actual['exploration']['start'],'2010-01-02')
+        self.assertEqual(actual['exploration']['end'],'2015-01-25')
+        years=(date(2015,1,25)-date(2010,1,2)).days/365.25
+        for number,(row,trial) in enumerate(zip(actual['trials'],original['trial_results']),1):
+            growth=spy=1.
+            for period in trial['periods'][10:15]:
+                values=[h['return_value'] for h in period['holdings'] if 20<=h['rank']<=30]
+                growth*=1+sum(values)/len(values);spy*=1+period['spy']
+            self.assertEqual(row['growth'],growth);self.assertEqual(row['spy_growth'],spy)
+            self.assertEqual(row['cagr'],growth**(1/years)-1)
+            self.assertEqual(row['spy_cagr'],spy**(1/years)-1)
+            self.assertEqual(row['cash_days'],number-1)
+            self.assertEqual(row['final_cash_days'],24-number)
+            self.assertEqual(row['dates'],original['configuration']['samples'][number-1][10:15])
+        for key in ('cagr','spy_cagr','excess_cagr','total_return','growth'):
+            self.assertEqual(actual['distributions'][key],robustness.distribution([row[key] for row in actual['trials']]))
+        self.assertEqual(json.dumps(original),before)
+        self.assertNotIn('trial_results',actual)
+        original['distributions']['cagr']['mean']=.12345
+        whole=explore.eager(original,dict(chosen,period_from=1,period_to=25,rank_from=1,rank_to=50))
+        self.assertEqual({key:value for key,value in whole.items() if key!='exploration'},
+                         {key:value for key,value in original.items() if key!='trial_results'})
+
+    def test_batch_codec_agrees_in_two_scans_and_excludes_incomplete_pairs(self):
+        original=batch_fixture(3,gaps=True);stream=io.BytesIO()
+        writer=result_evidence.Writer(stream,trials=3,metadata=dict(mode='random'),max_bytes=16*1024**2)
+        for number,trial in enumerate(original['trial_results'],1):
+            writer.start_trial(number)
+            for period in trial['periods']:writer.period(period)
+            writer.end_trial({key:value for key,value in trial.items() if key!='periods'})
+        writer.finish({key:value for key,value in original.items() if key!='trial_results'})
+        reader=result_evidence.Reader(stream,max_bytes=16*1024**2);before=stream.getvalue()
+        chosen=dict(trial='all',period_from=11,period_to=15,rank_from=20,rank_to=30)
+        with patch.object(reader,'verified_records',wraps=reader.verified_records) as reads:
+            actual=explore.evidence(reader,chosen)
+        self.assertEqual(reads.call_count,2,'Two batch scans, independent of trial count')
+        expected=explore.eager(original,chosen)
+        actual.pop('seconds');expected.pop('seconds');self.assertEqual(actual,expected)
+        self.assertEqual((actual['valid'],actual['incomplete']),(2,1))
+        self.assertEqual(actual['trials'][0]['empty_periods'],1)
+        self.assertIsNone(actual['trials'][0]['cagr'])
+        self.assertEqual(actual['distributions']['spy_cagr']['n'],2)
+        self.assertEqual(stream.getvalue(),before)
+        for changes in ({'period_to':26},{'rank_to':51}):
+            with self.assertRaises(ValueError):explore.evidence(reader,dict(chosen,**changes))
+        with self.assertRaises(ValueError):explore.eager(fixture(),chosen)
+        with patch.object(backtest_control,'checkpoint',side_effect=backtest_control.Cancelled):
+            with self.assertRaises(backtest_control.Cancelled):explore.evidence(reader,chosen)
+
     def test_date_and_rank_subsets_match_direct_selection_without_changing_original(self):
         for order in ('filter_first','rank_first'):
             original=fixture(order);before=json.dumps(original)

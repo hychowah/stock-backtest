@@ -17,40 +17,42 @@ and queue execution remain eager. Current eager limits are unchanged.
 
 ## Explore a completed result
 
-The dated result has an **Explore this result** panel. Choose an entry, an
-exit or mark, and an inclusive rank range within the original request. The
-dates are saved holding-period boundaries. Apply summarizes those periods
-without screening stocks, evaluating formulas, preparing inputs or downloading
-data. Random results offer this panel for the inspected trial.
+The dated result has an **Explore this result** panel. Choose saved holding
+periods and an inclusive rank range within the original request. Apply summarizes
+saved returns without screening, formulas, preparation or market inputs.
 
-`backtest/application/result_exploration.py` owns selection checks and the
-summary. It uses the same Python return reduction as calculation in
-`backtest/portfolio_results.py`. Ranks keep their original meaning in each
-period. Missing ranks receive no replacements. A narrower rank range gives
-each surviving holding equal weight. An empty period makes strategy growth,
-total return and CAGR unavailable. SPY remains available. A window beginning
-at the original first period keeps its initial cash interval.
+Random results open **Explore all trials** above the combined summary. One
+selection updates every trial, combined statistics and the distribution chart.
+Selectors name saved entry and exit blocks. The actual shared window runs from
+the earliest selected entry to the latest selected exit. A selection beginning
+with the first period keeps the original common start. Strategy and paired SPY
+hold cash before each first selected trade and after each last selected exit.
+Incomplete trials stay listed and are excluded from both distributions. Mean
+CAGR remains an average of trial CAGRs, not one portfolio return.
 
-An unchanged window and rank range use the recorded summary. This preserves
-older stored rounding. Partial time windows use the recorded period returns.
-Older January results can have year-only inner boundaries. Such a selection
-has a total return, but no CAGR when an exact boundary date is absent.
+`backtest/application/result_exploration.py` checks selections and uses the shared
+Python mean, compounding and CAGR in `backtest/portfolio_results.py`. Ranks keep
+their original meaning at each rebalance. Surviving holdings have equal weight;
+missing ranks receive no replacements. An empty period makes the strategy
+summary unavailable. SPY remains available. Unchanged ranges use recorded totals
+to preserve rounding. Older January year labels allow total return but no CAGR
+when exact boundary dates are absent.
 
-The browser uses `ResultArtifacts.reader(...).explore(...)` for both existing
-representations. A browser-held eager trial is submitted to
-`POST /api/backtest-exploration`. Only the inspected trial is sent. The existing
-eager result byte limit applies. The request retains no server-side result.
-It reserves one of the same 32 request slots before decoding, and shutdown
-drains it before source ownership ends. Codec-backed results use
-`GET /api/backtest-runs/<reader-id>/reader/explore/<trial>/<first-period>/<last-period>/<first-rank>/<last-rank>`
-under the existing reader pin. Sequential scans keep bounded evidence records.
+`ResultArtifacts.reader(...).explore(...)` serves both representations. Eager
+results use `POST /api/backtest-exploration`, with the original trial or whole
+random batch and the existing byte limit. The stateless request reserves one of
+the same 32 slots before decoding and participates in shutdown drain.
+Codec-backed results use the existing reader pin:
+`GET /api/backtest-runs/<reader-id>/reader/explore/<trial>/<first-period>/<last-period>/<first-rank>/<last-rank>`.
+`trial` is a number or `all`. Batch aggregation takes two sequential evidence
+scans, retaining compact trial boundaries between them, never full holdings.
 
-`website/browser/result-explorer.js` owns temporary controls and summary state.
-It reads period pages only when the panel opens and retains date labels for
-the selectors. Edits cancel an outstanding summary request. Artifact, trial and
-selection checks discard obsolete replies. Reset restores the original summary.
-Charts, holding tables, downloads, comparisons and saving use the original
-artifact. Exploration creates no saved format or durable preference.
+`website/browser/result-explorer.js` owns the controls. Date labels come from
+period pages for fixed tests and original trial metadata for random tests.
+Edits cancel pending requests; replacement and selection checks discard late
+replies. Reset restores the original summary. Holding details, downloads,
+comparisons, replay and saving use the immutable original artifact. Exploration
+creates no saved format or durable preference.
 
 ## Ownership
 

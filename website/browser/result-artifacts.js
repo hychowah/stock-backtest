@@ -111,7 +111,7 @@ const ResultArtifacts=(()=>{
         async periods(number,cursor=0){return page(requireTrial(number).periods.map(({holdings,...value},i)=>({number:i+1,value})),cursor);},
         async holdings(number,period,cursor=0){return page(requireTrial(number).periods[period-1].holdings,cursor);},
         explore(selection,{signal}={}){return transport('/api/backtest-exploration',{method:'POST',headers:{'Content-Type':'application/json'},signal,
-          body:JSON.stringify({result:requireTrial(selection.trial),selection:{...selection,trial:1}})});}
+          body:JSON.stringify({result:selection.trial==='all'?artifact.result:requireTrial(selection.trial),selection:{...selection,trial:selection.trial==='all'?'all':1}})});}
       };
     }
     const id=identity(artifact);if(readers.has(id))return readers.get(id).api;

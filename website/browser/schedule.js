@@ -83,7 +83,7 @@ const ScheduleView=(()=>{
     node('schedule-rows').innerHTML=result.periods.map(p=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
     node('schedule-period').innerHTML=result.periods.map((p,i)=>`<option value="${i}">${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
     node('schedule-period').value=String(result.periods.length-1);stocks();
-    ResultExplorer.show(ResultArtifacts.forView('custom'),inspectedTrial===null?1:inspectedTrial+1,
+    if(ResultArtifacts.forView('custom').kind!=='random')ResultExplorer.show(ResultArtifacts.forView('custom'),1,
       {summary:result,periods:result.periods.length,short,empty});
   }
   async function run(filters,override=null,replay=null){
@@ -197,6 +197,7 @@ const ScheduleView=(()=>{
     if(artifact.kind==='random'){
       if(artifact.version===4)EvidenceResults.show(artifact,1);
       RobustnessView.render(artifact.result,artifact.settings.engine);node('schedule-results').hidden=true;
+      ResultExplorer.show(artifact,'all',{summary:artifact.result,periods:artifact.result.trials[0]?.periods??0});
     }else{
       if([3,4].includes(artifact.version))EvidenceResults.show(artifact,1);else render();node('robustness-results').hidden=true;
     }

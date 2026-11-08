@@ -1,14 +1,15 @@
-"""Return summaries for a temporary selection of completed result evidence.
+"""Temporary saved-return selections, for one trial or a whole random batch.
 
-Read only saved period/holding returns. Preserve original ranks and values;
-never acquire financial inputs, evaluate a strategy or construct a new artifact.
-Eager requests own one decoded trial. Evidence requests borrow a pinned reader
-and scan bounded records. Both use the original Python financial reducer.
+Consume original holding returns in rank order. Both representations use the
+same Python reduction. Batch scans keep one evidence record at a time and only
+compact trial metadata between passes. No financial inputs or stores are opened.
 """
 from datetime import date
 import math
+import time
 
 from backtest import portfolio_results
+from backtest.engines.original import robustness
 from backtest.runtime import backtest_control
 from . import evidence_views
 
@@ -23,10 +24,8 @@ def _number(value, nullable=False):
 def _day(value):
     # Existing January records have bare book-year labels at inner boundaries.
     if isinstance(value,str) and len(value)==4 and value.isdigit():return None
-    try:
-        day=date.fromisoformat(value)
-    except (ValueError,TypeError):
-        raise ValueError('Stored period boundary is invalid.') from None
+    try:day=date.fromisoformat(value)
+    except (ValueError,TypeError):raise ValueError('Stored period boundary is invalid.') from None
     if str(day)!=value:raise ValueError('Stored period boundary is invalid.')
     return day
 
@@ -34,67 +33,99 @@ def _day(value):
 def _selection(value):
     keys={'trial','period_from','period_to','rank_from','rank_to'}
     if (type(value) is not dict or set(value)!=keys
-            or any(type(item) is not int or item<1 for item in value.values())
+            or any(type(value[key]) is not int or value[key]<1 for key in keys-{'trial'})
+            or not (value['trial']=='all' or type(value['trial']) is int and value['trial']>=1)
             or value['period_from']>value['period_to'] or value['rank_from']>value['rank_to']):
         raise ValueError('Choose increasing saved periods and ranks.')
     return value
 
 
-def eager(result, selection):
-    """Explore one browser-held completed trial, without keeping its request."""
-    chosen=_selection(selection)
-    if chosen['trial']!=1:raise ValueError('Expected one completed trial.')
+def _require_trial(result):
     if type(result) is not dict or type(result.get('periods')) is not list or not result['periods']:
         raise ValueError('Complete saved holding periods are required.')
     for period in result['periods']:
         if (type(period) is not dict or type(period.get('holdings')) is not list
                 or type(period.get('names')) is not int or period['names']!=len(period['holdings'])):
             raise ValueError('Complete saved holdings are required.')
-    def records():
-        for number,period in enumerate(result['periods'],1):
-            yield dict(type='period',number=number,value=period)
-            for row in period['holdings']:yield dict(type='holding',value=row)
-            yield dict(type='end_period')
-        yield dict(type='end_trial',summary=result)
-    return _explore(records,chosen)
+
+
+def _eager_records(result):
+    for number,period in enumerate(result['periods'],1):
+        yield dict(type='period',number=number,value=period)
+        for row in period['holdings']:yield dict(type='holding',value=row)
+        yield dict(type='end_period')
+    yield dict(type='end_trial',summary=result)
+
+
+def eager(result, selection):
+    """Explore a request-owned trial or random batch; retain no server result."""
+    chosen=_selection(selection)
+    if chosen['trial']=='all':
+        trials=result.get('trial_results') if type(result) is dict else None
+        if type(trials) is not list or not 1<=len(trials)<=100 or result.get('completed')!=len(trials):
+            raise ValueError('All completed random trials are required.')
+        for trial in trials:_require_trial(trial)
+        def records():
+            for number,trial in enumerate(trials,1):
+                yield dict(type='trial',number=number)
+                yield from _eager_records(trial)
+        return _batch(records,{key:value for key,value in result.items() if key!='trial_results'},chosen)
+    if chosen['trial']!=1:raise ValueError('Expected one completed trial.')
+    _require_trial(result)
+    read=lambda:_eager_records(result)
+    return _reduce(read(),chosen,_metadata(read(),chosen))
 
 
 def evidence(reader, selection):
-    """Explore a borrowed immutable evidence reader using sequential scans."""
+    """Explore a pinned reader. Batch work takes two sequential whole scans."""
     chosen=_selection(selection)
+    if chosen['trial']=='all':
+        if reader.metadata.get('mode')!='random':raise ValueError('Expected a random-trial result.')
+        return _batch(reader.verified_records,reader.manifest['summary'],chosen)
     if reader.metadata.get('mode')=='latest':raise ValueError('Latest screens have no holding periods.')
-    return _explore(lambda:evidence_views.records(reader,chosen['trial']),chosen)
+    read=lambda:evidence_views.records(reader,chosen['trial'])
+    return _reduce(read(),chosen,_metadata(read(),chosen))
 
 
-def _explore(records, selection):
+def _metadata(records, selection):
+    """Keep scalar boundaries and original totals, never captured programs."""
     first,last=selection['period_from'],selection['period_to']
-    lower,upper=selection['rank_from'],selection['rank_to']
     total=0;entry=exit_day=None;summary=None
-    for record in records():
+    for record in records:
         backtest_control.checkpoint()
         if record['type']=='period':
             total+=1
             if total==first:entry=record['value']['entry']
             if total==last:exit_day=record['value']['exit']
         elif record['type']=='end_trial':summary=record['summary']
-    if last>total or summary is None:raise ValueError('Choose periods within the original result.')
+    if last>total or summary is None:raise ValueError('Choose periods within every original trial.')
     options=summary.get('options',{})
     if type(options) is not dict or type(options.get('strategy',{})) is not dict:
         raise ValueError('Original selection settings are unavailable.')
     requested=options.get('strategy',{}).get('selection',options)
     if type(requested) is not dict:raise ValueError('Original selection settings are unavailable.')
-    original_from,original_to=requested.get('rank_from',1),requested.get('rank_to',50)
-    if not original_from<=lower<=upper<=original_to:
-        raise ValueError('Choose ranks within the original result.')
-    narrowed=(lower,upper)!=(original_from,original_to)
+    lower,upper=requested.get('rank_from',1),requested.get('rank_to',50)
+    if not lower<=selection['rank_from']<=selection['rank_to']<=upper:
+        raise ValueError('Choose ranks within every original trial.')
     start=summary.get('start',entry) if first==1 else entry
     start_day,end_day=_day(start),_day(exit_day)
     if start_day is not None and end_day is not None and start_day>=end_day:
         raise ValueError('Stored periods must have positive duration.')
+    return dict(total=total,entry=entry,exit=exit_day,start=start,lower=lower,upper=upper,
+        cash_days=summary.get('cash_days',0) if first==1 else 0,
+        original={key:summary.get(key) for key in ('growth','spy_growth','cagr','spy_cagr')})
+
+
+def _reduce(records, selection, metadata, window=None):
+    first,last=selection['period_from'],selection['period_to']
+    lower,upper=selection['rank_from'],selection['rank_to']
+    narrowed=(lower,upper)!=(metadata['lower'],metadata['upper'])
+    start,end=window or (metadata['start'],metadata['exit'])
+    start_day,end_day=_day(start),_day(end)
     empty=short=0
     def returns():
         nonlocal empty,short
-        source=iter(records())
+        source=iter(records)
         for record in source:
             backtest_control.checkpoint()
             if record['type']!='period' or not first<=record['number']<=last:continue
@@ -123,14 +154,61 @@ def _explore(records, selection):
             empty+=count==0;short+=count<upper-lower+1
             yield portfolio,_number(period.get('spy'))
     totals=portfolio_results.reduce_returns(returns(),start=start_day,end=end_day)
-    if first==1 and last==total and not narrowed:
-        # Recorded summaries can have older stored rounding. Never recompute them.
-        totals={key:_number(summary.get(key),nullable=key in ('growth','cagr'))
-                for key in ('growth','spy_growth','cagr','spy_cagr')}
+    if window is None and first==1 and last==metadata['total'] and not narrowed:
+        totals={key:_number(value,nullable=key in ('growth','cagr')) for key,value in metadata['original'].items()}
     if any(value is not None and not math.isfinite(value) for value in totals.values()):
         raise ValueError('Selected return exceeds the supported numerical range.')
-    return dict(start=start,end=exit_day,period_from=first,period_to=last,
+    result=dict(start=start,end=end,period_from=first,period_to=last,
         rank_from=lower,rank_to=upper,periods=last-first+1,empty=empty,short=short,
-        cash_days=summary.get('cash_days',0) if first==1 else 0,
+        cash_days=metadata['cash_days'] if window is None else (_day(metadata['entry'])-start_day).days,
         total_return=totals['growth']-1 if totals['growth'] is not None else None,
         spy_total_return=totals['spy_growth']-1,**totals)
+    if window is not None:result.update(first_trade=metadata['entry'],last_exit=metadata['exit'],
+        final_cash_days=(end_day-_day(metadata['exit'])).days)
+    return result
+
+
+def _trials(records):
+    """Each child borrows the shared iterator and must be consumed in order."""
+    source=iter(records)
+    for record in source:
+        backtest_control.checkpoint()
+        if record['type']!='trial':continue
+        def trial():
+            for child in source:
+                yield child
+                if child['type']=='end_trial':return
+        yield record['number'],trial()
+
+
+def _batch(read, original, selection):
+    started=time.perf_counter()
+    metadata=[(number,_metadata(records,selection)) for number,records in _trials(read())]
+    if not metadata or len(metadata)!=original.get('completed'):
+        raise ValueError('Complete saved random trials are required.')
+    start=min(item['start'] for _,item in metadata)
+    end=max(item['exit'] for _,item in metadata)
+    if _day(start) is None or _day(end) is None:raise ValueError('Random trials require exact saved dates.')
+    view=dict(selection,start=start,end=end,periods=selection['period_to']-selection['period_from']+1)
+    unchanged=all(selection['period_from']==1 and selection['period_to']==item['total']
+        and (selection['rank_from'],selection['rank_to'])==(item['lower'],item['upper']) for _,item in metadata)
+    if unchanged:return dict(original,exploration=view)
+    if type(original.get('trials')) is not list or len(original['trials'])!=len(metadata):
+        raise ValueError('Original random-trial summaries are required.')
+    rows=[]
+    for (expected,meta),(number,records),original_row in zip(metadata,_trials(read()),original['trials']):
+        if expected!=number or number!=original_row.get('trial'):raise ValueError('Original trial order differs.')
+        result=_reduce(records,selection,meta,(start,end))
+        dates=original_row.get('dates')
+        if type(dates) is not list or len(dates)!=meta['total']:
+            raise ValueError('Original random trade dates are required.')
+        dates=dates[selection['period_from']-1:selection['period_to']]
+        row=robustness.summarize(dict(result,options=selection,seconds=0.),number,dates,
+            period_counts=(result['periods'],result['empty'],result['short']))
+        row.update(last_exit=result['last_exit'],final_cash_days=result['final_cash_days'])
+        rows.append(row)
+    result=robustness.summarize_trials(original['configuration'],rows,started)
+    result['exploration']=view
+    result['note']='Selected saved periods and original ranks across all trials. Actual trade dates vary. Strategy and paired SPY hold cash before the first selected trade and after the last selected exit to share one observation window. Incomplete trials remain listed and are excluded from paired statistics. Mean CAGR averages trial CAGRs; percentiles are not confidence intervals.'
+    if 'producer' in original:result['producer']=original['producer']
+    return result

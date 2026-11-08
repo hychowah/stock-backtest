@@ -13,6 +13,13 @@ const ResultExplorer=(()=>{
   }
   function clear(){cancel(active);active=null;panel().hidden=true;panel().open=false;}
   function render(value){
+    if(active.trial==='all'){
+      const view=value.exploration??{...value.configuration.options,start:value.trials[0]?.start,end:value.trials[0]?.end,periods:active.info.periods};
+      node('window').textContent=view.start+' → '+view.end+' · ranks '+(view.rank_from??active.firstRank)+'–'+(view.rank_to??active.lastRank)+' · '+view.periods+' holding periods per trial · '+value.completed+' trials';
+      node('coverage').textContent=value.valid+' complete trials; '+value.incomplete+' incomplete trials. Each trial uses its own saved trades within one shared observation window. Strategy and SPY hold cash before the first selected trade and after the last selected exit.';
+      node('status').textContent='Summary across all saved trials. No backtest was run.';
+      RobustnessView.preview(value);return;
+    }
     node('window').textContent=value.start+' → '+value.end+' · ranks '+value.rank_from+'–'+value.rank_to+' · '+value.periods+' holding periods';
     node('strategy-return').textContent=format(value.total_return);
     node('spy-return').textContent=format(value.spy_total_return);
@@ -27,6 +34,7 @@ const ResultExplorer=(()=>{
     node('period-from').value='1';node('period-to').value=String(state.info.periods);
     node('rank-from').value=String(state.firstRank);node('rank-to').value=String(state.lastRank);
     const r=state.info.summary;
+    if(state.trial==='all'){render(r);return;}
     render({...r,rank_from:state.firstRank,rank_to:state.lastRank,periods:state.info.periods,
       empty:state.info.empty,short:state.info.short,
       total_return:r.growth==null?null:r.growth-1,spy_total_return:r.spy_growth==null?null:r.spy_growth-1});
@@ -36,7 +44,17 @@ const ResultExplorer=(()=>{
     state.loading=true;node('status').textContent='Reading saved holding periods…';
     try{
       let cursor=0,from='',to='';
-      do{
+      if(state.trial==='all'){
+        const result=state.info.summary,rows=result.trials,blocks=result.configuration.blocks;
+        if(!rows.length||!state.info.periods||rows.some(row=>row.periods!==state.info.periods||row.dates?.length!==state.info.periods))throw Error('Complete saved trial dates are required.');
+        const label=dates=>{const sorted=dates.slice().sort();return sorted[0]===sorted.at(-1)?sorted[0]:sorted[0]+' … '+sorted.at(-1);};
+        for(let i=0;i<state.info.periods;i++){
+          const entry=blocks?.[i]?.start??label(rows.map(row=>row.dates[i]));
+          const exit=blocks?.[i+1]?.start??label(rows.map(row=>row.dates[i+1]??row.end));
+          from+='<option value="'+(i+1)+'">'+escape(entry)+'</option>';
+          to+='<option value="'+(i+1)+'">'+escape(exit)+'</option>';
+        }
+      }else do{
         const page=await state.reader.periods(state.trial,cursor);if(!valid(state))return;
         // Keep only date labels for the controls, never period or holding rows.
         for(const {number,value} of page.rows){
@@ -52,14 +70,20 @@ const ResultExplorer=(()=>{
   }
   function show(artifact,trial,info){
     clear();
-    const selection=info.summary.options?.strategy?.selection??info.summary.options??artifact.settings;
+    const options=trial==='all'?info.summary.configuration.options:info.summary.options;
+    const selection=options?.strategy?.selection??options??artifact.settings;
     const state={artifact,trial,info,reader:ResultArtifacts.reader(artifact),generation:0,
       firstRank:selection.rank_from??1,lastRank:selection.rank_to??50,loaded:false,loading:false};
     active=state;panel().hidden=false;
+    node('title').textContent=trial==='all'?'Explore all '+info.summary.completed+' trials':'Explore this result';
+    node('from-label').textContent=trial==='all'?'From entry block':'From entry';
+    node('to-label').textContent=trial==='all'?'Through exit block':'Through exit / mark';
+    node('summary').hidden=trial==='all';
     for(const id of ['rank-from','rank-to']){node(id).min=String(state.firstRank);node(id).max=String(state.lastRank);}
     node('apply').disabled=true;node('reset').disabled=true;node('period-from').innerHTML='';node('period-to').innerHTML='';
     node('window').textContent='';node('coverage').textContent='';node('status').textContent='Choose a saved time window and stock ranks.';
     for(const id of ['strategy-return','spy-return','strategy-cagr','spy-cagr'])node(id).textContent='—';
+    if(trial==='all'){panel().open=true;void load();}
   }
   async function apply(){
     const state=active;if(!state?.loaded||!valid(state))return;
@@ -67,7 +91,7 @@ const ResultExplorer=(()=>{
     const generation=state.generation;
     const selection={trial:state.trial,period_from:+node('period-from').value,period_to:+node('period-to').value,
       rank_from:+node('rank-from').value,rank_to:+node('rank-to').value};
-    if(!Object.values(selection).every(Number.isInteger)||selection.period_from<1||selection.period_to>state.info.periods||selection.period_from>selection.period_to||selection.rank_from<state.firstRank||selection.rank_to>state.lastRank||selection.rank_from>selection.rank_to){
+    if(![selection.period_from,selection.period_to,selection.rank_from,selection.rank_to].every(Number.isInteger)||selection.period_from<1||selection.period_to>state.info.periods||selection.period_from>selection.period_to||selection.rank_from<state.firstRank||selection.rank_to>state.lastRank||selection.rank_from>selection.rank_to){
       node('status').textContent='Choose increasing periods and ranks within the original result.';return;
     }
     state.controller=new AbortController();panel().ariaBusy='true';node('status').textContent='Summarizing saved returns…';

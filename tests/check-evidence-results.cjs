@@ -13,7 +13,7 @@ let screenWait=null,explanationWait=null,explanationFailure=false,release=null,c
 const context=vm.createContext({console,document:{getElementById:node,createElement:()=>({click(){downloads.push({href:this.href,download:this.download});}})},
  Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,money:v=>String(v),metricLabel:()=>{throw Error('Scalar presentation must use captured meaning');},
  CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},
- RobustnessView:{init(){},render(){robust++;}},VariableEvidence:{records:()=>'<p>Detached selected trace</p>'},
+ RobustnessView:{init(){},render(){robust++;},preview(){}},VariableEvidence:{records:()=>'<p>Detached selected trace</p>'},
  fetch:async(url)=>{
   urls.push(url);assert(url.startsWith('/api/backtest-runs/'));
   const parts=url.split('/'),operation=parts[6],cursor=+parts.at(-1);let value;
@@ -90,7 +90,15 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
   node('schedule-period').value=node('schedule-period').value==='1'?'2':'1';node('schedule-period').handlers.change();await tick();release();await tick();assert.equal(node('scalar-explanation').open,false);assert.equal(node('scalar-explanation-content').innerHTML,'');assert(!node('screen-error').textContent.includes('Replaced explanation failure'));
  }
  // Random results retain the existing distribution and bounded trial inspection.
- context.artifact=artifact('random',4,'5'.repeat(32));run('ScheduleView.show(ResultArtifacts.publish(artifact))');await tick();assert.equal(robust,1);assert(node('schedule-results').hidden);
+ context.artifact=artifact('random',4,'5'.repeat(32));
+ context.artifact.result.configuration.options={strategy};
+ context.artifact.result.completed=2;context.artifact.result.valid=2;context.artifact.result.incomplete=0;
+ context.artifact.result.trials=[1,2].map(trial=>({trial,start:'2015-01-02',end:'2017-01-02',periods:2,dates:['2015-01-02','2016-01-04']}));
+ run('ScheduleView.show(ResultArtifacts.publish(artifact))');await tick();assert.equal(robust,1);assert(node('schedule-results').hidden);
+ assert(node('result-explorer').open&&!node('result-explorer').hidden);
+ assert.equal(node('explore-title').textContent,'Explore all 2 trials');assert.equal(node('explore-rank-to').value,'70');
+ run('EvidenceResults.show(ResultArtifacts.forView("custom"),2)');await tick();
+ assert.equal(node('explore-title').textContent,'Explore all 2 trials','Inspecting an original trial keeps the batch controls');
  // The same extracted presenter still accepts codec1/artifact3.
  context.metricLabel=()=> 'Retained EV/EBITDA';await show(artifact('custom',3,'6'.repeat(32)));assert.equal(node('schedule-explanation-head').hidden,true);assert(node('schedule-stock-body').innerHTML.includes('10.00'));assert(!node('schedule-stock-body').innerHTML.includes('data-stored-explain'));
  // A saved version-1 January result opens in the same dated view, from its

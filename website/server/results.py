@@ -10,7 +10,7 @@ from backtest.application import durable_evidence, evidence_views, result_export
 
 
 def exploration_request(self):
-    """Reduce one browser-held original trial; retain no server-side result."""
+    """Reduce a browser-held trial or random batch; retain no server-side result."""
     origin=self.headers.get('Origin')
     if origin and origin!='http://'+self.headers.get('Host',''):
         self.reply(403,dict(error='Open the website to explore results.'));return
@@ -48,7 +48,8 @@ def evidence_request(self,identifier,path):
         if self.command!='GET':raise ValueError('Unsupported evidence operation.')
         with access.read(identifier) as (metadata,reader):
             if len(path)==6 and path[0]=='explore':
-                selection=dict(zip(('trial','period_from','period_to','rank_from','rank_to'),map(int,path[1:])))
+                selection=dict(zip(('period_from','period_to','rank_from','rank_to'),map(int,path[2:])),
+                    trial='all' if path[1]=='all' else int(path[1]))
                 disconnected=self.disconnect_check()
                 with backtest_control.cancel_when(lambda:access.closing or disconnected()):
                     value=result_exploration.evidence(reader,selection)

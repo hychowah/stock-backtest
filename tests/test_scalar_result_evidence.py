@@ -25,8 +25,9 @@ class EvidenceTests(unittest.TestCase):
         stream=io.BytesIO()
         options=dict(strategy=self.capture.to_dict(),start='2015-01-02',end='2015-01-05',months=12)
         if mode=='latest':options=dict(strategy=self.capture.to_dict())
+        if mode=='random':options.update(trials=3,seed=42)
         metadata=dict(mode=mode,options=options,configuration=None)
-        writer=scalar_result_evidence.Writer(stream,trials=0 if mode=='latest' else 1,metadata=metadata,max_bytes=16*1024**2,**limits)
+        writer=scalar_result_evidence.Writer(stream,trials=0 if mode=='latest' else 3 if mode=='random' else 1,metadata=metadata,max_bytes=16*1024**2,**limits)
         with self.fixture.view() as view:
             summary=scalar_runs.execute(self.fixture.db,mode,options,writer,view,None)
         manifest=writer.finish(summary)
@@ -46,6 +47,17 @@ class EvidenceTests(unittest.TestCase):
             rank_from=chosen[0]['rank'],rank_to=chosen[-1]['rank']))
         self.assertEqual(selected['growth'],1+sum(h['return_value'] for h in chosen)/len(chosen))
         self.assertEqual(selected['empty'],0)
+    def test_random_batch_exploration_from_scalar_evidence_without_inputs(self):
+        stream,_=self.produce('random')
+        reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)
+        expected=[]
+        for number in range(1,4):
+            rows=list(evidence_views.holdings(reader,number,1))
+            expected.append(1+sum(row['return_value'] for row in rows if 2<=row['rank']<=3)/2)
+        with patch('sqlite3.connect',side_effect=AssertionError('No financial inputs')):
+            selected=result_exploration.evidence(reader,dict(trial='all',period_from=1,period_to=1,rank_from=2,rank_to=3))
+        self.assertEqual(selected['valid'],3)
+        self.assertEqual([row['growth'] for row in selected['trials']],expected)
     def test_latest_screen_has_zero_trials_and_no_future_fields(self):
         stream,manifest=self.produce('latest')
         reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)

@@ -41,12 +41,13 @@ last 24 hours, up to four recent runs, until the server exits. Use **Save origin
 backtest** to keep a completed result in the library.
 
 Open **Explore this result** to inspect a shorter saved time window or a smaller
-rank range. For example, inspect 2008–2016 and ranks 20–30 within a 1997–2025,
-top-30 result. Dates are saved holding-period boundaries. Apply shows strategy
-and SPY total return and CAGR without running another backtest. Reset restores
-the original summary. Charts, holdings, downloads, comparisons and saving keep
-the original completed result. Random tests offer exploration for the inspected
-trial.
+rank range without another backtest. For random tests, **Explore all trials**
+opens above the combined summary. For example, select 2010–2015 and ranks 20–30
+within a saved 24-trial, 2000–2025, top-50 result. Apply updates each trial,
+combined statistics and the distribution chart. Dates select saved rebalance
+blocks; the summary shows the actual shared window. Reset restores the original
+summary. Holding details, downloads, comparisons and saving use the original
+completed result.
 
 Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
 tests. From latest mode, the first click opens the dated backtest settings

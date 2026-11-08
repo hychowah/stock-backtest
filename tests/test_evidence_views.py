@@ -297,6 +297,27 @@ process.stdout.write(JSON.stringify(out));});"""
         self.assertEqual(status,200);self.assertEqual(json.loads(body),bounded)
         self.assertEqual(request('GET','/api/backtest-exploration')[0],405)
         self.assertEqual(request('POST','/api/backtest-exploration',dict(result=originals[0],selection=dict(chosen,rank_to=999)))[0],400)
+        # Whole-batch summaries share the same admitted request and reader routes.
+        from test_result_exploration import batch_fixture
+        batch=batch_fixture(3);stream=io.BytesIO()
+        summary={key:value for key,value in batch.items() if key!='trial_results'}
+        writer=result_evidence.Writer(stream,trials=3,metadata=dict(mode='random',options=dict(rank_from=1,rank_to=50),configuration=summary['configuration']),max_bytes=16*1024**2)
+        for number,trial in enumerate(batch['trial_results'],1):
+            writer.start_trial(number)
+            for period in trial['periods']:writer.period(period)
+            writer.end_trial({key:value for key,value in trial.items() if key!='periods'})
+        writer.finish(summary)
+        meta=dict(metadata,kind='random',settings=dict(mode='random',rank_from=1,rank_to=50),result=summary)
+        row=self.store.save_evidence('Batch',meta,result_evidence.Reader(stream,max_bytes=16*1024**2))
+        batch_base='/api/backtest-runs/'+'b'*32+'/reader'
+        self.assertEqual(request('POST',batch_base,dict(source=dict(kind='saved',id=row['id'])))[0],200)
+        status,_,body=request('GET',batch_base+'/explore/all/11/15/20/30')
+        self.assertEqual(status,200);bounded_batch=json.loads(body);bounded_batch.pop('identity');bounded_batch.pop('seconds')
+        chosen_batch=dict(trial='all',period_from=11,period_to=15,rank_from=20,rank_to=30)
+        status,_,body=request('POST','/api/backtest-exploration',dict(result=batch,selection=chosen_batch))
+        self.assertEqual(status,200);eager_batch=json.loads(body);eager_batch.pop('seconds')
+        self.assertEqual(bounded_batch,eager_batch)
+        self.assertEqual(request('DELETE',batch_base)[0],200)
         status,headers,body=request('GET',base+'/export/holdings/1')
         self.assertEqual(status,200);self.assertEqual(int(headers['Content-Length']),len(body))
         with self.store.open_evidence(record['id']) as opened:

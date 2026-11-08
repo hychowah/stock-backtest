@@ -50,10 +50,14 @@ An empty period makes strategy return and CAGR unavailable for that window.
 Older January results can have year-only boundaries; those selections have
 no CAGR when exact dates were not saved.
 
-**Reset to original** restores the recorded summary. Exploration changes only
-this temporary summary. Charts, holding tables, downloads, comparisons and
-**Save original backtest** continue to use the original completed result.
-For random-date results, first inspect a trial to explore its periods.
+Random-date results show **Explore all trials** above the combined summary.
+One selection updates every trial, the combined statistics and distribution
+chart. Choose saved entry and exit blocks. Each trial keeps its own trade dates.
+The summary shows the shared window, with cash before each first selected trade
+and after each last selected exit for both strategy and SPY.
+
+**Reset to original** restores the recorded summary. Holding details, downloads,
+comparisons and **Save original backtest** use the original completed result.
 
 ## Manage backtest data
 
