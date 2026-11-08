@@ -152,18 +152,13 @@ random, quarterly 2013–2018, development-check run and latest digests equal;
 `scripts/check.py` 0 differences on both. Random test with books computed:
 311.9 s on main, 163.5 s on S1.
 
-### S2 — source implemented; qualification pending
+### S2 — complete (115d51c)
 
-The reviewed design adds `sheets` after website and before verify. Five fast
-behaviors cover update coverage, missing-only continuation, cancellation with
-committed work, progress counts and startup exclusion. Readiness stays unchanged.
-
-Exit: measure a full build and nightly maintenance. Private fixtures verify
-on-demand misses, interrupted precomputation, ordinary readiness, cancellation,
-restart and native Windows ownership/spawn. After complete precomputation, bench
-new seeds and a repeat: zero sheets computed/written and financial parity. Profile
-remaining costs until gains are marginal. Update contracts and the architecture
-guide. Source completion does not establish deployed readiness.
+A `sheets` stage after website and before verify precomputes every cached
+sheet. All tiers pass (93). Bench: 6,526 missing sheets in 615 s on 8 workers,
+7,752 present, store 5.9 GB. Two new seeds: 0 books built, 92.8 s and 78.2 s
+(311.9 s on main). Digests equal S1; `scripts/check.py` 0 differences.
+Native Windows spawn checks remain before merge.
 
 ## Decisions
 
@@ -191,7 +186,5 @@ required.
 
 ## Next
 
-Claude reviews and runs the fast/heavy tiers. On the bench, measure full
-precomputation time/count/size, then two new-seed user tests: zero sheets built
-and parity digests unchanged from S1. S2 is not bench-qualified yet.
-No merge, push, deployment or installed restart is authorized.
+Native Windows checks for the worker spawn, then merge S1 and S2 together with
+the user's authorization. No merge, push, deployment or restart is authorized.
