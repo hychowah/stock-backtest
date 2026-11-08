@@ -1,8 +1,8 @@
 # FMP-backed valuation inputs
 
-Checked: 2026-11-02.
+Checked: 2026-11-08.
 
-Current Phase 11 source exposes owner descriptions for all 52 direct inputs,
+The current `/3` editor exposes owner descriptions for all 57 direct inputs,
 existing-policy adapters and 33 exact named measures through the shared editor.
 Categories, search, units and supported history choices use the same semantic
 owners as execution. The [close-out summary](master-plan.md) owns the completion
@@ -23,7 +23,7 @@ messages retain earlier implementation states and exact verification.
 
 ## Source check and its limits
 
-The tables map 52 direct inputs to FMP's documented response fields. Public FMP
+The tables map 57 direct inputs to FMP's documented response fields. Public FMP
 documentation was checked against the project's current download routes. No
 authenticated request, native-cache inspection or market-data download was made.
 This establishes the documented source path. It does not establish nonmissing
@@ -56,6 +56,10 @@ FMP endpoint or as-reported filing parser.
 
 ## Direct statement inputs
 
+Catalog `/2` retains its original 52 direct inputs. Catalog `/3` adds reported
+EBIT, basic EPS, diluted EPS, total debt and free cash flow. The tables below
+include these five fields. Their source mappings match `parameters.py`.
+
 Unless stated otherwise, statement amounts use USD from eligible annual reports.
 Shares use a share count. Every field must be finite and unambiguous for its
 endpoint and fiscal date. A documented zero in one provider example does not
@@ -73,11 +77,14 @@ All rows use `income-statement`.
 | Selling, general and administrative expense | `sellingGeneralAndAdministrativeExpenses` |
 | Research and development expense | `researchAndDevelopmentExpenses` |
 | Operating income | `operatingIncome` |
+| Reported EBIT (`/3`) | `ebit` |
 | Interest income | `interestIncome` |
 | Interest expense | `interestExpense` |
 | Pretax income | `incomeBeforeTax` |
 | Income tax expense | `incomeTaxExpense` |
 | Net income under the existing FMP definition | `netIncome` |
+| Basic EPS (`/3`); USD/share | `eps` |
+| Diluted EPS (`/3`); USD/share | `epsDiluted` |
 | Weighted-average basic shares; shares | `weightedAverageShsOut` |
 | Weighted-average diluted shares; shares | `weightedAverageShsOutDil` |
 
@@ -112,6 +119,7 @@ All rows use `balance-sheet-statement`.
 | Total liabilities | `totalLiabilities` |
 | FMP short-term debt | `shortTermDebt` |
 | FMP long-term debt | `longTermDebt` |
+| Reported total debt (`/3`) | `totalDebt` |
 | FMP lease obligations | `capitalLeaseObligations` |
 | Book shareholders' equity | `totalStockholdersEquity` |
 | Book preferred stock | `preferredStock` |
@@ -134,6 +142,7 @@ All rows use `cash-flow-statement`.
 | Combined depreciation and amortization | `depreciationAndAmortization` |
 | Stock-based compensation | `stockBasedCompensation` |
 | Operating cash flow | `operatingCashFlow` |
+| Free cash flow (`/3`) | `freeCashFlow` |
 | Capital-expenditure cash flow; retain the FMP sign | `capitalExpenditure` |
 | Net acquisition cash flow; retain the FMP sign | `acquisitionsNet` |
 | Cash income taxes paid | `incomeTaxesPaid` |

@@ -276,7 +276,7 @@ class RefreshTests(unittest.TestCase):
             if endpoint=='income-statement':return [dict(rows[0],revenue=200)]
             return rows
         with patch.object(data,'request_json',side_effect=revised):self.download()
-        self.assertNotIn('revenue',financial_inputs.history(self.raw,'A').get('2025-12-31',{}))
+        self.assertNotIn('revenue',financial_inputs.resolve_history(self.raw,'A')['values'].get('2025-12-31',{}))
         self.assertEqual(data.financial_records()[0]['A']['rows'][0]['evToEBITDA'],8)
 
     def test_annual_refresh_retains_old_duplicate_rows_without_accumulating_copies(self):

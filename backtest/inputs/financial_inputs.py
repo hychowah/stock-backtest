@@ -76,7 +76,7 @@ def _asset(raw, symbol, endpoint):
     completion digest used by read()/completed(); salvaged bytes prove no download.
     """
     path=asset_path(raw,symbol,endpoint)
-    evidence=dict(endpoint=endpoint, disposition='missing', sha256=None, rows=[])
+    evidence=dict(endpoint=endpoint, disposition='missing', sha256=None)
     try:
         content=path.read_bytes()
     except FileNotFoundError:
@@ -90,18 +90,16 @@ def _asset(raw, symbol, endpoint):
     except (ValueError,TypeError,KeyError,AttributeError):return [],None,evidence
     try:
         normalize(rows,symbol,endpoint)
-        usable=list(enumerate(rows));digest=evidence['sha256'];evidence['disposition']='valid'
+        usable=rows;digest=evidence['sha256'];evidence['disposition']='valid'
     except (ValueError,TypeError):
         # Preserve usable reports during repair; damaged assets prove no completion.
         usable=[];digest=None;evidence['disposition']='salvaged'
-        for index,row in enumerate(rows):
+        for row in rows:
             try:
                 normalize([row],symbol,endpoint)
-                usable.append((index,row))
+                usable.append(row)
             except (ValueError,TypeError):continue
-    evidence['rows']=[dict(index=index,sha256=hashlib.sha256(json.dumps(row,sort_keys=True,
-        separators=(',',':'),allow_nan=False).encode()).hexdigest()) for index,row in usable]
-    return [row for _,row in usable],digest,evidence
+    return usable,digest,evidence
 
 
 def read(raw,symbol,endpoint):
@@ -149,19 +147,20 @@ def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
             if isinstance(candidate,dict) and digest and candidate.get('sha256')==digest:
                 receipt['previous']={k:v for k,v in candidate.items() if k!='previous'}
                 break
-    ledger[key]=receipt
-    cache_assets.write_json(ledger_path,ledger)
+    if receipt!=previous:
+        ledger[key]=receipt
+        cache_assets.write_json(ledger_path,ledger)
     if receipt['sha256']!=digest:cache_assets.publish_bytes(path,content)
     return rows
 
 
 def resolve_history(raw,symbol):
-    """Resolve annual values and independent field evidence in one authority.
+    """Resolve annual values, field states and file-level sources in one authority.
 
     Multiple records can describe the same fiscal date. Equal nonmissing input
     values agree. Conflicting values omit that input instead of picking a revision
     by response order. Nulls do not replace known values. All admitted fiscal dates
-    survive in evidence, including dates with no usable field. Raw assets stay intact.
+    survive in annual states, including dates with no usable field. Raw assets stay intact.
     """
     reports={};sources={};annual={}
     semantic = observation_fields()
@@ -169,37 +168,31 @@ def resolve_history(raw,symbol):
         fields = tuple(dict.fromkeys((*legacy_fields, *semantic.get(endpoint, ()))))
         if not fields:continue
         rows,_,source=_asset(raw,symbol,endpoint)
-        sources[endpoint]={key:value for key,value in source.items() if key!='rows'}
+        sources[endpoint]=source
         candidates={}
-        for row,identity in zip(rows,source['rows']):
+        for row in rows:
             day=str(rules.parse_day(row['date']))
-            candidates.setdefault(day,[]).append((row,identity))
+            candidates.setdefault(day,[]).append(row)
         annual[endpoint]={}
         for day,members in candidates.items():
             values={};states={}
             for field in fields:
-                inputs=[dict(identity,currency=row.get('reportedCurrency'),
-                             value=_observation_number(row.get(field))) for row,identity in members]
-                numbers={item['value'] for item in inputs if item['currency']=='USD' and item['value'] is not None}
+                inputs=[(row.get('reportedCurrency'),_observation_number(row.get(field))) for row in members]
+                numbers={value for currency,value in inputs if currency=='USD' and value is not None}
                 if len(numbers)==1:
                     value=next(iter(numbers));values[field]=value;reason=None
                 else:
                     value=None
                     reason=('CONFLICTING_INPUT' if len(numbers)>1 else
-                            'NON_USD_INPUT' if any(isinstance(item['currency'],str) and item['currency']
-                                and item['currency']!='USD' and item['value'] is not None for item in inputs)
+                            'NON_USD_INPUT' if any(isinstance(currency,str) and currency
+                                and currency!='USD' and value is not None for currency,value in inputs)
                             else 'INVALID_INPUT' if any(row.get(field) is not None
                                 and row.get(field) != '' and _observation_number(row.get(field)) is None
-                                for row, _ in members) else 'MISSING_INPUT')
-                states[field]=dict(value=value,valid=reason is None,reason=reason,rows=inputs)
+                                for row in members) else 'MISSING_INPUT')
+                states[field]=dict(value=value,valid=reason is None,reason=reason)
             annual[endpoint][day]=states
             # Endpoint order and the values-only field list are immutable legacy
             # policy. New observations cannot leak into financial calculations.
             legacy = {field: values[field] for field in legacy_fields if field in values}
             if legacy:reports.setdefault(day,{}).update(legacy)
     return dict(values=reports,sources=sources,annual=annual)
-
-
-def history(raw,symbol):
-    """Return the unchanged values-only projection of annual USD resolution."""
-    return resolve_history(raw,symbol)['values']

@@ -308,7 +308,7 @@ class SeriesAsset:
         # Evidence can only apply when the exact corresponding asset exists.
         # Publish its expected hash first: a crash before asset replacement
         # leaves a mismatch, while a crash after it retains all known holes.
-        write_json(ledger_path,{**ledger,self.key:entry})
+        if entry!=ledger.get(self.key):write_json(ledger_path,{**ledger,self.key:entry})
         if digest!=self.digest:publish_bytes(self.path,content)
         self.payload=value;self.rows=series(merged,self.field);self.valid=True;self.digest=digest
         ledger[self.key]=entry

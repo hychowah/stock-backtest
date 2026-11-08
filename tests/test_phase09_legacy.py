@@ -34,7 +34,7 @@ def replay():
         for symbol, endpoints in inputs.items():
             for endpoint, rows in endpoints.items():
                 financial.publish(research.RAW, symbol, endpoint, rows, ledger, research.RAW/'coverage.json')
-        projections = {symbol: financial.history(research.RAW, symbol) for symbol in inputs}
+        projections = {symbol: financial.resolve_history(research.RAW, symbol)['values'] for symbol in inputs}
         completion = {symbol: {endpoint: financial.completed(research.RAW, symbol, endpoint, ledger)
                               for endpoint in financial.ENDPOINTS} for symbol in inputs}
         daily.prepare(fixture.daily, fixture.path)

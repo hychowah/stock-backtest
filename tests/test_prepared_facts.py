@@ -41,11 +41,9 @@ class ResolutionTests(unittest.TestCase):
         before = path.read_bytes()
         resolved = financial.resolve_history(self.raw, 'A')
         self.assertEqual(resolved['values'], {'2023-12-31': dict(revenue=100, operatingIncome=-10)})
-        self.assertEqual(financial.history(self.raw, 'A'), resolved['values'])
         self.assertEqual(resolved['annual']['income-statement']['2024-12-31']['revenue']['reason'], 'MISSING_INPUT')
         field = resolved['annual']['income-statement']['2023-12-31']['operatingIncome']
         self.assertTrue(field['valid']); self.assertEqual(field['value'], -10)
-        self.assertEqual(len(field['rows']), 4)
         self.assertEqual(resolved['sources']['income-statement']['sha256'], hashlib.sha256(before).hexdigest())
         self.assertEqual(path.read_bytes(), before)
 
@@ -72,7 +70,6 @@ class ResolutionTests(unittest.TestCase):
         self.assertFalse(financial.completed(self.raw, 'A', 'income-statement', self.ledger))
         self.assertEqual(resolved['sources']['income-statement'], dict(endpoint='income-statement',
             disposition='salvaged', sha256=hashlib.sha256(before).hexdigest()))
-        self.assertEqual(resolved['annual']['income-statement']['2023-12-31']['revenue']['rows'][0]['index'], 1)
         self.assertEqual(path.read_bytes(), before)
 
     def test_unreadable_and_absent_assets_remain_distinct(self):

@@ -233,6 +233,26 @@ class BacktestTests(unittest.TestCase):
         self.assertAlmostEqual(second['growth'],1.75*.75)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],2)
 
+    def test_cached_period_reads_share_one_transaction_and_release_before_next_period(self):
+        options=dict(start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
+        expected=s.backtest(self.db,**options)
+        statements=[]
+        self.db.set_trace_callback(lambda sql:statements.append((sql,self.db.in_transaction)))
+        try:
+            result=s.backtest(self.db,**options)
+        finally:
+            self.db.set_trace_callback(None)
+        self.assertEqual(result['periods'],expected['periods'])
+        self.assertFalse(self.db.in_transaction)
+        reads=[active for sql,active in statements if 'book_rows' in sql or 'research.stock_days' in sql
+               or sql.startswith('SELECT spy FROM research.market_days')]
+        self.assertTrue(reads)
+        self.assertTrue(all(reads),'Selection, holding exits and SPY must share the period transaction')
+        self.assertEqual([active for sql,active in statements if sql.startswith('SELECT b.book FROM books')],
+                         [False,False],'Release the read transaction before preparing the next period')
+        self.assertEqual([sql for sql,_ in statements if sql in ('BEGIN','ROLLBACK')],
+                         ['BEGIN','ROLLBACK','BEGIN','ROLLBACK'])
+
     def test_one_entry_sheet_serves_different_exits_and_closes_selected_rows_only(self):
         options=dict(start='2015-01-02',months=12,rank_to=1)
         close=financial_books.close

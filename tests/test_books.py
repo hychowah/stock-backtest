@@ -120,7 +120,7 @@ class BookTests(unittest.TestCase):
         self.assertEqual(tuple(self.research.execute("SELECT * FROM companies WHERE symbol='Q0006'").fetchone())[4], 0)
 
     def test_legacy_annual_values_equal_the_values_only_projection_bit_for_bit(self):
-        saved = {symbol: research.financial_inputs.history(research.RAW, symbol) for symbol in companies(self.research)}
+        saved = {symbol: research.financial_inputs.resolve_history(research.RAW, symbol)['values'] for symbol in companies(self.research)}
         self.assertEqual(json.dumps(saved['Q0003']['2015-06-30']), json.dumps(
             {'revenue': saved['Q0003']['2015-06-30']['revenue'], 'operatingIncome': saved['Q0003']['2015-06-30']['operatingIncome'],
              'totalStockholdersEquity': 80e6, 'totalDebt': -0.0, 'freeCashFlow': 9e6}))

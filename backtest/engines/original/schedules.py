@@ -71,21 +71,28 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
     def select_period(entry,exit_day):
         with diagnostics.stage('books'):
             book=prepare_period(db,entry,pool,book_facts)
-        with diagnostics.stage('selection'):
-            stocks=(screening.select(db,book=book,exit_day=exit_day,**options) if book_selection is None
-                    else book_selection.select(db,book,entry,exit_day))
-        for stock in stocks:
-            backtest_control.checkpoint()
-            start=(rules.parse_day(stock['entry']),stock.pop('price'))
-            def lookup(day,forward,slack):
-                return book_facts.price(stock['symbol'],day,forward,slack)
-            reason,ending=financial_books.close(start,exit_day,lookup,rules.bankrupt(stock['symbol'],entry,exit_day))
-            if reason is not None:
-                raise ValueError('A selected sheet row has no valid exit: '+reason)
-            end,value,status=ending
-            stock.update(exit=str(end[0]),return_value=value,status=status)
-        spy=financial_books.benchmark_return(book_facts.spy(entry),book_facts.spy(exit_day))
-        return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
+        # Cached periods need an explicit read transaction. Missing sheets can
+        # already belong to the caller's atomic write transaction.
+        owned=not db.in_transaction
+        if owned:db.execute('BEGIN')
+        try:
+            with diagnostics.stage('selection'):
+                stocks=(screening.select(db,book=book,exit_day=exit_day,**options) if book_selection is None
+                        else book_selection.select(db,book,entry,exit_day))
+            for stock in stocks:
+                backtest_control.checkpoint()
+                start=(rules.parse_day(stock['entry']),stock.pop('price'))
+                def lookup(day,forward,slack):
+                    return book_facts.price(stock['symbol'],day,forward,slack)
+                reason,ending=financial_books.close(start,exit_day,lookup,rules.bankrupt(stock['symbol'],entry,exit_day))
+                if reason is not None:
+                    raise ValueError('A selected sheet row has no valid exit: '+reason)
+                end,value,status=ending
+                stock.update(exit=str(end[0]),return_value=value,status=status)
+            spy=financial_books.benchmark_return(book_facts.spy(entry),book_facts.spy(exit_day))
+            return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
+        finally:
+            if owned:db.rollback()
     with db:
         contract = book_selection.contract if book_selection is not None else 1
         if emit_period is None:

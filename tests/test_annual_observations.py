@@ -176,8 +176,7 @@ class AnnualResolutionTests(unittest.TestCase):
         again = self.publish({'income-statement': list(reversed(rows))})
         for fiscal in dates:
             for name in dates[fiscal]:
-                self.assertEqual({k: v for k, v in dates[fiscal][name].items() if k != 'rows'},
-                                 {k: v for k, v in again['annual']['income-statement'][fiscal][name].items() if k != 'rows'})
+                self.assertEqual(dates[fiscal][name], again['annual']['income-statement'][fiscal][name])
         self.assertEqual(typed(again), stored)
 
     def test_same_name_cross_endpoint_fields_never_substitute_for_cash_flow(self):

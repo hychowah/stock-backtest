@@ -86,7 +86,7 @@ class FinancialTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 f.publish(raw,'A',endpoint,[dict(row,operatingIncome='invalid')],ledger,raw/'coverage.json')
             f.publish(raw,'A',endpoint,[row,dict(row,operatingIncome=20)],ledger,raw/'coverage.json')
-            self.assertEqual(f.history(raw,'A'),{'2019-12-31':{'revenue':100}})
+            self.assertEqual(f.resolve_history(raw,'A')['values'],{'2019-12-31':{'revenue':100}})
 
     def test_asset_receipts_empty_reuse_tamper_repair_and_resume(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -98,7 +98,7 @@ class FinancialTests(unittest.TestCase):
             rows=[dict(date='2019-12-31',symbol='A',period='FY',reportedCurrency='USD',netIncome=20)]
             f.publish(raw,'A',endpoint,rows,ledger,receipt)
             self.assertTrue(path.with_suffix('.json.before-repair').exists())
-            self.assertEqual(f.history(raw,'A')['2019-12-31']['netIncome'],20)
+            self.assertEqual(f.resolve_history(raw,'A')['values']['2019-12-31']['netIncome'],20)
             before=path.read_bytes()
             with self.assertRaises(ValueError):f.publish(raw,'A',endpoint,[dict(rows[0],netIncome=float('nan'))],ledger,receipt)
             self.assertEqual(path.read_bytes(),before)
@@ -125,6 +125,42 @@ class FinancialTests(unittest.TestCase):
                     with self.assertRaises(PermissionError):f.publish(raw,'A',endpoint,[dict(date='2018-12-31',reportedCurrency='USD',netIncome=10)],ledger,receipt)
                 self.assertTrue(f.completed(raw,'A',endpoint,ledger))
 
+    def test_unchanged_receipt_is_not_rewritten_when_asset_publication_resumes(self):
+        for kind in ('prices','annual'):
+            with self.subTest(kind=kind),tempfile.TemporaryDirectory() as folder:
+                raw=Path(folder);ledger={};receipt=raw/'coverage.json'
+                path=raw/'px/A.json' if kind=='prices' else f.asset_path(raw,'A','income-statement')
+                def publish(rows):
+                    if kind=='annual':
+                        f.publish(raw,'A','income-statement',rows,ledger,receipt)
+                    else:
+                        asset=f.cache_assets.SeriesAsset(path,'adjClose',stock=True)
+                        valid,skipped=asset.validate(rows,'2019-01-01','2019-12-31')
+                        asset.refresh([('2019-01-01','2019-12-31',valid,skipped)],ledger,receipt)
+                old=dict(date='2019-12-31',reportedCurrency='USD',adjClose=10,netIncome=20)
+                publish([old]);before=path.read_bytes()
+                changed=dict(old,adjClose=11,netIncome=21)
+                original=f.cache_assets.publish_bytes
+                def deny_asset(destination,content):
+                    if destination==path:raise PermissionError()
+                    original(destination,content)
+                with patch.object(f.cache_assets,'publish_bytes',side_effect=deny_asset):
+                    with self.assertRaises(PermissionError):publish([changed])
+                self.assertEqual(path.read_bytes(),before)
+                # Recover the receipt already published before the interrupted asset write.
+                saved_receipt=receipt.read_bytes();ledger=json.loads(saved_receipt)
+                with patch.object(f.cache_assets,'write_json',side_effect=AssertionError('Receipt is unchanged')):
+                    publish([changed])
+                self.assertEqual(receipt.read_bytes(),saved_receipt)
+                self.assertNotEqual(path.read_bytes(),before)
+                if kind=='annual':
+                    self.assertTrue(f.completed(raw,'A','income-statement',ledger))
+                    self.assertIn(changed,f.read(raw,'A','income-statement')[0])
+                else:
+                    asset=f.cache_assets.SeriesAsset(path,'adjClose',stock=True)
+                    self.assertTrue(asset.evidence(ledger))
+                    self.assertEqual(asset.rows,[changed])
+
     def test_full_payload_preserves_unknown_fields_nulls_currency_and_metadata(self):
         with tempfile.TemporaryDirectory() as folder:
             raw=Path(folder);ledger={}
@@ -136,7 +172,7 @@ class FinancialTests(unittest.TestCase):
             saved=json.loads(f.asset_path(raw,'A','income-statement').read_text())
             self.assertEqual(saved['rows'],rows)
             self.assertEqual(f.read(raw,'A','income-statement')[0],rows)
-            self.assertEqual(f.history(raw,'A'),{'2019-12-31':{'netIncome':20}})
+            self.assertEqual(f.resolve_history(raw,'A')['values'],{'2019-12-31':{'netIncome':20}})
             self.assertTrue(f.completed(raw,'A','income-statement',ledger))
             metrics_rows=[dict(date='2019-12-31',otherMetric=123,nullable=None)]
             record=d.cache_assets.financial_record('A',metrics_rows)
@@ -154,16 +190,16 @@ class FinancialTests(unittest.TestCase):
                 f.publish(raw,'A',endpoint,rows,ledger,receipt)
                 self.assertEqual(f.read(raw,'A',endpoint)[0],rows)
                 self.assertTrue(f.completed(raw,'A',endpoint,ledger))
-            prepared=f.history(raw,'A')
+            prepared=f.resolve_history(raw,'A')['values']
             self.assertEqual(prepared,{'2019-12-31':dict(revenue=100,epsDiluted=2)})
             f.publish(raw,'A','income-statement',list(reversed(rows)),ledger,receipt)
-            self.assertEqual(f.history(raw,'A'),prepared)
+            self.assertEqual(f.resolve_history(raw,'A')['values'],prepared)
             # A repair keeps every distinct prior variant, rather than overwriting
             # the entire fiscal date with a single incoming report.
             f.publish(raw,'A','income-statement',[dict(common,revenue=100,newField=42)],ledger,receipt)
             saved=f.read(raw,'A','income-statement')[0]
             self.assertTrue(all(row in saved for row in rows))
-            self.assertEqual(f.history(raw,'A'),prepared)
+            self.assertEqual(f.resolve_history(raw,'A')['values'],prepared)
 
     def test_download_with_duplicate_dates_finishes_and_retry_makes_no_requests(self):
         with tempfile.TemporaryDirectory() as folder:
