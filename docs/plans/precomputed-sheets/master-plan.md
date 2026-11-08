@@ -141,20 +141,13 @@ entry-only sheets. All books dropped in both observed real refreshes. S0 selects
 policy (a), removing change-day machinery. The user requires exact results and
 rejects (c). No product change was made in S0.
 
-### S1 — separate entries from exits
+### S1 — complete (74808c8)
 
-Authorized on this branch; Claude approved the S1 design. Implement the confirmed
-layout, store identity and historical sheet policy; adapt both SQL selection and
-scalar prepared scopes. Close only selected rows. Keep formulas outside the book
-identity (`research.code_sources`); owner lanes remain stored, without fallback.
-
-Exit: fast tier and affected existing heavy checks pass on synthetic fixtures.
-Verify delayed entries, adjacent sessions, empty/short scopes, stopped stocks,
-bankruptcy, both selection orders, legacy and latest. On the authorized bench,
-compare the four prior parity cases: user random test, quarterly fixed
-2013–2018, latest and development check. Require identical financial fields,
-formula values/reasons and statuses; `scripts/check.py` finds zero differences.
-Elapsed times, cache handles and new input identities are not financial parity.
+Entry-only compact sheets; the run closes selected rows; change-day code
+deleted. Fast tier 92/92, heavy 1/1. Bench parity against main (e1ae7c7 code):
+random, quarterly 2013–2018, development-check run and latest digests equal;
+`scripts/check.py` 0 differences on both. Random test with books computed:
+311.9 s on main, 163.5 s on S1.
 
 ### S2 — prepare coverage and qualify the workflow
 
@@ -194,6 +187,5 @@ required.
 
 ## Next
 
-S1 awaits Claude's fast/heavy checks, four bench parity cases and review.
-Full coverage and daily-stage sheet progress remain S2.
+S2: precompute every cached sheet inside the daily stage, with progress.
 No merge, push, deployment or installed restart is authorized.
