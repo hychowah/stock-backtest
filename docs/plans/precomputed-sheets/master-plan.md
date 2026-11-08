@@ -4,15 +4,15 @@ Status: active
 
 ## Goal and authority
 
-Proposal against main `f8a6217`; implementation decisions remain open. The user
+Plan based on main `f8a6217`; S0 measured source `e1ae7c7`. The user
 normally chooses a new random seed. Once prepared, a new cached-pool seed
 should cost about the same as a rerun. Holdings, returns, statuses and stored
 rounding must stay identical. Saved library and queue records open unchanged.
 Custom formula edits never rebuild sheets.
 
 Measure the largest cost and stop when gains become marginal; no numerical
-speed target. Nightly preparation may be slow. Only documentation is authorized;
-bench execution, implementation and runtime access require separate authorization.
+speed target. Nightly preparation may be slow. The authorized bench measurements
+and runtime-log reads are complete. S1 still requires implementation authorization.
 
 ## Verified starting point
 
@@ -54,39 +54,30 @@ Legacy uses the same builder on demand: its controls and development check remai
 callers. Precomputing both pools adds cost outside the usual workflow. Delete
 unused pair-keyed preparation and staging; add no engine, mode or fact store.
 
-## Nightly freshness: decision after measurement
+## Nightly freshness: decided
 
 `data_refresh.refresh_series` replaces complete adjusted histories when recent
-overlap changes. `research._Diff` records earliest changed rows, including price
-volume/reasons; `books.change_day` takes the global minimum. One old change can
-drop almost every book. That outcome is inferred, not measured.
+overlap changes. `research._Diff` records earliest changes; `books.change_day`
+takes the global minimum. Both measured real refreshes dropped every stored book.
 
-| Policy | Benefit | Cost and recommendation |
+| Policy | Benefit | Decision |
 | --- | --- | --- |
-| (a) Rebuild after each changed research generation | Exact results; deletes invalidation machinery | Choose if S0 shows (b) keeps few sheets. Unchanged generations need no rebuild. |
-| (b) Keep conservative change-day reuse | Exact results; avoids some rebuilding | Horizon becomes entry + `FORWARD_REACH`. Keep only if measured savings justify the code. |
-| (c) Ignore whole-history rescales when sheet values agree within rounding tolerance | Could retain most sheets | Changes financial policy: fresh builds can differ. Requires explicit acceptance and additional measurements. |
+| (a) Rebuild after each changed research generation | Exact results; deletes invalidation machinery | Chosen from S0. Rebuild every cached sheet. Unchanged generations reuse sheets. |
+| (b) Keep conservative change-day reuse | Avoids some rebuilding | Rejected: measured real refreshes retained no books. |
+| (c) Ignore rescales within rounding tolerance | Could retain historical sheets | User rejected: exact results are required. |
 
-Choosing (a) deletes `books.change_day`, `books.kept`, `research.changes`/`_Diff`
+Policy (a) deletes `books.change_day`, `books.kept`, `research.changes`/`_Diff`
 and the drop logic in `daily.prepare`, plus helpers used only by (b).
 
-First ask whether the user wants to investigate (c); recommend no while exact
-results are required. Only then measure rescale residuals, changed dates/validity,
-derived-value differences, selection effects and certification cost. Provider
-rounding can change ratios and cross filters, ties or formula conditions.
-Retained entry prices cannot mix with newly adjusted exits: both must use the
-same current generation, including SPY. Other corrections still invalidate sheets.
+Provider rounding can change ratios, filters, ties or formula conditions. Keep
+entry and exit prices in the same admitted generation, including SPY. No rescale
+classification, tolerance policy or value-difference investigation is needed.
 
 ## Storage recommendation
 
-Measure both today's normalized rows and one SQLite row per stock per sheet,
-with columns for the current metric pairs and filter values. Recommend compact
-rows in the first code phase. `book_filters` dominates current writes; estimates
-of 3.2 MB × 7,750 sessions imply about 25 GB per pool before journal headroom.
-The old 0.15 s/book on eight workers is also an estimate, not a build forecast.
-
-Retain normalized storage only if S0 shows acceptable disk/build cost. Otherwise
-postponing compaction builds a large cache twice. Preserve missing values and
+Recommend compact rows from S1: one SQLite row per stock per sheet, with columns
+for current metric pairs and filters. S0 replaces the draft's size/time estimates.
+Postponing compaction builds a large cache twice. Preserve missing values and
 numerical storage semantics. Bump the disposable cache version; no migration
 reader, binary format, compression layer or duplicate layout.
 
@@ -111,29 +102,46 @@ estimates and outcomes; download success and readiness stay separate.
 
 ## Phases and exits
 
-### S0 — measure only
+### S0 — complete: measurements and decision
 
-First resolve whether to investigate (c). Obtain bench authorization; use disposable
-copies and ignored scratch probes, with no product change or live mutation.
+Authorized bench copy `~/bench/ebitda-real`, source `e1ae7c7`, research version 19;
+research prepared in 185 s, latest 2026-10-21. An ignored scratch probe
+sampled 30 cached entries in one process. Raw output stays
+outside the repository. There are **7,752** cached SPY sessions, 1996-01-02 through
+2026-10-21.
 
-- Sample entry sessions across history, including sparse and recent dates.
-  Build identical entry-only sheets in both layouts; lead with cached and use
-  legacy as a control. Separate calculation, write and read costs. Record rows,
-  database/index bytes, peak memory and temporary/journal disk. Count actual SPY
-  sessions and estimate full coverage with uncertainty.
-- With explicit authorization to read runtime logs, first inspect existing
-  `books_previous` and `books_kept` diagnostics from a real 07:00 update.
-  Record dropped count/fraction and update context. These count books, not
-  entry-only sheets. Only if the fields are missing, obtain authorization to
-  capture before/after snapshots of a real update and replay on disposable copies.
-- Omit (c)-only measurements unless the user chooses that investigation.
+Dated-book build median **0.337 s**, p90 **0.442 s**; CPU approximately equalled
+wall time. `books.close` median **0.014 s**, about 4%. Entry-only work is therefore
+approximately **0.32 s/sheet**, not a separately implemented sheet measurement.
 
-Exit: summarize settings, revisions, identities, environment/load and findings
-here; raw output stays ignored. User chooses policy, layout and scope before S1.
+| Layout | MB/sheet | Median write seconds/sheet | Projected GB, all sessions |
+| --- | --- | --- | --- |
+| Normalized | 2.17 | 0.071 | 16.8 |
+| Compact | 0.85 | 0.028 | 6.6 |
+
+Normalized rows/sheet: `book_rows` 2,449; `book_metrics` 4,471; `book_filters`
+42,124. Compact stores one row per stock. Sizes are vacuumed dated-book proxies,
+including exit fields. Ideal eight parallel builders plus a serial writer project
+**532 s compact**, **838 s normalized**, excluding research. Eight workers were
+not measured. Windows may be slower: runtime research rebuilds took 540–662 s
+versus 185 s on this bench.
+
+Windows runtime logs, 2026-11-08:
+
+| Operation | Books kept / previous | First changed day |
+| --- | --- | --- |
+| Code-only deploy | 2,802 / 2,803 | None |
+| Real data refresh | 0 / 2,803 | 1995-01-03 |
+| Second real refresh | 0 / 1 | 1985-11-29 |
+
+Runtime daily work besides research took about 5 s. These logs count books, not
+entry-only sheets. All books dropped in both observed real refreshes. S0 selects
+policy (a), removing change-day machinery. The user requires exact results and
+rejects (c). No product change was made in S0.
 
 ### S1 — separate entries from exits
 
-Requires S0 decisions and implementation authorization. Implement the chosen
+Requires layout confirmation and implementation authorization. Implement the chosen
 layout, store identity and historical sheet policy; adapt both SQL selection and
 scalar prepared scopes. Close only selected rows. Keep formulas outside the book
 identity (`research.code_sources`); owner lanes remain stored, without fallback.
@@ -148,7 +156,7 @@ Elapsed times, cache handles and new input identities are not financial parity.
 
 ### S2 — prepare coverage and qualify the workflow
 
-Requires S1 parity. Implement cached precomputation, the chosen nightly policy,
+Requires S1 parity. Implement cached precomputation, nightly policy (a),
 progress and continuation in the unified chain, preserving existing readiness.
 
 Exit: measure a full build and nightly maintenance. Private fixtures verify
@@ -158,13 +166,14 @@ new seeds and a repeat: zero sheets computed/written and financial parity. Profi
 remaining costs until gains are marginal. Update contracts and the architecture
 guide. Source completion does not establish deployed readiness.
 
-## Open decisions for the user
+## Decisions and remaining confirmation
 
 1. **Coverage:** recommend all cached sessions first; legacy stays available on
    demand through the same sheet builder. Reject precomputing both without need.
-2. **Freshness:** first ask whether to investigate (c); recommend no. Choose
-   (a) versus (b) after S0. Accepting (c) changes tolerance/parity expectations.
-3. **Layout:** recommend compact from S1, unless S0 disproves the disk concern.
+2. **Freshness decided:** (a), exact rebuilding after each changed research
+   generation; delete change-day machinery. Policy (c) is rejected.
+3. **Layout confirmation:** recommend compact from S1: about 2.6× smaller and
+   2.4× faster writes in S0.
 4. **Missing sheets:** recommend on-demand builds through the same builder.
    This preserves usability after a deploy or interrupted night without a new
    readiness gate; a miss costs preparation time once.
@@ -178,11 +187,11 @@ checks, bounded reads, worker ownership, attachment lifetime and resource limits
 Original remains the only engine. Financial policy, calendar sampling, seeds,
 captured plans, queue recovery, artifacts, durable formats and frozen January
 records remain unchanged. Strategy execution never downloads. Formula programs
-still evaluate at runtime; edits affect no sheet identity. Any relaxation for
-(c) is a separate user decision, not implied by this plan.
+still evaluate at runtime; edits affect no sheet identity. Exact results remain
+required.
 
 ## Next
 
-Claude reviews and commits. S0 has not run. Ask about (c) first, then obtain bench
-and runtime-log authorization. Resolve decisions before authorizing code phases.
+The user confirms the layout and authorizes S1. Claude reviews and commits this
+plan update; no product implementation is authorized yet.
 No merge, push, deployment or installed restart is authorized.
