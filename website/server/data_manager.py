@@ -192,12 +192,6 @@ def append_financial(record):
     with path.open('a',encoding='utf-8') as handle:handle.write(('\n' if needs_newline else '')+json.dumps(record,allow_nan=False)+'\n')
 
 
-def fill_series(file,field,endpoint,o,ledger,emit,stop,symbol=None):
-    specs=[(file,field,endpoint,symbol)]
-    with fmp_download.Client(stop,emit) as client:
-        download_series(specs,o,ledger,emit,stop,client)
-
-
 def download_series(specs,o,ledger,emit,stop,client):
     """Plan lazily within the client's submission bound; publish on this thread.
 

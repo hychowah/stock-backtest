@@ -38,26 +38,17 @@ class Jobs:
     @ready.setter
     def ready(self,value):self.calculations.ready=value
 
-    def start(self,identifier,mode,options,*,planned=None):
-        return self._start(identifier,mode,options,planned=planned)
-
     def accepted(self,identifier):
         """A retry reconciles accepted intent without fresh calculation admission."""
         try:self.snapshot(identifier,include_result=False)
         except Missing:return False
         return True
 
-    def start_evidence(self,identifier,mode,options,*,planned=None,max_bytes=256*1024**2,
-                       piece_bytes=1024*1024,record_bytes=8*1024*1024):
-        """Explicit temporary evidence job. No HTTP or browser route selects it."""
-        return self._start(identifier,mode,options,planned=planned,
-            limits=dict(max_bytes=max_bytes,piece_bytes=piece_bytes,record_bytes=record_bytes))
-
     def _drop(self,identifier):
         run=self.runs.pop(identifier)
         if run.get('_evidence') is not None:self.evidence.discard(run['_evidence'])
 
-    def _start(self,identifier,mode,options,*,planned=None,limits=None):
+    def start(self,identifier,mode,options,*,planned=None):
         if not re.fullmatch(r'[a-f0-9]{32}',identifier):
             raise ValueError('Invalid backtest run ID.')
         scalar=isinstance(options,dict) and 'strategy' in options
@@ -67,8 +58,7 @@ class Jobs:
             # Refuse an engine this owner does not run before any strategy check.
             self.calculations.preflight(options,planned=planned)
             strategy_requests.check_request(dict(id=identifier,mode=mode,options=options,planned=planned))
-        if scalar and limits is None:
-            limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024)
+        limits=dict(max_bytes=256*1024**2,piece_bytes=1024*1024,record_bytes=8*1024*1024) if scalar else None
         if mode not in (strategy_requests.SCALAR_MODES if scalar else ('custom','random')) or not isinstance(options,dict):
             raise ValueError('Expected backtest mode and options.')
         json.dumps(options,allow_nan=False)

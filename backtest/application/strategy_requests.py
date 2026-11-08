@@ -466,11 +466,6 @@ def check_request(request, *, checkpoint=backtest_control.checkpoint):
     return checked
 
 
-def submission_equal(left, right):
-    """Exact canonical payload equality, including original descriptive evidence."""
-    return _encode(left, REQUEST_BYTES) == _encode(right, REQUEST_BYTES)
-
-
 def calculation_projection(capture):
     """Comparable selection meaning; not a submission receipt or a new hash.
 

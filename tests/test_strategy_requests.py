@@ -261,12 +261,12 @@ class StrategyTests(unittest.TestCase):
         first = s.capture_strategy(intent(formula(a)), self.store)
         renamed = self.store.rename(a['variable_id'], 1, 'Later label')
         later = s.capture_strategy(intent(formula(a)), self.store)
-        self.assertFalse(s.submission_equal(first.to_dict(), later.to_dict()))
+        self.assertNotEqual(first.to_json(), later.to_json())
         self.assertTrue(s.calculation_equal(first, later))
         self.store.favourite(a['variable_id'], renamed['version'], True)
         starred = s.capture_strategy(intent(formula(a)), self.store)
         self.assertTrue(s.calculation_equal(later, starred))
-        self.assertFalse(s.submission_equal(later.to_dict(), starred.to_dict()))
+        self.assertNotEqual(later.to_json(), starred.to_json())
         before = first.to_json()
         first.to_dict()['variables']['presentation'][0]['name'] = 'Mutated'
         self.assertEqual(first.to_json(), before)
@@ -277,7 +277,7 @@ class StrategyTests(unittest.TestCase):
         a = s.capture_strategy(intent(conditions=[condition(builtin(), '8', 'percent')]))
         b = s.capture_strategy(intent(conditions=[condition(builtin(), '0.080', 'number')], selection_order='filter_first'), limits={'bytes': 10000})
         self.assertTrue(s.calculation_equal(a, b))
-        self.assertFalse(s.submission_equal(a.to_dict(), b.to_dict()))
+        self.assertNotEqual(a.to_json(), b.to_json())
         for change in (lambda v: v['selection']['ranking'].update(direction='lowest'),
                        lambda v: v['selection'].update(selection_order='rank_first'),
                        lambda v: v.update(pool='cached')):
@@ -329,16 +329,16 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(legacy, before)
         self.assertNotIn('selection_order', legacy)
 
-    def test_retry_payload_equality_includes_names_and_wrapper_fields(self):
+    def test_canonical_request_bytes_include_names_and_wrapper_fields(self):
         capture = s.capture_strategy(intent()).to_dict()
         request = dict(id='a' * 32, name='Test', mode='custom', options=dict(strategy=capture), catalog={}, presentation={})
         retained = deepcopy(request)
-        self.assertTrue(s.submission_equal(request, retained))
+        self.assertEqual(d.canonical(request), d.canonical(retained))
         retained['name'] = 'Different'
-        self.assertFalse(s.submission_equal(request, retained))
+        self.assertNotEqual(d.canonical(request), d.canonical(retained))
         retained = deepcopy(request)
         retained['options']['strategy']['builtins'][0]['label'] = 'Later label'
-        self.assertFalse(s.submission_equal(request, retained))
+        self.assertNotEqual(d.canonical(request), d.canonical(retained))
 
     def test_whole_request_exact_byte_limit_counts_escaping_and_display_context(self):
         capture = s.capture_strategy(intent()).to_dict()

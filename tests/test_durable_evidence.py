@@ -74,6 +74,20 @@ def submission(metadata):
         catalog=metadata['catalog'],presentation=metadata['presentation'])
 
 
+def completed_job(jobs,identifier,reader,metadata):
+    """Install format-1 job evidence that the current producer no longer writes."""
+    entry=jobs.evidence.reserve(max_bytes=LIMIT,planned=None,piece_bytes=1024**2,record_bytes=8*1024**2)
+    content=reader.stream.getvalue()
+    with jobs.evidence.destination(entry) as destination:destination.write(content)
+    descriptor=jobs.evidence.publish(entry,dict(manifest=reader.manifest,
+        transfer=dict(bytes=len(content),sha256=hashlib.sha256(content).hexdigest())))
+    worker=Thread(target=lambda:None);worker.start();worker.join()
+    jobs.runs[identifier]=dict(id=identifier,mode=metadata['kind'],
+        options={k:v for k,v in metadata['settings'].items() if k!='mode'},engine='original',
+        state='complete',started=time.time(),finished=time.time(),result=None,
+        stop=Event(),thread=worker,_evidence=entry,evidence=descriptor)
+
+
 class DurableTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory();self.addCleanup(self.folder.cleanup)
@@ -300,14 +314,9 @@ class DurableTests(unittest.TestCase):
 
     def test_jobs_pin_expiry_copy_and_shutdown_drain(self):
         source_reader,meta,expected=source()
-        class Calculation:
-            def preflight(self,options,*,planned=None):return 'original'
-            def calculate_into(self,mode,options,destination,*args,**kw):
-                data=source_reader.stream.getvalue();destination.write(data)
-                return dict(manifest=source_reader.manifest,transfer=dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest()))
-        jobs=backtest_jobs.Jobs(Calculation(),evidence_root=self.root/'jobs',evidence_bytes=4*LIMIT)
-        jobs.start_evidence('a'*32,'custom',meta['settings'],max_bytes=LIMIT)
-        jobs.runs['a'*32]['thread'].join(10);self.assertEqual(jobs.snapshot('a'*32)['state'],'complete')
+        jobs=backtest_jobs.Jobs(evidence_root=self.root/'jobs',evidence_bytes=4*LIMIT)
+        completed_job(jobs,'a'*32,source_reader,meta)
+        self.assertEqual(jobs.snapshot('a'*32)['state'],'complete')
         with jobs.open_evidence('a'*32) as reader:
             jobs.runs['a'*32]['finished']=time.time()-86401
             with self.assertRaises(backtest_jobs.Missing):jobs.snapshot('a'*32)

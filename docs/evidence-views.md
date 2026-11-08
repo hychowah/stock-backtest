@@ -1,19 +1,14 @@
 # Acquired result readers
 
-Source contract. Automatic producers remain eager. The CB-14 record gives the
-verification scope and remaining operational gates.
+Built-in submissions use eager results. Captured scalar strategies use bounded
+evidence through `Jobs.start` and the queue. The application artifact and evidence
+codec versions are separate from the version-3 durable container. Stored formats
+keep their recorded meaning.
 
-The [30 October performance direction](plans/compiled-backtest/master-plan.md)
-sets no absolute user waiting-time limit. It seeks about 4× over the original
-ordinary method, or close, with effort proportionate to the gain. Resource and
-experiment limits remain unchanged. Candidate eager/bounded observations do not
-measure that original-method speedup. Older budget questions are historical.
-
-Version-3 results use the same `ResultArtifacts` boundary for fresh Jobs,
+Evidence-backed results use the same `ResultArtifacts` boundary for fresh Jobs,
 saved-library and queue opening. They preserve original settings, labels,
 summaries and complete evidence. Inspection and downloads need no current
-financial generation, calculation readiness or calculation. Automatic submission
-and queue execution remain eager. Current eager limits are unchanged.
+financial generation, calculation readiness or calculation.
 
 ## Explore a completed result
 
@@ -187,82 +182,16 @@ Encoded limits do not bound decoded JSON, compiler state, mapped residency or
 browser memory. HTTP streaming alone proves no browser-memory limit.
 
 Read the [codec](result-evidence.md) and [durable storage](durable-evidence.md)
-contracts for complete evidence and byte ownership. CB-14 remains incomplete.
-G03/G06 remain software-admission failures, not proof of hardware RAM exhaustion.
-Operational gates remain unresolved; CB-15 is blocked. Increment 6 must use actual
-hardware and workflow observations before choosing routing or higher limits.
+contracts for complete evidence and byte ownership.
 
-Initial [increment-6 observations](plans/compiled-backtest/master-plan.md)
-retain eager routing and every existing limit. They separate physical RAM,
-changing available memory, recursive graph accounting and encoded result bytes.
-The small fictional representation probe does not qualify a larger workload.
-The native four- and 24-trial eager workflows pass on 64 fictional companies
-over a four-month weekly window. Complete inspection, ordinary-reference parity,
-saving, ordinary-service reopening and all 116 CSV downloads pass. This supports
-the unchanged eager policy for that scope. Broader-input and full-window
-capacity, workflow acceptance and final route/limit selection remain open.
-
-A separate [fresh FMP prefix](plans/compiled-backtest/master-plan.md)
-uses 192 private symbols and four weekly trials in January–May 2015. It preserves
-68 periods and 3,400 holdings. Original API results pass strict ordinary-reference
-comparison. Complete browser values, saving, ordinary stored reopening and all
-18 CSV downloads pass. The successful rerun reuses preparation and starts with
-empty numerical checkpoints. Four unavailable historical Treasury observations
-remain explicit input gaps outside this prefix. This diverse cohort has
-present-day selection bias. It supplies no full-universe, full-window, cold
-workflow or acceptance qualification. Eager routing and all limits stay unchanged.
-
-
-The [retained-input twelve-trial continuation](plans/compiled-backtest/master-plan.md)
-passes on the same cohort and calendar with empty numerical checkpoints. All
-204 periods, 10,200 holdings and 50 fresh/reopened CSVs are complete. Strict
-original-API comparisons have zero numerical differences. Every CSV cell and
-paired byte sequence agrees. Ordinary reopening forbids financial dependencies.
-The successful workflow reuses preparation and can reuse ordinary reference books.
-Its sampled browser private bytes are 862,760,960; samples are not hard peaks.
-Entry and private-orchestration failures remain retained. No larger eager allowance
-or routing change follows. The next proposed resource observation uses the
-existing bounded interfaces at the same twelve-trial scope, after a new declaration.
-
-
-The [same-plan bounded real-input observation](plans/compiled-backtest/master-plan.md)
-produces all twelve trials, 204 periods and 10,200 holdings. Original typed codec
-trials pass strict ordinary/eager comparisons after a retained private comparison
-repair. The actual consumer workflow fails the existing browser session deadline
-after 47 fresh periods and five complete CSVs. All completed CSV cells and bytes
-agree, but saving, ordinary reopening and the remaining 45 files are not reached.
-No complete bounded-workflow or resource-acceptance pass follows.
-
-At the time of that failed observation, each request opened an independent stream
-and constructed a Reader. Reader construction validated the complete codec before
-page scanning. A read-only
-probe on this 6,532,415-byte file measures 6,532,415 validation bytes per reader,
-plus the requested-prefix scan. A final-period holdings request reads 13,050,888
-bytes in that isolated probe. Fresh Jobs also checks the complete physical file
-hash; that extra pass is outside those Reader/page counts. The probes do not
-isolate the cause of the complete browser delay. Those historical receipts remain
-unchanged.
-
-The subsequent [consumer fix](plans/compiled-backtest/master-plan.md)
-profiles the actual service and browser path. Repeated complete semantic decoding
-dominates early requests. Prefix decoding is meaningful for late requests. Physical
-hashing is a small part of their cost. The independent design keeps complete
-validation at initial construction and binds its proof to the exact decoded
-physical bytes. Acquired Jobs and durable displays use `Reader.reopen` for each
-independent request stream. That operation checks the complete physical length
-and hash before returning. Changed unread suffixes fail too. Ordinary record traversal
-retains its existing checks. No validation is inferred from file metadata.
-This proof has no rows or offsets and lives only with the acquired reader.
-Request pins, deletion, expiry, release and shutdown keep their existing owners.
-After a retained failed complete rerun, the independent design supplement adds
-`verified_records()` at this existing consumer boundary. Each traversal confirms
-the whole physical proof before exposing records, including an unvisited suffix.
-It then decodes bounded records without repeating semantic value/order validation
-already established for those exact bytes. Framing, checksums, limits, JSON
-decoding and cancellation remain. Ordinary codec iteration and initial complete
-validation keep their existing behavior. Exports use this same traversal boundary;
-their counting, output passes and byte formatting remain unchanged.
-No index, persistent cache, format, formula, automatic route or limit changes.
+Initial reader construction validates the complete codec. `Reader.reopen` checks
+the complete physical length and hash for each independent request stream.
+Changed content fails before rows are returned, including an unread suffix.
+`verified_records()` checks that physical identity again before traversal. It
+retains bounded decoding, framing, checksums and cancellation. The acquired
+proof supplies semantic value and order validation for those exact bytes.
+Ordinary `records()` retains all its checks. The proof holds no rows or offsets
+and ends with the acquired reader. No index or persistent cache is added.
 
 ## Shutdown ownership
 
@@ -305,4 +234,4 @@ including its captured strategy and every explanation. Scalar `holdings`/`screen
 CSV includes original values, units, direction and qualified links; retain its
 companion evidence file for full offline explanation. Counted attachment lengths
 and existing independent request pins remain unchanged. Old codec-1 exports
-retain their original bytes. See [Phase 6 compatibility](plans/custom-variables/master-plan.md).
+retain their original bytes. See [custom-variable compatibility](plans/custom-variables/master-plan.md).

@@ -22,6 +22,14 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'scripts')]
 from website.server import data_manager as d
 from website.server import app as serve
+
+
+def fill_series(file,field,endpoint,o,ledger,emit,stop,symbol=None):
+    specs=[(file,field,endpoint,symbol)]
+    with fmp_download.Client(stop,emit) as client:
+        d.download_series(specs,o,ledger,emit,stop,client)
+
+
 class CacheTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
@@ -53,7 +61,7 @@ class CacheTests(unittest.TestCase):
         payload=dict(div=self.prices([('2020-01-01',10),('2020-06-30',20)]),extra=[dict(date='2020-06-30',price=21)])
         self.put('px/A.json',payload)
         with patch.object(d,'request_json',return_value=self.prices([('2020-12-31',30)])) as get:
-            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_args.args[1],dict(symbol='A',**{'from':'2020-07-01','to':'2020-12-31'}))
         saved=d.read_json(self.raw/'px/A.json')
         self.assertEqual(saved['extra'],payload['extra'])
@@ -70,8 +78,8 @@ class CacheTests(unittest.TestCase):
     def test_empty_response_is_checkpointed_and_not_retried(self):
         ledger={}
         with patch.object(d,'request_json',return_value=[]) as get:
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_count,1)
         self.assertEqual(d.read_json(d.COVERAGE)['px/A.json']['windows'],[['2020-01-01','2020-12-31']])
 
@@ -80,7 +88,7 @@ class CacheTests(unittest.TestCase):
         self.put('px/A.json',payload)
         original=(self.raw/'px/A.json').read_bytes()
         with patch.object(d,'request_json',side_effect=ValueError('Provider failed')),self.assertRaises(ValueError):
-            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
         self.assertEqual((self.raw/'px/A.json').read_bytes(),original)
         self.assertFalse(d.COVERAGE.exists())
 
@@ -89,8 +97,8 @@ class CacheTests(unittest.TestCase):
         batch=self.prices([('2020-01-02',0),('2020-01-03',12),('2020-01-06',-1)])
         events=[];ledger={}
         with patch.object(d,'request_json',return_value=batch) as get:
-            d.fill_series(None,'adjClose','prices',self.o,ledger,lambda **kw:events.append(kw),self.stop,symbol='A')
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,lambda **kw:events.append(kw),self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_count,1)
         saved=d.read_json(self.raw/'px/A.json')
         self.assertEqual(saved['div'],self.prices([('2020-01-03',12)]))
@@ -112,7 +120,7 @@ class CacheTests(unittest.TestCase):
         skipped=['2020-01-02','2020-01-03','2020-01-06','2020-01-07']
         batch=self.prices([(day,0) for day in skipped]+[('2020-01-08',300)])
         with patch.object(d,'request_json',return_value=batch):
-            d.fill_series('spy-div.json','adjClose','prices',self.o,{},self.emit,self.stop)
+            fill_series('spy-div.json','adjClose','prices',self.o,{},self.emit,self.stop)
         report=json.loads(json.dumps(d.inspect(self.o),allow_nan=False))
         spy=next(asset for asset in report['assets'] if asset['name']=='SPY total-return prices')
         self.assertEqual(spy['skipped_dates'],skipped)
@@ -167,7 +175,7 @@ class CacheTests(unittest.TestCase):
         self.put('px/A.json',payload)
         batch=self.prices([('2020-12-31',0)])
         with patch.object(d,'request_json',return_value=batch):
-            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
         self.assertEqual(d.read_json(self.raw/'px/A.json'),payload)
         self.assertEqual(d.inspect(self.o)['prices'][0]['skipped_dates'],['2020-12-31'])
 
@@ -255,16 +263,16 @@ class CacheTests(unittest.TestCase):
             self.assertTrue(published.wait(5),'The first window must be saved before the failure.')
             raise ValueError('offline')
         with patch.object(d.cache_assets.SeriesAsset,'publish',save),patch.object(d,'request_json',side_effect=fetch),self.assertRaisesRegex(ValueError,'offline'):
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         with patch.object(d,'request_json',return_value=[]) as get:
-            d.fill_series(None,'adjClose','prices',self.o,d.read_json(d.COVERAGE),self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,d.read_json(d.COVERAGE),self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_count,1)
         self.assertEqual(get.call_args.args[1]['from'],'2020-01-01')
 
     def test_corrupt_price_repair_keeps_backup(self):
         (self.raw/'px/A.json').write_text('broken')
         with patch.object(d,'request_json',return_value=self.prices([('2020-01-02',12)])):
-            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
         self.assertEqual((self.raw/'archive/A.json.before-data-repair').read_text(),'broken')
         self.assertEqual(len(d.read_json(self.raw/'px/A.json')['div']),1)
 
@@ -273,29 +281,29 @@ class CacheTests(unittest.TestCase):
             with self.subTest(damage=damage):
                 ledger={};path=self.raw/'px/A.json';path.unlink(missing_ok=True)
                 with patch.object(d,'request_json',return_value=self.prices([('2020-01-02',12)])):
-                    d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+                    fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
                 if damage=='missing':path.unlink()
                 else:path.write_text('broken')
                 self.assertTrue(d.inspect(self.o)['prices'][0]['windows'])
                 with patch.object(d,'request_json',return_value=self.prices([('2020-01-02',13)])) as get:
-                    d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+                    fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
                 self.assertEqual(get.call_count,1)
                 self.assertEqual(d.read_json(path)['div'][0]['adjClose'],13)
 
     def test_replaced_asset_drops_old_empty_windows_and_preserves_new_rows(self):
         ledger={}
         with patch.object(d,'request_json',return_value=[]):
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         self.put('px/A.json',dict(div=self.prices([('2020-06-01',99)])))
         with patch.object(d,'request_json',return_value=[]) as get:
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_count,2)
         self.assertEqual(d.read_json(self.raw/'px/A.json')['div'][0]['adjClose'],99)
 
     def test_legacy_ledger_cannot_prove_a_missing_file_is_complete(self):
         ledger={'px/A.json':[['2020-01-01','2020-12-31']]}
         with patch.object(d,'request_json',return_value=[]) as get:
-            d.fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,ledger,self.emit,self.stop,symbol='A')
         self.assertEqual(get.call_count,1)
         self.assertIn('sha256',ledger['px/A.json'])
 
@@ -342,7 +350,7 @@ class CacheTests(unittest.TestCase):
             gate.wait(3)
             return self.prices([(params['from'],10)])
         with patch.object(d,'request_json',side_effect=fetch),patch.object(d.cache_assets.SeriesAsset,'_store',record):
-            d.fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
+            fill_series(None,'adjClose','prices',self.o,{},self.emit,self.stop,symbol='A')
         self.assertEqual(len(set(fetchers)),3)
         self.assertEqual(set(writers),{threading.get_ident()})
         self.assertEqual(d.inspect(self.o)['prices'][0]['windows'],0)

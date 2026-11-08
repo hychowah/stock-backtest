@@ -1,10 +1,10 @@
 # Bounded financial evidence format 1
 
 This format preserves complete evidence without collecting all output in memory.
-The preview still uses its eager result protocol and existing limits. Additive
-read routes connect
-[snapshot version 3](durable-evidence.md) through [acquired readers](evidence-views.md).
-Automatic calculation and queue execution remain eager; their snapshots remain versions 1/2.
+Built-in submissions use eager results. Captured scalar strategies use codec 2
+through Jobs and the queue. Existing codec-1 evidence remains readable.
+The [version-3 durable container](durable-evidence.md) stores complete evidence.
+[Acquired readers](evidence-views.md) supply inspection and attachments.
 
 `backtest/result_evidence.py` uses the standard library. It owns no database, job,
 file path, financial lock or publication. Existing resource owners must supply
@@ -130,11 +130,11 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 
 ## Temporary Jobs evidence
 
-`Jobs.start_evidence` calls Original's `calculate_into` operation. Original
-writes the evidence in process. Existing `start`,
-eager calculations, queue calls, legacy endpoints and browser routes keep their
-complete-result contracts and admission limits. The new operation has no capture
-parameter. Complete-trial observers still receive original complete trials.
+`Jobs.start` selects bounded evidence when options contain a captured strategy.
+Original's `calculate_into` writes scalar codec 2 in process. Built-in requests
+use `calculate` and retain eager results. The queue makes the same choice.
+Application artifact 4 describes scalar results; the durable container remains
+version 3. Existing application-artifact-3/codec-1 readers remain available.
 
 `backtest/application/evidence_transfer.py` stages recorded plans in a fixed
 runtime-owned file. Its versioned reference contains
@@ -145,14 +145,14 @@ The complete decoded plan remains in memory for existing calendar/binding APIs.
 The 8 MiB codec metadata-record bound still applies independently. These are
 finite limits, not arbitrary-size plan support. Complete plan and submitted
 settings validation precede calculation. Dates are never
-resampled. Eager requests retain their 1 MiB bound; eager payloads retain 64 MiB.
+resampled. Application request and eager-payload limits stay with their owners.
 Original configuration callbacks still receive the complete plan.
 
 Existing Jobs owns its private temporary workspace through `backtest.application.temporary_evidence`.
 It reserves twice the evidence ceiling, two staged-plan ceilings when a plan is
 supplied, and two 64 KiB buffers. The aggregate default is
-1 GiB of charged temporary evidence/input storage. It is a private dormant
-accounting policy, not a filesystem quota or accepted workflow budget.
+1 GiB of charged temporary evidence/input storage. This is admission accounting,
+not a filesystem quota or a process-memory limit.
 
 While Original writes, the whole reservation remains charged. On success, Jobs
 checks the written bytes and codec again, then publishes its own immutable completed
@@ -164,24 +164,22 @@ Eager result graphs retain their existing policy; they do not use this byte budg
 
 `Jobs.open_evidence(id)` supplies a pinned Reader without financial ownership.
 Expiry or four-run retirement ends new access first. Existing readers keep their
-original bytes and charge until they close. Parent data operations retire the
-child before financial access; they do not invalidate the Jobs copy. Shutdown
-joins calculations and drains readers. Failed file cleanup retains ownership
-and charge for a later `Jobs.close()` retry. Unknown files are never removed.
+original bytes and charge until they close. Data operations do not invalidate
+the Jobs copy. Shutdown joins calculations and drains readers. Failed file
+cleanup retains ownership and charge for a later `Jobs.close()` retry. Unknown files are never removed.
 This workspace has no independent job registry, scheduler or durable user store.
 
-The new descriptor appears only in explicit evidence jobs. It is not a browser
-snapshot and cannot replace an eager `trial_results` value. [Queue/library copies](durable-evidence.md) now use shared bounded validation
-and atomic chunk publication inside their existing databases. Explicit opening
-detaches a charged temporary reader before releasing it to the caller. Deleting
-the source cannot invalidate that reader. ResultArtifacts readers and streamed
-exports remain increment 5. Application routing stays eager until those consumers
-preserve complete evidence.
+Captured jobs publish an evidence descriptor instead of an eager result graph.
+`ResultArtifacts` opens it through the acquired-reader path. It does not invent
+an eager `trial_results` array. [Queue/library copies](durable-evidence.md) use
+bounded validation and atomic chunk publication inside their existing databases.
+Opening detaches a charged temporary reader. Deleting the source cannot
+invalidate that reader. Inspection and exports read the original evidence.
 
 ## Additive scalar codec 2
 
-Custom-variable Phase 6 Slice 2 adds `backtest/scalar_result_evidence.py` on the
-same bounded physical framing. `result_evidence.Reader` keeps format-1 meaning.
+`backtest/scalar_result_evidence.py` uses the same bounded physical framing.
+`result_evidence.Reader` keeps format-1 meaning.
 `open_reader()` dispatches the explicit header to codec 1 or 2. Codec 2 binds
 scalar contract 2 and application artifact 4 through its application owner.
 These versions are independently allocated; no formula namespace assigns them.

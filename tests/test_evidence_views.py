@@ -30,7 +30,7 @@ from backtest import result_evidence as result_evidence
 from backtest.application import library as saved_backtests
 from website.server import app as serve_app
 from backtest.application.result_access import ResultAccess
-from test_durable_evidence import source,submission
+from test_durable_evidence import completed_job,source,submission
 from test_saved_backtests import snapshot as legacy
 
 
@@ -143,15 +143,8 @@ class ViewTests(unittest.TestCase):
 
     def test_fresh_reader_survives_jobs_expiry_and_saves_original_metadata(self):
         original_reader,metadata,_=source('custom')
-        class Owner:
-            def preflight(owner,options,*,planned=None):return 'original'
-            def calculate_into(owner,mode,options,destination,*callbacks,**kw):
-                data=original_reader.stream.getvalue();destination.write(data)
-                import hashlib
-                return dict(transfer=dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest()),manifest=original_reader.manifest)
-        self.jobs.calculations=Owner()
-        self.jobs.start_evidence('c'*32,'custom',{k:v for k,v in metadata['settings'].items() if k!='mode'},max_bytes=4*1024**2)
-        self.jobs.runs['c'*32]['thread'].join(5);self.assertEqual(self.jobs.snapshot('c'*32)['state'],'complete')
+        completed_job(self.jobs,'c'*32,original_reader,metadata)
+        self.assertEqual(self.jobs.snapshot('c'*32)['state'],'complete')
         display={k:metadata[k] for k in ('catalog','presentation','captured_at')}
         artifact=self.access._acquire('a'*32,{'kind':'run','id':'c'*32},lambda:self.jobs.display_evidence('c'*32,display))
         self.jobs.runs['c'*32]['finished']=time.time()-86401

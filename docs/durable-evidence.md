@@ -1,10 +1,11 @@
 # Durable evidence snapshots, version 3
 
-The queue and saved library have additive evidence operations. They store complete
-results inside their existing databases. Opening needs no calculation, candidate
-readiness, financial generation or checkpoint. The additive acquired-reader path connects
-version 3 through ResultArtifacts for inspection, saving and complete attachments.
-Automatic submission and queue execution still use eager version-1/2 results.
+The queue and saved library store complete results inside their existing
+databases. Built-in submissions use eager results. Captured scalar strategies
+use bounded evidence. The version-3 container stores their application artifact
+4 and evidence codec 2. It also reads existing artifact-3/codec-1 records.
+Opening needs no calculation, readiness check or current financial inputs.
+`ResultArtifacts` uses acquired readers for inspection, saving and attachments.
 Read the [reader contract](evidence-views.md) for acquisition and browser lifetime.
 
 ## Operations and ownership
@@ -64,8 +65,7 @@ validate complete destination evidence. No persistent cache or index is added.
 The caller pins a Jobs source through the entire save. Job expiry ends new
 access. Existing pins keep their bytes and Jobs charge until closure. Durable
 copies contain no source path or reference to another record. They remain
-independent after Jobs closure, child retirement, generation replacement and
-checkpoint eviction. Read the [temporary evidence contract](result-evidence.md).
+independent after Jobs closure or changes to the prepared cache. Read the [temporary evidence contract](result-evidence.md).
 
 ## Representation and atomic completion
 
@@ -89,10 +89,11 @@ header. Omitted random seeds retain their submitted meaning; the full recorded
 plan preserves the generated seed. Metadata result agrees exactly with the
 original footer. No empty `periods` or `trial_results` array is fabricated.
 
-The original [format-1 codec](result-evidence.md) bytes are copied unchanged.
-This preserves every trial, period, holding, date, diagnostic, extension, status,
-null, number type and signed zero. The common helper validates the stored bytes
-again through `result_evidence.Reader`, including order, counts and completion.
+Existing [format-1 codec](result-evidence.md) bytes and scalar codec-2 bytes are
+copied unchanged. This preserves every trial, period, holding, date, diagnostic,
+extension, status, null, number type and signed zero. The common helper uses
+`result_evidence.open_reader` to validate the stored codec, including order,
+counts and completion.
 It adds no financial formulas or tolerance. Validated source objects alone do
 not prove that copied destination bytes are intact.
 
@@ -145,22 +146,23 @@ Eager `save`, `get`, validators, HTTP routes, complete-trial capture and browser
 ResultArtifacts keep their eager contracts. Old version-1/2 compressed BLOBs
 are read without rewriting them. Explicit `open_evidence` accepts version 3;
 legacy records continue through eager `get`. Eager `get` rejects version 3 with
-an explicit reader-required error and preserves the record. Additive browser readers, bounded inspection and streamed attachments are
-provided by [capacity increment 5](evidence-views.md). Automatic producers remain eager.
+an explicit reader-required error and preserves the record. The
+[reader contract](evidence-views.md) describes bounded inspection and streamed
+attachments. Built-in submissions remain eager. Captured scalar submissions
+use these evidence operations automatically.
 
-Focused checks are `tests/test_durable_evidence.py`, existing library, queue,
-Jobs, codec, runtime and candidate checks. They use private fictional assets on
-WSL and native Windows. The shared store remains independent of browser and HTTP transport.
-`tests/test_evidence_views.py` covers acquired lifetimes and HTTP attachments. G03/G06 remain failed. CB-14
-is incomplete and CB-15 remains blocked. Operational gates are not waived.
+`tests/test_durable_evidence.py` checks copies, publication and cleanup with
+private fictional assets. `tests/test_evidence_views.py` checks acquired
+lifetimes and HTTP attachments. The shared store remains independent of browser
+and HTTP transport. These checks do not establish installed-data readiness.
 
 ## Scalar application metadata dispatch
 
-Phase 6 Slice 2 reuses this version-3 durable container and chunk storage for
-explicit application artifact 4 / evidence codec 2. Artifact 3 / codec 1 retains
+The version-3 durable container and chunk storage support
+application artifact 4 / evidence codec 2. Artifact 3 / codec 1 retains
 its existing meaning. Metadata validation rejects mismatched application/codec
 pairs. The container version does not determine either version. No durable rows
 are migrated or rewritten. Existing reservations, publication/transfer receipts,
 acquired-reader lifetimes and deletion precedence remain the same. Latest
 artifact-4 screens are readable temporary results but cannot enter the historical
-saved-backtest library. See the [Phase 6 compatibility record](plans/custom-variables/master-plan.md).
+saved-backtest library. See the [custom-variable compatibility summary](plans/custom-variables/master-plan.md).

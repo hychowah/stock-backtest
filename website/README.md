@@ -211,10 +211,11 @@ downloads data.
 See `../docs/research-workflow.md` for timing and calculation semantics.
 
 While a custom backtest runs, the page shows a spinner, elapsed time and the
-requested date range. Strategy controls are temporarily disabled to prevent
-repeat submissions. Existing results are explicitly labelled as previous results
-until the new run completes. Success, server errors and connection failures clear
-the loading state and restore the controls.
+requested date range. The Run button is disabled to prevent repeat submissions.
+You can edit the strategy draft. Those edits do not change the submitted run or
+start another run. Previous results stay visible until a new run succeeds.
+A lost connection starts reconnection; the calculation continues on the server.
+The Run button becomes available after completion, failure or confirmed Stop.
 
 You can close the server during a backtest. Restart the launcher and run the
 schedule again: unfinished cache writes roll back, while previously committed
