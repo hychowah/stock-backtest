@@ -298,9 +298,11 @@ class Store:
         return hashlib.sha256(encode(dict(metadata=metadata,evidence=evidence)).encode()).hexdigest()
 
     def completed(self):
-        """Small identities only; never load holdings while enumerating work."""
+        """Retryable identities only; never load holdings while enumerating work."""
         with self.database() as db:
-            return [row[0] for row in db.execute("SELECT id FROM jobs WHERE state='complete' ORDER BY position,id")]
+            return [row[0] for row in db.execute("""SELECT id FROM jobs WHERE state='complete'
+                AND NOT EXISTS (SELECT 1 FROM transfers WHERE job_id=jobs.id AND error='too_large')
+                ORDER BY position,id""")]
 
     def reserve_completed(self,identifier):
         """Fence explicit deletion before detaching a transfer's immutable source."""
@@ -473,6 +475,8 @@ class Queue:
                 continue  # An explicit deletion won before reservation.
             except saved_backtests.Full:
                 self.store.transfer_failed(identifier,'full')
+            except saved_backtests.InlineTooLarge:
+                self.store.transfer_failed(identifier,'too_large')
             except Exception as error:
                 diagnostics.failure('queue.transfer_failed',error)
                 self.store.transfer_failed(identifier,'retry')

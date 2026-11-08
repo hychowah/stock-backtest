@@ -4,6 +4,7 @@ import sqlite3
 from backtest.runtime import diagnostics, backtest_control
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
+from backtest.application import library as saved_backtests
 from backtest.application import durable_evidence, strategy_requests
 from backtest.application.calculation_contract import Busy, Unavailable
 
@@ -27,7 +28,9 @@ def queue_request(self,data_jobs):
         if self.command=='GET':
             if not collection and len(path)!=1:
                 self.reply(404,dict(error='Unknown queue action.'));return
-            self.reply(200,store.listing() if collection else store.get(path[0]));return
+            if collection:self.reply(200,store.listing())
+            else:self.json_reply(200,saved_backtests.inline_response(store.get(path[0])))
+            return
         length=int(self.headers.get('Content-Length','0'))
         if not 0<length<=262144:raise ValueError('Invalid queue request size.')
         def invalid(value):raise ValueError('Queue values must be finite.')

@@ -2,6 +2,7 @@
    renderers and persistence receive the same settings, numbers and display meaning. */
 const ResultArtifacts=(()=>{
   const views=new Map(),readers=new Map(),acquisitions=new Map();let revision=0;
+  const INLINE_RESPONSE_BYTES=128*1024*1024;
   // A latest screen has its own view; every other result opens in the dated view.
   const view=kind=>kind==='latest'?'latest':'custom';
   const signature=settings=>JSON.stringify(settings,(_key,value)=>typeof value==='number'&&!Number.isFinite(value)?String(value):value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value);
@@ -54,10 +55,10 @@ const ResultArtifacts=(()=>{
   const current=artifact=>{const displayed=views.get(view(artifact.kind));return !!displayed&&(identity(artifact)?identity(displayed)===identity(artifact):displayed===artifact);};
   function opening(){const ticket=++revision;return ()=>ticket===revision;}
   function identifier(){return Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');}
-  async function transport(path,options={}){
+  async function transport(path,options={},limit=32*1024*1024){
     const response=await fetch(path,{cache:'no-store',...options});
     const length=Number(response.headers?.get('Content-Length'));
-    if(length>32*1024*1024)throw Error('Evidence response exceeds its byte limit.');
+    if(length>limit)throw Error(limit===INLINE_RESPONSE_BYTES?'This inline backtest exceeds the 128 MiB save and open limit.':'Evidence response exceeds its byte limit.');
     const value=await response.json();
     if(!response.ok){const error=Error(value.error||'Could not read stored evidence.');error.requires_reader=value.requires_reader;throw error;}
     return value;
@@ -68,7 +69,7 @@ const ResultArtifacts=(()=>{
       let artifact;
       if(source.kind==='saved'||source.kind==='queue'){
         try{
-          record=await transport((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+encodeURIComponent(source.id));
+          record=await transport((source.kind==='saved'?'/api/backtests/':'/api/backtest-queue/')+encodeURIComponent(source.id),{},INLINE_RESPONSE_BYTES);
           if(record.state==='archived')return {consumed:false,record};
           if(!record.snapshot)throw Error('This result is not ready yet.');
           artifact=decode(record.snapshot);

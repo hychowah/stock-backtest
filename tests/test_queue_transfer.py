@@ -3,17 +3,20 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, nullcontext
 from copy import deepcopy
 from pathlib import Path
+import json
 import sqlite3
 import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'scripts'),str(ROOT),str(ROOT/'tests')]
 from backtest.application import queue as queue
 from backtest.application import library as saved
+from website.server.backtests import queue_request
 from test_saved_backtests import snapshot
 from test_durable_evidence import source,submission
 from test_queue import request
@@ -132,6 +135,46 @@ class TransferTests(unittest.TestCase):
             self.library.delete(occupant['id']);self.consumer.reconcile_completed()
             self.assertEqual(self.store.get(spec['id'])['state'],'archived')
             self.assertEqual(self.library.get(self.library.list()[0]['id'])['snapshot'],value)
+
+    def test_oversize_inline_transfer_keeps_source_and_receipt_absent(self):
+        spec,value=self.eager()
+        responses=[]
+        handler=SimpleNamespace(command='GET',path='/api/backtest-queue/'+spec['id'],
+            headers={},server=SimpleNamespace(backtest_queue=self.consumer),
+            reply=lambda status,body:responses.append((status,body)),
+            json_reply=lambda status,body:responses.append((status,json.loads(body))))
+        queue_request(handler,None)
+        self.assertEqual(responses[-1][0],200);self.assertEqual(responses[-1][1]['snapshot'],value)
+        with patch.object(saved,'MAX_BYTES',1):
+            queue_request(handler,None)
+            self.assertEqual(responses[-1],(400,dict(error=saved.INLINE_LIMIT_MESSAGE)))
+            with self.assertRaisesRegex(saved.InlineTooLarge,'128 MiB save and open limit'):
+                self.library.accept_queue_result(spec['id'],'Too large',lambda:nullcontext(value))
+            self.consumer.reconcile_completed()
+            record=self.store.get(spec['id'])
+            self.assertEqual(record['state'],'complete');self.assertEqual(record['snapshot'],value)
+            self.assertEqual(record['transfer']['state'],'pending');self.assertEqual(record['transfer']['error'],'too_large')
+            self.assertEqual(self.library.list(),[])
+            self.assertEqual(self.sql(self.library.path,'SELECT * FROM queue_imports'),[])
+        self.consumer.reconcile_completed()
+        self.assertEqual(self.store.get(spec['id']),record)
+        self.assertEqual(self.library.list(),[])
+
+    def test_oversize_inline_transfer_is_not_reserved_or_reloaded_on_later_passes(self):
+        spec,_=self.eager()
+        original=self.sql(self.store.path,'SELECT spec,snapshot FROM jobs')
+        with patch.object(saved,'MAX_BYTES',1):self.consumer.reconcile_completed()
+        refused=self.store.get(spec['id'])
+        self.assertEqual(refused['transfer']['error'],'too_large')
+        with patch.object(self.store,'reserve_completed',side_effect=AssertionError('Oversized results must not be reserved again')) as reserved, patch.object(self.store,'completed_source',side_effect=AssertionError('Oversized results must not be reloaded')) as opened:
+            for _ in range(3):self.consumer.reconcile_completed()
+            self.store.recover()
+            self.consumer.reconcile_completed()
+            reserved.assert_not_called();opened.assert_not_called()
+        self.assertEqual(self.store.listing()['records'][0]['state'],'complete')
+        self.assertEqual(self.store.get(spec['id']),refused)
+        self.assertEqual(self.sql(self.store.path,'SELECT spec,snapshot FROM jobs'),original)
+        self.assertEqual(self.library.list(),[])
 
     def test_full_library_and_existing_receipt_skip_evidence_detachment(self):
         spec,_,_,_=self.evidence()

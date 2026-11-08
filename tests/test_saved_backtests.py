@@ -46,6 +46,25 @@ class StoreTests(unittest.TestCase):
             self.assertNotIn('snapshot',self.store.list()[0])
         self.assertEqual(len(self.store.list()),3)
 
+    def test_40_mib_inline_random_result_opens_over_http(self):
+        value=snapshot('random');value['result']['extension']='x'*(40*1024**2)
+        record=self.store.save('Large inline result',value)
+        status,opened=self.request('GET','/api/backtests/'+record['id'])
+        self.assertEqual(status,200);self.assertEqual(opened['snapshot'],value)
+
+    def test_inline_save_refuses_response_over_limit_including_metadata(self):
+        value=snapshot('custom');record=self.store.save('Kept',value)
+        snapshot_bytes=len(json.dumps(value,allow_nan=False,separators=(',',':')).encode('utf-8'))
+        self.assertEqual(saved.MAX_BYTES,128*1024**2)
+        with patch.object(saved,'MAX_BYTES',snapshot_bytes):
+            with self.assertRaisesRegex(saved.InlineTooLarge,'128 MiB save and open limit'):
+                self.store.save('Too large',value)
+            status,error=self.request('POST',body=dict(name='Too large',snapshot=value))
+            self.assertEqual(status,413);self.assertEqual(error['error'],saved.INLINE_LIMIT_MESSAGE)
+            status,error=self.request('GET','/api/backtests/'+record['id'])
+            self.assertEqual(status,400);self.assertEqual(error['error'],saved.INLINE_LIMIT_MESSAGE)
+        self.assertEqual(self.store.list(),[record]);self.assertEqual(self.store.get(record['id'])['snapshot'],value)
+
     def test_both_formats_roundtrip_without_rewriting_legacy_records(self):
         legacy=self.store.save('Legacy',snapshot())
         with closing(sqlite3.connect(self.path)) as db:
@@ -158,6 +177,7 @@ class StoreTests(unittest.TestCase):
         if origin:handler.headers['Origin']=origin
         handler.rfile=io.BytesIO(packed);responses=[]
         handler.reply=lambda code,payload:responses.append((code,payload))
+        handler.json_reply=lambda code,body:responses.append((code,json.loads(body)))
         with patch.object(serve,'SAVED_BACKTESTS',self.store),patch.object(serve.cache_access,'access',side_effect=AssertionError('Library must not acquire financial cache')):
             getattr(handler,'do_'+method)()
         return responses[0]

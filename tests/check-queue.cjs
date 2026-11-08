@@ -185,6 +185,10 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   assert(node('queue-list').innerHTML.includes('Open result'));
   records[0].transfer.error='retry';await call('BacktestQueue.refresh()');
   assert(node('queue-list').innerHTML.includes('Saving failed. Results are kept here'));
+  records[0].transfer.error='too_large';await call('BacktestQueue.refresh()');
+  assert(node('queue-list').innerHTML.includes('128 MiB save and open limit. The result stays in the queue.'));
+  assert(!node('queue-list').innerHTML.includes('the server will retry'));
+  assert(node('queue-list').innerHTML.includes('Open result'));
   records[0].transfer.state='reserved';await call('BacktestQueue.refresh()');
   assert(node('queue-list').innerHTML.includes('Moving to Saved backtests'));
   assert(!node('queue-list').innerHTML.includes('data-action="delete"'));

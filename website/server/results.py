@@ -8,6 +8,8 @@ from backtest.application import queue as backtest_queue
 from backtest.application import library as saved_backtests
 from backtest.application import durable_evidence, evidence_views, result_exports, result_exploration
 
+EXPLORATION_REQUEST_BYTES=512*1024**2
+
 
 def exploration_request(self):
     """Reduce a browser-held trial or random batch; retain no server-side result."""
@@ -20,7 +22,7 @@ def exploration_request(self):
     try:
         with access.operation():
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=saved_backtests.MAX_BYTES:raise ValueError('Completed result exceeds the request size limit.')
+            if not 0<length<=EXPLORATION_REQUEST_BYTES:raise ValueError('Completed result exceeds the request size limit.')
             def invalid_constant(value):raise ValueError('Saved values must be finite.')
             request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)
             if type(request) is not dict or set(request)!={'result','selection'}:
@@ -106,7 +108,8 @@ def saved_backtest_request(self,store):
     identifier=self.path.removeprefix('/api/backtests/');collection=self.path=='/api/backtests'
     try:
         if self.command=='GET':
-            self.reply(200,dict(limit=saved_backtests.LIMIT,records=store.list()) if collection else store.get(identifier))
+            if collection:self.reply(200,dict(limit=saved_backtests.LIMIT,records=store.list()))
+            else:self.json_reply(200,saved_backtests.inline_response(store.get(identifier)))
         elif self.command=='DELETE' and not collection:
             store.delete(identifier);self.reply(200,dict(deleted=True,id=identifier))
         elif self.command=='POST' and not collection:
@@ -118,7 +121,7 @@ def saved_backtest_request(self,store):
         elif self.command=='POST' and collection:
             length=int(self.headers.get('Content-Length','0'))
             if length>saved_backtests.MAX_BYTES:
-                self.reply(413,dict(error='This backtest is too large to save as one record.'));return
+                self.reply(413,dict(error=saved_backtests.INLINE_LIMIT_MESSAGE));return
             if length<=0:raise ValueError('Expected a completed backtest.')
             def invalid_constant(value):raise ValueError('Saved values must be finite.')
             request=json.loads(self.rfile.read(length),parse_constant=invalid_constant)

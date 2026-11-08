@@ -96,7 +96,7 @@ Trials and periods are one-based integers. Cursors are immutable zero-based row
 offsets. Pages return identity, rows, cursor, next offset and total count. A null
 next offset means completion. Normal pages target 256 KiB and at most 64 rows.
 One codec-valid record can exceed the target, up to the codec's existing 8 MiB
-ceiling. Responses have a separate 32 MiB bound. Page sizing, response admission and
+ceiling. Paged evidence responses have a separate 32 MiB bound. Page sizing, response admission and
 HTTP output use one UTF-8 JSON serializer. Lone surrogates remain JSON escapes.
 Byte checks measure the bytes sent, so ASCII expansion cannot reject an otherwise
 valid maximum-size Unicode record. A page never drops stored rows.
@@ -113,6 +113,16 @@ existing POST route. It pins complete server evidence through `save_evidence`;
 it never trusts a browser descriptor as a complete result. Existing library caps,
 queue receipts, held edits, exact plans and Stop/shutdown rules stay with their
 original owners. Old records reopen without rewriting their stored bytes.
+
+Inline saved and queue GET responses have one 128 MiB encoded JSON limit,
+including the record metadata around the snapshot. The browser uses that same
+limit for these opens. Library saves and queue-to-library copies check the complete
+saved response before publication. An oversized inline result is refused with
+“This inline backtest exceeds the 128 MiB save and open limit.” The queue keeps
+the completed source visible as **Completed — waiting to save**, displays the
+limit reason and does not retry that transfer automatically. It never deletes or
+recalculates that source. Existing stored bytes are never rewritten. Evidence pages retain their
+32 MiB response bound. Eager exploration retains its 512 MiB request ceiling.
 
 ## Browser composition and exports
 

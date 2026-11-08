@@ -128,8 +128,13 @@ budget. Source Jobs or detached-reader copies retain their own charges too.
 Available storage must cover the reservation. Other processes and applications
 can still consume free space afterward. SQLite errors therefore still roll back.
 This is conservative admission accounting, not a machine-wide reservation,
-filesystem quota or bound on allocated blocks. Existing eager operations retain
-their prior policies. `durable_evidence.files(db)` reports current file, journal,
+filesystem quota or bound on allocated blocks. Inline results have a separate
+128 MiB save and open limit, including the complete HTTP response metadata.
+Library save and queue import refuse an oversized inline result before committing
+a record or transfer receipt. A refused queue import keeps its complete source
+visible without automatic retry. The [reader contract](evidence-views.md) states the
+transport limits and user messages. These checks do not rewrite existing records.
+`durable_evidence.files(db)` reports current file, journal,
 WAL/SHM, page and free-page bytes for measurement. Post-commit zero journal bytes
 do not establish a journal high-water value. Deletion can leave free SQLite pages.
 

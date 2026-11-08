@@ -14,7 +14,8 @@ from backtest.application import artifacts
 from backtest.paths import ROOT
 DATABASE = ROOT/'data'/'saved-backtests.sqlite'
 LIMIT = 100
-MAX_BYTES = 512*1024*1024
+MAX_BYTES = 128*1024*1024
+INLINE_LIMIT_MESSAGE = 'This inline backtest exceeds the 128 MiB save and open limit.'
 SCHEMA = '''CREATE TABLE IF NOT EXISTS records (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL,
  info TEXT NOT NULL, snapshot BLOB NOT NULL
@@ -28,6 +29,16 @@ class Full(ValueError):
 class Missing(ValueError):
     pass
 
+
+class InlineTooLarge(ValueError):
+    pass
+
+
+def inline_response(record):
+    """Encode the complete eager HTTP response under its transport ceiling."""
+    body=json.dumps(record,allow_nan=False,separators=(',',':')).encode('utf-8')
+    if len(body)>MAX_BYTES:raise InlineTooLarge(INLINE_LIMIT_MESSAGE)
+    return body
 
 
 
@@ -61,11 +72,11 @@ class Store:
         if not isinstance(name,str) or not name.strip() or len(name.strip())>120:
             raise ValueError('Use a backtest name with 1–120 characters.')
         artifacts.validate(snapshot)
-        packed=json.dumps(snapshot,allow_nan=False,separators=(',',':')).encode('utf-8')
-        if len(packed)>MAX_BYTES:raise ValueError('This backtest is too large to save as one record.')
-        compressed=zlib.compress(packed,3)
         info=artifacts.information(snapshot)
         record=dict(id=uuid.uuid4().hex,name=name.strip(),created_at=datetime.now(timezone.utc).isoformat(),**info)
+        inline_response(dict(record,snapshot=snapshot))
+        packed=json.dumps(snapshot,allow_nan=False,separators=(',',':')).encode('utf-8')
+        compressed=zlib.compress(packed,3)
         db=self.connect()
         try:
             with db:
@@ -135,8 +146,8 @@ class Store:
                         db.execute('INSERT INTO queue_imports VALUES(?,?)',(source_id,record['id']))
                     if isinstance(source,dict):
                         artifacts.validate(source)
+                        inline_response(dict(record,snapshot=source))
                         packed=json.dumps(source,allow_nan=False,separators=(',',':')).encode('utf-8')
-                        if len(packed)>MAX_BYTES:raise ValueError('This backtest is too large to save as one record.')
                         insert(zlib.compress(packed,3))
                     else:
                         with source.open_reader() as reader:
