@@ -106,7 +106,7 @@ class RobustnessTests(unittest.TestCase):
         self.assertEqual(r.distribution([0,10])['p10'],1)
         self.assertEqual(r.distribution([0,10])['stddev'],5)
         # New filters over the same sampled books never re-read raw/daily prices.
-        with patch.object(facts.BookFacts,'price',side_effect=AssertionError('Cached books must be reused')):
+        with patch.object(financial_books,'book',side_effect=AssertionError('Cached entries must be reused')):
             repeat=r.run(self.db,config)
         self.assertEqual([t['cagr'] for t in repeat['trials']],expected)
 
@@ -144,25 +144,25 @@ class RobustnessTests(unittest.TestCase):
         def interrupt(event):
             if event['completed']==1:raise KeyboardInterrupt()
         with self.assertRaises(KeyboardInterrupt):r.run(self.db,config,interrupt)
-        retained=self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0]
+        retained=self.db.execute('SELECT COUNT(*) FROM books WHERE latest=0').fetchone()[0]
         self.assertGreater(retained,0)
         result=r.run(self.db,config)
         self.assertEqual(result['completed'],3)
-        self.assertGreaterEqual(self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0],retained)
+        self.assertGreaterEqual(self.db.execute('SELECT COUNT(*) FROM books WHERE latest=0').fetchone()[0],retained)
 
     def test_pool_switch_commits_each_trial_and_preserves_original_pool(self):
         original=self.config(trials=3,seed=11,pool='legacy')
         first=r.run(self.db,original)
-        periods=self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0]
+        periods=self.db.execute('SELECT COUNT(*) FROM books WHERE latest=0').fetchone()[0]
         legacy=[tuple(row) for row in self.db.execute("SELECT * FROM book_rows WHERE pool='legacy' ORDER BY book,symbol")]
         wider=self.config(trials=3,seed=11,pool='cached')
         def interrupt(event):
             if event['completed']==1:raise KeyboardInterrupt()
         with self.assertRaises(KeyboardInterrupt):r.run(self.db,wider,interrupt)
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM book_pools WHERE pool='cached'").fetchone()[0],2)
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books WHERE exit IS NOT NULL').fetchone()[0],periods)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books WHERE latest=0').fetchone()[0],periods)
         self.assertEqual([tuple(row) for row in self.db.execute("SELECT * FROM book_rows WHERE pool='legacy' ORDER BY book,symbol")],legacy)
-        with patch.object(facts.BookFacts,'price',side_effect=AssertionError('Original pool remains complete')),patch.object(facts.BookFacts,'reports',side_effect=AssertionError('Original pool remains complete')):
+        with patch.object(financial_books,'book',side_effect=AssertionError('Original pool remains complete')),patch.object(facts.BookFacts,'reports',side_effect=AssertionError('Original pool remains complete')):
             replay=r.run(self.db,original)
         self.assertEqual([row['cagr'] for row in replay['trials']],[row['cagr'] for row in first['trials']])
         retry=r.run(self.db,wider)

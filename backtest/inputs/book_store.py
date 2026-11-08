@@ -1,103 +1,68 @@
-"""The book store: one row shape, one writer and every read of its tables.
+"""Compact entry sheets in the daily cache; one owner for their schema and reads.
 
-The tables live in the daily cache (schedules.sqlite). A book id names one
-entry and exit; the open (latest) book has no exit and is the book at the
-research database's latest date. Latest and dated books share one book-id
-space. An id is a handle, not a durable name: it names one book only while
-the cache keeps that book, and delete() lets SQLite reuse the highest ids
-(INTEGER PRIMARY KEY without AUTOINCREMENT). A recorded owner_scope book is
-therefore a label, never a lookup key outside the operation or coverage
-generation that produced it. book_pools marks each completed pool. A book
-records its SPY return and candidates, the number of cached-pool reports of
-its entry day (for the latest book, the eligible financials that the latest
-screen reports). The book
-identity (research.code_identity('books')) binds this module, so an edit to
-the schema, the writer or a reader here drops every saved book.
-
-Writers: store() and delete() (daily preparation drops the books that the
-change-day rule, books.kept, does not keep). Readers: stored(), record(),
-open_book(), completed(), find(), rows(), scope(), lanes(), market_caps(),
-require_scope() and counts(). A book's rows keep the row shape that results
-and the website keep, chosen by the book itself: LATEST for the open book and
-DATED otherwise.
-screening.select is the one SQL consumer outside this module; it takes the
-table names (ROWS, METRICS, FILTERS) and columns() from here. A daily
-connection attaches the research database as the schema 'research', which
-supplies the company names.
+Historical sheets share an entry across every exit. Latest uses a separate
+header because its listed/exact-session admission differs. Pool completion
+commits with the rows, including empty pools. A book id is an operation-local
+handle; saved owner_scope labels never look up a future cache generation.
+Stored owner numbers retain REAL rounding and zero normalization. Typed
+research facts and formula outputs keep their existing signed-zero semantics.
 """
+from backtest.financial import metrics as catalog
 
-SCHEMA = '''
-CREATE TABLE books(book INTEGER PRIMARY KEY, entry TEXT NOT NULL, exit TEXT, spy REAL, candidates INTEGER NOT NULL);
-CREATE UNIQUE INDEX book_dates ON books(entry,exit);
+METRICS = {key: (f'm_{key}_multiple', f'm_{key}_yield') for key in catalog.METRICS}
+FILTERS = {key: f'f_{key}' for key in catalog.FILTERS}
+LANES = tuple(column for pair in METRICS.values() for column in pair) + tuple(FILTERS.values())
+SCHEMA = """
+CREATE TABLE books(book INTEGER PRIMARY KEY, entry TEXT NOT NULL, latest INTEGER NOT NULL CHECK(latest IN (0,1)),
+ candidates INTEGER NOT NULL, UNIQUE(entry,latest));
 CREATE TABLE book_pools(book INTEGER REFERENCES books(book), pool TEXT CHECK(pool IN ('cached','legacy')),
  PRIMARY KEY(book,pool)) WITHOUT ROWID;
 CREATE TABLE book_rows(book INTEGER, pool TEXT, symbol TEXT, candidate_rank INTEGER, fiscal TEXT, known TEXT,
- entry TEXT, price REAL, exit TEXT, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL,
- ev_ebitda REAL, spread REAL, return_value REAL, status TEXT, PRIMARY KEY(book,pool,symbol)) WITHOUT ROWID;
-CREATE TABLE book_metrics(book INTEGER, pool TEXT, symbol TEXT, metric TEXT, multiple REAL NOT NULL,
- yield_value REAL NOT NULL, PRIMARY KEY(book,pool,symbol,metric)) WITHOUT ROWID;
-CREATE TABLE book_filters(book INTEGER, pool TEXT, symbol TEXT, field TEXT, value REAL NOT NULL,
- PRIMARY KEY(book,pool,symbol,field)) WITHOUT ROWID;
-'''
-TABLES = ('books', 'book_pools', 'book_rows', 'book_metrics', 'book_filters')
-ROWS, METRICS, FILTERS = TABLES[2:]
-# The row shapes that holdings, latest screens and the website keep: column
-# names in order; a latest row names its entry day price_date.
-DATED = ('pool', 'symbol', 'candidate_rank', 'fiscal', 'entry', 'exit', 'market_cap', 'enterprise_value', 'ebitda',
-         'ebitda_yield', 'ev_ebitda', 'spread', 'return_value', 'status')
+ entry TEXT, price REAL, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL,
+ ev_ebitda REAL, spread REAL,""" + ','.join(column + ' REAL' for column in LANES) + """,
+ PRIMARY KEY(book,pool,symbol)) WITHOUT ROWID;
+"""
+TABLES = ('books', 'book_pools', 'book_rows')
+ROWS = TABLES[2]
+DATED = ('pool', 'symbol', 'candidate_rank', 'fiscal', 'entry', 'price', 'market_cap', 'enterprise_value', 'ebitda',
+         'ebitda_yield', 'ev_ebitda', 'spread')
 LATEST = ('pool', 'symbol', 'candidate_rank', 'fiscal', 'known', 'price_date', 'price', 'market_cap',
           'enterprise_value', 'ebitda_yield', 'ev_ebitda', 'spread')
 
 
 def store(db, book):
-    """Write one pool of books.book() in the caller's transaction; return its book id.
-
-    The pool's rows and its book_pools marker commit together; an empty pool is
-    complete too. The pools of one entry and exit share one book id. The caller
-    holds exclusive cache ownership and writes only a pool that is not
-    complete (the primary keys refuse a second write); daily preparation
-    deletes the old open book before it writes the new one (open_book()).
-    """
-    row = db.execute('SELECT book FROM books WHERE entry=? AND exit IS ?', (book['entry'], book['exit'])).fetchone()
+    """Write a complete entry/pool sheet in the caller's transaction; return its handle."""
+    row = db.execute('SELECT book FROM books WHERE entry=? AND latest=?', (book['entry'], book['latest'])).fetchone()
     book_id = row[0] if row is not None else db.execute(
-        'INSERT INTO books(entry,exit,spy,candidates) VALUES(?,?,?,?)',
-        (book['entry'], book['exit'], book['spy'], book['candidates'])).lastrowid
+        'INSERT INTO books(entry,latest,candidates) VALUES(?,?,?)',
+        (book['entry'], book['latest'], book['candidates'])).lastrowid
     pool = book['pool']
-    db.executemany('INSERT INTO book_rows VALUES(' + ','.join('?' * 17) + ')', ((book_id, pool, *row) for row in book['rows']))
-    db.executemany('INSERT INTO book_metrics VALUES(?,?,?,?,?,?)', ((book_id, pool, *row) for row in book['metrics']))
-    db.executemany('INSERT INTO book_filters VALUES(?,?,?,?,?)', ((book_id, pool, *row) for row in book['filters']))
+    values = {row[0]: {} for row in book['rows']}
+    for symbol, metric, multiple, value in book['metrics']:
+        a, b = METRICS[metric]
+        values[symbol].update({a: multiple, b: value})
+    for symbol, field, value in book['filters']:
+        values[symbol][FILTERS[field]] = value
+    db.executemany('INSERT INTO book_rows VALUES(' + ','.join('?' * (14 + len(LANES))) + ')',
+        ((book_id, pool, *row, *(values[row[0]].get(column) for column in LANES)) for row in book['rows']))
     db.execute('INSERT INTO book_pools VALUES(?,?)', (book_id, pool))
     return book_id
 
 
-def delete(db, books):
-    """Delete the given book ids from every table, in the caller's transaction."""
-    db.execute('CREATE TEMP TABLE dropped_books(book INTEGER PRIMARY KEY)')
-    try:
-        db.executemany('INSERT INTO temp.dropped_books VALUES(?)', ((book,) for book in books))
-        for table in reversed(TABLES):
-            db.execute(f'DELETE FROM main.{table} WHERE book IN (SELECT book FROM temp.dropped_books)')
-    finally:
-        db.execute('DROP TABLE temp.dropped_books')
-
-
 def stored(db):
-    """[(book, entry, exit)] of every stored book, by book id; exit None is the open book."""
-    return [tuple(row) for row in db.execute('SELECT book,entry,exit FROM books ORDER BY book')]
+    """[(book, entry, latest)] of stored headers, by handle."""
+    return [tuple(row) for row in db.execute('SELECT book,entry,latest FROM books ORDER BY book')]
 
 
 def record(db, book):
-    """dict(entry, exit, spy, candidates) of a stored book, or None; exit None is the open book."""
-    row = db.execute('SELECT entry,exit,spy,candidates FROM books WHERE book=?', (book,)).fetchone()
-    return None if row is None else dict(zip(('entry', 'exit', 'spy', 'candidates'), row))
+    """Entry policy and candidate count for a stored header, or None."""
+    row = db.execute('SELECT entry,latest,candidates FROM books WHERE book=?', (book,)).fetchone()
+    return None if row is None else dict(zip(('entry', 'latest', 'candidates'), row))
 
 
 def open_book(db):
-    """The id of the open (latest) book that daily preparation wrote: the one book without an exit.
-
-    This is the one check that the store holds at most one open book.
-    """
-    found = db.execute('SELECT book FROM books WHERE exit IS NULL LIMIT 2').fetchall()
+    """Require the one latest header; its pools keep the existing shared handle."""
+    found = db.execute('SELECT book FROM books WHERE latest=1 LIMIT 2').fetchall()
     if not found:
         raise ValueError('The latest book is missing. Run: python3 scripts/schedules.py prepare')
     if len(found) > 1:
@@ -106,45 +71,37 @@ def open_book(db):
 
 
 def completed(db, pool):
-    """[(book, entry, exit)] of every stored book whose pool is complete, by book id; exit None is the open book."""
+    """[(book, entry, latest)] of complete pool sheets, including empty sheets."""
     return [tuple(row) for row in db.execute(
-        'SELECT b.book,b.entry,b.exit FROM books b JOIN book_pools p ON p.book=b.book WHERE p.pool=? ORDER BY b.book', (pool,))]
+        'SELECT b.book,b.entry,b.latest FROM books b JOIN book_pools p ON p.book=b.book WHERE p.pool=? ORDER BY b.book', (pool,))]
 
 
-def find(db, entry, exit_day, pool):
-    """The book id of a completed pool, or None; exit_day None names the open book."""
-    row = db.execute('SELECT b.book FROM books b JOIN book_pools p ON p.book=b.book WHERE b.entry=? AND b.exit IS ? AND p.pool=?',
-                     (str(entry), None if exit_day is None else str(exit_day), pool)).fetchone()
+def find(db, entry, pool, *, latest=False):
+    """The complete entry/pool handle under historical or latest policy, or None."""
+    row = db.execute('SELECT b.book FROM books b JOIN book_pools p ON p.book=b.book WHERE b.entry=? AND b.latest=? AND p.pool=?',
+                     (str(entry), latest, pool)).fetchone()
     return None if row is None else row[0]
 
 
 def require_scope(db, book, pool, day, open_book):
-    """The one check of a prepared scope: book's pool is complete, entered on day, and is the open book when open_book.
-
-    Raise ValueError otherwise.
-    """
+    """Check a prepared scope's entry, policy and pool completion once."""
     found = record(db, book) if type(book) is int else None
-    if (found is None or found['entry'] != str(day) or (found['exit'] is None) != open_book
-            or find(db, found['entry'], found['exit'], pool) != book):
+    if (found is None or found['entry'] != str(day) or bool(found['latest']) != open_book
+            or find(db, day, pool, latest=open_book) != book):
         raise ValueError('The prepared scope is not a complete stored book.')
 
 
 def columns(db, book):
-    """The SQL column list of a stored book's rows (alias s) in its row shape: LATEST for the open book, DATED otherwise."""
+    """The stored entry columns (alias s), with latest price_date projection."""
     found = record(db, book)
     if found is None:
         raise ValueError('The book is not stored.')
     return ','.join('s.entry AS price_date' if name == 'price_date' else 's.' + name
-                    for name in (LATEST if found['exit'] is None else DATED))
+                    for name in (LATEST if found['latest'] else DATED))
 
 
 def rows(db, book, pool, symbols=None):
-    """Yield the rows of one book pool in symbol order: dicts in the book's row shape plus name, sector and exchange.
-
-    symbols names the rows to read; None reads every row. A caller may stop
-    early, which bounds the read. A row whose company is not a saved research
-    company fails.
-    """
+    """Bounded full entry rows; dated returns are added only after selection."""
     named = '' if symbols is None else f' AND s.symbol IN ({",".join("?" * len(symbols))})'
     cursor = db.execute(f'SELECT {columns(db, book)},c.name,c.sector,c.exchange,c.symbol AS _company '
                         f'FROM book_rows s LEFT JOIN research.companies c USING(symbol) WHERE s.book=? AND s.pool=?{named} '
@@ -157,59 +114,42 @@ def rows(db, book, pool, symbols=None):
         yield detached
 
 
-def scope(db, book, pool, limit):
-    """The selection fields of the first limit rows of one book pool, in symbol order.
-
-    Each row holds, in order and unpacked like a tuple, (symbol,
-    candidate_rank, fiscal, known, market_cap, enterprise_value, ebitda,
-    sector, exchange). Every book stores these columns, whatever its row
-    shape; sector and exchange are the saved research company's. A row whose
-    company is not a saved research company fails.
-    """
+def scope(db, book, pool, limit, exit_day=None):
+    """Selection rows, restricted to actual entries before exit, before the ceiling."""
+    window = '' if exit_day is None else ' AND s.entry<?'
     found = db.execute('SELECT c.symbol,s.candidate_rank,s.fiscal,s.known,s.market_cap,s.enterprise_value,s.ebitda,'
                        'c.sector,c.exchange FROM book_rows s LEFT JOIN research.companies c USING(symbol) '
-                       'WHERE s.book=? AND s.pool=? ORDER BY s.symbol LIMIT ?', (book, pool, limit)).fetchall()
+                       'WHERE s.book=? AND s.pool=?' + window + ' ORDER BY s.symbol LIMIT ?',
+                       (book, pool, *((str(exit_day),) if exit_day is not None else ()), limit)).fetchall()
     if any(row[0] is None for row in found):
         raise ValueError('A stored book row has no saved company.')
     return found
 
 
 def lanes(db, book, pool, metrics=None, fields=None):
-    """One {symbol: value} map per stored lane of one book pool: one read per table.
-
-    Return (pairs, values), in name order: pairs {metric: (multiples,
-    yields)}, one map for each component of the stored ranking pair, and
-    values {field: {symbol: value}}. metrics and fields name the lanes to
-    read; each named lane has a map, empty when it has no rows. None reads
-    every stored metric or field, and an empty sequence reads nothing.
-    """
-    pairs = {metric: ({}, {}) for metric in metrics or ()}
-    values = {field: {} for field in fields or ()}
-    if metrics is None or metrics:
-        for symbol, metric, multiple, value in _read(db, METRICS, 'metric', 'multiple,yield_value', book, pool, metrics):
-            if metric not in pairs:
-                pairs[metric] = {}, {}
-            pairs[metric][0][symbol], pairs[metric][1][symbol] = multiple, value
-    if fields is None or fields:
-        for symbol, field, value in _read(db, FILTERS, 'field', 'value', book, pool, fields):
-            if field not in values:
-                values[field] = {}
-            values[field][symbol] = value
+    """Read requested stored owner lanes once; NULL remains absent, never recalculated."""
+    metrics = tuple(METRICS) if metrics is None else tuple(sorted(set(metrics)))
+    fields = tuple(FILTERS) if fields is None else tuple(sorted(set(fields)))
+    pairs, values = {metric: ({}, {}) for metric in metrics}, {field: {} for field in fields}
+    names = [column for metric in metrics for column in METRICS[metric]] + [FILTERS[field] for field in fields]
+    if names:
+        for row in db.execute('SELECT symbol,' + ','.join(names) + ' FROM book_rows WHERE book=? AND pool=? ORDER BY symbol', (book, pool)):
+            symbol, *numbers = row
+            for i, metric in enumerate(metrics):
+                multiple, value = numbers[2*i:2*i+2]
+                if multiple is not None and value is not None:
+                    pairs[metric][0][symbol], pairs[metric][1][symbol] = multiple, value
+            for field, value in zip(fields, numbers[2*len(metrics):]):
+                if value is not None:
+                    values[field][symbol] = value
     return dict(sorted(pairs.items())), dict(sorted(values.items()))
 
 
 def market_caps(db, book, pool):
-    """{symbol: market_cap}: the stored entry market cap of each row of one book pool."""
-    return dict(db.execute(f'SELECT symbol,market_cap FROM {ROWS} WHERE book=? AND pool=?', (book, pool)))
-
-
-def _read(db, table, key, columns, book, pool, names):
-    """The (symbol, key, columns) rows of one book pool, of the named keys (None: every key)."""
-    names = () if names is None else tuple(sorted(set(names)))
-    condition = f' AND {key} IN ({",".join("?" * len(names))})' if names else ''
-    return db.execute(f'SELECT symbol,{key},{columns} FROM {table} WHERE book=? AND pool=?{condition}', (book, pool, *names))
+    """Stored entry caps for owner contexts; no fallback."""
+    return dict(db.execute('SELECT symbol,market_cap FROM book_rows WHERE book=? AND pool=?', (book, pool)))
 
 
 def counts(db):
-    """{table: rows} of the books, completed pools and book rows."""
-    return {table: db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] for table in TABLES[:3]}
+    """Header, pool-completion and compact-row counts."""
+    return {table: db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] for table in TABLES}

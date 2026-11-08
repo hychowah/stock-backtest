@@ -107,9 +107,10 @@ class CoverageTests(unittest.TestCase):
             # Stored owner lanes of the latest book: Q0000 keeps its book rows
             # but loses every metric and filter; Q0001 loses only ev_ebitda.
             stored=store(db,book)
-            for table in ('book_metrics','book_filters'):
-                db.execute('DELETE FROM '+table+" WHERE book=? AND symbol='Q0000'",(stored,))
-            db.execute("DELETE FROM book_metrics WHERE book=? AND symbol='Q0001' AND metric='ev_ebitda'",(stored,))
+            db.execute('UPDATE book_rows SET '+','.join(column+'=NULL' for column in book_store.LANES)+
+                       " WHERE book=? AND symbol='Q0000'",(stored,))
+            db.execute("UPDATE book_rows SET m_ev_ebitda_multiple=NULL,m_ev_ebitda_yield=NULL "
+                       "WHERE book=? AND symbol='Q0001'",(stored,))
             return stored
         with patch.object(book_store,'store',side_effect=adversarial):
             with PreparedInputs(configure=history(4,2015,2016)):

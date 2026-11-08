@@ -165,7 +165,7 @@ January from 1996, the top 50) is a 12-month fixed schedule from 1 January.
   window (after entry, through exit) contains that day. It is empty. The 37
   early January-study stops were checked: acquisitions, redemptions, SPAC cash
   or warrants.
-- A stored book row records only how a holding exited: `Scheduled exit`, `Last
+- A result holding row records only how a holding exited: `Scheduled exit`, `Last
   available price` or `Bankruptcy`. The run shows `Marked to date` when its last
   book ends on a mark, not a scheduled exit (`portfolio_results`).
 - The first usable day of a schedule or historical root is `rules.FIRST_DAY`
@@ -325,13 +325,13 @@ and `results/experiments/fmp-throughput-2026-10-23.json`. Do not present old
 timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
-daily book store, attaching research read-only. It prepares only the
-requested pool and records completion in `book_pools` with the rows. Dates anchor to the starting day, clamp month ends and roll forward
+daily store, attaching research read-only. Pool rows and `book_pools`
+completion commit together. Dates anchor to the starting day, clamp month ends and roll forward
 to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
-Reuse `screening.select` and `metrics.evaluate`; never duplicate formulas. Label
-dated period returns, not annual returns. The daily binding names the research
-and book identities; it updates in place in one transaction and `books.kept`
-keeps unaffected books. `book_store` owns every read of its tables. Latest and
+Reuse `screening.select` and `metrics.evaluate`. Label dated period returns. The daily binding names the research
+and book identities; changed identities drop every sheet. Entry/pool sheets
+build on demand. Filter actual entry before exit before ranking; close only
+selected rows. Latest keeps its existing policy. `book_store` owns every read of its tables. Latest and
 scope roots read their stored book's owner lanes; other roots use the dated owner policy. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).
@@ -344,7 +344,7 @@ strategy and SPY. Keep incomplete trials visible and exclude them from both
 distributions. Average trial CAGR is not one portfolio return; percentiles are
 not confidence intervals. Commit per trial so a retry reuses books. An omitted
 seed is generated server-side and recorded. `book_batch.py` plans unique missing
-books. Read-only workers calculate and only the parent stores, with one read
+entry/pool sheets. Read-only workers calculate and only the parent stores, with one read
 transaction per book. Use up to eight workers for 16 or more missing books; small
 batches stay serial. Workers watch the parent's lifetime. Checks:
 `tests/test_robustness.py`, `node tests/check-robustness.cjs` and

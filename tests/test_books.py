@@ -135,8 +135,8 @@ class BookTests(unittest.TestCase):
     def test_latest_book_is_the_open_book_of_the_latest_date(self):
         latest = date.fromisoformat(research.identity(self.research)['latest_date'])
         screen = books.Screen(latest, facts.BookFacts(self.attached), open_book=True)
-        (book, entry, exit_day, spy, candidates), = self.daily.execute('SELECT book,entry,exit,spy,candidates FROM books')
-        self.assertEqual((entry, exit_day, spy, candidates), (str(latest), None, None, len(screen.statements['cached'])))
+        (book, entry, latest_policy, candidates), = self.daily.execute('SELECT book,entry,latest,candidates FROM books')
+        self.assertEqual((entry, latest_policy, candidates), (str(latest), 1, len(screen.statements['cached'])))
         self.assertEqual(exact(self.daily.execute('SELECT pool FROM book_pools ORDER BY pool')), exact([('cached',), ('legacy',)]))
         stored = {(pool, symbol): (fiscal, known, day, price, cap, ev, ebitda) for pool, symbol, fiscal, known, day, price, cap, ev, ebitda
                   in self.daily.execute('SELECT pool,symbol,fiscal,known,entry,price,market_cap,enterprise_value,ebitda FROM book_rows WHERE book=?', (book,))}
@@ -167,37 +167,49 @@ class BookTests(unittest.TestCase):
         self.assertEqual(set(admitted['valuation']), {'market_cap', 'enterprise_value', 'ebitda'})
         self.assertNotIn('admission_evidence', admitted)
 
-    def test_dated_books_are_deterministic_across_connections(self):
+    def test_entry_sheets_are_deterministic_across_connections_and_do_not_close(self):
         with closing(daily.connect()) as db:
-            sessions = facts.sessions(db)
             attached, direct = facts.BookFacts(db), facts.BookFacts(self.attached)
-            pairs = [(sessions[i], sessions[min(i + 63, len(sessions) - 1)]) for i in range(0, len(sessions) - 1, 120)]
-            pairs += [(date(2015, 1, 2), date(2015, 1, 5)), (date(2016, 6, 1), date(2016, 10, 20))]
-            self.assertGreater(len(pairs), 6)
-            compared = Counter()
-            for entry, exit_day in pairs:
+            for entry in (date(2015, 1, 2), date(2016, 6, 1)):
                 for pool in ('legacy', 'cached'):
-                    with self.subTest(entry=entry, exit=exit_day, pool=pool):
-                        new = books.book(entry, exit_day, pool, attached)
-                        old = books.book(entry, exit_day, pool, direct)
+                    with self.subTest(entry=entry,pool=pool), patch.object(books,'close',side_effect=AssertionError('Entry only')):
+                        new = books.book(entry, pool, attached)
+                        old = books.book(entry, pool, direct)
                         for key in ('rows', 'metrics', 'filters'):
                             self.assertEqual(exact(new[key]), exact(old[key]))
-                        self.assertEqual({key: new[key] for key in ('entry', 'exit', 'spy', 'candidates')},
-                                         {key: old[key] for key in ('entry', 'exit', 'spy', 'candidates')})
-                        compared.update(row[-1] for row in new['rows'])
-        self.assertGreater(compared['Scheduled exit'], 100)
-        self.assertGreater(compared['Last available price'], 0)
+                        self.assertEqual(new['latest'],False)
+                        self.assertNotIn('exit',new)
 
-    def test_one_writer_shares_a_book_id_between_pools(self):
+    def test_one_writer_shares_an_entry_handle_between_pools_and_keeps_latest_separate(self):
         with closing(sqlite3.connect(':memory:')) as db:
             db.executescript(book_store.SCHEMA)
-            entry, exit_day = date(2015, 1, 2), date(2015, 7, 1)
-            ids = [book_store.store(db, books.book(entry, exit_day, pool, facts.BookFacts(self.attached)))
-                   for pool in ('legacy', 'cached')]
+            entry=date(2015, 1, 2)
+            port=facts.BookFacts(self.attached)
+            ids = [book_store.store(db, books.book(entry, pool, port)) for pool in ('legacy', 'cached')]
             self.assertEqual(ids[0], ids[1])
-            self.assertEqual(db.execute('SELECT entry,exit FROM books').fetchall(), [('2015-01-02', '2015-07-01')])
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0], 2)
-            self.assertGreater(db.execute("SELECT COUNT(*) FROM book_rows WHERE status='Scheduled exit'").fetchone()[0], 0)
+            latest=book_store.store(db,books.book(entry,'cached',port,latest=True))
+            self.assertNotEqual(ids[0],latest)
+            self.assertEqual(db.execute('SELECT entry,latest FROM books ORDER BY book').fetchall(),
+                             [('2015-01-02',0),('2015-01-02',1)])
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],3)
+            self.assertEqual({row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")},
+                             {'books','book_pools','book_rows'})
+
+    def test_compact_lanes_keep_missing_values_and_real_zero_semantics(self):
+        with closing(sqlite3.connect(':memory:')) as db:
+            db.executescript(book_store.SCHEMA)
+            book=books.book(date(2015,1,2),'cached',facts.BookFacts(self.attached))
+            symbol=book['rows'][0][0]
+            book['metrics']=[(symbol,'ev_ebitda',3.,.33333333333333337)]
+            book['filters']=[(symbol,'profit_margin',-0.)]
+            number=book_store.store(db,book)
+            pairs,values=book_store.lanes(db,number,'cached')
+            self.assertEqual(pairs['ev_ebitda'][1][symbol],.33333333333333337)
+            self.assertEqual(pairs['ev_ebitda_3y'],({},{}))
+            self.assertEqual(values['pe'],{})
+            self.assertEqual(math.copysign(1.,values['profit_margin'][symbol]),1.)
+            self.assertEqual(db.execute('SELECT f_pe FROM book_rows WHERE book=? AND symbol=?',
+                                       (number,symbol)).fetchone()[0],None)
 
 
 class Facts:
@@ -253,7 +265,7 @@ class DecisionTests(unittest.TestCase):
 
     def test_every_reason_in_gate_order(self):
         screen = self.screen()
-        decide = lambda symbol, pool='legacy', exit_day=self.EXIT: screen.decide(symbol, pool, exit_day)[1]
+        decide = lambda symbol, pool='legacy': screen.decide(symbol, pool)[1]
         self.assertEqual(decide('A'), None)
         self.assertEqual(decide('NOPE'), 'UNKNOWN_COMPANY')
         self.assertEqual(decide('NOREPORT'), 'NO_ELIGIBLE_REPORT')
@@ -267,7 +279,6 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(decide('HUGE', 'cached'), 'NONFINITE_RESULT')
         self.assertEqual(decide('SMALL'), 'INELIGIBLE_VALUATION')
         self.assertEqual(decide('SMALL', 'cached'), None)
-        self.assertEqual(decide('A', 'legacy', self.ENTRY), 'ENTRY_NOT_BEFORE_EXIT')
         # A dated screen ignores the listing; the open book denies it first.
         self.assertEqual(decide('UNLISTED'), None)
         self.assertEqual(self.screen(open_book=True).decide('UNLISTED', 'legacy'), (None, 'NOT_LISTED'))
@@ -276,20 +287,22 @@ class DecisionTests(unittest.TestCase):
             'ENTRY_NOT_BEFORE_EXIT', 'MISSING_EXIT_PRICE'})
 
     def test_exit_and_admission_alone(self):
-        screen = self.screen()
-        held, reason = screen.decide('A', 'legacy', self.EXIT)
+        screen=self.screen()
+        held,reason=screen.decide('A','legacy')
         self.assertIsNone(reason)
-        self.assertEqual((held['entry'], held['exit'], held['status']), ((self.ENTRY, 10.), (self.EXIT, 11.), 'Scheduled exit'))
-        self.assertAlmostEqual(held['return_value'], .1)
-        self.assertEqual(held['rank'], 1)
-        stopped, _ = screen.decide('STOP', 'legacy', self.EXIT)
-        self.assertEqual((stopped['exit'], stopped['return_value'], stopped['status']), ((self.ENTRY, 10.), 0., 'Last available price'))
-        alone, _ = screen.decide('A', 'legacy')
-        self.assertEqual((alone['exit'], alone['return_value'], alone['status']), (None, None, None))
-        self.assertEqual((alone['market_cap'], alone['enterprise_value'], alone['fiscal_price']), (150e6, 180e6, (self.FISCAL, 10.)))
-        no_exit = self.screen(price=lambda symbol, day, forward=False, slack=None:
-                              None if day == self.EXIT else Facts.price(screen.facts, symbol, day, forward, slack))
-        self.assertEqual(no_exit.decide('A', 'legacy', self.EXIT), (None, 'MISSING_EXIT_PRICE'))
+        self.assertNotIn('exit',held)
+        self.assertEqual((held['market_cap'],held['enterprise_value'],held['fiscal_price']),
+                         (150e6,180e6,(self.FISCAL,10.)))
+        def close(symbol,exit_day):
+            held,_=screen.decide(symbol,'legacy')
+            return books.close(held['entry'],exit_day,
+                lambda day,forward,slack:screen.facts.price(symbol,day,forward,slack),False)
+        reason,(end,value,status)=close('A',self.EXIT)
+        self.assertEqual((reason,end,status),(None,(self.EXIT,11.),'Scheduled exit'))
+        self.assertAlmostEqual(value,.1)
+        self.assertEqual(close('STOP',self.EXIT),(None,((self.ENTRY,10.),0.,'Last available price')))
+        self.assertEqual(close('A',self.ENTRY),('ENTRY_NOT_BEFORE_EXIT',None))
+        self.assertEqual(books.close(held['entry'],self.EXIT,lambda *args:None,False),('MISSING_EXIT_PRICE',None))
 
     def test_the_date_rule(self):
         facts_port = Facts({}, {}, {}, {self.ENTRY, date(1995, 12, 29)})

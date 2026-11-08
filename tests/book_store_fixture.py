@@ -28,8 +28,8 @@ import tempfile
 from backtest.financial import rules
 from backtest.inputs import book_store, daily, fact_view, facts, financial_inputs, research
 
-ROW = ('candidate_rank', 'fiscal', 'known', 'entry', 'price', 'exit', 'market_cap', 'enterprise_value', 'ebitda',
-       'ebitda_yield', 'ev_ebitda', 'spread', 'return_value', 'status')
+ROW = ('candidate_rank', 'fiscal', 'known', 'entry', 'price', 'market_cap', 'enterprise_value', 'ebitda',
+       'ebitda_yield', 'ev_ebitda', 'spread')
 
 
 class _Daily(sqlite3.Connection):
@@ -81,7 +81,7 @@ def book(db, entry, exit_day=None, *, spy=None, candidates=0, pools=('legacy', '
     with db:
         for pool in pools:
             book_id = book_store.store(db, dict(
-                entry=entry, exit=exit_day, pool=pool, spy=spy, candidates=candidates,
+                entry=entry, latest=exit_day is None, pool=pool, candidates=candidates,
                 rows=[(symbol, *(columns.get(column) for column in ROW)) for symbol, columns in rows.get(pool, {}).items()],
                 metrics=[(symbol, metric, *pair) for symbol, found in metrics.get(pool, {}).items()
                          for metric, pair in found.items()],
@@ -220,9 +220,9 @@ class Company:
         last = self.reports[-1]
         for pool in ('legacy', 'cached'):
             row = self.books.get(pool)
-            book_store.store(cache, dict(entry=self.latest_date, exit=None, pool=pool, spy=None, candidates=1,
-                rows=[] if row is None else [('A', 1, last['fiscal'], last['known'], self.latest_date, 10., None,
-                                               row['market_cap'], 190e6, 54e6, .3, 3., .28, None, None)],
+            book_store.store(cache, dict(entry=self.latest_date, latest=True, pool=pool, candidates=1,
+                rows=[] if row is None else [('A', 1, last['fiscal'], last['known'], self.latest_date, 10.,
+                                               row['market_cap'], 190e6, 54e6, .3, 3., .28)],
                 metrics=[] if row is None else [('A', metric, *pair) for metric, pair in row['metrics'].items()],
                 filters=[] if row is None else [('A', name, value) for name, value in row['filters'].items()]))
         cache.commit()

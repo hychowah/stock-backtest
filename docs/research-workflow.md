@@ -30,46 +30,38 @@ research schema and daily cache versions; other documents link here.
   yields are typed facts too (`annual_facts`, `market_days.year10`).
 - The one research record (`metadata`): the schema version, the accepted
   raw-file signature (`inputs`), each price file's size and time (`prices`),
-  the identity (below) and the fact diff (`changes`, below).
+  and the identity (below).
 
-The daily cache, `data/schedules.sqlite` (version 11), holds the book store
-(`backtest/inputs/book_store.py`): one row shape, one writer and every read of
-its tables: `record`, `open_book` (the one book without an exit), `completed`,
-`find`, `rows` (full rows, every row or the named ones), `scope` (the selection
-fields of every row), `lanes` (one {symbol: value} map per stored lane),
-`market_caps`, `require_scope` and `counts`. The ranked selection of
-`screening.select` is the one other reader of these tables; it takes their
-names and the book's row shape from the store. `books(book, entry, exit, spy, candidates)` names one
-entry and exit, in one book-id space; `book_pools(book, pool)` marks each
-completed pool; `book_rows` has one row per pool and company (rank, fiscal and
-known dates, entry date and price, exit, valuation, EBITDA, yield, multiple,
-spread, return and status), with `book_metrics` and `book_filters`. The latest
-book is the book with no exit at the research database's latest date; it has
-no return or status, and `candidates` is its count of eligible financials. No
-future holding return is attached to its picks. Daily preparation writes it from
-the typed facts with `books.book`; dated books are computed with the same
-function when a backtest first needs them. A daily connection
-(`daily.connect`) attaches the research database read-only as the schema
-`research`: books, sessions and company names come from there, and the daily
-cache copies no research table. Each operation reads research only through
-this one connection. A book's rows keep the row shape that results and the
-website keep, chosen by the book itself: a dated row has the `DATED` columns
-and the open book's row the `LATEST` columns (`price_date` is the entry
-session). The daily cache holds only the book store
-and its binding.
+The daily cache, `data/schedules.sqlite` (version 12), holds compact entry
+sheets in `books`, `book_pools` and `book_rows`. The header names an entry
+session, its latest/historical policy and its candidate count. Pools share
+one handle. `book_pools` marks complete pools, including empty ones. One row
+per stock holds the report dates, actual entry date and price, valuation,
+EBITDA, spreads, metric pairs and filter values. Catalog mappings in
+`book_store.py` name `m_<id>_multiple`, `m_<id>_yield` and `f_<field>` columns.
+NULL means unavailable. Stored owner lanes retain REAL rounding and zero
+normalization; typed research facts and formula outputs preserve signed zero.
+The version-11 metric/filter tables and stored exit/return/status fields are gone.
 
-`books.Screen(day, facts)` is the one admission rule, and
-`Screen(...).decide(symbol, pool, exit_day)` decides one company of the latest
-book, of a dated book, or of a formula root (no exit). The entry day must be a
-saved SPY session on or after `rules.FIRST_DAY`. The gates, in order, give
-these denial reasons (`books.REASONS`): `UNKNOWN_COMPANY`, `NOT_LISTED` (latest
-book only), `NO_ELIGIBLE_REPORT`, `OUTSIDE_LEGACY_BUFFER`,
-`MISSING_CACHED_PRICES`, then the entry valuation (`MISSING_PRICE`,
-`NONPOSITIVE_VALUATION`, `NONFINITE_RESULT`), `INELIGIBLE_VALUATION`, and for a
-dated book `ENTRY_NOT_BEFORE_EXIT` and `MISSING_EXIT_PRICE`. A stored book
-row is its root's admission: a scope never screens its rows again. Explicit
-preview roots (`fact_view.View.admit`) and saved results show these reasons;
-results saved earlier keep the reasons they stored.
+`book_store` owns the schema, writer and row/lane readers. SQL selection reads
+its compact columns directly. A daily connection (`daily.connect`) attaches
+research read-only as `research`; the daily cache copies no facts or company
+metadata. Its binding names the research content and book-code identities.
+Historical sheets are keyed by entry and pool. Runs build missing sheets on
+demand. Different exits reuse the same sheet. Latest keeps a separate header:
+it requires currently listed companies and an exact-session entry price.
+Historical entries allow up to four calendar days of forward slack.
+
+`books.Screen` and `Screen.decide` own entry admission: saved SPY session from
+`rules.FIRST_DAY`, company, listing for latest only, eligible report, legacy
+buffer, cached prices and entry valuation. `books.book` uses that one rule and
+`owner_values` for both policies. It reads no holding exit. A dated run restricts
+actual entry strictly before exit before ranking, either selection order, scalar
+scope limits or formulas. It calls `books.close` only for selected holdings,
+using the same scheduled/last-price/bankruptcy rules. A missing close fails
+explicitly. SPY comes from the current admitted facts. `portfolio_results`
+keeps final-mark labels and all portfolio arithmetic. Old result artifacts keep
+their complete recorded holding rows and are never recalculated.
 
 Preparation reuses the existing 90-day lag and 800-day report-age rule. A report
 must become available strictly before the buy date, matching the original code.
@@ -153,7 +145,7 @@ The research tests cover availability dates, rank selection before future return
 ## Measured performance
 
 Research and daily preparation of the real cache were measured on the private
-WSL bench copy of the runtime's raw cache, with the current code and while the
+WSL bench copy of the runtime's raw cache, with typed-storage P5 source (50125bf), while the
 machine had other load. A cold build took 176 s (research 172 s, daily 3 s).
 `research.sqlite` is 1.26 GB; `schedules.sqlite` is 3.2 MB before books and
 4.47 GB with about 1,380 books. The user's random-date test (24 quarterly
@@ -189,7 +181,7 @@ the broader available price universe. Neither pool represents full coverage.
 
 `backtest/financial/metrics.py` owns the display catalog, calculator registry and
 pure metric calculations. `books.book` stores each book's ready-to-rank
-multiple/yield pairs in `book_metrics` by book, pool, symbol and metric ID. Thus
+multiple/yield pairs in compact `book_rows` columns by entry, pool and symbol. Thus
 screening-date values remain separate even when observations use the same fiscal
 report. Preparation preserves both default EV/EBITDA values exactly.
 `website/rendering/data.py` exports the display catalog and prepared pairs; SQL and
@@ -250,9 +242,8 @@ dated results. It owns equal weights, signed contributions, compounding and
 common-window cash. It reads no files. The
 [financial result contract](portfolio-results.md) preserves complete holding
 rows and existing application envelopes.
-`data/schedules.sqlite` is ignored. When the daily binding changes, daily
-preparation updates it in place, in one transaction (below). Repeated preparation
-validates source freshness without parsing prices. Newly requested entry/exit pairs are computed once and persisted;
+`data/schedules.sqlite` is ignored. When the daily binding changes, preparation resets the disposable cache (below). Repeated preparation
+validates source freshness without parsing prices. Newly requested entry/pool sheets are computed once and persisted;
 filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
 broader pools fills the missing pool once for each existing dated period; it
@@ -261,44 +252,20 @@ The book store tracks this in `book_pools`. Normal daily connections do not scan
 raw prices. This affects derived data only; durable library and queue snapshots
 remain independent.
 
-Kept books. Every research build compares its facts with the research file it
-replaces and records the fact diff (`research.changes`): its base (the replaced
-content identity) and, per kind and company, the earliest changed row key. A
-price or annual file whose `fact_sources` sha256 and the fact-row code are both
-unchanged is not compared; the statements and the SPY and Treasury rows always
-are. Research does not decide which books stay. The change-day rule lives in
-`books.py`, next to `FORWARD_REACH`:
+Sheet invalidation. A changed research content identity or book identity drops
+all cached sheets. Preparation replaces the disposable daily store with an empty
+file, then commits its binding and both latest pools together. A failure after
+reset leaves a valid unbound cache; retry preparation. Research still replaces
+its own file atomically and keeps its previous database on build failure.
+Unchanged identities reuse sheets. Reader and custom-formula edits bind neither
+identity and require no sheet rebuild. Research no longer computes or stores a
+fact diff, and no change-day or horizon rule remains.
 
-- The kinds are exactly the reads of `facts.BookFacts`: `statements` (reports
-  and companies), `prices` (cached files and adjusted closes), `market` (SPY,
-  3-month and 10-year yields) and `annual` (legacy annual values). A new read
-  needs a kind, or kept books go stale.
-- Visible day (`books.VISIBLE`): a price, SPY or Treasury row, its own day; a
-  statement or a legacy annual value, its known day (fiscal + 90 days); an
-  added or removed price file, its first row day. Statements keep only the
-  saved companies, so an added or removed company is a statements change at
-  its earliest known statement. Dated books read only whether a company
-  exists, and selection reads names and sectors live.
-- `books.change_day` is the first visible day of the diff. `books.kept` keeps a
-  dated book when its horizon, `books.horizon` (the later of its exit and its
-  entry plus `FORWARD_REACH`, four days), is before that day. The open book is
-  never kept.
-
-Daily preparation then updates the cache in one transaction: it deletes the
-dropped books and the old open book (`book_store.delete`), rebinds the
-identity and writes the new open book. There is no temporary file and no copy
-of kept books; a failure rolls back and leaves the previous cache, through
-SQLite's own journal. A diff whose base is not the bound research content
-(research rebuilt twice before one daily update), or a research build whose
-tables differ from the replaced file's, keeps no book. When no stored book
-stays, as then or after a changed book identity or an older cache version,
-preparation first replaces the cache with an empty file: deleting every book
-in place journals the whole file. A failure after that leaves the empty cache,
-which binds nothing. Only a file that is not a database, is damaged, or has
-no binding counts as an old or foreign cache; a locked file or an I/O error
-stops preparation and leaves the file. A daily download therefore keeps every
-book whose horizon ends before the new session, and each kept book equals the
-book a full build calculates.
+A damaged, foreign or older-version daily cache also starts empty. A locked
+file or an I/O failure stops preparation without replacing it. Preparation
+builds latest only; full historical precomputation is not implemented yet.
+Missing historical sheets do not block readiness or website publication. Every
+run builds misses under ordinary cache ownership and never fetches market data.
 
 `metrics.evaluate()` is the common preparation boundary for all metric formulas.
 `website/serve.py` serves the built website and local JSON calculation endpoints.
@@ -454,7 +421,7 @@ scenario descriptions, not confidence limits.
 The browser submits each run to the loopback `/api/backtest-runs/<id>` service and
 polls its status; progress counts real completed trials, and the run continues on
 the server if the page closes. `backtest/engines/original/book_batch.py` validates every sampled schedule upfront and
-deduplicates missing date-pair/pool books across the batch. Bounded process
+deduplicates missing entry/pool sheets across the batch. Bounded process
 workers read prepared inputs with read-only daily connections that attach the
 research file the parent admitted, and calculate ahead with `books.book`. Each
 process loads report histories once. Price queries share one short read
@@ -579,7 +546,7 @@ Update data** to get their inputs and prepare them automatically. Changing filte
 provider requests. Missing inputs exclude only stocks filtered on those inputs.
 
 `backtest/financial/metrics.py` defines the catalog and prepares threshold values.
-Each book stores them in `book_filters`, separately from ranking pairs.
+Each entry sheet stores them in compact `f_<field>` columns beside its ranking pairs.
 Returns use dividend-adjusted closes on or before the screening date and its
 calendar anniversary, with a seven-calendar-day tolerance at each endpoint.
 A leap-day anniversary clamps to 28 February. Return values use percent units;

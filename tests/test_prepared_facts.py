@@ -122,7 +122,7 @@ class ProjectionTests(unittest.TestCase):
                                    "WHERE symbol='TEST' AND fiscal='2014-06-30'").fetchone()
             self.assertEqual(tuple(row), (None, 'MISSING_INPUT', 100e6))
             latest = copied.execute("SELECT fiscal,enterprise_value FROM book_rows WHERE pool='legacy' AND symbol='TEST' "
-                                    "AND book=(SELECT book FROM books WHERE exit IS NULL)").fetchone()
+                                    "AND book=(SELECT book FROM books WHERE latest=1)").fetchone()
             self.assertEqual(tuple(latest), ('2014-06-30', 270e6))
             source = original.execute("SELECT sha256,disposition FROM fact_sources WHERE symbol='TEST' AND endpoint=?",
                                       (facts.STOCK,)).fetchone()
@@ -157,12 +157,12 @@ class ProjectionTests(unittest.TestCase):
         with closing(daily.connect(self.path, self.source)) as db, db:
             book_facts = facts.BookFacts(db)
             for pool in ('legacy', 'cached'):
-                schedules.prepare_period(db, date(2015, 1, 2), date(2015, 10, 20), pool, book_facts)
+                schedules.prepare_period(db, date(2015, 1, 2), pool, book_facts)
         return self.saved()
 
     def saved(self):
         with closing(sqlite3.connect(self.path)) as db:
-            return db.execute('SELECT COUNT(*) FROM book_pools JOIN books USING(book) WHERE exit IS NOT NULL').fetchone()[0]
+            return db.execute('SELECT COUNT(*) FROM book_pools JOIN books USING(book) WHERE latest=0').fetchone()[0]
 
     def copies(self, context, modules):
         """Point each module's source file at a private copy under the fixture root; return the copies."""

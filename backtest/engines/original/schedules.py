@@ -3,6 +3,7 @@ from backtest import screening
 import time
 
 from backtest.financial import books as financial_books
+from backtest.financial import rules
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
 from backtest import calendar as schedule_calendar
@@ -11,16 +12,16 @@ from backtest import portfolio_results as portfolio_results
 
 from backtest.inputs import book_store, facts
 
-def prepare_period(db,entry,exit_day,pool,book_facts):
-    """Return the book id of a dated pool, computing and storing it once (books.book).
+def prepare_period(db,entry,pool,book_facts):
+    """Return the historical entry/pool handle, building a missing sheet once.
 
     book_facts is the operation's facts port over the attached research
     schema (facts.BookFacts); it caches each company's inputs across books.
     """
-    completed=book_store.find(db,entry,exit_day,pool)
+    completed=book_store.find(db,entry,pool)
     if completed is not None:return completed
     diagnostics.count('books_calculated')
-    return book_store.store(db,financial_books.book(entry,exit_day,pool,book_facts,backtest_control.checkpoint))
+    return book_store.store(db,financial_books.book(entry,pool,book_facts,backtest_control.checkpoint))
 
 def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Regular schedules and random-date batches share one book evaluator."""
@@ -69,11 +70,21 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
     book_facts=facts.BookFacts(db)
     def select_period(entry,exit_day):
         with diagnostics.stage('books'):
-            book=prepare_period(db,entry,exit_day,pool,book_facts)
+            book=prepare_period(db,entry,pool,book_facts)
         with diagnostics.stage('selection'):
-            stocks=(screening.select(db,book=book,**options) if book_selection is None
+            stocks=(screening.select(db,book=book,exit_day=exit_day,**options) if book_selection is None
                     else book_selection.select(db,book,entry,exit_day))
-        spy=book_store.record(db,book)['spy']
+        for stock in stocks:
+            backtest_control.checkpoint()
+            start=(rules.parse_day(stock['entry']),stock.pop('price'))
+            def lookup(day,forward,slack):
+                return book_facts.price(stock['symbol'],day,forward,slack)
+            reason,ending=financial_books.close(start,exit_day,lookup,rules.bankrupt(stock['symbol'],entry,exit_day))
+            if reason is not None:
+                raise ValueError('A selected sheet row has no valid exit: '+reason)
+            end,value,status=ending
+            stock.update(exit=str(end[0]),return_value=value,status=status)
+        spy=financial_books.benchmark_return(book_facts.spy(entry),book_facts.spy(exit_day))
         return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
     with db:
         contract = book_selection.contract if book_selection is not None else 1

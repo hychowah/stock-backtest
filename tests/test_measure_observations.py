@@ -217,10 +217,10 @@ class PreparedTransportTests(unittest.TestCase):
             for pool in ('legacy', 'cached'):
                 with closing(daily.connect()) as cache:
                     key = (book_store.open_book(cache), pool, 'TEST')
-                    pairs = {row[0]: [row[1], row[2]] for row in cache.execute(
-                        'SELECT metric,multiple,yield_value FROM book_metrics WHERE book=? AND pool=? AND symbol=?', key)}
-                    stored = {row[0]: row[1] for row in cache.execute(
-                        'SELECT field,value FROM book_filters WHERE book=? AND pool=? AND symbol=?', key)}
+                    metric_lanes,filter_lanes=book_store.lanes(cache,key[0],pool)
+                    pairs={metric:[multiples[key[2]],yields[key[2]]] for metric,(multiples,yields) in metric_lanes.items()
+                           if key[2] in multiples}
+                    stored={field:found[key[2]] for field,found in filter_lanes.items() if key[2] in found}
                     cap = cache.execute('SELECT market_cap FROM book_rows WHERE book=? AND pool=? AND symbol=?', key).fetchone()
                 self.assertTrue(pairs and stored)
                 roots = [root('TEST', pool, 'latest', '2015-10-20')]

@@ -88,6 +88,19 @@ class ScalarTests(unittest.TestCase):
         self.assertEqual(sum(len(b['block']['requests']) for b in blocks),5)
         self.assertEqual([r['value']['rows'] for r in records if r['type']=='scope'],[300])
         self.assertTrue(all(h['ranking_unit']=='USD' for h in stocks))
+    def test_delayed_entry_is_removed_before_scope_ceiling_ranking_and_formulas(self):
+        self.fixture.db.execute("UPDATE book_rows SET entry='2015-01-05' WHERE book=? AND symbol='A0299'",
+                                (self.fixture.dated,))
+        with patch.object(x,'MAX_CANDIDATES',299):
+            for order in ('filter_first','rank_first'):
+                stocks,records=self.fixture.select(self.fixture.capture(order=order,last=1))
+                self.assertEqual([(h['symbol'],h['rank']) for h in stocks],[('A0298',1)])
+                scope=next(r['value'] for r in records if r['type']=='scope')
+                self.assertEqual(scope['rows'],299)
+                for record in records:
+                    if record['type']=='evaluation':
+                        self.assertTrue(all(root['symbol']!='A0299' for root in record['value']['block']['requests']))
+
     def test_explanation_larger_than_one_record_is_split(self):
         expected,records=self.fixture.select(self.fixture.capture())
         whole=[r['value']['block'] for r in records if r['type']=='evaluation']

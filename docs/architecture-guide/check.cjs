@@ -30,7 +30,7 @@ assert(html.includes('The library has 100 slots.') && html.includes('stable UUID
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 
-assert(html.includes('<strong>Update data</strong>') && html.includes('data/data-refresh.json') && html.includes('<strong>unconfirmed</strong>') && html.includes('<strong>Continue update</strong>') && html.includes('Estimated time remaining') && html.includes('Last seen') && html.includes('A missed schedule waits until the next day.') && html.includes('Future precomputed sheets belong in that flow') && html.includes('A changed adjusted price needs a consistent replacement'), 'Explain scheduled refresh, pending additions, price continuity and preparation ownership');
+assert(html.includes('<strong>Update data</strong>') && html.includes('data/data-refresh.json') && html.includes('<strong>unconfirmed</strong>') && html.includes('<strong>Continue update</strong>') && html.includes('Estimated time remaining') && html.includes('Last seen') && html.includes('A missed schedule waits until the next day.') && html.includes('Full historical precomputation belongs in that flow') && html.includes('A changed adjusted price needs a consistent replacement'), 'Explain scheduled refresh, pending additions, price continuity and preparation ownership');
 
 assert(html.includes('Multiple records can have the same fiscal date.') && html.includes('Conflicting values stay unavailable.'), 'Explain duplicate annual response preservation and input ambiguity');
 
@@ -156,3 +156,5 @@ assert(html.includes('id="scalar-execution"') && html.includes('Scalar execution
 
 
 
+
+assert(html.includes('Daily cache version 12') && html.includes('There are no metric/filter tables or stored exit fields.') && html.includes('Before either ranking order or formula evaluation') && html.includes('Historical coverage adds no readiness state') && html.includes('Reader/formula edits keep them.'), 'Explain compact entry sheets, pre-ranking exit admission, invalidation and ordinary readiness');

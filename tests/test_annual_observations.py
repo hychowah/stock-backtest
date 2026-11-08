@@ -377,8 +377,8 @@ class AnnualTransportTests(unittest.TestCase):
                 path = financial.asset_path(research.RAW, 'TEST', endpoint)
                 self.assertEqual(tuple(source), (hashlib.sha256(path.read_bytes()).hexdigest(), 'valid'))
         with closing(daily.connect()) as cache:
-            metrics = cache.execute("SELECT multiple,yield_value FROM book_metrics WHERE pool='cached' AND symbol='TEST' "
-                                    "AND metric='ev_ebitda' AND book=(SELECT book FROM books WHERE exit IS NULL)").fetchone()
+            metrics = cache.execute("SELECT m_ev_ebitda_multiple,m_ev_ebitda_yield FROM book_rows WHERE pool='cached' AND symbol='TEST' "
+                                    "AND book=(SELECT book FROM books WHERE latest=1)").fetchone()
         places = [(endpoint, name, identity) for endpoint, fields in ORACLE.items() for name, identity in fields.items()]
         roots = [root('TEST', 'cached'), root('TEST', 'cached', 'latest', '2015-10-20')]
         with inputs.view() as view:

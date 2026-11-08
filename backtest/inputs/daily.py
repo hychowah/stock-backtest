@@ -23,10 +23,9 @@ from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
 from backtest.inputs import facts
 from backtest.inputs import book_store
-from backtest.financial import rules
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 11
+VERSION = 12
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ''' + book_store.SCHEMA
@@ -120,20 +119,12 @@ def _empty(path):
 @diagnostics.operation('prepare.daily')
 @cache_access.exclusive
 def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
-    """Bring the book store up to date in place, in one transaction.
+    """Prepare latest sheets; changed content or book code drops every cached sheet.
 
-    Research preparation runs first. A cache of this VERSION and book identity
-    keeps every dated book that books.kept keeps after research's fact diff
-    (research.changes): it deletes the other books and the old open book,
-    rebinds, then writes the new open book at research's latest date. A
-    failure rolls the transaction back: the previous cache stays.
-
-    When no stored book stays, the cache starts from an empty file (_empty)
-    instead, since deleting every book in place journals the whole file: a
-    missing cache, an older version, another book identity, a diff from
-    another base than the bound research content, or a change visible on or
-    before rules.FIRST_DAY, where no book enters. A failure after that leaves
-    the empty cache, which binds nothing.
+    Unchanged identities retain historical sheets. A changed binding replaces
+    the disposable cache with an empty version-12 file, avoiding a journal as
+    large as the old store. Failure after reset leaves an unbound cache.
+    Research retains its separate atomic replacement and failure guarantees.
     """
     started=time.perf_counter()
     diagnostics.lap('admission')
@@ -148,45 +139,27 @@ def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
     path.parent.mkdir(parents=True,exist_ok=True)
     previous=_saved(path)
     if previous is None or previous.get('version')!=VERSION or previous.get('books')!=r.code_identity('books'):
-        # Only a change in the book identity (or this VERSION) drops every book.
         _empty(path)
         previous=None
     with closing(_open(path,source)) as db:
-        # The research record admits its raw signature, its code and each price file's stamps.
         latest=date.fromisoformat(r.identity(db,'research',prices=True)['latest_date'])
         inputs=current(db)
         if previous==inputs:
             progress(kind='daily',completed=2,total=2,reused=True)
-            print('Daily cache already current; no book changed.')
+            print('Daily cache already current; no sheet changed.')
             diagnostics.note(outcome='current');return
-        diagnostics.lap('input_check')
-        changed=None
-        stored=book_store.stored(db)
-        if previous is not None:
-            record=r.changes(db,'research')
-            # A diff from another base can hide any change: no book enters before FIRST_DAY.
-            changed=(financial_books.change_day(record['rows']) if record['base']==previous['research']
-                     else rules.FIRST_DAY)
-    # This operation's exclusive cache ownership keeps the stored books unchanged after the read.
-    dropped=[book for book,entry,exit_day in stored if not financial_books.kept(
-        date.fromisoformat(entry),exit_day and date.fromisoformat(exit_day),changed)]
-    diagnostics.note(books_previous=len(stored),books_kept=len(stored)-len(dropped),
-                     changed_from=None if changed is None else str(changed))
-    if stored and len(dropped)==len(stored):
-        # No book stays: an empty file replaces the cache at once.
-        _empty(path)
-        dropped,previous=[],None
+        stored=book_store.stored(db) if previous and previous.get('version')==VERSION else []
+    diagnostics.note(books_previous=len(stored),books_kept=0)
+    # All retained values must belong to this exact research/book generation.
+    if previous is not None:_empty(path)
     db=_open(path,source)
     try:
         db.execute('BEGIN IMMEDIATE')
-        book_store.delete(db,dropped)
-        diagnostics.lap('drop_books')
         db.execute("INSERT OR REPLACE INTO metadata VALUES('daily_inputs',?)",(json.dumps(inputs),))
-        # The open book at research's latest date, from its facts. Kept dated
-        # books keep their ids; the open book takes the next.
+        # Latest keeps its own listed/exact-session admission in both pools.
         book_facts=facts.BookFacts(db)
         for number,pool in enumerate(('legacy','cached'),1):
-            book_store.store(db,financial_books.book(latest,None,pool,book_facts,backtest_control.checkpoint))
+            book_store.store(db,financial_books.book(latest,pool,book_facts,backtest_control.checkpoint,latest=True))
             progress(kind='daily',completed=number,total=2)
         diagnostics.lap('latest_book')
         if inputs!=current(db) or raw!=r.signature():

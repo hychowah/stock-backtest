@@ -1,6 +1,6 @@
 """Plan missing books once, calculate ahead, and commit through one SQLite writer.
 
-Only requested date pairs are planned. Processes use read-only daily
+Only requested entry/pool sheets are planned. Processes use read-only daily
 connections that attach the research database the parent admitted, and the
 ordinary book function (books.book over facts.BookFacts). Ordered, bounded
 prefetch keeps trial saves atomic and deterministic. Large staged trials spill
@@ -40,14 +40,14 @@ def plan(db,configuration,book_selection=None):
     if len(configuration['samples'])!=configuration['requested']:
         raise ValueError('The number of sampled schedules must match the requested trials.')
     pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
-    available={(entry,exit_day,pool) for _,entry,exit_day in book_store.completed(db,pool) if exit_day is not None}
+    available={(entry,pool) for _,entry,latest in book_store.completed(db,pool) if not latest}
     sessions=facts.sessions(db)
     seen=set();jobs=[];trials=[]
     for dates in configuration['samples']:
         periods,_,_,_,_=calendar_requests.periods(sessions,dict(calendar_requests.request_fields(configuration),dates=dates),checkpoint=backtest_control.checkpoint)
         new=[]
         for entry,exit_day in periods:
-            key=(str(entry),str(exit_day),pool)
+            key=(str(entry),pool)
             if key not in seen:
                 seen.add(key)
                 if key not in available:
@@ -117,11 +117,11 @@ def calculate_book(db,key,book_facts):
     dominates native Windows runtime. Holding a transaction across several books
     would block the writer. A book is the smallest useful consistent read unit.
     """
-    entry,exit_day,pool=key
+    entry,pool=key
     owned=not db.in_transaction
     if owned:db.execute('BEGIN')
     try:
-        return books.book(date.fromisoformat(entry),date.fromisoformat(exit_day),pool,book_facts,backtest_control.checkpoint)
+        return books.book(date.fromisoformat(entry),pool,book_facts,backtest_control.checkpoint)
     finally:
         if owned:db.rollback()
 
@@ -189,7 +189,7 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
                         waiting=time.perf_counter()
                         with diagnostics.stage('book_calculation'):book=next(results)
                         stats['calculation_wait_seconds']+=time.perf_counter()-waiting
-                        if (book['entry'],book['exit'],book['pool'])!=key:
+                        if (book['entry'],book['pool'])!=key:
                             raise ValueError('A calculation returned a different dated book.')
                         pickle.dump(book,staged,protocol=pickle.HIGHEST_PROTOCOL)
                         calculated+=1;notice()

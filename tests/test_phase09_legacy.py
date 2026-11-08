@@ -85,6 +85,10 @@ class FrozenLegacyTests(unittest.TestCase):
         for name, rows in expected['selections'].items():
             for row in rows:
                 row.pop('year', None)
+                if name.startswith('historical/'):
+                    self.assertEqual(row['return_value'], 0.1)
+                    # The frozen fixture stored literal 0.1; returns now close from fixture prices 10 → 11.
+                    row['return_value'] = 11 / 10 - 1
         self.assertEqual(replay(), expected)
 
 

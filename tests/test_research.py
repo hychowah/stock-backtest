@@ -152,11 +152,9 @@ class ResearchTests(unittest.TestCase):
     def test_rank_not_future_return_and_filter_before_ranking(self):
         rows=self.dated([2015],rank_from=1,rank_to=2)
         self.assertEqual([x['symbol'] for x in rows],['S1','S2'])
-        self.assertAlmostEqual(sum(x['return_value'] for x in rows)/len(rows),-.35)
-        # A dated row keeps the old snapshot shape: no known date, entry price or book id.
-        self.assertEqual(list(rows[0]),['pool','symbol','candidate_rank','fiscal','entry','exit','market_cap','enterprise_value',
-            'ebitda','ebitda_yield','ev_ebitda','spread','return_value','status','name','sector','exchange','metric_yield',
-            'metric_multiple','rank'])
+        # Entry selection has no future-return lane; schedules close chosen rows.
+        self.assertEqual(list(rows[0]),['pool','symbol','candidate_rank','fiscal','entry','price','market_cap','enterprise_value',
+            'ebitda','ebitda_yield','ev_ebitda','spread','name','sector','exchange','metric_yield','metric_multiple','rank'])
         rows=self.dated([2015],min_cap=150e6,rank_to=1)
         self.assertEqual([x['symbol'] for x in rows],['S2'])
         self.assertEqual(self.dated([2015,2016],sector='Unknown'),[])
@@ -334,7 +332,7 @@ class PreparationTests(unittest.TestCase):
         latest=[];cases=[]
         with closing(daily.connect(self.daily,self.path)) as db:
             prepared=dataset.load_screening_data(db)
-            saved=[dict(row) for row in db.execute("SELECT * FROM book_filters WHERE field='operating_yield_spread_3y'")]
+            saved=[dict(row) for row in db.execute("SELECT f_operating_yield_spread_3y AS value FROM book_rows WHERE f_operating_yield_spread_3y IS NOT NULL")]
             self.assertEqual(len(saved),2)
             for row in saved:
                 self.assertAlmostEqual(row['value'],100*20e6/270e6-4)
@@ -358,7 +356,7 @@ for(let i=0;i<cases.length;i++){
         self.assertEqual(len(self.latest()),1)
         self.assertEqual(self.latest(filters=cases[0]['filters']),[])
         with closing(daily.connect(self.daily,self.path)) as db:
-            self.assertEqual(db.execute("SELECT COUNT(*) FROM book_filters WHERE field='operating_yield_spread_3y'").fetchone()[0],0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM book_rows WHERE f_operating_yield_spread_3y IS NOT NULL").fetchone()[0],0)
 
     def test_preparation_stores_latest_financial_ratios(self):
         ledger={}

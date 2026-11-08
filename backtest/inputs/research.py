@@ -10,8 +10,8 @@ stays on any failure.
 The metadata table is the one research record: the schema version, the
 accepted raw-file signature (inputs) with each price file's stamps (prices),
 the identity: version, latest date, the content identity of the fact-row code
-(code) and the content identity of the facts (content), and the fact diff of
-the build (changes()). Readers compare the stamps and the code (identity()).
+(code) and the content identity of the facts (content). Readers compare
+the stamps and the code (identity()).
 Both identities are content digests, so a rewrite with equal bytes keeps them.
 """
 from __future__ import annotations
@@ -208,107 +208,6 @@ def connect(path=DATABASE, full_prices=False):
     return db
 
 
-def changes(db, schema='main'):
-    """The fact diff of the build that wrote this research record: dict(base, rows).
-
-    base is the content identity of the research file that the build replaced,
-    or None when there was none with these tables; rows maps each kind of
-    books.VISIBLE to {company: its earliest changed row key} ('' names the
-    shared SPY and Treasury rows). Research produces the diff; the book code
-    decides which books stay (books.change_day, books.kept).
-    """
-    row = db.execute(f"SELECT value FROM {schema}.metadata WHERE key='changes'").fetchone()
-    if row is None:
-        raise ValueError('Cached inputs changed. Run: python3 scripts/research.py prepare')
-    return json.loads(row[0])
-
-
-def _first_change(old, new):
-    """The key (first column) of the first row where two key-ordered row lists differ, or None.
-
-    At the first differing position the smaller key is a changed, added or
-    removed row; every row before it is equal.
-    """
-    for a, b in zip(old, new):
-        if a != b:
-            return min(a[0], b[0])
-    if len(old) != len(new):
-        return (old if len(old) > len(new) else new)[min(len(old), len(new))][0]
-    return None
-
-
-def _base(path, tables):
-    """The identity of the research file at path when its tables equal this build's, else None.
-
-    It is the base of the fact diff: equal table definitions let the build
-    compare the rows column by column.
-    """
-    if not path.exists():
-        return None
-    try:
-        with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as db:
-            found = db.execute("SELECT value FROM metadata WHERE key='identity'").fetchone()
-            if sorted(row[0] for row in db.execute("SELECT sql FROM sqlite_master WHERE type='table'")) != tables:
-                return None
-        identity = json.loads(found[0]) if found else None
-    except (sqlite3.Error, ValueError):
-        return None
-    return identity if isinstance(identity, dict) and identity.get('version') == SCHEMA_VERSION else None
-
-
-class _Diff:
-    """The fact diff of one build against the replaced research file, attached as 'old'.
-
-    A price or annual file whose sha256 (fact_sources) and the fact-row code
-    are both unchanged is skipped. The rows of every other file, the statements
-    and the SPY and Treasury rows are compared. Statements keep only the saved
-    companies, so they cover an added or removed company. Equal values compare
-    equal, so 0.0 equals -0.0: book tables store REAL values, which keep no
-    signed zero.
-    """
-
-    def __init__(self, db, same_code):
-        self.db, self.same = db, same_code
-        self.read = db.cursor()
-        self.read.row_factory = None
-        self.sources = {(symbol, endpoint): sha for symbol, endpoint, sha in
-                        self.read.execute('SELECT symbol,endpoint,sha256 FROM old.fact_sources')}
-        self.rows = {kind: {} for kind in books.VISIBLE}
-
-    def _note(self, kind, symbol, key):
-        if key is not None:
-            self.rows[kind][symbol] = key
-
-    def _unchanged(self, symbol, endpoint, sha):
-        return self.same and (symbol, endpoint) in self.sources and self.sources[symbol, endpoint] == sha
-
-    def company(self, symbol, stock, rows, annual):
-        """Compare one company's price rows and legacy annual values, unless their files are unchanged."""
-        if self._unchanged(symbol, facts.STOCK, stock['sha256']):
-            diagnostics.count('price_files_skipped')
-        else:
-            diagnostics.count('price_files_compared')
-            self._note('prices', symbol, _first_change(self.read.execute(
-                'SELECT day,adjusted,adjusted_reason,volume,volume_reason FROM old.stock_days WHERE symbol=? ORDER BY day',
-                (symbol,)).fetchall(), rows))
-        if not all(self._unchanged(symbol, endpoint, source['sha256']) for endpoint, source in annual.items()):
-            old, new = (facts.legacy_annual(self.db, symbol, schema=schema) for schema in ('old', 'main'))
-            self._note('annual', symbol, next((fiscal for fiscal in sorted(old.keys() | new.keys())
-                                               if old.get(fiscal) != new.get(fiscal)), None))
-
-    def finish(self):
-        """Compare the statements, SPY and Treasury; return the rows."""
-        statements = {}
-        for index, schema in enumerate(('old', 'main')):
-            for symbol, *row in self.read.execute(f'SELECT * FROM {schema}.statements ORDER BY symbol,fiscal'):
-                statements.setdefault(symbol, ([], []))[index].append(tuple(row))
-        for symbol, (old, new) in statements.items():
-            self._note('statements', symbol, _first_change(old, new))
-        self._note('market', '', _first_change(*(self.read.execute(f'SELECT * FROM {schema}.market_days ORDER BY day').fetchall()
-                                                  for schema in ('old', 'main'))))
-        return self.rows
-
-
 def _readable(resolution, name):
     """Return one resolved price or yield file; an unreadable saved file stops preparation."""
     if resolution['source']['disposition']=='unreadable':
@@ -367,12 +266,6 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
     db.row_factory=sqlite3.Row
     try:
         db.executescript(SCHEMA+facts.SCHEMA)
-        # The replaced database is the base of the fact diff when its tables equal these.
-        base=_base(path,sorted(row[0] for row in db.execute("SELECT sql FROM sqlite_master WHERE type='table'")))
-        diff=None
-        if base is not None:
-            db.execute('ATTACH DATABASE ? AS old',(path.resolve().as_uri()+'?mode=ro',))
-            diff=_Diff(db,base.get('code')==code)
         facts.store_companies(db,universe)
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
         cached={s for s in broad if market.cache_path_for(s).name in sources}
@@ -385,8 +278,6 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             if any(row[2]==facts.INCONSISTENT_SERIES for row in rows):spiked.append(symbol)
             resolved=financial_inputs.resolve_history(RAW,symbol)
             facts.store_annual(db,symbol,resolved)
-            if diff is not None:
-                diff.company(symbol,stock['source'],rows,resolved['sources'])
             progress(kind='research',completed=number,total=len(broad)+1)
             if number%200==0 or number==len(broad):
                 print(f'Prepared {number}/{len(broad)} companies',flush=True)
@@ -396,11 +287,6 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
         diagnostics.note(companies=len(cached),spiked_series=len(spiked))
         facts.store_market(db,market_facts)
         diagnostics.lap('dated_facts')
-        changed=dict(base=None,rows={})
-        if diff is not None:
-            changed=dict(base=base.get('content'),rows=diff.finish())
-        diagnostics.note(changes={kind:len(rows) for kind,rows in changed['rows'].items()})
-        diagnostics.lap('fact_diff')
         # fact_sources holds the digest of every price, annual, SPY and Treasury file read.
         digest=hashlib.sha256()
         for row in db.execute('SELECT symbol,endpoint,sha256,disposition FROM fact_sources ORDER BY symbol,endpoint'):
@@ -409,7 +295,7 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
         record=dict(version=SCHEMA_VERSION,latest_date=str(latest_day),code=code)
         record['content']=hashlib.sha256(facts.encoded(dict(record,raw=raw)).encode()).hexdigest()
         diagnostics.lap('identity')
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,identity=record,changes=changed).items():
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,identity=record).items():
             db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
         if inputs!=signature() or sources!=price_sources() or code!=code_identity('facts'):

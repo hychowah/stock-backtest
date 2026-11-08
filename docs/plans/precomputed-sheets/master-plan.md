@@ -5,14 +5,15 @@ Status: active
 ## Goal and authority
 
 Plan based on main `f8a6217`; S0 measured source `e1ae7c7`. The user
-normally chooses a new random seed. Once prepared, a new cached-pool seed
+normally chooses a fresh seed. Once prepared, a new cached-pool seed
 should cost about the same as a rerun. Holdings, returns, statuses and stored
 rounding must stay identical. Saved library and queue records open unchanged.
 Custom formula edits never rebuild sheets.
 
 Measure the largest cost and stop when gains become marginal; no numerical
 speed target. Nightly preparation may be slow. The authorized bench measurements
-and runtime-log reads are complete. S1 still requires implementation authorization.
+and runtime-log reads are complete. S1 is authorized on `plan/precomputed-sheets`;
+product edits follow Claude's design review.
 
 ## Verified starting point
 
@@ -66,16 +67,16 @@ takes the global minimum. Both measured real refreshes dropped every stored book
 | (b) Keep conservative change-day reuse | Avoids some rebuilding | Rejected: measured real refreshes retained no books. |
 | (c) Ignore rescales within rounding tolerance | Could retain historical sheets | User rejected: exact results are required. |
 
-Policy (a) deletes `books.change_day`, `books.kept`, `research.changes`/`_Diff`
+S1 implements policy (a) and deletes `books.change_day`, `books.kept`, `research.changes`/`_Diff`
 and the drop logic in `daily.prepare`, plus helpers used only by (b).
 
 Provider rounding can change ratios, filters, ties or formula conditions. Keep
 entry and exit prices in the same admitted generation, including SPY. No rescale
 classification, tolerance policy or value-difference investigation is needed.
 
-## Storage recommendation
+## Storage: compact confirmed
 
-Recommend compact rows from S1: one SQLite row per stock per sheet, with columns
+The user confirmed compact rows from S1: one row per stock per sheet, with columns
 for current metric pairs and filters. S0 replaces the draft's size/time estimates.
 Postponing compaction builds a large cache twice. Preserve missing values and
 numerical storage semantics. Bump the disposable cache version; no migration
@@ -87,7 +88,8 @@ Keep `checking → annual → statements → prices → research → daily → w
 verify` in `data_refresh.STAGES`. Sheet work belongs inside **daily**, after
 research admission and before website publication, under existing cache
 ownership. Manual update, offline preparation, startup and 07:00 Hong Kong
-maintenance share that chain. Add no scheduler, update record or readiness state.
+maintenance share that chain. The user confirmed 07:00 stays unchanged.
+Add no scheduler, update record or readiness state.
 
 Emit daily completed/total session-pool counts through existing progress. Count
 completion only after rows and the empty-or-populated completion marker commit
@@ -141,7 +143,7 @@ rejects (c). No product change was made in S0.
 
 ### S1 — separate entries from exits
 
-Requires layout confirmation and implementation authorization. Implement the chosen
+Authorized on this branch; Claude approved the S1 design. Implement the confirmed
 layout, store identity and historical sheet policy; adapt both SQL selection and
 scalar prepared scopes. Close only selected rows. Keep formulas outside the book
 identity (`research.code_sources`); owner lanes remain stored, without fallback.
@@ -156,7 +158,7 @@ Elapsed times, cache handles and new input identities are not financial parity.
 
 ### S2 — prepare coverage and qualify the workflow
 
-Requires S1 parity. Implement cached precomputation, nightly policy (a),
+Requires S1 parity. Implement full cached precomputation, daily-stage sheet
 progress and continuation in the unified chain, preserving existing readiness.
 
 Exit: measure a full build and nightly maintenance. Private fixtures verify
@@ -166,13 +168,13 @@ new seeds and a repeat: zero sheets computed/written and financial parity. Profi
 remaining costs until gains are marginal. Update contracts and the architecture
 guide. Source completion does not establish deployed readiness.
 
-## Decisions and remaining confirmation
+## Decisions
 
 1. **Coverage:** recommend all cached sessions first; legacy stays available on
    demand through the same sheet builder. Reject precomputing both without need.
 2. **Freshness decided:** (a), exact rebuilding after each changed research
    generation; delete change-day machinery. Policy (c) is rejected.
-3. **Layout confirmation:** recommend compact from S1: about 2.6× smaller and
+3. **Layout confirmed:** compact from S1: about 2.6× smaller and
    2.4× faster writes in S0.
 4. **Missing sheets:** recommend on-demand builds through the same builder.
    This preserves usability after a deploy or interrupted night without a new
@@ -192,6 +194,6 @@ required.
 
 ## Next
 
-The user confirms the layout and authorizes S1. Claude reviews and commits this
-plan update; no product implementation is authorized yet.
+S1 awaits Claude's fast/heavy checks, four bench parity cases and review.
+Full coverage and daily-stage sheet progress remain S2.
 No merge, push, deployment or installed restart is authorized.

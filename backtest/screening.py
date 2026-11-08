@@ -56,7 +56,7 @@ def legacy_specification(*, rank_from=1,rank_to=50,pool='legacy',metric=metrics.
     return spec
 
 
-def _sql_conditions(specification, book):
+def _sql_conditions(specification):
     """Render only adapter-owned lanes; all submitted values stay parameters."""
     columns={lane:'s.'+lane for lane in ('market_cap','enterprise_value',
              'metric_yield','metric_multiple','sector','exchange')}
@@ -67,14 +67,14 @@ def _sql_conditions(specification, book):
         if lane in columns:
             clauses.append(columns[lane]+op+'?');values.append(item['value'])
         elif lane.startswith('filter.') and lane[7:] in metrics.FILTERS:
-            clauses.append(f'EXISTS (SELECT 1 FROM {book_store.FILTERS} f WHERE f.book=? AND f.pool=s.pool AND f.symbol=s.symbol AND f.field=? AND f.value'+op+'?)')
-            values.extend([book,lane[7:],item['value']])
+            clauses.append('s.'+book_store.FILTERS[lane[7:]]+op+'?')
+            values.append(item['value'])
         else:
             raise ValueError('Unsupported legacy selection lane.')
     return ' AND '.join(clauses),values
 
 
-def select(db, *, book=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
+def select(db, *, book=None, exit_day=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
     """Execute the legacy scalar adapter in SQL over one book; preserve rows and SQL pushdown.
 
     Rows keep the book's row shape (book_store.DATED or LATEST) plus the
@@ -83,22 +83,25 @@ def select(db, *, book=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics
     spec=legacy_specification(rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
     if book is None:
         book=book_store.open_book(db)
-    conditions,thresholds=_sql_conditions(spec,book)
+    conditions,thresholds=_sql_conditions(spec)
     before=' WHERE '+conditions if spec['selection_order']=='filter_first' else ''
     after=' AND '+conditions if spec['selection_order']=='rank_first' else ''
     direction={'highest':'DESC','lowest':'ASC'}[spec['ranking']['direction']]
+    multiple,yield_column=book_store.METRICS[metric]
+    filter_columns=tuple(book_store.FILTERS.values())
+    projection=''.join(',s.'+column for column in filter_columns)
+    window='' if exit_day is None else ' AND s.entry<?'
     sql=f"""WITH candidates AS (
-      SELECT {book_store.columns(db,book)},c.name,c.sector,c.exchange,m.yield_value AS metric_yield,m.multiple AS metric_multiple
+      SELECT {book_store.columns(db,book)},c.name,c.sector,c.exchange,s.{yield_column} AS metric_yield,s.{multiple} AS metric_multiple{projection}
       FROM {book_store.ROWS} s JOIN research.companies c USING(symbol)
-      JOIN {book_store.METRICS} m ON m.book=s.book AND m.pool=s.pool AND m.symbol=s.symbol AND m.metric=?
-      WHERE s.book=? AND s.pool=?), ranked AS (
+      WHERE s.book=? AND s.pool=? AND s.{yield_column} IS NOT NULL AND s.{multiple} IS NOT NULL{window}), ranked AS (
       SELECT s.*,ROW_NUMBER() OVER(ORDER BY s.metric_yield {direction},s.candidate_rank ASC,s.symbol ASC) AS rank
       FROM candidates s{before}) SELECT * FROM ranked s WHERE rank BETWEEN ? AND ?{after} ORDER BY rank"""
     bounds=[spec['rank_from'],spec['rank_to']]
-    arguments=[metric,book,pool]+(thresholds+bounds if spec['selection_order']=='filter_first' else bounds+thresholds)
+    arguments=[book,pool]+([str(exit_day)] if exit_day is not None else [])+(thresholds+bounds if spec['selection_order']=='filter_first' else bounds+thresholds)
     cursor=db.execute(sql,arguments)
     fields=[c[0] for c in cursor.description]
-    return [dict(zip(fields,row)) for row in cursor]
+    return [{key:value for key,value in zip(fields,row) if key not in filter_columns} for row in cursor]
 
 
 def latest(db, **options):

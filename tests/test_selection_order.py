@@ -16,26 +16,32 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT)]
 from backtest.inputs import book_store
+from backtest.engines.original import schedules
 from website.rendering import data as dataset
 sys.path.insert(0,str(ROOT/'tests'))
 import book_store_fixture as store
 
 
 def dated(db, *, first=2015, last=2015, **options):
-    """Select the rows of the dated books that enter in years first through last, book by book."""
-    pool=options.get('pool','legacy')
-    return [row for year in range(first,last+1)
-            for row in screening.select(db,book=book_store.find(db,f'{year}-01-02',f'{year+1}-01-02',pool),**options)]
+    """Read closed historical rows through the public dated calculation boundary."""
+    result=schedules.backtest(db,start=f'{first}-01-02',end=f'{last+1}-01-02',months=12,**options)
+    # The legacy selection projection predates the reducer's portfolio columns.
+    return [{key:value for key,value in row.items() if key not in ('weight','contribution_pp')}
+            for period in result['periods'] for row in period['holdings']]
 
 
 class SelectionOrderTests(unittest.TestCase):
     def setUp(self):
         self.db=store.connection();self.addCleanup(self.db.close)
         content={key:({},{},{}) for key in (2015,2016,'latest')}
+        for day in ('2015-01-02','2016-01-02','2017-01-02'):
+            store.session(self.db,day,100.)
         # B/C tie on yield and candidate rank; symbol resolves the tie. M has
         # no selected metric, so it cannot consume a rank in either policy.
         for symbol,score,cap,candidate,sector in [('A',.5,100e6,None,'Energy'),('B',.4,200e6,2,'Technology'),('C',.4,300e6,2,'Technology'),('D',.2,400e6,4,'Energy'),('M',.9,500e6,1,'Technology')]:
             store.company(self.db,symbol,sector=sector)
+            for day in ('2016-01-02','2017-01-02'):
+                store.price(self.db,symbol,day,11.)
             for pool in ('legacy','cached'):
                 for year in (2015,2016):
                     content[year][0].setdefault(pool,{})[symbol]=dict(candidate_rank=candidate,fiscal='2014-06-30',known='2014-09-28',
@@ -82,6 +88,12 @@ class SelectionOrderTests(unittest.TestCase):
         rows=dated(self.db,first=2015,last=2016,rank_to=2,min_cap=150e6,selection_order='rank_first')
         self.assertEqual([(h['entry'][:4],h['symbol'],h['rank']) for h in rows],[('2015','B',2),('2016','B',2)])
         self.assertEqual(self.ids(screening.latest,rank_from=2,rank_to=3,selection_order='rank_first'),[('B',2),('C',3)])
+
+    def test_actual_entry_must_precede_exit_before_either_ranking_order(self):
+        self.db.execute("UPDATE book_rows SET entry='2016-01-02' WHERE book=? AND symbol='A'",
+                        (book_store.find(self.db,'2015-01-02','legacy'),))
+        for order in ('filter_first','rank_first'):
+            self.assertEqual(self.ids(dated,rank_to=1,selection_order=order),[('B',1)])
 
     def test_browser_sql_latest_parity_in_both_pools_orders_and_ranges(self):
         prepared=dataset.load_screening_data(self.db)

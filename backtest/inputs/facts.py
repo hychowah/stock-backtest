@@ -267,14 +267,13 @@ def store_companies(db, universe):
 # Book facts: what books.book, books.Screen and the derived-context readers read,
 # through the 'research' schema of a daily connection.
 
-def legacy_annual(db, symbol, schema='research'):
+def legacy_annual(db, symbol):
     """{fiscal: {field: value}} of the valid legacy annual values of one company.
 
     The fields are LEGACY (financial_inputs.ENDPOINTS), in its endpoint and
     field order; a fiscal date without a valid value is left out. This equals the
     values-only projection of financial_inputs.resolve_history bit for bit.
-    schema names the research facts on db: 'research' on a daily connection;
-    research preparation's fact diff reads 'main' and 'old'. The read is
+    The daily connection attaches the research facts read-only. The read is
     bounded: more than MAX_HISTORY rows for each legacy endpoint, counted
     together, fail.
     """
@@ -282,7 +281,7 @@ def legacy_annual(db, symbol, schema='research'):
     bound = MAX_HISTORY * len(LEGACY)
     found, count = {}, 0
     for endpoint, fiscal, *values in db.execute(
-            f'SELECT endpoint,fiscal,{",".join(columns)} FROM {schema}.annual_facts WHERE symbol=? AND endpoint IN '
+            f'SELECT endpoint,fiscal,{",".join(columns)} FROM research.annual_facts WHERE symbol=? AND endpoint IN '
             f'({",".join("?" * len(LEGACY))}) ORDER BY fiscal LIMIT ?', (symbol, *(endpoint for endpoint, _ in LEGACY), bound + 1)):
         count += 1
         if count > bound:
@@ -318,10 +317,7 @@ class BookFacts:
     whether it is listed. price() reads the valid adjusted closes, spy() a
     valid SPY session, treasury() and ten_year() the valid yields. Each input
     is read once per instance; the caller keeps the connection unchanged while
-    it is used. Each read is one kind of the research fact diff (research._Diff,
-    books.VISIBLE): reports() and companies() statements, cached() and price()
-    prices, spy(), treasury() and ten_year() market, legacy_annual() annual; a
-    new read needs a kind, or kept books go stale.
+    it is used. Sheets bind this research generation; changed content drops them all.
     """
 
     def __init__(self, db):

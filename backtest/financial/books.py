@@ -9,58 +9,17 @@ schedules.prepare_period and the book workers write the dated books with it.
 owner_values() is the per-company owner-value composition of a book row and
 of a formula context without a stored book.
 Price lookups return (date, positive dividend-adjusted close) or None within
-the given tolerance. kept() is the change-day rule that decides which stored
-books stay after the facts change. Storage, calendar planning and SQL
+the given tolerance. Storage, calendar planning and SQL
 insertion stay outside this module. A change to book policy must pass the development check
 (python3 scripts/check.py) on the real-data bench.
 """
-from datetime import date, timedelta
 import math
 
 from backtest.financial import metrics
 from backtest.financial import rules as run
 
-# The entry price is the first session up to ENTRY_SLACK days after the entry
-# day. No book reads a price later than max(exit, entry+FORWARD_REACH) (horizon).
+# Historical entry prices can roll forward by four calendar days.
 ENTRY_SLACK=4
-FORWARD_REACH=timedelta(days=ENTRY_SLACK)
-
-
-def horizon(entry, exit_day):
-    """The last day a dated book reads: max(exit, entry + FORWARD_REACH)."""
-    return max(exit_day, entry+FORWARD_REACH)
-
-
-# The change-day rule of kept books. The research fact diff (research.changes)
-# names, per kind and company, the earliest changed row key; VISIBLE maps it
-# to the first day a book can read the change. Every mapping is monotonic, so
-# the earliest key gives the earliest visible day.
-# - prices: a stock_days row, its own day. An added or removed price file
-#   changes all its rows: its first row day.
-# - market: a SPY or Treasury row (market_days), its own day.
-# - statements: a statement, its known day (fiscal + LAG).
-# - annual: a legacy annual value (facts.legacy_annual), its known day.
-# Every read of facts.BookFacts belongs to one kind. Statements keep only the saved
-# companies (statements()), so an added or removed company is a statements
-# change. Dated books read only whether a company exists, and selection reads
-# names and sectors live; the open book also reads listed, but it is never kept.
-VISIBLE=dict(prices=lambda day:day,market=lambda day:day,statements=lambda fiscal:fiscal+run.LAG,
-             annual=lambda fiscal:fiscal+run.LAG)
-
-
-def change_day(changes):
-    """The first day on which a book can read any changed fact of the diff, or None when nothing changed."""
-    return min((VISIBLE[kind](date.fromisoformat(key)) for kind,rows in changes.items() for key in rows.values()),default=None)
-
-
-def kept(entry, exit_day, changed):
-    """Whether a stored book stays after facts change first visibly on changed (None: no change).
-
-    A dated book stays when its horizon is before the change day. The open
-    book (exit_day None) never stays. Only a change in the book identity drops
-    every book (daily.prepare).
-    """
-    return exit_day is not None and (changed is None or horizon(entry,exit_day)<changed)
 
 # The denial reasons of Screen.decide, in gate order. A company has a book
 # row, and a formula root is admitted, only when every gate passes.
@@ -150,8 +109,8 @@ def close(start, exit_day, lookup, bankruptcy):
 
     A stopped stock keeps its last price. The status records only how the
     holding exited: 'Scheduled exit', 'Last available price' or 'Bankruptcy'.
-    A stored book serves every schedule with the same entry and exit, so the
-    run, not the book, labels its final mark (portfolio_results.evaluate_into).
+    An entry sheet serves many exits. The run labels its final mark
+    (portfolio_results.evaluate_into).
     """
     if start[0]>=exit_day:
         return 'ENTRY_NOT_BEFORE_EXIT',None
@@ -188,13 +147,12 @@ class Screen:
             reports=tuple({symbol:rows for symbol,rows in pool.items() if companies.get(symbol)} for pool in reports)
         self.statements,self.ranks=candidates(reports,day)
 
-    def decide(self, symbol, pool, exit_day=None):
+    def decide(self, symbol, pool):
         """(holding, None) or (None, reason) of one company: every gate, in REASONS order.
 
-        Without exit_day this is the admission alone, as the open book and a
-        formula root need. holding is dict(statement, rank, fiscal_price, entry,
-        market_cap, enterprise_value, ebitda, exit, return_value, status), with
-        fiscal_price, entry and exit as (day, adjusted close).
+        This admits an entry only. The run restricts actual entry before exit
+        before ranking, then closes selected rows. fiscal_price and entry
+        are (day, adjusted close) pairs.
         """
         listed=self.facts.companies().get(symbol)
         if listed is None:
@@ -217,47 +175,34 @@ class Screen:
         fiscal_px,start,cap,ev,ebitda=valuation
         if not eligible(pool,cap,ev):
             return None,'INELIGIBLE_VALUATION'
-        holding=dict(statement=statement,rank=rank,fiscal_price=fiscal_px,entry=start,market_cap=cap,
-                     enterprise_value=ev,ebitda=ebitda,exit=None,return_value=None,status=None)
-        if exit_day is not None:
-            reason,ending=close(start,exit_day,lookup,run.bankrupt(symbol,self.day,exit_day))
-            if reason is not None:
-                return None,reason
-            holding.update(zip(('exit','return_value','status'),ending))
-        return holding,None
+        return dict(statement=statement,rank=rank,fiscal_price=fiscal_px,entry=start,market_cap=cap,
+                    enterprise_value=ev,ebitda=ebitda),None
 
 
-def book(entry, exit_day, pool, facts, checkpoint=lambda: None):
-    """Compute one pool of a book: its record, rows, ranking pairs and filter values.
+def book(entry, pool, facts, checkpoint=lambda: None, *, latest=False):
+    """Build one entry/pool sheet, without exit prices or future returns.
 
-    exit_day None is the open (latest) book. The rows are the companies with an
-    available report that Screen.decide admits; owner_values() gives each
-    row's ranking pairs and filter values. facts is the facts port
-    (facts.BookFacts); the book also reads spy(day) on an exact session,
-    treasury(day) (3-month, as a fraction, on or before) and ten_year(day)
-    (percent, on or before). candidates counts the cached-pool reports of the
-    entry day.
+    latest serves the exact-session, listed-only screen. Historical sheets
+    use dated admission and can serve every later exit. Both share this loop.
     """
-    screen=Screen(entry,facts,open_book=exit_day is None)
+    screen=Screen(entry,facts,open_book=latest)
     treasury=facts.treasury(entry)
     treasury=0. if treasury is None else treasury
     ten_year=facts.ten_year(entry)
     rows,pairs,filters=[],[],[]
     for symbol in screen.statements[pool]:
         checkpoint()
-        held,_=screen.decide(symbol,pool,exit_day)
+        held,_=screen.decide(symbol,pool)
         if held is None:continue
-        statement,cap,ev,ebitda,end=held['statement'],held['market_cap'],held['enterprise_value'],held['ebitda'],held['exit']
+        statement,cap,ev,ebitda=held['statement'],held['market_cap'],held['enterprise_value'],held['ebitda']
         fiscal=str(statement['fiscal'])
         yield_value,multiple,evaluated,values=owner_values(symbol,fiscal,entry,cap,ev,ebitda,facts,ten_year)
         rows.append((symbol,held['rank'],fiscal,str(statement['known']),str(held['entry'][0]),held['entry'][1],
-                     None if end is None else str(end[0]),cap,ev,ebitda,yield_value,multiple,
-                     yield_spread(yield_value,treasury),held['return_value'],held['status']))
+                     cap,ev,ebitda,yield_value,multiple,yield_spread(yield_value,treasury)))
         filters.extend((symbol,key,value) for key,value in values.items())
         pairs.extend((symbol,metric,multiple,value) for metric,(multiple,value) in evaluated.items())
-    spy=None if exit_day is None else benchmark_return(facts.spy(entry),facts.spy(exit_day))
-    return dict(entry=str(entry),exit=None if exit_day is None else str(exit_day),pool=pool,spy=spy,
-                candidates=len(screen.statements['cached']),rows=rows,metrics=pairs,filters=filters)
+    return dict(entry=str(entry),latest=latest,pool=pool,candidates=len(screen.statements['cached']),
+                rows=rows,metrics=pairs,filters=filters)
 
 
 def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):

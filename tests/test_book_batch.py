@@ -73,6 +73,16 @@ class BookBatchTests(unittest.TestCase):
         self.assertEqual(replay['execution']['workers'],0)
         self.assertEqual(replay['execution']['reused_books'],len(planned['jobs']))
 
+    def test_shared_entry_with_different_trial_exits_builds_once(self):
+        config=self.config(trials=2,seed=11)
+        config['samples']=[['2015-01-01','2016-01-04'],['2015-01-01','2016-02-01']]
+        with patch.object(books,'book',wraps=books.book) as compute:
+            result=r.run(self.db,config,workers=1)
+        self.assertEqual(compute.call_count,3)
+        self.assertEqual(result['execution']['unique_books'],3)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],3)
+        self.assertEqual(result['completed'],2)
+
     def test_automatic_workers_for_large_batches_and_serial_small_batches(self):
         db,path=self.file_copy()
         with patch.object(b,'ProcessPoolExecutor',side_effect=AssertionError('Small batches stay serial')):
@@ -114,7 +124,7 @@ class BookBatchTests(unittest.TestCase):
         def fail(*args,**kwargs):
             nonlocal calls
             calls+=1
-            if calls==len(planned['trials'][0])+2:raise RuntimeError('calculation stopped')
+            if calls==len(planned['trials'][0])+1:raise RuntimeError('calculation stopped')
             return original(*args,**kwargs)
         with patch.object(books,'book',side_effect=fail):
             with self.assertRaisesRegex(RuntimeError,'calculation stopped'):r.run(self.db,config,workers=1)
@@ -129,7 +139,7 @@ class BookBatchTests(unittest.TestCase):
         def fail(*args,**kwargs):
             nonlocal calls
             calls+=1
-            if calls==len(planned['trials'][0])+2:raise RuntimeError('write stopped')
+            if calls==len(planned['trials'][0])+1:raise RuntimeError('write stopped')
             return original(*args,**kwargs)
         with patch.object(book_store,'store',side_effect=fail):
             with self.assertRaisesRegex(RuntimeError,'write stopped'):r.run(self.db,config,workers=1)
@@ -168,14 +178,14 @@ class BookBatchTests(unittest.TestCase):
 
     def test_a_complete_pool_is_never_written_twice(self):
         entry=date(2015,1,1);end=date(2015,7,1)
-        book=books.book(entry,end,'legacy',facts.BookFacts(self.db))
+        book=books.book(entry,'legacy',facts.BookFacts(self.db))
         with self.db:book_store.store(self.db,book)
         before=[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')]
         with self.assertRaises(sqlite3.IntegrityError),self.db:book_store.store(self.db,book)
         self.assertEqual(before,[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')])
 
     def test_book_read_transaction_releases_on_success_and_failure(self):
-        key=('2015-01-01','2015-07-01','legacy')
+        key=('2015-01-01','legacy')
         book_facts=facts.BookFacts(self.db)
         original=books.book
         def observed(*args):
