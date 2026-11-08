@@ -574,8 +574,8 @@ The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
 market cap, enterprise value, and trailing 1-year and 3-year returns. Additional
 financial filters include P/E, P/B, free cash flow amount/yield, price/FCF, net
 profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity.
-These use saved annual statement inputs. Select Full annual financial data in
-the data panel, download missing assets, then rebuild. Changing filters makes no
+These use saved annual statement inputs. Choose **Manage backtest data →
+Update data** to get their inputs and prepare them automatically. Changing filters makes no
 provider requests. Missing inputs exclude only stocks filtered on those inputs.
 
 `backtest/financial/metrics.py` defines the catalog and prepares threshold values.
@@ -647,137 +647,158 @@ filters = [{"field": "operating_yield_spread_3y", "op": "gt", "value": 5}]
 
 ### Data control panel
 
-Open **Manage backtest data** from the strategy builder, or open `/data.html`
-on the local service. The panel checks the universe, annual financials, stock
-prices, SPY, Treasury yields, prepared databases and website build. Select the
-existing price-cache stocks (the default, which dated books need), all eligible
-financial stocks, or up to 200 specific symbols. Choose a price-history range;
-the default ends on the latest available day, today. Include prior prices for
-report-date valuation and trailing returns.
+Open **Manage backtest data** from the strategy builder. Select **Update data**
+to check for missing and newer inputs, download them and prepare both databases
+and the website. A saved annual record does not mean that the company has no
+new report. Preparation is automatic. Saved backtests and queue records keep
+all their recorded values.
 
-**Check data** reads saved files. It makes no provider request and does not read
-the API key. Reports show actual first and last dates, record counts, missing
-financial symbols, empty histories and invalid files. The JSON report includes
-the full stock list and missing full-data endpoint assets for the chosen group.
+The primary action maintains saved-price companies, pending additions, newly
+listed companies and companies that first acquire eligible financials. A saved
+price receipt also identifies a managed company whose file was lost. The
+missing file inherits no completion evidence and is downloaded again. Annual
+key metrics are checked across the saved US universe. Statements and ratios
+update for managed stocks. New managed histories start in 1995. Historical
+companies remain in the universe. Existing fiscal-date valuations retain their
+values; new fiscal dates use the same 90-day eligibility policy. Full annual
+responses retain every field, currency, null and variant under the existing
+conflict rules. Requests retain the 40-report limit.
 
-**Download missing data** uses the selected data types. It reuses a saved
-universe and existing annual records. Financial downloads fill missing symbols
-across the universe, or only the explicitly entered symbols. Price downloads
-fill ranges outside the existing saved date span. They do not refresh existing
-values or repair internal session gaps. Short histories can reflect listings
-or trading stops. The provider may have no additional data.
+**More options** selects a stock group, up to 200 specific symbols and a history
+range. **Update selected stocks and history** updates that explicit coverage and
+prepares it automatically. The primary Update data action uses full managed
+coverage independently of those controls. An earlier start extends saved
+history. Include earlier prices for report-date valuation and trailing returns.
+A selected group is not a promise that every company has available prices.
 
-Stock and SPY requests use windows of up to ten years. Treasury uses monthly windows.
-Up to 32 requests run concurrently. The default shared start-rate cap is 45 per
-second (2,700/minute), below this account's stated 3,000/minute allowance.
-Each worker reuses its HTTP connection. The transport requests gzip and decodes
-successful compressed responses before JSON parsing. Plain responses also work.
-Corrupt compressed bodies and unsupported encodings use bounded transport retries.
-Error status and Retry-After take precedence over response-body encoding.
-A 429 response applies a shared Retry-After cooldown and reduces the start rate.
-There are at most three attempts, a 15-second socket timeout and a 30-second read
-deadline. Cancellation stops submission and interrupts retry waits; active
-requests are joined before cache ownership is released. Only the owner publishes
-validated records and coverage receipts. Workers do not write raw files.
-`raw/download-coverage.json` records successful requested windows, including
-empty responses. Each asset entry has `sha256`, `windows` and `base_span`. The base span is the saved coverage before managed extension, or null for a new file. Each finished window is tracked separately. An out-of-order result cannot make an unfinished middle window disappear. `previous` retains one earlier receipt for interrupted replacement. The hash identifies
-the exact saved file. Only a valid file with that hash can reuse the windows.
-Missing, corrupt or manually replaced files lose old completion evidence.
-Legacy list-only entries have no proof and are ignored; usable saved rows
-remain. Retrying resumes unrequested windows for the validated asset. Valid saved rows and
-the file's other saved keys are retained; no calculation reads a key other than `div`. Each price or market window is published by
-atomic replacement. Expected-content receipts are saved before asset replacement.
-The current or previous receipt applies only when its hash matches the actual
-valid file. This covers interruption on either side of replacement. Completed windows survive interruption. Corrupt files are
-backed up under `raw/archive/*.before-data-repair` before repair. Invalid JSONL
-financial lines are backed up; valid symbol records remain and missing symbol
-records are downloaded. Both preparation and group inspection use the same
-validated mapping-only annual rows and financial eligibility policy. Provider
-failures do not mark a window complete.
+**Details** contains technical messages, local file inspection, report export
+and **Prepare saved data (offline)**. Checks inspect actual dates, missing
+financial symbols, empty histories and prepared-data freshness. Checks and
+preparation make no provider request. Opening the page only reads status; it
+never starts a download. Offline preparation needs no API key. Downloads read
+`~/.grok/secrets/fmp_api_key` only when a request needs it. Keys, provider URLs
+and response bodies never enter the browser or progress state.
 
-The key stays at `~/.grok/secrets/fmp_api_key`. The UI sees only file presence,
-never its value or provider request URLs. Downloads can require a paid provider
-subscription. Opening the panel never starts a download.
+#### Progress and continuation
 
-**Rebuild prepared data + website** runs research preparation, daily preparation,
-and the website build without network requests. Every research build is a full
-build. Open the
-strategy page after rebuilding to load the new embedded data.
+The main card shows estimated overall completion, elapsed running time and
+estimated time remaining. The supporting steps are checking, company reports,
+prices, preparation and final readiness. Per-symbol messages stay in Details.
+The estimated percentage includes preparation. It stays below 100 until the
+whole update succeeds. Partial completion and readiness are separate outcomes.
 
-**Refresh data + website** refreshes the full managed coverage and runs that
-same preparation chain. It ignores the check/download range controls. It
-refreshes US listings while retaining historical companies. It checks annual
-key metrics across the universe, including existing companies. New fiscal dates
-enter the valuation records; saved fiscal-date valuations stay unchanged. Full
-annual input responses retain every variant under the existing conflict rules.
-Every returned key-metric response is retained in the full-data cache, including
-responses for companies without saved prices. This does not backfill their
-prices unless they are newly discovered or first become eligible.
-Statements and ratios refresh for saved-price stocks and pending additions.
-New listings and newly eligible companies receive price histories from 1995.
-Pending additions survive interruption and retry on later refreshes.
+Estimates use the stage durations of the last successful update with the same
+scope. Current stage counts scale its remaining time and completion fraction.
+If the current stage is slower, elapsed time and its completed fraction revise
+the estimate. Future stages use that previous update's durations. Without a
+matching success, overall estimates stay unknown; elapsed time and current step
+counts and percentages remain visible. These are approximate estimates.
 
-Prices and Treasury yields resume known unfinished windows and recheck a
-seven-day overlap from their last saved date. Empty histories reuse checked old
-windows and recheck recent dates, so delayed provider rows can arrive later.
-This does not infer gaps inside an imported saved span. Overlapping Treasury
-and price rows may be updated. If an adjusted price
-differs, refresh requests the complete saved history in bounded windows. It
-publishes that history only when all saved and newly returned dates are present
-and the recently returned prices still agree. Equivalent numeric representations
-do not trigger a history replacement.
-An incomplete replacement keeps the original file. Other stock-file keys stay
-intact. Each response is validated once before publication. Unchanged assets
-keep their bytes and timestamps. Coverage receipts retain their current format;
-refresh coalesces requested windows. Recent overlap checks do not audit arbitrary
-corrections elsewhere in historical data. Annual requests retain the 40-report
-limit and do not prove complete provider history.
+Closing or reloading a browser page does not cancel work. Other tabs show the
+same operation. The page polls while idle and reconnects automatically. A lost
+connection freezes progress as **Last seen**. It does not declare the update
+stopped. A lost start response causes a status read, never an automatic repeat
+submission. **Stop update** stops new work and joins active workers before cache
+ownership ends. The card shows **Stopping safely** during cleanup.
 
-Manual refresh waits until 22:00 UTC to request that US date. This cutoff is
-after the regular US close in both seasons.
-The supervisor runs the same operation before startup at 07:00 Hong Kong time,
-after optional source publication. Data refresh runs with no new commit too.
-A missed schedule waits until the next day. Neither ordinary startup nor resume
-catches up. The supervisor must be running. Fixed-revision launches have no
-automatic maintenance. Ordinary direct startup remains offline; an explicit
-`--refresh-data` requests this operation before accepting work.
+After a server crash or machine shutdown, **Continue update** uses the saved
+scope and target date. It reruns unfinished stages. An unfinished report stage
+is checked again even when its files have valid receipts: those receipts do not
+prove that the provider has no newer report. Finished download stages can be
+reused while their content-bound receipts still apply. If preparation is the
+only unfinished step, continuation makes no download request. Recorded active
+seconds survive continuation; stopped time is excluded.
 
-The panel shows the last attempt, last successful refresh, latest cached SPY
-session and count of pending new stocks. `data/data-refresh.json` owns this
-status and pending list. A completed request with no new rows does not advance
-the latest session. A failed company or history does not stop unrelated assets.
-The failed-asset count is recorded. Publication I/O failures stop further
-downloads. A partial refresh keeps completed downloads and prepares valid saved
-inputs, with a visible partial outcome. A preparation
-failure cannot mark the refresh successful or admit calculations. Cancellation
-joins fetch workers before releasing cache ownership and retains completed
-downloads. Stored library and queue records are never rewritten by refresh.
-New annual reports use the existing 90-day eligibility policy. Preparation owns
-fact changes and book invalidation. A later precomputed-sheet stage belongs in
-that preparation path; the scheduler has no sheet rules.
+`website/server/data_refresh.py` persists one small atomic record at
+`data/data-refresh.json`. It contains state, scope, target date, current stage,
+stage counts, a successful stage prefix, verified running seconds, pending
+additions, last success and the last successful scope's stage durations. It
+uses the existing financial cache ownership. Only that owner publishes status
+and inputs. There is no separate update lock or per-asset work store.
 
-`website/server/data_manager.py` owns the inventory and background job. The local
-service exposes `/api/data/status` and the POST actions
-`check`, `download`, `refresh`, `rebuild`, and `cancel`. Refresh takes an empty
-options object. Data endpoints accept only local,
-same-origin requests. `backtest/runtime/cache_access.py` owns one project-wide resource
-coordinator, backed by ignored `data/website-data-0.lock`. Startup, standalone
-research/daily preparation, data jobs, fixed schedules and random batches use
-the same coordinator. Lock order is process-local reentrant lock, project file
-lock, then database connections and worker pools. Ownership remains held until
-workers finish and databases close. Nested preparation reuses ownership. The
-website build subprocess reads under its parent’s ownership. Polling reports real work progress. Cancel waits
-for an active provider request or preparation step, retaining completed files.
-Shutdown waits for the worker before releasing server lifetime ownership.
+A saved running status becomes interrupted when the cache is free and no local
+update is running. If a foreign operation holds the cache, status is
+**unconfirmed**: a backtest can own that cache too. The page does not claim that
+an update is still running and does not offer Stop for that unidentified owner.
+Status reads never publish or resume work.
 
-The service serves `/data.html` directly from current source. Missing or invalid
-essential raw inputs route startup to this recovery panel. It does not need a
-prepared database or prior website build.
-The built `website/local/data.html` and portable `website/dist/data.html` are standalone copies with local-service
-instructions when opened as a file.
+The service exposes GET `/api/data/status` and POST `update`, `continue` and
+`cancel`. Empty update options select managed coverage; normalized stock/date
+options select explicit coverage. Continue takes an empty object and restores the saved options. Local support actions `check`, `rebuild`, `download` and
+`refresh` remain available for existing callers; missing-only support downloads
+are not the ordinary interface. All data actions require local, same-origin
+requests.
 
-Check with `python3 tests/test_data_manager.py`, `node tests/check-data-panel.cjs`,
-`python3 tests/test_cache_access.py`, and `python3 tests/test_startup.py`.
+#### Publication, preparation and provider limits
+
+`website/server/data_refresh.py` owns the managed update policy. Prices and
+Treasury yields resume known unfinished windows and recheck seven recent days.
+Empty histories reuse checked old windows and recheck recent dates. This does
+not infer missing sessions inside an imported saved span. A changed adjusted
+price requires a consistent complete replacement in bounded windows. Saved and
+new dates must remain present and recently returned prices must still agree.
+An incomplete replacement keeps the old file. Unchanged assets keep their
+bytes and timestamps. Recent overlap checks do not audit every old correction.
+
+Stock and SPY windows cover up to ten years. Treasury windows are monthly. Up
+to 32 tasks are in flight, with a shared cap of 45 starts per second. Connections
+are reused and support gzip. HTTP status and Retry-After take precedence over
+response encoding. A 429 pauses workers and lowers the start rate. There are
+at most three attempts, a 15-second socket timeout and a 30-second read deadline.
+Cancellation interrupts retry waits and stops submission. Only the owner saves
+responses. Finite non-positive prices are excluded and their dates stay in the
+content-bound receipt. Other invalid rows fail that asset. Empty checked
+responses do not invent prices or advance the latest SPY date.
+
+`raw/download-coverage.json` retains its existing hash-bound receipts, windows,
+base spans, prior generation and skipped dates. Publish receipts before assets.
+An incomplete replacement can match only the exact saved generation. A missing,
+damaged or replaced asset inherits no previous completion evidence. Known holes
+remain missing even when other completed windows extend both sides of them.
+
+Financial appends end with a newline, flush their contents and synchronize the
+file. Before appending or preparing, the owner trims only an incomplete,
+unparseable final line. A complete valid JSON tail without a newline is kept.
+Earlier bytes are never rewritten by this tail cleanup. Read-only inspectors
+keep the ordinary non-mutating reader. Main's existing complete-record repair
+and archive behavior remains available for malformed records.
+
+Atomic cache replacement flushes file contents before rename and synchronizes
+the directory on POSIX. Python exposes no portable equivalent directory
+synchronization on Windows. These durability steps are retained for WSL
+shutdown. Tests use private fixtures; no physical power-cut claim is made.
+
+Preparation runs under the same owner after downloads. It reuses current data
+or performs the ordinary full research build, daily transaction and website
+build. Research replacement keeps the prior database on failure. Daily
+preparation keeps its existing transaction and cache-reset rules. Website
+rebuilds remove the old completion marker and synchronize its directory before
+changing output. All outputs are flushed before the new marker is published
+last. Freshness requires that marker, its input identity and the output files. The
+server builds in process so a killed owner cannot leave a build child publishing
+after its cache lease ends. Future precomputed sheets belong in this preparation
+flow; the scheduler owns no sheet rules.
+
+A company failure does not stop unrelated assets. Publication I/O failures stop
+further downloads. Valid saved inputs can still be prepared after a provider
+failure, but the outcome stays visibly partial. Preparation failure cannot
+report Ready or start the calculation service. Library and queue records are
+never rewritten. The last successful update and actual latest SPY session stay
+separate.
+
+Source ownership precedes the existing process-local financial lock, project
+financial file lock, connections and worker pools. Keep ownership
+through worker completion and connection closure. Nested preparation reuses it.
+The 07:00 Hong Kong maintenance cycle uses the same update operation. A missed
+schedule waits until the next day. The supervisor must be running. Its already
+authorized cycle can update independently of the manual Continue action.
+Ordinary startup remains offline and can prepare valid saved inputs locally.
+
+The recovery page is served directly from source at `/data.html`, even when
+essential inputs or prepared output are missing. A saved HTML copy requires the
+local service. Verify with `tests/test_data_refresh.py`,
+`tests/test_data_manager.py`, `tests/test_startup.py`, `tests/test_cache_access.py`
+and `node tests/check-data-panel.cjs`, including affected native Windows checks.
 
 
 ### Download performance experiment
@@ -853,7 +874,7 @@ constants (`FIRST_YEAR`, `LAST_YEAR`, `ASOF`, `HOLD`) live in
 
 ### Full annual financial data
 
-The full-data option saves complete annual income statements, balance sheets,
+Updates save complete annual income statements, balance sheets,
 cash flow statements, key metrics and ratios under `raw/financial-inputs/`.
 All returned fields are retained, including unknown fields, null values,
 currencies and filing metadata. New `metrics.jsonl` records also keep complete

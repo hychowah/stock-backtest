@@ -12,7 +12,6 @@ import select
 import socket
 import time
 import sys
-import subprocess
 import webbrowser
 from website.server import launcher, backtests, results, data, variables
 
@@ -27,6 +26,7 @@ from backtest.application.result_access import ResultAccess
 from backtest.application import queue as backtest_queue
 from backtest.application.original_calculations import Original
 from website.rendering.state import current_build, LOCAL_OUTPUT
+from website.rendering.build import build as build_website
 
 DATA_JOBS=data_manager.Jobs()
 SAVED_BACKTESTS=saved_backtests.Store()
@@ -167,7 +167,7 @@ def ensure_ready():
         diagnostics.lap('prepare')
         if not current_build():
             print('Rebuilding the website…',flush=True)
-            subprocess.run([sys.executable,'-X','utf8',str(ROOT/'build.py'),'--cache-owned'],cwd=ROOT.parent,check=True)
+            build_website()
             diagnostics.lap('website_build')
     print('Local caches and website are ready.',flush=True)
 
@@ -234,7 +234,8 @@ def run_server(args,lifecycle,parser,started):
                 diagnostics.note(outcome='recovery')
                 print('Saved source data is missing or invalid. Opening the data control panel.',flush=True)
             elif not args.refresh_data:ensure_ready()
-    except (ValueError,OSError,sqlite3.Error,subprocess.CalledProcessError) as error:
+            DATA_JOBS.rebuilt=not recovery
+    except (ValueError,OSError,sqlite3.Error) as error:
         diagnostics.failure('startup.failed',error)
         parser.exit(1,'Could not prepare the local website: '+str(error)+'\n')
     except KeyboardInterrupt:

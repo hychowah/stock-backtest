@@ -10,7 +10,7 @@ Every preparation is a full build. [The research workflow](../docs/research-work
 
 The database contains company metadata and listing, cleaned annual financial observations with availability dates, and typed facts for custom variables and books. It holds no book: the latest and dated books live in the book store of `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
-The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Preparation never downloads missing prices. The separate refresh operation adds newly discovered or newly eligible companies; see the [data workflow](../docs/research-workflow.md#data-control-panel). Run `python3 scripts/research.py status` to inspect annual coverage.
+The original-screen pool retains the original reported-value thresholds and 250-name pre-price buffer. The broader pool covers only companies with cached prices, not all names in the universe. Preparation never downloads missing prices. The unified Update data operation adds newly discovered or newly eligible companies; see the [data workflow](../docs/research-workflow.md#data-control-panel). Run `python3 scripts/research.py status` to inspect annual coverage.
 
 Queries use read-only connections and check the research record: core input file stamps, the price-directory timestamp and the content identity of the fact-row code, without scanning every price file. Preparation checks the full per-price-file size/timestamp manifest. After editing an existing price file, run preparation to incorporate and validate the change; queries are reads of the last prepared snapshot. The `.building` database is temporary; a failed preparation preserves the previous completed database. Fingerprints are local freshness checks, not cryptographic verification of downloaded data.
 
@@ -62,11 +62,14 @@ downloaded.
 
 `logs/website-<namespace>-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
 
-`data-refresh.json` holds the last refresh outcome and pending new-stock
-additions. Preserve it during preparation, cleanup and deployment so interrupted
-additions remain eligible for retry. It is separate from research freshness.
-The [data workflow](../docs/research-workflow.md#data-control-panel) defines its
-status fields and refresh behavior.
+`data-refresh.json` is the update status and pending-addition record. The
+existing financial cache owner writes it atomically. It stores the saved scope,
+target date, stage counts and successful stage prefix, verified running time,
+last success and matching-scope successful stage durations. Continue reruns
+unfinished stages; an incomplete report stage is refreshed again. A foreign
+busy cache leaves its running status unconfirmed. Status reads never resume it.
+The [data workflow](../docs/research-workflow.md#data-control-panel) owns the
+full behavior. This status is separate from research freshness and saved results.
 
 ## Saved backtests
 

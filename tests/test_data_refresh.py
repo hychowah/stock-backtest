@@ -54,11 +54,11 @@ class RefreshTests(unittest.TestCase):
         else:rows=self.prices([('2025-12-31',100 if symbol=='SPY' else 10),('2026-01-02',110 if symbol=='SPY' else 11),('2026-01-05',120 if symbol=='SPY' else 12)])
         return [row for row in rows if params['from']<=row['date']<=params['to']]
 
-    def download(self,state=None):
-        state=dict(pending_symbols=[]) if state is None else state
+    def download(self,state=None,end=date(2026,1,5)):
         with cache_access.access(),fmp_download.Client() as client:
-            refresh.download(state,date(2026,1,5),lambda **kw:None,lambda:None,client)
-        return state
+            progress=refresh.Progress(state or {})
+            refresh.download(progress.state,end,progress.emit,lambda:None,client,progress)
+            return progress.state
 
     def test_existing_company_gets_new_annual_report_and_refreshed_dates(self):
         before=(self.raw/'metrics.jsonl').read_bytes()
@@ -85,8 +85,7 @@ class RefreshTests(unittest.TestCase):
             state=self.download();daily.prepare(path,source)
             with closing(daily.connect(path,source)) as db:
                 self.assertEqual(screening.latest(db,pool='cached')[0]['fiscal'],'2024-12-31')
-            with cache_access.access(),fmp_download.Client() as client:
-                refresh.download(state,date(2026,4,1),lambda **kw:None,lambda:None,client)
+            self.download(state,end=date(2026,4,1))
             daily.prepare(path,source)
             with closing(daily.connect(path,source)) as db:
                 self.assertEqual(screening.latest(db,pool='cached')[0]['fiscal'],'2025-12-31')
@@ -364,6 +363,60 @@ class RefreshTests(unittest.TestCase):
                 self.assertTrue(all(params['to']<=end for params in spans))
                 self.assertTrue(any(params['to']==end for params in spans))
                 self.assertEqual(state['outcome'],'complete')
+
+    def test_continue_rechecks_unfinished_report_stage_despite_existing_receipt(self):
+        financial_inputs.publish(self.raw,'A','key-metrics',[self.old_report],{},data.COVERAGE)
+        provider=self.provider
+        def interrupted(endpoint,params,*args):
+            if endpoint=='key-metrics':raise fmp_download.Cancelled()
+            return provider(endpoint,params,*args)
+        with patch.object(data,'request_json',side_effect=interrupted),patch.object(data,'rebuild'),self.assertRaises(fmp_download.Cancelled):refresh.run()
+        previous=refresh.status();self.assertTrue(previous['can_continue'])
+        self.calls.clear()
+        with patch.object(data,'rebuild'):result=refresh.run(resume=True)
+        self.assertEqual(result['outcome'],'complete')
+        self.assertEqual(result['target_date'],previous['target_date'])
+        self.assertTrue(any(endpoint=='key-metrics' for endpoint,_ in self.calls))
+        self.assertIn('2025-12-31',[row['date'] for row in data.financial_records()[0]['A']['rows']])
+
+    def test_continue_after_downloads_keeps_scope_and_active_time_without_requests(self):
+        with patch.object(data,'rebuild',side_effect=ValueError('prepare stopped')),self.assertRaises(ValueError):refresh.run()
+        previous=refresh.status()
+        with patch.object(data,'request_json',side_effect=AssertionError('Completed stages must not download')),patch.object(data,'rebuild'):
+            result=refresh.run(resume=True)
+        self.assertEqual(result['outcome'],'complete');self.assertTrue(result['ready'])
+        self.assertEqual((result['scope'],result['target_date']),(previous['scope'],previous['target_date']))
+        self.assertGreaterEqual(result['elapsed_seconds'],previous['elapsed_seconds'])
+        self.assertLess(result['elapsed_seconds'],previous['elapsed_seconds']+5)
+
+    def test_estimate_requires_matching_success_and_never_reaches_100_before_ready(self):
+        snapshots=[];clock=[100.]
+        def now():clock[0]+=.01;return clock[0]
+        def prepare(emit,stop):
+            for kind,total in (('research',1),('daily',2),('website',6)):
+                emit(kind=kind,completed=0,total=total);emit(kind=kind,completed=total,total=total)
+        def capture(**values):
+            if values.get('kind')=='annual':snapshots.append(refresh.status())
+        with patch.object(refresh.time,'monotonic',side_effect=now),patch.object(data,'rebuild',side_effect=prepare):
+            first=refresh.run(capture)
+            self.assertTrue(snapshots);self.assertTrue(all(row['percent'] is None for row in snapshots))
+            self.assertEqual(first['percent'],100);self.assertTrue(first['ready'])
+            snapshots.clear();refresh.run(capture)
+            self.assertTrue(snapshots);self.assertTrue(all(0<=row['percent']<100 and row['estimated_remaining_seconds']>=0 for row in snapshots))
+            snapshots.clear();refresh.run(capture,scope=data.options(dict(scope='symbols',symbols='A')))
+            self.assertTrue(all(row['percent'] is None for row in snapshots))
+
+    def test_foreign_cache_owner_leaves_running_status_unconfirmed(self):
+        saved=dict(outcome='running',scope=None,stage='Updating company reports',elapsed_seconds=12)
+        with cache_access.access():
+            cache_assets.write_json(refresh.status_path(),saved)
+            observed=refresh.status()
+            self.assertEqual(observed['outcome'],'unconfirmed');self.assertFalse(observed['running'])
+            self.assertFalse(observed['can_continue'])
+        observed=refresh.status()
+        self.assertEqual(observed['outcome'],'interrupted');self.assertTrue(observed['can_continue'])
+        self.assertEqual(observed['elapsed_seconds'],12)
+        self.assertEqual(cache_assets.read_json(refresh.status_path()),saved,'Observing status must not publish it.')
 
 
 if __name__=='__main__':unittest.main()

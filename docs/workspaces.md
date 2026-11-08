@@ -75,14 +75,16 @@ Older source revisions ignore it, so moving main back does not introduce an
 unknown startup argument. Ordinary launches clear scheduled refresh intent.
 Direct startup without the explicit `--refresh-data` option remains offline.
 The same operation is
-available as **Refresh data + website** on the data panel. Its fixed coverage
+available as **Update data** on the data panel. Its fixed coverage
 and outcome are described in the [data workflow](research-workflow.md#data-control-panel).
 One company's provider failure does not stop other stocks or market series.
 Provider failures keep completed downloads. Publication I/O failures stop
 further downloads. The replacement prepares the valid
 saved inputs and reports a partial refresh. Preparation failure prevents service
-startup. `data/data-refresh.json` stores the attempt, last success, latest SPY
-session and pending new stocks. It contains no credentials or provider URLs.
+startup. `data/data-refresh.json` stores the state, scope, target date, stage counts,
+verified running time, last success, latest SPY session and pending stocks. The
+existing financial owner publishes it atomically. A foreign busy cache leaves
+interrupted-versus-running status unconfirmed until the cache is free. It contains no credentials or provider URLs.
 
 The source has no experimental engine. The website neither prepares nor runs
 it.

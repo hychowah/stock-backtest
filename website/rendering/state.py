@@ -4,11 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from backtest.inputs import cache_assets
 
 ROOT=Path(__file__).resolve().parents[1]
 LOCAL_OUTPUT=ROOT/'local'
 SNAPSHOT_OUTPUT=ROOT/'dist'
 STAMP=LOCAL_OUTPUT/'.build-state.json'
+OUTPUTS=('index.html','latest-picks.csv','data.html','snapshot.json')
 
 
 def inputs():
@@ -47,13 +49,12 @@ def latest_book():
 
 
 def current_build():
-    if not all((LOCAL_OUTPUT/name).exists() for name in ('index.html','latest-picks.csv','data.html')):
-        return False
-    try:return json.loads(STAMP.read_text())==inputs()
-    except (OSError,ValueError):return False
+    if not all((LOCAL_OUTPUT/name).exists() for name in OUTPUTS):return False
+    try:
+        saved=json.loads(STAMP.read_text())
+        return saved==inputs()
+    except (OSError,ValueError,TypeError,AttributeError):return False
 
 
 def record_build():
-    temporary=STAMP.with_suffix('.tmp')
-    temporary.write_text(json.dumps(inputs(),sort_keys=True))
-    temporary.replace(STAMP)
+    cache_assets.write_json(STAMP,inputs())

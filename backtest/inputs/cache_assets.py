@@ -7,12 +7,25 @@ but cannot inherit empty-request evidence from a different file generation.
 from datetime import date, timedelta
 import hashlib
 import json
+import os
 import time
 
 from backtest.runtime import diagnostics as diagnostics
 from backtest.financial import rules
 
 PUBLISH_RETRY_DELAYS=(.05,.1,.2,.4,.4,.4,.4)
+
+
+def sync_directory(path):
+    """Persist a published directory entry where the OS exposes this operation.
+
+    Windows has no portable directory fsync. File contents are flushed there;
+    recovery still validates receipts and assets after an unclean shutdown.
+    """
+    if os.name=='nt':return
+    descriptor=os.open(path,os.O_RDONLY|os.O_DIRECTORY)
+    try:os.fsync(descriptor)
+    finally:os.close(descriptor)
 
 
 def replace(temporary,path,content=None):
@@ -27,7 +40,9 @@ def replace(temporary,path,content=None):
     for attempt in range(len(PUBLISH_RETRY_DELAYS)+1):
         try:
             if content is not None:temporary.write_bytes(content)
+            with temporary.open('r+b') as handle:os.fsync(handle.fileno())
             temporary.replace(path)
+            sync_directory(path.parent)
             return
         except PermissionError as error:
             if getattr(error,'winerror',None) not in (5,32,33) or attempt==len(PUBLISH_RETRY_DELAYS):raise
@@ -49,6 +64,32 @@ def read_json(path, default=None):
 
 def write_json(path, value):
     publish_bytes(path,json.dumps(value,allow_nan=False).encode('utf-8'))
+
+
+def trim_financial_tail(path):
+    """Under cache ownership, remove only an unparseable unfinished last line.
+
+    A complete JSON value without a final newline is an existing valid format.
+    Read-only inspectors retain the ordinary non-mutating financial reader.
+    """
+    if not path.exists():return
+    with path.open('rb') as handle:
+        handle.seek(0,2);end=handle.tell()
+        if not end:return
+        handle.seek(end-1)
+        if handle.read(1)==b'\n':return
+        boundary=end;chunks=[]
+        while boundary:
+            start=max(0,boundary-4096);handle.seek(start);chunk=handle.read(boundary-start)
+            separator=chunk.rfind(b'\n')
+            if separator>=0:
+                chunks.append(chunk[separator+1:]);boundary=start+separator+1;break
+            chunks.append(chunk);boundary=start
+        tail=b''.join(reversed(chunks))
+    try:json.loads(tail)
+    except (ValueError,UnicodeDecodeError):
+        with path.open('r+b') as handle:
+            handle.truncate(boundary);handle.flush();os.fsync(handle.fileno())
 
 
 def financial_records(path):

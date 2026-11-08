@@ -24,8 +24,7 @@ not commit if it fails. After changing the check, run
 
 ## Current state and authorization
 
-All initiatives in `docs/plans/` are complete. Their summaries give the
-outcome, key decisions and known limits. Original is the only engine the
+Initiatives in `docs/plans/` record status, decisions and limits. Original is the only engine the
 website runs. The source has no experimental (Numba) engine, benchmark
 harness, engine comparison runner or Rust backend (see Engines).
 Custom variables are integrated into `main`. Source work does not establish
@@ -301,8 +300,8 @@ a rebuild, and temporal and SQL/browser parity checks. Check
 `python3 tests/test_financial_inputs.py`.
 
 **Data panel and raw cache.** See the [data workflow](docs/research-workflow.md#data-control-panel).
-`website/server/data_refresh.py` owns refresh and pending additions. Refresh
-uses ordinary preparation. `backtest/inputs/cache_assets.py` owns validation,
+`website/server/data_refresh.py` owns updates, pending additions, progress and
+continuation in `data/data-refresh.json`, under existing cache ownership. `backtest/inputs/cache_assets.py` owns validation,
 atomic publication and content-bound receipts in `raw/download-coverage.json`.
 Publish receipts before assets. Missing, replaced or unbound files inherit no
 completion evidence. Keep every returned field and row in

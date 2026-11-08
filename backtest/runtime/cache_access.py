@@ -3,7 +3,7 @@
 Lock order is process-local reentrant lock, project file lock, then database
 connections and worker pools. Keep ownership until workers finish and database
 connections close. Nested preparation in the same thread reuses ownership.
-The build subprocess reads under its parent's ownership and does not acquire it.
+Server builds run in the owning process and reuse that ownership.
 """
 
 from contextlib import contextmanager

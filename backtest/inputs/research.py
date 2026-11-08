@@ -318,12 +318,14 @@ def _readable(resolution, name):
 
 @cache_access.exclusive
 @diagnostics.operation('prepare.research')
-def prepare(path=DATABASE, force=False):
+def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
     """Build the research database from saved files; never download.
 
     Every build is a full build. A current database is kept unless force is set.
     """
+    cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
     started=time.perf_counter()
+    progress(kind='research',completed=0,total=None)
     diagnostics.note(force=force)
     path=Path(path)
     # Preparation is a data action: its readers inspect raw inputs afresh.
@@ -335,6 +337,7 @@ def prepare(path=DATABASE, force=False):
             pass
         else:
             db.close()
+            progress(kind='research',completed=1,total=1,reused=True)
             print(f'Database already current ({time.perf_counter()-started:.2f}s); only file metadata was checked.')
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
@@ -351,6 +354,7 @@ def prepare(path=DATABASE, force=False):
     records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
     if invalid:raise ValueError('Annual financial cache contains invalid records. Use the data panel to repair annual financials.')
     broad=books.statements(records,universe)
+    progress(kind='research',completed=0,total=len(broad)+1)
     financials=[(symbol,str(row['fiscal']),str(row['known']),row['market_cap'],row['enterprise'],row['ebitda'],row['yield'])
                 for symbol,rows in broad.items() for row in rows]
     latest_day=date.fromisoformat(max(day for day,states in market_facts[facts.CALENDAR]['dated'].items() if states['adjClose']['valid']))
@@ -383,6 +387,7 @@ def prepare(path=DATABASE, force=False):
             facts.store_annual(db,symbol,resolved)
             if diff is not None:
                 diff.company(symbol,stock['source'],rows,resolved['sources'])
+            progress(kind='research',completed=number,total=len(broad)+1)
             if number%200==0 or number==len(broad):
                 print(f'Prepared {number}/{len(broad)} companies',flush=True)
         diagnostics.lap('companies')
@@ -419,6 +424,7 @@ def prepare(path=DATABASE, force=False):
         temporary.unlink(missing_ok=True)
         raise
     diagnostics.note(outcome='prepared',database_bytes=path.stat().st_size)
+    progress(kind='research',completed=len(broad)+1,total=len(broad)+1)
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
 
 

@@ -30,7 +30,7 @@ assert(html.includes('The library has 100 slots.') && html.includes('stable UUID
 
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 
-assert(html.includes('Refresh data + website') && html.includes('data/data-refresh.json') && html.includes('A missed schedule waits until the next day.') && html.includes('Future precomputed sheets belong in that flow') && html.includes('A changed adjusted price needs a consistent replacement'), 'Explain scheduled refresh, pending additions, price continuity and preparation ownership');
+assert(html.includes('<strong>Update data</strong>') && html.includes('data/data-refresh.json') && html.includes('<strong>unconfirmed</strong>') && html.includes('<strong>Continue update</strong>') && html.includes('Estimated time remaining') && html.includes('Last seen') && html.includes('A missed schedule waits until the next day.') && html.includes('Future precomputed sheets belong in that flow') && html.includes('A changed adjusted price needs a consistent replacement'), 'Explain scheduled refresh, pending additions, price continuity and preparation ownership');
 
 assert(html.includes('Multiple records can have the same fiscal date.') && html.includes('Conflicting values stay unavailable.'), 'Explain duplicate annual response preservation and input ambiguity');
 
@@ -108,7 +108,7 @@ for (const pool of ['legacy', 'cached']) for (const count of ['50', '100']) for 
   elements['example-filter'].value = filter;
   selects[0].events.change();
   const result = text(elements['settings-explanation']);
-  if (filter === 'pb') assert(result.includes('saved annual equity') && result.includes('Full annual financial data'));
+  if (filter === 'pb') assert(result.includes('saved annual equity') && result.includes('Manage backtest data → Update data'));
   else assert(result.includes(count) && result.includes('Saved books'));
   if (pool === 'legacy' && count === '100' && filter !== 'pb') assert(result.includes('does not expand'));
 }

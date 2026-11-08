@@ -25,7 +25,7 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
 2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
-3. Use **Additional filters → + Add filter**. Type in the new row to search one list of built-in filters, saved variables, measures and financial parameters, then choose **More than** or **Less than** and a value. Built-in filters work offline; a variable, measure or parameter makes the strategy run on the local service, and auto-run pauses. All conditions must pass at your chosen selection stage. Two conditions on one item create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Download Full annual financial data and rebuild to supply their inputs.
+3. Use **Additional filters → + Add filter**. Type in the new row to search one list of built-in filters, saved variables, measures and financial parameters, then choose **More than** or **Less than** and a value. Built-in filters work offline; a variable, measure or parameter makes the strategy run on the local service, and auto-run pauses. All conditions must pass at your chosen selection stage. Two conditions on one item create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Choose **Manage backtest data → Update data** to get their inputs and prepare them automatically.
 4. Choose inclusive ranks in either mode. Choose **Selection order**: **Filter first, then rank** (default), or **Rank first, then filter**. The second option filters only the requested shortlist, keeps original ranks and adds no replacements. Rank 1 has the lowest selected valuation multiple in the ranking scope. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks at each rebalance.
 5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Reset strategy restores original filters and ranks 1–50 while preserving the chosen dates.
 
@@ -63,55 +63,60 @@ comparisons and **Save original backtest** use the original completed result.
 
 ## Manage backtest data
 
-Choose **Manage backtest data** from the strategy builder. Select a stock group,
-optional symbols, price-history dates and data types. **Check data** reports
-actual date spans, missing financial symbols, empty histories and prepared-data
-freshness. Export the full check as JSON when needed.
+Choose **Manage backtest data**, then **Update data**. The app checks for
+missing inputs and newer reports, updates prices and prepares the data and
+website automatically. It maintains saved stocks and new eligible listings.
+Saved price receipts also identify managed stocks whose files need replacing.
+Saved backtests and queue records stay unchanged.
 
-Use **Download missing data**, then **Rebuild prepared data + website**, then
-open the strategy builder. Downloads use the local FMP key file and preserve
-valid cached records. Checks and rebuilds are offline. No download starts when
-the panel opens. Downloads run up to 32 requests in parallel. A shared cap permits
-45 request starts per second (2,700/minute) for this account's stated 3,000/minute
-allowance. Connections are reused. Gzip responses reduce transferred bytes and
-are decoded before validation; plain responses also work. A 429 response pauses
-all workers and reduces the start rate. One writer saves each result. Cancel keeps completed windows, stops new requests and interrupts retry waits. A retry also fills unfinished managed windows inside an expanded date span.
-Completion evidence belongs to the exact saved file; loss or corruption cannot
-leave missing data falsely complete. Short histories may reflect IPOs or stops.
-The missing-only downloader does not refresh existing reports/profiles or repair internal
-price gaps. Full annual financial data downloads income, balance-sheet, cash-flow, key-metrics and ratios responses for the chosen group. It retains every returned field, null, currency and filing metadata in the raw cache. New key-metric records also keep full responses. Older trimmed key metrics can be backfilled separately. Prepared calculations use eligible USD inputs; future metrics can reuse the other saved fields.
+The main card shows overall estimated completion, elapsed time and estimated
+time remaining. Preparation participates in the estimate. Estimates use the last successful update with the same scope and live stage
+counts. Without a matching success, they show Estimating time remaining. Per-stock messages
+and logs stay under **Details**. The latest SPY date and last successful update
+are separate; an empty provider response cannot invent a newer session.
 
-**Refresh data + website** checks all saved-price stocks and new eligible
-listings. It adds newly eligible companies when their first usable annual
-metrics arrive. New stocks receive histories from 1995 and annual input assets.
-Incomplete additions remain pending for the next refresh. This action uses
-complete managed coverage, independent of the range controls. It checks annual
-key metrics across the universe and annual statements for the managed stocks.
-Every key-metric response is retained, including companies without saved prices.
-New reports keep the existing 90-day policy. Existing valuation reports retain
-their values; full annual input variants keep the ordinary conflict rules.
-Prices and Treasury yields resume known unfinished windows and recheck a
-seven-day overlap. Checked empty histories reuse old windows. A changed adjusted
-price requires a consistent full saved history that keeps newly returned dates
-and prices before publication. Unchanged
-assets keep their bytes and timestamps. Refresh then prepares both databases
-and rebuilds the website. It does not edit saved backtests or queue records.
+Close or reload the page without stopping the update. The page reconnects and
+shows the same operation. Connection loss marks estimates as Last seen. Stop
+update waits for safe cleanup and keeps completed work. After a server or
+computer shutdown, use **Continue update**. It verifies saved evidence and
+reuses matching work. Recorded running time excludes the stopped interval.
+Opening the page and ordinary startup never initiate market-data downloads.
 
-The panel shows the last attempt, last successful refresh, latest cached SPY
-session and pending additions. These dates are separate: an empty successful
-provider response does not advance market coverage. Completed downloads survive
-failure. One failed company or history does not stop unrelated assets. Publication
-I/O errors stop further downloads. A partial refresh prepares valid saved inputs
-and reports the failure.
-Preparation failure cannot start the calculation service. Historical coverage
-is bounded by provider responses; recent overlap checks do not audit every old
-provider correction. Installed timing and real-data coverage need separate
-verification. Existing terminals keep their loaded behavior until restarted.
+**More options** selects stocks and price-history dates for **Update selected
+stocks and history**. This action prepares its inputs automatically. The main
+Update data button maintains full managed coverage independently of those
+controls. **Details** contains checks, report export and offline preparation.
+Those local actions require no API key.
 
-If essential source files are missing or invalid, startup opens this panel for
-recovery. The page is served from current source at `/data.html`; opening the
-built HTML directly provides local-service instructions. See the detailed
-[data workflow](../docs/research-workflow.md#data-control-panel).
+The updater keeps the existing 90-day report policy, saved fiscal-date values
+and annual conflict rules. It retains full provider fields and variants. New
+managed stocks receive histories from 1995. Recent prices and yields are
+rechecked. A changed adjusted price requires a consistent full replacement.
+Unchanged assets retain their bytes and timestamps. Recent overlap checks do
+not audit every old provider correction. Annual requests retain their
+40-report limit.
+
+The existing financial cache owner also owns `data/data-refresh.json`. This
+small atomic record keeps scope, target date, stage counts, verified running
+time, last success and previous successful stage durations. Continue reruns
+unfinished stages. Receipts prove saved content and price coverage, not annual
+refresh freshness. A foreign busy cache leaves the update status unconfirmed
+until ownership is available. Readiness remains separate from update success.
+
+A financial append is newline terminated and flushed. Only an unparseable
+unfinished tail is removed before the next owned append or preparation. A
+valid JSON tail without a newline is retained. Website rebuilds durably
+invalidate the old marker, flush outputs and publish completion last. Cache
+replacement keeps file and POSIX directory synchronization. Physical power-loss
+behavior and live-provider coverage are not established by synthetic fixtures.
+
+Downloads retain the shared cap of 45 starts per second and up to 32 parallel
+tasks. Provider retries and waits remain cancellable. One asset failure can
+leave a partial result while valid saved inputs are prepared. Preparation
+failure cannot report readiness. Essential missing inputs open the source-served
+recovery page at `/data.html`.
+
+See the detailed [data workflow](../docs/research-workflow.md#data-control-panel).
 
 The **Sales × 3-year avg operating margin / EV − US 10Y (pp)** filter uses
 the selected annual revenue multiplied by the simple average of three annual
@@ -277,9 +282,11 @@ Windows file indexers can briefly lock cache files. Atomic JSON publication retr
 Check with `python3 tests/test_diagnostics.py`, `python3 tests/test_data_manager.py` and `python3 tests/test_startup.py`. Run these checks on native Windows too.
 
 
-Every rebuild is a full research build. A failure leaves the prior database and
-website intact. Standalone `build.py` takes cache ownership; managed children
-receive `--cache-owned` from their owning parent.
+Research preparation reuses a current database or builds a complete replacement.
+A failed research build keeps the prior database. Website publication invalidates the old completion marker, flushes outputs and
+records completion last. An interrupted website
+build needs recovery before it is current. Standalone `build.py` takes cache
+ownership. Server builders run in process under the existing owner.
 
 ## Local builds and portable snapshots
 

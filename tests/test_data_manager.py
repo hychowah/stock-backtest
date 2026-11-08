@@ -426,10 +426,26 @@ class CacheTests(unittest.TestCase):
         self.assertTrue(jobs.cancel.is_set());self.assertIsNone(jobs.thread);work.assert_not_called()
 
     def test_metrics_append_handles_missing_final_newline(self):
+        path=self.raw/'metrics.jsonl';before=path.read_bytes()
+        d.inspect(self.o);self.assertEqual(path.read_bytes(),before)
         self.o.update(scope='symbols',symbols=['B'],datasets=['financials'])
         with patch.object(d,'request_json',return_value=[]):d.download(self.o,self.emit,self.stop)
         records,invalid=d.financial_records()
         self.assertEqual(set(records),{'A','B'});self.assertEqual(invalid,0)
+        self.assertTrue(path.read_bytes().startswith(before));self.assertTrue(path.read_bytes().endswith(b'\n'))
+
+    def test_incomplete_financial_tail_is_removed_without_rewriting_earlier_bytes(self):
+        path=self.raw/'metrics.jsonl';before=path.read_bytes()+b'\n'
+        path.write_bytes(before+b'{"symbol":"B","rows":[')
+        damaged=path.read_bytes()
+        self.assertEqual(d.inspect(self.o)['invalid_financial_lines'],1)
+        self.assertEqual(path.read_bytes(),damaged)
+        self.o['datasets']=['financials']
+        with patch.object(d,'request_json',side_effect=AssertionError('Saved symbol needs no request')):
+            d.download(self.o,self.emit,self.stop)
+        records,invalid=d.financial_records()
+        self.assertEqual(set(records),{'A'});self.assertEqual(invalid,0)
+        self.assertEqual(path.read_bytes(),before)
 
     def test_invalid_financial_lines_are_reported_and_not_overwritten(self):
         path=self.raw/'metrics.jsonl';path.write_text('broken\n')
@@ -466,7 +482,7 @@ class CacheTests(unittest.TestCase):
 
     def test_rebuild_runs_offline_dependency_chain_then_checks(self):
         jobs=d.Jobs();calls=[]
-        with patch.object(daily,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(d.subprocess,'run',side_effect=lambda *a,**kw:calls.append('build')),patch.object(d,'inspect',return_value={'checked_at':'new'}) as inspect:
+        with patch.object(daily,'prepare',side_effect=lambda **kw:calls.append('prepare')),patch.object(d,'build_website',side_effect=lambda **kw:calls.append('build')),patch.object(d,'inspect',return_value={'checked_at':'new'}) as inspect:
             jobs.start('rebuild',{});jobs.thread.join(3)
         self.assertEqual(calls,['prepare','build']);self.assertTrue(jobs.rebuilt)
         self.assertFalse(jobs.snapshot()['job']['running']);inspect.assert_called_once()
@@ -561,7 +577,7 @@ class HttpTests(unittest.TestCase):
 
     def test_recovery_page_does_not_need_build_or_database(self):
         page=serve.data.data_page()
-        self.assertIn('Download missing data',page)
+        self.assertIn('Update data',page)
         self.assertNotIn('__DATA_SCRIPT__',page)
         self.assertIn('/api/data/',page)
 

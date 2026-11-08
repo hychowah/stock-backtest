@@ -6,9 +6,8 @@ No provider response, credential, request URL or arbitrary exception is exposed.
 from calendar import monthrange
 from datetime import date, timedelta, datetime, timezone
 import json
+import os
 import sqlite3
-import subprocess
-import sys
 from threading import Event, Lock, Thread
 import time
 from backtest.inputs import financial_inputs as financial_inputs
@@ -22,6 +21,7 @@ from backtest.financial import rules
 from backtest.inputs import market, fmp_download
 from backtest.runtime import diagnostics as diagnostics
 from backtest.runtime import backtest_control as backtest_control
+from website.rendering.build import build as build_website
 
 ROOT=r.ROOT
 RAW=r.RAW
@@ -186,10 +186,13 @@ def fetch_universe(stop,client):
 def append_financial(record):
     """Append one full symbol record, preserving existing JSONL bytes."""
     path=RAW/'metrics.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
+    cache_assets.trim_financial_tail(path)
     needs_newline=path.exists() and path.stat().st_size>0
     if needs_newline:
         with path.open('rb') as handle:handle.seek(-1,2);needs_newline=handle.read(1)!=b'\n'
-    with path.open('a',encoding='utf-8') as handle:handle.write(('\n' if needs_newline else '')+json.dumps(record,allow_nan=False)+'\n')
+    with path.open('a',encoding='utf-8') as handle:
+        handle.write(('\n' if needs_newline else '')+json.dumps(record,allow_nan=False)+'\n')
+        handle.flush();os.fsync(handle.fileno())
 
 
 def download_series(specs,o,ledger,emit,stop,client):
@@ -251,6 +254,7 @@ def _download(o,emit,stop,client):
             backup=RAW/'archive'/'universe.json.before-data-repair'
             if not backup.exists():backup.parent.mkdir(parents=True,exist_ok=True);backup.write_bytes(path.read_bytes())
         write_json(path,list(universe.values()))
+    if 'financials' in selected:cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
     records,invalid=financial_records()
     if invalid and 'financials' in selected:
         path=RAW/'metrics.jsonl';backup=RAW/'archive'/'metrics.jsonl.before-data-repair'
@@ -298,10 +302,10 @@ def _download(o,emit,stop,client):
 def rebuild(emit,stop):
     """The one dependency chain for manual rebuilds and complete refreshes."""
     emit(message='Preparing research and custom-date databases…')
-    daily.prepare();stop()
+    daily.prepare(progress=emit);stop()
     diagnostics.lap('prepare')
     emit(message='Rebuilding the website…')
-    subprocess.run([sys.executable,'-X','utf8',str(ROOT/'website'/'build.py'),'--cache-owned'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    build_website(progress=emit);stop()
     diagnostics.lap('website_build')
 
 
@@ -315,7 +319,16 @@ class Jobs:
     def snapshot(self):
         from website.server import data_refresh
         path=diagnostics.log_path()
-        with self.lock:return dict(job=dict(self.state),report=self.report,refresh=data_refresh.status(),log_file=diagnostics.relative_path(path) if path else None)
+        update=data_refresh.status()
+        with self.lock:
+            prepared=self.rebuilt;job=dict(self.state);report=self.report
+            if job['running'] and self.cancel.is_set():update['stage']='Stopping safely'
+        latest=update.get('latest_session') if prepared else None
+        if prepared:
+            try:latest=read_json(ROOT/'website/local/snapshot.json',{}).get('latest_asof',latest)
+            except (OSError,ValueError,AttributeError):pass
+        return dict(job=job,report=report,refresh=update,update=update,prepared=prepared,
+                    latest_session=latest,log_file=diagnostics.relative_path(path) if path else None)
 
     def emit(self,**values):
         with self.lock:self.state.update(values)
@@ -324,9 +337,11 @@ class Jobs:
         if self.cancel.is_set():raise Cancelled()
 
     def start(self,action,request):
-        if action not in ('check','download','rebuild','refresh'):raise ValueError('Choose check, download, refresh or rebuild.')
+        if action not in ('check','download','rebuild','refresh','update','continue'):raise ValueError('Choose a supported data action.')
         if action=='refresh' and request:raise ValueError('Refresh updates the complete managed coverage. It takes no range options.')
+        if action=='continue' and request:raise ValueError('Continue uses the saved update scope.')
         o=options(request)
+        if action=='update' and not request:o['managed']=True
         with self.lock:
             if self.closing:raise ValueError('The server is stopping. Reopen the data panel after restart.')
             if self.state['running']:raise ValueError('A data job is already running. Wait for it or cancel it.')
@@ -356,14 +371,16 @@ class Jobs:
             diagnostics.lap('admission')
             try:
                 self.stop()
-                if action=='refresh':
+                if action in ('refresh','update','continue'):
                     from website.server import data_refresh
                     self.rebuilt=False
-                    refreshed=data_refresh.run(self.emit,self.stop)
-                    self.rebuilt=True
-                    report=inspect(o,self.emit,self.stop)
-                    self.emit(error=refreshed['error'],message='Refresh incomplete. Prepared saved inputs are ready.' if refreshed['error'] else 'Refresh complete. Open the strategy page to load the new data.')
-                elif action=='rebuild':
+                    refreshed=data_refresh.run(self.emit,self.stop,
+                        scope=None if action in ('refresh','continue') or o.get('managed') else o,
+                        resume=action=='continue')
+                    self.rebuilt=refreshed['ready']
+                    self.emit(error=refreshed['error'])
+                    return
+                if action=='rebuild':
                     rebuild(self.emit,self.stop)
                     self.rebuilt=True
                     report=inspect(o,self.emit,self.stop)

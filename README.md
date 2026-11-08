@@ -82,9 +82,10 @@ interrupted work with its recorded random dates; held edits stay held. Keep the
 server computer awake and its terminal open overnight.
 
 Choose **Manage backtest data** to inspect saved files and date coverage.
-Choose a stock group or enter symbols. **Download missing data** fills missing
-financial symbols and price ranges with your local FMP key. **Rebuild prepared
-data + website** applies saved changes offline. Existing records are kept.
+**Update data** fills missing inputs, checks for newer reports and prices, and
+prepares the website automatically. **More options** adds selected stocks or
+older history. **Details → Prepare saved data (offline)** applies saved changes
+without downloads. Existing records are kept.
 Every research rebuild is a full build; a failure keeps the previous database. No download starts when the panel opens. If essential source files are missing,
 startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
 
@@ -174,7 +175,7 @@ The frozen report of the original study is [results/summary-exits.txt](results/s
 
 Normal backtest and website runs are offline and reuse `raw/`. No API key is required for those operations. See [raw/README.md](raw/README.md) for cache contents.
 
-Fill missing data with **Download missing data** in the data panel. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when that downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
+Use **Update data** in the data panel to fill missing inputs and check for newer data. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when that downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
 
 ## Version control in this environment
 

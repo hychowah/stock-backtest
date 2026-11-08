@@ -119,7 +119,7 @@ def _empty(path):
 
 @diagnostics.operation('prepare.daily')
 @cache_access.exclusive
-def prepare(path=DATABASE, source=r.DATABASE):
+def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
     """Bring the book store up to date in place, in one transaction.
 
     Research preparation runs first. A cache of this VERSION and book identity
@@ -140,7 +140,8 @@ def prepare(path=DATABASE, source=r.DATABASE):
     path=Path(path)
     # The public daily-cache command owns its prerequisite too. Users never
     # need to discover and run the dependency chain themselves.
-    r.prepare(source)
+    r.prepare(source,progress=progress)
+    progress(kind='daily',completed=0,total=2)
     diagnostics.lap('research')
     # research.prepare has just inspected the raw files.
     raw=r.accepted_signature()
@@ -155,6 +156,7 @@ def prepare(path=DATABASE, source=r.DATABASE):
         latest=date.fromisoformat(r.identity(db,'research',prices=True)['latest_date'])
         inputs=current(db)
         if previous==inputs:
+            progress(kind='daily',completed=2,total=2,reused=True)
             print('Daily cache already current; no book changed.')
             diagnostics.note(outcome='current');return
         diagnostics.lap('input_check')
@@ -183,8 +185,9 @@ def prepare(path=DATABASE, source=r.DATABASE):
         # The open book at research's latest date, from its facts. Kept dated
         # books keep their ids; the open book takes the next.
         book_facts=facts.BookFacts(db)
-        for pool in ('legacy','cached'):
+        for number,pool in enumerate(('legacy','cached'),1):
             book_store.store(db,financial_books.book(latest,None,pool,book_facts,backtest_control.checkpoint))
+            progress(kind='daily',completed=number,total=2)
         diagnostics.lap('latest_book')
         if inputs!=current(db) or raw!=r.signature():
             raise ValueError('Inputs changed during daily preparation; retry.')

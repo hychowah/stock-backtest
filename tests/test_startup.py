@@ -6,6 +6,7 @@ from backtest.inputs import daily
 from contextlib import ExitStack, closing, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
+from website.rendering import build as rendering
 from unittest.mock import Mock, patch
 import io
 import sys
@@ -28,6 +29,8 @@ from backtest.inputs import research as research
 class StartupTests(unittest.TestCase):
     def setUp(self):
         self.context=ExitStack();self.addCleanup(self.context.close)
+        self.root=Path(self.context.enter_context(tempfile.TemporaryDirectory()))
+        self.context.enter_context(patch.object(serve.data_manager,'ROOT',self.root))
         self.context.enter_context(patch.object(serve.cache_access,'access',side_effect=lambda:nullcontext()))
         self.context.enter_context(patch.object(serve.diagnostics,'configure',return_value=None))
         self.context.enter_context(patch.object(serve.diagnostics,'close'))
@@ -39,14 +42,13 @@ class StartupTests(unittest.TestCase):
 
     def test_prepare_then_build_when_stale(self):
         calls=[]
-        with patch.object(daily,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve.subprocess,'run',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
+        with patch.object(daily,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve,'build_website',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
             serve.ensure_ready()
         self.assertEqual(calls,['prepare','check_build','build'])
-        self.assertEqual(run.call_args.args[0],[sys.executable,'-X','utf8',str(serve.ROOT/'build.py'),'--cache-owned'])
-        self.assertTrue(run.call_args.kwargs['check'])
+        run.assert_called_once_with()
 
     def test_unchanged_caches_do_not_rebuild_page(self):
-        with patch.object(daily,'prepare'),patch.object(serve,'current_build',return_value=True),patch.object(serve.subprocess,'run') as run:
+        with patch.object(daily,'prepare'),patch.object(serve,'current_build',return_value=True),patch.object(serve,'build_website') as run:
             serve.ensure_ready()
         run.assert_not_called()
 
@@ -56,6 +58,7 @@ class StartupTests(unittest.TestCase):
         with patch.object(sys,'argv',['serve.py']),patch.object(serve,'ensure_ready',side_effect=lambda:calls.append('prepare')),patch.object(serve,'Server',side_effect=lambda *args:calls.append('bind') or server),patch.object(serve.webbrowser,'open',side_effect=lambda url:calls.append('browser')):
             serve.main()
         self.assertEqual(calls,['prepare','bind','browser','serve'])
+        self.assertTrue(serve.DATA_JOBS.snapshot()['prepared'])
         server.server_close.assert_called_once()
         lines=self.stdout.getvalue().splitlines()
         self.assertTrue(lines)
@@ -131,7 +134,7 @@ class BuildStateTests(unittest.TestCase):
             db.execute("INSERT INTO metadata VALUES('daily_inputs','{\"generation\":1}')");db.commit()
         (self.website/'browser').mkdir()
         self.source=self.website/'browser/range.js';self.source.write_bytes(b'const n=1;\r\n')
-        for name in ('index.html','latest-picks.csv','data.html'):
+        for name in build_state.OUTPUTS:
             (self.website/'local'/name).write_text('output')
         self.context.enter_context(patch.object(build_state,'ROOT',self.website))
         self.context.enter_context(patch.object(build_state,'LOCAL_OUTPUT',self.website/'local'))
@@ -194,6 +197,15 @@ class BuildStateTests(unittest.TestCase):
         self.assertFalse(build_state.current_build())
         (self.website/'local'/'latest-picks.csv').write_text('output')
         build_state.STAMP.write_text('bad JSON');self.assertFalse(build_state.current_build())
+
+    def test_rebuild_invalidates_old_marker_before_writing_and_publishes_it_last(self):
+        build_state.record_build();self.assertTrue(build_state.current_build())
+        page=SimpleNamespace(latest_stocks=[],screening_data={'latest':{'metadata':{'asof':'2026-01-05'}}})
+        with patch.object(rendering,'LOCAL_OUTPUT',build_state.LOCAL_OUTPUT),patch.object(rendering,'STAMP',build_state.STAMP),patch.object(rendering,'load_page_data',return_value=page),patch.object(rendering,'render',return_value='new page'):
+            with patch.object(rendering,'data_page',side_effect=ValueError('interrupted build')),self.assertRaises(ValueError):rendering.build(build_state.LOCAL_OUTPUT)
+            self.assertFalse(build_state.STAMP.exists());self.assertFalse(build_state.current_build())
+            with patch.object(rendering,'data_page',return_value='new data page'):rendering.build(build_state.LOCAL_OUTPUT)
+        self.assertTrue(build_state.current_build())
 
 
 class BuildDestinationTests(unittest.TestCase):
