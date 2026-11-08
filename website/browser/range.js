@@ -12,8 +12,8 @@ const currentArtifact=()=>ResultArtifacts.forView(viewKey());
 const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.filter_catalog});
 const displayCatalog=()=>currentArtifact()?.catalog||sourceCatalog();
 const metricLabel=id=>displayCatalog().metrics[id]?.label||screeningData.metrics[id]?.label||id;
-function currentSettings(){
-  const options=StrategyDraft.selectionSettings(readOptions()),view=viewKey();
+function currentSettings({preserveLegacy=false}={}){
+  const options=StrategyDraft.selectionSettings(readOptions(),preserveLegacy),view=viewKey();
   const engine=EngineControls.fields();
   if(view==='latest')return {mode:'latest',...options,...(StrategyDraft.isScalar()?engine:{})};
   const settings={mode:'custom',...options,...CalendarSettings.read(),...engine};
@@ -315,8 +315,11 @@ const StrategyDraft=(()=>{
     return kept.reverse();
   }
   function touch(){revision++;}
-  function selectionSettings(legacy){
-    if(!scalar)return viewKey()!=='latest'&&capturedBuiltins&&sameContent(legacy,capturedBuiltins.options)?{strategy:copy(capturedBuiltins.strategy)}:legacy;
+  function selectionSettings(legacy,preserveLegacy=false){
+    if(!scalar){
+      if(preserveLegacy)return legacy;
+      return viewKey()!=='latest'&&capturedBuiltins&&sameContent(legacy,capturedBuiltins.options)?{strategy:copy(capturedBuiltins.strategy)}:legacy;
+    }
     const intent=readIntent(legacy),capture=scalar.original?copy(scalar.original):{format:'strategy-draft',version:1};
     Object.assign(capture,{selection:intent.selection,pool:intent.pool,bounds:intent.bounds});
     return {strategy:capture};
@@ -416,6 +419,7 @@ const StrategyDraft=(()=>{
     options=copy(options);
     if(options.strategy)return options;
     const legacy={rank_from:1,rank_to:50,filters:[],...StockScreener.defaults,...options};
+    if(['min_cap','min_ev','min_yield'].some(key=>legacy[key]===null))throw Error('This recorded test has an empty minimum and cannot be replayed exactly; enter a value.');
     const filters=legacy.filters||[];
     const descriptors=filters.length?(await VariableWorkspace.request('/catalog')).builtins:[];
     const conditions=filters.map(item=>{

@@ -165,8 +165,11 @@ const BacktestQueue=(()=>{
   async function specification(){
     if(node('strategy-form').reportValidity&&!node('strategy-form').reportValidity())throw Error('Complete the highlighted strategy settings before adding this test.');
     const submittedName=node('queue-name').value.trim();
-    const draft=callbacks.settings();
-    const legacyEdit=editing&&!records.find(record=>record.id===editing.id)?.options.strategy&&!draft.strategy;
+    const legacyRecord=!!editing&&!records.find(record=>record.id===editing.id)?.options.strategy;
+    // Only the held record and actual form mode decide its format. A capture
+    // made by Run backtest belongs to that run, not this queued edit.
+    const draft=callbacks.settings({preserveLegacy:legacyRecord});
+    const legacyEdit=legacyRecord&&!draft.strategy;
     const settings=legacyEdit?draft:await callbacks.prepareSubmission();
     if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest to queue a fixed or random-date test.');
     const {mode,...options}=settings;

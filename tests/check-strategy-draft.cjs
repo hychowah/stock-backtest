@@ -33,7 +33,14 @@ node('rank-from').value='3';node('rank-to').value='12';node('date-testing').valu
 const exact={kind:'formula',variable_id:'variable:archived',revision:'sha256:'+'a'.repeat(64)};
 const detached={presentation:[{...exact,name:'Original submitted label'}],program:{bundle:{definitions:[{...exact,definition:{expression:{op:'constant',value:'1',unit:'scalar'},output:{unit:'scalar',display:'percent'}}}]},definitions:[{...exact,unit:'scalar',display:'percent'}]}};
 context.source=exact;context.detached=detached;context.authored=detached.program.bundle.definitions;
-(async()=>{
+if(process.argv[2]==='--builtins-parity'){
+ const table=JSON.parse(fs.readFileSync(0,'utf8'));
+ context.VariableWorkspace.request=async(route,input)=>route==='/catalog'?{builtins:table.builtins}:{strategy:input.intent};
+ Promise.all(table.cases.map(async options=>{
+   try{return {intent:(await run('StrategyDraft.captureBuiltins')(options)).strategy};}
+   catch(error){return {error:error.message};}
+ })).then(rows=>process.stdout.write(JSON.stringify(rows))).catch(error=>{console.error(error);process.exitCode=1;});
+}else (async()=>{
  // Inclusive legacy constraints must be resolved explicitly, without losing draft.
  node('min-yield').value='2';const before=run('StrategyDraft.read().revision');
  assert.throws(()=>run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)'),/inclusive/);

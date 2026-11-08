@@ -7,8 +7,9 @@ require_strategy() restores original meaning without a current catalog/library.
 check_options() is the separate current-capability admission operation.
 
 The namespaced strategy-capture/1 version allocates no application result version.
-A capture is at most 192 KiB. check_request() counts the complete custom request
-against the existing 256 KiB queue ceiling. Neither operation changes old requests.
+A capture is at most 192 KiB. check_request() counts settings and display metadata
+against the existing 256 KiB queue ceiling. Recorded plans have their separate
+staged-plan ceiling. Neither operation changes old requests.
 """
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
@@ -460,16 +461,22 @@ def execution_options(mode,options,*,planned=None,checkpoint=backtest_control.ch
 
 
 def check_request(request, *, checkpoint=backtest_control.checkpoint):
-    """Count every custom submission byte, including wrapper/display metadata.
+    """Bound captured settings/display metadata separately from recorded plans.
 
-    The limit matches existing queue transport/specification limits. Legacy
-    requests are untouched. Call this on the actual complete request before
-    assigning/publishing submission identity; never truncate or drop evidence.
+    Settings include wrappers and display metadata under the existing queue
+    ceiling. A non-null plan uses the staged-plan allowance independently. Legacy
+    requests are untouched. Check the complete request before publishing identity;
+    never truncate or drop evidence.
     """
     if type(request) is not dict or type(request.get('options')) is not dict or 'strategy' not in request['options']:
         return None
     checked = check_options(request['options'], checkpoint=checkpoint)
-    _encode(request, REQUEST_BYTES, checkpoint)
+    planned=request.get('planned')
+    settings={key:value for key,value in request.items() if key!='planned'} if planned is not None else request
+    _encode(settings, REQUEST_BYTES, checkpoint)
+    if planned is not None:
+        from backtest.application import evidence_transfer
+        _encode(planned, evidence_transfer.MAX_PLAN_BYTES, checkpoint)
     return checked
 
 

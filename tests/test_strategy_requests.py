@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from contextlib import closing
 from copy import deepcopy
+from datetime import date, timedelta
 import json
 import sqlite3
 import tempfile
@@ -362,6 +363,25 @@ class StrategyTests(unittest.TestCase):
         request['padding'] = '😀' * 22000
         self.assertLess(len(json.dumps(request, ensure_ascii=False)), s.REQUEST_BYTES)
         self.error('WORK_LIMIT', s.check_request, request)
+
+    def test_recorded_plan_has_separate_allowance_from_captured_settings(self):
+        from backtest import calendar_requests
+        from backtest.application import evidence_transfer
+        capture=s.capture_strategy(intent()).to_dict()
+        options=dict(strategy=capture,start='2000-01-01',end='2018-01-01',months=1,trials=100,seed=42)
+        sessions=[date(2000,1,1)+timedelta(days=i) for i in range(6576)
+                  if (date(2000,1,1)+timedelta(days=i)).weekday()<5]
+        planned=calendar_requests.plan(sessions,options)
+        request=dict(id='c'*32,mode='random',options=options,planned=planned)
+        original=deepcopy(request)
+        size=len(d.canonical(planned))
+        self.assertGreater(size,s.REQUEST_BYTES)
+        self.assertEqual(s.check_request(request),capture)
+        self.assertEqual(request,original)
+        with patch.object(evidence_transfer,'MAX_PLAN_BYTES',size-1):
+            self.error('WORK_LIMIT',s.check_request,request)
+        request['padding']='x'*s.REQUEST_BYTES
+        self.error('WORK_LIMIT',s.check_request,request)
 
     def test_lowerable_strategy_byte_limit_and_escaped_names(self):
         a = self.create(name='😀' * 120)

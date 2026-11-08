@@ -1,10 +1,8 @@
 # Acquired result readers
 
-Every new dated browser submission uses a strategy capture, including built-in-only
-forms. `Jobs.start` and the queue produce bounded evidence for these captures.
-Existing waiting and held legacy queue rows retain eager execution. Latest
-built-in screening stays local; latest formulas use captured execution.
-The application artifact and evidence codec versions are separate from the version-3 durable container. Stored formats
+The [submission contract](#dated-submissions-and-replay) defines new requests,
+recorded replay and legacy compatibility. The application artifact and evidence
+codec versions are separate from the version-3 durable container. Stored formats
 keep their recorded meaning.
 
 Evidence-backed results use the same `ResultArtifacts` boundary for fresh Jobs,
@@ -126,17 +124,40 @@ limit reason and does not retry that transfer automatically. It never deletes or
 recalculates that source. Existing stored bytes are never rewritten. Evidence pages retain their
 32 MiB response bound. Eager exploration retains its 512 MiB request ceiling.
 
-`StrategyDraft.captureBuiltins(options)` is the one browser conversion owner.
-Fresh fixed, custom-calendar and random forms call it before request identity
-allocation. Copies capture only when submitted. Built-in conditions keep their
-prepared lane values and display units. Inclusive yield and multiple bounds do
-not become formulas. New built-in captures reopen in the ordinary controls.
+## Dated submissions and replay
+
+Every new dated browser submission uses a strategy capture and bounded evidence,
+including built-in-only forms. `StrategyDraft.captureBuiltins(options)` is the one
+browser conversion owner. Fresh fixed, custom-calendar and random forms call it
+before request identity allocation. Copies capture only when submitted. Built-in
+conditions keep prepared sheet values and display units. Inclusive minimum yield
+and maximum multiple remain explicit bounds; they do not become formulas.
+New built-in captures reopen in the ordinary controls. Latest built-in screening
+stays local; latest formulas use captured execution.
+
+Legacy SQL treats a null minimum cap, EV or yield as an empty selection. Captures
+use null to omit a bound. Conversion therefore refuses a legacy request with any
+of these null minimums: it cannot replay that selection exactly. Existing captures
+retain their null meaning and bytes.
 
 Replay and calculated trial inspection use the same conversion. A legacy replay
 converts a detached copy of the recorded plan's selection only. Dates, nominal
 blocks, seed, samples and the shared window stay exact. A captured replay keeps
 its original capture and plan. Stored results and request records are never
 rewritten. Opening and stored trial inspection never calculate.
+
+Existing waiting and held legacy queue rows retain their request format and eager
+execution. Saving a held legacy edit reads its actual form mode, independently
+of a capture cached by Run backtest. An unchanged selection or name-only edit
+keeps the recorded seed and plan. Choosing formula mode explicitly submits a
+capture and changes the selection.
+
+The capture ceiling remains 192 KiB. Captured settings, request wrappers and
+display metadata together have a 256 KiB encoded limit. A recorded `planned`
+value is checked separately against `evidence_transfer.MAX_PLAN_BYTES`, the
+existing 16 MiB plan allowance. It does not consume the settings allowance.
+The run endpoint retains its 16 MiB whole-body transport limit. Queue submission
+retains its 256 KiB whole-body limit. No content is truncated.
 
 ## Browser composition and exports
 

@@ -6,6 +6,7 @@ from contextlib import closing
 from datetime import date
 import json
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -92,30 +93,35 @@ class ScalarTests(unittest.TestCase):
             fixture.db.execute('UPDATE book_rows SET '+','.join(key+'=?' for key in assignments)+' WHERE book=? AND symbol=?',
                 (*assignments.values(),fixture.dated,f'A{i:04d}'))
         fixture.db.commit()
-        descriptors={item['id']:item for item in s.builtin_catalog()}
         cases=[{}]
         cases += [dict(min_cap=150e6,max_cap=150e6,min_ev=180e6),dict(sector='Technology',exchange='NYSE'),dict(sector='Other')]
         cases += [dict(rank_from=1,filters=[dict(field=field,op=op,value=value)]) for field,op,value in
             [('profit_margin','gt',low),('profit_margin','lt',high),('fcf','gt',7.49),('fcf','lt',7.5),
              ('operating_yield_spread_3y','gt',7.99),('market_cap','gt',149.99)]]
         cases += [dict(filters=[dict(field='pe',op='gt',value=9.)]*50,max_cap=150e6,max_multiple=100.,sector='Technology',exchange='NYSE')]
+        cases += [{field:None} for field in ('min_cap','min_ev','min_yield')]
+        table=[]
         for pool in ('legacy','cached'):
             for metric in book_store.METRICS:
                 for order in ('filter_first','rank_first'):
                     for case in [*cases,dict(rank_from=1,min_yield=.3 if metric=='ev_ebitda' else .15,max_multiple=3. if metric=='ev_ebitda' else 6.)]:
                         options=dict(pool=pool,metric=metric,selection_order=order,rank_from=2,rank_to=5,
                             min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=[])
-                        options.update(case)
-                        request=requests.intent(requests.builtin('metric:'+metric+':yield'),[
-                            requests.condition(requests.builtin('filter:'+item['field']),str(item['value']),
-                                descriptors['filter:'+item['field']]['display'],item['op']) for item in options['filters']],
-                            **{key:options[key] for key in ('rank_from','rank_to','selection_order')})
-                        request.update(pool=pool,bounds={key:options[key] for key in ('min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange')})
-                        with self.subTest(pool=pool,metric=metric,order=order,case=case):
-                            expected=screening.select(fixture.db,book=fixture.dated,exit_day='2015-01-05',**options)
-                            actual,_=fixture.select(s.capture_strategy(request))
-                            self.assertEqual([(h['symbol'],h['rank'],h['ranking_value']) for h in actual],
-                                [(h['symbol'],h['rank'],h['metric_yield']) for h in expected])
+                        table.append(dict(options,**case))
+        # Exercise the actual browser converter once for the complete table.
+        process=subprocess.run(['node',str(Path(__file__).with_name('check-strategy-draft.cjs')),'--builtins-parity'],
+            input=json.dumps(dict(cases=table,builtins=s.builtin_catalog()),allow_nan=False),text=True,capture_output=True,check=True,timeout=15)
+        converted=json.loads(process.stdout);self.assertEqual(len(converted),len(table))
+        for options,submitted in zip(table,converted):
+            with self.subTest(options=options):
+                expected=screening.select(fixture.db,book=fixture.dated,exit_day='2015-01-05',**options)
+                if any(options[field] is None for field in ('min_cap','min_ev','min_yield')):
+                    self.assertEqual(expected,[])
+                    self.assertIn('empty minimum and cannot be replayed exactly',submitted['error'])
+                    continue
+                actual,_=fixture.select(s.capture_strategy(submitted['intent']))
+                self.assertEqual([(h['symbol'],h['rank'],h['ranking_value']) for h in actual],
+                    [(h['symbol'],h['rank'],h['metric_yield']) for h in expected])
         # Earlier captures retain their explicit conditions, with no yield floor.
         old=requests.intent(requests.builtin());old['pool']='cached'
         actual,_=fixture.select(s.capture_strategy(old))

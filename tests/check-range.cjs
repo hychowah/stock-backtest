@@ -318,6 +318,23 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  queueRows.push({id:waitingId,name:'Rejected hold',state:'queued',revision:1,position:3,mode:'custom',options:savedFixed.settings});
  rejectHold=true;await run('BacktestQueue.refresh()');await run('BacktestQueue.action("edit",waitingId)');
  assert.equal(run('BacktestQueue.isEditing()'),false);assert.doesNotThrow(()=>run('restoreSavedBacktest(savedFixed)'));
+ // Running a held legacy draft caches a capture for the immediate run only.
+ // Saving the held row must still submit its exact legacy selection and seed.
+ rejectHold=false;el('date-testing').value='random';el('random-trials').value='3';el('repeat-random').checked=false;
+ const {mode:legacyMode,...legacyOptions}=JSON.parse(run('JSON.stringify(currentSettings({preserveLegacy:true}))'));
+ const legacyRow={id:'d'.repeat(32),name:'Held legacy random',state:'queued',revision:1,position:4,mode:legacyMode,options:legacyOptions,
+   seed:321,plan:{seed:321,samples:[['2015-03-16']],window_start:'2015-03-16',window_end:'2015-06-15'},configuration:{seed:321}};
+ const originalLegacy=JSON.stringify({options:legacyRow.options,seed:legacyRow.seed,plan:legacyRow.plan});
+ queueRows.push(legacyRow);ctx.legacyHeldId=legacyRow.id;
+ await run('BacktestQueue.refresh()');await run('BacktestQueue.action("edit",legacyHeldId)');
+ const queueTransport=ctx.fetch;let immediateRequest;
+ ctx.fetch=async(url,options)=>{assert(url.startsWith('/api/backtest-runs/'));immediateRequest=JSON.parse(options.body);return completed(batch);};
+ el('strategy-form').handlers.submit({preventDefault(){}});await tick();
+ assert(immediateRequest.options.strategy);assert(run('currentSettings().strategy'));assert.equal(run('StrategyDraft.isScalar()'),false);
+ ctx.fetch=queueTransport;await run('BacktestQueue.add()');
+ assert.equal(run('BacktestQueue.isEditing()'),false);assert(!legacyRow.options.strategy);
+ assert.equal(JSON.stringify({options:legacyRow.options,seed:legacyRow.seed,plan:legacyRow.plan}),originalLegacy);
+ el('date-testing').value='single';
  queueRows=[];await run('BacktestQueue.refresh()');
  console.log('Passed: held draft ownership across queue open/copy, saved-library opening and manual recovery; save/cancel/delete and failed admission release the form.');
 

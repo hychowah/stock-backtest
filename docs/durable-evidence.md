@@ -1,13 +1,10 @@
 # Durable evidence snapshots, version 3
 
 The queue and saved library store complete results inside their existing
-databases. Every new dated browser submission uses a strategy capture and bounded
-evidence, including built-in-only forms. Existing waiting and held legacy queue
-rows retain eager execution. The version-3 container stores their application artifact
-4 and evidence codec 2. It also reads existing artifact-3/codec-1 records.
-Opening needs no calculation, readiness check or current financial inputs.
-`ResultArtifacts` uses acquired readers for inspection, saving and attachments.
-Read the [reader contract](evidence-views.md) for acquisition and browser lifetime.
+databases. The version-3 container stores application artifact 4 / evidence codec
+2 and reads existing artifact-3/codec-1 records. Opening needs no calculation,
+readiness check or current financial inputs. The [reader contract](evidence-views.md)
+owns submission, replay, transport limits and acquired-reader lifetime.
 
 ## Operations and ownership
 
@@ -129,12 +126,8 @@ budget. Source Jobs or detached-reader copies retain their own charges too.
 Available storage must cover the reservation. Other processes and applications
 can still consume free space afterward. SQLite errors therefore still roll back.
 This is conservative admission accounting, not a machine-wide reservation,
-filesystem quota or bound on allocated blocks. Inline results have a separate
-128 MiB save and open limit, including the complete HTTP response metadata.
-Library save and queue import refuse an oversized inline result before committing
-a record or transfer receipt. A refused queue import keeps its complete source
-visible without automatic retry. The [reader contract](evidence-views.md) states the
-transport limits and user messages. These checks do not rewrite existing records.
+filesystem quota or bound on allocated blocks. The [reader contract](evidence-views.md)
+defines inline save/open limits and queue refusal behavior.
 `durable_evidence.files(db)` reports current file, journal,
 WAL/SHM, page and free-page bytes for measurement. Post-commit zero journal bytes
 do not establish a journal high-water value. Deletion can leave free SQLite pages.
@@ -154,9 +147,7 @@ are read without rewriting them. Explicit `open_evidence` accepts version 3;
 legacy records continue through eager `get`. Eager `get` rejects version 3 with
 an explicit reader-required error and preserves the record. The
 [reader contract](evidence-views.md) describes bounded inspection and streamed
-attachments. New dated captures use these evidence operations automatically.
-Legacy waiting rows retain their original request and eager execution. Held legacy
-edits keep that format; a name-only edit preserves the recorded seed and plan.
+attachments, submission formats and legacy queue compatibility.
 
 `tests/test_durable_evidence.py` checks copies, publication and cleanup with
 private fictional assets. `tests/test_evidence_views.py` checks acquired
