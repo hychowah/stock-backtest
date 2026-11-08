@@ -300,8 +300,8 @@ a rebuild, and temporal and SQL/browser parity checks. Check
 `python3 tests/test_financial_inputs.py`.
 
 **Data panel and raw cache.** See the [data workflow](docs/research-workflow.md#data-control-panel).
-`website/server/data_refresh.py` owns updates, pending additions, progress and
-continuation in `data/data-refresh.json`, under existing cache ownership. `backtest/inputs/cache_assets.py` owns validation,
+`website/server/data_refresh.py` owns `data/data-refresh.json`; its `sheets` stage
+precomputes cached history after website under cache ownership. Startup/CLI stay on demand. `backtest/inputs/cache_assets.py` owns validation,
 atomic publication and content-bound receipts in `raw/download-coverage.json`.
 Publish receipts before assets. Missing, replaced or unbound files inherit no
 completion evidence. Keep every returned field and row in

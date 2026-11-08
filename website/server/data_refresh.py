@@ -3,20 +3,22 @@
 Only the cache owner publishes status and inputs. A foreign busy cache does not
 identify an update: its saved running status remains unconfirmed until free.
 """
+from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 import json
 import signal
 from threading import Event, get_ident
 import time
 
-from backtest.inputs import cache_assets, financial_inputs, fmp_download, market
+from backtest.inputs import cache_assets, daily, financial_inputs, fmp_download, market
+from backtest.engines.original import book_batch
 from backtest.runtime import backtest_control, cache_access, diagnostics
 from website.server import data_manager as data
 
-STAGES=('checking','annual','statements','prices','research','daily','website','verify')
+STAGES=('checking','annual','statements','prices','research','daily','website','sheets','verify')
 LABELS=('Checking what needs updating','Updating company reports','Updating company reports',
         'Updating prices','Preparing for backtests','Preparing for backtests',
-        'Preparing for backtests','Checking that backtests are ready')
+        'Preparing for backtests','Preparing backtest dates','Checking that backtests are ready')
 _active=None
 
 
@@ -306,6 +308,9 @@ def run(emit=lambda **kw:None,stop=lambda:None,*,scope=None,resume=False):
                 state['error']='Some data could not be updated. Completed work was kept. Continue to try again.'
             checkpoint();data.rebuild(feedback,checkpoint)
             for kind in ('research','daily','website'):progress.done(kind)
+            with closing(daily.connect()) as db:
+                book_batch.precompute(db,feedback,checkpoint)
+            progress.done('sheets')
             feedback(kind='verify',completed=0,total=1)
             if any(row['state']!='current' for row in data.derived_status()):raise ValueError('Preparation is incomplete.')
             spy=cache_assets.SeriesAsset(data.RAW/'spy-div.json','adjClose')

@@ -14,10 +14,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import cache_assets, daily, financial_inputs, fmp_download, market, research
+from backtest.inputs import book_store, cache_assets, daily, financial_inputs, fmp_download, market, research
 from backtest.runtime import cache_access
 from backtest import screening
 from website.server import data_manager as data, data_refresh as refresh
+import book_store_fixture as store
 
 
 class RefreshTests(unittest.TestCase):
@@ -32,6 +33,9 @@ class RefreshTests(unittest.TestCase):
         self.context.enter_context(patch.object(fmp_download,'KEY_PATH',self.root/'absent-key'))
         self.context.enter_context(patch.object(fmp_download.Client,'request',side_effect=AssertionError('Unexpected network request')))
         self.context.enter_context(patch.object(data,'derived_status',return_value=[]))
+        ordinary_connect=daily.connect
+        self.context.enter_context(patch.object(daily,'connect',side_effect=lambda *args,**kw:
+            ordinary_connect(*args,**kw) if args or kw else store.connection()))
         self.put('universe.json',[dict(symbol='A',listed=True,name='Alpha',sector='Energy')])
         self.old_report=self.report('2024-12-31')
         (self.raw/'metrics.jsonl').write_text(json.dumps(dict(symbol='A',rows=[self.old_report])))
@@ -349,6 +353,38 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(jobs.snapshot()['refresh']['outcome'],'complete')
         rebuild.assert_called_once()
         with self.assertRaises(ValueError):jobs.start('refresh',dict(scope='symbols',symbols='A'))
+
+    def test_update_fills_cached_sheets_after_website_under_existing_ownership(self):
+        path=self.root/'data'/'schedules.sqlite';source=self.root/'data'/'research.sqlite'
+        ordinary_prepare=daily.prepare
+        # Explicit private paths keep both the real rebuild and the new reader isolated.
+        ordinary_connect=daily.connect.side_effect
+        events=[]
+        def website(**kw):
+            self.assertTrue(cache_access.workspace.state.held)
+            events.append('website')
+            kw['progress'](kind='website',completed=1,total=1)
+        def feedback(**values):
+            if values.get('kind')=='sheets':
+                self.assertTrue(cache_access.workspace.state.held)
+                self.assertIn('website',events)
+                events.append((values['completed'],values['total']))
+        with patch.object(research,'ROOT',self.root),patch.object(research,'RAW',self.raw), \
+                patch.object(daily,'prepare',side_effect=lambda **kw:ordinary_prepare(path,source,**kw)), \
+                patch.object(daily,'connect',side_effect=lambda:ordinary_connect(path,source)), \
+                patch.object(data,'build_website',side_effect=website),redirect_stdout(io.StringIO()):
+            result=refresh.run(feedback)
+            with closing(daily.connect()) as db:
+                expected={str(day) for day in refresh.book_batch.facts.sessions(db) if day>=data.rules.FIRST_DAY}
+                completed={entry for _,entry,latest in book_store.completed(db,'cached') if not latest}
+                self.assertEqual(completed,expected)
+                self.assertTrue(expected)
+                self.assertTrue(all(latest for _,_,latest in book_store.completed(db,'legacy')))
+        self.assertEqual(result['outcome'],'complete')
+        self.assertEqual(result['work']['sheets'],dict(completed=len(expected),total=len(expected)))
+        self.assertEqual(events[1],(0,len(expected)))
+        self.assertIn('sheets',result['completed_stages'])
+        self.assertIn('sheets',result['last_timing']['durations'])
 
     def test_refresh_requests_only_dates_whose_utc_cutoff_has_passed(self):
         for instant,end in [(datetime(2026,1,5,21,59,59,tzinfo=timezone.utc),'2026-01-04'),

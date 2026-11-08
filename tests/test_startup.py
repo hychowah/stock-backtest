@@ -3,6 +3,7 @@ import sys as _owner_sys
 from pathlib import Path as _OwnerPath
 _owner_sys.path.insert(0,str(_OwnerPath(__file__).resolve().parents[1]))
 from backtest.inputs import daily
+from backtest.engines.original import book_batch
 from contextlib import ExitStack, closing, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +52,12 @@ class StartupTests(unittest.TestCase):
         with patch.object(daily,'prepare'),patch.object(serve,'current_build',return_value=True),patch.object(serve,'build_website') as run:
             serve.ensure_ready()
         run.assert_not_called()
+
+    def test_plain_startup_does_not_precompute_historical_sheets(self):
+        with patch.object(daily,'prepare') as prepare,patch.object(serve,'current_build',return_value=True), \
+                patch.object(book_batch,'precompute',side_effect=AssertionError('Only unified updates precompute')):
+            serve.ensure_ready()
+        prepare.assert_called_once_with()
 
     def test_main_opens_browser_after_successful_bind(self):
         calls=[];server=Mock();server.server_address=('127.0.0.1',8765)

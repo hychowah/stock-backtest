@@ -82,7 +82,7 @@ const DataPanel=(()=>{
     node('data-log').textContent=state.log_file?'Development log: '+state.log_file:'';
     const bar=node('data-progress-bar');
     if(Number.isFinite(percent)){bar.max=100;bar.value=percent;}else bar.removeAttribute('value');
-    const steps=[['Checking',['checking']],['Reports',['annual','statements']],['Prices',['prices']],['Preparing',['research','daily','website']],['Ready',['verify']]];
+    const steps=[['Checking',['checking']],['Reports',['annual','statements']],['Prices',['prices']],['Preparing',['research','daily','website','sheets']],['Ready',['verify']]];
     node('data-steps').innerHTML=steps.map(([label,kinds])=>{
       const work=kinds.map(k=>update.work?.[k]);
       const done=work.every(w=>w&&w.total!==null&&w.completed>=w.total);

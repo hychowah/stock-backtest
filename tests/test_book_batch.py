@@ -4,6 +4,7 @@ from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import book_store, facts
 from backtest.financial import books, metrics
+from backtest.runtime import backtest_control
 from datetime import date
 import copy
 import os
@@ -183,6 +184,47 @@ class BookBatchTests(unittest.TestCase):
         before=[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')]
         with self.assertRaises(sqlite3.IntegrityError),self.db:book_store.store(self.db,book)
         self.assertEqual(before,[tuple(row) for row in self.db.execute('SELECT * FROM book_rows')])
+
+    def test_precompute_continues_only_missing_cached_sheets_including_empty_completion(self):
+        days=('2015-01-01','2015-01-02','2015-01-05')
+        self.db.research.execute('DELETE FROM market_days WHERE day NOT IN (?,?,?)',days)
+        store.book(self.db,days[0],days[-1],pools=('cached',))
+        store.book(self.db,days[1],pools=('cached',))  # Latest does not complete a historical sheet.
+        with patch.object(books,'book',wraps=books.book) as calculate:
+            b.precompute(self.db,lambda **kw:None,lambda:None)
+        self.assertEqual(calculate.call_count,2)
+        self.assertEqual({args.args[0] for args in calculate.call_args_list},set(map(date.fromisoformat,days[1:])))
+        self.assertEqual({entry for _,entry,latest in book_store.completed(self.db,'cached') if not latest},set(days))
+        self.assertEqual(book_store.completed(self.db,'legacy'),[])
+        with patch.object(books,'book',side_effect=AssertionError('Completed sheets must be reused')):
+            b.precompute(self.db,lambda **kw:None,lambda:None)
+
+    def test_precompute_cancellation_keeps_only_committed_sheets(self):
+        days=('2015-01-01','2015-01-02','2015-01-05')
+        self.db.research.execute('DELETE FROM market_days WHERE day NOT IN (?,?,?)',days)
+        cancelled=False
+        def emit(**values):
+            nonlocal cancelled
+            if values['completed']==1:cancelled=True
+        def checkpoint():
+            if cancelled:raise backtest_control.Cancelled()
+        with self.assertRaises(backtest_control.Cancelled):b.precompute(self.db,emit,checkpoint)
+        self.assertFalse(self.db.in_transaction)
+        self.assertEqual([(entry,latest) for _,entry,latest in book_store.completed(self.db,'cached')],[(days[0],0)])
+        b.precompute(self.db,lambda **kw:None,lambda:None)
+        self.assertEqual(len(book_store.completed(self.db,'cached')),3)
+
+    def test_precompute_progress_counts_retained_and_committed_sheets(self):
+        days=('2015-01-01','2015-01-02','2015-01-05')
+        self.db.research.execute('DELETE FROM market_days WHERE day NOT IN (?,?,?)',days)
+        store.book(self.db,days[0],days[-1],pools=('cached',))
+        events=[]
+        def emit(**values):
+            self.assertFalse(self.db.in_transaction)
+            self.assertEqual(values['completed'],len(book_store.completed(self.db,'cached')))
+            events.append(values)
+        b.precompute(self.db,emit,lambda:None)
+        self.assertEqual(events,[dict(kind='sheets',completed=count,total=3) for count in (1,2,3)])
 
     def test_book_read_transaction_releases_on_success_and_failure(self):
         key=('2015-01-01','legacy')

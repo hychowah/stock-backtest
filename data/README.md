@@ -29,7 +29,9 @@ one entry/pool sheet serves every later exit. Runs build missing sheets on deman
 Actual entry must precede exit before ranking, scalar limits and formulas.
 Only selected holdings read exit prices through `books.close`. Results retain
 complete return/status rows. The website embeds latest only; historical sheet
-coverage adds no readiness gate. Full historical precomputation is not yet built.
+coverage adds no readiness gate. Unified updates precompute cached history in
+the `sheets` stage, after website output and before verification. Plain startup,
+CLI preparation and runs keep on-demand behavior; legacy stays on demand.
 
 Catalog code in `backtest/financial/metrics.py` owns formulas; consumers read
 prepared columns without reconstructing them. Pool rows and completion commit
@@ -57,7 +59,11 @@ target date, stage counts and successful stage prefix, verified running time,
 last success and matching-scope successful stage durations. Continue reruns
 unfinished stages; an incomplete report stage is refreshed again. A foreign
 busy cache leaves its running status unconfirmed. Status reads never resume it.
-The [data workflow](../docs/research-workflow.md#data-control-panel) owns the
+The `sheets` stage counts existing historical cached completions plus each
+new committed sheet. Rows and completion commit together, one sheet at a time;
+Continue builds only missing completions under the current binding. It reuses
+the existing bounded read-only workers and parent writer. There is no new
+checkpoint format or VACUUM. The [data workflow](../docs/research-workflow.md#data-control-panel) owns the
 full behavior. This status is separate from research freshness and saved results.
 
 ## Saved backtests

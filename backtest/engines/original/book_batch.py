@@ -21,7 +21,7 @@ import time
 
 from backtest import screening
 from backtest.engines.original import schedules
-from backtest.financial import books
+from backtest.financial import books, rules
 from backtest.inputs import book_store, daily, facts
 from backtest import calendar_requests as calendar_requests
 from backtest.runtime import backtest_control as backtest_control
@@ -157,6 +157,35 @@ def calculations(db,jobs,workers,on_wait):
         results.close()
         for future in pending:future.cancel()
         executor.shutdown(wait=True,cancel_futures=True)
+
+
+def precompute(db,emit,checkpoint):
+    """Fill historical cached sheets for an owned, admitted update connection.
+
+    Existing pool completion rows, including empty sheets, are the only
+    continuation evidence. Each sheet commits separately. Ordinary runs keep
+    their per-trial commits and never request full historical coverage.
+    """
+    checkpoint()
+    sessions=[str(day) for day in facts.sessions(db) if day>=rules.FIRST_DAY]
+    available={entry for _,entry,latest in book_store.completed(db,'cached') if not latest}
+    jobs=[(entry,'cached') for entry in sessions if entry not in available]
+    total=len(sessions);completed=total-len(jobs)
+    emit(kind='sheets',completed=completed,total=total)
+    count=worker_count(db,jobs,None)
+    with calculations(db,jobs,count,checkpoint) as results:
+        for key in jobs:
+            checkpoint()
+            book=next(results)
+            if (book['entry'],book['pool'])!=key:
+                raise ValueError('A calculation returned a different entry sheet.')
+            with db:
+                db.execute('BEGIN IMMEDIATE')
+                book_store.store(db,book)
+                checkpoint()
+            completed+=1
+            emit(kind='sheets',completed=completed,total=total)
+    checkpoint()
 
 
 def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection=None,trial_sink=None):

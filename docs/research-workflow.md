@@ -263,7 +263,8 @@ fact diff, and no change-day or horizon rule remains.
 
 A damaged, foreign or older-version daily cache also starts empty. A locked
 file or an I/O failure stops preparation without replacing it. Preparation
-builds latest only; full historical precomputation is not implemented yet.
+builds latest only. Unified updates then fill historical cached sheets in their
+`sheets` stage; ordinary startup, CLI preparation and runs do not precompute.
 Missing historical sheets do not block readiness or website publication. Every
 run builds misses under ordinary cache ownership and never fetches market data.
 
@@ -650,7 +651,8 @@ and response bodies never enter the browser or progress state.
 
 The main card shows estimated overall completion, elapsed running time and
 estimated time remaining. The supporting steps are checking, company reports,
-prices, preparation and final readiness. Per-symbol messages stay in Details.
+prices, preparation and final readiness. Preparation includes the `sheets` stage
+after website output and before final verification. Per-symbol messages stay in Details.
 The estimated percentage includes preparation. It stays below 100 until the
 whole update succeeds. Partial completion and readiness are separate outcomes.
 
@@ -743,8 +745,26 @@ rebuilds remove the old completion marker and synchronize its directory before
 changing output. All outputs are flushed before the new marker is published
 last. Freshness requires that marker, its input identity and the output files. The
 server builds in process so a killed owner cannot leave a build child publishing
-after its cache lease ends. Future precomputed sheets belong in this preparation
-flow; the scheduler owns no sheet rules.
+after its cache lease ends.
+
+After website publication, `data_refresh.run` calls `book_batch.precompute`
+inside the same cache ownership. This is the only production caller. Its
+`sheets` stage fills every historical cached entry from `rules.FIRST_DAY`
+through the latest saved SPY session. Latest-policy headers do not count. Empty
+pools count through their `book_pools` completion rows. Legacy stays on demand.
+The website embeds latest only; adding historical sheets does not change its
+binding or build freshness. Plain startup, CLI preparation and support rebuilds
+do not precompute.
+
+Precomputation reuses the existing up-to-eight read-only workers, bounded
+prefetch, lifetime watch and cancellation. Only the parent writes. Each sheet
+commits its rows and completion together; interruption keeps earlier commits.
+Continue admits the current binding and builds missing completions only. The
+existing progress record reports retained/total sheets first, then advances
+after each commit. Stage durations cover this work. Older timing evidence
+without the sheets duration gives no overall estimate until a new success. No
+new table or checkpoint format is needed. No VACUUM is run: changed bindings
+already replace the disposable store. The scheduler owns no sheet rules.
 
 A company failure does not stop unrelated assets. Publication I/O failures stop
 further downloads. Valid saved inputs can still be prepared after a provider
