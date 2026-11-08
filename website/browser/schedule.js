@@ -1,7 +1,7 @@
 /* Custom dated books use the local prepared daily cache. Rendering consumes
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
-  let requestNumber=0,running=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
+  let requestNumber=0,running=false,preparing=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
   const hasResults=()=>!!ResultArtifacts.forView('custom');
   function displayedResult(){
     const artifact=ResultArtifacts.forView('custom');
@@ -87,26 +87,32 @@ const ScheduleView=(()=>{
       {summary:result,periods:result.periods.length,short,empty});
   }
   async function run(filters,override=null,replay=null){
-    if(running)return;
+    if(running||preparing)return;
     if(typeof location==='undefined' || location.protocol==='file:'){
       node('screen-error').textContent='Custom dates use the local service. Double-click start.cmd, or run python3 website/serve.py, then use the browser window it opens.';return;
     }
+    preparing=true;
     try{
     const random=!!replay || (!override && node('date-testing').value==='random');
-    const {engine:replayEngine,...plan}=replay||{};
-    const body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,engine:replayEngine??'original'}:
+    const {engine:replayEngine,...recorded}=replay||{};
+    const plan=JSON.parse(JSON.stringify(recorded));
+    let body=replay?{...plan.options,...CalendarSettings.fields(plan),trials:plan.requested,seed:plan.seed,engine:replayEngine??'original'}:
       override?{...filters,...override,...EngineControls.fields()}:{...filters,...CalendarSettings.read(),...EngineControls.fields()};
     if(!replay&&random){
       body.trials=+node('random-trials').value;
       if(node('repeat-random').checked)body.seed=+node('random-seed').value;
     }
     EngineControls.requireCalendar(body);
+    body=await StrategyDraft.captureBuiltins(body);
+    if(replay&&!plan.options.strategy)plan.options={strategy:body.strategy};
+    preparing=false;
     await follow(BacktestRuns.create(random?'random':'custom',body,replay?plan:null));
     }catch(error){node('screen-error').textContent=error.message;}
+    finally{preparing=false;}
   }
   async function runPrepared(settings){
-    if(running)return;
-    if(typeof location==='undefined'||location.protocol==='file:'){node('screen-error').textContent='Variables use the local service. Run python3 website/serve.py, then open its local website.';return;}
+    if(running||preparing)return;
+    if(typeof location==='undefined'||location.protocol==='file:'){node('screen-error').textContent='Backtests use the local service. Run python3 website/serve.py, then open its local website.';return;}
     const {mode,...options}=JSON.parse(JSON.stringify(settings));
     if(['custom','random'].includes(mode))EngineControls.requireCalendar(options);
     await follow(BacktestRuns.create(mode,options));
@@ -209,5 +215,5 @@ const ScheduleView=(()=>{
     node('stop-backtest').disabled=true;
     node('schedule-message').textContent='Stop requested. The server will confirm after worker and cache cleanup. If disconnected, this request will retry when the page reconnects.';
   }
-  return {run,runPrepared,init,resume,cancel,show,isRunning:()=>running};
+  return {run,runPrepared,init,resume,cancel,show,isRunning:()=>running||preparing};
 })();

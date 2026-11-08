@@ -186,12 +186,14 @@ definitions. Restoring a capture never reads the registry.
 | Ranks | Default 1–50, bounded 1–5000, inclusive |
 | Selection order | Default `filter_first`; `rank_first` keeps original ranks and adds no replacements |
 | Pool | Default `legacy`; `cached` also accepted |
-| Bounds | Minimum cap $100 million, minimum EV $50 million, no maximum cap, no sector or exchange condition |
+| Bounds | Minimum cap $100 million, minimum EV $50 million, no maximum cap, no sector or exchange condition. Optional `min_yield` and `max_multiple` retain inclusive built-in metric limits |
 
 Any captured scalar can rank or filter. A custom ranking gets no hidden
-"minimum yield = 0" condition. A multiple or yield condition must be an explicit
-condition. Ties use candidate rank ascending, null first, then symbol. Signed
-zeros tie. A missing ranking value excludes the stock before either selection
+"minimum yield = 0" condition. The built-in form captures its inclusive minimum
+yield and maximum multiple as optional bounds. These require a highest-yield built-in metric ranking and a
+complete stored pair before ranking. Captures without these fields retain their
+original meaning and canonical shape. General scalar conditions remain strict.
+Ties use candidate rank ascending, null first, then symbol. Signed zeros tie. A missing ranking value excludes the stock before either selection
 order. Equal weights use the survivor count. Results show **Ranking value**, its
 unit and direction. Built-in valuation results keep their multiple/yield columns.
 No reciprocal yield is invented for a general formula.

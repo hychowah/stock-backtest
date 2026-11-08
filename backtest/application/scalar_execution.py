@@ -179,15 +179,24 @@ class Executor:
                 reason=None if valid else 'MISSING_INPUT')
         # Each row's lanes: its usable stored values and the bound fields.
         values = []
+        bounds = self.capture['bounds']
+        pair = pairs[metrics[0]['metric']] if {'min_yield', 'max_multiple'}.intersection(bounds) else None
         for symbol, _, _, _, market_cap, enterprise_value, _, sector, exchange in rows:
             item = {lane: found.get(symbol) for lane, found in usable.items()}
             item.update(market_cap=market_cap, enterprise_value=enterprise_value, sector=sector, exchange=exchange)
+            if pair is not None:
+                item.update(metric_multiple=pair[0].get(symbol), metric_yield=pair[1].get(symbol))
+                # The built-in form ranks only complete stored pairs, before
+                # either selection order. Old captures keep lane-only admission.
+                if any(selection.finite(item[key]) is None for key in ('metric_multiple', 'metric_yield')):
+                    item['ranking'] = None
             values.append(item)
         conditions = [dict(lane='c'+str(i),op=item['op'],value=item['storage_comparison_value']) for i,item in enumerate(specification['conditions'])]
-        bounds = self.capture['bounds']
-        for field, op in [('min_cap','ge'),('max_cap','le'),('min_ev','ge'),('sector','eq'),('exchange','eq')]:
-            if bounds[field] is not None:
-                lane = {'min_cap':'market_cap','max_cap':'market_cap','min_ev':'enterprise_value'}.get(field,field)
+        for field, op in [('min_cap','ge'),('max_cap','le'),('min_ev','ge'),('sector','eq'),('exchange','eq'),
+                          ('min_yield','ge'),('max_multiple','le')]:
+            if bounds.get(field) is not None:
+                lane = {'min_cap':'market_cap','max_cap':'market_cap','min_ev':'enterprise_value',
+                        'min_yield':'metric_yield','max_multiple':'metric_multiple'}.get(field,field)
                 conditions.append(dict(lane=lane,op=op,value=bounds[field]))
         formula_roles = [role for role, source in enumerate(role_sources) if source['kind'] == 'formula']
         # With a stored ranking and filter-first order, a row that has no

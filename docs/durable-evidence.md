@@ -1,8 +1,9 @@
 # Durable evidence snapshots, version 3
 
 The queue and saved library store complete results inside their existing
-databases. Built-in submissions use eager results. Captured scalar strategies
-use bounded evidence. The version-3 container stores their application artifact
+databases. Every new dated browser submission uses a strategy capture and bounded
+evidence, including built-in-only forms. Existing waiting and held legacy queue
+rows retain eager execution. The version-3 container stores their application artifact
 4 and evidence codec 2. It also reads existing artifact-3/codec-1 records.
 Opening needs no calculation, readiness check or current financial inputs.
 `ResultArtifacts` uses acquired readers for inspection, saving and attachments.
@@ -153,8 +154,9 @@ are read without rewriting them. Explicit `open_evidence` accepts version 3;
 legacy records continue through eager `get`. Eager `get` rejects version 3 with
 an explicit reader-required error and preserves the record. The
 [reader contract](evidence-views.md) describes bounded inspection and streamed
-attachments. Built-in submissions remain eager. Captured scalar submissions
-use these evidence operations automatically.
+attachments. New dated captures use these evidence operations automatically.
+Legacy waiting rows retain their original request and eager execution. Held legacy
+edits keep that format; a name-only edit preserves the recorded seed and plan.
 
 `tests/test_durable_evidence.py` checks copies, publication and cleanup with
 private fictional assets. `tests/test_evidence_views.py` checks acquired

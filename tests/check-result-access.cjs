@@ -11,6 +11,7 @@ const response=(value,status=200)=>({ok:status<400,status,headers:{get:()=>respo
 const context=vm.createContext({console,Date,Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,
  document:{getElementById:node},location:{protocol:'http:'},addEventListener:(event,fn)=>events[event]=fn,
  setInterval:()=>1,clearInterval(){},updateResultsState(){},viewKey:()=> 'custom',sourceCatalog:()=>artifact.catalog,scheduledPresentation:()=>artifact.presentation,
+ StrategyDraft:{captureBuiltins:async options=>({...options,strategy:{}})},
  EngineControls:{label:()=> 'Original',fields:()=>({}),requireCalendar(){}},CalendarSettings:{read:()=>settings,decode:()=>settings,label:()=> 'Annual'},
  BacktestRuns:{create:()=>({id:runId,mode:'custom',options:settings,submitted:Date.now()}),follow:async()=>({state:'complete',evidence:{manifest:{periods:1}}})},
  async fetch(url,options={}){

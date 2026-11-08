@@ -65,7 +65,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/engine-c
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/backtest-comparison.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser/queue.js'),'utf8'),context);
 const call=source=>vm.runInContext(source,context),settle=()=>new Promise(resolve=>setImmediate(resolve));
-context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
+context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:value=>{settings=copy(value);loaded=copy(value)},end:()=>endedEdits++}),settings:()=>copy(settings),prepareSubmission:async()=>copy(settings),catalog:()=>({metrics:{ev_ebitda:{label:'Valuation'}},filters:{}}),presentation:value=>({periodLabel:value.start+' → '+value.end}),prepare:()=>preparations++,restore:value=>{settings=copy(value);loaded=copy(value)},open:value=>opened=value,metricLabel:()=> 'EV/EBITDA',filterLabel:value=>value};
 (async()=>{
   call('BacktestQueue.init(config)');await settle();assert(!node('queue-add').disabled);
   node('queue-name').value='<First & strategy>';await call('BacktestQueue.add()');
@@ -78,7 +78,9 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const first=records[0].id,second=records[1].id;context.first=first;context.second=second;
   await call('BacktestQueue.action("edit",first)');assert.equal(loaded.rank_to,50);assert.equal(call('BacktestQueue.isEditing()'),true);
   settings.rank_to=10;assert.equal(records[0].options.rank_to,50,'Form edits do not mutate submitted settings');
+  const prepareNew=context.config.prepareSubmission;context.config.prepareSubmission=()=>{throw Error('Held legacy edits must retain their request format');};
   await call('BacktestQueue.add()');assert.equal(records.find(item=>item.id===first).options.rank_to,10);assert.equal(call('BacktestQueue.isEditing()'),false);
+  context.config.prepareSubmission=prepareNew;assert(!('strategy' in records.find(item=>item.id===first).options));
   assert.equal(endedEdits,1,'A confirmed save ends the form session');
   await call('BacktestQueue.action("edit",first)');settings.rank_to=99;
   await node('queue-cancel-edit').handlers.click();assert.equal(records.find(item=>item.id===first).options.rank_to,10);assert.equal(call('BacktestQueue.isEditing()'),false);

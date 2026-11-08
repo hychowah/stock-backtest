@@ -365,7 +365,11 @@ Run the persistence checks with native Windows Python too.
 Random-date saves include every trial's exact trade dates, stock rows and period
 returns, plus the seed and distribution summary. Trial inspection uses these
 stored rows. It does not recalculate the book. Current background jobs and queued
-random tests capture full trial holdings through the calculation owner’s `calculate` method.
+random tests use strategy captures and the calculation owner’s `calculate_into`
+method. This includes built-in-only forms. Tables read bounded evidence pages.
+Built-in filters still read precomputed sheet values. Latest built-in screening
+stays local; latest custom variables use captured execution. Existing waiting and
+held legacy queue rows keep their request format and eager execution.
 Save a completed new run; older summary-only
 results do not contain enough evidence for a complete random backtest record.
 

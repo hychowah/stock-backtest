@@ -10,7 +10,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from backtest.inputs import fact_view, facts
+from backtest.inputs import book_store, fact_view, facts
+from backtest import screening
 from backtest.application import scalar_execution as x, strategy_requests as s
 from backtest.variables import definitions as d, library
 import test_variable_definitions as language
@@ -76,6 +77,49 @@ class Fixture:
 class ScalarTests(unittest.TestCase):
     def setUp(self):
         self.fixture=Fixture();self.addCleanup(self.fixture.close)
+    def test_builtin_form_capture_matches_sql_across_pools_orders_bounds_and_scales(self):
+        fixture=Fixture(8);self.addCleanup(fixture.close)
+        pairs=[(None,.9),(3.,None),(3.,.3),(4.,.3),(3.,.2),(3.,.1),(-0.,0.),(3.,-.1)]
+        low,high=13.501116090704034,13.501116090704036
+        for i,(multiple,yield_value) in enumerate(pairs):
+            assignments=dict(candidate_rank=None if i==2 else i+1)
+            for metric,(a,b) in book_store.METRICS.items():
+                factor=1 if metric=='ev_ebitda' else 2
+                assignments.update({a:None if multiple is None else multiple*factor,b:None if yield_value is None else yield_value/factor})
+            assignments.update({book_store.FILTERS['profit_margin']:high if i==2 else low,
+                book_store.FILTERS['fcf']:7.5,book_store.FILTERS['operating_yield_spread_3y']:8.,
+                book_store.FILTERS['market_cap']:150.,book_store.FILTERS['pe']:10.})
+            fixture.db.execute('UPDATE book_rows SET '+','.join(key+'=?' for key in assignments)+' WHERE book=? AND symbol=?',
+                (*assignments.values(),fixture.dated,f'A{i:04d}'))
+        fixture.db.commit()
+        descriptors={item['id']:item for item in s.builtin_catalog()}
+        cases=[{}]
+        cases += [dict(min_cap=150e6,max_cap=150e6,min_ev=180e6),dict(sector='Technology',exchange='NYSE'),dict(sector='Other')]
+        cases += [dict(rank_from=1,filters=[dict(field=field,op=op,value=value)]) for field,op,value in
+            [('profit_margin','gt',low),('profit_margin','lt',high),('fcf','gt',7.49),('fcf','lt',7.5),
+             ('operating_yield_spread_3y','gt',7.99),('market_cap','gt',149.99)]]
+        cases += [dict(filters=[dict(field='pe',op='gt',value=9.)]*50,max_cap=150e6,max_multiple=100.,sector='Technology',exchange='NYSE')]
+        for pool in ('legacy','cached'):
+            for metric in book_store.METRICS:
+                for order in ('filter_first','rank_first'):
+                    for case in [*cases,dict(rank_from=1,min_yield=.3 if metric=='ev_ebitda' else .15,max_multiple=3. if metric=='ev_ebitda' else 6.)]:
+                        options=dict(pool=pool,metric=metric,selection_order=order,rank_from=2,rank_to=5,
+                            min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=[])
+                        options.update(case)
+                        request=requests.intent(requests.builtin('metric:'+metric+':yield'),[
+                            requests.condition(requests.builtin('filter:'+item['field']),str(item['value']),
+                                descriptors['filter:'+item['field']]['display'],item['op']) for item in options['filters']],
+                            **{key:options[key] for key in ('rank_from','rank_to','selection_order')})
+                        request.update(pool=pool,bounds={key:options[key] for key in ('min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange')})
+                        with self.subTest(pool=pool,metric=metric,order=order,case=case):
+                            expected=screening.select(fixture.db,book=fixture.dated,exit_day='2015-01-05',**options)
+                            actual,_=fixture.select(s.capture_strategy(request))
+                            self.assertEqual([(h['symbol'],h['rank'],h['ranking_value']) for h in actual],
+                                [(h['symbol'],h['rank'],h['metric_yield']) for h in expected])
+        # Earlier captures retain their explicit conditions, with no yield floor.
+        old=requests.intent(requests.builtin());old['pool']='cached'
+        actual,_=fixture.select(s.capture_strategy(old))
+        self.assertIn('A0007',[h['symbol'] for h in actual])
     def test_orphan_snapshot_rejects_complete_scope(self):
         self.fixture.db.research.execute("DELETE FROM companies WHERE symbol='A0000'")
         with self.assertRaises(d.FormulaError) as failure:self.fixture.select(self.fixture.capture())

@@ -1,8 +1,8 @@
 # Bounded financial evidence format 1
 
 This format preserves complete evidence without collecting all output in memory.
-Built-in submissions use eager results. Captured scalar strategies use codec 2
-through Jobs and the queue. Existing codec-1 evidence remains readable.
+New dated browser submissions capture built-in and formula selections alike.
+They use codec 2 through Jobs and the queue. Existing codec-1 evidence remains readable.
 The [version-3 durable container](durable-evidence.md) stores complete evidence.
 [Acquired readers](evidence-views.md) supply inspection and attachments.
 
@@ -131,8 +131,10 @@ cancellation and prospective safety limits. Partial writes stay incomplete.
 ## Temporary Jobs evidence
 
 `Jobs.start` selects bounded evidence when options contain a captured strategy.
-Original's `calculate_into` writes scalar codec 2 in process. Built-in requests
-use `calculate` and retain eager results. The queue makes the same choice.
+Original's `calculate_into` writes scalar codec 2 in process. Every new dated
+browser submission carries a capture. Existing legacy requests retain eager
+`calculate` execution for compatibility and recovery. The queue executes waiting
+legacy rows in their recorded format.
 Application artifact 4 describes scalar results; the durable container remains
 version 3. Existing application-artifact-3/codec-1 readers remain available.
 

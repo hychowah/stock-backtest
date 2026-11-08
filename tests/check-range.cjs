@@ -129,6 +129,16 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  const selected={holdings:bookHoldings.map(h=>({...h,entry:'2015-03-16',exit:'2015-06-15'}))};
  const period={entry:'2015-03-16',exit:'2015-06-15',names:3,holdings:selected.holdings.map(h=>({...h,contribution_pp:h.return_value/3*100})),portfolio:(.5+.25-.1)/3,spy:.02};
  const fixture={periods:[period],start:period.entry,end:period.exit,months:3,options:{metric:'ev_ebitda',rank_from:1,rank_to:50},growth:1+period.portfolio,spy_growth:1+period.spy,cagr:.1,spy_cagr:.05,seconds:.03,coverage:'Fixture coverage'};
+ // Capture transport is controlled here; selection parity is checked against
+ // SQL by test_scalar_execution, and real wire capture by check-strategy-draft.
+ run(`VariableWorkspace.request=async(route,input)=>{
+   if(route==='/catalog')return {builtins:[{id:'filter:market_cap',display:'usd_million'}]};
+   if(route!=='/capture')throw Error('Unexpected variable request');
+   const selection=JSON.parse(JSON.stringify(input.intent.selection));
+   selection.conditions=selection.conditions.map(item=>({...item,submitted_threshold:item.threshold,storage_comparison_value:Number(item.threshold.value)}));
+   return {strategy:{...input.intent,format:'strategy-capture',variables:null,selection,builtins:[{id:selection.ranking.source.id,storage:{metric:selection.ranking.source.id.split(':')[1]}}]}};
+ };`);
+ const tick=()=>new Promise(resolve=>setImmediate(resolve));
  const completed=result=>({ok:true,json:async()=>({state:'complete',result})});
  let request,resolveResponse,requests=0,fakeNow=0;
  ctx.Date=class extends Date{static now(){return fakeNow}};
@@ -139,26 +149,26 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  run("screeningMode='backtest';setModeVisibility()");
  assert.equal(el('custom-view').hidden,false);
  run("filterConditions=[{field:'market_cap',op:'gt',value:'0'}]");
- const pending=run('ScheduleView.run(readOptions())');
+ const pending=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();
  assert.equal(el('schedule-progress').hidden,false);assert.equal(el('run-screen').disabled,true);
  assert.equal(el('run-screen').textContent,'Backtesting…');assert.equal(el('trade-start').disabled,false);
  assert.equal(el('stop-backtest').hidden,false);
  assert.equal(el('custom-view').attributes['aria-busy'],'true');
  fakeNow=65000;for(const tick of timers.values())tick();assert.equal(el('schedule-elapsed').textContent,'1:05');
- await run('ScheduleView.run(readOptions())');assert.equal(requests,1,'Do not submit duplicate backtests');
+ await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert.equal(requests,1,'Do not submit duplicate backtests');
  resolveResponse(completed(fixture));await pending;
  assert.equal(el('schedule-progress').hidden,true);assert.equal(el('run-screen').disabled,false);
  assert.equal(el('trade-start').disabled,false);assert.equal(preDisabled.disabled,true);
  assert.equal(el('custom-view').attributes['aria-busy'],'false');assert.equal(timers.size,0);
  assert(el('schedule-message').textContent.includes('Backtest complete'));
- assert.deepStrictEqual(request.body.filters,[{field:'market_cap',op:'gt',value:0}]);
+ assert.equal(request.body.strategy.selection.conditions[0].source.id,'filter:market_cap');assert.equal(request.body.strategy.selection.conditions[0].storage_comparison_value,0);assert(!('filters' in request.body));
  assert(request.url.startsWith('/api/backtest-runs/'));assert.equal(request.mode,'custom');assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,3);assert(!('first' in request.body));
  assert(el('schedule-dates').textContent.includes('2015-03-16'));assert(el('schedule-chart').innerHTML.includes('<rect'));
  assert(el('schedule-stock-body').innerHTML.includes(selected.holdings[0].symbol));
  el('schedule-download-holdings').handlers.click();assert(savedCsv.includes('period_start'));assert(savedCsv.includes('2015-03-16'));
  // A running request retains its submitted settings while controls remain editable.
  let finishEdited;ctx.fetch=()=>new Promise(resolve=>finishEdited=resolve);
- const edited=run('ScheduleView.run(readOptions())');
+ const edited=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();
  el('rank-to').value='25';run('settingsChanged()');
  assert.equal(el('run-screen').disabled,true);assert.equal(el('trade-start').disabled,false);
  finishEdited(completed(fixture));await edited;
@@ -169,7 +179,7 @@ console.log('Passed: a saved January result restores its strategy and opens its 
    if(url.endsWith('/stop')){stopUrl=url;return Promise.resolve({ok:true,json:async()=>({state:'cancelled'})});}
    stopSignal=options.signal;return new Promise(resolve=>finishStopped=resolve);
  };
- const stopped=run('ScheduleView.run(readOptions())');
+ const stopped=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();
  el('stop-backtest').handlers.click();assert(!stopSignal.aborted);
  assert.equal(el('run-screen').disabled,true);assert.equal(el('stop-backtest').disabled,true);
  finishStopped({ok:true,json:async()=>({state:'running'})});await stopped;
@@ -180,7 +190,7 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  el('trade-start').value='2001-01-01';el('rank-to').value='2';
  ctx.fetch=()=>{throw Error('Restoring must not request a calculation')};
  run('restoreSavedBacktest(savedFixed)');
- assert.equal(el('trade-start').value,savedFixed.settings.start);assert.equal(el('rank-to').value,String(savedFixed.settings.rank_to));
+ assert.equal(el('trade-start').value,savedFixed.settings.start);assert.equal(el('rank-to').value,String(savedFixed.settings.strategy.selection.rank_to));
  assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');
  assert(el('schedule-message').textContent.includes('No calculation'));
  // Reopening restores submitted settings and retrieves the server result by GET.
@@ -192,26 +202,26 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  el('trade-start').value='2001-01-01';el('rank-to').value='3';
  await run('ScheduleView.resume()');
  assert.equal(resumedMethod,'GET');assert.equal(el('trade-start').value,serverRun.options.start);
- assert.equal(el('rank-to').value,String(serverRun.options.rank_to));assert.equal(run('ScheduleView.isRunning()'),false);
+ assert.equal(el('rank-to').value,String(serverRun.options.strategy.selection.rank_to));assert.equal(run('ScheduleView.isRunning()'),false);
  const previous=el('schedule-dates').textContent;
  ctx.fetch=async()=>({ok:false,status:400,json:async()=>({error:'Invalid schedule dates'})});
- await run('ScheduleView.run(readOptions())');assert(el('screen-error').textContent.includes('Invalid schedule'));assert.equal(el('schedule-dates').textContent,previous);
+ await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('Invalid schedule'));assert.equal(el('schedule-dates').textContent,previous);
  assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);
  assert(el('schedule-message').textContent.includes('Backtest failed'));
  ctx.fetch=async()=>({ok:false,status:404,json:async()=>({error:'Unknown endpoint.'})});
- await run('ScheduleView.run(readOptions())');assert(el('screen-error').textContent.includes('older server'));
+ await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('older server'));
  assert(el('screen-error').textContent.includes('new browser tab'));assert.equal(el('run-screen').disabled,false);
  let connections=0;ctx.fetch=async()=>{if(connections++===0)throw run("new TypeError('Failed to fetch')");return completed(fixture);};
- const reconnecting=run('ScheduleView.run(readOptions())');await new Promise(resolve=>setImmediate(resolve));
+ const reconnecting=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await new Promise(resolve=>setImmediate(resolve));
  assert.equal(el('run-screen').disabled,true);assert(el('schedule-progress-detail').textContent.includes('Reconnecting'));
  await reconnecting;assert.equal(connections,2);assert.equal(el('run-screen').disabled,false);assert.equal(timers.size,0);
  let finishOld;ctx.fetch=()=>new Promise(resolve=>finishOld=resolve);
- const old=run('ScheduleView.run(readOptions())');run("switchMode('latest')");
+ const old=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await tick();run("switchMode('latest')");
  assert.equal(run('ScheduleView.isRunning()'),true,'Switching view must keep the backend run');
  finishOld(completed(fixture));await old;
  assert.equal(el('latest-view').hidden,false);assert.equal(el('screen-error').textContent,'');assert.equal(timers.size,0);
  run("screeningMode='backtest';setModeVisibility()");
- ctx.location={protocol:'file:'};await run('ScheduleView.run(readOptions())');assert(el('screen-error').textContent.includes('website/serve.py'));
+ ctx.location={protocol:'file:'};await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(el('screen-error').textContent.includes('website/serve.py'));
  // Random independent rebalances use the same server jobs and expose progress.
  ctx.location={protocol:'http:'};ctx.TextDecoder=TextDecoder;
  el('date-testing').value='random';el('random-trials').value='3';el('random-seed').value='123';el('repeat-random').checked=true;el('repeat-random').handlers.change();el('rebalance-months').value='24';
@@ -225,7 +235,7 @@ console.log('Passed: a saved January result restores its strategy and opens its 
    const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};
    return {ok:true,json:async()=>({state:'running',configuration:batch.configuration,progress:{type:'preparation',completed:1,total:3,trial:2,workers:4,calculated_books:40,total_new_books:90}})};
  };
- const randomRun=run('ScheduleView.run(readOptions())');await progressReady;
+ const randomRun=run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');await progressReady;
  assert(request.url.startsWith('/api/backtest-runs/'));assert.equal(request.mode,'random');assert.equal(request.body.trials,3);assert.equal(request.body.seed,123);assert.equal(request.body.months,24);
  assert.equal(el('trial-progress').value,1);assert.equal(el('trial-progress').max,3);assert(el('schedule-progress-detail').textContent.includes('1/3'));
  assert(el('schedule-progress-detail').textContent.includes('40/90'));assert(el('schedule-progress-detail').textContent.includes('4 workers'));
@@ -253,8 +263,8 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  el('repeat-random').checked=false;el('repeat-random').handlers.change();assert.equal(el('random-seed').disabled,true);
  ctx.fetch=async(url,options)=>{const sent=JSON.parse(options.body);request={url,body:sent.options,mode:sent.mode};return completed(batch)};
  el('trade-start').value='2010-01-01';el('rebalance-months').value='1';el('random-trials').value='10';
- await el('robustness-replay').handlers.click();assert.equal(request.mode,'random');assert.equal(request.body.seed,123);assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,24);assert.equal(request.body.trials,3);assert.equal(request.body.rank_to,50);
- await run('ScheduleView.run(readOptions())');assert(!('seed' in request.body),'Fresh random mode must not send a fixed seed');
+ await el('robustness-replay').handlers.click();assert.equal(request.mode,'random');assert.equal(request.body.seed,123);assert.equal(request.body.start,'2015-03-15');assert.equal(request.body.months,24);assert.equal(request.body.trials,3);assert.equal(request.body.strategy.selection.rank_to,50);
+ await run('StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings))');assert(!('seed' in request.body),'Fresh random mode must not send a fixed seed');
  console.log('Passed: configurable random trial count/seed, two-year requests, streamed progress, distributions and exact-date trial inspection.');
  console.log('Passed: custom dates/frequency, local-service request, period chart, stocks, attribution, CSV, spinner/timer, duplicate prevention, network failure, mode switching and file-preview instructions.');
 
@@ -298,11 +308,11 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  await run('ScheduleView.resume()');assert(el('screen-error').textContent.includes('Save or cancel'));
  assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(run('ScheduleView.isRunning()'),false);
  ctx.realPending=realPending;ctx.realRecover=realRecover;run('BacktestRuns.pending=realPending;BacktestRuns.recover=realRecover');
- await run('BacktestQueue.add()');assert.equal(queueRows[0].options.rank_to,7);assert.equal(run('BacktestQueue.isEditing()'),false);
- await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});assert.equal(el('rank-to').value,String(savedFixed.settings.rank_to));
+ await run('BacktestQueue.add()');assert.equal(queueRows[0].options.strategy.selection.rank_to,7);assert.equal(run('BacktestQueue.isEditing()'),false);
+ await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});assert.equal(el('rank-to').value,String(savedFixed.settings.strategy.selection.rank_to));
  await run('BacktestQueue.action("edit",waitingId)');el('rank-to').value='9';
- await el('queue-cancel-edit').handlers.click();assert.equal(queueRows[0].options.rank_to,7);
- await run('BacktestQueue.action("open",completedId)');assert.equal(el('rank-to').value,String(savedFixed.settings.rank_to));
+ await el('queue-cancel-edit').handlers.click();assert.equal(queueRows[0].options.strategy.selection.rank_to,7);
+ await run('BacktestQueue.action("open",completedId)');assert.equal(el('rank-to').value,String(savedFixed.settings.strategy.selection.rank_to));
  await run('BacktestQueue.action("edit",waitingId)');await run('BacktestQueue.action("confirm",waitingId)');
  run('const afterDelete=StrategyDraft.beginQueuedEdit("after-delete");afterDelete.end()');
  queueRows.push({id:waitingId,name:'Rejected hold',state:'queued',revision:1,position:3,mode:'custom',options:savedFixed.settings});
@@ -333,8 +343,8 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  }
  el('rank-to').value='12';el('selection-order').value='rank_first';run('settingsChanged()');assert.equal(submissions,0);
  await el('queue-add-next').handlers.click();assert.equal(submissions,1);
- assert.equal(queueRows[0].options.rank_to,12);assert.equal(queueRows[0].mode,'custom');
- assert.equal(queueRows[0].options.selection_order,'rank_first');
+ assert.equal(queueRows[0].options.strategy.selection.rank_to,12);assert.equal(queueRows[0].mode,'custom');
+ assert.equal(queueRows[0].options.strategy.selection.selection_order,'rank_first');assert(!('rank_to' in queueRows[0].options));
  assert.equal(el('queue-add').textContent,'Add to queue');
  queueRows=[];await run('BacktestQueue.refresh()');
  console.log('Passed: Add to queue opens manual setup from latest without calculation, then submits the chosen settings to the queue.');

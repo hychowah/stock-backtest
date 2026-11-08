@@ -98,6 +98,9 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(reader.metadata['mode'],'latest')
         self.assertEqual(reader.manifest['trials'],0)
     def test_actual_random_seed_plan_and_recorded_replay_are_identical(self):
+        intent=requests.intent(requests.builtin(),rank_from=1,rank_to=5)
+        intent.update(pool='cached',bounds=dict(min_yield=0.,max_multiple=3.))
+        self.capture=s.capture_strategy(intent)
         options=self.options(trials=2,seed=0)
         reader,configs=self.run_result('random',options)
         self.assertEqual(len(configs),1)
@@ -106,6 +109,17 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(plan,stored)
         self.assertEqual(reader.manifest['summary']['trials'],[{**row,'seconds':reader.manifest['summary']['trials'][i]['seconds']} for i,row in enumerate(repeated.manifest['summary']['trials'])])
         self.assertEqual(reader.manifest['trials'],2)
+        legacy=calendar_requests.plan([date(2015,1,2),date(2015,1,5)],dict(
+            start='2015-01-02',end='2015-01-05',months=12,trials=2,seed=0,
+            pool='cached',rank_from=1,rank_to=5,max_multiple=3.))
+        original=deepcopy(legacy);converted=deepcopy(legacy)
+        converted['options']=dict(strategy=self.capture.to_dict())
+        with patch.object(calendar_requests,'plan',side_effect=AssertionError('Replay must not resample')):
+            replayed,configs=self.run_result('random',options,planned=converted)
+        self.assertEqual(legacy,original)
+        self.assertEqual({key:value for key,value in configs[0].items() if key!='options'},
+                         {key:value for key,value in legacy.items() if key!='options'})
+        self.assertEqual(reader.manifest['summary']['trials'],[{**row,'seconds':reader.manifest['summary']['trials'][i]['seconds']} for i,row in enumerate(replayed.manifest['summary']['trials'])])
     def test_presentation_only_capture_edit_replays_old_plan_without_rewriting(self):
         options=self.options(trials=1,seed=0)
         reader,configs=self.run_result('random',options);plan=configs[0];before=deepcopy(plan)

@@ -250,8 +250,18 @@ class StrategyTests(unittest.TestCase):
         value = capture.to_dict()
         self.assertEqual(value['bounds'], dict(min_cap=None, max_cap=1e9, min_ev=0., sector='Energy', exchange='NYSE'))
         self.assertEqual(value['selection']['conditions'], [])
+        original=capture.to_json()
+        request['bounds'].update(min_yield=.08,max_multiple=12.5)
+        checked=s.capture_strategy(request)
+        self.assertEqual(s.from_wire(checked.to_dict()).to_json(),checked.to_json())
+        self.assertEqual(checked.to_dict()['bounds']['min_yield'],.08)
+        self.assertEqual(checked.to_dict()['bounds']['max_multiple'],12.5)
+        self.assertEqual(s.require_strategy(capture),json.loads(original))
+        for source in (builtin('filter:pe'),builtin('metric:ev_ebitda:multiple')):
+            request['selection']['ranking']['source']=source
+            self.error('INVALID_STRATEGY',s.capture_strategy,request)
         for bounds in ({'min_cap': True}, {'min_cap': -1}, {'min_cap': 10, 'max_cap': 9},
-                       {'sector': 'x' * 257}, {'min_yield': 0}):
+                       {'sector': 'x' * 257}, {'min_yield': -1}, {'max_multiple': True}):
             bad = intent()
             bad['bounds'] = bounds
             self.error('INVALID_STRATEGY', s.capture_strategy, bad)

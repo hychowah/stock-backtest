@@ -1,8 +1,10 @@
 # Acquired result readers
 
-Built-in submissions use eager results. Captured scalar strategies use bounded
-evidence through `Jobs.start` and the queue. The application artifact and evidence
-codec versions are separate from the version-3 durable container. Stored formats
+Every new dated browser submission uses a strategy capture, including built-in-only
+forms. `Jobs.start` and the queue produce bounded evidence for these captures.
+Existing waiting and held legacy queue rows retain eager execution. Latest
+built-in screening stays local; latest formulas use captured execution.
+The application artifact and evidence codec versions are separate from the version-3 durable container. Stored formats
 keep their recorded meaning.
 
 Evidence-backed results use the same `ResultArtifacts` boundary for fresh Jobs,
@@ -123,6 +125,18 @@ the completed source visible as **Completed — waiting to save**, displays the
 limit reason and does not retry that transfer automatically. It never deletes or
 recalculates that source. Existing stored bytes are never rewritten. Evidence pages retain their
 32 MiB response bound. Eager exploration retains its 512 MiB request ceiling.
+
+`StrategyDraft.captureBuiltins(options)` is the one browser conversion owner.
+Fresh fixed, custom-calendar and random forms call it before request identity
+allocation. Copies capture only when submitted. Built-in conditions keep their
+prepared lane values and display units. Inclusive yield and multiple bounds do
+not become formulas. New built-in captures reopen in the ordinary controls.
+
+Replay and calculated trial inspection use the same conversion. A legacy replay
+converts a detached copy of the recorded plan's selection only. Dates, nominal
+blocks, seed, samples and the shared window stay exact. A captured replay keeps
+its original capture and plan. Stored results and request records are never
+rewritten. Opening and stored trial inspection never calculate.
 
 ## Browser composition and exports
 

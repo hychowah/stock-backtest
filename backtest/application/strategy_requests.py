@@ -28,6 +28,7 @@ SCALAR_MODES = ('latest', 'custom', 'random')  # bounded captured-strategy execu
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,160}\Z')
 _SELECTION_FIELDS = {'ranking', 'conditions', 'rank_from', 'rank_to', 'selection_order'}
 _BOUND_DEFAULTS = dict(min_cap=100e6, max_cap=None, min_ev=50e6, sector=None, exchange=None)
+_PAIR_BOUNDS = {'min_yield', 'max_multiple'}
 _OVERLAP = _SELECTION_FIELDS | set(_BOUND_DEFAULTS) | {
     'pool', 'metric', 'min_yield', 'max_multiple', 'filters', 'variables', 'formula',
     'definition', 'bundle', 'strategy_version'}
@@ -178,12 +179,12 @@ def _root(source):
 
 
 def _bounds(value):
-    _shape(value, (), _BOUND_DEFAULTS, '/bounds')
+    _shape(value, (), set(_BOUND_DEFAULTS) | _PAIR_BOUNDS, '/bounds')
     result = {**_BOUND_DEFAULTS, **value}
-    for key in ('min_cap', 'max_cap', 'min_ev'):
+    for key in ['min_cap', 'max_cap', 'min_ev', *sorted(_PAIR_BOUNDS.intersection(value))]:
         number = result[key]
         if number is not None and (selection.finite(number) is None or number < 0):
-            _fail('INVALID_STRATEGY', '/bounds/' + key, 'Size bounds must be finite nonnegative values or null.')
+            _fail('INVALID_STRATEGY', '/bounds/' + key, 'Financial bounds must be finite nonnegative values or null.')
         result[key] = None if number is None else float(number)
     if result['max_cap'] is not None and result['min_cap'] is not None and result['max_cap'] < result['min_cap']:
         _fail('INVALID_STRATEGY', '/bounds/max_cap', 'Maximum market cap must be at least the minimum.')
@@ -255,8 +256,14 @@ def _compile(spec, variables, builtins, pool, bounds, bound, checkpoint):
     except selection.SelectionError as error:
         _fail(error.code, error.path, str(error))
     normalized.update({key: policy[key] for key in ('rank_from', 'rank_to', 'selection_order')})
+    bounds = _bounds(bounds)
+    if _PAIR_BOUNDS.intersection(bounds):
+        storage = output(sources[0]).get('storage', {})
+        if (sources[0]['kind'] != 'builtin' or storage.get('kind') != 'metric'
+                or storage.get('component') != 'yield' or normalized['ranking']['direction'] != 'highest'):
+            _fail('INVALID_STRATEGY', '/bounds', 'Yield and multiple bounds require a highest-yield built-in metric ranking.')
     value = dict(format='strategy-capture', version=1, selection=normalized, variables=captured,
-                 builtins=builtins, pool=pool, bounds=_bounds(bounds), limits=dict(bytes=bound))
+                 builtins=builtins, pool=pool, bounds=bounds, limits=dict(bytes=bound))
     return value
 
 

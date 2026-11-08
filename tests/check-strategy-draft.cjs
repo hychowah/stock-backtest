@@ -11,11 +11,12 @@ const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null;
 const wire=wireOrigin?JSON.parse(fs.readFileSync(0,'utf8')):null;
 const builtins={pe:{display:'multiple'},operating_yield_spread_3y:{display:'percentage_points'}};
 const workspaceModule={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../website/browser/variable-workspace.js'),'utf8'),{module:workspaceModule});
-const complete=input=>input.original||({format:'strategy-capture',version:1,selection:input.intent.selection,pool:input.intent.pool,bounds:input.intent.bounds,variables:input.submitted?.length?{program:{bundle:{definitions:input.submitted},definitions:input.submitted.map(entry=>({...entry,...entry.definition.output}))},presentation:input.labels}:null,builtins:[],limits:{bytes:196608}});
+const catalogBuiltins=[{id:'metric:ev_ebitda:yield',label:'EV/EBITDA yield',unit:'scalar',display:'percent',storage:{kind:'metric',metric:'ev_ebitda',component:'yield',scale:0}},...Object.entries(builtins).map(([id,item])=>({id:'filter:'+id,label:id,...item}))];
+const complete=input=>input.original||({format:'strategy-capture',version:1,selection:{...input.intent.selection,conditions:input.intent.selection.conditions.map(item=>({...item,submitted_threshold:item.submitted_threshold||item.threshold,storage_comparison_value:Number(item.threshold.value)}))},pool:input.intent.pool,bounds:input.intent.bounds,variables:input.submitted?.length?{program:{bundle:{definitions:input.submitted},definitions:input.submitted.map(entry=>({...entry,...entry.definition.output}))},presentation:input.labels}:null,builtins:catalogBuiltins,limits:{bytes:196608}});
 const context=vm.createContext({console,data:[],document:{getElementById:node,querySelector:node,querySelectorAll:()=>[]},StockScreener:{defaults},
  CalendarSettings:{read:()=>({start:'2015-01-02',end:'2015-01-05',months:12}),restore(){},decode:v=>v},EngineControls:{fields:()=>({engine:node('backtest-engine').value||'original'}),sync(){}},
  ResultArtifacts:{forView:()=>null,matches:()=>false},ScheduleView:{isRunning:()=>false},SavedBacktests:{update(){}},BacktestQueue:{isManaging:()=>false},
- VariableWorkspace:{content:workspaceModule.exports.content,displays:unit=>({scalar:['number','multiple','percent','percentage_points']}[unit]||[]),builtin:id=>useWire?wire.builtins.find(item=>item.id===id):builtins[id.slice(7)],request:async(route,input)=>{assert(['/capture','/detached'].includes(route));requests.push(structuredClone(input));if(pause)await new Promise(resolve=>release=resolve);if(useWire){const body=JSON.stringify(input);assert(Buffer.byteLength(body)<=256*1024);const response=await fetch(wireOrigin+'/api/variables'+route,{method:'POST',headers:{'Content-Type':'application/json'},body});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}return route==='/detached'?{authored:input.capture.program.bundle.definitions}:{strategy:complete(input)};}},
+ VariableWorkspace:{content:workspaceModule.exports.content,displays:unit=>({scalar:['number','multiple','percent','percentage_points']}[unit]||[]),builtin:id=>useWire?wire.builtins.find(item=>item.id===id):builtins[id.slice(7)],request:async(route,input)=>{if(route==='/catalog')return {builtins:catalogBuiltins};assert(['/capture','/detached'].includes(route));requests.push(structuredClone(input));if(pause)await new Promise(resolve=>release=resolve);if(useWire){const body=JSON.stringify(input);assert(Buffer.byteLength(body)<=256*1024);const response=await fetch(wireOrigin+'/api/variables'+route,{method:'POST',headers:{'Content-Type':'application/json'},body});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}return route==='/detached'?{authored:input.capture.program.bundle.definitions}:{strategy:complete(input)};}},
  localStorage:{get length(){return storage.size;},key:i=>[...storage.keys()][i],getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  crypto:{getRandomValues(bytes){ids.push(1);bytes.fill(ids.length);return bytes;}},Uint8Array,Date,AbortController,setTimeout,clearTimeout,
  fetch:async(url,options)=>{posted.push(JSON.parse(options.body));return {ok:true,json:async()=>({state:'complete',evidence:{manifest:{periods:1}}})};}
@@ -106,8 +107,35 @@ context.source=exact;context.detached=detached;context.authored=detached.program
  // Repeated selection retains one complete exact capture, not editing history.
  for(let i=0;i<30;i++)run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.read().detached.length'),1);
+ // Built-in dated forms capture without switching their controls to formula mode.
+ context.builtinSettings={...defaults,mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,rank_from:3,rank_to:12,min_yield:.02,max_multiple:50,filters:[{field:'pe',op:'lt',value:12}]};
+ run('StrategyDraft.restore(builtinSettings)');
+ const builtinBefore=JSON.stringify(context.builtinSettings),builtinPrepared=await run('StrategyDraft.prepareSubmission()');
+ assert.equal(builtinPrepared.strategy.bounds.min_yield,.02);assert.equal(builtinPrepared.strategy.bounds.max_multiple,50);
+ assert.equal(builtinPrepared.strategy.selection.ranking.source.id,'metric:ev_ebitda:yield');assert.equal(builtinPrepared.strategy.selection.conditions[0].threshold.unit,'multiple');
+ assert(!('filters' in builtinPrepared)&&!('metric' in builtinPrepared));assert.equal(run('StrategyDraft.isScalar()'),false);
+ assert.equal(node('min-yield').disabled,false);assert.equal(node('max-multiple').disabled,false);
+ assert.deepEqual(copy(run('currentSettings().strategy')),copy(builtinPrepared.strategy));
+ const capturesBeforeRepeat=requests.length;assert.deepEqual(copy((await run('StrategyDraft.prepareSubmission()')).strategy),copy(builtinPrepared.strategy));assert.equal(requests.length,capturesBeforeRepeat);
+ context.builtinCaptured=builtinPrepared;run('StrategyDraft.restore(builtinCaptured)');
+ assert.equal(run('StrategyDraft.isScalar()'),false);assert.equal(node('min-yield').value,'2');assert.equal(node('max-multiple').value,'50');
+ assert.deepEqual(copy((await run('StrategyDraft.prepareSubmission()')).strategy),copy(builtinPrepared.strategy));
+ node('max-multiple').value='40';run('StrategyDraft.touch()');
+ assert.equal((await run('StrategyDraft.prepareSubmission()')).strategy.bounds.max_multiple,40);
+ const beforeLatest=requests.length;run("screeningMode='latest'");const latest=await run('StrategyDraft.prepareSubmission()');
+ assert(!('strategy' in latest));assert.equal(latest.min_yield,.02);assert.equal(requests.length,beforeLatest);
+ assert.equal(JSON.stringify(context.builtinSettings),builtinBefore);
+ // The conversion owns its pre-await copy, including dates and engine.
+ pause=true;context.convertInput={...context.builtinSettings,filters:[],engine:'experimental'};
+ const converting=run('StrategyDraft.captureBuiltins(convertInput)');await tick();context.convertInput.min_yield=.9;context.convertInput.engine='original';
+ release();pause=false;const converted=await converting;assert.equal(converted.strategy.bounds.min_yield,.02);assert.equal(converted.engine,'experimental');
  if(wire){
-  useWire=true;context.settings={mode:'latest',strategy:wire.large};run('StrategyDraft.restore(settings)');
+  useWire=true;run('StrategyDraft.restore(builtinSettings)');
+  const wiredBuiltin=await run('StrategyDraft.prepareSubmission()');
+  assert.equal(wiredBuiltin.strategy.format,'strategy-capture');assert.equal(wiredBuiltin.strategy.bounds.min_yield,.02);assert.equal(wiredBuiltin.strategy.bounds.max_multiple,50);
+  assert.equal(wiredBuiltin.strategy.selection.conditions[0].storage_comparison_value,12);
+  context.wiredBuiltin=wiredBuiltin;run('StrategyDraft.restore(wiredBuiltin)');assert.deepEqual(copy((await run('StrategyDraft.prepareSubmission()')).strategy),copy(wiredBuiltin.strategy));
+  context.settings={mode:'latest',strategy:wire.large};run('StrategyDraft.restore(settings)');
   const restored=await run('StrategyDraft.prepareSubmission()');assert.deepEqual(copy(restored.strategy),wire.large);assert(!('detached' in requests.at(-1)));assert('original' in requests.at(-1));
   run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
   const changed=await run('StrategyDraft.prepareSubmission()');assert(!('original' in requests.at(-1)));assert(!('detached' in requests.at(-1)));assert.equal(requests.at(-1).submitted.length,1);assert.equal(changed.strategy.selection.ranking.direction,'lowest');assert.deepEqual(copy(changed.strategy.variables.presentation),wire.large.variables.presentation);
