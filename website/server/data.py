@@ -1,18 +1,13 @@
 """Data-panel HTTP policy and source-served recovery routes."""
-import ipaddress
 import json
-from urllib.parse import urlsplit
 from website.rendering.assets import data_page
 
 def data_allowed(self):
-    try:
-        local=ipaddress.ip_address(self.client_address[0]).is_loopback
-        host=urlsplit('http://'+self.headers.get('Host','')).hostname
-    except ValueError:return False
-    return local and host in ('127.0.0.1','localhost','::1') and self.headers.get('Origin','http://'+self.headers.get('Host',''))=='http://'+self.headers.get('Host','')
+    origin=self.headers.get('Origin')
+    return not origin or origin=='http://'+self.headers.get('Host','')
 
 def data_request(self,jobs):
-    if not data_allowed(self):self.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return
+    if not data_allowed(self):self.reply(403,dict(error='Open the data panel through the backtest website.'));return
     action=self.path.removeprefix('/api/data/')
     if action not in ('check','download','rebuild','refresh','update','continue','cancel'):
         self.reply(404,dict(error='Unknown data action.'));return
@@ -32,7 +27,7 @@ def dispatch(handler,jobs):
         handler.send_header('Cache-Control','no-store');handler.send_header('Content-Length',str(len(body)))
         handler.end_headers();handler.wfile.write(body)
     elif handler.path=='/api/data/status' and handler.command=='GET':
-        if not data_allowed(handler):handler.reply(403,dict(error='Open the data panel on this computer using localhost or 127.0.0.1.'));return True
+        if not data_allowed(handler):handler.reply(403,dict(error='Open the data panel through the backtest website.'));return True
         handler.reply(200,jobs.snapshot())
     elif handler.path.startswith('/api/data/') and handler.command=='POST':
         data_request(handler,jobs)

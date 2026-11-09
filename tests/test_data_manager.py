@@ -550,20 +550,29 @@ class HttpTests(unittest.TestCase):
 
     def handler(self,method,path,body=None,origin=None,client='127.0.0.1',host='127.0.0.1:3000'):
         handler=object.__new__(serve.Handler)
-        handler.path=path;handler.client_address=(client,5555)
+        handler.path=path;handler.command=method;handler.client_address=(client,5555)
         encoded=json.dumps(body or {}).encode();handler.rfile=io.BytesIO(encoded)
         handler.headers={'Host':host,'Content-Length':str(len(encoded))}
         if origin:handler.headers['Origin']=origin
         results=[];handler.reply=lambda status,payload:results.append((status,payload))
-        if method=='POST':serve.data.data_request(handler,serve.DATA_JOBS)
-        else:results.append(serve.data.data_allowed(handler))
+        serve.data.dispatch(handler,serve.DATA_JOBS)
         return results
 
-    def test_only_local_same_origin_may_manage_data(self):
-        for kwargs in [dict(client='192.168.1.2'),dict(origin='http://evil.example'),dict(host='evil.example:3000')]:
-            with self.subTest(kwargs=kwargs),patch.object(serve.DATA_JOBS,'start') as start:
-                self.assertEqual(self.handler('POST','/api/data/check',**kwargs)[0][0],403);start.assert_not_called()
-        self.assertEqual(self.handler('GET','/',host='localhost:3000'),[True])
+    def test_local_and_remote_clients_can_use_the_same_website(self):
+        for client,host in [('127.0.0.1','localhost:3000'),('100.100.10.20','100.100.10.30:3000'),('100.100.10.20','backtest.example.ts.net:3000')]:
+            with self.subTest(host=host),patch.object(serve.DATA_JOBS,'snapshot',return_value={'prepared':True}),patch.object(serve.DATA_JOBS,'start',return_value={'job':{}}) as start:
+                for origin in (None,'http://'+host):
+                    kwargs=dict(client=client,host=host,origin=origin)
+                    self.assertEqual(self.handler('GET','/api/data/status',**kwargs),[(200,{'prepared':True})])
+                    self.assertEqual(self.handler('POST','/api/data/update',{'market':'hk'},**kwargs)[0][0],202)
+                    self.assertEqual(start.call_args.args,('update',{'market':'hk'}))
+
+    def test_cross_origin_cannot_read_status_or_manage_data(self):
+        for origin in ('http://evil.example','null'):
+            with self.subTest(origin=origin),patch.object(serve.DATA_JOBS,'start') as start,patch.object(serve.DATA_JOBS,'snapshot') as snapshot:
+                self.assertEqual(self.handler('GET','/api/data/status',origin=origin)[0][0],403)
+                self.assertEqual(self.handler('POST','/api/data/check',origin=origin)[0][0],403)
+                start.assert_not_called();snapshot.assert_not_called()
 
     def test_data_actions_are_allowlisted(self):
         with patch.object(serve.DATA_JOBS,'start',return_value={'job':{}}) as start:

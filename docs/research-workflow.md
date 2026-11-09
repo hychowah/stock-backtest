@@ -713,8 +713,9 @@ The service exposes GET `/api/data/status` and POST `update`, `continue` and
 `cancel`. Empty update options select managed coverage; normalized stock/date
 options select explicit coverage. Continue takes an empty object and restores the saved options. Local support actions `check`, `rebuild`, `download` and
 `refresh` remain available for existing callers; missing-only support downloads
-are not the ordinary interface. All data actions require local, same-origin
-requests.
+are not the ordinary interface. Data actions use the same-origin policy of the
+backtest website. Remote clients can use the same server address, including a
+Windows Tailscale address. Cross-origin browser requests are refused.
 
 #### Publication, preparation and provider limits
 

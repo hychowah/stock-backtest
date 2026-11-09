@@ -78,10 +78,10 @@ const run=code=>vm.runInContext(code,ctx);
  assert(node('data-update').disabled);
  ctx.fetch=goodFetch;await run('DataPanel.refresh()');assert(!node('data-update').disabled);
  assert.equal(node('data-readiness').textContent,'Ready for backtests','Reconnection restores the server status.');
- ctx.fetch=async()=>({status:403,ok:false,json:async()=>({error:'Open the data panel on this computer using localhost or 127.0.0.1.'})});
+ ctx.fetch=async()=>({status:403,ok:false,json:async()=>({error:'Open the data panel through the backtest website.'})});
  await run('DataPanel.refresh()');
  assert.equal(node('data-readiness').textContent,'Cannot read update status');
- assert(node('data-connection').textContent.includes('localhost or 127.0.0.1'));
+ assert(node('data-connection').textContent.includes('through the backtest website'));
  ctx.fetch=goodFetch;
  // A lost mutation response is followed by status, never an automatic second start.
  let loseStart=true;ctx.fetch=async(path,options)=>{

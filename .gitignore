@@ -76,6 +76,7 @@ data/website-source.lock
 
 # Agent session state: worktrees, local settings. Not project source.
 .claude/
+/AGENTS.local.md
 
 # Other-tool hosting metadata; not used by this project's GitHub flow.
 .openai/

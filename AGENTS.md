@@ -1,11 +1,13 @@
 # EBITDA/EV stock backtest
 
-This is a standalone US, Hong Kong and Tokyo stock backtest with a local website.
+This standalone US, Hong Kong and Tokyo stock backtest has a local website.
 It is not a different research session. Do not open the parent harness, invent
 fair value or edit product code from a research session.
 
 The folder can move. Scripts resolve paths from their own file. The FMP key stays
 at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
+
+Read `AGENTS.local.md` if present.
 
 ## Records
 
