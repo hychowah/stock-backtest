@@ -52,6 +52,33 @@ replies. Reset restores the original summary. Holding details, downloads,
 comparisons, replay and saving use the immutable original artifact. Exploration
 creates no saved format or durable preference.
 
+## Workspaces
+
+`website/browser/workspaces.js` changes workspace visibility without replacing
+the mounted strategy form. Opening a result publishes its artifact without
+restoring draft settings. Copy settings and Edit a copy retain the existing
+held-edit protection. Recorded parameter rows reuse `BacktestComparison.describe`.
+Desktop review shows them in a side column; phones have a Settings section.
+The bottom status bar consumes existing direct-run and queue state. Its dialog
+borrows the mounted queue panel, including the same controls and polling owner.
+
+## Sector selections
+
+Selection reads sectors only when opened. `backtest/application/result_sectors.py`
+traverses acquired evidence once, retaining sector statistics for each trial.
+A selected trial also returns compact period counts. The all-trial mean first
+averages entry allocations within a trial, then weights complete trials equally.
+Empty books contribute cash. Unknown stays in the denominator. Incomplete trials
+remain visible and are excluded from the combined mean. No daily exposure or
+synthetic combined portfolio is inferred. Original settings and labels stay pinned.
+
+`SectorView` keeps the current artifact's compact all-trial summary and selected
+trial detail. It never fetches every holding page to construct the charts.
+Selecting a sector uses bounded holding pages with original ranks and weights.
+Stock Details keeps the remaining fields and formula Explain action available.
+Stock return contributions load when their disclosure opens and still use the
+whole original book. Filtering or paging the stock table does not change them.
+
 ## Ownership
 
 `backtest.application.result_access.ResultAccess` owns a finite collection of
@@ -89,6 +116,8 @@ All paths below start with `/api/backtest-runs/<reader-id>/reader`.
 | `GET /page/trial/<trial>/0` | Read one trial summary, period count and short/empty counts. |
 | `GET /page/periods/<trial>/<cursor>` | Read bounded period rows in original order. |
 | `GET /page/holdings/<trial>/<period>/<cursor>` | Read bounded stock rows in original rank order. |
+| `GET /sectors/<trial>` | Read all-trial statistics (`all`) or one trial's statistics and period counts. |
+| `GET /sector-holdings/<trial>/<period>/<cursor>/<sector>` | Page one sector. The final path part is URL-encoded JSON: a string or null for Unknown. |
 | `GET /export/<kind>/<trial>` | Download complete `holdings`, `returns` or `random` CSV. |
 | `DELETE` | Release the display. Existing request pins remain valid. |
 
@@ -114,6 +143,12 @@ existing POST route. It pins complete server evidence through `save_evidence`;
 it never trusts a browser descriptor as a complete result. Existing library caps,
 queue receipts, held edits, exact plans and Stop/shutdown rules stay with their
 original owners. Old records reopen without rewriting their stored bytes.
+
+Inline sector views use `POST /api/backtest-sectors` with `{result, selection}`;
+selection is `all` or a one-based trial number. This request uses the existing
+eager operation admission, body ceiling, cancellation and shutdown drain.
+Sector replies use the existing evidence response byte bound. They need no
+current financial generation, catalog or calculation.
 
 Inline saved and queue GET responses have one 128 MiB encoded JSON limit,
 including the record metadata around the snapshot. The browser uses that same

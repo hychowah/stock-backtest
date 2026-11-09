@@ -1,0 +1,13 @@
+<section id="sector-view" class="panel" aria-labelledby="sector-heading">
+  <div class="toolbar"><div><h2 id="sector-heading">What does this strategy select?</h2><p class="hint">Compare sector allocations, then inspect the original trial and stocks.</p></div><label>Review scope<select id="sector-trial"><option value="all">All trials</option></select></label></div>
+  <p id="sector-message" role="status" aria-live="polite"></p>
+  <p id="sector-insight" class="sector-insight" hidden></p>
+  <button id="sector-clear" type="button" hidden>Show all sectors</button>
+  <div class="sector-grid">
+    <section class="sector-card"><h3 id="sector-chart-title">Sector mix across trials</h3><p id="sector-chart-note" class="hint"></p><div class="sector-chart-scroll" tabindex="0" role="region" aria-label="Sector allocation chart"><div id="sector-chart"></div></div><div id="sector-legend" class="sector-legend"></div></section>
+    <section class="sector-card"><h3 id="sector-mix-title">Average entry allocation</h3><p id="sector-mix-note" class="hint"></p><div id="sector-mix"></div></section>
+  </div>
+  <div id="sector-trials-wrap" class="latest-table" tabindex="0" role="region" aria-label="Sector allocation by trial"><table><thead><tr><th>Trial</th><th>Sector</th><th>Average entry allocation</th><th>Rebalance range</th><th>Present</th><th>Coverage</th><th></th></tr></thead><tbody id="sector-trials"></tbody></table></div>
+  <div id="sector-period-controls" class="run-controls" hidden><button type="button" id="sector-period-back">Previous rebalance</button><label>Holding period<select id="sector-period"></select></label><button type="button" id="sector-period-next">Next rebalance</button></div>
+  <details class="sector-method"><summary>How sector weights are calculated</summary><p class="hint">Each stock has equal weight at entry. Divide the sector's stock count by the actual book size. Average rebalances within each trial, then average complete trials equally. Empty books count as cash. Missing labels remain Unknown and stay in the denominator. Incomplete trials remain listed and are excluded from the combined average. These are entry allocations, not daily exposure or one combined portfolio. Labels are those recorded in the original result.</p></details>
+</section>

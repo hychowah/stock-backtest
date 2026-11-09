@@ -2,16 +2,17 @@
 import json
 import sqlite3
 import socket
+from urllib.parse import unquote
 from backtest.runtime import diagnostics, backtest_control
 from backtest.application import jobs as backtest_jobs
 from backtest.application import queue as backtest_queue
 from backtest.application import library as saved_backtests
-from backtest.application import durable_evidence, evidence_views, result_exports, result_exploration
+from backtest.application import durable_evidence, evidence_views, result_exports, result_exploration, result_sectors
 
 EXPLORATION_REQUEST_BYTES=512*1024**2
 
 
-def exploration_request(self):
+def exploration_request(self, sectors=False):
     """Reduce a browser-held trial or random batch; retain no server-side result."""
     origin=self.headers.get('Origin')
     if origin and origin!='http://'+self.headers.get('Host',''):
@@ -29,8 +30,10 @@ def exploration_request(self):
                 raise ValueError('Expected a completed result and a selection.')
             disconnected=self.disconnect_check()
             with backtest_control.cancel_when(lambda:access.closing or disconnected()):
-                value=result_exploration.eager(request['result'],request['selection'])
-            self.reply(200,value)
+                value=(result_sectors.eager(request['result'],request['selection']) if sectors
+                    else result_exploration.eager(request['result'],request['selection']))
+            if sectors:self.json_reply(200,evidence_views.encode(value))
+            else:self.reply(200,value)
     except backtest_control.Cancelled:self.reply(409,dict(error='Result exploration stopped.'))
     except (ValueError,TypeError,KeyError,OverflowError,UnicodeError):
         self.reply(400,dict(error='Could not explore this selection. Choose saved periods and ranks within the original result.'))
@@ -49,6 +52,18 @@ def evidence_request(self,identifier,path):
             self.reply(200,access.acquire(identifier,request));return
         if self.command!='GET':raise ValueError('Unsupported evidence operation.')
         with access.read(identifier) as (metadata,reader):
+            if len(path)==2 and path[0]=='sectors':
+                trial='all' if path[1]=='all' else int(path[1])
+                disconnected=self.disconnect_check()
+                with backtest_control.cancel_when(lambda:access.closing or disconnected()):
+                    value=result_sectors.evidence(reader,trial)
+                self.json_reply(200,evidence_views.encode(dict(identity=identifier,**value)));return
+            if len(path)==5 and path[0]=='sector-holdings':
+                sector=json.loads(unquote(path[4]))
+                disconnected=self.disconnect_check()
+                with backtest_control.cancel_when(lambda:access.closing or disconnected()):
+                    value=result_sectors.holdings(reader,int(path[1]),int(path[2]),sector,int(path[3]))
+                self.json_reply(200,evidence_views.encode(dict(identity=identifier,**value)));return
             if len(path)==6 and path[0]=='explore':
                 selection=dict(zip(('period_from','period_to','rank_from','rank_to'),map(int,path[2:])),
                     trial='all' if path[1]=='all' else int(path[1]))
@@ -143,6 +158,7 @@ def dispatch(handler,store):
     path=handler.path
     parts=path.removeprefix('/api/backtest-runs/').split('/')
     if path=='/api/backtest-exploration':exploration_request(handler)
+    elif path=='/api/backtest-sectors':exploration_request(handler,sectors=True)
     elif path.startswith('/api/backtest-runs/') and parts[1:2]==['reader']:
         origin=handler.headers.get('Origin')
         if origin and origin!='http://'+handler.headers.get('Host',''):

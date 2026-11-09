@@ -40,6 +40,19 @@ cancel. Keep the server computer awake and its terminal open. Temporary results
 last 24 hours, up to four recent runs, until the server exits. Use **Save original
 backtest** to keep a completed result in the library.
 
+Use **Build strategy**, **Runs & queue**, **Saved results** and **Result review**
+to change tasks without losing draft edits. Opening a result keeps the draft
+unchanged. **Edit a copy** loads its recorded settings into the builder.
+Recorded settings stay beside the review on desktop and have a **Settings**
+section on phones. The bottom bar shows progress and opens the existing queue.
+
+In **Selection**, compare sector allocations across complete random trials,
+then inspect a trial, rebalance and its original stocks. Sector weights use
+the actual stock count. Means weight rebalances equally within each trial,
+then complete trials equally. Missing labels remain Unknown; empty books hold
+cash. Sector filtering keeps original ranks and weights. Stock **Details** keeps
+the remaining financial fields and recorded formula explanations available.
+
 Open **Explore this result** to inspect a shorter saved time window or a smaller
 rank range without another backtest. For random tests, **Explore all trials**
 opens above the combined summary. For example, select 2010–2015 and ranks 20–30
@@ -53,8 +66,8 @@ completed result.
 Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
 tests. From latest mode, the first click opens the dated backtest settings
 and turns off Auto-run without starting a test. Set your parameters, then select
-**Add to queue** again. Use **View queue** to see the list below the strategy
-controls. Change parameters and add another test. Edit, hold, reorder
+**Add to queue** again. Use **Runs & queue** or the bottom bar to inspect the
+list. Change parameters and add another test. Edit, hold, reorder
 or delete waiting tests. Pause the queue to let the active test finish without
 starting another. Stop cancels only the selected active test. Auto-run is
 suspended while the queue has waiting or running work. Adding, copying or
@@ -68,8 +81,8 @@ The queue, saved list and comparison tables scroll inside their sections.
 Completed queue results move to Saved backtests automatically. Open them there
 without calculating again. A full library or failed save keeps the complete
 result in the queue while the server retries. No result is evicted.
-Save or cancel an active edit before opening or copying another result. This
-keeps the held test's draft parameters intact.
+You can inspect another result during a held edit. Save or cancel the edit
+before copying settings from another result into that draft.
 Reordering does not invalidate an edit. If a response is lost, the queue checks
 the saved edit receipt or offers a retry of the same request. If another browser
 ends the hold, your form becomes available and keeps its current settings.

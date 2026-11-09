@@ -1,7 +1,7 @@
 /* Custom dated books use the local prepared daily cache. Rendering consumes
    dated periods; it never assumes one rebalance per calendar year. */
 const ScheduleView=(()=>{
-  let requestNumber=0,running=false,preparing=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null;
+  let requestNumber=0,running=false,preparing=false,timer=null,startedAt=0,activeRun=null,inspectedTrial=null,inspectedSector=undefined,statusChanged=()=>{};
   const hasResults=()=>!!ResultArtifacts.forView('custom');
   function displayedResult(){
     const artifact=ResultArtifacts.forView('custom');
@@ -24,7 +24,7 @@ const ScheduleView=(()=>{
     node('schedule-progress').hidden=false;
     node('schedule-message').className='';
     node('schedule-message').textContent='Backtest runs on the server. You can lock your phone or close this page. Reopen this address to retrieve the result.'+(hasResults()?' Previous results remain below until it finishes.':'');
-    const tick=()=>node('schedule-elapsed').textContent=elapsed();
+    const tick=()=>{node('schedule-elapsed').textContent=elapsed();statusChanged({running:true,detail:node('schedule-progress-detail').textContent,elapsed:elapsed()});};
     tick();timer=setInterval(tick,1000);
     updateResultsState();
   }
@@ -34,7 +34,7 @@ const ScheduleView=(()=>{
       node('run-screen').disabled=false;
       node('run-screen').textContent=viewKey()==='latest'?'Screen latest':'Run backtest';
     }
-    running=false;activeRun=null;
+    running=false;activeRun=null;statusChanged({running:false,detail:node('schedule-message').textContent,elapsed:elapsed()});
     node('stop-backtest').hidden=true;
     node('stop-backtest').disabled=false;
     node('schedule-progress').hidden=true;
@@ -62,9 +62,10 @@ const ScheduleView=(()=>{
     if(!result)return;
     const period=result.periods[+node('schedule-period').value];
     if(!period)return;
-    const metric=metricLabel(result.options.metric??'ev_ebitda');
+    const metric=metricLabel(result.options.metric??'ev_ebitda',ResultArtifacts.forView('custom'));
     node('schedule-multiple-head').textContent=metric+' (×)';
-    node('schedule-stock-body').innerHTML=period.holdings.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,h.metric_multiple.toFixed(2),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
+    node('schedule-sector-note').textContent=inspectedSector===undefined?'Original selected stocks; ranks and weights are unchanged.':'Sector filter: '+(inspectedSector===null?'Unknown':inspectedSector)+'. Ranks and weights remain those of the whole original book.';
+    node('schedule-stock-body').innerHTML=EvidenceResults.holdingRows(period.holdings.filter(h=>inspectedSector===undefined||(h.sector||null)===inspectedSector),ResultArtifacts.forView('custom'),period.names);
     const group=ReturnContributions.analyze(period.holdings);
     node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+ReturnContributions.pie(group.gain_slices,group.gains,1)+ReturnContributions.pie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions are stock return divided by actual stock count; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
   }
@@ -169,7 +170,8 @@ const ScheduleView=(()=>{
       node('schedule-message').className='backtest-failed';
     }}finally{if(number===requestNumber)stopBusy();}
   }
-  function init(readContext){
+  function init(readContext,onStatus=()=>{}){
+    statusChanged=onStatus;
     CalendarSettings.init();void EngineControls.init(readContext);
     const repeat=node('repeat-random');
     const syncSeed=()=>node('random-seed').disabled=!repeat.checked;
@@ -196,12 +198,20 @@ const ScheduleView=(()=>{
     return follow(run);
   }
   function inspect(index){inspectedTrial=index;const artifact=ResultArtifacts.forView('custom');if([3,4].includes(artifact?.version))EvidenceResults.show(artifact,index+1);else render();}
+  function inspectOriginal(number,period,sector){
+    if(number===undefined&&inspectedTrial!==null){node('schedule-results').hidden=false;return;}
+    number??=1;period??=1;
+    inspectedTrial=number-1;inspectedSector=sector;
+    const artifact=ResultArtifacts.forView('custom');if(!artifact)return;
+    if([3,4].includes(artifact.version))EvidenceResults.show(artifact,number,{period,sector});
+    else{render();node('schedule-period').value=String(period-1);stocks();}
+  }
   function show(artifact){
+    node('custom-view').hidden=false;
     ResultExplorer.clear();
     EvidenceResults.showProducer(artifact);
-    inspectedTrial=null;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
+    inspectedTrial=null;inspectedSector=undefined;EvidenceResults.clear();node('schedule-period-pages').hidden=true;node('schedule-holdings-pages').hidden=true;
     if(artifact.kind==='random'){
-      if(artifact.version===4)EvidenceResults.show(artifact,1);
       RobustnessView.render(artifact.result,artifact.settings.engine);node('schedule-results').hidden=true;
       ResultExplorer.show(artifact,'all',{summary:artifact.result,periods:artifact.result.trials[0]?.periods??0});
     }else{
@@ -215,5 +225,5 @@ const ScheduleView=(()=>{
     node('stop-backtest').disabled=true;
     node('schedule-message').textContent='Stop requested. The server will confirm after worker and cache cleanup. If disconnected, this request will retry when the page reconnects.';
   }
-  return {run,runPrepared,init,resume,cancel,show,isRunning:()=>running||preparing};
+  return {run,runPrepared,init,resume,cancel,show,inspectOriginal,isRunning:()=>running||preparing};
 })();

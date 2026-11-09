@@ -31,6 +31,8 @@ function artifact(id){return {version:3,kind:'custom',settings:{mode:'custom'},r
 (async()=>{
   ctx.input=artifact('a');run('const first=ResultArtifacts.publish(input);ScheduleView.init();ScheduleView.show(first)');await tick();await tick();
   assert.equal((node('schedule-stock-body').innerHTML.match(/<tr>/g)||[]).length,64);
+  assert.equal(requests.filter(([url])=>url.includes('/page/holdings/')).length,1,'Closed attribution reads only the displayed stock page.');
+  node('schedule-attribution-disclosure').open=true;node('schedule-attribution-disclosure').handlers.toggle();await tick();await tick();
   assert(node('schedule-attribution').innerHTML.includes('all 180 selected stocks'));
   const holdingRequests=()=>requests.filter(([url,method])=>!method&&url.includes('/page/holdings/'));
   // First page is shared; subsequent pages preserve both ordered passes.

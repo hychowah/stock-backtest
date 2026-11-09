@@ -28,21 +28,29 @@ const EvidenceResults=(()=>{
     if(bounded){bounded.explanationRequested=false;bounded.explanationNext=null;}
     node('scalar-explanation').open=false;node('scalar-explanation-content').innerHTML='';
   }
-  function readError(state,error){if(valid(state)&&error.name!=='AbortError')node('screen-error').textContent=error.message;}
+  function readError(state,error){if(valid(state)&&error.name!=='AbortError')node(state.artifact.kind==='latest'?'screen-error':'schedule-message').textContent=error.message;}
   function navigation(id,cursor,next,total,label){
     node(id+'-pages').hidden=false;node(id+'-back').disabled=cursor===0;node(id+'-next').disabled=next===null;
     node(id+'-page').textContent=label+' · '+total+' total';
+  }
+  function holdingRows(rows,artifact,count){
+    return rows.map(h=>{
+      const scalar=artifact.version===4,weight=h.weight??(count?1/count:0);
+      const details=[['Exchange',h.exchange],['Market cap',money(h.market_cap)],['Enterprise value',money(h.enterprise_value)],['Fiscal date',h.fiscal],['Entry',h.entry],['Exit / mark',h.exit],['Exit basis',h.status]];
+      return '<tr><td>'+escape(h.rank)+'</td><td><strong>'+escape(h.symbol)+'</strong><small class="holding-company">'+escape(h.name)+'</small></td><td>'+escape(h.sector||'Unknown')+'</td><td>'+format(weight)+'</td><td>'+escape(scalar?ResultArtifacts.scalarValue(h):h.metric_multiple.toFixed(2))+'</td><td>'+format(h.return_value)+'</td><td>'+h.contribution_pp.toFixed(2)+' pp</td><td><details class="holding-details"><summary>Details</summary><dl>'+details.map(([key,value])=>'<div><dt>'+key+'</dt><dd>'+escape(value)+'</dd></div>').join('')+'</dl>'+(scalar?'<button type="button" data-stored-explain="'+escape(h.symbol)+'">Explain ranking</button>':'')+'</details></td></tr>';
+    }).join('')||'<tr><td colspan="8">No matching stocks in this period.</td></tr>';
   }
   async function storedHoldings(state,cursor=0,firstPage=null){
     clearExplanation();
     const period=state.period,sequence=++state.holdingSequence;
     try{
-      const page=await (firstPage??state.reader.holdings(state.trial,period,cursor));
+      const page=await (firstPage??(state.sector===undefined?state.reader.holdings(state.trial,period,cursor):state.reader.sectorHoldings(state.trial,period,state.sector,cursor)));
       if(!valid(state)||state.period!==period||state.holdingSequence!==sequence)return;
       state.holdingCursor=page.cursor;state.holdingNext=page.next;
-      const scalar=state.artifact.version===4;node('schedule-multiple-head').textContent=scalar?'Ranking value · '+(page.rows[0]?.ranking_unit??'')+' · '+(page.rows[0]?.ranking_direction??''):metricLabel(state.info.summary.options.metric??'ev_ebitda')+' (×)';
+      const scalar=state.artifact.version===4;node('schedule-multiple-head').textContent=scalar?'Ranking value · '+(page.rows[0]?.ranking_unit??'')+' · '+(page.rows[0]?.ranking_direction??''):metricLabel(state.info.summary.options.metric??'ev_ebitda',state.artifact)+' (×)';
       node('schedule-explanation-head').hidden=!scalar;
-      node('schedule-stock-body').innerHTML=page.rows.map(h=>'<tr>'+[h.rank,h.symbol,h.name,h.exchange,h.sector,(state.artifact.version===4?ResultArtifacts.scalarValue(h):h.metric_multiple.toFixed(2)),money(h.market_cap),money(h.enterprise_value),h.fiscal,h.entry,h.exit,format(h.return_value),h.contribution_pp.toFixed(2)+' pp',h.status].map(v=>'<td>'+escape(v)+'</td>').join('')+(scalar?'<td><button type="button" data-stored-explain="'+escape(h.symbol)+'">Explain</button></td>':'')+'</tr>').join('')||'<tr><td colspan="14">No matching stocks in this period.</td></tr>';
+      const selected=state.page.rows.find(row=>row.number===period);
+      node('schedule-stock-body').innerHTML=holdingRows(page.rows,state.artifact,selected.value.names);
       state.rows=page.rows;
       node('schedule-stock-body').onclick=event=>{const symbol=event.target.dataset.storedExplain;if(symbol)void explain(state.rows.find(row=>row.symbol===symbol));};
       navigation('schedule-holdings',page.cursor,page.next,page.total,'Stocks '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
@@ -54,12 +62,19 @@ const EvidenceResults=(()=>{
     const selected=state.page.rows.find(row=>row.number===period);if(!selected)return;
     node('schedule-holdings-back').disabled=true;node('schedule-holdings-next').disabled=true;
     node('schedule-stock-body').innerHTML='';state.holdingCursor=0;state.holdingNext=null;
-    node('schedule-attribution').textContent='Reading contributions from all selected stocks…';
-    // One bounded first page serves this table and attribution operation.
-    // Both attribution passes keep original order. Replacement fences every
-    // response before consumption or publication; no prior period is retained.
-    const firstPage=state.reader.holdings(state.trial,period,0);
-    void storedHoldings(state,0,firstPage);
+    state.attributionLoaded=false;
+    state.firstPage=state.sector===undefined?state.reader.holdings(state.trial,period,0):null;
+    node('schedule-attribution').textContent='Open this section to read contributions from all selected stocks.';
+    void storedHoldings(state,0,state.firstPage);
+    if(node('schedule-attribution-disclosure').open)void storedAttribution(state);
+  }
+  async function storedAttribution(state){
+    if(state.attributionLoaded||!state.page)return;
+    const period=state.period,sequence=state.stockSequence;
+    const selected=state.page.rows.find(row=>row.number===period);if(!selected)return;
+    state.attributionLoaded=true;
+    node('schedule-attribution').textContent='Reading contributions from all original selected stocks…';
+    const firstPage=state.firstPage??state.reader.holdings(state.trial,period,0);
     try{
       const group=await ReturnContributions.analyzeStored(selected.value.names,async visit=>{
         let page=await firstPage;
@@ -74,7 +89,7 @@ const EvidenceResults=(()=>{
       node('schedule-attribution').innerHTML=group.count?'<h3>Top 10 contributors</h3><div class="contribution-pies">'+ReturnContributions.pie(group.gain_slices,group.gains,1)+ReturnContributions.pie(group.loss_slices,group.losses,-1)+'</div><p>Top '+group.top_count+' stocks: '+group.top.map(h=>escape(h.symbol)+' ('+h.contribution_pp.toFixed(2)+' pp)').join(', ')+'. Contributions use all '+group.count+' selected stocks; pies show gains and losses separately.</p>':'<p>No stocks to attribute.</p>';
     }catch(error){if(state.period===period&&state.stockSequence===sequence)readError(state,error);}
   }
-  async function storedPeriods(state,cursor=0){
+  async function storedPeriods(state,cursor=0,preferred=null){
     clearExplanation();
     const sequence=++state.periodSequence;state.period=null;state.stockSequence++;
     node('schedule-period-back').disabled=true;node('schedule-period-next').disabled=true;
@@ -86,23 +101,24 @@ const EvidenceResults=(()=>{
       chart(page.rows.map(row=>row.value));
       node('schedule-rows').innerHTML=page.rows.map(({value:p})=>'<tr>'+[p.entry,p.exit,p.names,format(p.portfolio),format(p.spy)].map(v=>'<td>'+escape(v)+'</td>').join('')+'</tr>').join('');
       node('schedule-period').innerHTML=page.rows.map(({number,value:p})=>`<option value="${number}">${number}. ${p.entry} → ${p.exit} · ${p.names} stocks</option>`).join('');
-      node('schedule-period').value=String(page.rows[0]?.number??'');
+      node('schedule-period').value=String(page.rows.find(row=>row.number===preferred)?.number??page.rows[0]?.number??'');
       navigation('schedule-period',page.cursor,page.next,page.total,'Chart and table: periods '+(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length));
       void storedStocks(state);
     }catch(error){if(state.periodSequence===sequence)readError(state,error);}
   }
-  async function storedRender(artifact,trial){
-    const state={artifact,trial,reader:ResultArtifacts.reader(artifact),periodSequence:0,holdingSequence:0,stockSequence:0};bounded=state;
+  async function storedRender(artifact,trial,{period=1,sector}={}){
+    const state={artifact,trial,sector,reader:ResultArtifacts.reader(artifact),periodSequence:0,holdingSequence:0,stockSequence:0};bounded=state;
     node('schedule-results').hidden=false;node('schedule-rows').innerHTML='';node('schedule-stock-body').innerHTML='';node('schedule-chart').innerHTML='';node('schedule-period').innerHTML='';node('schedule-attribution').textContent='Reading stored evidence…';
     try{
       state.info=await state.reader.trial(trial);if(!valid(state))return;
       if(artifact.kind!=='random')ResultExplorer.show(artifact,trial,state.info);
       const r=state.info.summary;
+      node('schedule-sector-note').textContent=state.sector===undefined?'Original selected stocks; ranks and weights are unchanged.':'Sector filter: '+(state.sector===null?'Unknown':state.sector)+'. Ranks and weights remain those of the whole original book.';
       node('schedule-dates').textContent=r.start+' → '+r.end+' · '+(artifact.kind==='january'?'January books':CalendarSettings.label(r));
       node('schedule-cagr').textContent=format(r.cagr);node('schedule-spy-cagr').textContent=format(r.spy_cagr);
       node('schedule-growth').textContent=r.growth===null?'—':'$'+r.growth.toFixed(2);
       node('schedule-coverage').textContent=r.coverage+' '+state.info.short+' short periods; '+state.info.empty+' empty periods. '+(state.info.empty?(r.growth==null?'Recorded totals are unavailable under the earlier empty-period rule. Select Apply in Explore this result for a cash-based summary. ':'Empty periods hold cash at 0%; SPY keeps its period return. '):'')+'Computed in '+r.seconds.toFixed(2)+'s; repeated periods reuse prepared books.'+(r.cash_days?' Both strategy and paired SPY hold cash until '+r.first_trade+' ('+r.cash_days+' days); CAGR uses the common window.':'');
-      await storedPeriods(state);
+      await storedPeriods(state,Math.floor((period-1)/64)*64,period);
     }catch(error){readError(state,error);}
   }
   async function screenPage(state,cursor=0){
@@ -149,7 +165,7 @@ const EvidenceResults=(()=>{
       const target=node(id);if(target){target.textContent=text;target.hidden=!visible;}
     }
   }
-  function show(artifact,trial=1){
+  function show(artifact,trial=1,selection={}){
     if(artifact.kind!=='random')ResultExplorer.clear();
     showProducer(artifact);
     explanationSequence++;node('scalar-evidence-view').hidden=artifact.version!==4;node('scalar-explanation').open=false;
@@ -163,9 +179,10 @@ const EvidenceResults=(()=>{
     if(artifact.kind==='latest'){
       const state={artifact,trial:0,reader:ResultArtifacts.reader(artifact),stockSequence:0};bounded=state;
       node('latest-view').hidden=true;node('custom-view').hidden=true;void screenPage(state);
-    }else{node('custom-view').hidden=false;void storedRender(artifact,trial);}
+    }else{node('custom-view').hidden=false;void storedRender(artifact,trial,selection);}
   }
   function init(){
+    node('schedule-attribution-disclosure').addEventListener('toggle',()=>{if(bounded?.page&&node('schedule-attribution-disclosure').open)void storedAttribution(bounded);});
     node('schedule-period-back').addEventListener('click',()=>{if(bounded?.page)void storedPeriods(bounded,Math.max(0,bounded.page.cursor-64));});
     node('schedule-period-next').addEventListener('click',()=>{if(bounded?.page&&bounded.page.next!==null)void storedPeriods(bounded,bounded.page.next);});
     node('schedule-holdings-back').addEventListener('click',()=>{if(bounded)void storedHoldings(bounded,Math.max(0,bounded.holdingCursor-64));});
@@ -176,5 +193,5 @@ const EvidenceResults=(()=>{
     node('scalar-explanation')?.addEventListener('toggle',()=>{if(!bounded)return;if(node('scalar-explanation').open){if(!bounded.explanationRequested)void explain();}else{bounded.explanationRequested=false;explanationSequence++;}});
     for(const [id,kind] of [['scalar-download-rows',null],['scalar-download-returns','returns'],['scalar-download-evidence','evidence']])node(id)?.addEventListener('click',()=>{if(bounded)bounded.reader.download(kind||(bounded.artifact.kind==='latest'?'screen':'holdings'),bounded.trial||1);});
   }
-  return {show,showProducer,init,chart,stocks:()=>{if(!bounded?.page||!valid(bounded))return false;void storedStocks(bounded);return true;},clear:()=>{clearExplanation();bounded=null;if(node('scalar-evidence-view'))node('scalar-evidence-view').hidden=true;},download:(kind,trial)=>{if(!bounded||!valid(bounded))return false;bounded.reader.download(kind,trial??bounded.trial);return true;}};
+  return {show,showProducer,init,chart,holdingRows,stocks:()=>{if(!bounded?.page||!valid(bounded))return false;void storedStocks(bounded);return true;},clear:()=>{clearExplanation();bounded=null;if(node('scalar-evidence-view'))node('scalar-evidence-view').hidden=true;},download:(kind,trial)=>{if(!bounded||!valid(bounded))return false;bounded.reader.download(kind,trial??bounded.trial);return true;}};
 })();

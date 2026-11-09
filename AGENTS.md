@@ -402,12 +402,12 @@ no numerical packages. Checks: `tests/test_calculations.py`,
 Existing `data/numerical/` and `data/numerical-preparation.json` stay on the
 runtime; no source reads them.
 
-**Result access.** `backtest/application/result_access.py` owns acquired results,
-with 16 display readers and 32 request pins. Stored operations never prepare or
-calculate results and never consult the current catalog. In the browser,
-`ResultArtifacts.use` scopes every opening, comparison and parameter read and
-releases unaccepted acquisitions. Views, downloads and saving read the immutable
-published artifact, not the live form. Decode older saved records without
+**Result access.** `backtest/application/result_access.py` owns 16 display readers
+and 32 request pins. Stored operations never prepare, calculate or consult the
+current catalog. `ResultArtifacts.use` scopes openings, comparisons and parameter
+reads, releasing unaccepted acquisitions. Navigation preserves drafts; only an
+explicit copy restores result settings. Views, exports, saving and sector
+summaries read immutable published artifacts. Decode old records without
 rewriting them. Shutdown closes admission, drains readers and joins requests
 before source ownership ends. See [docs/evidence-views.md](docs/evidence-views.md).
 

@@ -1,0 +1,17 @@
+<nav id="workspace-nav" aria-label="Research workspace">
+  <a class="workspace-brand" href="#" data-workspace="builder">spread<small>Strategy research</small></a>
+  <button type="button" data-workspace="builder" aria-current="page">Build strategy</button>
+  <button type="button" data-workspace="runs">Runs & queue <span id="workspace-queue-count"></span></button>
+  <button type="button" data-workspace="library">Saved results</button>
+  <button type="button" data-workspace="review">Result review</button>
+  <a href="data.html">Data & preparation ↗</a>
+</nav>
+<div id="workspace-statusbar" role="region" aria-label="Run and queue status">
+  <button type="button" id="workspace-run-open"><span id="workspace-run-state">Idle</span><small id="workspace-run-detail">No active backtest.</small></button>
+  <span id="workspace-waiting"></span>
+  <button type="button" id="workspace-queue-open" aria-haspopup="dialog">Queue & runs</button>
+</div>
+<dialog id="workspace-queue-tray" aria-labelledby="queue-heading">
+  <button type="button" id="workspace-queue-close" class="workspace-tray-close">Close queue</button>
+  <div id="workspace-queue-content"></div>
+</dialog>

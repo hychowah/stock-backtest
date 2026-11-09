@@ -111,6 +111,9 @@ const ResultArtifacts=(()=>{
         async trial(number){const {periods,...summary}=requireTrial(number),n=(summary.options.rank_to??50)-(summary.options.rank_from??1)+1;return {summary,periods:periods.length,short:periods.filter(p=>p.names<n).length,empty:periods.filter(p=>!p.names).length};},
         async periods(number,cursor=0){return page(requireTrial(number).periods.map(({holdings,...value},i)=>({number:i+1,value})),cursor);},
         async holdings(number,period,cursor=0){return page(requireTrial(number).periods[period-1].holdings,cursor);},
+        async sectorHoldings(number,period,sector,cursor=0){return page(requireTrial(number).periods[period-1].holdings.filter(row=>(row.sector||null)===sector),cursor);},
+        sectors(trial='all',{signal}={}){return transport('/api/backtest-sectors',{method:'POST',headers:{'Content-Type':'application/json'},signal,
+          body:JSON.stringify({result:artifact.result,selection:trial})});},
         explore(selection,{signal}={}){return transport('/api/backtest-exploration',{method:'POST',headers:{'Content-Type':'application/json'},signal,
           body:JSON.stringify({result:selection.trial==='all'?artifact.result:requireTrial(selection.trial),selection:{...selection,trial:selection.trial==='all'?'all':1}})});}
       };
@@ -134,6 +137,8 @@ const ResultArtifacts=(()=>{
       trial:number=>request('page/trial/'+number+'/0'),
       periods:(number,cursor=0)=>request('page/periods/'+number+'/'+cursor),
       holdings:(number,period,cursor=0)=>request('page/holdings/'+number+'/'+period+'/'+cursor),
+      sectorHoldings:(number,period,sector,cursor=0)=>request('sector-holdings/'+number+'/'+period+'/'+cursor+'/'+encodeURIComponent(JSON.stringify(sector))),
+      sectors:(trial='all',options)=>request('sectors/'+trial,options),
       explore:(selection,options)=>request('explore/'+['trial','period_from','period_to','rank_from','rank_to'].map(key=>selection[key]).join('/'),options),
       download(kind,number=1){
         if(state.closed)throw Error('This result view was replaced.');

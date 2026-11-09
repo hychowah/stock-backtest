@@ -6,7 +6,7 @@ const embedded=html.match(/<script id="screening-data" type="application\/json">
 const prepared=JSON.parse(embedded),screener=require('../website/browser/screener.js');
 const latestDate=prepared.latest.metadata.asof;
 const latestCount=limit=>screener.latestScreen(prepared,{rank_to:limit}).stocks.length;
-function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:false,open:false,disabled:false,handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){},focus(){},closest(){return this}});return els.get(id)}
+function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*>'))?.[0]||'').includes(' hidden'),open:false,disabled:false,dataset:{},style:{},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){},focus(){},append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();},closest(){return this}});return els.get(id)}
 const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:()=>[]};
 el('screening-data').textContent=embedded;
 const timers=new Map(),storage=new Map();let timerId=0;
@@ -23,7 +23,7 @@ for(const [id,key] of [['sector-filter','sector'],['exchange-filter','exchange']
  for(const value of prepared.choices[key])assert(el(id).innerHTML.includes('value="'+value.replace(/&/g,'&amp;')+'"'),id+' '+value);
 // Opening the dated view starts nothing; it shows the schedule controls.
 run("switchMode('backtest')");
-assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);assert.equal(el('schedule-controls').hidden,false);
+assert.equal(el('workspace-builder').hidden,false);assert.equal(el('workspace-review').hidden,true);assert.equal(el('latest-view').hidden,true);assert.equal(el('schedule-controls').hidden,false);
 assert.equal(el('run-screen').textContent,'Run backtest');assert.equal(run('ScheduleView.isRunning()'),false);assert.equal(el('screen-error').textContent,'');
 assert.equal(run('ResultArtifacts.forView("custom")'),undefined);
 run("switchMode('latest')");
@@ -50,7 +50,7 @@ el('sector-filter').value='No matching sector';run('applyRange()');
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),0);assert(el('latest-body').innerHTML.includes('No stocks match'));
 assert.equal(el('latest-median-cap').textContent,'—');
 el('reset-strategy').handlers.click();el('mode-backtest').handlers.click();
-assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidden,true);
+assert.equal(el('workspace-builder').hidden,false);assert.equal(el('latest-view').hidden,true);
 assert.equal(el('run-screen').textContent,'Run backtest');
 console.log('Passed: exact-date picks, shared filters and ranks, invalid-input recovery, current CSV, empty latest screen, and switching to the dated view.');
 el('ranking-metric').value='ev_ebitda_3y';el('stock-pool').value='cached';run("switchMode('latest')");
@@ -108,9 +108,11 @@ assert.equal(el('custom-view').hidden,false);assert.equal(el('latest-view').hidd
 assert.equal(el('schedule-dates').textContent,'2015-01-02 → 2016-10-20 · January books');
 assert(el('schedule-rows').innerHTML.includes('<td>2015-01-02</td><td>2016</td><td>3</td>'));
 assert(el('schedule-rows').innerHTML.includes('<td>2016</td><td>2016-10-20</td><td>0</td>'));
-assert(el('schedule-message').textContent.includes('No calculation'));
-assert.equal(el('screen-status').textContent,'Saved warning');assert(el('screen-status').className.includes('warning'));
-assert.equal(el('screen-coverage').textContent,'Saved coverage');
+assert(el('schedule-message').textContent.includes('no calculation'));
+assert.equal(el('workspace-review').hidden,false);assert.equal(el('workspace-builder').hidden,true);
+assert(el('workspace-parameters').innerHTML.includes('Saved valuation label'));
+assert.equal(el('workspace-recorded-notice').textContent,'Saved warning');assert(el('workspace-recorded-notice').className.includes('warning'));
+assert.equal(el('workspace-recorded-coverage').textContent,'Saved coverage');assert.equal(el('workspace-recorded-context').hidden,false);
 assert(el('results-state').textContent.includes('Saved January result shown without calculation'));
 el('schedule-period').value='0';el('schedule-period').handlers.change();assert(el('schedule-stock-body').innerHTML.includes('SAVED_ONLY'));
 assert(el('schedule-attribution').innerHTML.includes('Top 10 contributors'));
@@ -120,9 +122,9 @@ assert.equal(JSON.stringify(savedJanuary),savedBytes);assert(!run('JSON.stringif
 const savedRankFirst=JSON.parse(savedBytes);
 savedRankFirst.settings.selection_order='rank_first';savedRankFirst.result.options.selection_order='rank_first';
 ctx.savedRankFirst=savedRankFirst;run('restoreSavedBacktest(savedRankFirst)');
-assert.equal(el('selection-order').value,'rank_first');assert.equal(run('currentArtifact().settings.selection_order'),'rank_first');
+assert.equal(el('selection-order').value,'filter_first');assert.equal(run('currentArtifact().settings.selection_order'),'rank_first');
 el('selection-order').value='filter_first';el('rank-from').value='1';el('rank-to').value='50';el('auto-run').checked=true;run('filterConditions=[];settingsChanged(undefined,false)');
-console.log('Passed: a saved January result restores its strategy and opens its exact stored stocks, returns and CSV in the dated view without calculation.');
+console.log('Passed: a saved January result opens independently of its draft with its exact stored stocks, returns and CSV in the dated view without calculation.');
 
 // Custom schedules use explicit dates and period results.
 (async()=>{
@@ -190,9 +192,9 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  el('trade-start').value='2001-01-01';el('rank-to').value='2';
  ctx.fetch=()=>{throw Error('Restoring must not request a calculation')};
  run('restoreSavedBacktest(savedFixed)');
- assert.equal(el('trade-start').value,savedFixed.settings.start);assert.equal(el('rank-to').value,String(savedFixed.settings.strategy.selection.rank_to));
+ assert.equal(el('trade-start').value,'2001-01-01');assert.equal(el('rank-to').value,'2');
  assert.equal(el('schedule-dates').textContent,fixture.start+' → '+fixture.end+' · every '+fixture.months+' month(s)');
- assert(el('schedule-message').textContent.includes('No calculation'));
+ assert(el('schedule-message').textContent.includes('no calculation'));
  // Reopening restores submitted settings and retrieves the server result by GET.
  let resumedMethod;ctx.fetch=async(_url,options)=>{resumedMethod=options.method;return completed(fixture)};
  el('trade-start').value='2000-01-01';el('rank-to').value='2';
@@ -255,8 +257,8 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  assert.strictEqual(run('currentArtifact()'),beforeRandomCopy);
  el('random-seed').value='999';el('random-trials').value='1';
  run('restoreSavedBacktest(savedRandom)');
- assert.equal(el('random-seed').value,'123');assert.equal(el('random-trials').value,'3');assert.equal(el('repeat-random').checked,true);
- assert(el('results-state').textContent.includes('Results match'));
+ assert.equal(el('random-seed').value,'999');assert.equal(el('random-trials').value,'1');assert.equal(el('repeat-random').checked,true);
+ assert(el('results-state').textContent.includes('do not match'));
  assert.equal(el('schedule-results').hidden,true);await el('robustness-inspect').handlers.click();
  assert.equal(request,beforeInspect);assert.equal(el('schedule-results').hidden,false);
 
@@ -292,13 +294,13 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  await run('BacktestQueue.refresh();');await run('BacktestQueue.action("edit",waitingId)');
  el('rank-to').value='7';run('settingsChanged(undefined,false)');
  const draft=run('JSON.stringify(currentSettings())'),artifactBefore=run('ResultArtifacts.forView("custom")');
- assert.throws(()=>run('restoreSavedBacktest(savedFixed)'),/Save or cancel/);
+ assert.doesNotThrow(()=>run('restoreSavedBacktest(savedFixed)'));
  assert.throws(()=>run('copySavedBacktestSettings(savedFixed)'),/Save or cancel/);
- assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(run('ResultArtifacts.forView("custom")'),artifactBefore);
- await run('BacktestQueue.action("open",completedId)');assert(el('queue-status').textContent.includes('Save or cancel'));
+ assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.notEqual(run('ResultArtifacts.forView("custom")'),artifactBefore);
+ await run('BacktestQueue.action("open",completedId)');assert(el('queue-status').textContent.includes('Opened'));
  await run('BacktestQueue.action("copy",completedId)');assert(el('queue-status').textContent.includes('Save or cancel'));
  await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});
- assert(el('saved-message').textContent.includes('Save or cancel'));
+ assert(el('saved-message').textContent.includes('Opened'));
  await el('saved-list').handlers.click({target:{dataset:{copy:'library-result'}}});
  assert(el('saved-message').textContent.includes('Save or cancel'));
  assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(el('queue-name').value,'Edit this test');
@@ -309,10 +311,10 @@ console.log('Passed: a saved January result restores its strategy and opens its 
  assert.equal(run('JSON.stringify(currentSettings())'),draft);assert.equal(run('ScheduleView.isRunning()'),false);
  ctx.realPending=realPending;ctx.realRecover=realRecover;run('BacktestRuns.pending=realPending;BacktestRuns.recover=realRecover');
  await run('BacktestQueue.add()');assert.equal(queueRows[0].options.strategy.selection.rank_to,7);assert.equal(run('BacktestQueue.isEditing()'),false);
- await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});assert.equal(el('rank-to').value,String(savedFixed.settings.strategy.selection.rank_to));
+ await el('saved-list').handlers.click({target:{dataset:{open:'library-result'}}});assert.equal(el('rank-to').value,'7');assert.equal(run('ResultArtifacts.forView("custom").kind'),'custom');
  await run('BacktestQueue.action("edit",waitingId)');el('rank-to').value='9';
  await el('queue-cancel-edit').handlers.click();assert.equal(queueRows[0].options.strategy.selection.rank_to,7);
- await run('BacktestQueue.action("open",completedId)');assert.equal(el('rank-to').value,String(savedFixed.settings.strategy.selection.rank_to));
+ await run('BacktestQueue.action("open",completedId)');assert.equal(el('rank-to').value,'9');assert.equal(run('ResultArtifacts.forView("custom").kind'),'custom');
  await run('BacktestQueue.action("edit",waitingId)');await run('BacktestQueue.action("confirm",waitingId)');
  run('const afterDelete=StrategyDraft.beginQueuedEdit("after-delete");afterDelete.end()');
  queueRows.push({id:waitingId,name:'Rejected hold',state:'queued',revision:1,position:3,mode:'custom',options:savedFixed.settings});

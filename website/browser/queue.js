@@ -81,6 +81,7 @@ const BacktestQueue=(()=>{
     for(const row of [...list.children])if(!wanted.has(row.dataset.queueId)){rendered.delete(row.dataset.queueId);row.remove();}
   }
   function render(){
+    callbacks.changed?.({records,paused,available});
     node('queue-count').textContent=records.length+' / '+limit;
     node('queue-pause').textContent=paused?'Resume queue':'Pause queue';
     node('queue-pause').disabled=busy||!available;
@@ -201,7 +202,7 @@ const BacktestQueue=(()=>{
     await perform(async()=>{
       if(action==='open'){
         const isCurrent=ResultArtifacts.opening();
-        const used=await ResultArtifacts.use({kind:'queue',id},artifact=>callbacks.open(artifact),{current:isCurrent});
+        const used=await ResultArtifacts.use({kind:'queue',id},artifact=>callbacks.open(artifact,record.name),{current:isCurrent});
         if(used.record?.state==='archived'){callbacks.libraryChanged?.();message('This result moved to Saved backtests. Open it from the saved list.');return;}
         if(used.consumed)message('Opened “'+record.name+'” from its stored results.');return;
       }

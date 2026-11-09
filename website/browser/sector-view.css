@@ -1,0 +1,49 @@
+#sector-view{padding:21px;margin-top:0}
+#sector-view .toolbar{align-items:flex-start;gap:14px}
+#sector-view h2{font-size:18px}
+#sector-view h3{font-size:14px;margin:0 0 8px}
+#sector-view .toolbar label{font-size:11px;color:#65765b}
+#sector-trial{display:block;margin-top:7px;min-width:155px;font-size:12px}
+#sector-message{font-size:12px;color:#6b7f5e;min-height:20px;margin:13px 0}
+.sector-insight{padding:13px 15px;border:1px solid #dbe4cf;background:#edf2e6;border-radius:7px;font-size:12px;color:#405e34;margin:13px 0 18px;line-height:1.7}
+#sector-clear{font-size:11px;padding:5px 10px;min-height:33px;margin-bottom:15px;background:#f0f4e8}
+.sector-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(235px,1fr);gap:18px}
+.sector-card{border:1px solid #e0e6d7;border-radius:8px;padding:17px;min-width:0}
+.sector-card>.hint{font-size:10px;line-height:1.6;min-height:32px}
+.sector-chart-scroll{max-width:100%;overflow:auto;overscroll-behavior-x:contain;padding:8px 5px}
+#sector-chart{display:flex;gap:6px;align-items:stretch;width:100%}
+.sector-bar{flex:1;border:0;background:none;min-width:17px;max-width:44px;padding:0;display:flex;flex-direction:column;align-items:center}
+.sector-bar:hover{background:none}
+.sector-stack{display:flex;flex-direction:column-reverse;width:100%;max-width:30px;height:190px;border-radius:3px;overflow:hidden;outline:1px solid #edf1e5;outline-offset:2px;background:#f4f6ee}
+.sector-bar.selected .sector-stack,.sector-bar:focus-visible .sector-stack{outline:2px solid #496d3d;outline-offset:3px}
+.sector-bar.incomplete{opacity:.55}
+.sector-bar.incomplete .sector-stack{outline-style:dashed}
+.sector-segment{display:block;width:100%;flex-shrink:0}
+.sector-segment.dimmed{opacity:.18}
+.sector-cash{background:repeating-linear-gradient(45deg,#d4d9cf,#d4d9cf 4px,#e6e9df 4px,#e6e9df 8px)}
+.sector-bar-label{font-size:9px;margin-top:13px;writing-mode:vertical-rl;min-height:55px;font-weight:400;color:#7b886f}
+.sector-legend{display:flex;gap:7px 12px;flex-wrap:wrap;margin-top:13px}
+.sector-legend button,.sector-legend>span{font-size:10px;display:flex;align-items:center;gap:6px;min-height:28px;padding:2px 0;background:none;border:0;color:#728364}
+.sector-legend button[aria-pressed=true]{color:#32592a;font-weight:650}
+.sector-legend i,.sector-mix-row i{width:8px;height:8px;display:inline-block;border-radius:2px;flex-shrink:0}
+#sector-mix{max-height:470px;overflow:auto}
+.sector-mix-row{display:block;width:100%;text-align:left;min-height:44px;font-size:11px;padding:8px;border:1px solid transparent;background:none;border-radius:5px}
+.sector-mix-row[aria-pressed=true]{background:#edf3e6;border-color:#d9e3cd}
+.sector-mix-row>span:first-child{display:flex;align-items:center;gap:7px}
+.sector-mix-row small{font-size:9px;color:#89967e;margin-left:auto;text-align:right}
+.sector-mix-row strong{font-size:11px;min-width:42px;text-align:right}
+.sector-track{height:4px;display:block;background:#edf1e7;border-radius:2px;margin:7px 0 0 15px;overflow:hidden}
+.sector-track>span{height:100%;display:block;border-radius:2px}
+#sector-trials-wrap{margin-top:21px;max-height:390px}
+#sector-trials-wrap table{min-width:720px;font-size:11px}
+#sector-trials-wrap th{font-size:10px}
+#sector-trials-wrap td,#sector-trials-wrap th{padding:12px}
+#sector-trials-wrap button{font-size:10px;min-height:30px;padding:5px 8px;white-space:nowrap}
+#sector-period-controls{font-size:12px;margin-bottom:0}
+#sector-period-controls button{font-size:11px}
+#sector-period{font-size:12px;max-width:360px}
+.sector-method{border-top:1px solid #e5ebdc;padding-top:12px;margin-top:19px}
+.sector-method summary{font-size:11px;cursor:pointer;display:flex;align-items:center}
+.sector-method .hint{font-size:11px;max-width:800px;line-height:1.8}
+@media(min-width:1001px) and (max-width:1450px){.sector-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:650px){#sector-view{padding:16px}.sector-grid{grid-template-columns:minmax(0,1fr);gap:15px}.sector-card{padding:14px}.sector-card>.hint{min-height:0}#sector-view .toolbar{align-items:flex-start}#sector-trial{width:100%;min-width:170px}.sector-mix-row{font-size:12px}.sector-mix-row small{font-size:10px}.sector-mix-row strong{font-size:12px}#sector-period{max-width:100%;width:100%}.sector-method summary{min-height:40px}}

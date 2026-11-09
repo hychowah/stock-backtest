@@ -159,7 +159,7 @@ const SavedBacktests=(()=>{
     const number=++operation,isCurrent=ResultArtifacts.opening();
     await perform(async()=>{
       message('Opening saved backtest…');
-      const used=await ResultArtifacts.use({kind:'saved',id},artifact=>openRecord(artifact),{current:()=>number===operation&&isCurrent()});
+      const used=await ResultArtifacts.use({kind:'saved',id},(artifact,record)=>openRecord(artifact,record?.name||records.find(row=>row.id===id)?.name),{current:()=>number===operation&&isCurrent()});
       if(used.consumed)message('Opened “'+(used.record?.name||records.find(r=>r.id===id)?.name||'Backtest')+'” without rerunning it.');
     });
   }

@@ -11,7 +11,7 @@ function viewKey(){return screeningMode==='latest'?'latest':'custom';}
 const currentArtifact=()=>ResultArtifacts.forView(viewKey());
 const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.filter_catalog});
 const displayCatalog=()=>currentArtifact()?.catalog||sourceCatalog();
-const metricLabel=id=>displayCatalog().metrics[id]?.label||screeningData.metrics[id]?.label||id;
+const metricLabel=(id,artifact=currentArtifact())=>artifact?.catalog?.metrics[id]?.label||(typeof artifact?.catalog?.metrics[id]==='string'?artifact.catalog.metrics[id]:screeningData.metrics[id]?.label)||id;
 function currentSettings({preserveLegacy=false}={}){
   const options=StrategyDraft.selectionSettings(readOptions(),preserveLegacy),view=viewKey();
   const engine=EngineControls.fields();
@@ -33,17 +33,15 @@ function applyPresentation(presentation={}){
 }
 // Every result other than a latest screen, saved January results included,
 // renders in the dated view.
-function publishResult(artifact){
-  const completed=ResultArtifacts.publish(artifact),dated=completed.kind!=='latest';
-  if(completed.version===4){if(ResultArtifacts.view(completed.kind)!==viewKey()){updateResultsState();return;}applyPresentation(completed.presentation);if(dated)ScheduleView.show(completed);else EvidenceResults.show(completed);document.getElementById('screen-error').textContent='';updateResultsState();return;}
-  EvidenceResults.clear();
-  if(ResultArtifacts.view(completed.kind)!==viewKey()){
-    if(dated)ScheduleView.show(completed);
-    updateResultsState();return;
+function publishResult(artifact,name){
+  const completed=ResultArtifacts.publish(artifact);
+  if(completed.kind==='latest'){
+    applyPresentation(completed.presentation);
+    if(completed.version===4)EvidenceResults.show(completed);else renderLatest(completed.result);
+  }else{
+    ScheduleView.show(completed);
   }
-  applyPresentation(completed.presentation);
-  syncCatalogControls();renderConditions();updateMetricLabels(completed.settings);
-  if(dated)ScheduleView.show(completed);else renderLatest(completed.result);
+  Workspaces.published(completed,name);
   document.getElementById('screen-error').textContent='';updateResultsState();
 }
 function completeResult(settings,result){
@@ -199,14 +197,13 @@ function updateMetricLabels(o){
 function setModeVisibility(){
   const latest=screeningMode==='latest';
   document.getElementById('schedule-controls').hidden=latest;
-  document.getElementById('custom-view').hidden=latest;
   document.getElementById('latest-view').hidden=!latest;
   document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
   if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
   const artifact=currentArtifact();
   applyPresentation(artifact?.presentation);syncCatalogControls();renderConditions();
-  if(artifact?.version===4){if(artifact.kind!=='latest')ScheduleView.show(artifact);else EvidenceResults.show(artifact);}else{EvidenceResults.clear();if(artifact)updateMetricLabels(artifact.settings);}
+  if(latest&&artifact?.version===4){EvidenceResults.show(artifact);Workspaces.published(artifact);}
   StrategyDraft.render();
 }
 // Only the offline latest screen recalculates on a mode switch; a dated
@@ -269,12 +266,11 @@ function syncCatalogControls(){
   document.getElementById('ranking-metric').innerHTML=Object.entries(metrics).map(([key,item])=>`<option value="${safe(key)}" ${screeningData.metrics[key]?'':'disabled'}>${safe(item.label)}${screeningData.metrics[key]?'':' — unavailable'}</option>`).join('');
   document.getElementById('ranking-metric').value=selected;
 }
-function restoreSavedBacktest(snapshot){
+function restoreSavedBacktest(snapshot,name){
   const artifact=ResultArtifacts.decode(snapshot);
   if(artifact.kind==='latest')throw Error('Expected a saved backtest.');
-  restoreBacktestSettings(artifact.settings,artifact.catalog,artifact.result.configuration?.seed);
-  publishResult(artifact);
-  document.getElementById('schedule-message').textContent='Saved backtest restored. No calculation was run.';
+  publishResult(artifact,name);
+  document.getElementById('schedule-message').textContent='Saved backtest opened. Draft settings are unchanged; no calculation was run.';
 }
 function copySavedBacktestSettings(snapshot){
   const artifact=ResultArtifacts.decode(snapshot);
@@ -283,6 +279,7 @@ function copySavedBacktestSettings(snapshot){
   autoRun.checked=false;
   try{localStorage.setItem('backtest-auto-run','false');}catch(_){}
   updateResultsState();
+  Workspaces.show('builder');
   document.getElementById('strategy-form').scrollIntoView?.({behavior:'smooth',block:'start'});
   document.getElementById('run-screen').focus?.({preventScroll:true});
 }
@@ -531,7 +528,7 @@ const StrategyDraft=(()=>{
 const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
-ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:StrategyDraft.isScalar()}));
+ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:StrategyDraft.isScalar()}),Workspaces.runStatus);
 VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value});
 StrategyDraft.render();
 setModeVisibility();
@@ -588,13 +585,14 @@ document.getElementById('strategy-form').addEventListener('change',event=>{
 });
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
 
-SavedBacktests.init({current:currentArtifact,isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest,copy:copySavedBacktestSettings});
-BacktestQueue.init({libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
-  prepare:()=>{autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
+SavedBacktests.init({current:()=>ResultArtifacts.forView('custom'),isRunning:()=>ScheduleView.isRunning(),open:restoreSavedBacktest,copy:copySavedBacktestSettings});
+BacktestQueue.init({changed:Workspaces.queueStatus,libraryChanged:SavedBacktests.changed,beginEdit:StrategyDraft.beginQueuedEdit,settings:currentSettings,prepareSubmission:StrategyDraft.prepareSubmission,catalog:sourceCatalog,presentation:scheduledPresentation,restore:restoreBacktestSettings,open:restoreSavedBacktest,
+  prepare:()=>{Workspaces.show('builder');autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
   configure:()=>{
     screeningMode='backtest';
     setModeVisibility();settingsChanged(undefined,false);
     document.getElementById('schedule-controls').scrollIntoView?.({behavior:'smooth',block:'center'});
   },
   metricLabel:id=>sourceCatalog().metrics[id]?.label||id,filterLabel:id=>sourceCatalog().filters[id]?.label||id});
+Workspaces.init();
 ScheduleView.resume();

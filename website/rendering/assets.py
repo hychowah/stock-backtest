@@ -5,8 +5,8 @@ from pathlib import Path
 BROWSER=Path(__file__).resolve().parents[1]/'browser'
 SCRIPT_NAMES=('engine-controls.js','calendar-settings.js','result-artifacts.js',
     'backtest-comparison.js','saved-backtests.js','screener.js','contributions.js',
-    'robustness.js','backtest-runs.js','variable-evidence.js','result-explorer.js','evidence-results.js','variable-workspace.js','filter-picker.js','schedule.js','queue.js','range.js','responsive.js')
-STYLE_NAMES=('contributions.css','responsive.css','queue.css','variable-workspace.css','filter-picker.css')
+    'robustness.js','backtest-runs.js','variable-evidence.js','result-explorer.js','evidence-results.js','variable-workspace.js','filter-picker.js','schedule.js','queue.js','sector-view.js','workspaces.js','range.js','responsive.js')
+STYLE_NAMES=('contributions.css','responsive.css','queue.css','variable-workspace.css','filter-picker.css','workspaces.css','sector-view.css')
 
 
 def read(name):
@@ -14,7 +14,7 @@ def read(name):
 
 
 def template():
-    return read('template.html')
+    return read('template.html').replace('__WORKSPACE_NAV__',read('workspace.html')).replace('__SECTOR_VIEW__',read('sector-view.html'))
 
 
 def queue_fragment():
