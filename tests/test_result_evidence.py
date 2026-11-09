@@ -128,10 +128,15 @@ class EvidenceTests(unittest.TestCase):
                         repack(different),repack(malformed)):
             independent.seek(0);independent.truncate();independent.write(changed)
             with self.assertRaisesRegex(ValueError,'changed'):next(other.verified_records())
+            with self.assertRaisesRegex(ValueError,'changed'):other.trial_summary(1)
         independent.seek(0);independent.truncate();independent.write(data)
         self.assertEqual(repr(list(other.verified_records())),repr(original))
+        summary,sizes=other.trial_summary(2)
+        self.assertEqual(summary,original[-2]['summary'])
+        self.assertEqual(dict(sizes),{3:2,0:1})
         checkpoint=Mock(side_effect=RuntimeError('cancelled'));other.checkpoint=checkpoint
         with self.assertRaisesRegex(RuntimeError,'cancelled'):next(other.verified_records())
+        with self.assertRaisesRegex(RuntimeError,'cancelled'):other.trial_summary(2)
 
     def test_reopen_binds_complete_validated_bytes_without_redecoding(self):
         stream=io.BytesIO();_,expected=write(stream)

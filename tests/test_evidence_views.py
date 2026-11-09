@@ -77,6 +77,21 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(observed,original)
         with self.assertRaises(ValueError):evidence_views.page(iter(original),181)
 
+    def test_trial_summary_decodes_only_its_original_record(self):
+        record,_,originals=self.stored();self.acquire(record=record)
+        for number,expected in enumerate(originals,1):
+            with self.access.read('a'*32) as (_,reader):
+                with patch.object(result_evidence.json,'loads',wraps=json.loads) as decodes:
+                    info=evidence_views.read(reader,dict(operation='trial',trial=number))
+                self.assertEqual(decodes.call_count,1)
+                self.assertEqual(info['summary'],{k:v for k,v in expected.items() if k!='periods'})
+                self.assertEqual((info['periods'],info['empty'],info['short']),(3,1,3))
+                info['summary']['diagnostic']['signed']=99.
+                self.assertEqual(repr(evidence_views.trial(reader,number)['summary']['diagnostic']['signed']),'-0.0')
+        for invalid in (0,-1,True,1.5,None,3):
+            with self.access.read('a'*32) as (_,reader):
+                with self.assertRaises(ValueError):evidence_views.trial(reader,invalid)
+
     def test_acquisition_retry_capacity_and_source_deletion(self):
         record,metadata,_=self.stored();artifact=self.acquire(record=record)
         self.assertEqual(self.acquire(record=record),artifact)
@@ -195,7 +210,7 @@ class ViewTests(unittest.TestCase):
                     chunks=list(export.chunks())
                     self.assertEqual(b''.join(chunks),expected)
                     self.assertTrue(all(0<len(chunk)<=65536 for chunk in chunks))
-                    self.assertEqual(scans.call_count,0 if kind=='random' else 3)
+                    self.assertEqual(scans.call_count,0 if kind=='random' else 2)
                 # The request object stores selection scalars and the borrowed
                 # reader, not row collections or an encoded attachment.
                 self.assertEqual(set(vars(export)),{'reader','kind','trial','filename','metric','content_length'})

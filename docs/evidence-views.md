@@ -79,7 +79,7 @@ departure notification can retain an orphan until service shutdown. There is no
 automatic crash reclamation or display eviction. Durable temporary-file cleanup
 after abrupt process death retains its separate documented limitation.
 
-## Additive HTTP operations
+## HTTP operations
 
 All paths below start with `/api/backtest-runs/<reader-id>/reader`.
 
@@ -102,12 +102,13 @@ Byte checks measure the bytes sent, so ASCII expansion cannot reject an otherwis
 valid maximum-size Unicode record. A page never drops stored rows.
 Following every next cursor visits each matching row exactly once.
 
-`backtest/application/evidence_views.py` scans validated immutable evidence. It has no index,
-financial input, database path or scheduler. It retains bounded rows rather than
-assembling complete trials or periods. An index or other performance layer needs
-a measured requirement before implementation.
+`backtest/application/evidence_views.py` reads validated immutable evidence.
+Trial summaries use the reader's compact directory, built during initial
+validation. A summary request decodes only its original summary record. Short
+and empty counts use that trial's recorded ranks and period sizes. Period and
+holding pages still scan sequentially and retain bounded rows.
 
-The old eager GET routes retain version-1/2 responses. A version-3 record returns
+The old eager GET routes retain version-1/2 responses. Evidence-backed records return
 an explicit `requires_reader` error. The library accepts `{name, reader}` on its
 existing POST route. It pins complete server evidence through `save_evidence`;
 it never trusts a browser descriptor as a complete result. Existing library caps,
@@ -183,7 +184,7 @@ tickets, artifact identities and selection revisions fence late responses.
 
 The schedule view retains one period page and one stock page. Navigation reaches
 every period and stock. Charts identify their displayed range. Every random trial
-remains selectable, including incomplete trials. Version-3 inspection always reads
+remains selectable, including incomplete trials. Evidence-backed inspection reads
 stored evidence; it never falls back to calculation.
 
 Attribution traverses every selected holding in two ordered bounded passes.
@@ -212,13 +213,10 @@ An active export survives release of its display and deletion of its source.
 Shutdown can interrupt it and then drains the request before deleting bytes.
 
 `result_exports.prepare(reader, kind, trial)` prepares one attachment within that
-request pin. It resolves the original scalar trial summary once. It retains the
+request pin. It reads the original trial summary directly. It retains the
 filename, metric and exact content length, with no stock rows or CSV body.
-`chunks()` performs a fresh bounded formatting pass. Scheduled attachments use
-three prefix traversals: summary selection, counting and streaming. They do not
-repeat presentation coverage inspection for filename and CSV passes. Standalone
-`csv()` stays lazy, and standalone `filename()` does not count a file. Existing
-formatting and the first-chunk-before-headers rule remain unchanged.
+Scheduled attachments traverse holdings twice: once to count, then to stream.
+Standalone `csv()` stays lazy. Standalone `filename()` reads no holdings.
 
 The formatter follows JavaScript finite-number spelling, including integral
 floats, signed zero and exponent boundaries. Tests compare seeded float64 values
@@ -229,14 +227,12 @@ browser memory. HTTP streaming alone proves no browser-memory limit.
 Read the [codec](result-evidence.md) and [durable storage](durable-evidence.md)
 contracts for complete evidence and byte ownership.
 
-Initial reader construction validates the complete codec. `Reader.reopen` checks
-the complete physical length and hash for each independent request stream.
-Changed content fails before rows are returned, including an unread suffix.
-`verified_records()` checks that physical identity again before traversal. It
-retains bounded decoding, framing, checksums and cancellation. The acquired
-proof supplies semantic value and order validation for those exact bytes.
-Ordinary `records()` retains all its checks. The proof holds no rows or offsets
-and ends with the acquired reader. No index or persistent cache is added.
+Initial reader construction validates the complete codec and builds its trial
+directory. Each request reopens an independent stream and checks the complete
+physical identity. Summary reads and record traversals check it again before
+decoding. This detects changes in an unread suffix too. Framing, checksums,
+cancellation and ordinary record validation stay in force. The directory ends
+with the acquired reader; it changes no saved format or durable record.
 
 ## Shutdown ownership
 

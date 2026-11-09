@@ -1,8 +1,8 @@
-"""Bounded presentation scans of immutable evidence. No financial dependencies.
+"""Bounded presentation of immutable evidence. No financial dependencies.
 
 A page limits retained presentation data, never stored evidence. Following all
-cursors visits every matching row exactly once in original order. Scans retain
-no index and never assemble a complete period or trial.
+cursors visits every matching row exactly once in original order. Summaries use
+the reader's trial directory; row pages never assemble complete periods or trials.
 """
 import json
 
@@ -43,16 +43,12 @@ def records(reader,trial):
 
 
 def trial(reader,number):
-    count=empty=short=0
-    # The original trial summary owns its requested rank slice.
-    for record in records(reader,number):
-        if record['type']=='end_trial':summary=record['summary']
+    summary,sizes=reader.trial_summary(number)
     selected=summary['options'].get('strategy',{}).get('selection',summary['options'])
     requested=selected.get('rank_to',50)-selected.get('rank_from',1)+1
-    for record in records(reader,number):
-        if record['type']=='period':
-            names=record['value']['names'];count+=1;empty+=names==0;short+=names<requested
-    return dict(summary=summary,periods=count,empty=empty,short=short)
+    return dict(summary=summary,periods=sum(count for _,count in sizes),
+        empty=sum(count for names,count in sizes if names==0),
+        short=sum(count for names,count in sizes if names<requested))
 
 
 def periods(reader,number):

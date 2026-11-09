@@ -280,8 +280,8 @@ class Reader:
     """Validate completion before exposing immutable stored evidence.
 
     records() rereads bounded records in order, without collecting periods or
-    trials. The caller pins immutable bytes through each read. This sequential
-    codec is shared infrastructure; random-access indexes belong to its stores.
+    trials. A compact trial directory locates summaries in those same bytes.
+    The caller pins immutable bytes through each read.
     No current financial generation is required. The stream remains caller-owned.
     """
     def __init__(self, stream, *, max_bytes, piece_bytes=MAX_PIECE_BYTES,
@@ -292,12 +292,20 @@ class Reader:
         self.checkpoint = checkpoint
         self.bytes_read = self.peak_piece_bytes = self.peak_record_bytes = 0
         self._header = self._manifest = None
+        trials=[];previous=0
         physical = hashlib.sha256()
         for record in self._records(physical=physical):
             if record['type'] == 'header': self._header = record
             elif record['type'] == 'complete': self._manifest = record
+            elif record['type'] == 'trial': sizes={}
+            elif record['type'] == 'period':
+                names=record['value']['names'];sizes[names]=sizes.get(names,0)+1
+            elif record['type'] == 'end_trial':
+                trials.append((previous,self.bytes_read,tuple(sizes.items())))
+            previous=self.bytes_read
         # Bind the proof to the exact pieces consumed by complete validation.
         self._proof = (self.bytes_read, physical.digest())
+        self._trials=tuple(trials)
 
     def reopen(self, stream):
         """Open an independent reader after its complete bytes match this proof.
@@ -315,6 +323,7 @@ class Reader:
         reader.bytes_read=reader.peak_piece_bytes=reader.peak_record_bytes=0
         reader._header,reader._manifest=deepcopy(self._header),deepcopy(self._manifest)
         reader._proof=self._proof
+        reader._trials=self._trials
         return reader
 
     def _verify_stream(self,stream):
@@ -337,7 +346,7 @@ class Reader:
         Before yielding, verify the entire stream, including an unvisited suffix.
         The original semantic validation remains authoritative. The caller owns
         stream lifetime and immutable bytes. records() keeps its independent
-        validation behavior. No record collection or index is retained.
+        validation behavior. No holding or period rows are retained.
         """
         self._verify_stream(self.stream)
         for record,_,_,end in _physical_records(self.stream,0,self._proof[0],
@@ -345,6 +354,22 @@ class Reader:
                 observe=self._observe,validate_values=False):
             self.bytes_read=end
             yield record
+
+    def trial_summary(self,number):
+        """Read one original summary and its (stock count, period count) pairs.
+
+        The directory comes from complete validation. Recheck all bytes before
+        seeking, including bytes outside this trial, just as traversal does.
+        """
+        if type(number) is not int or number<1:raise ValueError('Invalid evidence selection.')
+        if number>len(self._trials):raise ValueError('Stored trial not found.')
+        self._verify_stream(self.stream)
+        start,end,sizes=self._trials[number-1]
+        for record,_,_,position in _physical_records(self.stream,start,end,self.piece_bytes,self.record_bytes,
+                self.checkpoint,observe=self._observe,validate_values=False):
+            self.bytes_read=position
+            return record['summary'],sizes
+        raise ValueError('Stored trial is incomplete.')
 
     @property
     def format_version(self): return self._header['format_version']

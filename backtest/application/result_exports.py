@@ -57,11 +57,9 @@ def _selection(reader,kind,trial):
         if not configuration:raise ValueError('This result has no random-trial summary.')
         return 'random-dates-seed-'+string(configuration['seed'])+'.csv',None
     if kind not in ('holdings','returns'):raise ValueError('Unknown complete export.')
-    for record in evidence_views.records(reader,trial):
-        if record['type']=='end_trial':
-            summary=record['summary']
-            return ('scheduled-'+kind+'-'+summary['start']+'-'+summary['end']+'.csv',
-                    summary['options'].get('metric','ev_ebitda'))
+    summary,_=reader.trial_summary(trial)
+    return ('scheduled-'+kind+'-'+summary['start']+'-'+summary['end']+'.csv',
+            summary['options'].get('metric','ev_ebitda'))
 
 
 def rows(reader,kind,trial):

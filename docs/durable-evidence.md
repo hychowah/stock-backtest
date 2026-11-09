@@ -52,13 +52,11 @@ Same-database copies use the same independent reader lifetime.
 Each request from an acquired display opens a separate file handle and uses
 `opened.reader.reopen(stream)`. It hashes the complete file before exposing rows.
 The exact bytes must match the acquired reader's complete codec-validation proof.
-It does not repeat complete semantic decoding for each request. Consumer traversal
-uses `verified_records()`, which checks the complete physical identity again before
-yielding. It retains framing, piece, limit and decoding checks. The original proof
-supplies semantic validation. Ordinary `records()` keeps all its checks.
-The proof retains no rows or offsets and
-ends with the acquired lifetime. Initial durable copying and opening still
-validate complete destination evidence. No persistent cache or index is added.
+Its trial directory locates summaries without scanning holdings. Both summary
+reads and record traversal recheck the complete physical identity before decoding.
+Framing, limits, checksums and ordinary record validation stay in force. The proof
+and directory end with the acquired lifetime. Initial durable copying and opening
+still validate complete destination evidence. Stored bytes do not change.
 
 The caller pins a Jobs source through the entire save. Job expiry ends new
 access. Existing pins keep their bytes and Jobs charge until closure. Durable

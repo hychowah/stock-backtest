@@ -36,10 +36,16 @@ previous completed result with that output. A successful `finish` only completes
 the codec; resource retirement and durable publication still belong to owners.
 
 The reader verifies the entire stream before exposing completed metadata. It
-reads records sequentially without collecting trials or periods. The owner must
-pin immutable bytes through reading. Use one active iterator per stream. Keeping
-all yielded records is an explicit eager caller choice, outside codec bounds.
-Random access indexes and read pins remain work for existing application stores.
+records each trial summary's byte range and counts periods by their stock count.
+This compact directory retains no holding or period rows. It stays with the
+reader and is shared by its independent request streams. Stored bytes do not
+change. The owner must pin immutable bytes through reading. Use one active
+iterator per stream.
+
+`reader.trial_summary(number)` checks the complete physical identity, then
+decodes only that trial's original summary. It also returns immutable pairs of
+stock count and period count. The presentation layer applies the summary's
+requested ranks to those counts. Period and holding traversal stays sequential.
 
 `reader.reopen(other_stream)` opens an independent reader of those exact validated
 contents. Initial validation records the physical length and SHA-256 of the bytes
@@ -50,11 +56,9 @@ checks continue between buffers. The owner must keep both streams immutable.
 Each stream has its own seek position. Ordinary `records()` keeps its existing
 checks, including after reopening.
 
-This proof stays with the validated reader. It retains only its existing bounded
-header/footer, limits, length and hash. It has no rows, offsets, index, registry
-or persistent cache. It cannot admit unvalidated evidence. Acquired display owners
-use this operation for request streams. Initial Jobs publication, acquisition
-and durable destination validation still perform complete codec validation.
+The proof and trial directory end with the validated reader. Initial Jobs
+publication, acquisition and durable destination validation still check the
+complete codec. No persistent cache or stored index is added.
 
 `reader.verified_records()` traverses an exact validated snapshot. It verifies
 the complete physical length/hash again immediately before yielding any record.
