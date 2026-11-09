@@ -46,11 +46,13 @@ const ScheduleView=(()=>{
     const artifact=ResultArtifacts.forView('custom');
     const result=displayedResult();
     if(!result)return;
+    const market=artifact.settings.market;
     const keys=kind==='holdings'?['period_start','period_end','rank','symbol','name','exchange','sector','market_cap','enterprise_value','metric','metric_multiple','metric_yield','fiscal','entry','exit','return_value','weight','contribution_pp','status']:['entry','exit','names','portfolio','spy'];
     const observations=kind==='holdings'?result.periods.flatMap(p=>p.holdings.map(h=>({...h,period_start:p.entry,period_end:p.exit,metric:result.options.metric??'ev_ebitda'}))):result.periods;
     const producer=artifact.result.producer;
     if(producer)keys.push('engine');
-    const rows=[keys,...observations.map(h=>keys.map(k=>k==='engine'?producer.engine:h[k]))];
+    if(market!==undefined)keys.unshift('market','currency');
+    const rows=[keys,...observations.map(h=>keys.map(k=>k==='market'?market:k==='currency'?'USD':k==='engine'?producer.engine:h[k]))];
     const body=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([body],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='scheduled-'+kind+'-'+result.start+'-'+result.end+'.csv';link.click();URL.revokeObjectURL(url);
@@ -105,7 +107,7 @@ const ScheduleView=(()=>{
     }
     EngineControls.requireCalendar(body);
     body=await StrategyDraft.captureBuiltins(body);
-    if(replay&&!plan.options.strategy)plan.options={strategy:body.strategy};
+    if(replay&&!plan.options.strategy)plan.options={strategy:body.strategy,...(Object.hasOwn(plan.options,'market')?{market:plan.options.market}:{})};
     preparing=false;
     await follow(BacktestRuns.create(random?'random':'custom',body,replay?plan:null));
     }catch(error){node('screen-error').textContent=error.message;}

@@ -1,4 +1,22 @@
-const screeningData=JSON.parse(document.getElementById('screening-data').textContent);
+const screeningMarkets=JSON.parse(document.getElementById('screening-data').textContent);
+let screeningData=screeningMarkets;
+const marketLabels={us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'};
+const selectedMarket=()=>document.getElementById('stock-market')?.value||'us';
+function selectMarket(value){
+  const control=document.getElementById('stock-market');if(control)control.value=value;
+  screeningData=value==='us'?screeningMarkets:screeningMarkets.markets[value];
+  document.getElementById('stock-pool').innerHTML='<option value="cached">All stocks with cached prices</option>';
+  for(const [id,key] of [['sector-filter','sector'],['exchange-filter','exchange']]){
+    document.getElementById(id).innerHTML='<option value="">All</option>'+screeningData.choices[key].map(v=>`<option value="${safe(v)}">${safe(v)}</option>`).join('');
+  }
+  const asof=screeningData.latest.metadata.asof;
+  const first=screeningData.bounds.first||'1996-01-01';
+  for(const id of ['trade-start','trade-end']){document.getElementById(id).min=first;document.getElementById(id).max=asof||'';}
+  if(asof){document.getElementById('trade-end').value=asof;const start=document.getElementById('trade-start');if(start.value<first)start.value=first;if(start.value>asof)start.value=asof;}
+  document.getElementById('variable-preview-date').value=asof||'';
+  if(!asof)document.getElementById('screen-error').textContent='Prepare '+marketLabels[value]+' data from Manage backtest data before running this market.';
+}
+
 const rankFrom=document.getElementById('rank-from'),rankTo=document.getElementById('rank-to');
 const fields={selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
 let screeningMode='latest';
@@ -15,8 +33,8 @@ const metricLabel=(id,artifact=currentArtifact())=>artifact?.catalog?.metrics[id
 function currentSettings({preserveLegacy=false}={}){
   const options=StrategyDraft.selectionSettings(readOptions(),preserveLegacy),view=viewKey();
   const engine=EngineControls.fields();
-  if(view==='latest')return {mode:'latest',...options,...(StrategyDraft.isScalar()?engine:{})};
-  const settings={mode:'custom',...options,...CalendarSettings.read(),...engine};
+  if(view==='latest')return {mode:'latest',market:selectedMarket(),...options,...(StrategyDraft.isScalar()?engine:{})};
+  const settings={mode:'custom',market:selectedMarket(),...options,...CalendarSettings.read(),...engine};
   if(document.getElementById('date-testing').value==='random'){
     settings.mode='random';settings.trials=+document.getElementById('random-trials').value;
     if(document.getElementById('repeat-random').checked)settings.seed=+document.getElementById('random-seed').value;
@@ -49,9 +67,9 @@ function completeResult(settings,result){
   publishResult(ResultArtifacts.create(settings,result,sourceCatalog(),presentation));
 }
 function scheduledPresentation(settings){
-  if(settings.strategy)return {coverage:'Results use the captured strategy over prepared stock pools. Prepared universe and cached price coverage still apply.',notice:{text:'Results retain the submitted settings and selected stock values, including explanations for custom variables.',severity:'info'},rangeNote:'Downloads use completed immutable evidence. Period and stock tables show pages of the complete result.',periodLabel:settings.mode==='latest'?'Latest cached close':CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
+  if(settings.strategy)return {coverage:(marketLabels[settings.market||'us']||settings.market)+' · USD returns and cash. Captured strategy over prepared stocks. FMP coverage and later revisions remain limitations. US Treasury reference yields; SPY total-return benchmark uses the previous completed US close for Asian dates.',notice:{text:'Results retain the submitted settings and selected stock values, including explanations for custom variables.',severity:'info'},rangeNote:'Downloads use completed immutable evidence. Period and stock tables show pages of the complete result.',periodLabel:settings.mode==='latest'?'Latest cached close':CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
   return {
-    coverage:'Custom dates use the local daily-cache service. Original candidate-set restrictions and cached-price coverage still apply.',
+    coverage:(marketLabels[settings.market||'us']||settings.market)+' · USD returns and cash. FMP coverage is incomplete; financial statements may include later revisions. US Treasury reference yields. SPY is the S&P 500 total-return proxy, using the previous completed US close for Asian dates.',
     notice:{text:'Results use the submitted stock filters and trade dates.',severity:'info'},
     rangeNote:'Custom schedule: trade dates and interval determine holding periods. '+StockScreener.selectionDescription(settings)+' Results and CSV exports below use this schedule.',
     periodLabel:CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end};
@@ -80,14 +98,9 @@ const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractio
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function initializeFilters(){
   rankFrom.value='1';rankTo.value='50';
-  for(const [field,key] of [['sector-filter','sector'],['exchange-filter','exchange']]){
-    const values=screeningData.choices[key];
-    document.getElementById(field).innerHTML='<option value="">All</option>'+values.map(v=>`<option value="${safe(v)}">${safe(v)}</option>`).join('');
-  }
   document.getElementById('ranking-metric').innerHTML=Object.entries(screeningData.metrics).map(([key,m])=>`<option value="${safe(key)}">${safe(m.label)}</option>`).join('');
   document.getElementById('trade-start').value='2015-01-01';
-  document.getElementById('trade-end').value=screeningData.latest.metadata.asof;
-  document.getElementById('trade-end').max=screeningData.latest.metadata.asof;
+  selectMarket('us');
   document.getElementById('rebalance-months').value='12';
   if(document.getElementById('calendar-custom'))document.getElementById('calendar-custom').checked=false;
   document.getElementById('date-testing').value='single';
@@ -164,8 +177,9 @@ function editFilter(index,key,value,run){
 }
 function resetFilters(){
   filterConditions=[];pendingFilter=false;renderConditions();
+  document.getElementById('stock-pool').innerHTML='<option value="cached">Broad cached-price pool</option>';
   for(const [key,id] of Object.entries(fields)){
-    const v=StockScreener.defaults[key];
+    const v=key==='pool'?'cached':StockScreener.defaults[key];
     document.getElementById(id).value=v===null?'':String(key==='min_cap'||key==='min_ev'?v/1e6:key==='min_yield'?v*100:v);
   }
 }
@@ -213,7 +227,7 @@ function switchMode(mode){
 }
 function applyLatest(){
   let settings,result;
-  try{settings=currentSettings();result=StockScreener.latestScreen(screeningData,readOptions());}
+  try{settings=currentSettings();if(!screeningData.latest.metadata.asof)throw Error('Prepare '+marketLabels[selectedMarket()]+' data from Manage backtest data.');result=StockScreener.latestScreen(screeningData,readOptions());}
   catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
   completeResult(settings,result);
 }
@@ -233,7 +247,7 @@ function renderLatest(r){
 function latestPresentation(r){
   const o=r.options;
   const meta=screeningData.latest.metadata;
-  const coverage=`Latest cached session: ${r.asof}. Only cached currently-listed names with a price on that exact date are eligible. ${screeningData.latest.cached.length} valued names out of ${meta.eligible_financials} active names with eligible financials; coverage is incomplete.`+(o.pool==='legacy'?' Original candidate set keeps the pre-price 250-name buffer and report-level size floors.':'');
+  const coverage=`${marketLabels[selectedMarket()]} · USD values. Latest cached session: ${r.asof}. Only cached currently-listed names with a price on that exact date are eligible. ${screeningData.latest.cached.length} valued names out of ${meta.eligible_financials} active names with eligible financials; coverage is incomplete.`+(o.pool==='legacy'?' Original candidate set keeps the pre-price 250-name buffer and report-level size floors.':'');
   const text=o.selection_order==='rank_first'?`${r.stocks.length} of the requested ${r.requested} ranks pass the filters on ${r.asof}. No replacements are added.`:r.stocks.length<r.requested?`Only ${r.stocks.length} picks are available for the requested ${r.requested} ranks after filtering on ${r.asof}.`:`Showing ${r.stocks.length} picks valued at the ${r.asof} cached close, re-ranked from ${r.matches} matching names.`;
   const severity=r.stocks.length<r.requested?'warning':'info';
   const rangeNote=`Latest picks · ${r.asof} · ${StockScreener.selectionDescription(o)} No holding returns or future performance are used in this list.`;
@@ -253,8 +267,8 @@ function downloadLatest(){
   const artifact=ResultArtifacts.forView('latest');if(artifact?.version===4){ResultArtifacts.reader(artifact).download('screen');return;}
   const currentLatest=ResultArtifacts.forView('latest')?.result;
   if(!currentLatest)return;
-  const keys=['rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','metric','metric_yield','metric_multiple','fiscal','known','price_date'];
-  const rows=[keys,...currentLatest.stocks.map(h=>keys.map(k=>k==='metric'?currentLatest.options.metric:h[k]))];
+  const keys=[...(Object.hasOwn(artifact.settings,'market')?['market','currency']:[]),'rank','symbol','name','exchange','sector','price','market_cap','enterprise_value','ebitda_yield','ev_ebitda','metric','metric_yield','metric_multiple','fiscal','known','price_date'];
+  const rows=[keys,...currentLatest.stocks.map(h=>keys.map(k=>k==='market'?artifact.settings.market:k==='currency'?'USD':k==='metric'?currentLatest.options.metric:h[k]))];
   const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='latest-picks-'+currentLatest.asof+'.csv';a.click();URL.revokeObjectURL(url);
@@ -480,6 +494,7 @@ const StrategyDraft=(()=>{
       capturedBuiltins={strategy:copy(capture)};
     }
     scalar=settings.strategy?{intent:{format:'strategy-intent',version:1,selection:copy(settings.strategy.selection),pool:settings.strategy.pool,bounds:copy(settings.strategy.bounds)},detached:settings.strategy.variables?[copy(settings.strategy.variables)]:[],projections:{},original:copy(settings.strategy)}:null;
+    selectMarket(settings.market||'us');
     screeningMode=settings.mode==='latest'?'latest':'backtest';
     setModeVisibility();
 
@@ -490,8 +505,8 @@ const StrategyDraft=(()=>{
     };
     for(const [key,id] of Object.entries(fields)){
       const scalarValue=scalar?(key==='selection_order'?settings.strategy.selection.selection_order:key==='pool'?settings.strategy.pool:Object.hasOwn(settings.strategy.bounds,key)?settings.strategy.bounds[key]:StockScreener.defaults[key]):settings[key];
-      const value=key==='selection_order'?(scalarValue??StockScreener.defaults.selection_order):scalarValue;
-      set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):value);
+      const value=key==='selection_order'?(scalarValue??StockScreener.defaults.selection_order):key==='pool'?(scalarValue??'legacy'):scalarValue;
+      set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):key==='pool'&&value==='legacy'?'Recorded US original candidate set':value);
     }
     set('rank-from',settings.strategy?.selection.rank_from??settings.rank_from??1);set('rank-to',settings.strategy?.selection.rank_to??settings.rank_to??50);
     if(document.getElementById('backtest-engine'))set('backtest-engine',settings.engine??'original',
@@ -529,7 +544,7 @@ const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
 ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:StrategyDraft.isScalar()}),Workspaces.runStatus);
-VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value});
+VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value,market:selectedMarket});
 StrategyDraft.render();
 setModeVisibility();
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
@@ -581,6 +596,7 @@ document.getElementById('strategy-form').addEventListener('input',event=>{
 document.getElementById('strategy-form').addEventListener('change',event=>{
   const id=event.target.id;
   if(['auto-run','rank-from','rank-to'].includes(id)||event.target.dataset.key)return;
+  if(id==='stock-market'){selectMarket(selectedMarket());document.getElementById('stock-pool').value='cached';}
   settingsChanged();
 });
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());

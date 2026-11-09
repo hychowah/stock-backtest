@@ -4,7 +4,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const nodes=new Map(),requests=[],ids=[],posted=[],storage=new Map();
 const node=id=>{if(!nodes.has(id))nodes.set(id,{id,value:'',checked:false,tagName:'INPUT',options:[],textContent:'',innerHTML:'',disabled:false,hidden:false,add(){},setAttribute(){},querySelectorAll:()=>[]});return nodes.get(id);};
-node('screening-data').textContent=JSON.stringify({metrics:{ev_ebitda:{label:'EV/EBITDA'}},filter_catalog:{pe:{label:'P/E'}},companies:{},latest:{metadata:{asof:'2015-01-05'}}});
+node('screening-data').textContent=JSON.stringify({metrics:{ev_ebitda:{label:'EV/EBITDA'}},filter_catalog:{pe:{label:'P/E'}},companies:{},choices:{sector:[],exchange:[]},bounds:{first:'1996-01-01',last:'2015-01-05'},latest:{metadata:{asof:'2015-01-05'}}});
+const prepared=JSON.parse(node('screening-data').textContent);prepared.markets={hk:{...prepared,market:'hk',choices:{sector:['Finance'],exchange:['HKSE']},bounds:{first:'2002-01-02',last:'2015-01-05'}},jp:{...prepared,market:'jp',choices:{sector:['Industry'],exchange:['JPX']},bounds:{first:'2005-01-04',last:'2015-01-05'}}};node('screening-data').textContent=JSON.stringify(prepared);
 const defaults={selection_order:'filter_first',metric:'ev_ebitda',pool:'legacy',min_cap:100e6,max_cap:null,min_ev:50e6,min_yield:0,max_multiple:null,sector:null,exchange:null};
 let release=null,pause=false,useWire=false;
 const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null;
@@ -71,6 +72,9 @@ if(process.argv[2]==='--builtins-parity'){
  run("const held=StrategyDraft.beginQueuedEdit('queued');held.restore(settings)");
  const heldToken=run('StrategyDraft.read().revision');assert.throws(()=>run('StrategyDraft.restore(settings)'),/Save or cancel/);
  run('held.end()');assert.throws(()=>run(`StrategyDraft.patch({role:'ranking',source,capture:detached,authored},${heldToken})`),/draft changed/);
+ context.settings.market='hk';run('StrategyDraft.restore(settings)');
+ assert.equal(node('stock-market').value,'hk');assert(node('exchange-filter').innerHTML.includes('HKSE'));assert.equal(node('trade-start').min,'2002-01-02');assert.equal((await run('StrategyDraft.prepareSubmission()')).market,'hk');
+ delete context.settings.market;run('StrategyDraft.restore(settings)');assert.equal(node('stock-market').value,'us');
  // Null size floors restore exactly; the normal captured path handles old/deleted sources.
  context.settings.strategy.bounds.min_cap=null;context.settings.strategy.bounds.min_ev=null;
  run('StrategyDraft.restore(settings)');assert.equal(node('min-cap').value,'');assert.equal(run('StrategyDraft.read().settings.strategy.bounds.min_cap'),null);

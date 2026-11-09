@@ -4,6 +4,8 @@ Raw edits and checked detached restoration are distinct. Exact submitted content
 wins over archive lookup. Unchanged captures are returned without a library or
 catalog read. No operation starts a calculation or owns financial resources.
 """
+from copy import deepcopy
+
 from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions, library, parameters, measures
 from backtest.application import strategy_requests
@@ -14,18 +16,20 @@ def catalog():
     available = {item['id']: item for item in columns.catalog()}
     admitted = [available[item['id']] for item in parameters.catalog(parameters.V1)]
     terms = []
-    for descriptor in measures.catalog():
-        bundle = measures.bundle([descriptor['id']])
+    for descriptor in measures.catalog(parameters.V4):
+        bundle = measures.bundle([descriptor['id']], parameters.V4)
         labels = []
         for entry in bundle['definitions']:
             found = measures.exact(entry['variable_id'], entry['revision'])
             labels.append(dict(variable_id=entry['variable_id'], revision=entry['revision'], name=found['name']))
         terms.append(dict(descriptor, submitted=bundle['definitions'], labels=labels))
     return dict(parameters=admitted, builtins=strategy_requests.builtin_catalog(),
-                expanded_parameters=parameters.catalog(parameters.V3), version2_parameters=parameters.catalog(parameters.V2), measures=terms, units=parameters.units(parameters.V3),
+                expanded_parameters=parameters.catalog(parameters.V4), version2_parameters=parameters.catalog(parameters.V2),
+                version3_parameters=parameters.catalog(parameters.V3), measures=terms, units=parameters.units(parameters.V4),
                 operations=sorted(definitions.OPERATIONS),
-                namespaces=[parameters.V1,parameters.V2,parameters.V3],
-                displays={unit:details['displays'] for unit,details in parameters.units(parameters.V3).items()},
+                namespaces=[parameters.V1,parameters.V2,parameters.V3,parameters.V4],
+                current_parameter_catalog=parameters.V4, current_temporal_policy=definitions.MARKET_TEMPORAL_POLICY,
+                displays={unit:details['displays'] for unit,details in parameters.units(parameters.V4).items()},
                 preview_limit=16, preview_engine='original', strategy_bytes=strategy_requests.STRATEGY_BYTES,
                 request_bytes=strategy_requests.REQUEST_BYTES)
 
@@ -78,16 +82,55 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
 
     The definition owner supplies the revision, units and requirements. Captures
     include exact references. Missing storage is valid for a complete local draft.
+    Explicit Upgrade changes the root policy and named-measure references;
+    user-variable references retain their selected revisions.
     """
     if type(request) is not dict or 'definition' not in request:
         raise ValueError('A variable definition is required.')
     definition = request['definition']
+    additions, names = {}, {}
+    if request.get('upgrade') is True:
+        definitions.revision(definition)
+        definition = deepcopy(definition)
+        definition.update(version=3, parameter_catalog=parameters.V4,
+                          temporal_policy=definitions.MARKET_TEMPORAL_POLICY)
+        current = {item['root']['variable_id']: item for item in measures.catalog(parameters.V4)}
+        def upgrade(node):
+            if node['op'] == 'ref' and node['variable_id'] in current and measures.exact(
+                    node['variable_id'], node['revision']) is not None:
+                descriptor = current[node['variable_id']]
+                node['revision'] = descriptor['root']['revision']
+                for item in measures.bundle([descriptor['id']], parameters.V4)['definitions']:
+                    identity = item['variable_id'], item['revision']
+                    additions[identity] = item
+                    names[identity] = dict(variable_id=item['variable_id'], revision=item['revision'],
+                                           name=measures.exact(*identity)['name'])
+            for field in ('left', 'right', 'arg'):
+                if field in node:
+                    upgrade(node[field])
+        upgrade(definition['expression'])
     root = dict(variable_id=request.get('variable_id','local:editor'), revision=definitions.revision(definition))
     entries, labels = _content(request, [root] + definitions.references(definition))
     entries = [item for item in entries if (item['variable_id'],item['revision']) != (root['variable_id'],root['revision'])]
     entries.append(dict(root, definition=definition))
     labels = [item for item in labels if (item['variable_id'],item['revision']) != (root['variable_id'],root['revision'])]
     labels.append(dict(root, name=request.get('name') or root['variable_id']))
+    if request.get('upgrade') is True:
+        available = {(item['variable_id'], item['revision']): item for item in entries}
+        available.update(additions)
+        pending, retained = [(root['variable_id'], root['revision'])], set()
+        while pending:
+            checkpoint()
+            identity = pending.pop()
+            if identity in retained:
+                continue
+            retained.add(identity)
+            if identity in available:
+                pending.extend((item['variable_id'], item['revision'])
+                               for item in definitions.references(available[identity]['definition']))
+        entries = [item for identity, item in available.items() if identity in retained]
+        names.update({(item['variable_id'], item['revision']): item for item in labels})
+        labels = [item for identity, item in names.items() if identity in retained]
     captured = _capture([root],store,entries,labels,checkpoint)
     checked = captured.to_dict()['program']
     output = next(item for item in checked['definitions'] if (item['variable_id'],item['revision']) == (root['variable_id'],root['revision']))

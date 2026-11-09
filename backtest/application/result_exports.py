@@ -67,15 +67,17 @@ def rows(reader,kind,trial):
 
 
 def _rows(reader,kind,trial,metric):
+    options=reader.metadata.get('options',{})
+    context=dict(market=options['market'],currency='USD') if 'market' in options else {}
     if reader.format_version==2 and kind in ('holdings','screen'):
-        keys=['rank','symbol','name','exchange','sector','ranking_value','ranking_unit','ranking_display','ranking_direction','market_cap','enterprise_value','fiscal','scalar_evidence']
+        keys=list(context)+['rank','symbol','name','exchange','sector','ranking_value','ranking_unit','ranking_display','ranking_direction','market_cap','enterprise_value','fiscal','scalar_evidence']
         if kind=='holdings':keys+=['period_start','period_end','entry','exit','return_value','weight','contribution_pp','status']
         yield keys
         source=reader.verified_records() if kind=='screen' else evidence_views.records(reader,trial)
         for record in source:
             if record['type']=='period':period=record['value']
             elif record['type']==('screen' if kind=='screen' else 'holding'):
-                row=dict(record['value'])
+                row=dict(record['value'],**context)
                 if kind=='holdings':row.update(period_start=period['entry'],period_end=period['exit'])
                 row['scalar_evidence']=json.dumps(row['scalar_evidence'],sort_keys=True,separators=(',',':'))
                 yield [row.get(k) for k in keys]
@@ -83,22 +85,24 @@ def _rows(reader,kind,trial,metric):
     if kind=='random':
         summary=reader.manifest['summary'];configuration=summary.get('configuration')
         if not configuration:raise ValueError('This result has no random-trial summary.')
-        keys=RANDOM+(['interval_unit','interval_count'] if configuration.get('calendar') else ['months'])+['dates']
+        keys=list(context)+RANDOM+(['interval_unit','interval_count'] if configuration.get('calendar') else ['months'])+['dates']
         yield keys
         for row in summary['trials']:
-            values=dict(row,seed=configuration['seed'],dates=';'.join(row['dates']))
+            values=dict(row,**context,seed=configuration['seed'],dates=';'.join(row['dates']))
             if configuration.get('calendar'):
                 values.update(interval_unit=configuration['calendar']['interval']['unit'],interval_count=configuration['calendar']['interval']['count'])
             else:values['months']=configuration['months']
             yield [values.get(k) for k in keys]
     elif kind in ('holdings','returns'):
-        keys=HOLDINGS if kind=='holdings' else RETURNS;yield keys
+        keys=list(context)+(HOLDINGS if kind=='holdings' else RETURNS);yield keys
         for record in evidence_views.records(reader,trial):
             if record['type']=='period':
                 period=record['value']
-                if kind=='returns':yield [period.get(k) for k in keys]
+                if kind=='returns':
+                    value=dict(period,**context)
+                    yield [value.get(k) for k in keys]
             elif kind=='holdings' and record['type']=='holding':
-                value=dict(record['value'],period_start=period['entry'],period_end=period['exit'],metric=metric)
+                value=dict(record['value'],**context,period_start=period['entry'],period_end=period['exit'],metric=metric)
                 yield [value.get(k) for k in keys]
     else:raise ValueError('Unknown complete export.')
 

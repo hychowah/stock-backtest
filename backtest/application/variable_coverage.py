@@ -23,9 +23,9 @@ def scopes(db, view):
     """
     view.validate()
     generation=hashlib.sha256(definitions.canonical(dict(input=view.identity,projection=view.projection)).encode()).hexdigest()
-    book=book_store.open_book(db);entry=book_store.record(db,book)['entry']
+    book=view.open_book;entry=book_store.record(db,book)['entry']
     found=[dict(mode='latest',pool=pool,context_date=entry,book=book)
-           for pool in ('legacy','cached') if book_store.find(db,entry,pool,latest=True)==book]
+           for pool in ('legacy','cached') if book_store.find(db,entry,pool,latest=True,market=view.market)==book]
     return dict(generation=generation,scopes=found)
 
 
@@ -53,7 +53,7 @@ def inspect(checked, scope, db, view, checkpoint=backtest_control.checkpoint):
     if checked['pool']!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     projection=checked['variables']['program']
-    rows,admission=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True)
+    rows,admission=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True,market=view.market)
     outputs=[]; seen=set()
     for root in projection['bundle']['roots']:
         identity=root['variable_id'],root['revision']

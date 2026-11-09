@@ -207,7 +207,7 @@ class BuildStateTests(unittest.TestCase):
 
     def test_rebuild_invalidates_old_marker_before_writing_and_publishes_it_last(self):
         build_state.record_build();self.assertTrue(build_state.current_build())
-        page=SimpleNamespace(latest_stocks=[],screening_data={'latest':{'metadata':{'asof':'2026-01-05'}}})
+        page=SimpleNamespace(latest_stocks=[],screening_data={'latest':{'metadata':{'asof':'2026-01-05'}},'markets':{}})
         with patch.object(rendering,'LOCAL_OUTPUT',build_state.LOCAL_OUTPUT),patch.object(rendering,'STAMP',build_state.STAMP),patch.object(rendering,'load_page_data',return_value=page),patch.object(rendering,'render',return_value='new page'):
             with patch.object(rendering,'data_page',side_effect=ValueError('interrupted build')),self.assertRaises(ValueError):rendering.build(build_state.LOCAL_OUTPUT)
             self.assertFalse(build_state.STAMP.exists());self.assertFalse(build_state.current_build())

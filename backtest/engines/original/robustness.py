@@ -25,8 +25,10 @@ def plan(db, *, start, end, months=12, trials=24, seed=None, **options):
     if seed is None:seed=random.SystemRandom().getrandbits(32)
     if type(seed) is not int or not 0<=seed<=4294967295:
         raise ValueError('Choose a whole-number seed between 0 and 4294967295.')
-    screening.validate_selection(**options)
-    sessions=facts.sessions(db)
+    market_id=options.get('market','us')
+    if market_id!='us':options.setdefault('pool','cached')
+    screening.validate_selection(**{key:value for key,value in options.items() if key!='market'})
+    sessions=facts.sessions(db,market_id)
     calendar=schedule_calendar.SessionCalendar(sessions)
     configuration=schedule_calendar.legacy_configuration(dict(start=start,end=end,months=months))
     sampled=calendar.sample(configuration,trials,seed,checkpoint=backtest_control.checkpoint)

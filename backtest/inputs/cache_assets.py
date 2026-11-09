@@ -181,9 +181,9 @@ class SeriesAsset:
     cannot match the wrong file. Unfinished managed windows remain missing
     even if parallel results extend the actual date span on both sides.
     """
-    def __init__(self,path,field,*,stock=False):
+    def __init__(self,path,field,*,stock=False,key=None):
         self.path=path;self.field=field;self.stock=stock
-        self.key='px/'+path.name if stock else path.name
+        self.key=key if key is not None else ('px/'+path.name if stock else path.name)
         self.payload={} if stock else [];self.valid=False;self.digest=None
         content=None
         if path.exists():

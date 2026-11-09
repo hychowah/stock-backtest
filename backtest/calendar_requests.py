@@ -109,8 +109,8 @@ def validate_submitted(options, plan):
             or not {'requested', 'seed'}.issubset(plan)
             or not ({'calendar'} if 'calendar' in plan else {'start','end','months'}).issubset(plan)):
         raise ValueError('Invalid recorded random plan.')
-    submitted = {'selection_order':'filter_first', **plan['options']}
+    submitted = {'selection_order':'filter_first', 'market':'us', **plan['options']}
     submitted.update(request_fields(plan), trials=plan['requested'], seed=plan['seed'])
-    for key, value in {'selection_order':'filter_first', **options}.items():
+    for key, value in {'selection_order':'filter_first', 'market':'us', **options}.items():
         if key not in submitted or value != submitted[key]:
             raise ValueError('Submitted settings differ from the recorded random plan.')

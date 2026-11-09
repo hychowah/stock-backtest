@@ -5,7 +5,7 @@ const DataPanel=(()=>{
   const controls=['data-update','data-add','data-check','data-rebuild'];
   let lastReport=null,pollTimer=null,connected=false,busy=false,submitting=false,uncertain=false,lastUpdate={},admissionError='';
   function read(){
-    const o={scope:node('data-scope').value,symbols:node('data-symbols').value,start:node('data-start').value,end:node('data-end').value,datasets:['universe','financials','fundamentals','prices','spy','treasury']};
+    const o={market:node('data-market')?.value||'us',scope:node('data-scope').value,symbols:node('data-symbols').value,start:node('data-start').value,end:node('data-end').value,datasets:['universe','financials','fundamentals','prices','spy','treasury']};
     if(!o.start||!o.end||o.start>o.end)throw Error('Choose a start date before the end date.');
     if(o.scope==='symbols'&&!o.symbols.trim())throw Error('Enter the stock symbols to update.');
     return o;
@@ -38,7 +38,7 @@ const DataPanel=(()=>{
   function renderReport(report){
     if(!report)return;
     lastReport=report;node('data-export').disabled=false;
-    node('data-checked').textContent=`Checked ${new Date(report.checked_at).toLocaleString()} · ${report.options.start} to ${report.options.end} · ${report.options.scope} group.`;
+    node('data-checked').textContent=`Checked ${new Date(report.checked_at).toLocaleString()} · ${report.options.start} to ${report.options.end} · ${report.options.market||'us'} market · ${report.options.scope} group.`;
     node('data-key').textContent=report.api_key_present?'Provider key file is present. Access is checked when an update makes a request.':'Provider key file is missing. Checks and preparation work offline. Add the key before updating.';
     const values=[['Stocks in checked group',report.target_count],['With usable price histories',report.prices_available],['Missing annual records',report.missing_financials.length]];
     node('data-summary').innerHTML=values.map(([label,value])=>'<div>'+escape(label)+'<strong>'+escape(value)+'</strong></div>').join('');
@@ -61,7 +61,8 @@ const DataPanel=(()=>{
     node('data-cancel').hidden=!busy||update.unconfirmed&&!job.running;
     node('data-connect').hidden=connected;
     node('data-readiness').textContent=update.unconfirmed?'Update status unconfirmed':busy?'Updating data':prepared?(update.can_continue?'Ready for backtests. Update unfinished.':'Ready for backtests'):update.outcome==='interrupted'?'Update interrupted':update.outcome==='cancelled'?'Update stopped':update.outcome==='failed'?'Update needs attention':update.outcome==='partial'?'Some data could not be updated':'Choose Update data to get ready';
-    node('data-latest').textContent=('latest_session' in state?state.latest_session:update.latest_session)??'Not checked yet';
+    const code=node('data-market')?.value||'us',dates=state.latest_dates??update.latest_dates;
+    node('data-latest').textContent=(dates?dates[code]:code==='us'?('latest_session' in state?state.latest_session:update.latest_session):null)??'No prepared session';
     node('data-last-success').textContent=update.last_success?new Date(update.last_success).toLocaleString():'No successful update recorded';
     node('data-open').hidden=!prepared||busy;
     node('data-progress').hidden=!update.started_at&&!update.outcome&&!job.action;
@@ -118,7 +119,7 @@ const DataPanel=(()=>{
     if(submitting||uncertain)return;
     let request;
     try{
-      request=action==='continue'?{}:['cancel','rebuild','update'].includes(action)&&!scoped?{}:read();
+      request=action==='continue'||action==='cancel'?{}:action==='update'&&!scoped?{market:node('data-market')?.value||'us'}:action==='rebuild'?{}:read();
     }catch(error){admissionError=error.message;node('data-error').textContent=admissionError;return;}
     submitting=true;disable();admissionError='';node('data-error').textContent='';
     try{const state=await api(action,request);submitting=false;render(state);}
@@ -138,6 +139,7 @@ const DataPanel=(()=>{
     node('data-add').addEventListener('click',()=>start('update',true));
     for(const action of ['check','rebuild','cancel'])node('data-'+action).addEventListener('click',()=>start(action));
     node('data-scope').addEventListener('change',()=>node('data-symbols').disabled=node('data-scope').value!=='symbols');
+    node('data-market')?.addEventListener('change',refresh);
     node('data-search').addEventListener('input',stocks);
     node('data-export').addEventListener('click',()=>{
       if(!lastReport)return;const url=URL.createObjectURL(new Blob([JSON.stringify(lastReport,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='backtest-data-check.json';link.click();URL.revokeObjectURL(url);

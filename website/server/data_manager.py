@@ -27,6 +27,7 @@ ROOT=r.ROOT
 RAW=r.RAW
 COVERAGE=RAW/'download-coverage.json'
 KINDS=('universe','financials','fundamentals','prices','spy','treasury')
+FOREIGN_STATEMENTS=('income-statement','balance-sheet-statement','cash-flow-statement')
 
 
 
@@ -37,7 +38,7 @@ Cancelled=fmp_download.Cancelled
 
 def options(request):
     """Default: the companies with cached prices, through the latest available day."""
-    if set(request)-{'scope','symbols','start','end','datasets'}:
+    if set(request)-{'scope','symbols','start','end','datasets','market'}:
         raise ValueError('Unknown data option.')
     start=date.fromisoformat(request.get('start','1995-01-01'))
     end=date.fromisoformat(request.get('end',str(date.today())))
@@ -55,11 +56,20 @@ def options(request):
     datasets=request.get('datasets',list(KINDS))
     if not isinstance(datasets,list) or any(k not in KINDS for k in datasets) or not datasets:
         raise ValueError('Choose at least one data type.')
-    return dict(start=str(start),end=str(end),scope=scope,symbols=symbols,datasets=datasets)
+    result=dict(start=str(start),end=str(end),scope=scope,symbols=symbols,datasets=datasets)
+    if 'market' in request:result['market']=market.require(request['market'])
+    return result
 
 
-def financial_records():
-    return cache_assets.financial_records(RAW/'metrics.jsonl')
+def financial_records(market_id='us'):
+    if market_id=='us':return cache_assets.financial_records(RAW/'metrics.jsonl')
+    records={}
+    for symbol in universe_rows(market_id):
+        path=financial_inputs.asset_path(RAW,symbol,'income-statement')
+        if path.exists():
+            rows,_=financial_inputs.read(RAW,symbol,'income-statement')
+            records[symbol]=dict(symbol=symbol,rows=rows,full_response=True)
+    return records,0
 
 
 def spans(start,end,monthly=False):
@@ -70,8 +80,8 @@ def spans(start,end,monthly=False):
 
 
 
-def universe_rows():
-    rows=read_json(RAW/'universe.json',[])
+def universe_rows(market_id='us'):
+    rows=read_json(market.universe_path(RAW,market_id),[])
     if not isinstance(rows,list):raise ValueError('The universe cache must contain a list.')
     return {row['symbol']:row for row in rows if isinstance(row,dict) and isinstance(row.get('symbol'),str)}
 
@@ -79,11 +89,11 @@ def universe_rows():
 def target_symbols(o,universe,records):
     if o['scope']=='symbols':
         unknown=set(o['symbols'])-universe.keys()
-        if unknown:raise ValueError('Symbols absent from the saved US universe: '+', '.join(sorted(unknown)[:20]))
+        if unknown:raise ValueError('Symbols absent from the selected market universe: '+', '.join(sorted(unknown)[:20]))
         return o['symbols']
     if o['scope']=='cached':
         return sorted(s for s in universe if market.cache_path_for(s).exists())
-    return sorted(r.books.statements(records,universe))
+    return sorted(universe) if o.get('market','us')!='us' else sorted(r.books.statements(records,universe))
 
 
 def derived_status():
@@ -110,16 +120,17 @@ def price_warning(name,days):
 
 def inspect(o,emit=lambda **kw:None,stop=lambda:None):
     issues=[];warnings=[]
-    try:universe=universe_rows()
-    except (ValueError,TypeError):universe={};issues.append('US stock universe is invalid. Select universe for repair.')
-    records,invalid=financial_records()
+    market_id=o.get('market','us');label=market.MARKETS[market_id]['label']
+    try:universe=universe_rows(market_id)
+    except (ValueError,TypeError):universe={};issues.append(label+' stock universe is invalid. Select universe for repair.')
+    records,invalid=financial_records(market_id)
     targets=target_symbols(o,universe,records)
     ledger=read_json(COVERAGE,{})
     start,end=map(date.fromisoformat,(o['start'],o['end']))
     missing=[s for s in universe if s not in records]
     empty=[s for s,record in records.items() if not record['rows']]
     fiscal_dates=sorted(str(row['date'])[:10] for record in records.values() for row in record['rows'] if isinstance(row,dict) and rules.parse_day(row.get('date')))
-    assets=[dict(name='US stock universe',state='saved' if universe else 'missing',count=len(universe),first=None,last=None),
+    assets=[dict(name=label+' stock universe',state='saved' if universe else 'missing',count=len(universe),first=None,last=None),
             dict(name='Annual financials',state='invalid lines' if invalid else ('partial' if missing else 'saved'),count=sum(len(record['rows']) for record in records.values()),first=fiscal_dates[0] if fiscal_dates else None,last=fiscal_dates[-1] if fiscal_dates else None)]
     for name,file,field in [('SPY total-return prices','spy-div.json','adjClose'),('3-month Treasury yield','treasury.json','month3')]:
         asset=cache_assets.SeriesAsset(RAW/file,field)
@@ -129,7 +140,23 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         skipped=asset.skipped_dates(ledger)
         if skipped:warnings.append(price_warning(file,skipped))
         assets.append(dict(name=name,state='unrequested dates' if gaps else 'checked range',count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,skipped_dates=skipped))
-    fundamental_missing={endpoint:[symbol for symbol in targets if not financial_inputs.completed(RAW,symbol,endpoint,ledger)] for endpoint in financial_inputs.ENDPOINTS}
+    if market_id!='us':
+        currencies={market.MARKETS[market_id]['currency']}
+        for symbol in targets:
+            currencies.add(universe[symbol].get('currency') or market.MARKETS[market_id]['currency'])
+            for endpoint in FOREIGN_STATEMENTS:
+                annual,_=financial_inputs.read(RAW,symbol,endpoint)
+                currencies.update(str(row.get('reportedCurrency') or '').upper() for row in annual
+                                  if len(str(row.get('reportedCurrency') or ''))==3)
+        for file,field,endpoint,symbol in market_series(market_id,[],currencies):
+            if field!='close':continue
+            path=RAW/file;asset=cache_assets.SeriesAsset(path,field,key=file);rows=asset.rows
+            gaps=asset.missing(start,end,ledger)
+            name=label+' trading sessions' if path==market.calendar_path(RAW,market_id) else symbol+' daily FX'
+            assets.append(dict(name=name,state='unrequested dates' if gaps else 'checked range',count=len(rows),
+                               first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None))
+    endpoints=financial_inputs.ENDPOINTS if market_id=='us' else FOREIGN_STATEMENTS
+    fundamental_missing={endpoint:[symbol for symbol in targets if not financial_inputs.completed(RAW,symbol,endpoint,ledger)] for endpoint in endpoints}
     assets.append(dict(name='Financial ratio inputs (annual statements)',state='missing inputs' if any(fundamental_missing.values()) else 'checked',count=sum(len(targets)-len(missing) for missing in fundamental_missing.values()),first=None,last=None))
     prices=[];available=0
     for i,symbol in enumerate(targets,1):
@@ -141,6 +168,13 @@ def inspect(o,emit=lambda **kw:None,stop=lambda:None):
         skipped=asset.skipped_dates(ledger)
         if skipped:warnings.append(price_warning(symbol,skipped))
         prices.append(dict(symbol=symbol,state='invalid' if bad else ('missing' if not path.exists() else 'empty' if not rows else 'unrequested dates' if gaps else 'checked range'),count=len(rows),first=rows[0]['date'][:10] if rows else None,last=rows[-1]['date'][:10] if rows else None,windows=len(gaps),skipped_dates=skipped))
+        if market_id!='us':
+            native=market.native_path(RAW,symbol)
+            unadjusted=cache_assets.SeriesAsset(native,'close',key=native.relative_to(RAW).as_posix())
+            native_gaps=unadjusted.missing(start,end,ledger)
+            prices[-1]['native_windows']=len(native_gaps)
+            if native_gaps:prices[-1]['state']+='; native close needs download'
+
         if i%50==0 or i==len(targets):emit(message=f'Checked stock prices {i}/{len(targets)}',completed=i,total=len(targets))
     return dict(issues=issues,warnings=warnings,checked_at=datetime.now(timezone.utc).isoformat(),options=o,api_key_present=fmp_download.KEY_PATH.is_file() and fmp_download.KEY_PATH.stat().st_size>0,
                 assets=assets,universe=len(universe),financial_symbols=len(records),missing_financials=missing,empty_financials=empty,invalid_financial_lines=invalid,
@@ -153,8 +187,120 @@ def request_json(endpoint,params,stop,client=None):
     with fmp_download.Client(stop) as session:return session.request(endpoint,params)
 
 
-def fetch_universe(stop,client):
+def fetch_market_universe(market_id,stop,client):
+    """Use the same screener for active and inactive foreign common stocks."""
+    policy=market.MARKETS[market_id];universe={}
+    for exchange in policy['exchanges']:
+        for active in ('true','false'):
+            for page in range(30):
+                stop()
+                rows=request_json('company-screener',dict(exchange=exchange,isEtf='false',isFund='false',
+                    isActivelyTrading=active,limit=1000,page=page),stop,client)
+                for row in rows:
+                    symbol=str(row.get('symbol') or '');name=str(row.get('companyName') or '')
+                    if not market.common_stock(symbol,name,market=market_id,**{
+                            k:row.get(k) for k in ('isEtf','isFund')}):continue
+                    if row.get('exchangeShortName',exchange) not in policy['exchanges']:continue
+                    universe[symbol]=dict(symbol=symbol,name=name,exchange=exchange,sector=row.get('sector') or '',
+                        listed=bool(row.get('isActivelyTrading',active=='true')),market=market_id,
+                        currency=row.get('currency') or policy['currency'])
+                if len(rows)<1000:break
+            else:raise ValueError('Stock universe exceeded the page limit. No partial universe was saved.')
+    if not universe:raise ValueError('No stock universe was returned. Saved files were kept.')
+    return universe
+
+
+def market_series(market_id,targets,currencies):
+    """The concrete foreign inputs needed by the existing series publisher."""
+    relative=lambda path:path.relative_to(RAW).as_posix()
+    result=[('spy-div.json','adjClose','historical-price-eod/dividend-adjusted',None),
+            ('treasury.json','month3','treasury-rates',None),
+            (relative(market.calendar_path(RAW,market_id)),'close','historical-price-eod/full',market.MARKETS[market_id]['index'])]
+    for currency in sorted(currencies-{'USD'}):
+        result.append((relative(market.fx_path(RAW,currency)),'close','historical-price-eod/full','USD'+currency))
+    for symbol in targets:
+        result.append((None,'adjClose','historical-price-eod/dividend-adjusted',symbol))
+        result.append((relative(market.native_path(RAW,symbol)),'close','historical-price-eod/full',symbol))
+    return result
+
+
+def download_market(o,emit,stop,client,*,refresh=False,refresh_state=None):
+    """Acquire one foreign market with existing receipts and one publishing owner.
+
+    Annual responses stay in the shared suffixed-symbol files. Price, calendar
+    and FX assets use the ordinary bounded series transport and publication.
+    """
+    market_id=o['market'];selected=o['datasets'];ledger=read_json(COVERAGE,{})
+    if refresh:
+        from website.server import data_refresh
+        fetch=data_refresh.request
+    else:fetch=request_json
+    try:previous=universe_rows(market_id)
+    except (ValueError,TypeError):previous={}
+    universe=previous
+    completed=refresh_state['completed_stages'] if refresh and refresh_state.get('scope',{} ) and refresh_state['scope'].get('market')==market_id else []
+    pending=set(refresh_state.get('pending_markets',{}).get(market_id,[])) if refresh else set()
+    emit(kind='checking',completed=0,total=1)
+    if 'universe' in selected and ((refresh and 'checking' not in completed) or not universe):
+        current=fetch_universe(stop,client,market_id)
+        universe={symbol:{**row,'listed':False} for symbol,row in previous.items()}
+        universe.update(current)
+        if refresh:
+            pending.update(set(current)-set(previous))
+            refresh_state.setdefault('pending_markets',{})[market_id]=sorted(pending)
+            write_json(data_refresh.status_path(),refresh_state)
+        write_json(market.universe_path(RAW,market_id),list(universe.values()))
+    if not universe:raise ValueError('Download the selected market universe first.')
+    emit(kind='checking',completed=1,total=1)
+    records,_=financial_records(market_id)
+    targets=set(target_symbols(o,universe,records))
+    if refresh and o['scope']=='cached':
+        targets.update(pending)
+        targets.update(symbol for symbol in universe if 'px/'+market.cache_path_for(symbol).name in ledger)
+    targets=sorted(targets)
+    annual_targets=sorted(universe) if o['scope']=='financials' or refresh and (o.get('managed') or refresh_state['scope'] is None) else targets
+    tasks=[(symbol,endpoint) for symbol in annual_targets for endpoint in FOREIGN_STATEMENTS
+           if ('financials' in selected or 'fundamentals' in selected)
+           and ((refresh and 'statements' not in completed) or not financial_inputs.completed(RAW,symbol,endpoint,ledger))]
+    emit(kind='annual',completed=0,total=0)
+    emit(kind='statements',completed=0,total=len(tasks))
+    for number,(task,rows) in enumerate(client.map(tasks,lambda task:fetch(task[1],
+            dict(symbol=task[0],period='annual',limit=40),stop,client)),1):
+        stop();symbol,endpoint=task
+        if refresh and rows is None:data_refresh.failed(refresh_state,endpoint+'/'+symbol)
+        else:
+            try:financial_inputs.publish(RAW,symbol,endpoint,rows,ledger,COVERAGE)
+            except ValueError as error:
+                if not refresh:raise
+                data_refresh.failed(refresh_state,endpoint+'/'+symbol,error)
+        emit(kind='statements',completed=number,total=len(tasks),message='Saved '+endpoint+' for '+symbol+'.')
+    currencies={market.MARKETS[market_id]['currency']}
+    currencies.update(universe[symbol].get('currency') or market.MARKETS[market_id]['currency'] for symbol in targets)
+    for symbol in annual_targets:
+        for endpoint in FOREIGN_STATEMENTS:
+            rows,_=financial_inputs.read(RAW,symbol,endpoint)
+            currencies.update(str(row.get('reportedCurrency') or '').upper() for row in rows
+                              if len(str(row.get('reportedCurrency') or ''))==3)
+    specs=market_series(market_id,targets,currencies)
+    specs=[spec for spec in specs if (spec[0]=='spy-div.json' and 'spy' in selected
+           or spec[0]=='treasury.json' and 'treasury' in selected
+           or spec[0] not in ('spy-div.json','treasury.json') and 'prices' in selected)]
+    if refresh:
+        from website.server.data_refresh import refresh_series
+        if 'prices' not in completed or any(not cache_assets.SeriesAsset(RAW/file if file else market.cache_path_for(symbol),field,stock=file is None,key=file or 'px/'+market.cache_path_for(symbol).name).evidence(ledger) for file,field,endpoint,symbol in specs):
+            refresh_series(specs,date.fromisoformat(o['end']),ledger,emit,stop,client,refresh_state)
+        for symbol in list(pending):
+            if cache_assets.SeriesAsset(market.cache_path_for(symbol),'adjClose',stock=True).rows and all(financial_inputs.completed(RAW,symbol,endpoint,ledger) for endpoint in FOREIGN_STATEMENTS):pending.remove(symbol)
+        refresh_state.setdefault('pending_markets',{})[market_id]=sorted(pending)
+    else:
+        emit(kind='prices',completed=0,total=len(specs))
+        download_series(specs,o,ledger,emit,stop,client)
+        emit(kind='prices',completed=len(specs),total=len(specs))
+
+
+def fetch_universe(stop,client,market_id='us'):
     """Fetch a complete eligible universe before replacing any saved listing."""
+    if market_id!='us':return fetch_market_universe(market_id,stop,client)
     universe={}
     for exchange in ('NYSE','NASDAQ','AMEX'):
         returned=0
@@ -210,8 +356,9 @@ def download_series(specs,o,ledger,emit,stop,client):
         nonlocal finished
         for file,field,endpoint,symbol in specs:
             stop()
-            path=market.cache_path_for(symbol) if symbol else RAW/file
-            asset=cache_assets.SeriesAsset(path,field,stock=bool(symbol))
+            path=RAW/file if file else market.cache_path_for(symbol)
+            stock=bool(symbol and file is None)
+            asset=cache_assets.SeriesAsset(path,field,stock=stock,key=path.relative_to(RAW).as_posix())
             asset.repair(ledger,COVERAGE)
             windows=[window for a,b in asset.missing(date.fromisoformat(o['start']),date.fromisoformat(o['end']),ledger)
                      for window in spans(a,b,monthly=field=='month3')]
@@ -242,6 +389,9 @@ def download(o,emit,stop):
 
 
 def _download(o,emit,stop,client):
+    if o.get('market','us')!='us':
+        download_market(o,emit,stop,client)
+        return inspect(o,emit,stop)
     selected=o['datasets'];ledger=read_json(COVERAGE,{})
     # A no-op download must not require a key. It is read only at a request.
     try:universe=universe_rows()
@@ -324,11 +474,14 @@ class Jobs:
             prepared=self.rebuilt;job=dict(self.state);report=self.report
             if job['running'] and self.cancel.is_set():update['stage']='Stopping safely'
         latest=update.get('latest_session') if prepared else None
+        latest_dates=update.get('latest_dates',{}) if prepared else {}
         if prepared:
-            try:latest=read_json(ROOT/'website/local/snapshot.json',{}).get('latest_asof',latest)
+            try:
+                snapshot=read_json(ROOT/'website/local/snapshot.json',{})
+                latest=snapshot.get('latest_asof',latest);latest_dates=snapshot.get('latest_dates',latest_dates)
             except (OSError,ValueError,AttributeError):pass
         return dict(job=job,report=report,refresh=update,update=update,prepared=prepared,
-                    latest_session=latest,log_file=diagnostics.relative_path(path) if path else None)
+                    latest_session=latest,latest_dates=latest_dates,log_file=diagnostics.relative_path(path) if path else None)
 
     def emit(self,**values):
         with self.lock:self.state.update(values)
@@ -341,7 +494,7 @@ class Jobs:
         if action=='refresh' and request:raise ValueError('Refresh updates the complete managed coverage. It takes no range options.')
         if action=='continue' and request:raise ValueError('Continue uses the saved update scope.')
         o=options(request)
-        if action=='update' and not request:o['managed']=True
+        if action=='update' and set(request)<= {'market'}:o['managed']=True
         with self.lock:
             if self.closing:raise ValueError('The server is stopping. Reopen the data panel after restart.')
             if self.state['running']:raise ValueError('A data job is already running. Wait for it or cancel it.')
@@ -375,7 +528,7 @@ class Jobs:
                     from website.server import data_refresh
                     self.rebuilt=False
                     refreshed=data_refresh.run(self.emit,self.stop,
-                        scope=None if action in ('refresh','continue') or o.get('managed') else o,
+                        scope=None if action in ('refresh','continue') or o.get('managed') and 'market' not in o else o,
                         resume=action=='continue')
                     self.rebuilt=refreshed['ready']
                     self.emit(error=refreshed['error'])

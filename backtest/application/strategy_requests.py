@@ -20,7 +20,7 @@ import re
 from backtest import selection
 from backtest.financial import metrics
 from backtest.runtime import backtest_control
-from backtest.variables import definitions, library
+from backtest.variables import definitions, library, parameters
 
 STRATEGY_BYTES = 192 * 1024
 REQUEST_BYTES = 256 * 1024
@@ -404,16 +404,29 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
     """
     if type(options) is not dict:
         _fail('INVALID_STRATEGY', '', 'Calculation options must be an object.')
+    market = options.get('market', 'us')
+    if type(market) is not str or market not in ('us', 'hk', 'jp'):
+        _fail('UNSUPPORTED_CAPABILITY', '/market', 'Choose US, Hong Kong or Japan.')
     if 'strategy' not in options:
+        if market != 'us' and options.get('pool', 'cached') != 'cached':
+            _fail('UNSUPPORTED_CAPABILITY', '/pool', 'Hong Kong and Japan use the broader cached-price pool.')
         return None
     engine=options.get('engine','original')
     if type(engine) is not str or engine not in ('original','experimental'):
         _fail('UNSUPPORTED_CAPABILITY','/engine','Choose a supported calculation engine without changing the captured strategy.')
-    if set(options)-{'strategy','engine','start','end','months','calendar','dates','trials','seed'}:
+    if set(options)-{'strategy','engine','market','start','end','months','calendar','dates','trials','seed'}:
         _fail('INVALID_STRATEGY','','Unknown custom calculation option.')
     if _OVERLAP.intersection(options):
         _fail('INVALID_STRATEGY', '', 'Use one captured strategy without duplicate selection settings.')
     checked = from_wire(options['strategy'], checkpoint=checkpoint).to_dict()
+    if market != 'us':
+        if checked['pool'] != 'cached':
+            _fail('UNSUPPORTED_CAPABILITY', '/pool', 'Hong Kong and Japan use the broader cached-price pool.')
+        if checked['variables'] is not None and any(
+                item['definition']['parameter_catalog'] != parameters.V4
+                for item in checked['variables']['program']['bundle']['definitions']):
+            _fail('UNSUPPORTED_CAPABILITY', '/strategy/variables',
+                  'Upgrade these formulas to the market-aware catalog before using Hong Kong or Japan.')
     current = {item['id']: item for item in builtin_catalog()}
     for descriptor in checked['builtins']:
         expected = current.get(descriptor['id'])
@@ -451,7 +464,7 @@ def execution_options(mode,options,*,planned=None,checkpoint=backtest_control.ch
     if check_options(options,checkpoint=checkpoint) is None:
         raise ValueError('Bounded scalar execution requires a captured strategy.')
     if mode not in SCALAR_MODES:raise ValueError('Unsupported scalar mode.')
-    allowed={'strategy','engine'}|(set() if mode=='latest' else
+    allowed={'strategy','engine','market'}|(set() if mode=='latest' else
         {'start','end','months','calendar','dates'} if mode=='custom' else {'start','end','months','calendar','trials','seed'})
     if set(options)-allowed:raise ValueError('Unknown option for the scalar execution mode.')
     if planned is not None:
@@ -468,9 +481,11 @@ def check_request(request, *, checkpoint=backtest_control.checkpoint):
     requests are untouched. Check the complete request before publishing identity;
     never truncate or drop evidence.
     """
-    if type(request) is not dict or type(request.get('options')) is not dict or 'strategy' not in request['options']:
+    if type(request) is not dict or type(request.get('options')) is not dict:
         return None
     checked = check_options(request['options'], checkpoint=checkpoint)
+    if 'strategy' not in request['options']:
+        return None
     planned=request.get('planned')
     settings={key:value for key,value in request.items() if key!='planned'} if planned is not None else request
     _encode(settings, REQUEST_BYTES, checkpoint)
@@ -508,7 +523,7 @@ def options_calculation_equal(left, right):
     if 'strategy' in a or 'strategy' in b:
         if 'strategy' not in a or 'strategy' not in b or not calculation_equal(
                 from_wire(a.pop('strategy')), from_wire(b.pop('strategy'))):return False
-    return {'engine':'original','selection_order':'filter_first',**a} == {'engine':'original','selection_order':'filter_first',**b}
+    return {'engine':'original','selection_order':'filter_first','market':'us',**a} == {'engine':'original','selection_order':'filter_first','market':'us',**b}
 
 
 def validate_recorded(options, planned):

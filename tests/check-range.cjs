@@ -5,7 +5,7 @@ const els=new Map();
 const embedded=html.match(/<script id="screening-data" type="application\/json">([\s\S]*?)<\/script>/)[1];
 const prepared=JSON.parse(embedded),screener=require('../website/browser/screener.js');
 const latestDate=prepared.latest.metadata.asof;
-const latestCount=limit=>screener.latestScreen(prepared,{rank_to:limit}).stocks.length;
+const latestCount=limit=>screener.latestScreen(prepared,{pool:'cached',rank_to:limit}).stocks.length;
 function el(id){if(!els.has(id))els.set(id,{id,innerHTML:'',textContent:'',value:'',hidden:(html.match(new RegExp('<[^>]*id="'+id+'"[^>]*>'))?.[0]||'').includes(' hidden'),open:false,disabled:false,dataset:{},style:{},handlers:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attributes??={};this.attributes[k]=String(v)},querySelectorAll(){return []},scrollIntoView(){},focus(){},append(child){child.parentNode=this;},showModal(){this.open=true;},close(){this.open=false;this.handlers.close?.();},closest(){return this}});return els.get(id)}
 const document={getElementById:el,querySelector:s=>s==='.pill'?el('pill'):el(s.replace(/^#/,'')),querySelectorAll:()=>[]};
 el('screening-data').textContent=embedded;
@@ -28,6 +28,20 @@ assert.equal(el('run-screen').textContent,'Run backtest');assert.equal(run('Sche
 assert.equal(run('ResultArtifacts.forView("custom")'),undefined);
 run("switchMode('latest')");
 console.log('Passed: default latest mode, embedded sector/exchange choices and the dated view opening without a run.');
+// Market changes in manual mode restore local choices and bounds without a run.
+el('auto-run').checked=false;el('auto-run').handlers.change();
+const heldLatest=run('ResultArtifacts.forView(LATEST_VIEW)');
+for(const code of ['hk','jp']){
+ el('stock-market').value=code;el('strategy-form').handlers.change({target:el('stock-market')});
+ assert.equal(run('currentSettings().market'),code);assert.equal(el('stock-pool').value,'cached');
+ assert.equal(run('ResultArtifacts.forView(LATEST_VIEW)'),heldLatest);
+ for(const exchange of prepared.markets[code].choices.exchange)assert(el('exchange-filter').innerHTML.includes(exchange));
+ assert.equal(el('trade-end').max,prepared.markets[code].latest.metadata.asof||'');
+}
+el('stock-market').value='us';el('strategy-form').handlers.change({target:el('stock-market')});
+el('auto-run').checked=true;el('auto-run').handlers.change();
+assert(el('stock-pool').innerHTML.includes('cached')&&!el('stock-pool').innerHTML.includes('legacy'));
+
 // CSV downloads use the displayed result.
 let savedCsv='',downloadName='';
 ctx.Blob=class{constructor(parts){this.parts=parts;}};
@@ -45,7 +59,7 @@ assert(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>h.market
 el('min-cap').value='6000';run('applyRange()');assert(el('screen-error').textContent.includes('Maximum market cap'));el('min-cap').value='500';run('applyRange()');assert.equal(el('screen-error').textContent,'');
 el('download-latest').handlers.click({preventDefault(){}});
 assert.equal(downloadName,`latest-picks-${latestDate}.csv`);
-assert(savedCsv.includes('"price_date"'));assert(!savedCsv.includes('return_value'));
+assert(savedCsv.includes('"price_date"'));assert(savedCsv.includes('"market","currency"')&&savedCsv.includes('"us","USD"'));assert(!savedCsv.includes('return_value'));
 el('sector-filter').value='No matching sector';run('applyRange()');
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),0);assert(el('latest-body').innerHTML.includes('No stocks match'));
 assert.equal(el('latest-median-cap').textContent,'—');

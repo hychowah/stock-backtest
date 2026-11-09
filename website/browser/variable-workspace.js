@@ -15,7 +15,7 @@ const VariableWorkspace=(()=>{
     return copy({submitted:[...entries.values()],labels:[...labels].filter(([id])=>entries.has(id)).map(([,label])=>label)});
   }
   const dependencies=(snapshot,root)=>content({submitted:snapshot.authored.filter(item=>exact(item)!==exact(root)),labels:snapshot.capture.presentation});
-  const envelope=expression=>({format:'variable-definition',version:3,parameter_catalog:'financial-parameters/3',temporal_policy:'annual-lag90/1',expression,output:{unit:'scalar',display:'percent'}});
+  const envelope=expression=>({format:'variable-definition',version:3,parameter_catalog:catalog?.current_parameter_catalog||'financial-parameters/4',temporal_policy:catalog?.current_temporal_policy||'market-annual/1',expression,output:{unit:'scalar',display:'percent'}});
   const defaultExpression=()=>({op:'parameter',id:'annual.operating_margin'});
   const displayNames={number:'Number',multiple:'Multiple (×)',percent:'Percent (%)',percentage_points:'Percentage points',usd:'US dollars',usd_million:'$ million',usd_per_share:'$ per share',shares:'Shares'};
   const displayName=value=>displayNames[value]||value;
@@ -127,7 +127,7 @@ const VariableWorkspace=(()=>{
     node('variable-equation-undo').disabled=!editor.undo?.length;node('variable-equation-redo').disabled=!editor.redo?.length;
     node('variable-json').value=JSON.stringify(editor.definition.expression,null,2);
   }
-  function parameters(){return editor?.definition.parameter_catalog==='financial-parameters/3'?(catalog?.expanded_parameters||[]):editor?.definition.parameter_catalog==='financial-parameters/2'?(catalog?.version2_parameters||[]):(catalog?.parameters||[]);}
+  function parameters(){return editor?.definition.parameter_catalog==='financial-parameters/4'?(catalog?.expanded_parameters||[]):editor?.definition.parameter_catalog==='financial-parameters/3'?(catalog?.version3_parameters||[]):editor?.definition.parameter_catalog==='financial-parameters/2'?(catalog?.version2_parameters||[]):(catalog?.parameters||[]);}
   function options(items,selected){
     const groups=new Map();for(const item of items){const group=item.kind==='adapter'?'Existing policy adapters':item.source?.endpoint||'Financial inputs';if(!groups.has(group))groups.set(group,[]);groups.get(group).push(item);}
     return (selected?'':'<option value="" selected>Choose a parameter</option>')+[...groups].map(([group,values])=>`<optgroup label="${esc(group)}">${values.map(p=>`<option value="${esc(p.id)}" ${selected===p.id?'selected':''}>${esc(p.description)} (${esc(p.unit)})</option>`).join('')}</optgroup>`).join('');
@@ -161,7 +161,7 @@ const VariableWorkspace=(()=>{
     renderEquation();node('variable-tree').innerHTML=termSettings(getAt(selectedPath()),selectedPath());
     node('variable-explanation').textContent=editor.checked?editor.summary:describe(editor.definition.expression);
     renderIdentity();
-    node('variable-upgrade').hidden=editor.definition.version===3&&editor.definition.parameter_catalog==='financial-parameters/3';
+    node('variable-upgrade').hidden=editor.definition.version===3&&editor.definition.parameter_catalog===(catalog?.current_parameter_catalog||'financial-parameters/4');
     node('variable-dialog-title').textContent=role==='ranking'?'Ranking variable':role==='condition'?'New filter':'Filter '+(role+1);
     node('variable-apply').textContent=useLabel();
   }
@@ -238,17 +238,19 @@ const VariableWorkspace=(()=>{
     const uses=[...new Set(checked.requirements.map(r=>{const parameter=parameters().find(p=>p.id===r.parameter),name=parameter?parameterName(parameter):r.parameter;return r.count>1?name+' × '+r.count+' years':name;}))];
     return describe(definition.expression)+' · Results shown as '+displayName(checked.output.display)+(uses.length?' · Uses '+uses.join(', '):'')+'. Some companies may still lack these inputs.';
   }
-  async function validate(){
+  async function validate(upgrade=false){
     clearTimeout(checkTimer);checkTimer=null;
     if(emptyTerm(editor.definition.expression))throw Error('Choose a parameter for each empty box (＋ Parameter) first.');
     const local=generation,number=++validation,input=editorRequest();
+    if(upgrade)input.upgrade=true;
     showCheck('pending','Checking the formula…');
     let checked;
     try{checked=await request('/validate',input);}
     catch(failure){if(local===generation&&number===validation)showCheck('error','Fix the formula before using it');throw failure;}
     if(local!==generation||number!==validation)return null;
+    if(upgrade){editor.definition=copy(checked.authored.find(item=>exact(item)===exact(checked.root)).definition);editRevision++;}
     editor.checked=checked;editor.name=input.name;
-    editor.content=dependencies(checked,checked.root);editor.summary=summary(input.definition,checked);
+    editor.content=dependencies(checked,checked.root);editor.summary=summary(editor.definition,checked);
     node('variable-errors').textContent='';node('variable-explanation').textContent=editor.summary;
     showCheck('ready','✓ Ready to use');renderIdentity();return checked;
   }
@@ -283,14 +285,14 @@ const VariableWorkspace=(()=>{
     const prepared=await request('/capture',{intent:{format:'strategy-intent',version:1,selection:{ranking:{source:{kind:'formula',...checked.root},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:callbacks.pool?.()||'legacy',bounds:{}},detached:[checked.capture]});
     if(local!==generation||number!==preview)return;
     const roots=symbols.map((symbol,index)=>({symbol,pool:callbacks.pool?.()||'legacy',mode,date:rootDate}));
-    const response=await fetch('/api/variable-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:prepared.strategy,roots,engine:'original'})});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);
+    const response=await fetch('/api/variable-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:prepared.strategy,roots,engine:'original',market:callbacks.market?.()||'us'})});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);
     if(local!==generation||number!==preview)return;
     node('variable-preview-result').innerHTML=VariableEvidence.preview(value);
   }
   async function coverageCall(path,body,signal){const response=await fetch('/api/variable-coverage/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error),value);return value;}
   async function discoverCoverage(){
     coverageAbort?.abort();coverageAbort=new AbortController();const number=++coverageVersion,local=generation;
-    const value=await coverageCall('scopes',{},coverageAbort.signal);if(number!==coverageVersion||local!==generation)return;
+    const value=await coverageCall('scopes',{market:callbacks.market?.()||'us'},coverageAbort.signal);if(number!==coverageVersion||local!==generation)return;
     coverageScopes=value;node('variable-coverage-scope').innerHTML=value.scopes.map((s,i)=>`<option value="${i}">${esc(s.mode)} · ${esc(s.context_date)} · ${esc(s.pool)}</option>`).join('');
     node('variable-coverage-result').textContent='Select a recorded scope to inspect.';
   }
@@ -304,7 +306,7 @@ const VariableWorkspace=(()=>{
       const checked=await validate();if(!checked||!current())return;
       const prepared=await request('/capture',{intent:{format:'strategy-intent',version:1,selection:{ranking:{source:{kind:'formula',...checked.root},direction:'highest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:selected.pool,bounds:{}},detached:[checked.capture]});
       if(!current())return;
-      const value=await coverageCall('inspect',{strategy:prepared.strategy,scope:{generation:discoveredGeneration,...selected}},controller.signal);if(!current())return;
+      const value=await coverageCall('inspect',{market:callbacks.market?.()||'us',strategy:prepared.strategy,scope:{generation:discoveredGeneration,...selected}},controller.signal);if(!current())return;
       node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
     }catch(failure){if(current())throw failure;}
   }
@@ -356,7 +358,7 @@ const VariableWorkspace=(()=>{
     node('variable-search').addEventListener('input',renderPicker);node('variable-refresh').addEventListener('click',()=>attempt(refresh));node('variable-start-new').addEventListener('click',()=>startNew());
     node('variable-edit-selected').addEventListener('click',()=>attempt(()=>loadExact(editor.variable_id,editor.selectedRevision)));
     node('variable-picker').addEventListener('click',event=>{const target=event.target.closest('button');if(!target)return;if(target.dataset.library)attempt(()=>loadExact(target.dataset.library,target.dataset.revision));else if(target.dataset.measure||target.dataset.parameter){const measure=target.dataset.measure?catalog.measures.find(item=>item.id===target.dataset.measure):null;const expression=measure?{op:'ref',...measure.root}:{op:'parameter',id:target.dataset.parameter};remember();const path=sourceSelection?.path??selectedPath();cancelSource();replaceAt(path,expression);editor.selectedPath=path;if(measure)editor.content=content(editor.content,measure);invalidate();renderEditor();renderPicker();focusEquation();message('Inserted into the formula.');}else if(target.dataset.builtin)attempt(()=>{callbacks.draft.patch({role,source:{kind:'builtin',id:target.dataset.builtin}},draftRevision);close();});});
-    node('variable-upgrade').addEventListener('click',()=>{editor.definition.version=3;editor.definition.parameter_catalog='financial-parameters/3';invalidate();renderEditor();renderPicker();message('Expanded inputs enabled. The formula is checked again.');});
+    node('variable-upgrade').addEventListener('click',()=>attempt(async()=>{const checked=await validate(true);if(!checked)return;renderEditor();renderPicker();message('Upgraded to market-aware inputs. Named measures use their new revisions. User-defined references keep their exact revisions; choose separately upgraded revisions before foreign use.');}));
     node('variable-equation-tools').addEventListener('click',event=>{const action=event.target.closest('button')?.dataset.equationAction;if(action)equationAction(action);});
     node('variable-equation').addEventListener('click',event=>{const target=event.target.closest('[data-equation-path]');if(!target)return;cancelSource();editor.selectedPath=target.dataset.equationPath;editRevision++;renderEditor();focusEquation();});
     node('variable-equation').addEventListener('keydown',event=>{const action={'+':'add','-':'sub','*':'mul','/':'div',Delete:'remove',Backspace:'remove'}[event.key];if(action&&!event.ctrlKey&&!event.metaKey&&!event.altKey){event.preventDefault();const target=event.target.closest('[data-equation-path]');if(target)editor.selectedPath=target.dataset.equationPath;equationAction(action);}});

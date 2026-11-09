@@ -18,14 +18,14 @@ def prepare_period(db,entry,pool,book_facts):
     book_facts is the operation's facts port over the attached research
     schema (facts.BookFacts); it caches each company's inputs across books.
     """
-    completed=book_store.find(db,entry,pool)
+    completed=book_store.find(db,entry,pool,market=getattr(book_facts,'market','us'))
     if completed is not None:return completed
     diagnostics.count('books_calculated')
     return book_store.store(db,financial_books.book(entry,pool,book_facts,backtest_control.checkpoint))
 
 def backtest(db, *, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Regular schedules and random-date batches share one book evaluator."""
-    sessions=facts.sessions(db)
+    sessions=facts.sessions(db,options.get('market','us'))
     periods,_,marked,_,_=calendar_requests.periods(sessions,dict(start=start,end=end,months=months),
                                                    checkpoint=backtest_control.checkpoint)
     return _backtest_periods(db,periods,final_mark=marked,months=months,book_selection=book_selection,emit_period=emit_period,**options)
@@ -36,7 +36,7 @@ def backtest_calendar(db, *, book_selection=None, emit_period=None, **request):
     Requested calendar metadata remains separate from resolved trading sessions.
     Explicit dates preserve the common cash window used by random trials.
     """
-    sessions=facts.sessions(db)
+    sessions=facts.sessions(db,request.get('market','us'))
     periods,first,marked,options,metadata=calendar_requests.periods(
         sessions,request,checkpoint=backtest_control.checkpoint)
     return _backtest_periods(db,periods,final_mark=marked,common_start=first,frequency=metadata,book_selection=book_selection,emit_period=emit_period,**options)
@@ -49,7 +49,7 @@ def dated_periods(dates,start,end,months,sessions):
 
 def backtest_dates(db, *, dates, start, end, months=12, book_selection=None, emit_period=None, **options):
     """Evaluate explicit trades, holding cash before the first trade for both sides."""
-    sessions=facts.sessions(db)
+    sessions=facts.sessions(db,options.get('market','us'))
     first,final,periods=dated_periods(dates,start,end,months,sessions)
     # Explicit trades end on the final mark.
     return _backtest_periods(db,periods,final_mark=True,months=months,common_start=first,book_selection=book_selection,emit_period=emit_period,**options)
@@ -62,12 +62,15 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
     backtest_control.checkpoint()
     started=time.perf_counter()
     periods=portfolio_results.validate_periods(periods,common_start)
+    recorded_market=options.pop('market',None)
+    market_id=recorded_market or 'us'
+    if market_id!='us' and book_selection is None:options.setdefault('pool','cached')
     allowed={'rank_from','rank_to','pool','metric','min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange','filters','selection_order'}
     if book_selection is None:
         if set(options)-allowed:raise ValueError('Unknown screening option.')
         screening.validate_selection(**options)
     pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
-    book_facts=facts.BookFacts(db)
+    book_facts=facts.BookFacts(db,market_id)
     def select_period(entry,exit_day):
         with diagnostics.stage('books'):
             book=prepare_period(db,entry,pool,book_facts)
@@ -83,13 +86,15 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
                 backtest_control.checkpoint()
                 start=(rules.parse_day(stock['entry']),stock.pop('price'))
                 def lookup(day,forward,slack):
-                    return book_facts.price(stock['symbol'],day,forward,slack)
+                    return book_facts.usd_price(stock['symbol'],day,forward,slack)
                 reason,ending=financial_books.close(start,exit_day,lookup,rules.bankrupt(stock['symbol'],entry,exit_day))
                 if reason is not None:
                     raise ValueError('A selected sheet row has no valid exit: '+reason)
                 end,value,status=ending
                 stock.update(exit=str(end[0]),return_value=value,status=status)
-            spy=financial_books.benchmark_return(book_facts.spy(entry),book_facts.spy(exit_day))
+            start_spy,end_spy=book_facts.spy(entry),book_facts.spy(exit_day)
+            if start_spy is None or end_spy is None:raise ValueError('SPY comparison coverage is missing for this market window.')
+            spy=financial_books.benchmark_return(start_spy,end_spy)
             return dict(entry=str(entry),exit=str(exit_day),holdings=stocks,spy=spy)
         finally:
             if owned:db.rollback()
@@ -101,5 +106,6 @@ def _backtest_periods(db, periods, *, final_mark, months=None, common_start=None
         else:
             result=portfolio_results.evaluate_into(periods,select_period,emit_period,common_start=common_start,
                 checkpoint=backtest_control.checkpoint,contract=contract,final_mark=final_mark)
+    if recorded_market is not None:options['market']=recorded_market
     result.update(frequency if frequency is not None else dict(months=months),options=options,seconds=time.perf_counter()-started)
     return result

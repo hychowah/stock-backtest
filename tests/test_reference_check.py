@@ -1,10 +1,13 @@
-"""The development check: a dated 12-month run against revalue and the frozen report."""
+"""Same-input regression failure and informational frozen-report differences."""
 from pathlib import Path as _TestPath
 import sys as _test_sys
 _test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 
 from copy import deepcopy
+from contextlib import redirect_stdout
 from datetime import date
+import io
+import json
 import unittest
 from unittest.mock import patch
 
@@ -17,6 +20,7 @@ from prepared_inputs_fixture import PreparedInputs, history
 class ReferenceCheckTests(unittest.TestCase):
     def setUp(self):
         inputs = PreparedInputs(configure=history(12, 2014, 2016))
+        self.inputs = inputs
         self.addCleanup(inputs.close)
         # The reference engine reads the fixture and follows its study years.
         for owner, name, value in ((revalue, 'RAW', research.RAW), (legacy, 'RAW', research.RAW),
@@ -61,6 +65,31 @@ class ReferenceCheckTests(unittest.TestCase):
         changed = text.replace('2016,', '2016,9', 1)
         self.assertEqual([(item['year'], item['field']) for item in check.report_rows(self.adapted, changed)],
                          [(2016, 'portfolio')])
+
+    def test_cli_reports_frozen_drift_but_fails_only_calculation_differences(self):
+        results = self.inputs.root/'records'
+        results.mkdir()
+        report = results/'summary-exits.txt'
+        rows = ''.join(f'{y["year"]},{9 if y["year"]==2016 else y["portfolio"]:.4f},'
+                       f'{y["spy"]:.4f},{len(y["holdings"])},0,0\n' for y in self.adapted['years'])
+        report.write_text('Through 2016-10-20\n\nyear,portfolio,spy,names,stopped,bankrupt\n'+rows)
+        original = report.read_bytes()
+        output = results/'check.json'
+        for mismatch in (False, True):
+            with self.subTest(calculation_mismatch=mismatch):
+                reference = deepcopy(self.reference)
+                if mismatch:reference['years'][0]['holdings'][0]['return_value'] += .01
+                console = io.StringIO()
+                with patch('backtest.paths.RESULTS', results), patch.object(check, 'dated', return_value=self.result), \
+                     patch.object(revalue, 'calculate', return_value=reference), \
+                     patch.object(_test_sys, 'argv', ['scripts/check.py', '--json', str(output)]), redirect_stdout(console):
+                    with self.assertRaises(SystemExit) as stopped:check.main()
+                self.assertEqual(stopped.exception.code, int(mismatch))
+                recorded = json.loads(output.read_text())
+                self.assertEqual(len(recorded['differences']), int(mismatch))
+                self.assertEqual([(item['year'], item['field']) for item in recorded['report']], [(2016, 'portfolio')])
+                self.assertIn('frozen report (informational): 1 differences', console.getvalue())
+                self.assertEqual(report.read_bytes(), original)
 
 
 if __name__ == '__main__':

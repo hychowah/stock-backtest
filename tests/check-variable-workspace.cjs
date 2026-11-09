@@ -25,7 +25,7 @@ const context=vm.createContext({console,document,AbortController,setTimeout:call
  if(url==='/api/variables')return response(body?{...entry,name:body.name,version:2}:{entries:emptyLibrary?[]:[entry]});
  if(url.endsWith('/detached')){assert.deepEqual(body.root,exact);return response({selected:exact,name:'Original detached name',authored:[{...exact,definition}],capture});}
  if(url.endsWith('/authored')){if(authoredWait)await authoredWait();if(authoredFailure)throw Error('Cannot read authored fixture');return response({entry,selected:exact,authored:[{...exact,definition}],capture});}
- if(url.endsWith('/validate')){if(validationWait)await validationWait();return response({root:{variable_id:body.variable_id,revision:exact.revision},output:{unit:body.definition.output.unit,display:body.definition.output.display},requirements:[],capture,authored:[...(body.submitted||[]),{variable_id:body.variable_id,revision:exact.revision,definition:body.definition}]});}
+ if(url.endsWith('/validate')){if(body.upgrade)body.definition={...body.definition,version:3,parameter_catalog:ownerCatalog.current_parameter_catalog,temporal_policy:ownerCatalog.current_temporal_policy};if(validationWait)await validationWait();return response({root:{variable_id:body.variable_id,revision:exact.revision},output:{unit:body.definition.output.unit,display:body.definition.output.display},requirements:[],capture,authored:[...(body.submitted||[]),{variable_id:body.variable_id,revision:exact.revision,definition:body.definition}]});}
  if(url.endsWith('/save')){if(saveWait)await saveWait();return conflict?response({error:'Entry changed',code:'VERSION_CONFLICT'},409):response({...entry,name:body.name,version:2});}
  if(url.endsWith('/favourite'))return response({...entry,version:2,favourite:true});
  if(url.endsWith('/capture')){if(captureWait)await captureWait();return response({strategy:{selection:body.intent.selection,bounds:{}}});}
@@ -128,7 +128,7 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  emptyLibrary=true;draftSettings={strategy:{selection:{ranking:{source:{kind:'formula',...exact}},conditions:[]}}};draftDetached=[capture];
  const authoredBefore=calls.filter(call=>call.url.endsWith('/authored')).length;
  await run("VariableWorkspace.open('ranking')");assert.equal(node('variable-name').value,'Original detached name');assert.equal(node('variable-selected').textContent,'Used by this strategy · not in My variables');assert(node('variable-favourite').disabled);assert.equal(calls.filter(call=>call.url.endsWith('/authored')).length,authoredBefore);
- assert.deepEqual(JSON.parse(node('variable-json').value),definition.expression);await click('variable-apply');assert.equal(applied.length,2);assert.equal(applied.at(-1).source.revision,exact.revision);
+ assert.deepEqual(JSON.parse(node('variable-json').value),definition.expression);assert(!node('variable-upgrade').hidden);await click('variable-upgrade');assert(calls.at(-1).body.upgrade);assert(node('variable-upgrade').hidden);assert(node('variable-message').textContent.includes('User-defined references'));await click('variable-apply');assert.equal(applied.length,2);assert.equal(applied.at(-1).source.revision,exact.revision);
  // Inspection must be fenced before validation or capture can yield.
  draftSettings=null;draftDetached=[];
  await run("VariableWorkspace.open('ranking')");await click('variable-coverage-scopes');

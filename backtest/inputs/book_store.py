@@ -14,7 +14,7 @@ FILTERS = {key: f'f_{key}' for key in catalog.FILTERS}
 LANES = tuple(column for pair in METRICS.values() for column in pair) + tuple(FILTERS.values())
 SCHEMA = """
 CREATE TABLE books(book INTEGER PRIMARY KEY, entry TEXT NOT NULL, latest INTEGER NOT NULL CHECK(latest IN (0,1)),
- candidates INTEGER NOT NULL, UNIQUE(entry,latest));
+ candidates INTEGER NOT NULL, market TEXT NOT NULL DEFAULT 'us', UNIQUE(market,entry,latest));
 CREATE TABLE book_pools(book INTEGER REFERENCES books(book), pool TEXT CHECK(pool IN ('cached','legacy')),
  PRIMARY KEY(book,pool)) WITHOUT ROWID;
 CREATE TABLE book_rows(book INTEGER, pool TEXT, symbol TEXT, candidate_rank INTEGER, fiscal TEXT, known TEXT,
@@ -32,10 +32,11 @@ LATEST = ('pool', 'symbol', 'candidate_rank', 'fiscal', 'known', 'price_date', '
 
 def store(db, book):
     """Write a complete entry/pool sheet in the caller's transaction; return its handle."""
-    row = db.execute('SELECT book FROM books WHERE entry=? AND latest=?', (book['entry'], book['latest'])).fetchone()
+    market=book.get('market','us')
+    row = db.execute('SELECT book FROM books WHERE entry=? AND latest=? AND market=?', (book['entry'], book['latest'],market)).fetchone()
     book_id = row[0] if row is not None else db.execute(
-        'INSERT INTO books(entry,latest,candidates) VALUES(?,?,?)',
-        (book['entry'], book['latest'], book['candidates'])).lastrowid
+        'INSERT INTO books(entry,latest,candidates,market) VALUES(?,?,?,?)',
+        (book['entry'], book['latest'], book['candidates'],market)).lastrowid
     pool = book['pool']
     values = {row[0]: {} for row in book['rows']}
     for symbol, metric, multiple, value in book['metrics']:
@@ -49,20 +50,20 @@ def store(db, book):
     return book_id
 
 
-def stored(db):
+def stored(db, market='us'):
     """[(book, entry, latest)] of stored headers, by handle."""
-    return [tuple(row) for row in db.execute('SELECT book,entry,latest FROM books ORDER BY book')]
+    return [tuple(row) for row in db.execute('SELECT book,entry,latest FROM books WHERE market=? ORDER BY book',(market,))]
 
 
 def record(db, book):
     """Entry policy and candidate count for a stored header, or None."""
-    row = db.execute('SELECT entry,latest,candidates FROM books WHERE book=?', (book,)).fetchone()
-    return None if row is None else dict(zip(('entry', 'latest', 'candidates'), row))
+    row = db.execute('SELECT entry,latest,candidates,market FROM books WHERE book=?', (book,)).fetchone()
+    return None if row is None else dict(zip(('entry', 'latest', 'candidates','market'), row))
 
 
-def open_book(db):
+def open_book(db, market='us'):
     """Require the one latest header; its pools keep the existing shared handle."""
-    found = db.execute('SELECT book FROM books WHERE latest=1 LIMIT 2').fetchall()
+    found = db.execute('SELECT book FROM books WHERE latest=1 AND market=? LIMIT 2',(market,)).fetchall()
     if not found:
         raise ValueError('The latest book is missing. Run: python3 scripts/schedules.py prepare')
     if len(found) > 1:
@@ -70,24 +71,24 @@ def open_book(db):
     return found[0][0]
 
 
-def completed(db, pool):
+def completed(db, pool, market='us'):
     """[(book, entry, latest)] of complete pool sheets, including empty sheets."""
     return [tuple(row) for row in db.execute(
-        'SELECT b.book,b.entry,b.latest FROM books b JOIN book_pools p ON p.book=b.book WHERE p.pool=? ORDER BY b.book', (pool,))]
+        'SELECT b.book,b.entry,b.latest FROM books b JOIN book_pools p ON p.book=b.book WHERE p.pool=? AND b.market=? ORDER BY b.book', (pool,market))]
 
 
-def find(db, entry, pool, *, latest=False):
+def find(db, entry, pool, *, latest=False, market='us'):
     """The complete entry/pool handle under historical or latest policy, or None."""
-    row = db.execute('SELECT b.book FROM books b JOIN book_pools p ON p.book=b.book WHERE b.entry=? AND b.latest=? AND p.pool=?',
-                     (str(entry), latest, pool)).fetchone()
+    row = db.execute('SELECT b.book FROM books b JOIN book_pools p ON p.book=b.book WHERE b.entry=? AND b.latest=? AND p.pool=? AND b.market=?',
+                     (str(entry), latest, pool, market)).fetchone()
     return None if row is None else row[0]
 
 
-def require_scope(db, book, pool, day, open_book):
+def require_scope(db, book, pool, day, open_book,market='us'):
     """Check a prepared scope's entry, policy and pool completion once."""
     found = record(db, book) if type(book) is int else None
     if (found is None or found['entry'] != str(day) or bool(found['latest']) != open_book
-            or find(db, day, pool, latest=open_book) != book):
+            or find(db, day, pool, latest=open_book,market=market) != book):
         raise ValueError('The prepared scope is not a complete stored book.')
 
 

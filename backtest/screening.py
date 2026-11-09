@@ -74,7 +74,7 @@ def _sql_conditions(specification):
     return ' AND '.join(clauses),values
 
 
-def select(db, *, book=None, exit_day=None, rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
+def select(db, *, book=None, exit_day=None, market='us', rank_from=1,rank_to=50,pool='legacy',metric=metrics.DEFAULT_METRIC,min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=None,selection_order='filter_first'):
     """Execute the legacy scalar adapter in SQL over one book; preserve rows and SQL pushdown.
 
     Rows keep the book's row shape (book_store.DATED or LATEST) plus the
@@ -82,7 +82,7 @@ def select(db, *, book=None, exit_day=None, rank_from=1,rank_to=50,pool='legacy'
     """
     spec=legacy_specification(rank_from=rank_from,rank_to=rank_to,pool=pool,metric=metric,min_cap=min_cap,max_cap=max_cap,min_ev=min_ev,min_yield=min_yield,max_multiple=max_multiple,sector=sector,exchange=exchange,filters=filters,selection_order=selection_order)
     if book is None:
-        book=book_store.open_book(db)
+        book=book_store.open_book(db,market)
     conditions,thresholds=_sql_conditions(spec)
     before=' WHERE '+conditions if spec['selection_order']=='filter_first' else ''
     after=' AND '+conditions if spec['selection_order']=='rank_first' else ''

@@ -39,7 +39,7 @@ from backtest.runtime import cache_access as cache_access
 from backtest.paths import ROOT, RAW
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 # The annual statements; the typed facts are facts.SCHEMA.
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -105,7 +105,11 @@ def signature():
     is not in the signature: identity() compares the fact-row code by content.
     """
     paths = [RAW/n for n in ['universe.json','metrics.jsonl','spy-div.json','treasury.json']] + [RAW/'px']
-    entries = [(path, path.stat()) for path in paths]
+    foreign_present=any(market.universe_path(RAW,code).exists() for code in ('hk','jp'))
+    entries = [(path, path.stat()) for path in paths if path.exists() or not foreign_present]
+    optional=[market.universe_path(RAW,code) for code in ('hk','jp')]+[market.calendar_path(RAW,code) for code in ('hk','jp')]
+    optional += [RAW/'markets',RAW/'fx',RAW/'px-full']
+    entries += [(path,path.stat()) for path in optional if path.exists()]
     financial = _metadata_entries(RAW/'financial-inputs', '*/*.json')
     result = {p.relative_to(ROOT).as_posix(): ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns] for p,info in entries}
     prefixes = {}
@@ -125,6 +129,10 @@ def signature():
         else:
             key = prefixes[spelling] + path.name
         result[key] = ['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns]
+    for folder in (RAW/'fx',RAW/'px-full'):
+        if folder.exists():
+            for path,info in _metadata_entries(folder,'*.json'):
+                result[path.relative_to(ROOT).as_posix()]=['directory' if stat.S_ISDIR(info.st_mode) else info.st_size,info.st_mtime_ns]
     return result
 
 
@@ -222,7 +230,7 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
 
     Every build is a full build. A current database is kept unless force is set.
     """
-    cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
+    if (RAW/'metrics.jsonl').exists():cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
     started=time.perf_counter()
     progress(kind='research',completed=0,total=None)
     diagnostics.note(force=force)
@@ -241,18 +249,28 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
     code=code_identity('facts')
-    content=(RAW/'universe.json').read_bytes()
+    foreign_universes={};foreign_digests={}
+    for market_id in ('hk','jp'):
+        inventory=market.universe_path(RAW,market_id)
+        if inventory.exists():
+            saved=inventory.read_bytes()
+            foreign_digests[market_id]=hashlib.sha256(saved).hexdigest()
+            foreign_universes[market_id]={row['symbol']:{**row,'market':market_id} for row in json.loads(saved)}
+    content=(RAW/'universe.json').read_bytes() if (RAW/'universe.json').exists() else b'[]'
     # The facts' content identity: the code and the bytes of every saved file read.
     raw=dict(universe=hashlib.sha256(content).hexdigest(),
-             metrics=hashlib.sha256((RAW/'metrics.jsonl').read_bytes()).hexdigest())
+             metrics=hashlib.sha256((RAW/'metrics.jsonl').read_bytes() if (RAW/'metrics.jsonl').exists() else b'').hexdigest())
+    raw['foreign_universes']=foreign_digests
     universe={r['symbol']:r for r in json.loads(content)}
+    us_universe=universe.copy()
+    for group in foreign_universes.values():universe.update(group)
     # Each saved file is parsed once, into its typed facts.
     market_facts=facts.shared(RAW,backtest_control.checkpoint)
     for name,endpoint in (('spy-div.json',facts.CALENDAR),('treasury.json',facts.TREASURY)):
         _readable(market_facts[endpoint],name)
     records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
     if invalid:raise ValueError('Annual financial cache contains invalid records. Use the data panel to repair annual financials.')
-    broad=books.statements(records,universe)
+    broad=books.statements(records,us_universe)
     progress(kind='research',completed=0,total=len(broad)+1)
     financials=[(symbol,str(row['fiscal']),str(row['known']),row['market_cap'],row['enterprise'],row['ebitda'],row['yield'])
                 for symbol,rows in broad.items() for row in rows]
@@ -268,6 +286,11 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
         db.executescript(SCHEMA+facts.SCHEMA)
         facts.store_companies(db,universe)
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
+        facts.store_foreign_market(db,RAW,foreign_universes,backtest_control.checkpoint)
+        latest_dates={'us':str(latest_day)}
+        for market_id in foreign_universes:
+            last=db.execute('SELECT MAX(day) FROM local_sessions WHERE market=?',(market_id,)).fetchone()[0]
+            if last is not None:latest_dates[market_id]=last
         cached={s for s in broad if market.cache_path_for(s).name in sources}
         spiked=[]
         for number,symbol in enumerate(sorted(broad),1):
@@ -285,6 +308,14 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
         if spiked:
             print(f'Left out {len(spiked)} price series with an isolated price spike: {", ".join(spiked)}',flush=True)
         diagnostics.note(companies=len(cached),spiked_series=len(spiked))
+        for market_id,group in foreign_universes.items():
+            for symbol,company in sorted(group.items()):
+                backtest_control.checkpoint()
+                currency=company.get('currency') or market.MARKETS[market_id]['currency']
+                stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint,currency=currency),'px/'+market.cache_path_for(symbol).name)
+                facts.store_stock(db,symbol,stock)
+                facts.store_native(db,RAW,symbol,backtest_control.checkpoint)
+                facts.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol,market_id))
         facts.store_market(db,market_facts)
         diagnostics.lap('dated_facts')
         # fact_sources holds the digest of every price, annual, SPY and Treasury file read.
@@ -293,6 +324,7 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             digest.update(json.dumps(list(row),separators=(',',':')).encode()+b'\n')
         raw['sources']=digest.hexdigest()
         record=dict(version=SCHEMA_VERSION,latest_date=str(latest_day),code=code)
+        if foreign_universes:record['latest_dates']=latest_dates
         record['content']=hashlib.sha256(facts.encoded(dict(record,raw=raw)).encode()).hexdigest()
         diagnostics.lap('identity')
         for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,identity=record).items():

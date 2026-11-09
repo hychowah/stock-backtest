@@ -63,7 +63,7 @@ def evaluate_preview(projection, roots, view, *, checkpoint=backtest_control.che
     return dict(population='explicit-request-scopes', requested=roots, evaluations=[block])
 
 
-def _scope(db, capture, book, entry, exit_day=None, *, latest):
+def _scope(db, capture, book, entry, exit_day=None, *, latest, market='us'):
     """Return one complete prepared scope's rows and the admission of row i, after the scope's one check.
 
     The scope is one complete pool of the stored book (book_store.require_scope);
@@ -77,7 +77,7 @@ def _scope(db, capture, book, entry, exit_day=None, *, latest):
     """
     pool = capture['pool']
     try:
-        book_store.require_scope(db, book, pool, entry, latest)
+        book_store.require_scope(db, book, pool, entry, latest, market=market)
     except ValueError:
         raise definitions.FormulaError('INVALID_SHAPE', '/owner_scope', 'Prepared owner scope does not match the admitted projection.') from None
     owner_scope = dict(kind='prepared', book=book)
@@ -138,7 +138,7 @@ class Executor:
     def select(self, db, book, entry, exit_day=None, *, latest=False):
         """Select one complete prepared scope: the pool of the stored book named by its id (the open book when latest)."""
         self.checkpoint()
-        rows, admission = _scope(db, self.capture, book, entry, exit_day, latest=latest)
+        rows, admission = _scope(db, self.capture, book, entry, exit_day, latest=latest, market=self.view.market)
         self.number += 1; identity = 'scope:' + str(self.number)
         specification = deepcopy(self.capture['selection'])
         role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]

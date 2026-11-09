@@ -27,6 +27,9 @@ const BacktestComparison=(()=>{
     const kind=artifact.kind,s=artifact.settings,r=artifact.result,catalog=artifact.catalog||{},parameters=[],performance=[],handled=new Set(['mode']);
     const add=(key,label,value,display)=>parameters.push(entry(key,label,value,display));
     add('mode','Test type',kind,labels[kind]);
+    handled.add('market');const market=s.market??'us';
+    add('market','Stock market',market,{us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'}[market]||text(market));
+    add('currency','Return currency','USD');
     let requestedWindow;
     if(kind==='january'){
       for(const key of ['first','last']){handled.add(key);add(key,key==='first'?'First book year':'Last book year',s[key]);}

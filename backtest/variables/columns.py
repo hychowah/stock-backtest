@@ -9,13 +9,15 @@ reads. Both run the same code, so an explanation shows the values that ranked
 a stock. The evaluator implements the whole language: every program that
 definitions.require_program (the one formula gate) returns.
 
-Observation rules: a report is known strictly 90 days after its fiscal date
-and the current anchor is the financial-policy report at most 800 days old.
+Observation rules: legacy catalogs retain strict fiscal-plus-90 availability;
+the market-aware catalog uses prepared publication/fallback metadata. The
+current anchor is the financial-policy report at most 800 days old.
 One income fiscal spine selects annual periods before any endpoint join;
 other endpoints join those exact dates. Price and volume use the stock's own
-saved row at the SPY session on or before the context, within seven days.
-Treasury uses the latest saved day on or before the context and divides
-provider percent by 100. A stored-book root (a prepared scope's row, whose
+saved row at the selected market's session on or before the context, within
+seven days. Treasury uses the latest saved day on or before a US context,
+strictly before an Asian context, and divides provider percent by 100.
+A stored-book root (a prepared scope's row, whose
 decision names its book, or a latest root) reads its book's stored owner
 lanes; other roots and derived contexts use dated owner policy. Arithmetic is
 binary64 in tree order; mean adds oldest first; min/max keep the oldest equal member;
@@ -133,7 +135,8 @@ def _periods(facts, anchor, day, count, checkpoint):
         else:
             choices = [text for text in income if date.fromisoformat(text).year == year
                        and date.fromisoformat(text) <= anchor['fiscal']
-                       and date.fromisoformat(text) + rules.LAG < day]
+                       and date.fromisoformat((facts.get('metadata', {}).get('income-statement', {}).get(text) or {}).get(
+                           'known', str(date.fromisoformat(text) + rules.LAG))) < day]
             fiscal = max(choices, default=None)
         periods.append((year, fiscal))
     return periods
@@ -164,21 +167,22 @@ def _annual(parameter, facts, periods, checkpoint, detail):
                 value, reason = None, 'NONFINITE_RESULT'
         member = dict(value=value, valid=reason is None, reason=reason, fiscal_date=fiscal, fiscal_year=year)
         if detail:
+            metadata = facts.get('metadata', {}).get(endpoint, {}).get(fiscal) or {}
             member['evidence'] = dict(source=facts['sources'].get(endpoint),
                 fields={field: row.get(field) if row else None for field in fields},
-                known_date=str(date.fromisoformat(fiscal) + rules.LAG) if fiscal else None,
-                availability_model='fiscal-plus-90-strict; saved statements are not filing vintages')
+                known_date=metadata.get('known', str(date.fromisoformat(fiscal) + rules.LAG) if fiscal else None),
+                availability_model=metadata.get('basis', 'fiscal-plus-90-strict; saved statements are not filing vintages'))
         members.append(member)
     return members
 
 
-def _report_ebitda(reports, anchor, count, checkpoint, detail):
+def _report_ebitda(reports, anchor, count, checkpoint, detail, day):
     # The anchor remains the pool-selected report. Earlier values come from the
     # broad accepted report spine, without requiring statement endpoint rows.
     by_year = {}
     for row in reports:
         checkpoint()
-        if row['fiscal'] <= anchor['fiscal']:
+        if row['fiscal'] <= anchor['fiscal'] and row['known'] < day:
             by_year[row['fiscal'].year] = row
     by_year[anchor['fiscal'].year] = anchor
     result = []
@@ -209,19 +213,25 @@ def _slim(evidence):
         slim['source'] = {key: slim['source'][key] for key in ('endpoint', 'sha256', 'disposition') if key in slim['source']}
     if 'stored' in slim:
         slim['stored'] = measure_observations.detached(slim['stored'])
+    state_keys = ('value', 'valid', 'reason', 'source_currency', 'source_value', 'fx_date', 'fx_rate')
     if 'fields' in evidence:
-        slim['fields'] = {name: None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
+        slim['fields'] = {name: None if state is None else {key: state[key] for key in state_keys if key in state}
                           for name, state in evidence['fields'].items()}
     if 'state' in evidence:
         state = evidence['state']
-        slim['state'] = None if state is None else {key: state.get(key) for key in ('value', 'valid', 'reason')}
+        slim['state'] = None if state is None else {key: state[key] for key in state_keys if key in state}
     if 'report' in evidence:
         slim['report'] = _dates(evidence['report'])
     return slim
 
 
 def _dates(report):
-    return None if report is None else {key: str(report[key]) for key in ('fiscal', 'known')}
+    if report is None:
+        return None
+    result = {key: str(report[key]) for key in ('fiscal', 'known')}
+    result.update({key: report[key] for key in ('currency', 'quote_currency', 'availability_basis',
+                  'fx_date', 'quote_fx_date', 'fx_rate') if key in report})
+    return result
 
 
 class _Trace:
@@ -485,7 +495,7 @@ class Formulas:
             if detail:
                 # The stored row's report is the root's anchor (books.Screen.decide chose it).
                 if context_key not in state['anchors']:
-                    state['anchors'][context_key] = _anchor(view.company(root['symbol'], root['pool'], self.requirements), day)
+                    state['anchors'][context_key] = _anchor(view.company(root['symbol'], root['pool'], self.requirements, day), day)
                 anchor = state['anchors'][context_key][0]
         elif parameter == 'market.enterprise_value' and is_root:
             members = [dict(value=decision['valuation']['enterprise_value'], valid=True, reason=None)]
@@ -494,7 +504,7 @@ class Formulas:
                 # repeats the entry valuation lookups that admitted it.
                 statement = decision.get('statement')
                 if statement is None:
-                    anchor = _anchor(view.company(root['symbol'], root['pool'], self.requirements), day)[0]
+                    anchor = _anchor(view.company(root['symbol'], root['pool'], self.requirements, day), day)[0]
                 else:
                     anchor = dict(fiscal=date.fromisoformat(statement['fiscal']), known=date.fromisoformat(statement['known']))
                 evidence = decision.get('admission_evidence')
@@ -505,14 +515,14 @@ class Formulas:
                 members[0].update(fiscal_date=str(anchor['fiscal']), fiscal_year=anchor['fiscal'].year,
                                   evidence=evidence)
         else:
-            company = view.company(root['symbol'], root['pool'], self.requirements)
+            company = view.company(root['symbol'], root['pool'], self.requirements, day)
             if context_key not in state['anchors']:
                 state['anchors'][context_key] = _anchor(company, day)
             anchor, reason = state['anchors'][context_key]
             if anchor is not None:
                 if parameter == 'annual.report_ebitda':
-                    members = _report_ebitda(view.reports(root['symbol'], 'cached'), anchor,
-                                             node['count'], checkpoint, detail)
+                    members = _report_ebitda(view.reports(root['symbol'], 'cached', day), anchor,
+                                             node['count'], checkpoint, detail, day)
                 elif parameter.startswith('owner.'):
                     owner = state.setdefault('owner', {})
                     if context_key not in owner:
@@ -572,8 +582,11 @@ class Formulas:
             member.update(fiscal_date=None, fiscal_year=None, observation_date=observed, evidence=dict(
                 source=view.source('' if treasury else symbol, endpoint),
                 session=None if session is None else dict(day=session), field=field, state=state,
-                lookup_policy='latest-source-date' if treasury else 'exact-own-stock-at-backward-spy-session-within-seven-days',
-                conversion='provider-percent-divided-by-100' if treasury else 'identity'))
+                lookup_policy='latest-source-date' if treasury else
+                    'exact-own-stock-at-backward-local-session-within-seven-days' if view.market != 'us' else
+                    'exact-own-stock-at-backward-spy-session-within-seven-days',
+                conversion='provider-percent-divided-by-100' if treasury else
+                    'observation-date-quote-currency-to-usd' if view.market != 'us' and field == 'adjClose' else 'identity'))
         return member
 
 

@@ -60,7 +60,7 @@ class Progress:
         self.root=data.ROOT;self.owner=get_ident();self.finished=False
         if resume and saved.get('scope') is not None:scope=saved['scope']
         if resume:self.state=dict(saved)
-        else:self.state={key:saved[key] for key in ('pending_symbols','last_success','latest_session','last_timing') if key in saved}
+        else:self.state={key:saved[key] for key in ('pending_symbols','pending_markets','last_success','latest_session','last_timing') if key in saved}
         now=datetime.now(timezone.utc)
         if not resume:
             self.state.update(started_at=now.isoformat(),elapsed_seconds=0,completed_stages=[],stage_durations={},work={})
@@ -151,9 +151,10 @@ def failed(state,asset,error=None):
 def refresh_series(specs,end,ledger,emit,stop,client,state):
     """Refresh recent dates and known missing windows; retain complete histories."""
     def tasks():
-        for file,field,symbol in specs:
+        for file,field,endpoint,symbol in specs:
             stop()
-            asset=cache_assets.SeriesAsset(market.cache_path_for(symbol) if symbol else data.RAW/file,field,stock=bool(symbol))
+            path=data.RAW/file if file else market.cache_path_for(symbol)
+            asset=cache_assets.SeriesAsset(path,field,stock=bool(symbol and file is None),key=path.relative_to(data.RAW).as_posix())
             checked=asset.checked(ledger)
             first=min([asset.rows[0]['date'][:10]]+[a for a,_ in checked]) if asset.rows else '1995-01-01'
             if state['scope']:first=min(first,state['scope']['start'])
@@ -161,20 +162,20 @@ def refresh_series(specs,end,ledger,emit,stop,client,state):
             recent=(max(asset.rows[0]['date'][:10],str(date.fromisoformat(asset.rows[-1]['date'][:10])-timedelta(days=7)))
                     if asset.rows else str(max(date(1995,1,1),end-timedelta(days=7))))
             if recent<=str(end):ranges.append([recent,str(end)])
-            yield asset,cache_assets.coalesce_windows(ranges),field,symbol
-    def windows(ranges,field,symbol):
+            yield asset,cache_assets.coalesce_windows(ranges),field,symbol,endpoint
+    def windows(ranges,field,symbol,endpoint):
         result=[]
         for start,end_day in ranges:
             for first,last in data.spans(date.fromisoformat(start),date.fromisoformat(end_day),monthly=field=='month3'):
                 stop();params={'from':first,'to':last}
-                if field=='adjClose':params['symbol']=symbol or 'SPY'
-                rows=request('treasury-rates' if field=='month3' else 'historical-price-eod/dividend-adjusted',params,stop,client)
+                if symbol or field=='adjClose':params['symbol']=symbol or 'SPY'
+                rows=request(endpoint,params,stop,client)
                 if rows is None:return None
                 result.append((first,last,rows))
         return result
     emit(kind='prices',completed=0,total=len(specs))
-    for number,(task,batches) in enumerate(client.map(tasks(),lambda task:windows(task[1],task[2],task[3])),1):
-        stop();asset,_,field,symbol=task
+    for number,(task,batches) in enumerate(client.map(tasks(),lambda task:windows(task[1],task[2],task[3],task[4])),1):
+        stop();asset,_,field,symbol,endpoint=task
         if batches is None:failed(state,asset.key)
         else:
             try:
@@ -186,7 +187,7 @@ def refresh_series(specs,end,ledger,emit,stop,client,state):
                     if not overlap:raise ValueError('Price update has no saved overlap.')
                     if any(current[day]!=old[day] for day in overlap):
                         emit(message='Updating the complete adjusted history for '+(symbol or 'SPY')+'.')
-                        batches=windows([[min('1995-01-01',asset.rows[0]['date'][:10]),str(end)]],field,symbol)
+                        batches=windows([[min('1995-01-01',asset.rows[0]['date'][:10]),str(end)]],field,symbol,endpoint)
                         if batches is None:failed(state,asset.key);continue
                         admitted=[(first,last,*asset.validate(batch,first,last)) for first,last,batch in batches]
                         replacement={row['date'][:10]:data.rules.num(row[field]) for _,_,rows,_ in admitted for row in rows}
@@ -223,6 +224,7 @@ def download(state,end,emit,stop,client,progress):
     if invalid:raise ValueError('Repair invalid annual financial records before updating data.')
     ledger=cache_assets.read_json(data.COVERAGE,{})
     pending=set(state.get('pending_symbols',[]));scope=state['scope']
+    if scope and scope.get('managed'):scope=None
     if scope:
         targets=set(data.target_symbols(scope,universe,records))
         wanted=sorted(targets) if scope['scope']!='financials' else sorted(universe)
@@ -267,10 +269,10 @@ def download(state,end,emit,stop,client,progress):
                 else:emit(message='Updated '+endpoint+' for '+symbol+'.')
             emit(kind='statements',completed=number,total=total)
         progress.done('statements',state['failed_assets']==before)
-    specs=[('spy-div.json','adjClose',None),('treasury.json','month3',None)]+[(None,'adjClose',symbol) for symbol in targets]
+    specs=[('spy-div.json','adjClose','historical-price-eod/dividend-adjusted',None),('treasury.json','month3','treasury-rates',None)]+[(None,'adjClose','historical-price-eod/dividend-adjusted',symbol) for symbol in targets]
     valid_prices='prices' in state['completed_stages']
     if valid_prices:
-        for file,field,symbol in specs:
+        for file,field,endpoint,symbol in specs:
             asset=cache_assets.SeriesAsset(market.cache_path_for(symbol) if symbol else data.RAW/file,field,stock=bool(symbol))
             if not asset.valid or not asset.evidence(ledger):valid_prices=False;break
     if not valid_prices:
@@ -300,7 +302,20 @@ def run(emit=lambda **kw:None,stop=lambda:None,*,scope=None,resume=False):
             try:
                 end=date.fromisoformat(state['target_date'])
                 if state['scope']:end=min(end,date.fromisoformat(state['scope']['end']))
-                with fmp_download.Client(checkpoint,feedback) as client:download(state,end,feedback,checkpoint,client,progress)
+                with fmp_download.Client(checkpoint,feedback) as client:
+                    scope=state['scope']
+                    foreign=[code for code in market.MARKETS if code!='us' and market.universe_path(data.RAW,code).exists()]
+                    if scope and scope.get('market','us')!='us':
+                        data.download_market(dict(scope,end=str(end)),feedback,checkpoint,client,refresh=True,refresh_state=state)
+                        for kind in STAGES[:4]:progress.done(kind,state['failed_assets']==0)
+                    else:
+                        if scope or market.universe_path(data.RAW,'us').exists() or not foreign:
+                            download(state,end,feedback,checkpoint,client,progress)
+                        if not scope:
+                            for code in foreign:
+                                selected=data.options(dict(market=code,end=str(end)))
+                                data.download_market(selected,feedback,checkpoint,client,refresh=True,refresh_state=state)
+                            for kind in STAGES[:4]:progress.done(kind,state['failed_assets']==0)
                 if state['failed_assets']:state['error']=f"{state['failed_assets']} data items could not be updated. Completed work was kept. Continue to try again."
             except (fmp_download.Cancelled,backtest_control.Cancelled,KeyboardInterrupt):raise
             except Exception as error:
@@ -315,6 +330,11 @@ def run(emit=lambda **kw:None,stop=lambda:None,*,scope=None,resume=False):
             if any(row['state']!='current' for row in data.derived_status()):raise ValueError('Preparation is incomplete.')
             spy=cache_assets.SeriesAsset(data.RAW/'spy-div.json','adjClose')
             state['latest_session']=spy.rows[-1]['date'][:10] if spy.rows else None
+            state['latest_dates']={'us':state['latest_session']} if state['latest_session'] else {}
+            for code in market.MARKETS:
+                if code=='us':continue
+                rows=cache_assets.SeriesAsset(market.calendar_path(data.RAW,code),'close').rows
+                if rows:state['latest_dates'][code]=rows[-1]['date'][:10]
             feedback(kind='verify',completed=1,total=1);progress.done('verify')
             progress.finish('partial' if state['error'] else 'complete',error=state['error'],ready=True)
     except (fmp_download.Cancelled,backtest_control.Cancelled,KeyboardInterrupt):

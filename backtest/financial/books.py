@@ -129,7 +129,7 @@ def close(start, exit_day, lookup, bankruptcy):
 class Screen:
     """The admission state of one entry day of a book or a formula root.
 
-    day must be a saved SPY session on or after rules.FIRST_DAY: the one date
+    day must be a saved market session on or after rules.FIRST_DAY: the one date
     rule of books and formula roots. The open book (the latest book, with no
     exit) ranks listed companies only and values each at the exact session;
     every other screen enters up to ENTRY_SLACK days later. statements[pool]
@@ -137,11 +137,12 @@ class Screen:
     (facts.BookFacts): reports(), cached(), companies() and price().
     """
     def __init__(self, day, facts, *, open_book=False):
-        if day<run.FIRST_DAY or facts.spy(day) is None:
-            raise ValueError(f'The entry day is not a saved SPY session from {run.FIRST_DAY}.')
+        if day<run.FIRST_DAY or (facts.spy(day) is None if getattr(facts,'market','us')=='us' else not facts.session(day)):
+            session='SPY' if getattr(facts,'market','us')=='us' else 'local market'
+            raise ValueError(f'The entry day is not a saved {session} session from {run.FIRST_DAY}.')
         self.day,self.facts,self.open=day,facts,open_book
         self.slack=0 if open_book else ENTRY_SLACK
-        reports=facts.reports()
+        reports=facts.reports() if getattr(facts,'market','us')=='us' else facts.reports(day)
         if open_book:
             companies=facts.companies()
             reports=tuple({symbol:rows for symbol,rows in pool.items() if companies.get(symbol)} for pool in reports)
@@ -175,7 +176,12 @@ class Screen:
         fiscal_px,start,cap,ev,ebitda=valuation
         if not eligible(pool,cap,ev):
             return None,'INELIGIBLE_VALUATION'
-        return dict(statement=statement,rank=rank,fiscal_price=fiscal_px,entry=start,market_cap=cap,
+        usd_entry=start
+        if getattr(self.facts,'market','us')!='us':
+            value=self.facts.convert(start[1],self.facts.quote_currency(symbol),start[0])
+            if value is None:return None,'MISSING_PRICE'
+            usd_entry=start[0],value
+        return dict(statement=statement,rank=rank,fiscal_price=fiscal_px,entry=start,usd_entry=usd_entry,market_cap=cap,
                     enterprise_value=ev,ebitda=ebitda),None
 
 
@@ -197,12 +203,14 @@ def book(entry, pool, facts, checkpoint=lambda: None, *, latest=False):
         statement,cap,ev,ebitda=held['statement'],held['market_cap'],held['enterprise_value'],held['ebitda']
         fiscal=str(statement['fiscal'])
         yield_value,multiple,evaluated,values=owner_values(symbol,fiscal,entry,cap,ev,ebitda,facts,ten_year)
-        rows.append((symbol,held['rank'],fiscal,str(statement['known']),str(held['entry'][0]),held['entry'][1],
+        rows.append((symbol,held['rank'],fiscal,str(statement['known']),str(held['usd_entry'][0]),held['usd_entry'][1],
                      cap,ev,ebitda,yield_value,multiple,yield_spread(yield_value,treasury)))
         filters.extend((symbol,key,value) for key,value in values.items())
         pairs.extend((symbol,metric,multiple,value) for metric,(multiple,value) in evaluated.items())
-    return dict(entry=str(entry),latest=latest,pool=pool,candidates=len(screen.statements['cached']),
+    result=dict(entry=str(entry),latest=latest,pool=pool,candidates=len(screen.statements['cached']),
                 rows=rows,metrics=pairs,filters=filters)
+    if getattr(facts,'market','us')!='us':result['market']=facts.market
+    return result
 
 
 def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
@@ -217,11 +225,14 @@ def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
     """
     yield_value,multiple=ebitda_yield_and_multiple(ebitda,ev)
     observation=dict(fiscal=fiscal,market_cap=cap,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
-    history=[dict(report,fiscal=str(report['fiscal']),known=str(report['known'])) for report in facts.reports()[0][symbol]]
+    reports=facts.reports() if getattr(facts,'market','us')=='us' else facts.reports(day,symbol=symbol)
+    history=[dict(report,fiscal=str(report['fiscal']),known=str(report['known'])) for report in reports[0][symbol]
+             if getattr(facts,'market','us')=='us' or report['known']<day]
     pairs=metrics.evaluate(observation,history)
     def lookup(when,forward,slack):
-        return facts.price(symbol,when,forward,slack)
-    return yield_value,multiple,pairs,metrics.filter_values(observation,pairs,day,lookup,facts.legacy_annual(symbol),ten_year)
+        return facts.price(symbol,when,forward,slack) if getattr(facts,'market','us')=='us' else facts.usd_price(symbol,when,forward,slack)
+    annual=facts.legacy_annual(symbol) if getattr(facts,'market','us')=='us' else facts.legacy_annual(symbol,day)
+    return yield_value,multiple,pairs,metrics.filter_values(observation,pairs,day,lookup,annual,ten_year)
 
 
 def benchmark_return(entry_price, exit_price):

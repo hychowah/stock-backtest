@@ -25,7 +25,7 @@ from backtest.inputs import facts
 from backtest.inputs import book_store
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 12
+VERSION = 13
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ''' + book_store.SCHEMA
@@ -142,7 +142,9 @@ def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
         _empty(path)
         previous=None
     with closing(_open(path,source)) as db:
-        latest=date.fromisoformat(r.identity(db,'research',prices=True)['latest_date'])
+        identity=r.identity(db,'research',prices=True)
+        latest=date.fromisoformat(identity['latest_date'])
+        latest_dates=identity.get('latest_dates',{'us':str(latest)})
         inputs=current(db)
         if previous==inputs:
             progress(kind='daily',completed=2,total=2,reused=True)
@@ -157,10 +159,13 @@ def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
         db.execute('BEGIN IMMEDIATE')
         db.execute("INSERT OR REPLACE INTO metadata VALUES('daily_inputs',?)",(json.dumps(inputs),))
         # Latest keeps its own listed/exact-session admission in both pools.
-        book_facts=facts.BookFacts(db)
-        for number,pool in enumerate(('legacy','cached'),1):
-            book_store.store(db,financial_books.book(latest,pool,book_facts,backtest_control.checkpoint,latest=True))
-            progress(kind='daily',completed=number,total=2)
+        number=0;total=2+len(latest_dates)-1
+        for market_id,day in latest_dates.items():
+            book_facts=facts.BookFacts(db,market_id)
+            for pool in (('legacy','cached') if market_id=='us' else ('cached',)):
+                book_store.store(db,financial_books.book(date.fromisoformat(day),pool,book_facts,backtest_control.checkpoint,latest=True))
+                number+=1
+                progress(kind='daily',completed=number,total=total)
         diagnostics.lap('latest_book')
         if inputs!=current(db) or raw!=r.signature():
             raise ValueError('Inputs changed during daily preparation; retry.')

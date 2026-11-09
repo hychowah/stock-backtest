@@ -18,6 +18,7 @@ assert(html.includes('Financial ratios use annual statement inputs.') && html.in
 assert(html.includes('WSL source') && html.includes('Windows runtime') && html.includes('tools/deploy.py') && html.includes('deployment.pending.json'), 'Explain source deployment and interrupted publication');
 assert(html.includes('server/app.py') && html.includes('runtime_access.py') && html.includes('The tracked report is a frozen record.'), 'Explain native ownership and the frozen report');
 assert(html.includes('scripts/check.py') && html.includes('Every preparation is a full build.') && html.includes('Nothing regenerates or changes it.'), 'Explain the development check, full research builds and the frozen January record');
+assert(html.includes('Only same-input calculation differences fail the check.') && html.includes('Frozen-report differences are informational.'), 'Separate calculation regression from historical input differences');
 assert(html.includes('there is no January mode') && html.includes('A saved January result opens in the dated view.') && html.includes('at <code>/mode</code>'), 'Explain the removed January mode, saved January results and the refusal');
 assert(html.includes('checks main once a day at 07:00 Hong Kong time') && html.includes('website-update-stop-') && html.includes('without automatic updates'), 'Explain automatic main updates, owned cleanup and fixed launches');
 assert(html.includes('backtest/application/jobs.py') && html.includes('backtest-runs.js') && html.includes('/api/backtest-runs/*') && html.includes('24 hours, up to four recent runs') && html.includes('same browser storage'), 'Explain server-owned runs, reconnection and temporary result limits');
@@ -70,7 +71,7 @@ const paragraph = new Element();
 detail.querySelector = name => name === 'h3' ? title : paragraph;
 const elements = {
   'flow-detail': detail,
-  'example-pool': Object.assign(new Element(), {value: 'legacy'}),
+  'example-pool': Object.assign(new Element(), {value: 'cached'}),
   'example-count': Object.assign(new Element(), {value: '50'}),
   'example-filter': Object.assign(new Element(), {value: 'none'}),
   'settings-explanation': new Element(),
@@ -104,15 +105,13 @@ for (const mode of modes) {
   assert.equal(panels.find(x => !x.hidden).id, 'mode-' + mode.dataset.mode);
 }
 const text = element => element.textContent + element.children.map(x => typeof x === 'string' ? x : text(x)).join('');
-for (const pool of ['legacy', 'cached']) for (const count of ['50', '100']) for (const filter of ['none', 'cap', 'pb']) {
-  elements['example-pool'].value = pool;
+for (const count of ['50', '100']) for (const filter of ['none', 'cap', 'pb']) {
   elements['example-count'].value = count;
   elements['example-filter'].value = filter;
   selects[0].events.change();
   const result = text(elements['settings-explanation']);
   if (filter === 'pb') assert(result.includes('saved annual equity') && result.includes('Manage backtest data → Update data'));
   else assert(result.includes(count) && result.includes('Saved books'));
-  if (pool === 'legacy' && count === '100' && filter !== 'pb') assert(result.includes('does not expand'));
 }
 elements['print-guide'].click();
 assert(printed);
@@ -121,7 +120,7 @@ assert(closed.every(x => x.open));
 windowEvents.afterprint();
 assert(closed.every(x => !x.open));
 assert(html.includes('Original sample preview') && html.includes('Variable strategies run with Original in all three scalar modes.') && html.includes('Every scalar result panel shows its recorded producer.') && html.includes('Missing producer evidence stays explicitly unknown.'), 'Explain Original preview, pinned choice and recorded producers');
-console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 12 setting combinations and print state.');
+console.log('Guide checks passed: anchors, offline assets, stage/mode controls, 6 setting combinations and print state.');
 
 
 
@@ -159,6 +158,8 @@ assert(html.includes('id="scalar-execution"') && html.includes('Scalar execution
 
 
 
-assert(html.includes('Daily cache version 12') && html.includes('There are no metric/filter tables or stored exit fields.') && html.includes('Before either ranking order or formula evaluation') && html.includes('Historical coverage adds no readiness state') && html.includes('Reader/formula edits keep them.'), 'Explain compact entry sheets, pre-ranking exit admission, invalidation and ordinary readiness');
+assert(html.includes('Daily cache version 13') && html.includes('Headers identify market, entry and latest/historical policy') && html.includes('There are no metric/filter tables or stored exit fields.') && html.includes('Before either ranking order or formula evaluation') && html.includes('Historical coverage adds no readiness state') && html.includes('Reader/formula edits keep them.'), 'Explain compact entry sheets, market identity, pre-ranking exit admission, invalidation and ordinary readiness');
 
 assert(html.includes('<code>sheets</code> stage runs after website output and before verification') && html.includes('One complete sheet commits at a time.') && html.includes('Plain startup, CLI preparation and runs keep on-demand behavior.') && html.includes('Latest-policy headers do not count; empty completions do.'), 'Explain update-only precomputation, missing-only continuation and bounded commits');
+
+assert(html.includes('One market per run. USD results.') && html.includes('raw/px-full/') && html.includes('raw/fx/USD&lt;currency&gt;.json') && html.includes('options.market') && html.includes('financial-parameters/4') && html.includes('market-annual/1') && html.includes('previous completed US close') && html.includes('previous completed daily fixing') && html.includes('New forms offer the broader pool only.'), 'Explain market selection, captured identity, native and FX inputs, USD timing, and explicit formula upgrades');

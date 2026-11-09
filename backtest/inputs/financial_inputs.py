@@ -154,7 +154,7 @@ def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
     return rows
 
 
-def resolve_history(raw,symbol):
+def resolve_history(raw,symbol,market_id='us'):
     """Resolve annual values, field states and file-level sources in one authority.
 
     Multiple records can describe the same fiscal date. Equal nonmissing input
@@ -162,10 +162,12 @@ def resolve_history(raw,symbol):
     by response order. Nulls do not replace known values. All admitted fiscal dates
     survive in annual states, including dates with no usable field. Raw assets stay intact.
     """
-    reports={};sources={};annual={}
+    market.require(market_id)
+    reports={};sources={};annual={};metadata={}
     semantic = observation_fields()
     for endpoint,legacy_fields in ENDPOINTS.items():
-        fields = tuple(dict.fromkeys((*legacy_fields, *semantic.get(endpoint, ()))))
+        extra = ('ebitda','weightedAverageShsOut') if market_id!='us' and endpoint=='income-statement' else ()
+        fields = tuple(dict.fromkeys((*legacy_fields, *semantic.get(endpoint, ()), *extra)))
         if not fields:continue
         rows,_,source=_asset(raw,symbol,endpoint)
         sources[endpoint]=source
@@ -173,18 +175,24 @@ def resolve_history(raw,symbol):
         for row in rows:
             day=str(rules.parse_day(row['date']))
             candidates.setdefault(day,[]).append(row)
-        annual[endpoint]={}
+        annual[endpoint]={};metadata[endpoint]={}
         for day,members in candidates.items():
+            currencies={str(row.get('reportedCurrency') or '').upper() for row in members if row.get('reportedCurrency')}
+            currency=next(iter(currencies)) if len(currencies)==1 else None
+            publications={str(row.get('availableDate') or row.get('filingDate') or row.get('acceptedDate') or '')[:10] for row in members}
+            publications={d for d in publications if rules.parse_day(d) and d>day}
+            known,basis=market.available(rules.parse_day(day),market_id,next(iter(publications)) if len(publications)==1 else None)
+            metadata[endpoint][day]=dict(currency=currency,known=str(known),basis=basis)
             values={};states={}
             for field in fields:
                 inputs=[(row.get('reportedCurrency'),_observation_number(row.get(field))) for row in members]
-                numbers={value for currency,value in inputs if currency=='USD' and value is not None}
+                numbers={value for code,value in inputs if (code=='USD' if market_id=='us' else currency is not None and code==currency) and value is not None}
                 if len(numbers)==1:
                     value=next(iter(numbers));values[field]=value;reason=None
                 else:
                     value=None
-                    reason=('CONFLICTING_INPUT' if len(numbers)>1 else
-                            'NON_USD_INPUT' if any(isinstance(currency,str) and currency
+                    reason=('CONFLICTING_INPUT' if len(numbers)>1 or market_id!='us' and len(currencies)>1 else
+                            'NON_USD_INPUT' if market_id=='us' and any(isinstance(currency,str) and currency
                                 and currency!='USD' and value is not None for currency,value in inputs)
                             else 'INVALID_INPUT' if any(row.get(field) is not None
                                 and row.get(field) != '' and _observation_number(row.get(field)) is None
@@ -195,4 +203,15 @@ def resolve_history(raw,symbol):
             # policy. New observations cannot leak into financial calculations.
             legacy = {field: values[field] for field in legacy_fields if field in values}
             if legacy:reports.setdefault(day,{}).update(legacy)
-    return dict(values=reports,sources=sources,annual=annual)
+    core=[]
+    if market_id!='us':
+        income=annual.get('income-statement',{});balance=annual.get('balance-sheet-statement',{})
+        for day,states in income.items():
+            if day not in balance:continue
+            im=metadata['income-statement'][day];bm=metadata['balance-sheet-statement'][day]
+            if not im['currency'] or im['currency']!=bm['currency']:continue
+            values=[states.get(name,{}).get('value') for name in ('weightedAverageShsOut','ebitda')]
+            values += [balance[day].get(name,{}).get('value') for name in ('totalDebt','cashAndCashEquivalents')]
+            if any(v is None for v in values) or values[0]<=0 or values[1]<=0:continue
+            core.append(dict(fiscal=day,known=max(im['known'],bm['known']),currency=im['currency'],shares=values[0],ebitda=values[1],debt=values[2],cash=values[3],basis=im['basis']))
+    return dict(values=reports,sources=sources,annual=annual,metadata=metadata,core=core)

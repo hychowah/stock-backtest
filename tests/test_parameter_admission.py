@@ -2,7 +2,7 @@
 
 Captured formulas restore and run without a second gate, so the column
 evaluator must implement the whole language; the guard test evaluates every
-operation, statistic and /3 parameter through columns.Formulas.
+operation, statistic and /3–/4 parameter through columns.Formulas.
 """
 import sys
 from pathlib import Path
@@ -58,12 +58,18 @@ class AdmissionTests(unittest.TestCase):
             inputs.admit.assert_called_once()
 
     def test_the_evaluator_implements_every_operation_statistic_and_parameter(self):
+        for catalog in (parameters.V3, parameters.V4):
+            with self.subTest(catalog=catalog):
+                self._evaluate_language(catalog)
+
+    def _evaluate_language(self, catalog):
         # Development guard: a language addition fails here until columns.py implements it.
         self.assertEqual({item['id'] for item in columns.catalog()},
-                         {item['id'] for item in parameters.catalog(parameters.V3)})
-        units=parameters.units(parameters.V3)
+                         {item['id'] for item in parameters.catalog(catalog)})
+        units=parameters.units(catalog)
         def version3(expression,unit='scalar',identity=None):
-            value=dict(definition(expression,unit,units[unit]['displays'][0]),version=3,parameter_catalog=parameters.V3)
+            value=dict(definition(expression,unit,units[unit]['displays'][0]),version=3,parameter_catalog=catalog,
+                       temporal_policy=d.MARKET_TEMPORAL_POLICY if catalog==parameters.V4 else d.TEMPORAL_POLICY)
             return entry(value,identity or 'draft:'+expression['op'])
         one,two=constant('1'),constant('2')
         target=version3(one)
@@ -78,13 +84,13 @@ class AdmissionTests(unittest.TestCase):
             ref=([target,version3(dict(op='ref',**root(target)))],1.))
         self.assertEqual(set(operations),d.OPERATIONS)
         statistics={'mean':700/3,'min':100.,'max':400.,'growth':3.,'cagr':1.}
-        self.assertEqual(set(statistics),{stat for item in parameters.catalog(parameters.V3)
+        self.assertEqual(set(statistics),{stat for item in parameters.catalog(catalog)
                                           for stat in item['history']['statistics']})
         cases=[(('op',op),entries,value) for op,(entries,value) in operations.items()]
         for stat,value in statistics.items():
             unit='scalar' if stat in ('growth','cagr') else 'USD'
             cases.append((('stat',stat),[version3(dict(op='annual',stat=stat,count=3,parameter='annual.revenue'),unit)],value))
-        for item in parameters.catalog(parameters.V3):
+        for item in parameters.catalog(catalog):
             cases.append((('parameter',item['id']),[version3(dict(op='parameter',id=item['id']),item['unit'])],None))
             if item['id'].startswith('annual.'):
                 cases.append((('annual',item['id']),[version3(dict(op='annual',stat='mean',count=2,

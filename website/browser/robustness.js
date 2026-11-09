@@ -84,7 +84,8 @@ const RobustnessView=(()=>{
     if(!result)return;
     const keys=['trial','start','first_trade','end','cash_days','periods','cagr','spy_cagr','excess_cagr','total_return','growth','spy_growth','empty_periods','short_periods','seed',...(result.configuration.calendar?['interval_unit','interval_count']:['months']),'dates'];
     if(result.producer)keys.push('engine');
-    const rows=[keys,...result.trials.map(t=>keys.map(k=>k==='engine'?result.producer.engine:k==='dates'?t.dates.join(';'):k==='seed'?result.configuration.seed:k==='months'?result.configuration.months:k==='interval_unit'?result.configuration.calendar.interval.unit:k==='interval_count'?result.configuration.calendar.interval.count:t[k]))];
+    const market=artifact?.settings.market;if(market!==undefined)keys.unshift('market','currency');
+    const rows=[keys,...result.trials.map(t=>keys.map(k=>k==='market'?market:k==='currency'?'USD':k==='engine'?result.producer.engine:k==='dates'?t.dates.join(';'):k==='seed'?result.configuration.seed:k==='months'?result.configuration.months:k==='interval_unit'?result.configuration.calendar.interval.unit:k==='interval_count'?result.configuration.calendar.interval.count:t[k]))];
     const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const link=document.createElement('a');link.href=url;link.download='random-dates-seed-'+result.configuration.seed+'.csv';link.click();URL.revokeObjectURL(url);

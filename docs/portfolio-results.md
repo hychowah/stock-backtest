@@ -5,6 +5,12 @@ results. It is separate from calendar, database and browser ResultArtifacts
 versions. Legacy application results have no new version key. The contract does
 not rewrite jobs, queued tests or saved results.
 
+## Market and currency
+
+A captured request may include top-level `options.market` (`us`, `hk`, `jp`). Omission on existing records means US; opening never rewrites the record. A run contains one market. Comparisons can display different markets because new monetary values and returns use USD.
+
+Foreign holding prices use FX from their actual price-observation dates. Returns include unhedged FX changes. Stopped holdings become USD cash at the observed exit, with 0% return until rebalance. SPY remains the S&P 500 total-return proxy; Asian dates use the previous completed US close. Annual valuation uses context-date FX and annual basic weighted-average shares. US calculations and saved original totals retain their meaning.
+
 ## Shared evaluator
 
 `backtest/portfolio_results.py` uses only the standard library. Its interface is:

@@ -105,11 +105,11 @@ def dispatch(handler,data_jobs):
             if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid coverage request size.')
             request=durable_evidence.decode(handler.rfile.read(length))
             expected=set() if path.endswith('/scopes') else {'strategy','scope'}
-            if type(request) is not dict or set(request)!=expected:raise ValueError('Invalid coverage request fields.')
+            if type(request) is not dict or set(request)-{'market'}!=expected:raise ValueError('Invalid coverage request fields.')
             if expected and type(request['strategy']) is not dict:
                 raise ValueError('Inspection requires a captured strategy object.')
             with backtest_control.cancel_when(handler.disconnect_check()):
-                value=handler.server.calculations.coverage(request.get('strategy'),request.get('scope'))
+                value=handler.server.calculations.coverage(request.get('strategy'),request.get('scope'),market=request.get('market','us'))
             handler.reply(200,value)
         except (backtest_control.Cancelled,BrokenPipeError,ConnectionResetError):
             return True
@@ -128,10 +128,10 @@ def dispatch(handler,data_jobs):
             if not 0<length<=strategy_requests.REQUEST_BYTES:raise ValueError('Invalid preview request size.')
             request=durable_evidence.decode(handler.rfile.read(length))
             if (type(request) is not dict or not {'strategy','roots'}<=set(request)
-                    or set(request)-{'strategy','roots','engine'}):raise ValueError('Expected a captured strategy and explicit preview roots.')
+                    or set(request)-{'strategy','roots','engine','market'}):raise ValueError('Expected a captured strategy and explicit preview roots.')
             engine=strategy_requests.preview_engine(request.get('engine','original'))
             with backtest_control.cancel_when(handler.disconnect_check()):
-                value=handler.server.calculations.preview(request['strategy'],request['roots'],engine=engine)
+                value=handler.server.calculations.preview(request['strategy'],request['roots'],engine=engine,market=request.get('market','us'))
             handler.reply(200,value)
         except (ValueError,TypeError) as error:
             details=strategy_requests.failure_details(error) or dict(code=None,path=None)

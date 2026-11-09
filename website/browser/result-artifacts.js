@@ -160,7 +160,7 @@ const ResultArtifacts=(()=>{
     settings=calendar?calendar.normalize(settings):settings;
     // Phase 6 scalar latest/January settings omitted engine and mean Original.
     // This comparison default establishes no historical producer evidence.
-    const defaults=['custom','random'].includes(artifact.kind)||artifact.settings.strategy?{engine:'original',selection_order:'filter_first'}:{selection_order:'filter_first'};
+    const defaults=['custom','random'].includes(artifact.kind)||artifact.settings.strategy?{engine:'original',selection_order:'filter_first',market:'us'}:{selection_order:'filter_first',market:'us'};
     return signature({...defaults,...submitted})===signature({...defaults,...settings});
   }
   function scalarValue(row){

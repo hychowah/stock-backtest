@@ -10,6 +10,12 @@ Custom controls follow the server's engine capability.
 This source change does not update the installed server. SQL selection and
 financial rules remain in their existing owners.
 
+## Market sessions
+
+Application requests carry optional `options.market`: `us`, `hk` or `jp`. Omission in recorded work means US. The existing calendar configuration is unchanged. Its caller supplies the selected market’s saved sessions. Fixed targets roll forward locally; end marks roll back locally. Random dates use the same local sessions and existing sampling algorithm. Book identity includes market, entry, latest policy and pool.
+
+All portfolio returns use USD. HK and JP SPY comparisons use the latest earlier US session. Daily FX uses the previous completed daily fixing. A missing required session or benchmark window prevents execution. Market calendars and FX never come from a strategy-triggered download.
+
 ## Configuration version 1
 
 ```json

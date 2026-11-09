@@ -23,6 +23,7 @@ from backtest.variables import parameters
 VERSION = 1  # Bundle and program envelope; definition versions evolve separately.
 DEFINITION_VERSIONS = (1, 2, 3)
 TEMPORAL_POLICY = 'annual-lag90/1'
+MARKET_TEMPORAL_POLICY = 'market-annual/1'
 CEILINGS = MappingProxyType(dict(nodes=256, depth=32, definitions=32,
     dependency_depth=8, bytes=256 * 1024, literal=64, expanded_literal=1024))
 _ID = re.compile(r'[A-Za-z0-9_.:-]{1,128}\Z')
@@ -198,7 +199,8 @@ def _normal_definition(definition, limits, path, normalized=False):
     _shape(definition, ('format', 'version', 'parameter_catalog', 'temporal_policy', 'expression', 'output'), path)
     if (definition['format'] != 'variable-definition' or type(definition['version']) is not int
             or definition['version'] not in DEFINITION_VERSIONS
-            or definition['temporal_policy'] != TEMPORAL_POLICY):
+            or definition['temporal_policy'] != (MARKET_TEMPORAL_POLICY
+                if definition['parameter_catalog'] == parameters.V4 else TEMPORAL_POLICY)):
         _fail('UNKNOWN_VERSION', path, 'Unsupported definition format, catalog or temporal policy.')
     try:
         catalog = {item['id']: item for item in parameters.catalog(definition['parameter_catalog'])}

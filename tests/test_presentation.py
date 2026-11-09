@@ -16,17 +16,19 @@ class PageDataTests(unittest.TestCase):
     def test_one_connection_closes_before_detached_data_is_returned(self):
         with ExitStack() as context:
             db=Mock();latest_stocks=[dict(symbol='A')]
+            context.enter_context(patch.object(data.research,'identity',return_value={'latest_date':'2026-10-21','latest_dates':{'us':'2026-10-21'}}))
             acquired=context.enter_context(patch.object(data.daily,'connect',return_value=db))
             compact=context.enter_context(patch.object(data,'load_screening_data',return_value={'latest':{'metadata':{'asof':'2026-10-21'}}}))
             latest=context.enter_context(patch.object(data.screening,'latest',return_value=latest_stocks))
             page=data.load_page_data()
             acquired.assert_called_once_with();db.close.assert_called_once_with()
-            compact.assert_called_once_with(db);latest.assert_called_once_with(db)
+            compact.assert_called_once_with(db,'us');latest.assert_called_once_with(db,pool='cached')
             self.assertEqual(page.latest_stocks,latest_stocks)
 
     def test_failed_projection_still_closes_its_connection(self):
         with ExitStack() as context:
             db=Mock()
+            context.enter_context(patch.object(data.research,'identity',return_value={'latest_date':'2026-10-21','latest_dates':{'us':'2026-10-21'}}))
             context.enter_context(patch.object(data.daily,'connect',return_value=db))
             context.enter_context(patch.object(data,'load_screening_data',side_effect=ValueError('invalid projection')))
             with self.assertRaisesRegex(ValueError,'invalid projection'):data.load_page_data()

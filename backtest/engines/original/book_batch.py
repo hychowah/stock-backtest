@@ -36,18 +36,19 @@ _facts=None
 def plan(db,configuration,book_selection=None):
     """Deduplicate all required books, retaining first-use order by trial."""
     options=configuration['options']
-    if book_selection is None:screening.validate_selection(**options)
+    market_id=options.get('market','us')
+    if book_selection is None:screening.validate_selection(**{key:value for key,value in options.items() if key!='market'})
     if len(configuration['samples'])!=configuration['requested']:
         raise ValueError('The number of sampled schedules must match the requested trials.')
-    pool=book_selection.pool if book_selection is not None else options.get('pool','legacy')
-    available={(entry,pool) for _,entry,latest in book_store.completed(db,pool) if not latest}
-    sessions=facts.sessions(db)
+    pool=book_selection.pool if book_selection is not None else options.get('pool','cached' if market_id!='us' else 'legacy')
+    available={(entry,pool) if market_id=='us' else (entry,pool,market_id) for _,entry,latest in book_store.completed(db,pool,market=market_id) if not latest}
+    sessions=facts.sessions(db,market_id)
     seen=set();jobs=[];trials=[]
     for dates in configuration['samples']:
         periods,_,_,_,_=calendar_requests.periods(sessions,dict(calendar_requests.request_fields(configuration),dates=dates),checkpoint=backtest_control.checkpoint)
         new=[]
         for entry,exit_day in periods:
-            key=(str(entry),pool)
+            key=(str(entry),pool) if market_id=='us' else (str(entry),pool,market_id)
             if key not in seen:
                 seen.add(key)
                 if key not in available:
@@ -92,7 +93,7 @@ def open_reader(path,research,expected):
         db.close();raise
 
 
-def initialize_worker(path,research,expected):
+def initialize_worker(path,research,expected,market='us'):
     global _reader,_facts
     parent=multiprocessing.parent_process()
     if parent is not None:
@@ -103,7 +104,7 @@ def initialize_worker(path,research,expected):
             os._exit(0)
         Thread(target=follow_parent,daemon=True).start()
     _reader=open_reader(path,research,expected)
-    _facts=facts.BookFacts(_reader)
+    _facts=facts.BookFacts(_reader,market)
 
 
 def calculate(key):
@@ -117,7 +118,7 @@ def calculate_book(db,key,book_facts):
     dominates native Windows runtime. Holding a transaction across several books
     would block the writer. A book is the smallest useful consistent read unit.
     """
-    entry,pool=key
+    entry,pool=key[:2]
     owned=not db.in_transaction
     if owned:db.execute('BEGIN')
     try:
@@ -131,12 +132,13 @@ def calculations(db,jobs,workers,on_wait):
     """At most twice the worker count is in flight; no writer runs in children."""
     if not jobs:
         yield iter(());return
+    market_id=jobs[0][2] if len(jobs[0])==3 else 'us'
     if workers==1:
-        book_facts=facts.BookFacts(db)
+        book_facts=facts.BookFacts(db,market_id)
         yield (calculate_book(db,key,book_facts) for key in jobs)
         return
     executor=ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn'),
-                                 initializer=initialize_worker,initargs=(database_path(db),database_path(db,'research'),daily.binding(db)))
+                                 initializer=initialize_worker,initargs=(database_path(db),database_path(db,'research'),daily.binding(db),market_id))
     pending=deque();remaining=iter(jobs)
     def submit():
         key=next(remaining,None)
@@ -160,6 +162,17 @@ def calculations(db,jobs,workers,on_wait):
 
 
 def precompute(db,emit,checkpoint):
+    markets=['us']+[row[0] for row in db.execute('SELECT DISTINCT market FROM research.local_sessions ORDER BY market')]
+    total=sum(sum(day>=rules.FIRST_DAY for day in facts.sessions(db,code)) for code in markets)
+    offset=0
+    for code in markets:
+        def report(**value):
+            emit(**{**value,'completed':offset+value['completed'],'total':total})
+        _precompute_market(db,report,checkpoint,code)
+        offset+=sum(day>=rules.FIRST_DAY for day in facts.sessions(db,code))
+
+
+def _precompute_market(db,emit,checkpoint,market_id):
     """Fill historical cached sheets for an owned, admitted update connection.
 
     Existing pool completion rows, including empty sheets, are the only
@@ -167,9 +180,9 @@ def precompute(db,emit,checkpoint):
     their per-trial commits and never request full historical coverage.
     """
     checkpoint()
-    sessions=[str(day) for day in facts.sessions(db) if day>=rules.FIRST_DAY]
-    available={entry for _,entry,latest in book_store.completed(db,'cached') if not latest}
-    jobs=[(entry,'cached') for entry in sessions if entry not in available]
+    sessions=[str(day) for day in facts.sessions(db,market_id) if day>=rules.FIRST_DAY]
+    available={entry for _,entry,latest in book_store.completed(db,'cached',market=market_id) if not latest}
+    jobs=[(entry,'cached') if market_id=='us' else (entry,'cached',market_id) for entry in sessions if entry not in available]
     total=len(sessions);completed=total-len(jobs)
     emit(kind='sheets',completed=completed,total=total)
     count=worker_count(db,jobs,None)
@@ -177,7 +190,7 @@ def precompute(db,emit,checkpoint):
         for key in jobs:
             checkpoint()
             book=next(results)
-            if (book['entry'],book['pool'])!=key:
+            if ((book['entry'],book['pool']) if book.get('market','us')=='us' else (book['entry'],book['pool'],book['market']))!=key:
                 raise ValueError('A calculation returned a different entry sheet.')
             with db:
                 db.execute('BEGIN IMMEDIATE')
@@ -218,7 +231,7 @@ def evaluate_trials(db,configuration,progress=None,workers=None,*,book_selection
                         waiting=time.perf_counter()
                         with diagnostics.stage('book_calculation'):book=next(results)
                         stats['calculation_wait_seconds']+=time.perf_counter()-waiting
-                        if (book['entry'],book['pool'])!=key:
+                        if ((book['entry'],book['pool']) if book.get('market','us')=='us' else (book['entry'],book['pool'],book['market']))!=key:
                             raise ValueError('A calculation returned a different dated book.')
                         pickle.dump(book,staged,protocol=pickle.HIGHEST_PROTOCOL)
                         calculated+=1;notice()

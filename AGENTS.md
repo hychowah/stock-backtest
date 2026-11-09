@@ -1,8 +1,8 @@
 # EBITDA/EV stock backtest
 
-This folder is a standalone US stock backtest with a local website. It is not a
-different research session. Do not open the parent harness, do not invent a
-fair value, and do not edit product code from a research session.
+This is a standalone US, Hong Kong and Tokyo stock backtest with a local website.
+It is not a different research session. Do not open the parent harness, invent
+fair value or edit product code from a research session.
 
 The folder can move. Scripts resolve paths from their own file. The FMP key stays
 at `~/.grok/secrets/fmp_api_key`. Never print the key or a request URL.
@@ -135,22 +135,21 @@ Only manifest-owned source can be removed. See
 
 ## What the app does
 
-The app screens US common stocks by EBITDA/EV and other prepared metrics. A
-latest screen ranks stocks on the latest cached SPY session. A dated backtest
-buys the selected stocks on each date of a fixed or random schedule, holds them
-to the next date and compares the result with SPY, dividends included. Equal
-weight. No commissions. The 3-month Treasury yield is one number for every stock
-that day, so subtracting it does not change the rank. The original study (each
-January from 1996, the top 50) is a 12-month fixed schedule from 1 January.
+The app screens US, Hong Kong or Tokyo common stocks by prepared metrics. Latest
+screens use each market’s latest completed cached session. Dated tests buy an
+equal-weight selection on fixed or random dates and compare its USD return with
+SPY, including dividends, without commissions. The shared US Treasury yield does
+not change ranking. The original January study uses top 50 and a 12-month
+schedule from 1 January 1996.
 
 ## Financial rules
 
-- Exchanges: NYSE, Nasdaq, NYSE American. ETFs and funds are out. Delisted US
+- Exchanges: NYSE, Nasdaq, NYSE American; Hong Kong Main Board/GEM; Tokyo. ETFs and funds are out. Delisted US
   names are in the universe.
-- The annual figure is treated as known 90 days after fiscal year-end. A report
+- US annual figures are known 90 days after fiscal year-end. A report
   older than 800 days is dropped.
-- Enterprise value at the entry date uses the report's debt and cash and the
-  dividend-adjusted entry price.
+- US enterprise value at the entry date uses the report's debt and cash and the
+  dividend-adjusted entry price. Foreign valuation, USD FX and benchmark timing follow [the market rules](docs/research-workflow.md#market-data-and-calculations).
 - Default floors: market cap at least $100 million, enterprise value at least
   $50 million. The `legacy` pool applies them before ranking. Currency USD. A
   stock with no entry price is left out.
@@ -204,10 +203,11 @@ work at about 16 at a time.
 
 ## Development check
 
-After a change to book policy, run `python3 scripts/check.py` on the real-data
-bench. It must find 0 differences. No app module imports
+After book-policy changes, run `python3 scripts/check.py` on the real-data bench.
+Calculations must match the independent reference on identical inputs. Frozen-report
+differences are informational. Preserve that record. No app module imports
 `backtest/engines/reference`. See
-[docs/research-workflow.md](docs/research-workflow.md#development-check).
+[development check](docs/research-workflow.md#development-check).
 
 ## Project layout
 
@@ -263,8 +263,8 @@ only. Checks:
 [docs/research-workflow.md](docs/research-workflow.md).
 
 **Website screening.** `website/rendering/data.py` embeds the latest screen of
-both prepared pools. `website/browser/screener.js` must match
-`screening.latest()` in both pools. Latest mode uses the latest cached SPY
+each market’s prepared pools and date bounds. `website/browser/screener.js` must match
+`screening.latest()` in both pools. Latest mode uses the market's latest cached
 session, an exact-session adjusted price and cached `listed=True`. It never
 reuses stopped prices and stores no future return. Every other test is a dated
 backtest on the local service; there is no January mode. A January request is
@@ -327,7 +327,7 @@ timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 **Custom dated schedules.** `scripts/schedules.py prepare` builds the ignored
 daily store, attaching research read-only. Pool rows and `book_pools`
 completion commit together. Dates anchor to the starting day, clamp month ends and roll forward
-to SPY sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
+to the selected market’s sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
 Reuse `screening.select` and `metrics.evaluate`. Label dated period returns. The daily binding names the research
 and book identities; changed identities drop every sheet. Entry/pool sheets
 build on demand. Filter actual entry before exit before ranking; close only
@@ -337,7 +337,7 @@ scope roots read their stored book's owner lanes; other roots use the dated owne
 [docs/schedule-calendar.md](docs/schedule-calendar.md).
 
 **Random-date sensitivity and book batches.**
-`backtest/engines/original/robustness.py` samples one SPY session in each
+`backtest/engines/original/robustness.py` samples one selected-market session in each
 frequency block for each seeded trial, with 1–100 trials and 24 by default. All
 trial CAGRs share a window with zero-return cash before the first trade, for the
 strategy and SPY. Keep incomplete trials visible and exclude them from both
@@ -412,15 +412,15 @@ rewriting them. Shutdown closes admission, drains readers and joins requests
 before source ownership ends. See [docs/evidence-views.md](docs/evidence-views.md).
 
 **Custom variables.** `backtest/variables/columns.py` evaluates formulas of
-definition versions 1–3 and catalogs `/1`–`/3`, values only or explained, over the
+definition versions 1–3 and catalogs `/1`–`/4`, values only or explained, over the
 typed facts of `backtest/inputs/facts.py` (research only; the daily cache does
 not copy them). One code path computes the values and their explanations. The
 parity harness on the bench is a development tool outside the repository. New
-formulas use version 3 and catalog `/3`; old formulas need an explicit upgrade.
+formulas use version 3, catalog `/4` and policy `market-annual/1`; old formulas need an explicit upgrade.
 The language check, `definitions.require_program`, is the one formula gate. It
 runs when a capture is restored, before readiness or financial input. The one
 evaluator implements the whole language; a guard test in
-`tests/test_parameter_admission.py` evaluates every operation, statistic and /3
+`tests/test_parameter_admission.py` evaluates every operation, statistic and /4
 parameter. Eager scalar execution and numerical sample preview are
 unsupported. Derived `at` and `lookback` contexts use dated owner policy, even
 at an equal date. Preserve the 32-definition closure ceiling and signed zero in

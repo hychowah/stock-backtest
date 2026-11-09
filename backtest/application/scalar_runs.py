@@ -59,7 +59,7 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
     diagnostics.note(pool=checked['pool'],conditions=len(checked['selection']['conditions']))
     sink = TrialSink(writer, requested)
     started = time.perf_counter()
-    selection = dict(strategy=options['strategy'])
+    selection = {key:options[key] for key in ('strategy','market') if key in options}
     producer = dict(engine='original',label='Original')
     if mode == 'latest':
         # The stored open book of the book store; no dated-book reconstruction occurs.
@@ -70,7 +70,7 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
         return dict(asof=asof,requested=requested,names=len(stocks),options=options,producer=producer)
     if mode == 'random':
         with diagnostics.stage('plan'):
-            sessions = facts.sessions(db)
+            sessions = facts.sessions(db,options.get('market','us'))
             if planned is None:
                 planned = calendar_requests.plan(sessions,options,checkpoint=checkpoint)
             else:
@@ -94,7 +94,7 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
         return summary
     if mode != 'custom':raise ValueError('Unsupported scalar execution mode.')
     if 'months' in options and 'calendar' not in options and 'dates' not in options:
-        periods = calendar_requests.periods(facts.sessions(db), {key: options[key] for key in ('start', 'end', 'months')},
+        periods = calendar_requests.periods(facts.sessions(db,options.get('market','us')), {key: options[key] for key in ('start', 'end', 'months')},
                                             checkpoint=checkpoint)[0]
         check_size(writer, executor, len(periods))
     sink.start_trial(1)

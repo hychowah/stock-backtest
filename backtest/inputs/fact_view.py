@@ -10,9 +10,10 @@ from contextlib import contextmanager
 from datetime import date
 import hashlib
 import json
+import math
 
 from backtest.financial import books
-from backtest.inputs import book_store, daily, facts
+from backtest.inputs import book_store, daily, facts, market as market_inputs
 
 
 def _call(day, forward, slack, result):
@@ -68,7 +69,9 @@ class View:
     status).
     """
 
-    def __init__(self, db, freshness, checkpoint):
+    def __init__(self, db, freshness, checkpoint, market='us'):
+        market_inputs.require(market)
+        self.market = market
         freshness()
         self.db, self._freshness, self._checkpoint = db, freshness, checkpoint
         binding = daily.binding(db)
@@ -77,15 +80,21 @@ class View:
         record = db.execute("SELECT value FROM research.metadata WHERE key='identity'").fetchone()
         if record is None:
             raise ValueError('Prepared facts are missing, incompatible or stale. Retry offline preparation.')
-        self.identity = 'sqlite:' + hashlib.sha256(facts.encoded(dict(inputs=json.loads(binding))).encode()).hexdigest()
+        identity = dict(inputs=json.loads(binding))
+        if market != 'us':
+            identity['market'] = market
+        self.identity = 'sqlite:' + hashlib.sha256(facts.encoded(identity).encode()).hexdigest()
         self._projection = json.loads(record[0])
-        self._facts = facts.BookFacts(db)
+        self._facts = facts.BookFacts(db, market=market)
+        latest = self._projection.get('latest_dates', {}).get(market) if market != 'us' else self._projection['latest_date']
+        if latest is None:
+            raise ValueError('This market has no prepared sessions. Download its data and rebuild.')
         self._recorder = _Recorder(self._facts)
-        broad, legacy = self._facts.reports()
+        broad, legacy = self._facts.reports(date.fromisoformat(latest)) if market != 'us' else self._facts.reports()
         if any(len(rows) > facts.MAX_HISTORY for rows in broad.values()):
             raise ValueError('Prepared observation history exceeds its bound.')
         self._pools = dict(cached=broad, legacy=legacy)
-        self._bounds = dict(latest_date=self._projection['latest_date'], population=len(broad))
+        self._bounds = dict(latest_date=latest, population=len(broad))
         self._screens, self._companies, self._lanes, self._open_book = {}, {}, {}, None
         self._sessions, self._stock, self._treasury, self._sources = {}, {}, {}, {}
         self.closed = False
@@ -110,7 +119,7 @@ class View:
         """The id of the stored open (latest) book."""
         self._open()
         if self._open_book is None:
-            self._open_book = book_store.open_book(self.db)
+            self._open_book = book_store.open_book(self.db, market=self.market)
         return self._open_book
 
     def validate(self):
@@ -135,16 +144,19 @@ class View:
     # Admission and valuation, by the existing financial policy.
 
     def _screen(self, day, open_book, checkpoint=lambda: None):
-        """The books.Screen of one entry day; a day that is not a saved SPY session from FIRST_DAY fails."""
+        """The books.Screen of one local entry session on or after FIRST_DAY."""
         key = day, open_book
         if key not in self._screens:
             checkpoint()
             self._screens[key] = books.Screen(date.fromisoformat(day), self._recorder, open_book=open_book)
         return self._screens[key]
 
-    def reports(self, symbol, pool):
+    def reports(self, symbol, pool, day=None):
         """A company's accepted reports in one pool, oldest first, with date-typed fiscal and known dates; callers do not change them."""
         self._open()
+        if self.market != 'us':
+            context = date.fromisoformat(self._bounds['latest_date']) if day is None else day
+            return self._facts.reports(context, symbol=symbol)[0 if pool == 'cached' else 1].get(symbol, [])
         return self._pools[pool].get(symbol, [])
 
     def admit(self, roots, checkpoint=lambda: None):
@@ -152,7 +164,7 @@ class View:
 
         A latest root must be on the latest date and uses the open book's
         screen (listed companies, the exact session). A historical root, on a
-        saved SPY session from rules.FIRST_DAY, uses the complete-population
+        saved market session from rules.FIRST_DAY, uses the complete-population
         candidates of its date: the legacy buffer precedes cached-price
         membership, so asking for fewer companies cannot promote one. A
         historical decision that reached the entry valuation keeps its
@@ -210,7 +222,7 @@ class View:
 
     # Typed facts.
 
-    def company(self, symbol, pool, requirements):
+    def company(self, symbol, pool, requirements, day=None):
         """Return company facts: reports, the requested annual states and their sources.
 
         Income-statement dates always form the fiscal spine when any annual field
@@ -220,7 +232,7 @@ class View:
         key = symbol, pool
         cached = self._companies.get(key)
         if cached is None:
-            cached = self._companies[key] = dict(reports=self.reports(symbol, pool), annual={}, sources={}, loaded={})
+            cached = self._companies[key] = dict(reports=self.reports(symbol, pool), annual={}, sources={}, loaded={}, metadata={})
         annual, loaded, sources = cached['annual'], cached['loaded'], cached['sources']
         wanted = dict(requirements)
         if wanted:
@@ -240,17 +252,55 @@ class View:
                     raise ValueError('Prepared observation history exceeds its bound.')
                 states.setdefault(row[0], {}).update(
                     _states(**{field: row[1 + 2 * i:3 + 2 * i] for i, field in enumerate(missing)}))
+            if self.market != 'us':
+                cached['metadata'][endpoint] = {fiscal:self._facts.annual_metadata(symbol, endpoint, fiscal)
+                                                for fiscal in states}
+                cached.pop('context', None)
             loaded.setdefault(endpoint, set()).update(missing)
             if endpoint not in sources:
                 sources[endpoint] = self.source(symbol, endpoint)
-        return cached
+        if self.market == 'us':
+            return cached
+        context = date.fromisoformat(self._bounds['latest_date']) if day is None else day
+        if cached.get('context') != context:
+            converted = {}
+            for endpoint, periods in annual.items():
+                converted[endpoint] = {}
+                for fiscal, fields in periods.items():
+                    meta = cached['metadata'][endpoint].get(fiscal) or {}
+                    currency, known = meta.get('currency'), meta.get('known')
+                    fx = self._facts.fx(currency, context) if currency else None
+                    values = {}
+                    for field, state in fields.items():
+                        value = dict(state)
+                        if state['valid']:
+                            shares = field in ('weightedAverageShsOut', 'weightedAverageShsOutDil')
+                            reason = ('REPORT_NOT_AVAILABLE' if known and str(known) >= str(context) else
+                                      'MISSING_FX' if not shares and fx is None else None)
+                            number = state['value'] if shares or reason else state['value'] * fx[1]
+                            if reason is None and not math.isfinite(number):
+                                reason = 'NONFINITE_RESULT'
+                            value.update(value=None if reason else number, valid=reason is None, reason=reason,
+                                         source_currency=currency, source_value=state['value'])
+                            if not shares and fx:
+                                value.update(fx_date=str(fx[0]), fx_rate=fx[1])
+                        values[field] = value
+                    converted[endpoint][fiscal] = values
+            cached['context'] = context
+            cached['converted'] = dict(reports=self.reports(symbol, pool, context), annual=converted,
+                                       sources=sources, metadata=cached['metadata'])
+        return cached['converted']
 
     def session(self, day):
-        """The latest valid SPY session on or before day within seven days, or None."""
+        """The selected market's latest session on or before day within seven days, or None."""
         self._open()
         if day not in self._sessions:
-            row = self.db.execute('SELECT day FROM research.market_days WHERE day<=? AND spy IS NOT NULL '
-                                  'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
+            if self.market == 'us':
+                row = self.db.execute('SELECT day FROM research.market_days WHERE day<=? AND spy IS NOT NULL '
+                                      'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
+            else:
+                row = self.db.execute('SELECT day FROM research.local_sessions WHERE market=? AND day<=? '
+                                      'ORDER BY day DESC LIMIT 1', (self.market,str(day))).fetchone()
             self._sessions[day] = row[0] if row is not None and (day - date.fromisoformat(row[0])).days <= 7 else None
         return self._sessions[day]
 
@@ -261,15 +311,26 @@ class View:
         if key not in self._stock:
             row = self.db.execute('SELECT adjusted,adjusted_reason,volume,volume_reason FROM research.stock_days '
                                   'WHERE symbol=? AND day=?', (symbol, str(day))).fetchone()
-            self._stock[key] = None if row is None else _states(adjClose=row[0:2], volume=row[2:4])
+            value = None if row is None else _states(adjClose=row[0:2], volume=row[2:4])
+            if value is not None and self.market != 'us' and value.get('adjClose', {}).get('valid'):
+                currency = self._facts.quote_currency(symbol)
+                fx = self._facts.fx(currency, day) if currency else None
+                state = value['adjClose']
+                number = state['value'] * fx[1] if fx else None
+                reason = 'MISSING_FX' if fx is None else 'NONFINITE_RESULT' if not math.isfinite(number) else None
+                value['adjClose'] = dict(value=None if reason else number, valid=reason is None, reason=reason,
+                                        source_currency=currency, source_value=state['value'],
+                                        fx_date=str(fx[0]) if fx else None, fx_rate=fx[1] if fx else None)
+            self._stock[key] = value
         return self._stock[key]
 
     def treasury(self, day):
-        """(day, {'month3': state, 'year10': state}) of the latest saved Treasury day on or before day."""
+        """Latest completed US Treasury observation: same-day for US, previous-day for Asia."""
         self._open()
         if day not in self._treasury:
+            operator = '<=' if self.market == 'us' else '<'
             row = self.db.execute('SELECT day,month3,month3_reason,year10,year10_reason FROM research.market_days '
-                                  'WHERE day<=? AND (month3 IS NOT NULL OR month3_reason IS NOT NULL) '
+                                  f'WHERE day{operator}? AND (month3 IS NOT NULL OR month3_reason IS NOT NULL) '
                                   'ORDER BY day DESC LIMIT 1', (str(day),)).fetchone()
             self._treasury[day] = None if row is None else (row[0], _states(month3=row[1:3], year10=row[3:5]))
         return self._treasury[day]

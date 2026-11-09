@@ -7,7 +7,7 @@ The existing program limits apply to each requested closure.
 """
 import copy
 
-from backtest.variables import definitions
+from backtest.variables import definitions, parameters
 
 
 def _parameter(name):
@@ -106,25 +106,48 @@ for _key, _name, _lane, _output in (
     _owner(_key, _name, _lane, _output)
 
 
-def catalog():
+# Current authoring uses the same named formulas with the market-aware policy.
+# Published /3 identities remain available to exact reads and old captures.
+_MARKET_ENTRIES, _MARKET_DESCRIPTORS = {}, {}
+for _key, _entry in _ENTRIES.items():
+    _definition = copy.deepcopy(_entry['definition'])
+    _definition.update(parameter_catalog=parameters.V4, temporal_policy=definitions.MARKET_TEMPORAL_POLICY)
+    def _upgrade_refs(node):
+        if node['op'] == 'ref':
+            target = next(value for value in _MARKET_ENTRIES.values()
+                          if value['variable_id'] == node['variable_id'])
+            node['revision'] = target['revision']
+        for field in ('left', 'right', 'arg'):
+            if field in node:
+                _upgrade_refs(node[field])
+    _upgrade_refs(_definition['expression'])
+    _identity = dict(variable_id=_entry['variable_id'], revision=definitions.revision(_definition))
+    _MARKET_ENTRIES[_key] = dict(**_identity, definition=_definition)
+    _MARKET_DESCRIPTORS[_key] = dict(_DESCRIPTORS[_key], root=_identity)
+
+
+def catalog(parameter_catalog=parameters.V3):
     """Return detached identities and meanings; this grants no admission."""
-    return copy.deepcopy(list(_DESCRIPTORS.values()))
+    return copy.deepcopy(list((_MARKET_DESCRIPTORS if parameter_catalog == parameters.V4 else _DESCRIPTORS).values()))
 
 
 def exact(variable_id, revision):
     """Return the immutable definition and owner label for an exact identity."""
-    for key, entry in _ENTRIES.items():
-        if entry['variable_id'] == variable_id and entry['revision'] == revision:
-            return copy.deepcopy(dict(definition=entry['definition'], name=_DESCRIPTORS[key]['name']))
+    for entries in (_ENTRIES, _MARKET_ENTRIES):
+        for key, entry in entries.items():
+            if entry['variable_id'] == variable_id and entry['revision'] == revision:
+                return copy.deepcopy(dict(definition=entry['definition'], name=_DESCRIPTORS[key]['name']))
     return None
 
 
-def bundle(ids):
+def bundle(ids, parameter_catalog=parameters.V3):
     """Return an ordinary checked bundle with only the requested closure."""
-    if type(ids) is not list or not ids or any(type(key) is not str or key not in _ENTRIES for key in ids):
+    available = _MARKET_ENTRIES if parameter_catalog == parameters.V4 else _ENTRIES
+    descriptors = _MARKET_DESCRIPTORS if parameter_catalog == parameters.V4 else _DESCRIPTORS
+    if type(ids) is not list or not ids or any(type(key) is not str or key not in available for key in ids):
         raise ValueError('An ordered nonempty list of known measures is required.')
     entries, seen = [], set()
-    identities = {entry['variable_id']: key for key, entry in _ENTRIES.items()}
+    identities = {entry['variable_id']: key for key, entry in available.items()}
     def visit(key):
         if key in seen:
             return
@@ -135,11 +158,11 @@ def bundle(ids):
             for field in ('left', 'right', 'arg'):
                 if field in node:
                     walk(node[field])
-        walk(_ENTRIES[key]['definition']['expression'])
-        entries.append(copy.deepcopy(_ENTRIES[key]))
+        walk(available[key]['definition']['expression'])
+        entries.append(copy.deepcopy(available[key]))
     for key in ids:
         visit(key)
     result = dict(format='variable-bundle', version=1, definitions=entries,
-                  roots=[copy.deepcopy(_DESCRIPTORS[key]['root']) for key in ids])
+                  roots=[copy.deepcopy(descriptors[key]['root']) for key in ids])
     definitions.validate(result)
     return result

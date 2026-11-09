@@ -68,6 +68,7 @@
   }
   function latestScreen(dataset, options){
     const o=validate(options),matches=[];
+    if(dataset.market&&dataset.market!=='us'&&o.pool!=='cached')throw Error('This market uses the broad cached-price pool.');
     for(const row of dataset.latest[o.pool]){
       const [symbol,candidate_rank,fiscal,known,price_date,price,market_cap,enterprise_value,ebitda_yield,ev_ebitda,spread]=row;
       const [name,exchange,sector]=dataset.companies[symbol];

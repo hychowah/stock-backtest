@@ -1,11 +1,12 @@
 """Versioned financial meaning, separate from observations.
 
 The language admits exactly these parameters; a catalog entry never proves
-company/date availability. Annual facts use one selected fiscal period, strict
-fiscal-plus-90 availability before the context date and an 800-day anchor
-limit. Complete consecutive annual histories permit mean/min/max over 1–10
+company/date availability. Catalogs /1–/3 retain strict fiscal-plus-90
+availability and identity conversion. Catalog /4 uses prepared market report
+availability and context-date USD conversion. All use an 800-day anchor limit.
+Complete consecutive annual histories permit mean/min/max over 1–10
 periods. Catalogs /1 and /2 retain their existing descriptors. Catalog /3 also describes annual growth and CAGR over
-2–10 complete consecutive observations. Missing selected-period fields
+2–10 complete consecutive observations; /4 retains those operations. Missing selected-period fields
 cannot be filled from newer reports, another endpoint or a different aggregate.
 
 Market/rate contexts have dated lookup evidence, not annual reporting timing.
@@ -19,6 +20,7 @@ import copy
 V1 = 'financial-parameters/1'
 V2 = 'financial-parameters/2'
 V3 = 'financial-parameters/3'
+V4 = 'financial-parameters/4'
 _UNITS = {
     'scalar': dict(dimensions={}, displays=['number', 'multiple', 'percent', 'percentage_points']),
     'USD': dict(dimensions={'USD': 1}, displays=['usd', 'usd_million']),
@@ -162,7 +164,7 @@ _V1_IDS = ('annual.revenue', 'annual.operating_income', 'annual.operating_margin
 
 
 def _version(identity):
-    if type(identity) is not str or identity not in (V1, V2, V3):
+    if type(identity) is not str or identity not in (V1, V2, V3, V4):
         raise ValueError('Unknown semantic parameter catalog.')
     return identity
 
@@ -171,11 +173,19 @@ def catalog(identity):
     """Return the meanings of one catalog; they prove no company/date coverage."""
     _version(identity)
     values = [_ALL[key] for key in (_V1_IDS if identity == V1 else _ALL)]
-    if identity == V3:
+    if identity in (V3, V4):
         values = copy.deepcopy(values + list(_V3_EXTRA.values()))
         for item in values:
             if item['id'].startswith('annual.'):
                 item['history']['statistics'] = ['mean', 'min', 'max', 'growth', 'cagr']
+        if identity == V4:
+            for item in values:
+                if item['id'].startswith('annual.'):
+                    item['timing']['availability'] = 'market-annual-strict-before-context'
+                    if item['kind'] == 'direct' and item['unit'] != 'share':
+                        item['conversion'] = 'context-date-report-currency-to-usd'
+                elif item['id'] == 'market.adjusted_price':
+                    item['conversion'] = 'observation-date-quote-currency-to-usd'
         return values
     return copy.deepcopy(values)
 
@@ -192,7 +202,7 @@ def parameter(identity, parameter_id):
 def units(identity):
     """Return only the canonical unit vocabulary admitted by this catalog."""
     _version(identity)
-    return copy.deepcopy({key: value for key, value in _UNITS.items() if identity in (V2, V3) or key != 'share'})
+    return copy.deepcopy({key: value for key, value in _UNITS.items() if identity in (V2, V3, V4) or key != 'share'})
 
 
 def unit(identity, name):

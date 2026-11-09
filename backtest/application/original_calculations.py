@@ -77,13 +77,13 @@ class Original(Control):
                 db.execute('PRAGMA cache_size=-131072')
                 if mode=='random':
                     with diagnostics.stage('plan'):
-                        sessions=facts.sessions(db)
+                        sessions=facts.sessions(db,options.get('market','us'))
                         if planned is None:
                             planned=calendar_requests.plan(sessions,options,checkpoint=self._checkpoint) if 'calendar' in options else robustness.plan(db,**options)
                         else:
                             calendar_requests.validate_submitted(options,planned)
                             planned=calendar_requests.validate_plan(sessions,planned,checkpoint=self._checkpoint)
-                        screening.validate_selection(**planned['options'])
+                        screening.validate_selection(**{key:value for key,value in planned['options'].items() if key!='market'})
                     if configuration:configuration(planned)
                     captured=[]
                     result=robustness.run(db,planned,progress=progress,
@@ -125,32 +125,34 @@ class Original(Control):
         The engines list names only the engines this server runs, with the
         calendar version each supports. Engine labels stay with the browser.
         """
-        return dict(engines=[dict(id=self.engine,calendar=self.calendar_version)])
+        return dict(engines=[dict(id=self.engine,calendar=self.calendar_version)],markets=['us','hk','jp'])
 
-    def preview(self, capture, roots, *, admission='interactive', engine='original'):
+    def preview(self, capture, roots, *, admission='interactive', engine='original', market='us'):
         """Explain explicit Original samples under ordinary input lifetime."""
         from backtest.application import scalar_execution, strategy_requests
         from backtest.inputs import fact_view, operation_inputs
         strategy_requests.preview_engine(engine)
         # check_options restores the capture once (one compile); the preview reuses its checked program.
-        projection=scalar_execution.check_preview(strategy_requests.check_options({'strategy':capture}),roots)
+        projection=scalar_execution.check_preview(strategy_requests.check_options({'strategy':capture,'market':market}),roots)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint) as view:
+                with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint,market=market) as view:
                     value=scalar_execution.evaluate_preview(projection,roots,view,checkpoint=self._checkpoint)
         return dict(value,producer=dict(engine='original',label='Original sample preview'))
 
-    def coverage(self, capture=None, scope=None, *, admission='interactive'):
+    def coverage(self, capture=None, scope=None, *, admission='interactive', market='us'):
         """Discover or inspect recorded scopes under ordinary financial ownership."""
         from backtest.application import variable_coverage, strategy_requests
         from backtest.inputs import fact_view, operation_inputs
         # check_options restores the capture once (one compile); inspect reuses its checked program.
-        checked=None if capture is None else strategy_requests.check_options({'strategy':capture})
+        options={'market':market}
+        if capture is not None:options['strategy']=capture
+        checked=strategy_requests.check_options(options)
         with self._financial(admission,None):
             if not self.ready():raise Unavailable('Prepared inputs are unavailable. Rebuild from the data panel.')
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
-                with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint) as view:
+                with fact_view.View(inputs.db,inputs.require_unchanged,self._checkpoint,market=market) as view:
                     value=(variable_coverage.scopes(inputs.db,view) if checked is None else
                            variable_coverage.inspect(checked,scope,inputs.db,view,checkpoint=self._checkpoint))
         return dict(value,producer=dict(engine='original',label='Original coverage'))
@@ -176,7 +178,7 @@ class Original(Control):
             with operation_inputs.held(checkpoint=self._checkpoint) as inputs:
                 db=inputs.db
                 # Formulas and books read the typed facts through the daily connection's attached research.
-                with fact_view.View(db,inputs.require_unchanged,self._checkpoint) as view:
+                with fact_view.View(db,inputs.require_unchanged,self._checkpoint,market=options.get('market','us')) as view:
                     metadata=dict(mode=mode,options=options,configuration=planned,input=view.identity,
                         projection=view.projection,producer=dict(engine='original',label='Original'))
                     def configured(value):
@@ -185,7 +187,7 @@ class Original(Control):
                     # Random plan must be known before the immutable header.
                     if mode=='random' and planned is None:
                         with diagnostics.stage('plan'):
-                            sessions=facts.sessions(db)
+                            sessions=facts.sessions(db,options.get('market','us'))
                             planned=calendar_requests.plan(sessions,financial,checkpoint=self._checkpoint)
                         metadata['configuration']=planned
                     writer=scalar_result_evidence.Writer(destination,trials=trials,metadata=metadata,max_bytes=max_bytes,

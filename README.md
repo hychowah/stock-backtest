@@ -1,6 +1,6 @@
 # EBITDA/EV stock backtest
 
-A standalone US stock backtest and interactive results website. Screen US stocks by EBITDA/enterprise value or custom variables, then test the selected stocks on fixed or random dated schedules, equally weighted, against SPY with dividends included. The original study bought the 50 highest EBITDA/EV stocks each January from 1996; its frozen result covers 1996 through 20 October 2026.
+A standalone stock backtest and interactive results website for US, Hong Kong and Tokyo stocks. Screen one market at a time by EBITDA/enterprise value or custom variables, then test the selected stocks on fixed or random dated schedules, equally weighted, against SPY with dividends included. Returns and monetary filters use USD. SPY is the S&P 500 total-return benchmark. The original US study bought the 50 highest EBITDA/EV stocks each January from 1996; its frozen result covers 1996 through 20 October 2026.
 
 ## Open the website
 

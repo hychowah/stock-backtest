@@ -2,7 +2,7 @@
 
 Checked: 2026-11-08.
 
-The current `/3` editor exposes owner descriptions for all 57 direct inputs,
+The current `/4` editor exposes owner descriptions for all 57 direct inputs,
 existing-policy adapters and 33 exact named measures through the shared editor.
 Categories, search, units and supported history choices use the same semantic
 owners as execution. The [close-out summary](master-plan.md) owns the completion
@@ -10,7 +10,9 @@ status and limits. A catalog entry does not establish installed readiness or
 observed coverage.
 
 Captured programs run through Original in Latest, fixed and random modes; a
-January request is refused. Catalog `/3` contains 77 IDs. A capture retains the 32-definition
+January request is refused. Catalogs `/3` and `/4` each contain 77 IDs. New
+definitions use `/4` and `market-annual/1`; older definitions need explicit
+upgrade for foreign execution. A capture retains the 32-definition
 ceiling. Eager scalar execution remains unsupported. Inspection evaluates complete recorded
 latest scopes with their generation, denominator and unavailable reasons.
 These source capabilities establish no installed readiness or live-cache coverage.
@@ -248,7 +250,9 @@ signs, fiscal dates and unavailable histories. Reuse complete saved responses;
 do not redownload them just to expose an additional retained field. Measure
 company/date coverage before the picker marks an input usable.
 
-Apply the existing 90-day lag, strict availability-before-date rule and 800-day
-anchor age limit. Bind all inputs to their admitted generation. No later report
+Catalogs `/1`–`/3` retain the US 90-day lag. Catalog `/4` uses market report
+availability, context-date USD conversion for annual money and observation-date
+FX for prices. Keep strict availability-before-date and the 800-day anchor age
+limit. Bind all inputs to their admitted generation. No later report
 may fill a missing selected-report field. This record adds no filing-vintage
 accuracy claim or numerical-engine support.

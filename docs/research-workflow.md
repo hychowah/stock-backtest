@@ -2,6 +2,20 @@
 
 Normal research should query the prepared databases instead of reparsing daily JSON price files. The embedded SQLite engine is included in Python; no database server, package installation, API key, or network connection is required. The engine can later be replaced with DuckDB if larger analytical datasets warrant it; this project does not currently depend on DuckDB or Parquet.
 
+## Market data and calculations
+
+The source supports one market per run: US, Hong Kong (Main Board and GEM) or Japan (Tokyo). New website strategies use the broad cached-price pool. The legacy US pool remains for recorded work and the reference check. Missing market data requires an explicit data-panel action or the existing authorized scheduled update.
+
+US raw paths stay unchanged. Foreign inventories and local-index calendars live at `raw/markets/<market>/universe.json` and `calendar.json`. Shared suffixed symbols keep annual endpoint files in `raw/financial-inputs/` and adjusted prices in `raw/px/`. Native unadjusted closes live in `raw/px-full/`; direct USD FX pairs live in `raw/fx/USD<currency>.json`. All use the current bounded transport, parent-owned publication and content-bound receipts. Foreign reports do not append to US `metrics.jsonl`. Every returned annual row and field stays in its endpoint asset.
+
+Research adds `company_markets`, `annual_metadata`, `foreign_reports`, `stock_native`, `local_sessions` and `fx_days`. Its identity has `latest_dates` by market and preserves `latest_date` for US consumers. Each latest screen embeds only its market’s companies, choices and actual saved bounds. No missing foreign asset falls back to US data.
+
+All displayed money, thresholds, holdings, returns and CAGR use USD. Foreign fiscal cap uses annual basic weighted-average shares and a native unadjusted fiscal close. The existing adjusted-price rescaling updates it to entry. Report amounts for every annual year use the context date’s FX. Holding prices use their own observation date’s FX. Daily date-only FX uses the previous completed fixing. SPY is always the S&P 500 total-return benchmark; Asian sessions use the previous completed US close within seven calendar days. Cash is USD at 0%. Reference yields remain US Treasury yields.
+
+US report availability retains its strict fiscal-plus-90-day rule. HK and JP use reliable publication dates where available; otherwise four and three calendar months. Period-end placeholders do not prove publication. The 800-day current-report limit remains. Missing inputs and conflicts stay unavailable. FMP source revisions, incomplete listing history, zero-heavy fields and dividend-adjustment limits remain disclosed.
+
+New formulas use definition version 3, catalog `financial-parameters/4` and temporal policy `market-annual/1`. Catalogs /1–/3 preserve US meanings. Foreign execution requires explicit upgrade to /4. Upgrade rebinds immutable named measures to their /4 revisions. User-defined references retain their exact revisions; upgrade and save those definitions separately, then choose their new revisions. Existing captures, jobs, artifacts and durable records retain their bytes. The data-panel market selector scopes manual Update; scheduled maintenance refreshes inventories already present through its existing cycle.
+
 ## Prepare once
 
 ```bash
@@ -18,21 +32,21 @@ per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
 publishes no report; the development check (`python3 scripts/check.py`) compares
 the book code with the independent reference on the real-data bench.
 
-Research schema 19 stores facts only, no book. This section owns the current
+Research schema 20 stores facts only, no book. This section owns the current
 research schema and daily cache versions; other documents link here.
 
 
 - Each saved company with its name, exchange and sector (cached metadata, not
   historical profiles) and whether it is listed now (`companies`).
 - Financial period end, assumed availability date, report market cap, enterprise
-  value, inferred EBITDA, and EBITDA/EV for valid USD reports (`statements`).
+  value, inferred EBITDA, and EBITDA/EV for valid US reports (`statements`); foreign statement anchors use `foreign_reports`.
 - The typed facts below: the extra annual inputs and the 10-year Treasury
   yields are typed facts too (`annual_facts`, `market_days.year10`).
 - The one research record (`metadata`): the schema version, the accepted
   raw-file signature (`inputs`), each price file's size and time (`prices`),
   and the identity (below).
 
-The daily cache, `data/schedules.sqlite` (version 12), holds compact entry
+The daily cache, `data/schedules.sqlite` (version 13), holds compact entry
 sheets in `books`, `book_pools` and `book_rows`. The header names an entry
 session, its latest/historical policy and its candidate count. Pools share
 one handle. `book_pools` marks complete pools, including empty ones. One row
@@ -47,12 +61,12 @@ The version-11 metric/filter tables and stored exit/return/status fields are gon
 its compact columns directly. A daily connection (`daily.connect`) attaches
 research read-only as `research`; the daily cache copies no facts or company
 metadata. Its binding names the research content and book-code identities.
-Historical sheets are keyed by entry and pool. Runs build missing sheets on
+Historical sheets are keyed by market, entry and pool. Runs build missing sheets on
 demand. Different exits reuse the same sheet. Latest keeps a separate header:
 it requires currently listed companies and an exact-session entry price.
 Historical entries allow up to four calendar days of forward slack.
 
-`books.Screen` and `Screen.decide` own entry admission: saved SPY session from
+`books.Screen` and `Screen.decide` own entry admission: saved market session from
 `rules.FIRST_DAY`, company, listing for latest only, eligible report, legacy
 buffer, cached prices and entry valuation. `books.book` uses that one rule and
 `owner_values` for both policies. It reads no holding exit. A dated run restricts
@@ -63,11 +77,11 @@ explicitly. SPY comes from the current admitted facts. `portfolio_results`
 keeps final-mark labels and all portfolio arithmetic. Old result artifacts keep
 their complete recorded holding rows and are never recalculated.
 
-Preparation reuses the existing 90-day lag and 800-day report-age rule. A report
+Preparation uses each market's reporting policy and the 800-day report-age rule. A report
 must become available strictly before the buy date, matching the original code.
 Entry EV is reconstructed using the dividend-adjusted price and report net debt,
 with the same limitations as the original backtest. Reported financials may
-contain later vendor revisions: the 90-day rule is an availability assumption,
+contain later vendor revisions: fallback delays are availability assumptions,
 not proof of a true point-in-time vendor archive.
 
 ### Identities: which code binds what
@@ -159,7 +173,7 @@ The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot su
 
 ## Current-date preparation
 
-The latest book of the book store is the current-date screen. The latest target is the newest cached SPY session. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
+The latest book of the book store is the current-date screen. The latest target is the newest completed cached session of the selected market. Only cached companies marked listed with a price on that exact session and a usable available report receive current valuations. The original latest candidate pool retains the 250-name pre-price buffer; the broader pool uses all eligible active names with current cached prices. `screening.latest()` exposes the same SQL filters and rank semantics without return fields.
 
 Updating a database and rebuilding HTML are separate from fetching missing or new market data.
 
@@ -170,7 +184,7 @@ current EV divided by three-year average EBITDA. The denominator is the arithmet
 EBITDA for three consecutive fiscal calendar years ending
 at the selected report. EV is valued at the screening date.
 Missing years exclude a stock. Reports after the selected fiscal end are never
-used; the selected report still obeys the strict 90-day availability lag and
+used; the selected report still obeys its market's reporting policy and
 800-day age limit. The original metric remains current-date EV/EBITDA.
 
 Rank 1 has the lowest selected multiple. Minimum yield is its reciprocal;
@@ -215,7 +229,7 @@ daily histories are kept out of the embedded page.
 
 Each target is anchored to the original starting calendar day. Invalid month
 ends clamp to that month's last day; holidays/weekends roll forward to the next
-cached SPY session. The final inclusive mark date rolls back to a session. The
+cached session of the selected market. The final inclusive mark date rolls back to a session. The
 last holding period may be shorter than the requested interval. Adjacent periods
 share their exit/entry session, with no duplicated return interval. Annual
 financial availability, age, valuation, cache coverage and original-pool buffer
@@ -402,7 +416,7 @@ current input changes.
 `backtest/engines/original/robustness.py` owns the random-date application adapter, fresh-seed
 policy and distribution summaries. It uses `backtest/calendar.py` to
 divide the requested calendar window into nominal frequency blocks anchored
-to the lower bound and independently sample one cached SPY session in each
+to the lower bound and independently sample one cached market session in each
 nonempty block for each trial. The final partial block participates, and the end
 mark is fixed. Samples across trials may coincide; the UI reports the number of
 distinct schedules. Trial count is configurable from 1 to 100 (default 24).
@@ -579,7 +593,7 @@ spread (pp) = selected annual revenue × mean(last 3 annual margins) / screen-da
 Use three consecutive fiscal calendar years ending at the selected report.
 Each year's margin has equal weight. This is not a revenue-weighted margin.
 Use the selected report's revenue for sales and its `operatingIncome` field for
-operating income. Do not substitute EBIT. The existing 90-day availability lag,
+operating income. Do not substitute EBIT. The market's reporting policy,
 strict availability-before-screen rule and 800-day report-age limit still apply.
 Later reports cannot fill a missing year or field. Revenue and EV must be
 positive. Operating income and the resulting spread can be negative.
@@ -593,7 +607,7 @@ percentage points: enter `5` for a spread above or below 5 pp.
 Books read the valid 10-year values that research keeps in `market_days` from
 the saved `year10` fields of `raw/treasury.json` (`facts.ten_year`). The legacy
 annual values (`facts.legacy_annual`, from `annual_facts`) include unambiguous
-USD `operatingIncome` values from full annual income statements. Both pools and all three website modes (latest, custom and random) share
+context-normalized USD `operatingIncome` values from full annual income statements. Both pools and all three website modes (latest, custom and random) share
 `metrics.operating_yield_spread`. Missing history or Treasury values omit only
 this field. A stock fails only a condition that requires the missing field.
 Existing 3-month Treasury spreads and ranking metrics keep their formulas.
@@ -621,14 +635,17 @@ and the website. A saved annual record does not mean that the company has no
 new report. Preparation is automatic. Saved backtests and queue records keep
 all their recorded values.
 
-The primary action maintains saved-price companies, pending additions, newly
+The primary action maintains the selected market's saved-price companies, pending additions, newly
 listed companies and companies that first acquire eligible financials. A saved
 price receipt also identifies a managed company whose file was lost. The
 missing file inherits no completion evidence and is downloaded again. Annual
-key metrics are checked across the saved US universe. Statements and ratios
-update for managed stocks. New managed histories start in 1995. Historical
-companies remain in the universe. Existing fiscal-date valuations retain their
-values; new fiscal dates use the same 90-day eligibility policy. Full annual
+key metrics are checked across the saved US universe. US statements and ratios
+update for managed stocks. Foreign downloads use income, balance-sheet and
+cash-flow statements only. Existing receipts record completion, including empty
+responses; missing values remain unavailable to calculations. New managed
+histories start in 1995. Historical companies remain in the universe. Existing
+US fiscal-date valuations retain their values; new fiscal dates use the market's
+reporting policy. Full annual
 responses retain every field, currency, null and variant under the existing
 conflict rules. Requests retain the 40-report limit.
 
@@ -750,7 +767,7 @@ after its cache lease ends.
 After website publication, `data_refresh.run` calls `book_batch.precompute`
 inside the same cache ownership. This is the only production caller. Its
 `sheets` stage fills every historical cached entry from `rules.FIRST_DAY`
-through the latest saved SPY session. Latest-policy headers do not count. Empty
+through each market's latest saved session. Latest-policy headers do not count. Empty
 pools count through their `book_pools` completion rows. Legacy stays on demand.
 The website embeds latest only; adding historical sheets does not change its
 binding or build freshness. Plain startup, CLI preparation and support rebuilds
@@ -850,8 +867,11 @@ through date (default: the frozen report's Through date, 2026-10-20), legacy
 pool, `ev_ebitda` ranks 1–50 and the default floors. It compares every book,
 holding, date, valuation, return and exit status with `revalue.calculate(through)`
 at full precision (relative and absolute tolerance `1e-12`) and names each
-difference. It also compares the annual rows with the frozen report at four
-decimals. It passes with no difference in either comparison. The reference
+difference. Only differences between calculations on these identical inputs
+fail the check. It also reports annual differences from the frozen report at
+four decimals, in the console and the JSON `report` list. These historical
+differences are informational; updated cached inputs can change them. The frozen
+record is never rewritten. The reference
 engine keeps the January study's label rule: a book that ends in its entry year
 is marked to date. In this 12-month run only the last book is a mark, so the
 labels agree. Run it on the real-data bench after a change to book policy
@@ -968,17 +988,20 @@ fiscal spine per dated context and history depth. The current period is the
 existing financial-policy report. Each earlier year uses its latest eligible
 income fiscal date. Balance sheets and cash flows join those exact dates. They
 cannot choose another date when a selected-period fact is missing. The strict
-90-day availability rule and 800-day current-anchor limit remain in force.
+US 90-day availability rule and 800-day current-anchor limit remain in force.
+Foreign contexts use the market reporting policy described above.
 Earlier history members keep the calendar-year buckets and can be older than
 800 days.
 
-Price and volume use the saved SPY session on or before the context, within seven
+Price and volume use the saved market session on or before the context, within seven
 calendar days. Each needs the stock's own field on that exact session. Price is
 finite and positive. Volume is finite and nonnegative; zero and fractional saved
 volume remain valid independently of price. Price uses USD/share in an admitted
 USD company context when route currency is absent. Explicit foreign currency
-makes that price unavailable. No FX conversion occurs. Treasury uses the latest
-saved source date on or before the context. It resolves month3 and year10 at that
+makes that price unavailable under the US policy. Catalogs /1–/3 retain their US
+identity conversion. Catalog /4 converts foreign prices to USD with the previous
+completed FX fixing. Treasury uses the latest saved source date on or before a
+US context, and strictly before an Asian context. It resolves month3 and year10 at that
 one date and divides provider percent by 100. Signed and zero rates are valid.
 Null, invalid or conflicting latest fields do not borrow older field values.
 Dated inputs require no earlier annual anchor after root admission. Legacy

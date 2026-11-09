@@ -37,6 +37,7 @@ records its catalog. Catalogs never change meaning after release.
 | `financial-parameters/1` | Revenue, operating income, operating margin and enterprise value |
 | `financial-parameters/2` | All 52 direct inputs plus the operating-margin and enterprise-value adapters; adds the `share` unit |
 | `financial-parameters/3` | The `/2` content, plus six reported or report-derived fields (EBIT, basic and diluted EPS, total debt, free cash flow, report EBITDA) and 17 `owner.*` lanes that read existing owner policy |
+| `financial-parameters/4` | The `/3` vocabulary with market reporting dates and USD conversion; earlier catalogs retain their US meanings |
 
 The 52 direct inputs are 12 income-statement fields, 24 balance-sheet fields,
 12 cash-flow fields, adjusted close, trading volume and the 3-month and 10-year
@@ -59,7 +60,7 @@ because the downloader saved it.
 Canonical units are `scalar`, `USD`, `USD/share` and `share`. `share` is a share
 count; session volume uses it with session sampling. Displays are number,
 multiple, percent, percentage points, USD, millions of USD, USD per share and
-shares. Calculation uses canonical units. Conversion happens only at the display
+shares. Calculation uses canonical units. Display conversion happens at the display
 boundary. A margin shown as 12% takes part in multiplication as 0.12. Treasury
 percent values are divided by 100.
 
@@ -69,8 +70,10 @@ cancel. A definition uses its own recorded vocabulary for constants and output.
 
 ### Observation rules
 
-Annual facts use the selected fiscal period. A report is available 90 days after
-fiscal year-end, strictly before the context date. The anchor report is at most
+Annual facts use the selected fiscal period. Catalogs `/1`–`/3` retain the US
+90-day lag. Catalog `/4` uses the market's publication-date or fallback policy,
+strictly before the context date. Annual monetary values use context-date FX
+for every report year; shares stay shares. The anchor report is at most
 800 days old. Mean, minimum and maximum need 1–10 complete consecutive annual
 members. A missing selected-period fact never comes from a newer report, another
 endpoint or a differently named aggregate. Null, conflicting, nonfinite and absent
@@ -85,8 +88,9 @@ Cash-flow fields keep their signed provider values.
 
 Market and rate inputs support dated root, `at` and `lookback` contexts. They do
 not use annual reporting timing. Price and volume come from actual session rows.
-A saved price does not supply an absent volume. Treasury values use the latest
-saved observation on or before the context date.
+A saved price does not supply an absent volume. Catalog `/4` converts prices
+with observation-date FX. Treasury uses the latest saved observation on or
+before a US context, strictly before an Asian context.
 
 This is the current backtest availability model. It is not a filing-vintage
 dataset. Restated reports are not reconstructed.
@@ -130,13 +134,14 @@ owns validation, normalization, identities and units.
 |---|---|
 | Operations | `parameter`, `constant`, `neg`, `add`, `sub`, `mul`, `div`, `positive_div`, `ref`, `at`, `lookback`, `annual` |
 | Definition versions | 1: base language. 2: adds annual growth and CAGR. 3: adds `positive_div`. Each version keeps its own normalization. |
-| Envelopes | Bundle and program envelopes stay at version 1. Temporal policy is `annual-lag90/1`. |
+| Envelopes | Bundle and program envelopes stay at version 1. Catalogs `/1`–`/3` use `annual-lag90/1`; `/4` uses `market-annual/1`. |
 | References | `ref` names an exact variable ID and a `sha256:` revision. "Latest" is invalid. Cycles fail. |
 | Ceilings | 256 nodes, depth 32, 32 definitions per closure, dependency depth 8, 256 KiB, 64-character raw decimal literals |
 
-New formulas use version 3 and catalog `/3`. An old definition keeps its namespace
+New formulas use version 3 and catalog `/4`. An old definition keeps its namespace
 until the user explicitly upgrades it. No definition is rewritten. Immutable
-references may cross catalogs. A requested closure larger than 32 definitions fails.
+references may cross catalogs in US work. Foreign work requires `/4` throughout
+the closure. A requested closure larger than 32 definitions fails.
 
 The interface is:
 
@@ -214,13 +219,13 @@ example, the distinct display values `13.501116090704034` and
 Old requests and saved records are not rewritten.
 
 The one formula gate is the language check, `definitions.require_program`. It
-admits definition versions 1–3 with catalogs `/1`–`/3` and temporal policy
-`annual-lag90/1`. Every captured definition is checked, including unused and
+admits definition versions 1–3 with their catalog's temporal policy, including
+catalog `/4` and `market-annual/1`. Every captured definition is checked, including unused and
 constant-only entries. The column evaluator in `backtest/variables/columns.py`
-implements the whole language. Catalog `/3` has 77 IDs: the 52 direct inputs,
+implements the whole language. Catalogs `/3` and `/4` each have 77 IDs: the 52 direct inputs,
 two adapters, six reported fields and 17 owner lanes. A guard test in
 `tests/test_parameter_admission.py` evaluates every operation, statistic and
-`/3` parameter.
+`/3` and `/4` parameter.
 
 ## Library and reproducibility
 

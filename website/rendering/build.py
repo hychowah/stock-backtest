@@ -29,7 +29,7 @@ def build(output=LOCAL_OUTPUT, *, progress=lambda **kw:None):
     print(f'Built the latest screen ({len(data.latest_stocks)} default picks) with a static table, plus optional interactions.')
     (output/'data.html').write_text(data_page(),encoding='utf-8',newline='\n')
     progress(kind='website',completed=4,total=6)
-    provenance=dict(latest_asof=data.screening_data['latest']['metadata']['asof'],sources=inputs()['sources'])
+    provenance=dict(latest_asof=data.screening_data['latest']['metadata']['asof'],latest_dates={code:value['latest']['metadata']['asof'] for code,value in {'us':data.screening_data,**data.screening_data['markets']}.items()},sources=inputs()['sources'])
     (output/'snapshot.json').write_text(json.dumps(provenance,indent=2)+'\n',encoding='utf-8',newline='\n')
     progress(kind='website',completed=5,total=6)
     for name in OUTPUTS:

@@ -2,11 +2,21 @@
 
 Double-click `../start.cmd` on Windows, or run `python3 website/serve.py` from the project root. The launcher refreshes stale caches, rebuilds the website if needed, starts the service and opens the browser. Unchanged caches are reused; no API key or market-data downloads are needed. A portable export built with `python3 website/build.py --snapshot` opens directly from `dist/index.html` and supports the saved latest view.
 
+## Markets and USD
+
+Each run uses one local market calendar. Hong Kong includes common stocks on the Main Board and GEM. Japan uses Tokyo listings. Date controls show that market’s saved session bounds, from 1996 at the earliest. Missing market data is prepared through the data panel.
+
+Prices, valuation thresholds, returns and CAGR use USD. Foreign returns include exchange-rate changes without hedging. SPY is always the S&P 500 total-return proxy. Asian dates use the previous completed US close. Date-only FX uses the previous completed daily fixing. Cash earns 0% USD. Yield references remain US Treasury yields.
+
+Foreign fiscal market cap uses annual basic weighted-average shares and the native unadjusted fiscal close. Entry rescaling uses adjusted prices. Report amounts use context-date FX for every report year; holding prices use their own observation-date FX. This is an annual-share approximation. FMP can have missing or zero-heavy fields, later revisions, incomplete listing coverage and dividend-adjustment defects. Missing required inputs stay unavailable.
+
+New formulas use catalog `financial-parameters/4` and policy `market-annual/1`, with definition version 3. Opened older formulas retain their catalog and need **Use expanded inputs** before foreign execution. Upgrade rebinds named measures. Upgrade and save user-defined references separately, then choose their new revisions. Market survives held edits, queueing, copying, comparisons, exports and saved opening.
+
 ## Automatic updates
 
 The registered Windows `backtest-web.cmd` serves the installed revision and
 updates committed main and refreshes FMP data daily at 07:00 Hong Kong time.
-It refreshes data even when main has no new commit. A missed schedule waits
+It refreshes data even when main has no new commit. The same cycle refreshes markets with saved inventories. **Update data** in the panel targets the selected market; **Continue update** retains the recorded scope. A missed schedule waits
 until the next day; launch and resume do not catch up. `--latest` updates
 source at launch. Maintenance restarts the native server in the same terminal. Uncommitted saves
 and other branches do not trigger updates. Remote history is not fetched or pulled.
@@ -23,11 +33,11 @@ revision without watching. Ctrl+C stops the watcher and its server.
 
 ## Basic workflow
 
-1. Choose **Latest stock picks** or **Historical backtest**, then choose **Original candidate set** to retain the original 250-name pre-price screen, or **All stocks with cached prices** for broader filters. The broader set is not the full universe.
+1. Choose **US**, **Hong Kong** or **Japan · Tokyo**, then **Latest stock picks** or **Historical backtest**. New strategies use the broad cached-price pool. It is not the full market. Restored US work retains its recorded original candidate pool.
 2. Choose a ranking metric (EV/EBITDA is the default). Enter market-cap bounds and minimum enterprise value in **millions of USD**, minimum selected metric yield in **percent**, and optionally a maximum selected multiple, sector or exchange.
 3. Use **Additional filters → + Add filter**. Type in the new row to search one list of built-in filters, saved variables, measures and financial parameters, then choose **More than** or **Less than** and a value. Built-in filters work offline; a variable, measure or parameter makes the strategy run on the local service, and auto-run pauses. All conditions must pass at your chosen selection stage. Two conditions on one item create a range. Comparisons are strict. A stock with a missing value fails the condition that needs it. Values use each label’s units: millions of USD, percent or multiples. Enter 10 for a 10% trailing return. Available filters include 1-year and 3-year trailing returns, size and EBITDA multiples/yield. Financial filters include P/E, P/B, FCF amount/yield, price/FCF, net profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity. Choose **Manage backtest data → Update data** to get their inputs and prepare them automatically.
 4. Choose inclusive ranks in either mode. Choose **Selection order**: **Filter first, then rank** (default), or **Rank first, then filter**. The second option filters only the requested shortlist, keeps original ranks and adds no replacements. Rank 1 has the lowest selected valuation multiple in the ranking scope. Top 50 and Top 100 are shortcuts; ranks 10–20 select up to 11 stocks at each rebalance.
-5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Reset strategy restores original filters and ranks 1–50 while preserving the chosen dates.
+5. Click **Screen latest** or **Run backtest** for the chosen mode. Opening **Historical backtest** runs nothing by itself. Reset strategy restores the broad pool, default filters and ranks 1–50 while preserving the chosen dates.
 
 The order choice applies to all user filters, including size, sector and additional conditions. Both options start from the same prepared stock pool. If 20 stocks pass after selecting the top 50, each receives 5% weight. Saved results and queued tests retain the submitted order. Older saved results restore filter-first. Changing the order reuses prepared books.
 
@@ -88,8 +98,10 @@ Update data button maintains full managed coverage independently of those
 controls. **Details** contains checks, report export and offline preparation.
 Those local actions require no API key.
 
-The updater keeps the existing 90-day report policy, saved fiscal-date values
-and annual conflict rules. It retains full provider fields and variants. New
+The updater keeps each market's reporting policy, saved US fiscal-date values
+and annual conflict rules. Foreign downloads use the three statement endpoints;
+unused key-metrics and ratios responses are not required. It retains full
+provider fields and variants. New
 managed stocks receive histories from 1995. Recent prices and yields are
 rechecked. A changed adjusted price requires a consistent full replacement.
 Unchanged assets retain their bytes and timestamps. Recent overlap checks do
@@ -137,7 +149,7 @@ python3 scripts/schedules.py prepare
 python3 website/build.py
 ```
 
-Preparation is only needed after changing data or calculation code; the daily-cache command prepares research first. The builder reads the latest book of the book store in `data/schedules.sqlite` (which attaches `data/research.sqlite`), exports the latest screen of both pools as compact tuples, and embeds them in HTML. `website/build.py` alone needs a prepared daily cache. Changing latest screen parameters runs locally in JavaScript without reparsing prices.
+Preparation is only needed after changing data or calculation code; the daily-cache command prepares research first. The builder reads the latest book of the book store in `data/schedules.sqlite` (which attaches `data/research.sqlite`), exports each prepared market’s latest screen and available date bounds as compact tuples, and embeds them in HTML. `website/build.py` alone needs a prepared daily cache. Changing latest screen parameters runs locally in JavaScript without reparsing prices.
 
 The default latest picks remain embedded as a static table for previews that block JavaScript. Interactive screening requires JavaScript. The build writes `index.html`, `latest-picks.csv`, `data.html` and `snapshot.json`; browser-generated CSV downloads contain the original completed result. The canonical report `../results/summary-exits.txt` is a frozen record that no screen reads or overwrites.
 
@@ -172,9 +184,9 @@ This covers signed contributions, the top-10 stock limit, positive/negative/zero
 
 The website opens in **Latest stock picks** mode. Historical backtest remains available in the view switch. The same size, valuation, sector, exchange, universe and rank controls apply in either mode. The latest view shows a current selection, with no holding returns or attribution charts because those outcomes do not exist yet.
 
-The displayed date comes from the latest cached SPY session. Read the date above the latest stock table. Only companies marked currently listed in the cached universe, with a dividend-adjusted price on that exact session, are included. Earlier last-trade prices are not carried forward. The annual figure must be available under the existing strict 90-day lag and no more than 800 days old. Market cap and EV are revalued at the latest price using report net debt and the same adjusted-price method as the historical model.
+The displayed date comes from the selected market's latest completed cached session. Read the date above the latest stock table. Only companies marked currently listed in the cached universe, with a dividend-adjusted price on that exact session, are included. Earlier last-trade prices are not carried forward. The annual figure must be available under its market's reporting policy and no more than 800 days old. Market cap and EV are revalued at the latest price using report net debt and the same adjusted-price method as the historical model.
 
-Latest mode has separate prepared records for the original 250-candidate pool and all eligible cached-price companies. Both remain incomplete representations of the full market. The coverage line shows how many active names have financials and how many can be valued from current cached prices. Available-from dates are assumptions based on fiscal year-end, not verified filing dates. Listing status, sector and exchange are cached metadata.
+Latest mode has market-bound prepared records. The original US 250-candidate pool remains available for restored work; new forms use all eligible cached-price companies. Both remain incomplete representations of the full market. The coverage line shows how many active names have financials and how many can be valued from current cached prices. US available-from dates assume 90 days after fiscal year-end. Hong Kong and Japan use reliable publication dates where available, otherwise four and three calendar months. Listing status, sector and exchange are cached metadata.
 
 Click **Screen latest**, **Top 50**, or **Top 100**. Download latest picks exports the currently selected stocks, including valuation date, adjusted price, estimated market cap/EV, ratios, fiscal date, and assumed availability date. `dist/latest-picks.csv` is the default-settings fallback export generated at build time; browser downloads reflect the current filters. The latest table is also embedded as a no-JavaScript fallback.
 
@@ -199,7 +211,7 @@ opens at the successfully bound local address. The default listener is `0.0.0.0:
 half-yearly or yearly rebalance interval, then click **Run backtest**.
 
 Rebalances stay anchored to the starting day, clamp invalid month ends, and roll
-to the next cached SPY session. The final mark rolls back to an available session;
+to the next cached session of the selected market. The final mark rolls back to an available session;
 the last period can be partial. The chart and stock explorer use dated holding
 periods, with contribution pies and CSV downloads for the current schedule.
 Prices, financial availability, filters and valuation calculations use the saved
