@@ -109,6 +109,7 @@ const DataPanel=(()=>{
       render(state);
     }catch(error){
       connected=false;node('data-connection').textContent='Connection lost. Reconnecting… '+error.message;
+      node('data-readiness').textContent='Cannot read update status';
       node('data-connect').hidden=false;
       node('data-percent').textContent='Last seen: '+node('data-percent').textContent.replace(/^Last seen: /,'');
       node('data-remaining').textContent='Last seen: '+node('data-remaining').textContent.replace(/^Last seen: /,'');
@@ -146,6 +147,7 @@ const DataPanel=(()=>{
     });
     if(location.protocol==='file:'){
       connected=false;
+      node('data-readiness').textContent='Open the local data service';
       node('data-connection').textContent='Open start.cmd, then choose Manage backtest data to connect.';disable();
     }else refresh();
   }

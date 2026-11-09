@@ -682,9 +682,10 @@ counts and percentages remain visible. These are approximate estimates.
 
 Closing or reloading a browser page does not cancel work. Other tabs show the
 same operation. The page polls while idle and reconnects automatically. A lost
-connection freezes progress as **Last seen**. It does not declare the update
-stopped. A lost start response causes a status read, never an automatic repeat
-submission. **Stop update** stops new work and joins active workers before cache
+connection shows **Cannot read update status** and freezes progress as **Last seen**.
+It does not declare the update stopped. A lost start response causes a status
+read, never an automatic repeat submission. **Stop update** stops new work and
+joins active workers before cache
 ownership ends. The card shows **Stopping safely** during cleanup.
 
 After a server crash or machine shutdown, **Continue update** uses the saved

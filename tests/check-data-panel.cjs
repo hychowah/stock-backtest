@@ -3,11 +3,15 @@ const elements=new Map();
 function node(id){if(!elements.has(id))elements.set(id,{value:'',textContent:'',innerHTML:'',disabled:false,hidden:false,handlers:{},addEventListener(event,handler){this.handlers[event]=handler},removeAttribute(key){delete this[key]}});return elements.get(id);}
 node('data-scope').value='symbols';node('data-symbols').value='A';node('data-start').value='2020-01-01';node('data-end').value='2020-12-31';
 const requests=[],timers=[],downloads=[];
-let reply={job:{running:false,action:null,message:'Ready',error:null},update:{},report:null};
-const ctx=vm.createContext({document:{getElementById:node,createElement:()=>({click(){downloads.push(this.download)}})},location:{protocol:'http:'},Date,console,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},setTimeout(fn,delay){timers.push({fn,delay});return timers.length},async fetch(path,options){requests.push({path,options});return {status:200,ok:true,json:async()=>reply}}});
+let reply={job:{running:false,action:null,message:'Ready',error:null},update:{},report:null},disconnected=true;
+const ctx=vm.createContext({document:{getElementById:node,createElement:()=>({click(){downloads.push(this.download)}})},location:{protocol:'http:'},Date,console,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},setTimeout(fn,delay){timers.push({fn,delay});return timers.length},async fetch(path,options){requests.push({path,options});if(disconnected)throw Error('Service unavailable');return {status:200,ok:true,json:async()=>reply}}});
 vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../website/browser/data-panel.js'),'utf8'),ctx);
 const run=code=>vm.runInContext(code,ctx);
 (async()=>{
+ await run('DataPanel.refresh()');
+ assert.equal(node('data-readiness').textContent,'Cannot read update status','An initial connection failure must replace the checking placeholder.');
+ assert(node('data-update').disabled);assert(!node('data-connect').hidden);
+ disconnected=false;
  await run('DataPanel.refresh()');
  assert(requests.every(r=>r.path==='/api/data/status'&&!r.options.method),'Opening reads status without starting work.');
  assert(!node('data-update').disabled);
@@ -69,9 +73,16 @@ const run=code=>vm.runInContext(code,ctx);
  const goodFetch=ctx.fetch;ctx.fetch=async()=>{throw Error('private disconnected service')};
  await run('DataPanel.refresh()');
  assert(node('data-connection').textContent.includes('Connection lost'));
+ assert.equal(node('data-readiness').textContent,'Cannot read update status');
  assert(node('data-percent').textContent.startsWith('Last seen:'));assert(node('data-remaining').textContent.startsWith('Last seen:'));
  assert(node('data-update').disabled);
  ctx.fetch=goodFetch;await run('DataPanel.refresh()');assert(!node('data-update').disabled);
+ assert.equal(node('data-readiness').textContent,'Ready for backtests','Reconnection restores the server status.');
+ ctx.fetch=async()=>({status:403,ok:false,json:async()=>({error:'Open the data panel on this computer using localhost or 127.0.0.1.'})});
+ await run('DataPanel.refresh()');
+ assert.equal(node('data-readiness').textContent,'Cannot read update status');
+ assert(node('data-connection').textContent.includes('localhost or 127.0.0.1'));
+ ctx.fetch=goodFetch;
  // A lost mutation response is followed by status, never an automatic second start.
  let loseStart=true;ctx.fetch=async(path,options)=>{
    requests.push({path,options});if(options?.method&&loseStart){loseStart=false;throw Error('response lost')}
@@ -84,6 +95,7 @@ const run=code=>vm.runInContext(code,ctx);
  assert(node('data-error').textContent.includes('200 symbols'),'Rejected admission stays visible across status polling.');
  node('data-symbols').value='';await run("DataPanel.start('update',true)");assert(node('data-error').textContent.includes('Enter the stock symbols'));
  ctx.location.protocol='file:';run('DataPanel.init()');assert(node('data-connection').textContent.includes('start.cmd'));
+ assert.equal(node('data-readiness').textContent,'Open the local data service');
  process.env.TZ='America/New_York';const instant=Date.parse('2026-11-07T03:30:00Z');
  ctx.Date=class extends Date{constructor(...args){super(...(args.length?args:[instant]));}};
  node('data-end').value='';run('DataPanel.init()');assert.equal(node('data-end').value,'2026-11-06');
