@@ -76,6 +76,160 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(data.read_json(self.raw/'treasury.json')[-1]['month3'],3.9)
         self.assertEqual(financial_inputs.read(self.raw,'A','income-statement')[0][0]['date'],'2025-12-31')
 
+    def test_managed_report_cadence_and_custom_financial_override(self):
+        provider=self.provider
+        def listed(endpoint,params,*args):
+            rows=provider(endpoint,params,*args)
+            if endpoint=='company-screener':rows.append(dict(symbol='NEW',companyName='New company',exchange='NYSE'))
+            return rows
+        cases=[(4,'2026-01-03','2026-01-03',set()),
+               (9,'2026-01-03','2026-01-03',{'A','NEW'}),
+               (9,'2026-01-10','2026-01-03',set()),
+               (11,'2026-01-03','2026-01-03',{'A','NEW'}),
+               (9,'2026-01-03','2025-10-11',{'A','NEW','OLD'}),
+               (4,None,None,{'A','NEW','OLD'})]
+        for day,last,full,expected in cases:
+            with self.subTest(day=day,last=last,full=full):
+                self.calls.clear();self.put('universe.json',[dict(symbol='A',listed=True),dict(symbol='OLD',listed=False)])
+                (self.raw/'metrics.jsonl').write_text('\n'.join(json.dumps(dict(symbol=symbol,rows=[self.old_report])) for symbol in ('A','OLD')))
+                saved={key:value for key,value in [('last_report_check',last),('last_full_sweep',full)] if value}
+                cache_assets.write_json(refresh.status_path(),saved)
+                # 23:00 UTC is already the next day in Hong Kong.
+                with patch.object(refresh,'datetime',wraps=datetime) as clock,patch.object(data,'request_json',side_effect=listed),patch.object(data,'rebuild'):
+                    clock.now.side_effect=lambda zone:datetime(2026,1,day,23,tzinfo=timezone.utc).astimezone(zone)
+                    result=refresh.run()
+                actual={params['symbol'] for endpoint,params in self.calls if endpoint=='key-metrics'}
+                self.assertEqual(actual,expected)
+                for endpoint in financial_inputs.ENDPOINTS:
+                    if endpoint!='key-metrics':self.assertEqual({params['symbol'] for name,params in self.calls if name==endpoint},expected-{'OLD'})
+                self.assertEqual(result['outcome'],'complete');self.assertFalse(result['can_continue'])
+                self.assertTrue(any(endpoint=='treasury-rates' for endpoint,_ in self.calls))
+                self.assertEqual(result.get('last_report_check'),str(date(2026,1,day+1)) if expected else last)
+                self.assertEqual(result.get('last_full_sweep'),str(date(2026,1,day+1)) if 'OLD' in expected else full)
+                if not expected:self.assertTrue(result['work']['statements']['skipped'])
+        saved=dict(last_report_check='2026-01-03',last_full_sweep='2026-01-03')
+        cache_assets.write_json(refresh.status_path(),saved);self.calls.clear()
+        with patch.object(refresh,'report_policy',side_effect=AssertionError('Custom updates do not consult the schedule')),patch.object(data,'request_json',side_effect=listed),patch.object(data,'rebuild'):
+            jobs=data.Jobs();jobs.start('update',dict(scope='financials'));jobs.thread.join(5)
+        self.assertFalse(jobs.thread.is_alive());self.assertTrue(jobs.rebuilt)
+        result=refresh.status()
+        self.assertIn('OLD',{params['symbol'] for endpoint,params in self.calls if endpoint=='key-metrics'})
+        self.assertEqual({key:result[key] for key in saved},saved)
+
+    def test_panel_managed_actions_follow_report_policy(self):
+        def provider(endpoint,params,*args):
+            rows=self.provider(endpoint,params,*args)
+            return [dict(row,close=row['adjClose']) for row in rows] if endpoint.endswith('/full') else rows
+        for action,request in [('update',{}),('update',dict(market='us')),('update',dict(market='hk')),('refresh',{}),('continue',{})]:
+            with self.subTest(action=action,request=request):
+                self.calls.clear()
+                cache_assets.write_json(refresh.status_path(),dict(last_report_check='2026-01-03',last_full_sweep='2026-01-03',outcome='interrupted'))
+                with patch.object(refresh,'datetime',wraps=datetime) as clock,patch.object(data,'rebuild'),patch.object(data,'fetch_universe',return_value={}),patch.object(data,'request_json',side_effect=provider):
+                    clock.now.side_effect=lambda zone:datetime(2026,1,5,tzinfo=timezone.utc).astimezone(zone)
+                    if request.get('market')=='hk':
+                        cache_assets.write_json(market.universe_path(self.raw,'hk'),[dict(symbol='0700.HK',listed=True,market='hk',currency='HKD')])
+                    jobs=data.Jobs();jobs.start(action,request);jobs.thread.join(5)
+                self.assertFalse(jobs.thread.is_alive());self.assertTrue(jobs.rebuilt)
+                result=refresh.status()
+                self.assertEqual(result['outcome'],'complete')
+                self.assertTrue(result['work']['statements']['skipped'])
+                self.assertFalse(any(endpoint in financial_inputs.ENDPOINTS for endpoint,_ in self.calls))
+                self.assertTrue(any(endpoint=='treasury-rates' for endpoint,_ in self.calls))
+
+    def test_managed_statements_use_cached_and_pending_targets_within_due_set(self):
+        self.put('universe.json',[dict(symbol=symbol,listed=symbol!='OLD') for symbol in ('A','HOLD','OLD')])
+        self.put('px/OLD.json',dict(div=self.prices([('2026-01-02',10)])))
+        (self.raw/'metrics.jsonl').write_text('\n'.join(json.dumps(dict(symbol=symbol,rows=[self.old_report])) for symbol in ('A','HOLD','OLD')))
+        cache_assets.write_json(refresh.status_path(),dict(last_report_check='2026-01-03',last_full_sweep='2026-01-03'))
+        def universe(*args):return {symbol:dict(symbol=symbol,listed=True) for symbol in ('A','HOLD','NEW')}
+        with patch.object(refresh,'datetime',wraps=datetime) as clock,patch.object(data,'fetch_universe',side_effect=universe),patch.object(data,'rebuild'):
+            clock.now.side_effect=lambda zone:datetime(2026,1,10,tzinfo=timezone.utc).astimezone(zone)
+            result=refresh.run()
+        self.assertEqual(result['outcome'],'complete')
+        self.assertEqual({params['symbol'] for endpoint,params in self.calls if endpoint=='key-metrics'},{'A','HOLD','NEW'})
+        for endpoint in financial_inputs.ENDPOINTS:
+            if endpoint!='key-metrics':self.assertEqual({params['symbol'] for name,params in self.calls if name==endpoint},{'A','NEW'})
+
+    def test_single_market_check_keeps_all_market_report_dates(self):
+        saved=dict(last_report_check='2026-01-03',last_full_sweep='2025-09-01')
+        cache_assets.write_json(refresh.status_path(),saved)
+        def universe(stop,client,market_id='us'):
+            symbol='A' if market_id=='us' else '0700.HK'
+            return {symbol:dict(symbol=symbol,listed=True,market=market_id)}
+        def provider(endpoint,params,*args):
+            rows=self.provider(endpoint,params,*args)
+            return [dict(row,close=row['adjClose']) for row in rows] if endpoint.endswith('/full') else rows
+        with patch.object(refresh,'datetime',wraps=datetime) as clock,patch.object(data,'fetch_universe',side_effect=universe),patch.object(data,'request_json',side_effect=provider),patch.object(data,'rebuild'):
+            clock.now.side_effect=lambda zone:datetime(2026,1,10,tzinfo=timezone.utc).astimezone(zone)
+            scope=dict(data.options(dict(market='hk',end='2026-01-10')),managed=True)
+            result=refresh.run(scope=scope)
+            self.assertEqual(result['outcome'],'complete')
+            self.assertEqual({key:result[key] for key in saved},saved)
+            self.assertTrue(any(endpoint=='income-statement' and params['symbol']=='0700.HK' for endpoint,params in self.calls))
+            self.calls.clear();result=refresh.run()
+        self.assertEqual(result['outcome'],'complete')
+        self.assertEqual({key:result[key] for key in saved},dict.fromkeys(saved,'2026-01-10'))
+        self.assertTrue(any(endpoint=='key-metrics' and params['symbol']=='A' for endpoint,params in self.calls))
+
+    def test_managed_report_dates_wait_for_every_market_and_ignore_price_failures(self):
+        saved=dict(last_report_check='2026-01-03',last_full_sweep='2025-09-01')
+        cache_assets.write_json(refresh.status_path(),saved)
+        cache_assets.write_json(market.universe_path(self.raw,'hk'),[dict(symbol='0700.HK',listed=True,currency='HKD',market='hk')])
+        phase=[0]
+        def provider(endpoint,params,*args):
+            if phase[0]==0 and endpoint=='income-statement' and params.get('symbol')=='0700.HK':raise OSError('Report unavailable')
+            if phase[0]==1 and endpoint=='treasury-rates':raise OSError('Price stage unavailable')
+            rows=self.provider(endpoint,params,*args)
+            if endpoint.endswith('/full'):rows=[dict(row,close=row['adjClose']) for row in rows]
+            return rows
+        def universe(stop,client,market_id='us'):
+            symbol='A' if market_id=='us' else '0700.HK'
+            return {symbol:dict(symbol=symbol,listed=True,currency='USD' if market_id=='us' else 'HKD',market=market_id)}
+        with patch.object(refresh,'datetime',wraps=datetime) as clock,patch.object(data,'fetch_universe',side_effect=universe),patch.object(data,'request_json',side_effect=provider),patch.object(data,'rebuild'):
+            instant=datetime(2026,1,9,23,tzinfo=timezone.utc)
+            clock.now.side_effect=lambda zone:instant.astimezone(zone)
+            result=refresh.run()
+            self.assertEqual({key:result[key] for key in saved},saved)
+            self.assertEqual(result['outcome'],'partial')
+            phase[0]=1;self.calls.clear();instant=datetime(2026,1,10,23,tzinfo=timezone.utc)
+            result=refresh.run()
+        self.assertEqual(result['outcome'],'partial')
+        self.assertEqual(result['last_report_check'],'2026-01-11')
+        self.assertEqual(result['last_full_sweep'],'2026-01-11')
+        self.assertTrue(any(endpoint=='key-metrics' for endpoint,_ in self.calls))
+        self.assertTrue(any(endpoint=='income-statement' and params['symbol']=='0700.HK' for endpoint,params in self.calls))
+
+    def test_managed_continue_reconsiders_reports_on_saturday(self):
+        cache_assets.write_json(refresh.status_path(),dict(last_report_check='2026-01-03',last_full_sweep='2026-01-03'))
+        with patch.object(refresh,'datetime',wraps=datetime) as clock:
+            instant=datetime(2026,1,4,23,tzinfo=timezone.utc)
+            clock.now.side_effect=lambda zone:instant.astimezone(zone)
+            with patch.object(data,'rebuild',side_effect=ValueError('Preparation interrupted')),self.assertRaises(ValueError):refresh.run()
+            self.assertFalse(any(endpoint in financial_inputs.ENDPOINTS for endpoint,_ in self.calls))
+            self.calls.clear();instant=datetime(2026,1,9,23,tzinfo=timezone.utc)
+            with patch.object(data,'rebuild'):result=refresh.run(resume=True)
+        self.assertEqual(result['outcome'],'complete')
+        self.assertEqual(result['last_report_check'],'2026-01-10')
+        self.assertTrue(any(endpoint=='key-metrics' for endpoint,_ in self.calls))
+
+    def test_continue_checks_delisted_reports_when_full_sweep_becomes_due(self):
+        self.put('universe.json',[dict(symbol='A',listed=True),dict(symbol='OLD',listed=False)])
+        self.put('px/OLD.json',dict(div=self.prices([('2026-01-02',10)])))
+        with (self.raw/'metrics.jsonl').open('a') as output:output.write('\n'+json.dumps(dict(symbol='OLD',rows=[self.old_report])))
+        cache_assets.write_json(refresh.status_path(),dict(last_report_check='2025-12-27',last_full_sweep='2025-10-05'))
+        with patch.object(refresh,'datetime',wraps=datetime) as clock:
+            instant=datetime(2026,1,3,tzinfo=timezone.utc)
+            clock.now.side_effect=lambda zone:instant.astimezone(zone)
+            with patch.object(data,'rebuild',side_effect=ValueError('Preparation interrupted')),self.assertRaises(ValueError):refresh.run()
+            self.assertIn('statements',refresh.status()['completed_stages'])
+            self.assertFalse(any(params.get('symbol')=='OLD' for endpoint,params in self.calls if endpoint in financial_inputs.ENDPOINTS))
+            self.calls.clear();instant=datetime(2026,1,10,tzinfo=timezone.utc)
+            with patch.object(data,'rebuild'):result=refresh.run(resume=True)
+        self.assertEqual(result['outcome'],'complete')
+        self.assertEqual(result['last_full_sweep'],'2026-01-10')
+        for endpoint in financial_inputs.ENDPOINTS:
+            self.assertIn('OLD',{params['symbol'] for name,params in self.calls if name==endpoint})
+
     def test_new_annual_report_enters_prepared_selection_only_after_existing_lag(self):
         provider=self.provider
         def with_history(endpoint,params,*args):
@@ -289,7 +443,7 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(len(rows),3)
 
     def test_failed_refresh_prepares_valid_downloads_and_records_safe_partial_status(self):
-        def publish_then_fail(*args):
+        def publish_then_fail(*args,**kwargs):
             self.put('spy-div.json',self.prices([('2026-01-05',120)]))
             raise RuntimeError('https://provider.invalid/?apikey=PRIVATE-CANARY')
         with patch.object(refresh,'download',side_effect=publish_then_fail),patch.object(data,'rebuild') as rebuild,cache_access.access():state=refresh.run()
@@ -428,20 +582,44 @@ class RefreshTests(unittest.TestCase):
 
     def test_estimate_requires_matching_success_and_never_reaches_100_before_ready(self):
         snapshots=[];clock=[100.]
+        instant=datetime(2026,1,5,tzinfo=timezone.utc)
         def now():clock[0]+=.01;return clock[0]
         def prepare(emit,stop):
             for kind,total in (('research',1),('daily',2),('website',6)):
                 emit(kind=kind,completed=0,total=total);emit(kind=kind,completed=total,total=total)
         def capture(**values):
-            if values.get('kind')=='annual':snapshots.append(refresh.status())
-        with patch.object(refresh.time,'monotonic',side_effect=now),patch.object(data,'rebuild',side_effect=prepare):
+            if values.get('kind')=='checking':snapshots.append(refresh.status())
+        with patch.object(refresh.time,'monotonic',side_effect=now),patch.object(data,'rebuild',side_effect=prepare),patch.object(refresh,'datetime',wraps=datetime) as calendar:
+            calendar.now.side_effect=lambda zone:instant.astimezone(zone)
             first=refresh.run(capture)
             self.assertTrue(snapshots);self.assertTrue(all(row['percent'] is None for row in snapshots))
             self.assertEqual(first['percent'],100);self.assertTrue(first['ready'])
-            snapshots.clear();refresh.run(capture)
+            snapshots.clear();skipped=refresh.run(capture)
             self.assertTrue(snapshots);self.assertTrue(all(0<=row['percent']<100 and row['estimated_remaining_seconds']>=0 for row in snapshots))
+            for kind in ('annual','statements'):
+                self.assertTrue(skipped['work'][kind]['skipped'])
+                self.assertGreater(first['last_timing']['durations'][kind],0)
+                self.assertEqual(skipped['last_timing']['durations'][kind],first['last_timing']['durations'][kind])
+            snapshots.clear();instant=datetime(2026,1,10,tzinfo=timezone.utc)
+            due=refresh.run(capture)
+            self.assertTrue(snapshots);self.assertTrue(all(row['estimated_remaining_seconds']>0 for row in snapshots))
+            self.assertFalse(due['work']['statements'].get('skipped'))
             snapshots.clear();refresh.run(capture,scope=data.options(dict(scope='symbols',symbols='A')))
             self.assertTrue(all(row['percent'] is None for row in snapshots))
+        durations=dict.fromkeys(refresh.STAGES,1);durations.update(annual=500,statements=500)
+        scope=dict(data.options(dict(market='us',end='2026-01-06')),managed=True)
+        progress=refresh.Progress(dict(last_timing=dict(scope=dict(scope,end='2026-01-05'),durations=durations)),scope=scope)
+        for kind in ('annual','statements'):progress.state['work'][kind]=dict(completed=0,total=0,skipped=True)
+        progress.emit(kind='checking',completed=0,total=1)
+        self.assertEqual(progress.view()['estimated_remaining_seconds'],7)
+        progress.emit(kind='prices',completed=0,total=1)
+        self.assertEqual(progress.view()['percent'],14)
+        progress.state['stage_durations']=dict.fromkeys(refresh.STAGES,1)
+        progress.finish('complete')
+        for kind in ('annual','statements'):self.assertEqual(progress.state['last_timing']['durations'][kind],500)
+        progress=refresh.Progress(progress.state,scope=dict(scope,end='2026-01-10'))
+        progress.emit(kind='checking',completed=0,total=1)
+        self.assertIsNotNone(progress.view()['estimated_remaining_seconds'])
 
     def test_foreign_cache_owner_leaves_running_status_unconfirmed(self):
         saved=dict(outcome='running',scope=None,stage='Updating company reports',elapsed_seconds=12)

@@ -64,6 +64,23 @@ class MarketDataTests(unittest.TestCase):
         self.assertEqual(report['missing_financials'],[])
         self.assertEqual(next(asset['count'] for asset in report['assets'] if asset['name']=='Annual financials'),2)
 
+    def test_managed_foreign_reports_skip_weekdays_and_sweep_delisted(self):
+        options=data.options(dict(market='hk',scope='financials',start='2020-01-01',end='2020-01-03'))
+        cache_assets.write_json(market.universe_path(self.raw,'hk'),[
+            dict(symbol=symbol,listed=listed,market='hk',currency='HKD') for symbol,listed in [('0700.HK',True),('0001.HK',False)]])
+        financial_inputs.publish(self.raw,'0001.HK','income-statement',[dict(date='2019-12-31',reportedCurrency='CNY')],{},data.COVERAGE)
+        for due,sweep,expected in [(False,False,set()),(True,False,{'0700.HK'}),(True,True,{'0700.HK','0001.HK'})]:
+            with self.subTest(due=due,sweep=sweep):
+                self.calls.clear();progress=data_refresh.Progress({},scope=options)
+                with patch.object(data,'request_json',side_effect=self.provider),fmp_download.Client() as client:
+                    success=data.download_market(options,progress.emit,lambda:None,client,refresh=True,refresh_state=progress.state,
+                                                 reports=dict(due=due,sweep=sweep))
+                self.assertTrue(success)
+                for endpoint in data.FOREIGN_STATEMENTS:
+                    self.assertEqual({params['symbol'] for name,params in self.calls if name==endpoint},expected)
+                self.assertTrue(any(params.get('symbol')=='USDCNY' for _,params in self.calls))
+                if not due:self.assertTrue(progress.state['work']['statements']['skipped'])
+
     def test_market_only_primary_update_retains_us_managed_additions(self):
         jobs=data.Jobs()
         with patch.object(data_refresh,'run',return_value=dict(ready=True,error=None)) as update:

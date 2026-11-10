@@ -86,9 +86,10 @@ const DataPanel=(()=>{
     const steps=[['Checking',['checking']],['Reports',['annual','statements']],['Prices',['prices']],['Preparing',['research','daily','website','sheets']],['Ready',['verify']]];
     node('data-steps').innerHTML=steps.map(([label,kinds])=>{
       const work=kinds.map(k=>update.work?.[k]);
-      const done=work.every(w=>w&&w.total!==null&&w.completed>=w.total);
+      const skipped=work.every(w=>w?.skipped);
+      const done=!skipped&&work.every(w=>w&&w.total!==null&&w.completed>=w.total);
       const current=kinds.includes(update.kind)&&busy;
-      return '<li'+(current?' aria-current="step"':'')+'>'+(done?'✓ ':'')+label+'</li>';
+      return '<li'+(current?' aria-current="step"':'')+'>'+(done?'✓ ':'')+(skipped?'Reports: next check Saturday':label)+'</li>';
     }).join('');
     if(state.report&&state.report.checked_at!==lastReport?.checked_at)renderReport(state.report);
     disable();schedule(busy?1000:5000);

@@ -646,15 +646,25 @@ The primary action maintains the selected market's saved-price companies, pendin
 listed companies and companies that first acquire eligible financials. A saved
 price receipt also identifies a managed company whose file was lost. The
 missing file inherits no completion evidence and is downloaded again. Annual
-key metrics are checked across the saved US universe. US statements and ratios
-update for managed stocks. Foreign downloads use income, balance-sheet and
-cash-flow statements only. Existing receipts record completion, including empty
+key metrics are checked for the due US set below. US statements and ratios
+update for managed stocks within that set. Foreign downloads use income,
+balance-sheet and cash-flow statements only. Existing receipts record completion, including empty
 responses; missing values remain unavailable to calculations. New managed
 histories start in 1995. Historical companies remain in the universe. Existing
 US fiscal-date valuations retain their values; new fiscal dates use the market's
 reporting policy. Full annual
 responses retain every field, currency, null and variant under the existing
 conflict rules. Requests retain the 40-report limit.
+
+Every managed refresh checks company lists, prices, SPY, Treasury and FX. This
+includes the 07:00 Hong Kong update and managed data-panel updates. Reports
+run when the Hong Kong date is Saturday and that day has not been checked,
+or when the last successful report check is more than seven days old. A missing check is due immediately. These
+checks cover listed companies and pending additions. A due check includes delisted
+companies when the full sweep is missing or more than 90 days old. US key
+metrics use this set. US statements and ratios cover managed stocks within it.
+Foreign statements use the full due set. Custom-scoped updates and the separate
+Download action keep their existing full report behavior.
 
 **More options** selects a stock group, up to 200 specific symbols and a history
 range. **Update selected stocks and history** updates that explicit coverage and
@@ -681,11 +691,15 @@ The estimated percentage includes preparation. It stays below 100 until the
 whole update succeeds. Partial completion and readiness are separate outcomes.
 
 Estimates use the stage durations of the last successful update with the same
-scope. Current stage counts scale its remaining time and completion fraction.
+scope, excluding the end date. Current stage counts scale its remaining time
+and completion fraction.
 If the current stage is slower, elapsed time and its completed fraction revise
 the estimate. Future stages use that previous update's durations. Without a
 matching success, overall estimates stay unknown; elapsed time and current step
 counts and percentages remain visible. These are approximate estimates.
+Skipped reports show **Reports: next check Saturday** and add no estimated
+time. Skipped runs retain the previous measured report durations for the next
+due run.
 
 Closing or reloading a browser page does not cancel work. Other tabs show the
 same operation. The page polls while idle and reconnects automatically. A lost
@@ -696,19 +710,26 @@ joins active workers before cache
 ownership ends. The card shows **Stopping safely** during cleanup.
 
 After a server crash or machine shutdown, **Continue update** uses the saved
-scope and target date. It reruns unfinished stages. An unfinished report stage
+scope and target date. It reruns unfinished stages. A due, unfinished report stage
 is checked again even when its files have valid receipts: those receipts do not
 prove that the provider has no newer report. Finished download stages can be
-reused while their content-bound receipts still apply. If preparation is the
-only unfinished step, continuation makes no download request. Recorded active
-seconds survive continuation; stopped time is excluded.
+reused while their content-bound receipts still apply. If only preparation is
+unfinished, downloads are reused unless managed reports have become due.
+Recorded active seconds survive continuation; stopped time is excluded.
+Managed continuation recalculates whether reports are due on its current Hong
+Kong date. If a full sweep becomes due, completed report stages are checked
+again for delisted companies.
 
 `website/server/data_refresh.py` persists one small atomic record at
 `data/data-refresh.json`. It contains state, scope, target date, current stage,
 stage counts, a successful stage prefix, verified running seconds, pending
 additions, last success and the last successful scope's stage durations. It
-uses the existing financial cache ownership. Only that owner publishes status
-and inputs. There is no separate update lock or per-asset work store.
+also keeps `last_report_check` and `last_full_sweep`. Managed refreshes use
+these dates. Only an all-markets managed run advances them, after its download
+phase finishes with no report failures. A Stop or exception during downloads
+keeps the old dates. A recorded price failure does not prevent this advance.
+Single-market and custom-scoped updates preserve both dates. The refresh uses the existing financial cache ownership. Only that
+owner publishes status and inputs. There is no separate update lock or per-asset work store.
 
 A saved running status becomes interrupted when the cache is free and no local
 update is running. If a foreign operation holds the cache, status is

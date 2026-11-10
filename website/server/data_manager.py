@@ -225,7 +225,7 @@ def market_series(market_id,targets,currencies):
     return result
 
 
-def download_market(o,emit,stop,client,*,refresh=False,refresh_state=None):
+def download_market(o,emit,stop,client,*,refresh=False,refresh_state=None,reports=None):
     """Acquire one foreign market with existing receipts and one publishing owner.
 
     Annual responses stay in the shared suffixed-symbol files. Price, calendar
@@ -260,11 +260,15 @@ def download_market(o,emit,stop,client,*,refresh=False,refresh_state=None):
         targets.update(symbol for symbol in universe if 'px/'+market.cache_path_for(symbol).name in ledger)
     targets=sorted(targets)
     annual_targets=sorted(universe) if o['scope']=='financials' or refresh and (o.get('managed') or refresh_state['scope'] is None) else targets
+    if reports is not None:
+        annual_targets=data_refresh.report_symbols(universe,pending,sweep=reports['sweep'])
+    due=reports is None or reports['due']
+    report_failures=refresh_state['failed_assets'] if refresh else 0
     tasks=[(symbol,endpoint) for symbol in annual_targets for endpoint in FOREIGN_STATEMENTS
-           if ('financials' in selected or 'fundamentals' in selected)
+           if due and ('financials' in selected or 'fundamentals' in selected)
            and ((refresh and 'statements' not in completed) or not financial_inputs.completed(RAW,symbol,endpoint,ledger))]
-    emit(kind='annual',completed=0,total=0)
-    emit(kind='statements',completed=0,total=len(tasks))
+    emit(kind='annual',completed=0,total=0,**({} if due else dict(skipped=True)))
+    emit(kind='statements',completed=0,total=len(tasks),**({} if due else dict(skipped=True)))
     for number,(task,rows) in enumerate(client.map(tasks,lambda task:fetch(task[1],
             dict(symbol=task[0],period='annual',limit=40),stop,client)),1):
         stop();symbol,endpoint=task
@@ -275,9 +279,10 @@ def download_market(o,emit,stop,client,*,refresh=False,refresh_state=None):
                 if not refresh:raise
                 data_refresh.failed(refresh_state,endpoint+'/'+symbol,error)
         emit(kind='statements',completed=number,total=len(tasks),message='Saved '+endpoint+' for '+symbol+'.')
+    reports_ok=not refresh or refresh_state['failed_assets']==report_failures
     currencies={market.MARKETS[market_id]['currency']}
     currencies.update(universe[symbol].get('currency') or market.MARKETS[market_id]['currency'] for symbol in targets)
-    for symbol in annual_targets:
+    for symbol in sorted(set(annual_targets)|set(targets)):
         for endpoint in FOREIGN_STATEMENTS:
             rows,_=financial_inputs.read(RAW,symbol,endpoint)
             currencies.update(str(row.get('reportedCurrency') or '').upper() for row in rows
@@ -297,6 +302,7 @@ def download_market(o,emit,stop,client,*,refresh=False,refresh_state=None):
         emit(kind='prices',completed=0,total=len(specs))
         download_series(specs,o,ledger,emit,stop,client)
         emit(kind='prices',completed=len(specs),total=len(specs))
+    return reports_ok
 
 
 def fetch_universe(stop,client,market_id='us'):

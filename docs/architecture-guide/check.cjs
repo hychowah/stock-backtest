@@ -32,6 +32,7 @@ assert(html.includes('The library has 100 slots.') && html.includes('stable UUID
 assert(html.includes('raw/download-coverage.json') && html.includes('/api/data/*') && html.includes('Legacy gaps inside an existing span are not repaired automatically.'), 'Data panel source, coverage and download limits must be clear');
 
 assert(html.includes('<strong>Update data</strong>') && html.includes('data/data-refresh.json') && html.includes('<strong>unconfirmed</strong>') && html.includes('<strong>Continue update</strong>') && html.includes('Estimated time remaining') && html.includes('Last seen') && html.includes('A missed schedule waits until the next day.') && html.includes('Full historical precomputation belongs in that flow') && html.includes('A changed adjusted price needs a consistent replacement'), 'Explain scheduled refresh, pending additions, price continuity and preparation ownership');
+assert(html.includes('Reports: next check Saturday') && html.includes('last_report_check') && html.includes('last_full_sweep') && html.includes('more than 90 days old') && html.includes('Custom-scoped updates and the separate Download action keep their full report behavior.'), 'Explain managed report cadence, completed sweeps and custom updates');
 
 assert(html.includes('Multiple records can have the same fiscal date.') && html.includes('Conflicting values stay unavailable.'), 'Explain duplicate annual response preservation and input ambiguity');
 

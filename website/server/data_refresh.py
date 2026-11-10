@@ -31,6 +31,23 @@ def read_status():
     except (OSError,ValueError):return dict(outcome='failed',error='Update status could not be read.')
 
 
+def report_policy(saved):
+    """Managed checks use Hong Kong dates; missing history is due."""
+    today=datetime.now(timezone(timedelta(hours=8))).date()
+    last=saved.get('last_report_check');full=saved.get('last_full_sweep')
+    due=(today.weekday()==5 and last!=str(today)) or last is None or (today-date.fromisoformat(last)).days>7
+    sweep=full is None or (today-date.fromisoformat(full)).days>90
+    return dict(today=today,due=due,sweep=sweep)
+
+
+def report_symbols(universe,pending,*,sweep):
+    return sorted(symbol for symbol,row in universe.items() if sweep or row.get('listed') or symbol in pending)
+
+
+def timing_scope(scope):
+    return dict(scope,end=None) if isinstance(scope,dict) else scope
+
+
 def status():
     """Read without resuming work or claiming a foreign cache owner's identity."""
     if _active is not None and _active.root==data.ROOT:return _active.view()
@@ -58,9 +75,9 @@ class Progress:
     """
     def __init__(self,saved,scope=None,*,resume=False):
         self.root=data.ROOT;self.owner=get_ident();self.finished=False
-        if resume and saved.get('scope') is not None:scope=saved['scope']
+        if resume:scope=saved.get('scope')
         if resume:self.state=dict(saved)
-        else:self.state={key:saved[key] for key in ('pending_symbols','pending_markets','last_success','latest_session','last_timing') if key in saved}
+        else:self.state={key:saved[key] for key in ('pending_symbols','pending_markets','last_success','latest_session','last_timing','last_report_check','last_full_sweep') if key in saved}
         now=datetime.now(timezone.utc)
         if not resume:
             self.state.update(started_at=now.isoformat(),elapsed_seconds=0,completed_stages=[],stage_durations={},work={})
@@ -94,6 +111,7 @@ class Progress:
             self.state['completed_stages']=self.state['completed_stages'][:STAGES.index(kind)]
             self.state['kind']=kind;self.state['stage']=LABELS[STAGES.index(kind)]
         self.state['work'][kind]=dict(completed=values.get('completed',0),total=values.get('total'))
+        if values.get('skipped'):self.state['work'][kind]['skipped']=True
         if changed or time.monotonic()-self.last_save>=1:self.save()
 
     def done(self,kind,success=True):
@@ -110,8 +128,9 @@ class Progress:
                 kind=state['kind'];state['stage_durations'][kind]=state['stage_durations'].get(kind,0)+seconds
         state.update(running=not self.finished,unconfirmed=False,can_continue=self.finished and state['outcome']!='complete',percent=None,estimated_remaining_seconds=None)
         previous=state.get('last_timing',{})
-        durations=previous.get('durations',{})
-        if state.get('kind') and previous.get('scope')==state['scope'] and all(kind in durations for kind in STAGES):
+        durations={kind:0 if state['work'].get(kind,{}).get('skipped') else seconds
+                   for kind,seconds in previous.get('durations',{}).items()}
+        if state.get('kind') and timing_scope(previous.get('scope'))==timing_scope(state['scope']) and all(kind in durations for kind in STAGES):
             index=STAGES.index(state['kind']);counts=state['work'].get(state['kind'],{})
             total=counts.get('total');fraction=min(1,counts.get('completed',0)/total) if total else 0
             whole=sum(durations.values())
@@ -130,7 +149,11 @@ class Progress:
         self.state['stage']={'complete':'Ready for backtests','partial':'Some data could not be updated','failed':'Update needs attention','cancelled':'Update stopped'}[outcome]
         if outcome=='complete':
             self.state['last_success']=self.state['finished_at']
-            self.state['last_timing']=dict(scope=self.state['scope'],durations=dict(self.state['stage_durations']))
+            previous=self.state.get('last_timing',{})
+            measured=previous.get('durations',{}) if timing_scope(previous.get('scope'))==timing_scope(self.state['scope']) else {}
+            durations={kind:measured.get(kind,0) if self.state['work'].get(kind,{}).get('skipped') else seconds
+                       for kind,seconds in self.state['stage_durations'].items()}
+            self.state['last_timing']=dict(scope=self.state['scope'],durations=durations)
         self.save();self.finished=True
 
 
@@ -200,7 +223,7 @@ def refresh_series(specs,end,ledger,emit,stop,client,state):
         emit(kind='prices',completed=number,total=len(specs))
 
 
-def download(state,end,emit,stop,client,progress):
+def download(state,end,emit,stop,client,progress,*,reports=None):
     """Continue keeps a successful stage prefix; unfinished stages are rechecked."""
     try:old=data.universe_rows()
     except (ValueError,TypeError):
@@ -232,7 +255,15 @@ def download(state,end,emit,stop,client,progress):
         targets=set(data.target_symbols(dict(scope='cached'),universe,records))|pending
         targets.update(symbol for symbol in universe if 'px/'+market.cache_path_for(symbol).name in ledger)
         wanted=sorted(universe)
-    if ('annual' not in state['completed_stages'] or any(symbol not in records or not financial_inputs.completed(data.RAW,symbol,'key-metrics',ledger) for symbol in wanted)):
+    if reports is not None:
+        wanted=report_symbols(universe,pending,sweep=reports['sweep'])
+    report_failures=state['failed_assets']
+    due=reports is None or reports['due']
+    if not due:
+        for kind in ('annual','statements'):
+            if kind not in state['completed_stages']:
+                emit(kind=kind,completed=0,total=0,skipped=True);progress.done(kind)
+    if due and ('annual' not in state['completed_stages'] or any(symbol not in records or not financial_inputs.completed(data.RAW,symbol,'key-metrics',ledger) for symbol in wanted)):
         emit(kind='annual',completed=0,total=len(wanted));before=state['failed_assets']
         for number,(symbol,rows) in enumerate(client.map(wanted,lambda symbol:request('key-metrics',dict(symbol=symbol,period='annual',limit=40),stop,client)),1):
             stop()
@@ -256,9 +287,10 @@ def download(state,end,emit,stop,client,progress):
         progress.done('annual',state['failed_assets']==before)
     if scope and scope['scope']=='financials':targets=set(data.target_symbols(scope,universe,records))
     targets=sorted(targets)
-    total=len(targets)*(len(financial_inputs.ENDPOINTS)-1)
-    if ('statements' not in state['completed_stages'] or any(not financial_inputs.completed(data.RAW,symbol,endpoint,ledger) for symbol in targets for endpoint in financial_inputs.ENDPOINTS if endpoint!='key-metrics')):
-        requests=((symbol,endpoint) for symbol in targets for endpoint in financial_inputs.ENDPOINTS if endpoint!='key-metrics')
+    report_targets=sorted(set(targets)&set(wanted)) if reports is not None else targets
+    total=len(report_targets)*(len(financial_inputs.ENDPOINTS)-1)
+    if due and ('statements' not in state['completed_stages'] or any(not financial_inputs.completed(data.RAW,symbol,endpoint,ledger) for symbol in report_targets for endpoint in financial_inputs.ENDPOINTS if endpoint!='key-metrics')):
+        requests=((symbol,endpoint) for symbol in report_targets for endpoint in financial_inputs.ENDPOINTS if endpoint!='key-metrics')
         emit(kind='statements',completed=0,total=total);before=state['failed_assets']
         for number,(task,rows) in enumerate(client.map(requests,lambda task:request(task[1],dict(symbol=task[0],period='annual',limit=40),stop,client)),1):
             stop();symbol,endpoint=task
@@ -269,6 +301,7 @@ def download(state,end,emit,stop,client,progress):
                 else:emit(message='Updated '+endpoint+' for '+symbol+'.')
             emit(kind='statements',completed=number,total=total)
         progress.done('statements',state['failed_assets']==before)
+    reports_ok=state['failed_assets']==report_failures
     specs=[('spy-div.json','adjClose','historical-price-eod/dividend-adjusted',None),('treasury.json','month3','treasury-rates',None)]+[(None,'adjClose','historical-price-eod/dividend-adjusted',symbol) for symbol in targets]
     valid_prices='prices' in state['completed_stages']
     if valid_prices:
@@ -284,6 +317,7 @@ def download(state,end,emit,stop,client,progress):
             if price.rows and records.get(symbol,{}).get('rows') and all(financial_inputs.read(data.RAW,symbol,endpoint)[0] for endpoint in financial_inputs.ENDPOINTS):
                 state['pending_symbols'].remove(symbol)
     progress.save()
+    return reports_ok
 
 
 @diagnostics.operation('data.refresh')
@@ -295,27 +329,45 @@ def run(emit=lambda **kw:None,stop=lambda:None,*,scope=None,resume=False):
     if resume and saved.get('outcome')=='complete':
         return dict(saved,ready=all(row['state']=='current' for row in data.derived_status()),error=saved.get('error'))
     progress=Progress(saved,scope,resume=resume);_active=progress;state=progress.state
+    scope=state['scope']
+    reports=report_policy(saved) if scope is None or scope.get('managed') else None
+    if reports is not None:
+        if resume and reports['due'] and reports['sweep']:
+            # A completed listed-company check does not prove a full sweep.
+            state['completed_stages']=state['completed_stages'][:STAGES.index('annual')]
+        for kind in ('annual','statements'):
+            if not reports['due']:state['work'][kind]=dict(completed=0,total=0,skipped=True)
+            elif state['work'].get(kind,{}).get('skipped'):
+                # A previously skipped stage does not prove a report check.
+                state['completed_stages']=state['completed_stages'][:STAGES.index(kind)]
+                del state['work'][kind]
     def checkpoint():stop();progress.checkpoint()
     def feedback(**values):progress.emit(**values);emit(**values)
     try:
+        progress.save()
         with backtest_control.cancel_when(lambda:bool(stop())):
             try:
                 end=date.fromisoformat(state['target_date'])
                 if state['scope']:end=min(end,date.fromisoformat(state['scope']['end']))
                 with fmp_download.Client(checkpoint,feedback) as client:
                     scope=state['scope']
+                    reports_ok=True
                     foreign=[code for code in market.MARKETS if code!='us' and market.universe_path(data.RAW,code).exists()]
                     if scope and scope.get('market','us')!='us':
-                        data.download_market(dict(scope,end=str(end)),feedback,checkpoint,client,refresh=True,refresh_state=state)
+                        reports_ok=data.download_market(dict(scope,end=str(end)),feedback,checkpoint,client,refresh=True,refresh_state=state,reports=reports)
                         for kind in STAGES[:4]:progress.done(kind,state['failed_assets']==0)
                     else:
                         if scope or market.universe_path(data.RAW,'us').exists() or not foreign:
-                            download(state,end,feedback,checkpoint,client,progress)
+                            reports_ok=download(state,end,feedback,checkpoint,client,progress,reports=reports)
                         if not scope:
                             for code in foreign:
                                 selected=data.options(dict(market=code,end=str(end)))
-                                data.download_market(selected,feedback,checkpoint,client,refresh=True,refresh_state=state)
+                                reports_ok=data.download_market(selected,feedback,checkpoint,client,refresh=True,refresh_state=state,reports=reports) and reports_ok
                             for kind in STAGES[:4]:progress.done(kind,state['failed_assets']==0)
+                if reports is not None and reports['due'] and reports_ok and (state['scope'] is None or 'market' not in state['scope']):
+                    state['last_report_check']=str(reports['today'])
+                    if reports['sweep']:state['last_full_sweep']=str(reports['today'])
+                    progress.save()
                 if state['failed_assets']:state['error']=f"{state['failed_assets']} data items could not be updated. Completed work was kept. Continue to try again."
             except (fmp_download.Cancelled,backtest_control.Cancelled,KeyboardInterrupt):raise
             except Exception as error:
