@@ -14,12 +14,45 @@ insertion stay outside this module. A change to book policy must pass the develo
 (python3 scripts/check.py) on the real-data bench.
 """
 import math
+from datetime import timedelta
 
 from backtest.financial import metrics
 from backtest.financial import rules as run
 
 # Historical entry prices can roll forward by four calendar days.
 ENTRY_SLACK=4
+
+
+def affected_entries(changes, facts):
+    """First affected entry per company; shared changes reach their actual users.
+
+    These conservative tails include entry roll-forward and later lookbacks.
+    A company revision never invalidates another company's numerical rows.
+    """
+    code=facts.market;companies=facts.companies();affected={}
+    def note(symbol,day):
+        text=str(day)
+        if symbol not in affected or text<affected[symbol]:affected[symbol]=text
+    def shared(day):
+        for symbol in companies:note(symbol,day)
+    for symbol,markets in changes['companies'].items():
+        if code in markets:note(symbol,run.FIRST_DAY)
+    for symbol,day in changes['prices'].items():
+        if symbol in companies:note(symbol,run.parse_day(day)-timedelta(days=ENTRY_SLACK))
+    for kind in ('annual','reports'):
+        for symbol,known in changes[kind].items():
+            if symbol in companies:note(symbol,run.parse_day(known)+timedelta(days=1))
+    if changes['treasury'] is not None:
+        shared(run.parse_day(changes['treasury'])+timedelta(days=0 if code=='us' else 1))
+    if code!='us':
+        if code in changes['sessions']:
+            shared(run.parse_day(changes['sessions'][code])-timedelta(days=ENTRY_SLACK))
+        if changes['fx']:
+            users=facts.currency_users()
+            for currency,day in changes['fx'].items():
+                if currency=='USD':continue
+                for symbol in users.get(currency,()):note(symbol,run.parse_day(day)-timedelta(days=ENTRY_SLACK))
+    return affected
 
 # The denial reasons of Screen.decide, in gate order. A company has a book
 # row, and a formula root is admitted, only when every gate passes.
@@ -185,18 +218,21 @@ class Screen:
                     enterprise_value=ev,ebitda=ebitda),None
 
 
-def book(entry, pool, facts, checkpoint=lambda: None, *, latest=False):
+def book(entry, pool, facts, checkpoint=lambda: None, *, latest=False, symbols=None):
     """Build one entry/pool sheet, without exit prices or future returns.
 
     latest serves the exact-session, listed-only screen. Historical sheets
-    use dated admission and can serve every later exit. Both share this loop.
+    use dated admission and can serve every later exit. A restricted repair
+    retains full-screen admission/ranking metadata while pricing only its symbols.
     """
     screen=Screen(entry,facts,open_book=latest)
     treasury=facts.treasury(entry)
     treasury=0. if treasury is None else treasury
     ten_year=facts.ten_year(entry)
     rows,pairs,filters=[],[],[]
+    wanted=None if symbols is None else set(symbols)
     for symbol in screen.statements[pool]:
+        if wanted is not None and symbol not in wanted:continue
         checkpoint()
         held,_=screen.decide(symbol,pool)
         if held is None:continue
@@ -210,6 +246,7 @@ def book(entry, pool, facts, checkpoint=lambda: None, *, latest=False):
     result=dict(entry=str(entry),latest=latest,pool=pool,candidates=len(screen.statements['cached']),
                 rows=rows,metrics=pairs,filters=filters)
     if getattr(facts,'market','us')!='us':result['market']=facts.market
+    if wanted is not None:result['ranks']=screen.ranks
     return result
 
 

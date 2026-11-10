@@ -16,6 +16,7 @@ from backtest.runtime import cache_access as cache_access
 from backtest.inputs.cache_assets import read_json, write_json
 
 from backtest.inputs import daily
+from backtest.engines.original import book_batch
 from backtest.inputs import research as r
 from backtest.financial import rules
 from backtest.inputs import market, fmp_download
@@ -452,7 +453,7 @@ def _download(o,emit,stop,client):
 def rebuild(emit,stop):
     """The one dependency chain for manual rebuilds and complete refreshes."""
     emit(message='Preparing research and custom-date databases…')
-    daily.prepare(progress=emit);stop()
+    daily.prepare(progress=emit,repair=book_batch.repair);stop()
     diagnostics.lap('prepare')
     emit(message='Rebuilding the website…')
     build_website(progress=emit);stop()

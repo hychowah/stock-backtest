@@ -43,7 +43,7 @@ class StartupTests(unittest.TestCase):
 
     def test_prepare_then_build_when_stale(self):
         calls=[]
-        with patch.object(daily,'prepare',side_effect=lambda:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve,'build_website',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
+        with patch.object(daily,'prepare',side_effect=lambda **kw:calls.append('prepare')),patch.object(serve,'current_build',side_effect=lambda:calls.append('check_build') or False),patch.object(serve,'build_website',side_effect=lambda *args,**kwargs:calls.append('build')) as run:
             serve.ensure_ready()
         self.assertEqual(calls,['prepare','check_build','build'])
         run.assert_called_once_with()
@@ -57,7 +57,7 @@ class StartupTests(unittest.TestCase):
         with patch.object(daily,'prepare') as prepare,patch.object(serve,'current_build',return_value=True), \
                 patch.object(book_batch,'precompute',side_effect=AssertionError('Only unified updates precompute')):
             serve.ensure_ready()
-        prepare.assert_called_once_with()
+        prepare.assert_called_once_with(repair=serve.book_batch.repair)
 
     def test_main_opens_browser_after_successful_bind(self):
         calls=[];server=Mock();server.server_address=('127.0.0.1',8765)

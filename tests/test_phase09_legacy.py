@@ -17,6 +17,7 @@ import json
 import unittest
 
 from backtest import screening
+from backtest.engines.original import book_batch
 from backtest.inputs import book_store, daily, facts, financial_inputs as financial, research
 import test_research
 import test_selection_order
@@ -37,7 +38,7 @@ def replay():
         projections = {symbol: financial.resolve_history(research.RAW, symbol)['values'] for symbol in inputs}
         completion = {symbol: {endpoint: financial.completed(research.RAW, symbol, endpoint, ledger)
                               for endpoint in financial.ENDPOINTS} for symbol in inputs}
-        daily.prepare(fixture.daily, fixture.path)
+        daily.prepare(fixture.daily, fixture.path,repair=book_batch.repair)
         with closing(daily.connect(fixture.daily, fixture.path)) as db:
             # The legacy values-only rows (symbol, fiscal, JSON) of the typed annual facts.
             financial_rows = [(symbol, fiscal, json.dumps(values))

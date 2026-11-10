@@ -25,6 +25,7 @@ from backtest.application import jobs as backtest_jobs
 from backtest.application.result_access import ResultAccess
 from backtest.application import queue as backtest_queue
 from backtest.application.original_calculations import Original
+from backtest.engines.original import book_batch
 from website.rendering.state import current_build, LOCAL_OUTPUT
 from website.rendering.build import build as build_website
 
@@ -163,7 +164,7 @@ def ensure_ready():
     """Resolve all derived-data dependencies before accepting website requests."""
     print('Checking local caches (no downloads)…',flush=True)
     with cache_access.access():
-        daily.prepare()
+        daily.prepare(repair=book_batch.repair)
         diagnostics.lap('prepare')
         if not current_build():
             print('Rebuilding the website…',flush=True)

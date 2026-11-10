@@ -21,7 +21,7 @@ from backtest.runtime import cache_access as cache_access
 from backtest.financial import books as financial_books
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
-from backtest.inputs import facts
+from backtest.inputs import facts, market
 from backtest.inputs import book_store
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
@@ -118,13 +118,12 @@ def _empty(path):
 
 @diagnostics.operation('prepare.daily')
 @cache_access.exclusive
-def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
-    """Prepare latest sheets; changed content or book code drops every cached sheet.
+def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None, repair):
+    """Repair affected historical rows, rebuild latest, and publish the binding last.
 
-    Unchanged identities retain historical sheets. A changed binding replaces
-    the disposable cache with an empty version-12 file, avoiding a journal as
-    large as the old store. Failure after reset leaves an unbound cache.
-    Research retains its separate atomic replacement and failure guarantees.
+    The caller supplies the repair writer. Changed book code or an unmatched
+    research base resets the cache. Repairs commit per sheet. Readers refuse
+    an interrupted generation until retry.
     """
     started=time.perf_counter()
     diagnostics.lap('admission')
@@ -150,16 +149,23 @@ def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
             progress(kind='daily',completed=2,total=2,reused=True)
             print('Daily cache already current; no sheet changed.')
             diagnostics.note(outcome='current');return
-        stored=book_store.stored(db) if previous and previous.get('version')==VERSION else []
-    diagnostics.note(books_previous=len(stored),books_kept=0)
-    # All retained values must belong to this exact research/book generation.
-    if previous is not None:_empty(path)
+        stored=sum(len(book_store.stored(db,code)) for code in market.MARKETS)
+        row=db.execute("SELECT value FROM research.metadata WHERE key='changes'").fetchone()
+        changes=json.loads(row[0]) if row is not None else None
+    can_repair=previous is not None and changes is not None and changes['base']==previous.get('research')
+    if previous is not None and not can_repair:_empty(path)
     db=_open(path,source)
     try:
+        latest_count=sum(2 if code=='us' else 1 for code in latest_dates)
+        number=0;total=latest_count
+        if can_repair:
+            def report(**value):
+                progress(kind='daily',completed=value['completed'],total=value['total']+latest_count)
+            number=repair(db,changes,report,backtest_control.checkpoint)
+            total+=number
+        diagnostics.note(books_previous=stored,books_kept=sum(len(book_store.stored(db,code)) for code in market.MARKETS))
         db.execute('BEGIN IMMEDIATE')
-        db.execute("INSERT OR REPLACE INTO metadata VALUES('daily_inputs',?)",(json.dumps(inputs),))
         # Latest keeps its own listed/exact-session admission in both pools.
-        number=0;total=2+len(latest_dates)-1
         for market_id,day in latest_dates.items():
             book_facts=facts.BookFacts(db,market_id)
             for pool in (('legacy','cached') if market_id=='us' else ('cached',)):
@@ -169,6 +175,7 @@ def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None):
         diagnostics.lap('latest_book')
         if inputs!=current(db) or raw!=r.signature():
             raise ValueError('Inputs changed during daily preparation; retry.')
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('daily_inputs',?)",(json.dumps(inputs),))
         db.commit()
     except BaseException:
         db.rollback();raise

@@ -7,6 +7,7 @@ import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
 from backtest.inputs import book_store, daily, facts, financial_inputs, research
+from backtest.engines.original import book_batch
 from backtest.runtime import cache_access, diagnostics
 from backtest.financial import rules, books as financial_books, metrics
 from backtest import calendar as schedule_calendar, calendar_requests, portfolio_results
@@ -34,8 +35,11 @@ def legacy(db, symbol, fiscal, **values):
     annual = {}
     for field, value in values.items():
         endpoint = next(endpoint for endpoint, fields in financial_inputs.ENDPOINTS.items() if field in fields)
-        annual.setdefault(endpoint, {}).setdefault(fiscal, {})[field] = dict(value=value, valid=True, reason=None)
-    facts.store_annual(db, symbol, dict(sources={}, annual=annual))
+        annual.setdefault(endpoint, {})[facts.COLUMNS[endpoint,field]]=value
+    for endpoint,fields in annual.items():
+        columns=('symbol','endpoint','fiscal',*fields)
+        db.execute('INSERT INTO annual_facts ('+','.join(columns)+') VALUES ('+','.join('?'*len(columns))+')',
+                   (symbol,endpoint,fiscal,*fields.values()))
 
 
 def research_file(path, content):
@@ -460,9 +464,9 @@ s.backtest(db,start='2015-01-01',end='2015-07-01',months=3,rank_to=1)
 
 
 class SheetGenerationTests(unittest.TestCase):
-    """Sheets bind exact research content; changed inputs invalidate every entry."""
+    """Sheets bind exact research content; repairs retain unaffected company rows."""
     SESSIONS=['2015-01-02','2015-02-02','2015-03-02','2015-04-01','2015-05-01','2015-06-01','2015-07-01']
-    OPTIONS=dict(start='2015-01-01',end='2015-07-01',months=1,rank_to=3,min_cap=0,min_ev=0)
+    OPTIONS=dict(start='2015-01-01',end='2015-07-01',months=1,rank_to=3,min_cap=0,min_ev=0,pool='cached')
     DAY='2015-04-02'
 
     def setUp(self):
@@ -487,7 +491,7 @@ class SheetGenerationTests(unittest.TestCase):
         self.context.enter_context(patch.object(research,'signature',side_effect=lambda:{'fixture':self.generation}))
         research.forget_signature();self.addCleanup(research.forget_signature)
         self.context.enter_context(redirect_stdout(io.StringIO()))
-        daily.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source,repair=book_batch.repair)
         self.saved=self.backtest()
         self.assertEqual(len(self.saved),6)
 
@@ -527,15 +531,22 @@ class SheetGenerationTests(unittest.TestCase):
 
     def update(self):
         self.generation+=1
-        daily.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source,repair=book_batch.repair)
 
-    def test_changed_research_content_drops_every_historical_sheet(self):
+    def test_changed_prices_repair_cached_sheets_and_keep_earlier_sheets(self):
         self.edit('px/A.json',lambda value:value['div'].append(dict(date=self.DAY,adjClose=25)))
-        self.update()
-        self.assertEqual(self.stored(),{})
+        with patch.object(financial_books,'book',wraps=financial_books.book) as compute:self.update()
+        repairs=[call.kwargs['symbols'] for call in compute.call_args_list if 'symbols' in call.kwargs]
+        self.assertTrue(repairs)
+        self.assertEqual(set(repairs),{('A',)})
+        kept=self.stored()
+        self.assertTrue(kept)
+        for key,rows in self.saved.items():
+            if key[0]<str(date.fromisoformat(self.DAY)-timedelta(days=financial_books.ENTRY_SLACK)):
+                self.assertEqual(kept[key],rows)
         rerun=self.backtest()
         fresh=self.root/'data'/'fresh.sqlite'
-        daily.prepare(fresh,self.source)
+        daily.prepare(fresh,self.source,repair=book_batch.repair)
         self.assertEqual(rerun,self.backtest(fresh))
 
     def test_unchanged_content_and_reader_code_keep_sheets(self):
@@ -554,23 +565,24 @@ class SheetGenerationTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db,db:
             binding=json.loads(daily.binding(db));binding['books']='0'*64
             db.execute("UPDATE metadata SET value=? WHERE key='daily_inputs'",(json.dumps(binding),))
-        daily.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source,repair=book_batch.repair)
         self.assertEqual(self.stored(),{})
         self.assertEqual(self.backtest(),self.saved)
 
-    def test_interrupted_replacement_leaves_unbound_empty_cache(self):
+    def test_interrupted_repair_keeps_old_binding_and_retry_repairs_sheets(self):
         self.edit('px/A.json',lambda value:value['div'].append(dict(date=self.DAY,adjClose=25)))
         self.generation+=1
+        with closing(sqlite3.connect(self.path)) as db:previous=daily.binding(db)
         with patch.object(financial_books,'book',side_effect=KeyboardInterrupt()):
-            with self.assertRaises(KeyboardInterrupt):daily.prepare(self.path,self.source)
+            with self.assertRaises(KeyboardInterrupt):daily.prepare(self.path,self.source,repair=book_batch.repair)
         with closing(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
-            self.assertIsNone(daily.binding(db))
-            self.assertEqual(book_store.stored(db),[])
+            self.assertEqual(daily.binding(db),previous)
         with self.assertRaisesRegex(ValueError,'changed'):daily.connect(self.path,self.source)
-        daily.prepare(self.path,self.source)
-        self.assertEqual(self.stored(),{})
-        self.backtest()
+        daily.prepare(self.path,self.source,repair=book_batch.repair)
+        rerun=self.backtest()
+        fresh=self.root/'data'/'fresh.sqlite';daily.prepare(fresh,self.source,repair=book_batch.repair)
+        self.assertEqual(rerun,self.backtest(fresh))
 
     def test_older_version_cache_is_rebuilt_from_empty(self):
         self.path.unlink()
@@ -578,7 +590,7 @@ class SheetGenerationTests(unittest.TestCase):
             db.executescript('CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);'
                              'CREATE TABLE prices(symbol TEXT,day TEXT,adjusted REAL);')
             db.execute("INSERT INTO metadata VALUES('daily_inputs',?)",(json.dumps(dict(version=11,research='old',books='old')),))
-        daily.prepare(self.path,self.source)
+        daily.prepare(self.path,self.source,repair=book_batch.repair)
         self.assertEqual(self.backtest(),self.saved)
         with closing(daily.connect(self.path,self.source)) as db:
             self.assertEqual({row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")},
@@ -588,11 +600,11 @@ class SheetGenerationTests(unittest.TestCase):
         before=self.path.read_bytes()
         locked=sqlite3.OperationalError('database is locked');locked.sqlite_errorcode=sqlite3.SQLITE_BUSY
         with patch.object(daily,'binding',side_effect=locked):
-            with self.assertRaises(sqlite3.OperationalError):daily.prepare(self.path,self.source)
+            with self.assertRaises(sqlite3.OperationalError):daily.prepare(self.path,self.source,repair=book_batch.repair)
         self.assertEqual(self.path.read_bytes(),before)
         for content in (b'not a database file '*64,b''):
             self.path.write_bytes(content)
-            daily.prepare(self.path,self.source)
+            daily.prepare(self.path,self.source,repair=book_batch.repair)
             self.assertEqual(self.stored(),{})
             self.assertEqual(self.backtest(),self.saved)
 
@@ -603,7 +615,7 @@ class SheetGenerationTests(unittest.TestCase):
             return read(path)
         with patch.object(Path,'read_text',side_effect=AssertionError('No raw parsing')), \
                 patch.object(Path,'read_bytes',source_only):
-            daily.prepare(self.path,self.source)
+            daily.prepare(self.path,self.source,repair=book_batch.repair)
         self.assertEqual(self.path.read_bytes(),before)
 
 

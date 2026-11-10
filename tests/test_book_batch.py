@@ -113,6 +113,13 @@ class BookBatchTests(unittest.TestCase):
                     self.assertEqual(financial(s.backtest_dates(self.db,**options)),financial(s.backtest_dates(db,**options)))
         # Financial source tables are immutable during planning and calculation.
         self.assertEqual(sources(),before)
+        jobs=[('2015-01-02','cached'),('2015-02-02','cached')]
+        symbols={key:('A',) for key in jobs}
+        with b.calculations(db,jobs,1,lambda:None,symbols=symbols) as results:serial=list(results)
+        with b.calculations(db,jobs,2,lambda:None,symbols=symbols) as results:parallel=list(results)
+        self.assertEqual(serial,parallel)
+        self.assertTrue(all(book['candidates']>1 for book in parallel))
+        self.assertEqual({row[0] for book in parallel for row in book['rows']},{'A'})
         reader=b.open_reader(path,self.research,None)
         try:
             for table in ('book_rows','research.stock_days'):

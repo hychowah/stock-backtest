@@ -9,6 +9,7 @@ import sys as _package_sys
 from pathlib import Path as _PackagePath
 _package_sys.path.insert(0,str(_PackagePath(__file__).resolve().parents[1]))
 from backtest import screening
+from backtest.engines.original import book_batch
 import json
 import io
 from contextlib import ExitStack, redirect_stdout, closing
@@ -274,7 +275,7 @@ class PreparationTests(unittest.TestCase):
         The fixture's raw signature is constant, so a kept cache would not see a forced research rebuild.
         """
         self.daily.unlink(missing_ok=True)
-        daily.prepare(self.daily, self.path)
+        daily.prepare(self.daily, self.path,repair=book_batch.repair)
         with closing(daily.connect(self.daily, self.path)) as db:
             return screening.latest(db, **options)
 
@@ -293,6 +294,24 @@ class PreparationTests(unittest.TestCase):
         finally:
             db.close()
         self.verify_fixture()
+
+    def test_prepare_recovers_a_hot_journal_before_reading_current_inputs(self):
+        r.prepare(self.path)
+        before=self.path.read_bytes()
+        interrupted='''import os,sqlite3,sys
+db=sqlite3.connect(sys.argv[1])
+db.execute('PRAGMA cache_size=1')
+db.execute('BEGIN IMMEDIATE')
+db.execute("UPDATE companies SET name='Uncommitted'")
+db.execute("INSERT INTO metadata VALUES('interrupted',?)",('x'*262144,))
+os._exit(0)
+'''
+        subprocess.run([sys.executable,'-I','-B','-c',interrupted,str(self.path)],check=True,timeout=10)
+        self.assertTrue(self.path.with_name(self.path.name+'-journal').exists())
+        r.prepare(self.path)
+        self.assertEqual(self.path.read_bytes(),before)
+        with closing(r.connect(self.path,full_prices=True)) as db:
+            self.assertEqual(db.execute('SELECT name FROM companies').fetchone()[0],'Test Company')
 
     def test_preparation_logs_its_stages(self):
         folder = self.path.parent.parent / 'logs'
@@ -325,7 +344,7 @@ class PreparationTests(unittest.TestCase):
             dict(date='2015-01-03',month3=2,year10=99),
             dict(date='2015-10-20',month3=2,year10=4),
             dict(date='2015-10-21',month3=2,year10=99)]))
-        daily.prepare(self.daily,self.path)
+        daily.prepare(self.daily,self.path,repair=book_batch.repair)
         root=Path(__file__).resolve().parents[1]
         sys.path.insert(0,str(root/'website'))
         from website.rendering import data as dataset

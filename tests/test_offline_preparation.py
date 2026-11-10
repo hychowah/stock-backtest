@@ -42,7 +42,7 @@ with runtime_access.ownership(root,timeout=0):
  from backtest.inputs import fmp_download
  fmp_download.KEY_PATH=root.parent/'nonexistent-preparation-key';assert not fmp_download.KEY_PATH.exists()
  from backtest.inputs import research as r, daily
- from backtest.engines.original import schedules as s
+ from backtest.engines.original import schedules as s, book_batch
  from backtest import portfolio_results, calendar as schedule_calendar
  import tools.ops.prepared_input_coverage as coverage
  for m in (r,s,r.market,r.books,r.metrics,r.cache_assets,r.financial_inputs,r.cache_access,portfolio_results,schedule_calendar,coverage):
@@ -50,7 +50,7 @@ with runtime_access.ownership(root,timeout=0):
  for name,module in list(sys.modules.items()):
   if name=='backtest' or name.startswith('backtest.'):
    assert Path(module.__file__).resolve().is_relative_to(root.resolve()),name
- r.prepare();daily.prepare()
+ r.prepare();daily.prepare(repair=book_batch.repair)
  result=coverage.report()
  assert result['version']==4 and result['financial_symbols']==result['accepted_price_files']
  # The book store holds only the latest book, with its two pools.
@@ -78,12 +78,11 @@ with runtime_access.ownership(root,timeout=0):
  original=sqlite3.connect
  def connect(path,*args,**kwargs):
   db=original(path,*args,**kwargs)
-  if str(path).endswith('.building'):
-   def trace(sql):
-    if sql.startswith('INSERT INTO companies'):
-     ready.write_text('inside ordinary preparation transaction')
-     while True:time.sleep(.01)
-   db.set_trace_callback(trace)
+  def trace(sql):
+   if sql.startswith('DELETE FROM statements'):
+    ready.write_text('inside ordinary preparation transaction')
+    while True:time.sleep(.01)
+  db.set_trace_callback(trace)
   return db
  sqlite3.connect=connect # Test-only pause; financial policy/freshness are unchanged.
  research.prepare(force=True)

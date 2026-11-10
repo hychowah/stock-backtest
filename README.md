@@ -99,7 +99,7 @@ Choose **Manage backtest data** to inspect saved files and date coverage.
 prepares the website automatically. **More options** adds selected stocks or
 older history. **Details → Prepare saved data (offline)** applies saved changes
 without downloads. Existing records are kept.
-Every research rebuild is a full build; a failure keeps the previous database. No download starts when the panel opens. If essential source files are missing,
+Compatible research updates change typed rows in one transaction. Cold, schema or fact-code builds use atomic replacement. Failure keeps committed data. No download starts when the panel opens. If essential source files are missing,
 startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
 
 Random-date batches plan missing books once, calculate ahead with separate Python

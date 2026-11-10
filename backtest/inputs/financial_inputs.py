@@ -69,7 +69,7 @@ def normalize(rows, symbol, endpoint):
     return rows
 
 
-def _asset(raw, symbol, endpoint):
+def _asset(raw, symbol, endpoint, content=None):
     """Read once and identify admitted rows, including damaged saved assets.
 
     The content hash identifies bytes. Only a valid asset also supplies the
@@ -77,10 +77,11 @@ def _asset(raw, symbol, endpoint):
     """
     path=asset_path(raw,symbol,endpoint)
     evidence=dict(endpoint=endpoint, disposition='missing', sha256=None)
-    try:
-        content=path.read_bytes()
-    except FileNotFoundError:
-        return [], None, evidence
+    if content is None:
+        try:
+            content=path.read_bytes()
+        except FileNotFoundError:
+            return [], None, evidence
     evidence.update(sha256=hashlib.sha256(content).hexdigest(), disposition='unreadable')
     try:
         record=json.loads(content)
@@ -154,7 +155,7 @@ def publish(raw,symbol,endpoint,rows,ledger,ledger_path):
     return rows
 
 
-def resolve_history(raw,symbol,market_id='us'):
+def resolve_history(raw,symbol,market_id='us',*,contents=None):
     """Resolve annual values, field states and file-level sources in one authority.
 
     Multiple records can describe the same fiscal date. Equal nonmissing input
@@ -166,10 +167,11 @@ def resolve_history(raw,symbol,market_id='us'):
     reports={};sources={};annual={};metadata={}
     semantic = observation_fields()
     for endpoint,legacy_fields in ENDPOINTS.items():
+        if contents is not None and endpoint not in contents:continue
         extra = ('ebitda','weightedAverageShsOut') if market_id!='us' and endpoint=='income-statement' else ()
         fields = tuple(dict.fromkeys((*legacy_fields, *semantic.get(endpoint, ()), *extra)))
         if not fields:continue
-        rows,_,source=_asset(raw,symbol,endpoint)
+        rows,_,source=_asset(raw,symbol,endpoint,None if contents is None else contents[endpoint])
         sources[endpoint]=source
         candidates={}
         for row in rows:
@@ -203,15 +205,4 @@ def resolve_history(raw,symbol,market_id='us'):
             # policy. New observations cannot leak into financial calculations.
             legacy = {field: values[field] for field in legacy_fields if field in values}
             if legacy:reports.setdefault(day,{}).update(legacy)
-    core=[]
-    if market_id!='us':
-        income=annual.get('income-statement',{});balance=annual.get('balance-sheet-statement',{})
-        for day,states in income.items():
-            if day not in balance:continue
-            im=metadata['income-statement'][day];bm=metadata['balance-sheet-statement'][day]
-            if not im['currency'] or im['currency']!=bm['currency']:continue
-            values=[states.get(name,{}).get('value') for name in ('weightedAverageShsOut','ebitda')]
-            values += [balance[day].get(name,{}).get('value') for name in ('totalDebt','cashAndCashEquivalents')]
-            if any(v is None for v in values) or values[0]<=0 or values[1]<=0:continue
-            core.append(dict(fiscal=day,known=max(im['known'],bm['known']),currency=im['currency'],shares=values[0],ebitda=values[1],debt=values[2],cash=values[3],basis=im['basis']))
-    return dict(values=reports,sources=sources,annual=annual,metadata=metadata,core=core)
+    return dict(values=reports,sources=sources,annual=annual,metadata=metadata)

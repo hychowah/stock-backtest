@@ -7,6 +7,7 @@ prefetch keeps trial saves atomic and deterministic. Large staged trials spill
 to a temporary local file.
 """
 from collections import deque
+from bisect import bisect_right
 from concurrent.futures import ProcessPoolExecutor, TimeoutError
 from contextlib import contextmanager
 from datetime import date
@@ -22,7 +23,7 @@ import time
 from backtest import screening
 from backtest.engines.original import schedules
 from backtest.financial import books, rules
-from backtest.inputs import book_store, daily, facts
+from backtest.inputs import book_store, daily, facts, market
 from backtest import calendar_requests as calendar_requests
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
@@ -107,11 +108,11 @@ def initialize_worker(path,research,expected,market='us'):
     _facts=facts.BookFacts(_reader,market)
 
 
-def calculate(key):
-    return calculate_book(_reader,key,_facts)
+def calculate(key,symbols=None):
+    return calculate_book(_reader,key,_facts,symbols)
 
 
-def calculate_book(db,key,book_facts):
+def calculate_book(db,key,book_facts,symbols=None):
     """One short read transaction per book, released before any parent write.
 
     Autocommit otherwise acquires a file read lock for every price lookup, which
@@ -122,27 +123,28 @@ def calculate_book(db,key,book_facts):
     owned=not db.in_transaction
     if owned:db.execute('BEGIN')
     try:
-        return books.book(date.fromisoformat(entry),pool,book_facts,backtest_control.checkpoint)
+        return books.book(date.fromisoformat(entry),pool,book_facts,backtest_control.checkpoint,
+                          **({} if symbols is None else dict(symbols=symbols)))
     finally:
         if owned:db.rollback()
 
 
 @contextmanager
-def calculations(db,jobs,workers,on_wait):
+def calculations(db,jobs,workers,on_wait,*,symbols=None):
     """At most twice the worker count is in flight; no writer runs in children."""
     if not jobs:
         yield iter(());return
     market_id=jobs[0][2] if len(jobs[0])==3 else 'us'
     if workers==1:
         book_facts=facts.BookFacts(db,market_id)
-        yield (calculate_book(db,key,book_facts) for key in jobs)
+        yield (calculate_book(db,key,book_facts,None if symbols is None else symbols[key]) for key in jobs)
         return
     executor=ProcessPoolExecutor(max_workers=workers,mp_context=multiprocessing.get_context('spawn'),
                                  initializer=initialize_worker,initargs=(database_path(db),database_path(db,'research'),daily.binding(db),market_id))
     pending=deque();remaining=iter(jobs)
     def submit():
         key=next(remaining,None)
-        if key is not None:pending.append(executor.submit(calculate,key))
+        if key is not None:pending.append(executor.submit(calculate,key,None if symbols is None else symbols[key]))
     def ordered():
         for unused in range(2*workers):submit()
         while pending:
@@ -159,6 +161,55 @@ def calculations(db,jobs,workers,on_wait):
         results.close()
         for future in pending:future.cancel()
         executor.shutdown(wait=True,cancel_futures=True)
+
+
+def repair(db,changes,emit,checkpoint):
+    """Repair complete historical sheets against the parent's admitted research.
+
+    The old binding remains until daily.prepare publishes. Workers read facts
+    only; each repaired sheet commits independently and is safe to repeat.
+    """
+    plans=[];total=0
+    for code in market.MARKETS:
+        port=facts.BookFacts(db,code)
+        sessions={str(day) for day in facts.sessions(db,code)}
+        cutoffs=sorted((day,symbol) for symbol,day in books.affected_entries(changes,port).items())
+        starts=[day for day,_ in cutoffs];ordered=tuple(symbol for _,symbol in cutoffs);scopes={0:()}
+        def dirty(entry):
+            count=bisect_right(starts,entry)
+            if count not in scopes:scopes[count]=ordered[:count]
+            return scopes[count]
+        for book,entry,latest in book_store.stored(db,code):
+            checkpoint()
+            if latest or entry not in sessions:
+                with db:book_store.remove(db,book)
+        ranks=code=='us' and changes['statements']
+        for book,entry,_ in book_store.completed(db,'legacy',market=code):
+            if ranks or dirty(entry):
+                checkpoint()
+                with db:book_store.remove(db,book,'legacy')
+        jobs=[];symbols={}
+        for _,entry,_ in sorted(book_store.completed(db,'cached',market=code),key=lambda row:row[1]):
+            scope=dirty(entry)
+            if scope or ranks:
+                key=(entry,'cached') if code=='us' else (entry,'cached',code)
+                jobs.append(key);symbols[key]=scope
+        total+=len(jobs);plans.append((jobs,symbols,ranks))
+    completed=0;emit(completed=0,total=total)
+    for jobs,symbols,ranks in plans:
+        count=worker_count(db,jobs,None)
+        with calculations(db,jobs,count,checkpoint,symbols=symbols) as results:
+            for key in jobs:
+                checkpoint();book=next(results)
+                actual=(book['entry'],book['pool']) if book.get('market','us')=='us' else (book['entry'],book['pool'],book['market'])
+                if actual!=key:raise ValueError('A calculation returned a different entry sheet.')
+                with db:
+                    db.execute('BEGIN IMMEDIATE')
+                    book_id=book_store.store(db,book,symbols=symbols[key])
+                    if ranks:book_store.refresh_ranks(db,book_id,book['pool'],book['ranks'])
+                    checkpoint()
+                completed+=1;emit(completed=completed,total=total)
+    return completed
 
 
 def precompute(db,emit,checkpoint):

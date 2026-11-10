@@ -95,7 +95,7 @@ class ProjectionTests(unittest.TestCase):
             for year, value in ((2012, 10e6), (2013, -5e6), (2014, None))], {}, research.RAW/'coverage.json')
 
     def prepare(self):
-        daily.prepare(self.path, self.source)
+        daily.prepare(self.path, self.source,repair=book_batch.repair)
 
     def latest_decisions(self):
         """View.admit of both latest TEST roots (books.Screen.decide) after a fresh daily build."""
@@ -239,7 +239,7 @@ class ProjectionTests(unittest.TestCase):
         with patch.object(daily, 'current', return_value=stale), \
              patch.object(daily.backtest_control, 'checkpoint', side_effect=cancelled):
             with self.assertRaisesRegex(RuntimeError, 'fixture cancellation'):
-                daily.prepare(self.path, self.source)
+                daily.prepare(self.path, self.source,repair=book_batch.repair)
         # The research diff has no base, so no book stays: the empty cache replaced the file
         # before the transaction (an in-place rollback is KeptBookTests' interrupted update).
         with closing(sqlite3.connect(self.path)) as db:

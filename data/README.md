@@ -6,7 +6,7 @@
 python3 scripts/research.py prepare
 ```
 
-Every preparation is a full build. [The research workflow](../docs/research-workflow.md#prepare-once) states the current research schema and daily cache versions. It writes a temporary file and replaces the database in one step; a failure keeps the previous database. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
+Compatible preparation updates changed typed rows in one transaction. [The research workflow](../docs/research-workflow.md#prepare-once) states the current research schema and daily cache versions. Cold, schema or fact-code builds use a temporary file and atomic replacement. Failure keeps the previous committed data. Running preparation again without input changes only checks file metadata and returns immediately. It runs no second engine and publishes no report.
 
 The database contains company metadata and listing, cleaned annual financial observations with availability dates, and typed facts for custom variables and books. It holds no book: the latest and dated books live in the book store of `schedules.sqlite`. It does not duplicate daily histories as JSON: those stay in `raw/px/`.
 
@@ -44,12 +44,7 @@ hold a write transaction. Price lookups share one short read transaction per
 book, released before the result returns to the writer. The parent stages large trials in a temporary local
 file before their atomic save. Replays start no workers when all books are saved.
 
-Changed research content or book code invalidates every sheet. Preparation
-starts the disposable store empty, then writes its binding and both latest pools
-in one transaction. A failure after reset leaves an unbound cache; retry.
-Unchanged identities retain sheets, including after edits to readers or formulas.
-No fact diff or change-day machinery remains. Older/foreign caches rebuild;
-locked files and I/O errors are preserved. Preparation downloads nothing.
+See [sheet repair and cache reuse](../docs/research-workflow.md#custom-trade-dates-and-rebalance-intervals).
 
 `logs/website-<namespace>-<pid>.log` holds development diagnostics for one server process. Startup and the data panel show the active file. It uses UTC timestamps and keeps error types, OS codes and stack locations without exception messages or source lines. Provider URLs, keys and response bodies are excluded. The log rotates at 5 MiB and retains two backups per process. The folder is ignored by Git.
 

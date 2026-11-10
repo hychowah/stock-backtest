@@ -3,14 +3,15 @@
 It holds no book: the book store of the daily cache (backtest/inputs/book_store.py)
 holds the latest and dated books, computed from these facts.
 
-Every preparation is a full build. It writes a temporary file and replaces the
-published database atomically (cache_assets.replace); the previous database
-stays on any failure.
+Compatible preparation reconciles changed typed rows in one transaction.
+Cold, schema and fact-code builds use a temporary file and atomic replacement.
+Either path preserves the previous committed data on failure.
 
 The metadata table is the one research record: the schema version, the
 accepted raw-file signature (inputs) with each price file's stamps (prices),
 the identity: version, latest date, the content identity of the fact-row code
-(code) and the content identity of the facts (content). Readers compare
+(code) and the content identity of the facts (content), plus pending fact changes
+and their base identity (changes). Readers compare
 the stamps and the code (identity()).
 Both identities are content digests, so a rewrite with equal bytes keeps them.
 """
@@ -39,7 +40,7 @@ from backtest.runtime import cache_access as cache_access
 from backtest.paths import ROOT, RAW
 
 DATABASE = ROOT / 'data' / 'research.sqlite'
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 # The annual statements; the typed facts are facts.SCHEMA.
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -223,18 +224,24 @@ def _readable(resolution, name):
     return resolution
 
 
+def _saved_metadata(path):
+    if not path.exists():return {}
+    # A writable read lets SQLite recover an interrupted in-place transaction.
+    with closing(sqlite3.connect(path,timeout=60)) as db:
+        try:return {key:json.loads(value) for key,value in db.execute("SELECT key,value FROM metadata WHERE key IN ('version','identity','changes')")}
+        except ValueError:return {}
+
+
 @cache_access.exclusive
 @diagnostics.operation('prepare.research')
 def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
-    """Build the research database from saved files; never download.
-
-    Every build is a full build. A current database is kept unless force is set.
-    """
+    """Reconcile saved facts atomically; force also checks unchanged inputs."""
     if (RAW/'metrics.jsonl').exists():cache_assets.trim_financial_tail(RAW/'metrics.jsonl')
     started=time.perf_counter()
     progress(kind='research',completed=0,total=None)
     diagnostics.note(force=force)
     path=Path(path)
+    prior=_saved_metadata(path)
     # Preparation is a data action: its readers inspect raw inputs afresh.
     forget_signature()
     if path.exists() and not force:
@@ -249,6 +256,8 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
             diagnostics.note(outcome='current');return
     inputs, sources=signature(),price_sources()
     code=code_identity('facts')
+    previous=prior.get('identity',{})
+    cold=prior.get('version')!=SCHEMA_VERSION or not isinstance(previous,dict) or previous.get('code')!=code
     foreign_universes={};foreign_digests={}
     for market_id in ('hk','jp'):
         inventory=market.universe_path(RAW,market_id)
@@ -264,59 +273,151 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
     universe={r['symbol']:r for r in json.loads(content)}
     us_universe=universe.copy()
     for group in foreign_universes.values():universe.update(group)
-    # Each saved file is parsed once, into its typed facts.
-    market_facts=facts.shared(RAW,backtest_control.checkpoint)
-    for name,endpoint in (('spy-div.json',facts.CALENDAR),('treasury.json',facts.TREASURY)):
-        _readable(market_facts[endpoint],name)
     records,invalid=cache_assets.financial_records(RAW/'metrics.jsonl')
     if invalid:raise ValueError('Annual financial cache contains invalid records. Use the data panel to repair annual financials.')
     broad=books.statements(records,us_universe)
-    progress(kind='research',completed=0,total=len(broad)+1)
+    company_count=len(broad)+sum(len(group) for group in foreign_universes.values())
+    progress(kind='research',completed=0,total=company_count+1)
     financials=[(symbol,str(row['fiscal']),str(row['known']),row['market_cap'],row['enterprise'],row['ebitda'],row['yield'])
                 for symbol,rows in broad.items() for row in rows]
-    latest_day=date.fromisoformat(max(day for day,states in market_facts[facts.CALENDAR]['dated'].items() if states['adjClose']['valid']))
     diagnostics.lap('inputs')
     path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_name(path.name+'.building')
-    if temporary.exists():
-        temporary.unlink()
-    db=sqlite3.connect(temporary.resolve().as_uri(),uri=True)
+    temporary.unlink(missing_ok=True)
+    db=sqlite3.connect((temporary if cold else path).resolve().as_uri(),uri=True)
     db.row_factory=sqlite3.Row
     try:
-        db.executescript(SCHEMA+facts.SCHEMA)
-        facts.store_companies(db,universe)
+        if cold:db.executescript(SCHEMA+facts.SCHEMA)
+        db.execute('BEGIN IMMEDIATE')
+        changes=dict(base=None if cold else previous['content'],companies={},prices={},
+                     annual={},reports={},statements=False,sessions={},treasury=None,fx={})
+        def note(kind,owner,day):
+            current=changes[kind].get(owner)
+            if current is None or day<current:changes[kind][owner]=day
+        old_markets={row[0]:tuple(row) for row in db.execute('SELECT * FROM company_markets')}
+        old_sources={(row[0],row[1]):tuple(row) for row in db.execute('SELECT * FROM fact_sources')}
+        seen_sources=set()
+        def source_bytes(file,symbol,endpoint,*,decode=False):
+            seen_sources.add((symbol,endpoint))
+            try:content=file.read_bytes()
+            except FileNotFoundError:content=None
+            sha=None if content is None else hashlib.sha256(content).hexdigest()
+            old=old_sources.get((symbol,endpoint))
+            return force or decode or old is None or old[2]!=sha,content
+        company_changes,market_changes=facts.store_companies(db,universe)
+        new_markets={row[0]:tuple(row) for row in db.execute('SELECT * FROM company_markets')}
+        def company_changed(symbol):
+            changes['companies'][symbol]=[old_markets.get(symbol,(None,None))[1],new_markets.get(symbol,(None,None))[1]]
+        for before,after in company_changes:
+            if before is None or after is None:company_changed((after or before)[0])
+        for before,after in market_changes:company_changed((after or before)[0])
+
+        # Stable legacy ties follow source insertion order, as in a cold build.
+        old_statements=[tuple(row) for row in db.execute('SELECT * FROM statements ORDER BY rowid')]
+        db.execute('DELETE FROM statements')
         db.executemany('INSERT OR REPLACE INTO statements VALUES(?,?,?,?,?,?,?)',financials)
-        facts.store_foreign_market(db,RAW,foreign_universes,backtest_control.checkpoint)
-        latest_dates={'us':str(latest_day)}
+        new_statements=[tuple(row) for row in db.execute('SELECT * FROM statements ORDER BY rowid')]
+        changes['statements']=len(old_statements)!=len(new_statements) or any(
+            not facts.same_row(old,new) for old,new in zip(old_statements,new_statements))
+        old_reports={(row[0],row[1]):row for row in old_statements}
+        for row in new_statements:
+            old=old_reports.pop(row[:2],None)
+            if old is None or not facts.same_row(old,row):
+                note('reports',row[0],min(item[2] for item in (old,row) if item is not None))
+        for row in old_reports.values():note('reports',row[0],row[2])
+        contents={}
         for market_id in foreign_universes:
-            last=db.execute('SELECT MAX(day) FROM local_sessions WHERE market=?',(market_id,)).fetchone()[0]
-            if last is not None:latest_dates[market_id]=last
+            # Completion depends on the clock as well as the small calendar file.
+            endpoint='calendar:'+market_id
+            _,content=source_bytes(market.calendar_path(RAW,market_id),'',endpoint)
+            contents[endpoint]=content
+        currencies=set()
+        for file in sorted((RAW/'fx').glob('USD???.json')):
+            currencies.add(file.stem[3:]);endpoint='fx:'+file.stem[3:]
+            changed,content=source_bytes(file,'',endpoint)
+            if changed:contents[endpoint]=content
+        foreign=facts.store_foreign_market(db,RAW,foreign_universes,backtest_control.checkpoint,contents=contents)
+        for kind in ('sessions','fx'):
+            for owner,rows in foreign[kind].items():
+                for before,after in rows:note(kind,owner,(after or before)[1])
+        for table,column,wanted,kind in [('local_sessions','market',foreign_universes,'sessions'),('fx_days','currency',currencies,'fx')]:
+            for (owner,) in db.execute(f'SELECT DISTINCT {column} FROM {table}').fetchall():
+                if owner not in wanted:
+                    for before,_ in facts.reconcile(db,table,(column,'day'),[],**{column:owner}):note(kind,owner,before[1])
         cached={s for s in broad if market.cache_path_for(s).name in sources}
         spiked=[]
-        for number,symbol in enumerate(sorted(broad),1):
+        companies=[(symbol,'us','USD') for symbol in sorted(broad)]
+        companies += [(symbol,market_id,company.get('currency') or market.MARKETS[market_id]['currency'])
+                      for market_id,group in foreign_universes.items() for symbol,company in sorted(group.items())]
+        annual_endpoints=[endpoint for endpoint,fields in financial_inputs.ENDPOINTS.items()
+                          if fields or financial_inputs.observation_fields().get(endpoint)]
+        for number,(symbol,market_id,currency) in enumerate(companies,1):
             backtest_control.checkpoint()
-            # One parse of the price file gives its typed facts.
-            stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint),'px/'+market.cache_path_for(symbol).name)
-            rows=facts.store_stock(db,symbol,stock)
-            if any(row[2]==facts.INCONSISTENT_SERIES for row in rows):spiked.append(symbol)
-            resolved=financial_inputs.resolve_history(RAW,symbol)
-            facts.store_annual(db,symbol,resolved)
-            progress(kind='research',completed=number,total=len(broad)+1)
-            if number%200==0 or number==len(broad):
-                print(f'Prepared {number}/{len(broad)} companies',flush=True)
+            context_changed=old_markets.get(symbol)!=new_markets[symbol]
+            changed,content=source_bytes(RAW/'px'/market.cache_path_for(symbol).name,symbol,facts.STOCK,decode=context_changed)
+            if changed:
+                stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint,currency=currency,content=content),'px/'+market.cache_path_for(symbol).name)
+                rows=facts.store_stock(db,symbol,stock)
+                for before,after in rows:
+                    if before is None or after is None or not facts.same_row(before[2:4],after[2:4]):note('prices',symbol,(after or before)[1])
+                old=old_sources.get((symbol,facts.STOCK))
+                if (old is None or old[3]=='missing')!=(stock['source']['disposition']=='missing'):company_changed(symbol)
+                if market_id=='us' and any(states['adjClose']['reason']==facts.INCONSISTENT_SERIES for states in stock['dated'].values()):spiked.append(symbol)
+            elif market_id=='us':
+                row=db.execute('SELECT adjusted_reason FROM stock_days WHERE symbol=? AND (adjusted IS NOT NULL OR adjusted_reason=?) ORDER BY day LIMIT 1',
+                               (symbol,facts.INCONSISTENT_SERIES)).fetchone()
+                if row is not None and row[0]==facts.INCONSISTENT_SERIES:spiked.append(symbol)
+            if market_id!='us':
+                changed,content=source_bytes(market.native_path(RAW,symbol),symbol,'native-price',decode=context_changed)
+                if changed:
+                    facts.store_native(db,RAW,symbol,backtest_control.checkpoint,content=content)
+            annual={}
+            for endpoint in annual_endpoints:
+                changed,content=source_bytes(financial_inputs.asset_path(RAW,symbol,endpoint),symbol,endpoint,decode=context_changed)
+                if changed:annual[endpoint]=content
+            if annual:
+                old_known={(row[0],row[1]):row[2] for row in db.execute('SELECT endpoint,fiscal,known FROM annual_metadata WHERE symbol=?',(symbol,))}
+                resolved=financial_inputs.resolve_history(RAW,symbol,market_id,contents=annual)
+                changed=facts.store_annual(db,symbol,resolved)
+                new_known={(row[0],row[1]):row[2] for row in db.execute('SELECT endpoint,fiscal,known FROM annual_metadata WHERE symbol=?',(symbol,))}
+                for before,after in (*changed['rows'],*changed['metadata']):
+                    key=(after or before)[1:3]
+                    for known in (old_known.get(key),new_known.get(key)):
+                        if known is not None:note('annual',symbol,known)
+            progress(kind='research',completed=number,total=len(companies)+1)
+            if number%200==0 or number==len(companies):
+                print(f'Prepared {number}/{len(companies)} companies',flush=True)
+        active={symbol for symbol,_,_ in companies}
+        for symbol in {symbol for symbol,_ in old_sources if symbol} - active:
+            backtest_control.checkpoint()
+            company_changed(symbol)
+            for table,keys in [('stock_days',('symbol','day')),('stock_native',('symbol','day')),
+                               ('annual_facts',('symbol','endpoint','fiscal')),('annual_metadata',('symbol','endpoint','fiscal'))]:
+                facts.reconcile(db,table,keys,[],symbol=symbol)
+        for before,after in facts.store_foreign_reports(db,backtest_control.checkpoint):
+            note('reports',(after or before)[0],min(row[2] for row in (before,after) if row is not None))
         diagnostics.lap('companies')
         if spiked:
             print(f'Left out {len(spiked)} price series with an isolated price spike: {", ".join(spiked)}',flush=True)
         diagnostics.note(companies=len(cached),spiked_series=len(spiked))
-        for market_id,group in foreign_universes.items():
-            for symbol,company in sorted(group.items()):
-                backtest_control.checkpoint()
-                currency=company.get('currency') or market.MARKETS[market_id]['currency']
-                stock=_readable(facts.stock(RAW,symbol,backtest_control.checkpoint,currency=currency),'px/'+market.cache_path_for(symbol).name)
-                facts.store_stock(db,symbol,stock)
-                facts.store_native(db,RAW,symbol,backtest_control.checkpoint)
-                facts.store_annual(db,symbol,financial_inputs.resolve_history(RAW,symbol,market_id))
-        facts.store_market(db,market_facts)
+        market_facts={}
+        for name,endpoint in (('spy-div.json',facts.CALENDAR),('treasury.json',facts.TREASURY)):
+            changed,content=source_bytes(RAW/name,'',endpoint)
+            if changed:market_facts[endpoint]=_readable(facts.resolve(RAW/name,endpoint,checkpoint=backtest_control.checkpoint,content=content),name)
+        for before,after in facts.store_market(db,market_facts):
+            day=(after or before)[0]
+            if before is None or after is None or not facts.same_row(before[2:],after[2:]):
+                # A SPY-only day carries no Treasury observation.
+                if any(row is not None and any(v is not None for v in row[2:]) for row in (before,after)):
+                    changes['treasury']=min(changes['treasury'] or day,day)
+        for key in old_sources.keys()-seen_sources:
+            db.execute('DELETE FROM fact_sources WHERE symbol=? AND endpoint=?',key)
+        latest_day=db.execute('SELECT MAX(day) FROM market_days WHERE spy IS NOT NULL').fetchone()[0]
+        if latest_day is None:raise ValueError('Saved SPY calendar has no usable sessions.')
+        latest_dates={'us':latest_day}
+        for market_id in foreign_universes:
+            last=db.execute('SELECT MAX(day) FROM local_sessions WHERE market=?',(market_id,)).fetchone()[0]
+            if last is not None:latest_dates[market_id]=last
         diagnostics.lap('dated_facts')
         # fact_sources holds the digest of every price, annual, SPY and Treasury file read.
         digest=hashlib.sha256()
@@ -327,22 +428,26 @@ def prepare(path=DATABASE, force=False, *, progress=lambda **kw:None):
         if foreign_universes:record['latest_dates']=latest_dates
         record['content']=hashlib.sha256(facts.encoded(dict(record,raw=raw)).encode()).hexdigest()
         diagnostics.lap('identity')
-        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,identity=record).items():
-            db.execute('INSERT INTO metadata VALUES(?,?)',(key,json.dumps(value)))
+        if not cold and record['content']==previous['content']:changes=prior.get('changes',changes)
+        for key,value in dict(version=SCHEMA_VERSION,inputs=inputs,prices=sources,identity=record,changes=changes).items():
+            db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)',(key,json.dumps(value)))
         # Reject changing inputs and keep an existing database intact on failure.
         if inputs!=signature() or sources!=price_sources() or code!=code_identity('facts'):
             raise ValueError('Inputs changed during preparation; retry.')
         db.commit()
         diagnostics.lap('commit')
         db.close()
-        cache_assets.replace(temporary,path)
+        db=None
+        if cold:cache_assets.replace(temporary,path)
         diagnostics.lap('publication')
     except BaseException:
-        db.close()
-        temporary.unlink(missing_ok=True)
+        if db is not None:
+            db.rollback()
+            db.close()
+        if cold:temporary.unlink(missing_ok=True)
         raise
     diagnostics.note(outcome='prepared',database_bytes=path.stat().st_size)
-    progress(kind='research',completed=len(broad)+1,total=len(broad)+1)
+    progress(kind='research',completed=company_count+1,total=company_count+1)
     print(f'Prepared {path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {path.stat().st_size/1e6:.1f} MB in {time.perf_counter()-started:.2f}s')
 
 

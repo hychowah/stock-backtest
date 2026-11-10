@@ -17,6 +17,7 @@ from unittest.mock import patch
 from backtest.inputs import book_store, cache_assets, daily, financial_inputs, fmp_download, market, research
 from backtest.runtime import cache_access
 from backtest import screening
+from backtest.engines.original import book_batch
 from website.server import data_manager as data, data_refresh as refresh
 import book_store_fixture as store
 
@@ -86,11 +87,11 @@ class RefreshTests(unittest.TestCase):
         self.put('px/A.json',dict(div=self.prices([('2024-12-31',10),('2025-12-31',10),('2026-01-02',11)])))
         source=self.root/'data/research.sqlite';path=self.root/'data/schedules.sqlite'
         with patch.object(research,'ROOT',self.root),patch.object(research,'RAW',self.raw),patch.object(data,'request_json',side_effect=with_history),redirect_stdout(io.StringIO()):
-            state=self.download();daily.prepare(path,source)
+            state=self.download();daily.prepare(path,source,repair=book_batch.repair)
             with closing(daily.connect(path,source)) as db:
                 self.assertEqual(screening.latest(db,pool='cached')[0]['fiscal'],'2024-12-31')
             self.download(state,end=date(2026,4,1))
-            daily.prepare(path,source)
+            daily.prepare(path,source,repair=book_batch.repair)
             with closing(daily.connect(path,source)) as db:
                 self.assertEqual(screening.latest(db,pool='cached')[0]['fiscal'],'2025-12-31')
         research.forget_signature()

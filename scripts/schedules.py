@@ -8,4 +8,5 @@ if __name__=="__main__":
     parser.add_argument("command",choices=["prepare"])
     parser.parse_args()
     from backtest.inputs.daily import prepare
-    prepare()
+    from backtest.engines.original.book_batch import repair
+    prepare(repair=repair)

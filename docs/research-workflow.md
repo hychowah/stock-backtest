@@ -22,18 +22,21 @@ New formulas use definition version 3, catalog `financial-parameters/4` and temp
 python3 scripts/research.py prepare
 ```
 
-Every preparation is a full build. It reads the saved universe, annual
-financials and each cached price file, writes a temporary database and replaces
-`data/research.sqlite` in one step. A failure keeps the previous database. A
-current database is kept: when the saved inputs and calculation code have not
+Compatible preparation reconciles changed typed rows in `data/research.sqlite`
+in one transaction. Unchanged bulk sources skip decoding. Cold, schema or
+fact-code builds use a temporary database and atomic replacement. A failure
+keeps the previous committed data. A current database is kept: when the saved
+inputs and calculation code have not
 changed, preparation only checks source metadata. Queries skip the full
 per-price-file scan to keep parameter changes fast. Raw downloads are preserved.
-`--force` rebuilds a current database too. Preparation runs no second engine and
+`--force` reconciles a current database too. Preparation runs no second engine and
 publishes no report; the development check (`python3 scripts/check.py`) compares
 the book code with the independent reference on the real-data bench.
 
-Research schema 20 stores facts only, no book. This section owns the current
-research schema and daily cache versions; other documents link here.
+Research schema 21 stores facts only, no book. It also retains income EBITDA
+for foreign-report derivation. The public parameter catalog is unchanged. This
+section owns the current research schema and daily cache versions; other
+documents link here.
 
 
 - Each saved company with its name, exchange and sector (cached metadata, not
@@ -256,7 +259,7 @@ dated results. It owns equal weights, signed contributions, compounding and
 common-window cash. It reads no files. The
 [financial result contract](portfolio-results.md) preserves complete holding
 rows and existing application envelopes.
-`data/schedules.sqlite` is ignored. When the daily binding changes, preparation resets the disposable cache (below). Repeated preparation
+`data/schedules.sqlite` is ignored. Preparation repairs compatible research changes (below). Repeated preparation
 validates source freshness without parsing prices. Newly requested entry/pool sheets are computed once and persisted;
 filter, metric or rank changes reuse those books and shared SQL selection.
 Only the requested stock pool is prepared. Switching between the original and
@@ -266,18 +269,22 @@ The book store tracks this in `book_pools`. Normal daily connections do not scan
 raw prices. This affects derived data only; durable library and queue snapshots
 remain independent.
 
-Sheet invalidation. A changed research content identity or book identity drops
-all cached sheets. Preparation replaces the disposable daily store with an empty
-file, then commits its binding and both latest pools together. A failure after
-reset leaves a valid unbound cache; retry preparation. Research still replaces
-its own file atomically and keeps its previous database on build failure.
+Sheet repair. Research records each company's earliest changed price or report
+date, plus shared rate, FX and session changes. With matching book code and the
+saved research base, preparation recalculates only affected company rows in
+historical cached sheets. US statement changes refresh all US candidate counts
+and ranks from statements alone. Affected legacy pools rebuild on demand.
+Removed sessions lose their sheets. Repairs commit per sheet; latest rebuilds
+and the new binding commits last. An interruption keeps the old binding, which
+readers refuse; retry repeats the repair safely. Changed book code or an
+unmatched research base resets the disposable cache. Research keeps its previous
+committed data on preparation failure.
 Unchanged identities reuse sheets. Reader and custom-formula edits bind neither
-identity and require no sheet rebuild. Research no longer computes or stores a
-fact diff, and no change-day or horizon rule remains.
+identity and require no sheet rebuild.
 
 A damaged, foreign or older-version daily cache also starts empty. A locked
 file or an I/O failure stops preparation without replacing it. Preparation
-builds latest only. Unified updates then fill historical cached sheets in their
+builds latest and repairs existing sheets. Unified updates then fill missing historical cached sheets in their
 `sheets` stage; ordinary startup, CLI preparation and runs do not precompute.
 Missing historical sheets do not block readiness or website publication. Every
 run builds misses under ordinary cache ownership and never fetches market data.
@@ -757,9 +764,9 @@ synchronization on Windows. These durability steps are retained for WSL
 shutdown. Tests use private fixtures; no physical power-cut claim is made.
 
 Preparation runs under the same owner after downloads. It reuses current data
-or performs the ordinary full research build, daily transaction and website
-build. Research replacement keeps the prior database on failure. Daily
-preparation keeps its existing transaction and cache-reset rules. Website
+or reconciles research facts, then prepares daily sheets and the website.
+Research failure keeps the prior committed data. Daily repairs commit per sheet
+and publish the new binding last. Website
 rebuilds remove the old completion marker and synchronize its directory before
 changing output. All outputs are flushed before the new marker is published
 last. Freshness requires that marker, its input identity and the output files. The
@@ -1012,7 +1019,7 @@ financial valid-series and as-of behavior keep their existing meanings.
 The facts' content identity hashes what determines the rows: the fact-row code
 identity and the bytes of every saved file that preparation read (the
 `fact_sources` digests and the universe and annual-metrics digests), not the
-rows themselves and not file stamps. A rewrite with equal bytes rebuilds
+rows themselves and not file stamps. A rewrite with equal bytes reconciles
 research to the same identity, so the daily cache and its books stay. The
 raw-file signature leaves out `raw/download-coverage.json`, which no
 preparation reads. Operation entry checks the daily binding once (identities

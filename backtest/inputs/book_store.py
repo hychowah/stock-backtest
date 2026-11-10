@@ -30,14 +30,18 @@ LATEST = ('pool', 'symbol', 'candidate_rank', 'fiscal', 'known', 'price_date', '
           'enterprise_value', 'ebitda_yield', 'ev_ebitda', 'spread')
 
 
-def store(db, book):
-    """Write a complete entry/pool sheet in the caller's transaction; return its handle."""
+def store(db, book, *, symbols=None):
+    """Write a complete sheet or replace its dirty symbols; return its handle."""
     market=book.get('market','us')
     row = db.execute('SELECT book FROM books WHERE entry=? AND latest=? AND market=?', (book['entry'], book['latest'],market)).fetchone()
     book_id = row[0] if row is not None else db.execute(
         'INSERT INTO books(entry,latest,candidates,market) VALUES(?,?,?,?)',
         (book['entry'], book['latest'], book['candidates'],market)).lastrowid
     pool = book['pool']
+    if symbols is not None:
+        db.executemany('DELETE FROM book_rows WHERE book=? AND pool=? AND symbol=?',
+                       ((book_id,pool,symbol) for symbol in symbols))
+        db.execute('UPDATE books SET candidates=? WHERE book=?',(book['candidates'],book_id))
     values = {row[0]: {} for row in book['rows']}
     for symbol, metric, multiple, value in book['metrics']:
         a, b = METRICS[metric]
@@ -46,8 +50,25 @@ def store(db, book):
         values[symbol][FILTERS[field]] = value
     db.executemany('INSERT INTO book_rows VALUES(' + ','.join('?' * (14 + len(LANES))) + ')',
         ((book_id, pool, *row, *(values[row[0]].get(column) for column in LANES)) for row in book['rows']))
-    db.execute('INSERT INTO book_pools VALUES(?,?)', (book_id, pool))
+    if symbols is None:db.execute('INSERT INTO book_pools VALUES(?,?)', (book_id, pool))
     return book_id
+
+
+def refresh_ranks(db, book, pool, ranks):
+    """Refresh whole-pool tie metadata without repeating price calculations."""
+    previous=dict(db.execute('SELECT symbol,candidate_rank FROM book_rows WHERE book=? AND pool=? AND candidate_rank IS NOT NULL',(book,pool)))
+    db.executemany('UPDATE book_rows SET candidate_rank=? WHERE book=? AND pool=? AND symbol=?',
+                   ((ranks.get(symbol),book,pool,symbol) for symbol in previous.keys()|ranks.keys()
+                    if previous.get(symbol)!=ranks.get(symbol)))
+
+
+def remove(db, book, pool=None):
+    """Remove one complete pool or header; all its derived rows share the transaction."""
+    where='book=?'+(' AND pool=?' if pool is not None else '')
+    args=(book,pool) if pool is not None else (book,)
+    db.execute('DELETE FROM book_rows WHERE '+where,args)
+    db.execute('DELETE FROM book_pools WHERE '+where,args)
+    db.execute('DELETE FROM books WHERE book=? AND NOT EXISTS (SELECT 1 FROM book_pools WHERE book=?)',(book,book))
 
 
 def stored(db, market='us'):

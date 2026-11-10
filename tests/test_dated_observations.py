@@ -142,7 +142,8 @@ class ResolutionTests(unittest.TestCase):
         folder=Path(self.folder.name)
         (folder/'treasury.json').write_text(json.dumps([dict(date='2015-01-02',month3=-1,year10=None),dict(date='2015-01-05',month3=2,year10=3)]))
         (folder/'spy-div.json').write_text(json.dumps([dict(date='2015-01-02',adjClose=100),dict(date='2015-01-03',adjClose=0)]))
-        shared=facts.shared(folder)
+        shared={endpoint:facts.resolve(folder/name,endpoint)
+                for endpoint,name in ((facts.TREASURY,'treasury.json'),(facts.CALENDAR,'spy-div.json'))}
         with closing(sqlite3.connect(':memory:')) as db:
             db.executescript(facts.SCHEMA)
             facts.store_stock(db,'A',stock)
@@ -334,7 +335,7 @@ class TransportTests(unittest.TestCase):
     def test_failed_publication_preserves_previous(self):
         inputs=self.prepared()
         before=inputs.source.read_bytes()
-        with patch.object(research.facts,'shared',side_effect=RuntimeError('private dated failure')):
+        with patch.object(research.facts,'resolve',side_effect=RuntimeError('private dated failure')):
             with self.assertRaisesRegex(RuntimeError,'private dated failure'):research.prepare(inputs.source,force=True)
         self.assertEqual(inputs.source.read_bytes(),before)
         self.assertFalse(inputs.source.with_name(inputs.source.name+'.building').exists())

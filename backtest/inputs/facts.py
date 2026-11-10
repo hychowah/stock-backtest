@@ -73,6 +73,7 @@ CREATE TABLE stock_days(symbol TEXT, day TEXT, adjusted, adjusted_reason TEXT, v
 CREATE TABLE market_days(day TEXT PRIMARY KEY, spy, month3, month3_reason TEXT, year10, year10_reason TEXT) WITHOUT ROWID;
 CREATE TABLE annual_facts(symbol TEXT, endpoint TEXT, fiscal TEXT, ''' + ', '.join(
     column + ', ' + column + '_reason TEXT' for column, _, _ in ANNUAL) + ''',
+ income_ebitda, income_ebitda_reason TEXT,
  PRIMARY KEY(symbol,endpoint,fiscal)) WITHOUT ROWID;
 CREATE TABLE companies(symbol TEXT PRIMARY KEY, name TEXT, exchange TEXT, sector TEXT, listed INTEGER NOT NULL);
 CREATE TABLE fact_sources(symbol TEXT, endpoint TEXT, sha256 TEXT, disposition TEXT NOT NULL,
@@ -147,7 +148,7 @@ def observe(rows, fields, checkpoint=lambda: None, *, currency='USD'):
     return dated
 
 
-def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None, currency='USD', fields=None):
+def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None, currency='USD', fields=None, content=None):
     """Return the source and the field states of each saved day of one file.
 
     The file is read and parsed once. A stock file is a mapping whose 'div'
@@ -155,10 +156,11 @@ def resolve(path, endpoint, *, stock=False, checkpoint=lambda: None, currency='U
     use the admitted USD-company/share basis. The source is always complete.
     """
     source = dict(endpoint=endpoint, sha256=None, disposition='missing')
-    try:
-        content = path.read_bytes()
-    except FileNotFoundError:
-        return dict(source=source, dated={})
+    if content is None:
+        try:
+            content = path.read_bytes()
+        except FileNotFoundError:
+            return dict(source=source, dated={})
     checkpoint()
     source.update(sha256=hashlib.sha256(content).hexdigest(), disposition='unreadable')
     try:
@@ -191,24 +193,19 @@ def _spiked(closes):
     return False
 
 
-def stock(raw, symbol, checkpoint=lambda: None, *, currency='USD'):
+def stock(raw, symbol, checkpoint=lambda: None, *, currency='USD', content=None):
     """Resolve one saved price file; a series with an isolated spike keeps no close.
 
     Such a spike mixes two price scales in one provider series, so no close of
     it is usable: every valid close becomes INCONSISTENT_SERIES and the company
     has no price. Neighbours are the adjacent valid closes in day order.
     """
-    resolution = resolve(raw / 'px' / market.cache_path_for(symbol).name, STOCK, stock=True, checkpoint=checkpoint, currency=currency)
+    resolution = resolve(raw / 'px' / market.cache_path_for(symbol).name, STOCK, stock=True, checkpoint=checkpoint, currency=currency, content=content)
     closes = [states['adjClose'] for _, states in sorted(resolution['dated'].items()) if states['adjClose']['valid']]
     if _spiked([state['value'] for state in closes]):
         for state in closes:
             state.update(value=None, valid=False, reason=INCONSISTENT_SERIES)
     return resolution
-
-
-def shared(raw, checkpoint=lambda: None):
-    return {endpoint: resolve(raw / name, endpoint, checkpoint=checkpoint)
-            for endpoint, name in ((TREASURY, 'treasury.json'), (CALENDAR, 'spy-div.json'))}
 
 
 # Writing, inside research preparation's build transaction.
@@ -218,81 +215,138 @@ def _pair(state):
     return (state['value'], None) if state['valid'] else (None, state['reason'])
 
 
+def same_row(left, right):
+    """Typed equality, including the sign of zero in unaffinitized value columns."""
+    return len(left)==len(right) and all(type(a) is type(b) and
+        (a.hex()==b.hex() if isinstance(a,float) else a==b) for a,b in zip(left,right))
+
+
+def reconcile(db, table, keys, rows, **scope):
+    """Replace one table scope with resolved rows, writing only exact differences.
+
+    Tables, key columns and scope columns are application-owned schema names.
+    The caller owns the transaction. Returned old/new pairs include deletions.
+    """
+    where=' AND '.join(column+'=?' for column in scope)
+    old={tuple(row[:len(keys)]):tuple(row) for row in db.execute(
+        f'SELECT * FROM {table}'+(' WHERE '+where if where else ''),tuple(scope.values()))}
+    changes=[]
+    for row in rows:
+        row=tuple(row);before=old.pop(row[:len(keys)],None)
+        if before is None or not same_row(before,row):changes.append((before,row))
+    changes.extend((row,None) for row in old.values())
+    added=[after for _,after in changes if after is not None]
+    if added:db.executemany(f'INSERT OR REPLACE INTO {table} VALUES('+','.join('?'*len(added[0]))+')',added)
+    if old:db.executemany(f'DELETE FROM {table} WHERE '+' AND '.join(key+'=?' for key in keys),old)
+    return changes
+
+
 def _source(db, symbol, source):
-    db.execute('INSERT INTO fact_sources VALUES(?,?,?,?)',
-               (symbol, source['endpoint'], source['sha256'], source['disposition']))
+    reconcile(db,'fact_sources',('symbol','endpoint'),
+              [(symbol,source['endpoint'],source['sha256'],source['disposition'])],
+              symbol=symbol,endpoint=source['endpoint'])
 
 
 def store_annual(db, symbol, resolution):
-    """Write every resolved endpoint and fiscal date, including unavailable fields."""
+    """Reconcile the supplied annual endpoints, including unavailable fields."""
     for endpoint, source in resolution['sources'].items():
         _source(db, symbol, source)
-    rows = []
+    changes={'rows':[],'metadata':[]}
     for endpoint, dates in resolution['annual'].items():
+        rows=[]
         for fiscal, states in dates.items():
             values = {COLUMNS[endpoint, field]: _pair(state) for field, state in states.items() if (endpoint,field) in COLUMNS}
             row = [symbol, endpoint, fiscal]
             for column, _, _ in ANNUAL:
                 row.extend(values.get(column, (None, None)))
+            row.extend(_pair(states['ebitda']) if 'ebitda' in states else (None,None))
             rows.append(row)
-    if rows:
-        db.executemany('INSERT INTO annual_facts VALUES(' + ','.join('?' * len(rows[0])) + ')', rows)
-    db.executemany('INSERT INTO annual_metadata VALUES(?,?,?,?,?,?)', ((symbol,endpoint,fiscal,info['currency'],info['known'],info['basis'])
-        for endpoint,dates in resolution.get('metadata',{}).items() for fiscal,info in dates.items()))
-    for row in resolution.get('core',()):
-        close=db.execute('SELECT n.close FROM stock_native n JOIN company_markets c ON c.symbol=n.symbol JOIN local_sessions s ON s.market=c.market AND s.day=n.day WHERE n.symbol=? AND n.day<=? AND n.day>=? ORDER BY n.day DESC LIMIT 1',(symbol,row['fiscal'],str(date.fromisoformat(row['fiscal'])-timedelta(days=7)))).fetchone()
-        fiscal_cap=None if close is None else row['shares']*close[0]
-        db.execute('INSERT INTO foreign_reports VALUES(?,?,?,?,?,?,?,?,?,?)',(symbol,row['fiscal'],row['known'],row['currency'],row['shares'],row['ebitda'],row['debt'],row['cash'],row['basis'],fiscal_cap))
+        changes['rows']+=reconcile(db,'annual_facts',('symbol','endpoint','fiscal'),rows,symbol=symbol,endpoint=endpoint)
+        if endpoint in resolution.get('metadata',{}):
+            rows=[(symbol,endpoint,fiscal,info['currency'],info['known'],info['basis'])
+                  for fiscal,info in resolution['metadata'][endpoint].items()]
+            changes['metadata']+=reconcile(db,'annual_metadata',('symbol','endpoint','fiscal'),rows,symbol=symbol,endpoint=endpoint)
+    return changes
+
+
+def store_foreign_reports(db, checkpoint):
+    """Derive accepted foreign anchors from reconciled annual/native/session facts."""
+    def rows():
+        core=db.execute('''SELECT i.symbol,i.fiscal,MAX(im.known,bm.known),im.currency,
+            i.weighted_average_basic_shares,i.income_ebitda,b.total_debt,b.cash_and_equivalents,im.basis
+            FROM annual_facts i JOIN annual_facts b ON b.symbol=i.symbol AND b.fiscal=i.fiscal
+            JOIN annual_metadata im ON im.symbol=i.symbol AND im.endpoint=i.endpoint AND im.fiscal=i.fiscal
+            JOIN annual_metadata bm ON bm.symbol=b.symbol AND bm.endpoint=b.endpoint AND bm.fiscal=b.fiscal
+            JOIN company_markets c ON c.symbol=i.symbol
+            WHERE c.market!='us' AND i.endpoint='income-statement' AND b.endpoint='balance-sheet-statement'
+            AND im.currency IS NOT NULL AND im.currency=bm.currency
+            AND i.weighted_average_basic_shares>0 AND i.income_ebitda>0
+            AND b.total_debt IS NOT NULL AND b.cash_and_equivalents IS NOT NULL
+            ORDER BY i.symbol,i.fiscal''')
+        for row in core:
+            checkpoint()
+            symbol,fiscal,_,_,shares,*_=row
+            close=db.execute('SELECT n.close FROM stock_native n JOIN company_markets c ON c.symbol=n.symbol JOIN local_sessions s ON s.market=c.market AND s.day=n.day WHERE n.symbol=? AND n.day<=? AND n.day>=? ORDER BY n.day DESC LIMIT 1',
+                             (symbol,fiscal,str(date.fromisoformat(fiscal)-timedelta(days=7)))).fetchone()
+            yield (*row,None if close is None else shares*close[0])
+    return reconcile(db,'foreign_reports',('symbol','fiscal'),rows())
 
 
 def store_stock(db, symbol, resolution):
-    """Write the saved days of one price file; return its stock_days rows without the symbol, by day."""
+    """Reconcile one price history and return its changed old/new fact rows."""
     _source(db, symbol, resolution['source'])
     dated = resolution['dated']
     rows = [(day, *_pair(dated[day]['adjClose']), *_pair(dated[day]['volume'])) for day in sorted(dated)]
-    db.executemany('INSERT INTO stock_days VALUES(?,?,?,?,?,?)', ((symbol, *row) for row in rows))
-    return rows
+    return reconcile(db,'stock_days',('symbol','day'),((symbol,*row) for row in rows),symbol=symbol)
 
 
 def store_market(db, resolutions):
     """Write the shared Treasury and SPY calendar days and their sources."""
-    treasury, calendar = resolutions[TREASURY], resolutions[CALENDAR]
-    for resolution in (treasury, calendar):
+    for resolution in resolutions.values():
         _source(db, '', resolution['source'])
-    days = {}
-    for day, states in calendar['dated'].items():
-        if states['adjClose']['valid']:
-            days[day] = [states['adjClose']['value'], None, None, None, None]
-    for day, states in treasury['dated'].items():
-        row = days.setdefault(day, [None, None, None, None, None])
-        row[1:] = [*_pair(states['month3']), *_pair(states['year10'])]
-    db.executemany('INSERT INTO market_days VALUES(?,?,?,?,?,?)', ((day, *days[day]) for day in sorted(days)))
+    days={row[0]:list(row[1:]) for row in db.execute('SELECT * FROM market_days')}
+    if CALENDAR in resolutions:
+        for row in days.values():row[0]=None
+        for day,states in resolutions[CALENDAR]['dated'].items():
+            if states['adjClose']['valid']:days.setdefault(day,[None]*5)[0]=states['adjClose']['value']
+    if TREASURY in resolutions:
+        for row in days.values():row[1:]=[None]*4
+        for day,states in resolutions[TREASURY]['dated'].items():
+            days.setdefault(day,[None]*5)[1:]=[*_pair(states['month3']),*_pair(states['year10'])]
+    return reconcile(db,'market_days',('day',),((day,*days[day]) for day in sorted(days)
+                                              if any(value is not None for value in days[day])))
 
 
 def store_companies(db, universe):
     """Write each saved company: its name, exchange and sector, and whether it is listed (universe 'listed' is True)."""
-    db.executemany('INSERT INTO company_markets VALUES(?,?,?)', ((symbol,market.identify(company),company.get('currency') or market.MARKETS[market.identify(company)]['currency']) for symbol,company in universe.items()))
-    db.executemany('INSERT INTO companies VALUES(?,?,?,?,?)', (
+    markets=reconcile(db,'company_markets',('symbol',),((symbol,market.identify(company),company.get('currency') or market.MARKETS[market.identify(company)]['currency']) for symbol,company in universe.items()))
+    companies=reconcile(db,'companies',('symbol',),(
         (symbol, company.get('name') or 'Unavailable', company.get('exchange') or 'Unavailable',
          company.get('sector') or 'Unavailable', int(company.get('listed') is True)) for symbol, company in universe.items()))
+    return companies,markets
 
 
 
-def store_native(db,raw,symbol,checkpoint=lambda:None):
+def store_native(db,raw,symbol,checkpoint=lambda:None,*,content=None):
     currency=db.execute('SELECT currency FROM company_markets WHERE symbol=?',(symbol,)).fetchone()[0]
-    resolution=resolve(market.native_path(raw,symbol),'native-price',fields=('close',),checkpoint=checkpoint,currency=currency)
+    resolution=resolve(market.native_path(raw,symbol),'native-price',fields=('close',),checkpoint=checkpoint,currency=currency,content=content)
     _source(db,symbol,resolution['source'])
-    db.executemany('INSERT INTO stock_native VALUES(?,?,?)',((symbol,day,states['close']['value']) for day,states in resolution['dated'].items() if states['close']['valid'] and states['close']['value']>0))
+    return reconcile(db,'stock_native',('symbol','day'),((symbol,day,states['close']['value']) for day,states in resolution['dated'].items() if states['close']['valid'] and states['close']['value']>0),symbol=symbol)
 
 
-def store_foreign_market(db,raw,market_ids,checkpoint=lambda:None):
+def store_foreign_market(db,raw,market_ids,checkpoint=lambda:None,*,contents):
+    changes={'sessions':{},'fx':{}}
     for market_id in market_ids:
-        resolution=resolve(market.calendar_path(raw,market_id),'calendar:'+market_id,fields=('close',),checkpoint=checkpoint,currency=None)
+        endpoint='calendar:'+market_id
+        if endpoint not in contents:continue
+        resolution=resolve(market.calendar_path(raw,market_id),endpoint,fields=('close',),checkpoint=checkpoint,currency=None,content=contents[endpoint])
         _source(db,'',resolution['source'])
-        db.executemany('INSERT INTO local_sessions VALUES(?,?)',((market_id,day) for day,states in resolution['dated'].items() if states['close']['valid'] and states['close']['value']>0 and market.completed_session(date.fromisoformat(day),market_id)))
+        changes['sessions'][market_id]=reconcile(db,'local_sessions',('market','day'),((market_id,day) for day,states in resolution['dated'].items() if states['close']['valid'] and states['close']['value']>0 and market.completed_session(date.fromisoformat(day),market_id)),market=market_id)
     for path in sorted((raw/'fx').glob('USD???.json')):
         currency=path.stem[3:]
-        resolution=resolve(path,'fx:'+currency,fields=('close',),checkpoint=checkpoint,currency=None)
+        endpoint='fx:'+currency
+        if endpoint not in contents:continue
+        resolution=resolve(path,endpoint,fields=('close',),checkpoint=checkpoint,currency=None,content=contents[endpoint])
         _source(db,'',resolution['source'])
         rows=[]
         for day,states in resolution['dated'].items():
@@ -300,7 +354,8 @@ def store_foreign_market(db,raw,market_ids,checkpoint=lambda:None):
             usd=1/state['value'] if state['valid'] else None
             if usd is not None and not math.isfinite(usd):usd=None
             rows.append((currency,day,usd,None if usd is not None else state['reason'] or 'INVALID_INPUT'))
-        db.executemany('INSERT INTO fx_days VALUES(?,?,?,?)',rows)
+        changes['fx'][currency]=reconcile(db,'fx_days',('currency','day'),rows,currency=currency)
+    return changes
 
 
 # Book facts: what books.book, books.Screen and the derived-context readers read,
@@ -362,6 +417,7 @@ class BookFacts:
         self._annual,self._reports,self._cached,self._companies={},None,None,None
         self._native_reports=None;self._report_day=None;self._fx={};self._metadata={}
         self._currencies=None
+        self._currency_users=None
 
     def reports(self, day=None, *, symbol=None):
         if self.market=='us':
@@ -408,7 +464,8 @@ class BookFacts:
     def price(self,symbol,day,forward=False,slack=None):
         """Native adjusted price and actual date, bounded by local sessions for foreign stocks."""
         operator,order=('>=','ASC') if forward else ('<=','DESC')
-        session='' if self.market=='us' else ' AND day IN (SELECT day FROM research.local_sessions WHERE market=?)'
+        # Probe the session key; IN rebuilds the full calendar for each price lookup.
+        session='' if self.market=='us' else ' AND EXISTS (SELECT 1 FROM research.local_sessions s WHERE s.market=? AND s.day=stock_days.day)'
         args=(symbol,str(day),*((self.market,) if self.market!='us' else ()))
         row=self.db.execute(f'SELECT day,adjusted FROM research.stock_days WHERE symbol=? AND day{operator}? AND adjusted IS NOT NULL{session} ORDER BY day {order} LIMIT 1',args).fetchone()
         if row is None:return None
@@ -424,6 +481,16 @@ class BookFacts:
     def quote_currency(self,symbol):
         if self._currencies is None:self._currencies=dict(self.db.execute('SELECT symbol,currency FROM research.company_markets WHERE market=?',(self.market,)))
         return self._currencies.get(symbol,'USD' if self.market=='us' else None)
+
+    def currency_users(self):
+        """Companies using each quote or annual-report currency across their history."""
+        if self._currency_users is None:
+            self._currency_users={}
+            rows=self.db.execute('''SELECT symbol,currency FROM research.company_markets WHERE market=?
+                UNION SELECT a.symbol,a.currency FROM research.annual_metadata a
+                JOIN research.company_markets c USING(symbol) WHERE c.market=?''',(self.market,self.market))
+            for symbol,currency in rows:self._currency_users.setdefault(currency,set()).add(symbol)
+        return self._currency_users
 
     def fx(self,currency,day):
         """Prior completed daily USD-per-unit fixing, within seven days; no identity FX substitute."""

@@ -252,9 +252,9 @@ The linked documents hold the detail.
 
 **Research database.** `scripts/research.py prepare` builds
 `data/research.sqlite` from the raw cache: companies,
-annual reports and typed facts, no book. Every build is a full build. It
-writes a temporary file and replaces the database atomically; a failure keeps
-the previous database. `books.Screen.decide` admits; `books.book` builds books.
+annual reports and typed facts, no book. Compatible builds update changed rows
+in one transaction. Cold, schema or fact-code builds use atomic replacement.
+Failure keeps committed data. `books.Screen.decide` admits; `books.book` builds books.
 `research.code_sources(role)` is the one rule of code roles: the research
 identity binds fact-row code, the book identity book code, readers nothing.
 The `legacy` pool keeps the original
@@ -330,11 +330,11 @@ timings as new measurements. Check `python3 tests/test_fmp_download.py`.
 daily store, attaching research read-only. Pool rows and `book_pools`
 completion commit together. Dates anchor to the starting day, clamp month ends and roll forward
 to the selected market’s sessions; end marks roll back. Intervals are 1, 3, 6, 12 and 24 months.
-Reuse `screening.select` and `metrics.evaluate`. Label dated period returns. The daily binding names the research
-and book identities; changed identities drop every sheet. Entry/pool sheets
+Reuse `screening.select` and `metrics.evaluate`. Label dated period returns. The daily binding names research
+and book identities. Matching changes repair rows; mismatched code or bases reset sheets. Entry/pool sheets
 build on demand. Filter actual entry before exit before ranking; close only
 selected rows. Latest keeps its existing policy. `book_store` owns every read of its tables. Latest and
-scope roots read their stored book's owner lanes; other roots use the dated owner policy. Check
+scope roots read stored owner lanes; other roots use dated owner policy. Check
 `python3 tests/test_schedules.py`. See
 [docs/schedule-calendar.md](docs/schedule-calendar.md).
 
