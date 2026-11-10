@@ -4,10 +4,8 @@ CB-19G selected compiled Numba with two workers × two numerical threads.
 Original remains the application default. The final source passed complete
 financial and recovery qualification through the normal `Selectable` router. No
 deployment, installed restart, live cache write or download occurred. The source
-archives, logs and checkpoint copies were removed under the
-[records policy](../../../docs/records-policy.md). See the
-[parallel backtest summary](../../../docs/plans/parallel-backtest/master-plan.md)
-for the final outcome.
+archives, logs and checkpoint copies were removed. The experimental engine was
+later removed from the source; the website runs only Original.
 
 ## Backend decision
 

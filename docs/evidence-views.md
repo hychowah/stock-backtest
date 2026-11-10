@@ -391,4 +391,4 @@ companion evidence file for full offline explanation. A chain adds
 `step_<n>_value` and `step_<n>_outcome` (the rank, or `pass`) for each step;
 capture/1 CSV columns are unchanged. Counted attachment lengths
 and existing independent request pins remain unchanged. Old codec-1 exports
-retain their original bytes. See [custom-variable compatibility](plans/custom-variables/master-plan.md).
+retain their original bytes. See [custom-variable compatibility](custom-variables.md#library-and-reproducibility).

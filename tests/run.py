@@ -22,9 +22,9 @@ open, directory creation, rename, removal or SQLite connection of an absolute
 path inside this checkout's data/ folder, except a read-only open of
 data/workspace.json (the machine registration). A file with a record fails,
 whatever its exit status. Tests own private copies of the cache and its
-coordinator (AGENTS.md, Tests). Node entries, non-Python children, and Python
-children started with -I or with a replaced PYTHONPATH are outside the guard
-and must receive private paths.
+coordinator. Node entries, non-Python children, and Python children started
+with -I or with a replaced PYTHONPATH are outside the guard and must receive
+private paths.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -45,7 +45,7 @@ RUNS = Path.home() / '.cache' / 'ebitda-ev-spread-tests'
 
 # Tier tables. Every discovered entry not named here is fast. A listed name
 # that does not exist, or a name in two tables, stops the run. Adding a name to
-# HEAVY accepts a slow workload and needs the user's agreement.
+# HEAVY takes a slow workload out of the everyday gate; speed a file up first.
 HEAVY = frozenset({'test_original_long_window.py'})
 # Files that match the entry patterns but are not standalone entries.
 NOT_ENTRIES = frozenset({
@@ -112,7 +112,7 @@ def _guard(event, args):
             continue
         _record(event, path)
         raise AssertionError(f"A test used the checkout's data folder: {path}. "
-                             'Give it a private path or coordinator (AGENTS.md, Tests).')
+                             'Give it a private path or coordinator (see tests/run.py).')
 
 
 sys.addaudithook(_guard)
@@ -336,7 +336,7 @@ def main(argv=None):
                    if result.entry.tier == 'fast' and result.seconds >= SLOW_FAST_SECONDS),
                   key=lambda r: -r.seconds)
     if slow:
-        print(f"Fast files at {SLOW_FAST_SECONDS} s or more (move to HEAVY only with the user's agreement):")
+        print(f"Fast files at {SLOW_FAST_SECONDS} s or more (speed them up before moving one to HEAVY):")
         for result in slow:
             print(f'  {result.entry.path.name}  {result.seconds:.1f} s')
     summary = f'{args.tier} tier: {len(results) - len(failed)} passed, {len(failed)} failed in {elapsed:.1f} s.'

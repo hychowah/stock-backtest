@@ -161,4 +161,4 @@ pairs. The container version does not determine either version. No durable rows
 are migrated or rewritten. Existing reservations, publication/transfer receipts,
 acquired-reader lifetimes and deletion precedence remain the same. Latest
 artifact-4 screens are readable temporary results but cannot enter the historical
-saved-backtest library. See the [custom-variable compatibility summary](plans/custom-variables/master-plan.md).
+saved-backtest library. See [custom-variable compatibility](custom-variables.md#library-and-reproducibility).

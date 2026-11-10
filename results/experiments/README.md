@@ -3,7 +3,7 @@
 These summaries are separate from the canonical `results/summary-exits.txt`.
 Each one keeps its original settings. Old timings are historical measurements,
 not current-source speed guarantees. Raw logs, holdings and benchmark output
-stay in ignored `tmp/` under the [records policy](../../docs/records-policy.md).
+are not kept in the repository.
 The source has no benchmark harness or engine comparison runner.
 
 ## Original engine speed work

@@ -195,5 +195,5 @@ receipts, ordered evaluation chunks, admission/built-in lanes, selection receipt
 and selected screen or portfolio rows. References qualify scope and chunk. A
 selected row cannot precede its complete scope and selection receipts. Latest
 is screen-only, with zero trials/periods and no future-return fields. Old codec-1
-trial/checkpoint readers are unchanged. See [current compatibility](plans/custom-variables/master-plan.md)
-for record/work bounds, closure, pages and complete offline evidence export.
+trial/checkpoint readers are unchanged. See [scalar artifact 4](evidence-views.md#scalar-artifact-4)
+for pages and complete offline evidence export.

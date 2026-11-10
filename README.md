@@ -1,212 +1,198 @@
-# EBITDA/EV stock backtest
+# Stock Backtest
 
-A standalone stock backtest and interactive results website for US, Hong Kong and Tokyo stocks. Screen one market at a time by EBITDA/enterprise value or custom variables, then test the selected stocks on fixed or random dated schedules, equally weighted, against SPY with dividends included. Returns and monetary filters use USD. SPY is the S&P 500 total-return benchmark. The original US study bought the 50 highest EBITDA/EV stocks each January from 1996; its frozen result covers 1996 through 20 October 2026.
+A local research tool that screens stocks by valuation and backtests the picks against SPY.
 
-## Open the website
+[![Tests](https://github.com/hychowah/stock-backtest/actions/workflows/tests.yml/badge.svg)](https://github.com/hychowah/stock-backtest/actions/workflows/tests.yml)
 
-Source development lives in this repository's WSL checkout; edit and commit there.
-The native Windows runtime is a separate deployed export of the same source.
-Start the native runtime with `python3 tools/deploy.py --start`, or run the
-installed `backtest-web.cmd` from Windows Terminal. Startup serves the installed
-revision. At 07:00 Hong Kong time it updates committed `main`, refreshes FMP
-data and prepares the website. A missed schedule waits until the next day.
-Add `--latest` to update source at launch. See [workspace commands and ownership](docs/workspaces.md).
+## What it does
 
-Use `python3 tools/deploy.py --revision <commit> --start` to fix one launch to
-that revision. Standalone publication without `--start` retains the installed
-revision. A fresh standalone runtime requires an explicit revision. See
-the same document for recovery and the source-only explicit-argument
-forwarding limit.
+Stock Backtest screens US, Hong Kong and Tokyo common stocks, one market at a
+time. You build a strategy from filters and rankings, then either:
 
-On Windows, run **`backtest-web.cmd`** from the runtime folder, or double-click **`start.cmd`**. It prepares stale local caches in order,
-rebuilds the website when needed, starts the local service, and opens your browser.
-A standalone installation on another system can run `python3 website/serve.py` in the foreground with its own cache. In this split workspace, use the native Windows runtime. No API key or market-data
-download is needed; unchanged caches are reused. The first refresh can take a
-few minutes. The Windows command keeps the server attached to the terminal on `0.0.0.0:3000`. Open `http://127.0.0.1:3000` on this computer. The installed `backtest-web.cmd` command also works from other Windows Terminal folders. Keep the terminal open to see server logs. Press Ctrl+C to stop it. Repeating the command stops this project’s identified server and starts a new one in the new terminal. This also replaces any older background instance. Replacement waits for active requests to finish before it prepares data. If ownership is still held after 30 seconds, the command asks you to wait or stop the old terminal, then retry.
+- see the **latest picks** for the most recent trading session, or
+- run a **historical backtest** on fixed or random rebalance dates.
 
-The server also saves development logs in `data/logs/`. The terminal and data panel show the current file. Logs keep safe error traces and operation times, never API keys, provider URLs, response bodies or exception text. Startup removes old logs. Run `python3 -m tools.ops.log_summary` to see where the time goes. The [development log](docs/architecture-guide/dist/index.html#development-log) section of the architecture guide has the details.
+A backtest buys an equal-weight portfolio of the selected stocks at each
+rebalance. It reports the return in US dollars and compares it with SPY,
+including dividends. Everything runs on your own computer, from a local cache of
+market data.
 
-The website opens with Latest stock picks. Switch to Historical backtest for
-custom trade dates with monthly, quarterly, half-yearly or yearly rebalancing; a
-January study is a 12-month schedule from 1 January. Saved January results open
-in that dated view without calculation. `python3 website/build.py --snapshot`
-writes an untracked portable export to `website/dist/`. Open its `index.html`
-directly for the saved latest view; backtests use the local service.
+## Highlights
 
-Custom and random-date backtests run on the server. Locking your phone,
-refreshing, or closing the page does not stop them. Reopen the same address in
-the same browser to recover progress or the result. Use **Stop backtest** to
-cancel. Keep the server computer awake and its terminal open. Temporary results
-last 24 hours, up to four recent runs, until the server exits. Use **Save original
-backtest** to keep a completed result in the library.
+- **Strategy builder.** A strategy is an ordered chain of **Filter** and
+  **Rank** blocks, up to 50. A Filter keeps the stocks that pass a condition. A
+  Rank orders the survivors and keeps a rank range, such as 1–50. Each selected
+  stock shows its step trail: its value and outcome at every step.
+- **Custom variables.** Write formulas over point-in-time annual facts: 55
+  annual financial inputs, 33 named measures, and annual statistics such as mean,
+  growth and CAGR. Saved variables keep every revision. Each run records the
+  exact formula, so a result always reopens the same way.
+- **Random-date robustness trials.** Run 1–100 seeded trials (24 by default).
+  Each trial picks one random trading day in every rebalance period. The
+  result shows the spread of returns against SPY, not one lucky start date.
+- **Saved library and queue.** Queue tests to run overnight. Edit, hold,
+  reorder or pause waiting tests. Completed results move to a library of up to
+  100 saved backtests. You can rename them, sort them and compare two side by
+  side. Opening a saved result never recalculates it.
+- **Incremental daily updates.** A data update downloads only what is new or
+  missing. Preparation then recalculates only the affected companies and
+  dates. Tests check that the result matches a fresh full build.
 
-Use **Build strategy**, **Runs & queue**, **Saved results** and **Result review**
-to change tasks without losing draft edits. Opening a result keeps the draft
-unchanged. **Edit a copy** loads its recorded settings into the builder.
-Recorded settings stay beside the review on desktop and have a **Settings**
-section on phones. The bottom bar shows progress and opens the existing queue.
+## Screenshots
 
-In **Selection**, compare sector allocations across complete random trials,
-then inspect a trial, rebalance and its original stocks. Sector weights use
-the actual stock count. Means weight rebalances equally within each trial,
-then complete trials equally. Missing labels remain Unknown; empty books hold
-cash. Sector filtering keeps original ranks and weights. Stock **Details** keeps
-the remaining financial fields and recorded formula explanations available.
+**Strategy builder:** a chain of Filter and Rank blocks.
 
-Open **Explore this result** to inspect a shorter saved time window or a smaller
-rank range without another backtest. For random tests, **Explore all trials**
-opens above the combined summary. For example, select 2010–2015 and ranks 20–30
-within a saved 24-trial, 2000–2025, top-50 result. Apply updates each trial,
-combined statistics and the distribution chart. Dates select saved rebalance
-blocks; the summary shows the actual shared window. Reset restores the original
-summary. Empty selections hold cash at 0% until rebalance; SPY keeps its period
-return. Holding details, downloads, comparisons and saving use the original
-completed result.
+![Strategy builder](docs/images/strategy-builder.png)
 
-Select **Add to queue** beside **Run backtest** for overnight fixed or random-date
-tests. From latest mode, the first click opens the dated backtest settings
-and turns off Auto-run without starting a test. Set your parameters, then select
-**Add to queue** again. Use **Runs & queue** or the bottom bar to inspect the
-list. Change parameters and add another test. Edit, hold, reorder
-or delete waiting tests. Pause the queue to let the active test finish without
-starting another. Stop cancels only the selected active test. Auto-run is
-suspended while the queue has waiting or running work. Adding, copying or
-editing a queue item also turns Auto-run off for continued batch setup.
-Saved backtests offer 100 slots, stable IDs, rename and performance sorting.
-Expand **All parameters** on a saved row to inspect its settings and filters.
-Choose two saved tests and select **Compare** for recorded performance and
-highlighted parameter differences. Comparison leaves the main result unchanged.
-The queue, saved list and comparison tables scroll inside their sections.
+**Step trail:** how one holding passed each step.
 
-Completed queue results move to Saved backtests automatically. Open them there
-without calculating again. A full library or failed save keeps the complete
-result in the queue while the server retries. No result is evicted.
-You can inspect another result during a held edit. Save or cancel the edit
-before copying settings from another result into that draft.
-Reordering does not invalidate an edit. If a response is lost, the queue checks
-the saved edit receipt or offers a retry of the same request. If another browser
-ends the hold, your form becomes available and keeps its current settings.
+![Step trail](docs/images/step-trail.png)
 
-The queue holds up to 100 visible records. Archived completions free queue space.
-It persists in `data/backtest-queue.sqlite`. Keep this durable file and the saved
-library during rebuilds and deployment. The queue is separate
-from temporary manual runs and the 100-slot saved library. Server restart resumes
-interrupted work with its recorded random dates; held edits stay held. Keep the
-server computer awake and its terminal open overnight.
+**Random-date trials:** the distribution of returns across trials.
 
-Choose **Manage backtest data** to inspect saved files and date coverage.
-**Update data** fills missing inputs, checks for newer reports and prices, and
-prepares the website automatically. **More options** adds selected stocks or
-older history. **Details → Prepare saved data (offline)** applies saved changes
-without downloads. Existing records are kept.
-Compatible research updates change typed rows in one transaction. Cold, schema or fact-code builds use atomic replacement. Failure keeps committed data. No download starts when the panel opens. If essential source files are missing,
-startup opens the data panel for recovery. See [the data workflow](docs/research-workflow.md#data-control-panel).
+![Random-date trials](docs/images/random-trials.png)
 
-Random-date batches plan missing books once, calculate ahead with separate Python
-processes, and save complete trials through one SQLite writer. Replays reuse
-saved books. Filters, metrics and stock counts share the ordinary screening rules.
+## How it works
 
-For an explanation of the program, open the [plain-language architecture guide](docs/architecture-guide/dist/index.html).
-It is a separate static website. It works offline and includes diagrams, setting
-examples, a file map and the measured speed comparisons.
-
-The website runs only the **Original** engine. The source has no experimental
-(Numba) engine. The server refuses a request that names it. Saved results from
-the experimental engine stay readable with their producer label. The
-[faster engine summary](docs/plans/compiled-backtest/master-plan.md) records its
-decisions and measured speeds. Historical timings are not a
-current-source speed guarantee.
-
-Custom ranking and filtering variables are part of `main`. Formulas combine
-financial parameters with point-in-time measures and run with Original. Sample
-preview uses Original. Eager scalar execution is unsupported.
-See the [custom-variable summary](docs/plans/custom-variables/master-plan.md).
-
-Records follow the [records policy](docs/records-policy.md).
-
-
-## Run from the saved data
-
-Python 3.10 or newer is required. Python scripts use only the standard library.
-Run the saved-data commands below in the Windows runtime with native Python.
-The WSL checkout runs source and synthetic checks; `python3 tools/deploy.py --check`
-dispatches the full saved-data checks to Windows.
-
-```bash
-# Prepare the local database once (no downloads)
-python3 scripts/research.py prepare
-
-# Show the database size and latest price coverage
-python3 scripts/research.py status
-
-# Rebuild ignored local output from the prepared latest screen
-python3 website/build.py
-
-# Check rank filtering and result presentation (requires Node.js)
-node tests/check-range.cjs
-python3 tests/check_screener.py
-
-# Check project paths, imports, and cache-only operation
-python3 tests/check_paths.py
+```mermaid
+flowchart LR
+    FMP["FMP API"] -->|"Update data"| RAW["Raw cache<br/>prices, reports, FX"]
+    RAW --> RES["Research database<br/>typed annual facts"]
+    RES --> SHEETS["Prepared daily sheets<br/>candidates per date"]
+    SHEETS --> CHAIN["Strategy chain<br/>Filter and Rank steps"]
+    CHAIN --> RESULTS["Portfolio results<br/>USD returns vs SPY"]
+    RESULTS --> WEB["Website"]
+    WEB -->|"Add to queue"| QUEUE["Queue"]
+    QUEUE --> CHAIN
+    RESULTS --> LIB["Saved library"]
+    LIB --> WEB
 ```
 
-Commands above run from the runtime folder. Python scripts resolve data paths from their own location, so they also work when invoked by absolute path from another directory. Keep `raw/` with the Windows runtime. Subsequent screens and website builds query compact prepared records.
+The data panel downloads prices, annual reports, FX rates, SPY and Treasury
+yields from Financial Modeling Prep (FMP) and saves each file once. Preparation
+turns them into a SQLite database of typed annual facts, then into daily sheets
+of candidate stocks. On each rebalance date the strategy chain selects from
+that day's sheet. Portfolio results pair each period with SPY. Strategy
+calculations never download data.
 
-After a change to book policy, run the development check, `python3 scripts/check.py`, on a real-data copy; it must find 0 differences. See [the research workflow](docs/research-workflow.md#development-check).
+## Methodology essentials
+
+- **Point-in-time reports.** A US annual report is used only from 90 days after
+  its fiscal year-end. Hong Kong and Tokyo reports use reliable publication
+  dates, otherwise four (Hong Kong) or three (Tokyo) months after year-end. A
+  fiscal year-end more than 800 days old is too old to use. A newer report never
+  fills a missing value.
+- **No look-ahead by date.** A screen uses only reports, prices and FX rates
+  dated on or before the screen date. Report values are FMP's current
+  versions, not the original filings.
+- **Dividend-adjusted prices.** Returns use dividend-adjusted prices.
+  Enterprise value at entry uses the report's debt and cash and the entry
+  price.
+- **USD conversion.** All money, thresholds and returns are in US dollars.
+  Foreign returns include currency moves, without hedging.
+- **SPY total-return benchmark.** SPY includes dividends. Hong Kong and Tokyo
+  dates use the previous completed US close.
+- **Equal weights, no costs.** Every selected stock gets the same weight. There
+  are no commissions or transaction costs. Cash earns 0%.
+- **Delisted stocks included.** The US universe includes delisted names. If
+  trading stops before the exit date, the last price is the exit.
+
+See [docs/methodology.md](docs/methodology.md) for the original study, its
+exit rules and its limits.
 
 ## Project layout
 
-```text
-scripts/             Data preparation, daily cache and the development check
-data/                Prepared local SQLite databases (generated; ignored by Git)
-website/             Website source, builder, and built output
-  local/             Ignored local server output
-  dist/              Ignored portable export from build.py --snapshot
-results/             Frozen January record and cited experiment summaries
-  summary-exits.txt  The January study result (frozen)
-  stops/             Early trading-stop analysis and filing classifications (frozen)
-  legacy/            Earlier results using the old exit rule (frozen)
-raw/                 Reusable universe, financial metrics, prices, SPY, Treasury data
-  px/                One price-history file per stock
-  archive/           Unused bulk downloads and exploratory responses
-tools/              Deployment, operations and retained API probes
-tests/              Calculation and path checks
-docs/               Methodology, assumptions, and limitations
-```
+| Folder | Contents |
+|---|---|
+| `backtest/` | Financial rules, data preparation, selection, the calculation engine and the queue and library |
+| `website/` | Browser interface, page builder and local HTTP server |
+| `scripts/` | Command-line preparation and the development check |
+| `tools/` | Deployment, operations and FMP API probes |
+| `tests/` | Python and Node.js tests and the test runner |
+| `docs/` | Methodology, design notes and the architecture guide ([index](docs/README.md)) |
+| `results/` | The frozen January study and experiment summaries |
+| `raw/` | Local market-data cache (not tracked) |
+| `data/` | Local databases, saved backtests and the queue (not tracked) |
 
-The [source map](docs/plans/project-structure/source-map.md) lists the owners of financial, input, engine, application, website and tool code. Browser assets live in `website/browser/`, static builds in `website/rendering/` and HTTP adapters in `website/server/`.
+## Getting started
 
-See [fast screening and backtesting](docs/research-workflow.md) for parameter examples, coverage limits, and the preparation/query separation.
+**Requirements**
 
-## The January record
+- Python 3, developed and tested with 3.14. The project uses only the standard
+  library, so there is nothing to install with pip.
+- Node.js, for the browser checks.
+- An FMP API key, only for downloads. Save it as a one-line text file at the
+  path that `KEY_PATH` sets in `backtest/inputs/fmp_download.py`. Backtests on
+  saved data need no key.
 
-The frozen report of the original study is [results/summary-exits.txt](results/summary-exits.txt). From January 1996 to January 2026 it reports 18.01% annualized for the strategy versus 10.22% for SPY. These are historical backtest results, with no commissions. Nothing regenerates it; run the study again as a 12-month schedule from 1 January.
-
-[Methodology and limitations](docs/methodology.md) explain the universe, report lag, valuation adjustments, data issues, and exit treatment. The earlier `results/legacy/` reports are retained for reference and are not the study result.
-
-## Cache and downloads
-
-Normal backtest and website runs are offline and reuse `raw/`. No API key is required for those operations. See [raw/README.md](raw/README.md) for cache contents.
-
-Use **Update data** in the data panel to fill missing inputs and check for newer data. API credentials remain outside this project at `~/.grok/secrets/fmp_api_key` and are read only when that downloader makes a request. [tools/README.md](tools/README.md) describes the exploratory scripts; do not run them as part of normal analysis.
-
-## Version control in this environment
-
-The authoritative WSL checkout has a `.git` pointer to the preserved `.git-local/`
-history. Ordinary `git status`, `git diff` and `git commit` work there. The Windows
-runtime is a deployment, with its exact source commit in `data/deployment.json`.
-It has no second repository. The following explicit form also works in the WSL
-checkout and is required for the retained original folder's read-only `.git/` mount:
+**Run the website**
 
 ```bash
-git --git-dir=.git-local --work-tree=. status
-git --git-dir=.git-local --work-tree=. log --oneline
+git clone https://github.com/hychowah/stock-backtest.git
+cd stock-backtest
+python3 website/serve.py
 ```
 
-Use the same options for diff, add and commit. If the default Git wrapper fails with a WSL socket error, use `/usr/bin/git` with these options. Do not initialize a new repository over the saved history.
+The server listens on port 3000 (`--port` changes it) and opens your browser
+at `http://127.0.0.1:3000`. Before it starts, it prepares any stale data and
+rebuilds the page. With an empty cache it opens the data panel: choose
+**Manage backtest data → Update data** to download market data.
 
-Source and the frozen reports are versioned. The portable export in `website/dist/` is ignored. Downloaded data in `raw/` stays local to Windows and is excluded, apart from its README files. Back up the cache separately. The unused, uncommitted website Git metadata is preserved in `.git-local/website-repository-backup/`.
+Other commands:
 
-## Local builds and portable snapshots
+```bash
+python3 scripts/research.py prepare    # build the research database (no downloads)
+python3 scripts/research.py status     # show database size and price coverage
+python3 website/build.py               # rebuild the page into website/local/
+python3 website/build.py --snapshot    # write a portable export to website/dist/
+```
 
-Builds write ignored `website/local/`. `python3 website/build.py --snapshot` writes the untracked export in `website/dist/`. See [website/README.md](website/README.md#local-builds-and-portable-snapshots).
+**Windows**
+
+Run `backtest-web.cmd`, or double-click `start.cmd`. On a plain clone it runs
+the same local server with native Python. Keep the terminal open; press Ctrl+C
+to stop.
+
+The author's setup develops in WSL and deploys committed source to a separate
+native Windows runtime, which updates its data every day at 07:00 Hong Kong
+time. See [docs/workspaces.md](docs/workspaces.md).
+
+## Testing
+
+```bash
+python3 tests/run.py                 # fast tier (default)
+python3 tests/run.py --tier heavy    # slow workloads
+python3 tests/run.py --tier all      # both
+```
+
+The runner starts each `tests/test_*.py` and `tests/check-*.cjs` file in its
+own process, eight at a time (`--jobs` changes this), with a private temporary
+folder. It fails any test that touches the checkout's `data/` folder. Tests use
+small synthetic data and need no API key. GitHub Actions runs the fast tier on
+every push.
+
+To run one file, call it directly, for example `python3 tests/test_queue.py` or
+`node tests/check-queue.cjs`. After `python3 website/build.py`, also run
+`node tests/check-range.cjs` and `python3 tests/check_screener.py`.
+
+## Research results
+
+The original study bought the 50 US stocks with the highest EBITDA/EV yield at
+the start of each year, from January 1996. Its frozen result is
+[results/summary-exits.txt](results/summary-exits.txt):
+
+| 2 January 1996 to 2 January 2026 | Strategy | SPY |
+|---|---:|---:|
+| Growth of $1 | $143.88 | $18.51 |
+| Annual return (CAGR) | 18.01% | 10.22% |
+
+These are historical backtest results without trading costs. They do not
+predict future returns. The [methodology](docs/methodology.md) describes the
+universe, exits and known data limits. `results/stops/` reviews the 37 holdings
+that stopped trading early. `results/legacy/` is an earlier pass with an older
+exit rule, not the study result. To repeat the study, run a 12-month schedule
+from 1 January 1996.
+
+---
+
+© 2026 hychowah. All rights reserved.

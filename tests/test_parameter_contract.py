@@ -10,7 +10,7 @@ import unittest
 from backtest.variables import definitions as d, parameters as p
 from test_variable_definitions import definition, constant, entry, root, reference, binary, bundle
 
-# Transcribed independently from parameter-catalog.md's four direct-input tables.
+# Transcribed independently from docs/parameter-catalog.md's four direct-input tables.
 # This is deliberately not generated from parameters.py or provider capabilities.
 ORACLE = {
  'income-statement': {

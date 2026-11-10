@@ -115,7 +115,7 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  const formulaLane={scope:'s0',...exact,value:.05,valid:true};
  recorded={sector:'Energy',scalar_evidence:{scope:'s0',steps:[7,null,null,25],lanes:{s0:formulaLane,s2:formulaLane,s3:{scope:'s0',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},canonical:.3,unit:'scalar',valid:true}}}};
  await show(chain);
- assert.equal(node('scalar-evidence-summary').textContent,'Recorded EV/EBITDA yield (metric:ev_ebitda:yield) · highest first · ranks 20–40 · 4 steps. These values and downloads use original captured evidence.');
+ assert.equal(node('scalar-evidence-summary').textContent,'Recorded EV/EBITDA yield · highest first · ranks 20–40 · 4 steps. These values and downloads use original captured evidence.');
  // Plain recorded names; a scalar value's display already carries its unit.
  for(const line of ['Step 1 · Rank · Submitted original · 5% · rank 7 (kept 1–200)','Step 2 · Filter · Sector · Energy · passed',
    'Step 3 · Filter · Submitted original · 5% · passed','Step 4 · Rank · Recorded EV/EBITDA yield · 30% · rank 25 (kept 20–40)'])

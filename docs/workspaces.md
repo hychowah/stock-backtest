@@ -4,9 +4,8 @@ Edit and commit source in WSL. Run the server, saved-data preparation and full-d
 
 An earlier, pre-deployment checkout may be retained as a fallback; it is not the active development checkout. The WSL repository preserves its saved history in `.git-local`. A `.git` pointer enables ordinary Git commands. The Windows runtime has no separate Git repository.
 
-Read [AGENTS.md](../AGENTS.md#current-state-and-authorization) before changing
-shared calculation, cache, worker, API or startup contracts. A feature branch or
-linked worktree does not replace the registered deployment source.
+A feature branch or linked worktree does not replace the registered deployment
+source.
 
 ## Daily commands
 
@@ -14,7 +13,7 @@ From the WSL source checkout:
 
 ```bash
 git status
-# Edit, test and commit source through the phase workflow.
+# Edit, test and commit source.
 python3 tools/deploy.py
 python3 tools/deploy.py --start
 ```
@@ -145,7 +144,7 @@ The ignored `data/workspace.json` records `source` (the WSL path), `distro`, `ru
 
 The original folder keeps its source, history and saved data. Its old `backtest-web.cmd` can launch that retained copy explicitly. Its code predates deployment ownership. Use it as a separate fallback; do not point the new deployment target at that source repository. A rollback to another deployed revision requires that revision to contain the workspace deployment tools.
 
-The user architecture guide describes the current split.
+The architecture guide describes the current split.
 
 ## Private input copies
 
@@ -153,5 +152,5 @@ The user architecture guide describes the current split.
 root (manifest version 2; a version-1 capture with the report is refused). It has no command entry. It defers while a
 server, data job or pending publication holds ownership. A copy without its
 completion marker is unusable. The
-[faster engine summary](plans/compiled-backtest/master-plan.md) records the
-engine decisions and measured results.
+[experiment summaries](../results/experiments/README.md) record the engine
+decisions and measured results.

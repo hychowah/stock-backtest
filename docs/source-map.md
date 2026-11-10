@@ -1,4 +1,4 @@
-# Current source owners
+# Source map
 
 This map lists the current source owners.
 
@@ -11,7 +11,7 @@ This map lists the current source owners.
 | Original dated calculations; the bench-only independent reference engine and development check, which no app module imports | `backtest/engines/original/`, `backtest/engines/reference/` |
 | Cache access, process ownership, cancellation and diagnostics | `backtest/runtime/` |
 | Calculation requests, captured settings, jobs, queue, saved-backtest library and immutable result acquisition | `backtest/application/` |
-| Strategy draft, the single filter list, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `filter-picker.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
+| Strategy draft, the Filter and Rank step chain, saved restoration, held queue edits and immutable browser views | `website/browser/range.js`, `filter-picker.js`, `result-artifacts.js`, `evidence-results.js`, `saved-backtests.js`, `queue.js` |
 | Shared variable editor/picker, detached readable traces and financial-free authoring | `website/browser/variable-workspace.js`, `variable-evidence.js`, `backtest/application/variable_authoring.py`, `website/server/variables.py` |
 | Durable variable revisions, metadata and exact formula resolution | `backtest/variables/library.py`, `backtest/variables/definitions.py` |
 | Plain browser assets and standalone HTML fragments | `website/browser/` |
@@ -27,8 +27,8 @@ application and input owners. Package initializers execute no operations.
 
 ## Custom variables
 
-See the [custom-variable summary](../custom-variables/master-plan.md) for the
-contracts. These modules own the feature.
+See [custom variables](custom-variables.md) for the contracts. These modules
+own the feature.
 
 - `backtest/inputs/facts.py`: the typed facts in `research.sqlite`, the saved-file
   resolver and the book facts port. `backtest/inputs/fact_view.py`: the borrowed
@@ -42,9 +42,12 @@ contracts. These modules own the feature.
 - `backtest/variables/definitions.py`: formula validation, normalization,
   identities, unit inference and resolved dependency programs; its
   `require_program` is the one formula gate.
+- `backtest/variables/parameters.py`: the versioned parameter catalogs `/1`–`/4`
+  and their units.
 - `backtest/variables/columns.py`: the one formula evaluator, values only or
   explained, for the whole language.
-- `backtest/selection.py`: pure finite-scalar ranking and conditions.
+- `backtest/selection.py`: the ordered Filter and Rank step chain over finite
+  scalar lanes.
 - `backtest/variables/library.py`: the durable variable repository in
   `data/variable-library.sqlite`, with capture and checked restore.
 - `backtest/application/strategy_requests.py`: complete immutable strategy intent.
@@ -54,8 +57,8 @@ contracts. These modules own the feature.
   scalar evidence. `variable_coverage.py` reduces recorded-scope coverage.
   `variable_authoring.py` serves authoring without financial work.
 - `website/server/variables.py` adapts the HTTP routes. `website/browser/range.js`
-  (`StrategyDraft`) owns the draft and the filter rows. `filter-picker.js` searches
-  and chooses filter sources. `variable-workspace.js` is the shared editor.
+  (`StrategyDraft`) owns the draft and the step chain. `filter-picker.js` searches
+  and chooses step sources. `variable-workspace.js` is the shared editor.
   `evidence-results.js` and `variable-evidence.js` present stored results and
   readable traces without calculating.
 

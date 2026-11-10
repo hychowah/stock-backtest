@@ -19,7 +19,7 @@ raw/archive/*
 # Repository metadata fallback for environments with a read-only .git mount.
 .git-local/
 
-# Sites maintains its own repository metadata; project source is tracked here.
+# Nested repository metadata in website/; project source is tracked here.
 website/.git/
 
 # Local SQLite files. Saved backtests, the queue and variable library are durable.
@@ -49,9 +49,6 @@ data/website-launch-*.lock
 data/website-owner-*.lock
 data/website-update-stop-*
 
-# Browser verification snapshots and screenshots.
-.playwright-mcp/
-
 # Serialize data management and startup across local servers.
 data/website-data-*.lock
 data/website-data-*.lock.live/
@@ -73,10 +70,3 @@ data/workspace-*.json
 data/deployment*.json
 data/website-source.lock
 .deployment/
-
-# Agent session state: worktrees, local settings. Not project source.
-.claude/
-/AGENTS.local.md
-
-# Other-tool hosting metadata; not used by this project's GitHub flow.
-.openai/

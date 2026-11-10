@@ -1,12 +1,11 @@
-# FMP-backed valuation inputs
+# Parameter catalog: FMP-backed inputs
 
 Checked: 2026-11-08.
 
 The current `/4` editor exposes owner descriptions for all 57 direct inputs,
 existing-policy adapters and 33 exact named measures through the shared editor.
 Categories, search, units and supported history choices use the same semantic
-owners as execution. The [close-out summary](master-plan.md) owns the completion
-status and limits. A catalog entry does not establish installed readiness or
+owners as execution. A catalog entry does not establish installed readiness or
 observed coverage.
 
 Captured programs run through Original in Latest, fixed and random modes; a
@@ -19,7 +18,7 @@ These source capabilities establish no installed readiness or live-cache coverag
 
 This inventory maps documented fields from existing FMP routes. Include an input
 only when an existing route supplies it or an explicit calculation uses supplied
-inputs. Preserve the [versioned field contract](variable-design.md#parameters),
+inputs. Preserve the [versioned field contract](custom-variables.md#parameters),
 source meanings, original immutable definitions and financial policy. Commit
 messages retain earlier implementation states and exact verification.
 
@@ -34,8 +33,8 @@ coverage for every company or historical date, or test account-specific limits.
 The existing Full annual financial data action requests `income-statement`,
 `balance-sheet-statement` and `cash-flow-statement` with annual periods. It also
 requests `key-metrics` and `ratios`. See
-[`website/server/data_manager.py`](../../../website/server/data_manager.py).
-[`backtest/inputs/financial_inputs.py`](../../../backtest/inputs/financial_inputs.py)
+[`website/server/data_manager.py`](../website/server/data_manager.py).
+[`backtest/inputs/financial_inputs.py`](../backtest/inputs/financial_inputs.py)
 saves full statement responses, including fields not currently prepared. At the original source check, its
 validated projection included only:
 
@@ -45,7 +44,7 @@ validated projection included only:
   `totalCurrentLiabilities`, `totalDebt`.
 - Cash flow: `freeCashFlow`.
 
-Phases 8–11 add validation, conflict resolution, prepared evidence and
+Later work added validation, conflict resolution, prepared evidence and
 execution for the remaining mapped fields. A raw field
 must not become usable merely because the downloader retained it. Reuse valid
 saved responses first. Missing data stays unavailable. Downloads remain an
@@ -187,7 +186,7 @@ the existing market-cap calculation.
 These are reusable built-in variables or compatibility adapters. They are not
 additional raw ingredients. Every calculation needs its own named definition,
 required inputs and missing-data rules. Built-in ratios retain their declared
-positive-denominator rules. General division keeps the Phase 1 signed-arithmetic
+positive-denominator rules. General division keeps the signed-arithmetic
 rules and rejects zero denominators. Existing built-ins retain their exact
 arithmetic and stored rounding.
 
@@ -206,13 +205,13 @@ arithmetic and stored rounding.
 | Market cap and enterprise value | Existing dated financial adapters and report bindings in `backtest/financial/books.py`; no share-count shortcut or new EV formula |
 | Basic and diluted EPS | Documented `income-statement.eps` and existing validated `epsDiluted`; expose as built-ins with provider definitions |
 | P/S and debt/assets | Existing dated market cap / positive `revenue`; existing `totalDebt` / positive `totalAssets` |
-| Existing ratios, yields and operating spread | Reuse `backtest/financial/metrics.py`, the Phase 1 compatibility map and their existing input/denominator policies |
+| Existing ratios, yields and operating spread | Reuse `backtest/financial/metrics.py`, the built-in compatibility map and their existing input/denominator policies |
 | Historical growth and averages | Apply supported date/history operators to one underlying input; require the requested history and explicit growth rules |
 
 P/S and debt/assets have documented inputs. They still require future formula
 and preparation work. Do not advertise them as current website capabilities.
 Growth, averaging and calendar lookbacks are operations on an input. They do not
-create extra raw parameters. Quarterly and TTM remain outside the first release.
+create extra raw parameters. Quarterly and TTM data are not supported.
 
 ## Items excluded from the target inventory
 
@@ -237,15 +236,10 @@ These exclusions mean "not admitted by this check." They do not claim that FMP
 can never supply an item through another endpoint or company-specific filing.
 A later addition needs a separate verified source path and scope agreement.
 
-## Admission in later increments
+## Adding an input
 
-Keep the first provider limited to revenue, operating income, operating margin
-and EV. The current Phase 2 execution plan assigns that scope to
-`feature/custom-variables`. The broader inventory is a target for explicitly
-verified later increments, not a claim that Phase 2 already supports it.
-
-For each increment, map the chosen field to validation, prepared evidence,
-freshness and backend capabilities. Test missing values, currencies, conflicts,
+Each new input is a separate, verified increment. Map the chosen field to
+validation, prepared evidence, freshness and backend capabilities. Test missing values, currencies, conflicts,
 signs, fiscal dates and unavailable histories. Reuse complete saved responses;
 do not redownload them just to expose an additional retained field. Measure
 company/date coverage before the picker marks an input usable.

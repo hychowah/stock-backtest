@@ -1,10 +1,9 @@
-# Custom variable design contract
+# Custom variables
 
 This document states the design of the custom-variable system and the contracts
-that the source keeps. The [close-out summary](master-plan.md) states the outcome
-and limits. The [FMP source map](parameter-catalog.md) maps each direct input to
-its provider field and lists the excluded items. The code is the final authority.
-When this text and the code disagree, fix the text.
+that the source keeps. The [parameter catalog](parameter-catalog.md) maps each
+direct input to its provider field and lists the excluded items. The code is the
+final authority. When this text and the code disagree, fix the text.
 
 ## Goal and model
 
@@ -182,6 +181,9 @@ definitions. Restoring a capture never reads the registry.
 ## Ranking and filtering
 
 `backtest/application/strategy_requests.py` owns strategy intent and capture.
+The table below describes the flat version-1 shape, which stays readable. The
+website now submits version 2, an ordered chain of Filter and Rank steps; see
+[ordered strategy requests](evidence-views.md#ordered-strategy-requests).
 
 | Field | Contract |
 |---|---|
@@ -253,7 +255,15 @@ Runs and queued tests capture the complete resolved bundle, revision identities
 and display labels. A submission keeps no live lookup into the library. Editing
 or deleting a library entry cannot change a submitted test. Completed results
 keep definitions, values, labels and results. Opening an old result needs no
-evaluation, no library entry and no current catalog.
+evaluation, no library entry and no current catalog. Restoring a capture reads
+no measure registry, and a registry lookup never imports an entry into the
+library.
+
+Compatibility stays with the existing owners of admission, restoration, storage
+and export; there is no separate compatibility layer.
+`tests/test_parameter_compatibility.py` puts frozen historical captures and
+evidence through those owners. It does not test migration from older container
+schemas.
 
 ## Execution
 
@@ -288,7 +298,7 @@ shared population reads. Inspection writes nothing and builds no new fixed or
 random books.
 
 The typed facts are part of the research database;
-[the research workflow](../../research-workflow.md#prepare-once) states the
+[the research workflow](research-workflow.md#prepare-once) states the
 current research schema and daily cache versions. Older derived caches must
 rebuild. Durable records and immutable artifacts keep
 their formats; old explanation blocks open unchanged.

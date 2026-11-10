@@ -2,10 +2,8 @@
 
 This summary compares Original with the experimental engine on complete
 requests. The raw observation archives, source declarations and failure
-payloads were removed under the [records policy](../../../docs/records-policy.md).
-The retained JSON files hold the decision, the validators and the timing groups.
-See the [parallel backtest summary](../../../docs/plans/parallel-backtest/master-plan.md)
-for the final outcome.
+payloads were removed. The retained JSON files hold the decision, the validators
+and the timing groups.
 
 ## Settings
 

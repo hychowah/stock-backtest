@@ -142,7 +142,7 @@ Duplicate schedules retain separate trial numbers and capture entries.
 
 ## Explicit scalar selected-book contract 2
 
-Phase 6 Slice 2 adds `contract=2` to `evaluate` and `evaluate_into`. Omission
+`evaluate` and `evaluate_into` accept `contract=2` for scalar strategies. Omission
 retains contract 1 and all legacy arithmetic. Contract 2 uses the same reducer,
 period validation, survivor weights, compounding and CAGR calculation. Only the
 selected-holding schema differs. It replaces required `metric_yield` and
@@ -151,6 +151,6 @@ selected-holding schema differs. It replaces required `metric_yield` and
 prepared financial fields remain. No reciprocal metric is invented.
 
 This contract number is independent of application artifact 4 and bounded
-evidence codec 2. The [Phase 6 compatibility record](plans/custom-variables/master-plan.md)
+evidence codec 2. The [scalar metadata dispatch](durable-evidence.md#scalar-application-metadata-dispatch)
 describes their explicit dispatch. Legacy callers keep contract 1. No saved
 record or financial result is rewritten on reading.

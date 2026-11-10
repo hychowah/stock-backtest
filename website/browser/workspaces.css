@@ -1,5 +1,7 @@
 /* Mounted task areas share the existing owners and controls. */
 :root{background:#f5f6f2;color:#243831}
+/* The fixed status bar is 64px tall; keep content and scrolled-to rows above it. */
+html{scroll-padding-bottom:78px}
 body{padding-bottom:78px}
 main{max-width:1680px;margin-left:208px;margin-right:auto;padding:25px 32px 35px}
 #workspace-nav{position:fixed;inset:0 auto 0 0;width:208px;padding:32px 18px;background:#172e26;color:#c7d5c3;display:flex;flex-direction:column;gap:8px;z-index:6}
@@ -46,13 +48,14 @@ main>header .pill{font-size:10px}
 #schedule-stock-table td:nth-child(3),#schedule-stock-table th:nth-child(3){text-align:left}
 .holding-company{display:block;font-size:11px;font-weight:400;color:#7e8b74;margin-top:5px}
 .holding-details{text-align:left;min-width:90px}
+.holding-details[open]{width:min(360px,50vw)}
 .holding-details summary{font-size:11px;cursor:pointer}
 .holding-details dl{min-width:180px;margin:8px 0;font-size:11px}
 .holding-details dl>div{padding:6px 0;border-bottom:1px solid #e5eadd}
 .holding-details dt{font-size:10px;color:#7e8b74}
 .holding-details dd{margin:3px 0 0;overflow-wrap:anywhere}
 .holding-details button{font-size:11px;min-height:33px}
-.holding-details .step-trail{min-width:180px;margin:8px 0;padding-left:18px;font-size:11px;overflow-wrap:anywhere}
+.holding-details .step-trail{margin:8px 0;padding-left:18px;font-size:11px;line-height:1.6;overflow-wrap:break-word}
 #workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;border-top:1px solid #d5dfcd;background:#fbfcf7;box-shadow:0 -4px 20px #213c2806;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
 #workspace-statusbar button{font-size:12px;min-height:40px}
 #workspace-run-open{flex:1;border:0;background:none;text-align:left;padding:5px 0;min-width:0}

@@ -74,5 +74,3 @@ Financial companies are included. EBITDA/EV is a weak description of a bank or a
 Run the study as a custom schedule every 12 months from 1 January 1996 on the website or in the queue. It uses the saved data and does not call FMP. On a real-data copy, `python3 scripts/check.py` confirms that this run equals the independent reference engine ([development check](research-workflow.md#development-check)).
 
 To count a bankruptcy as a total loss, add the ticker and the day of the loss to `BANKRUPT` in `backtest/financial/rules.py` and rebuild the prepared data. A holding returns −100% only in a book whose window contains that day: after the entry day, through the exit day.
-
-`AGENTS.md` is the note for the next agent: which file is current, which cache to keep, and which FMP calls fail if they are too wide.
