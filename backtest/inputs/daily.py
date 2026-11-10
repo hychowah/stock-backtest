@@ -2,7 +2,9 @@
 
 A daily connection attaches the research database read-only as the schema
 'research'. Facts, sessions and company names are read from there (facts and
-book_store); the daily cache holds only the book store and its binding.
+book_store); the daily cache holds only the book store and its binding. The
+book store's valuation sums are an input to books (books.owner_values), so
+prepare() makes them current for the attached research before any book.
 
 The daily binding (metadata 'daily_inputs') names what the books were computed
 from: this cache's VERSION, the research content identity and the book
@@ -10,7 +12,7 @@ identity (research.code_identity('books')). binding() is its one reader;
 connect() admits a cache whose binding equals the current one.
 """
 from contextlib import closing
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 import json
 import sqlite3
@@ -19,13 +21,14 @@ import time
 from backtest.inputs import research as r
 from backtest.runtime import cache_access as cache_access
 from backtest.financial import books as financial_books
+from backtest.financial import rules
 from backtest.runtime import backtest_control as backtest_control
 from backtest.runtime import diagnostics
 from backtest.inputs import facts, market
 from backtest.inputs import book_store
 
 DATABASE = r.ROOT/'data'/'schedules.sqlite'
-VERSION = 13
+VERSION = 14
 SCHEMA = '''
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 ''' + book_store.SCHEMA
@@ -116,14 +119,53 @@ def _empty(path):
         db.executescript('BEGIN;'+SCHEMA+'COMMIT;')
 
 
+def _valuations(db, changes, progress):
+    """Make the valuation sums current for the attached research, in one transaction.
+
+    changes None (an empty cache) folds every company. Otherwise each company
+    refolds from its sheet cutoff (books.affected_entries), the earliest over
+    every market, with the port of its current market, so a market move keeps
+    its new rows. A cutoff on or before rules.FIRST_DAY, or a company in no
+    current market, deletes all its rows first. A later tail continues from
+    the stored state (books.valuation_days), so a rerun repeats it exactly.
+    """
+    ports=[facts.BookFacts(db,code) for code in market.MARKETS]
+    owners={symbol:port for port in ports for symbol in port.companies()}
+    if changes is None:
+        cutoffs=dict.fromkeys(owners)
+    else:
+        cutoffs={}
+        for port in ports:
+            for symbol,day in financial_books.affected_entries(changes,port).items():
+                if symbol not in cutoffs or day<cutoffs[symbol]:cutoffs[symbol]=day
+    db.execute('BEGIN IMMEDIATE')
+    try:
+        for number,(symbol,cutoff) in enumerate(sorted(cutoffs.items()),1):
+            backtest_control.checkpoint()
+            port=owners.get(symbol)
+            start=None if port is None or cutoff is None or date.fromisoformat(cutoff)<=rules.FIRST_DAY else date.fromisoformat(cutoff)
+            rows=[]
+            if port is not None and symbol in port.reported():
+                state=(0.,0.,0.,0,0,0) if start is None else book_store.valuation(db,symbol,start-timedelta(days=1))
+                rows=financial_books.valuation_days(symbol,port,start,state)
+            book_store.store_valuations(db,symbol,start,rows)
+            if number%500==0 or number==len(cutoffs):
+                progress(kind='daily',completed=number,total=len(cutoffs))
+                print(f'Valuation sums for {number}/{len(cutoffs)} companies',flush=True)
+        db.commit()
+    except BaseException:
+        db.rollback();raise
+
+
 @diagnostics.operation('prepare.daily')
 @cache_access.exclusive
 def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None, repair):
-    """Repair affected historical rows, rebuild latest, and publish the binding last.
+    """Fold the valuation sums, repair affected historical rows, rebuild latest, and publish the binding last.
 
     The caller supplies the repair writer. Changed book code or an unmatched
-    research base resets the cache. Repairs commit per sheet. Readers refuse
-    an interrupted generation until retry.
+    research base resets the cache. The sums commit before the repair, which
+    reads them; repairs commit per sheet. Readers refuse an interrupted
+    generation until retry.
     """
     started=time.perf_counter()
     diagnostics.lap('admission')
@@ -156,6 +198,8 @@ def prepare(path=DATABASE, source=r.DATABASE, *, progress=lambda **kw:None, repa
     if previous is not None and not can_repair:_empty(path)
     db=_open(path,source)
     try:
+        _valuations(db,changes if can_repair else None,progress)
+        diagnostics.lap('valuations')
         latest_count=sum(2 if code=='us' else 1 for code in latest_dates)
         number=0;total=latest_count
         if can_repair:

@@ -43,10 +43,15 @@ def num(value: object) -> float | None:
     return out
 
 
+def selectable(fiscal: date, known: date, day: date) -> bool:
+    """Whether a report can be selected on day: known before day and at most MAX_AGE old."""
+    return known < day and day - fiscal <= MAX_AGE
+
+
 def latest_statement(rows: list[dict], rebalance: date) -> dict | None:
     chosen = None
     for row in rows:
-        if row["known"] < rebalance and rebalance - row["fiscal"] <= MAX_AGE:
+        if selectable(row["fiscal"], row["known"], rebalance):
             chosen = row
     return chosen
 

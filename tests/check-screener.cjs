@@ -12,6 +12,7 @@ latestCases.push({pool:'cached',filters:[{field:'operating_yield_spread_3y',op:'
 latestCases.push({filters:[{field:'pe',op:'lt',value:20}]});
 latestCases.push({pool:'cached',filters:[{field:'roe',op:'gt',value:10},{field:'debt_equity',op:'lt',value:1}]});
 latestCases.push({filters:[{field:'market_cap',op:'gt',value:500},{field:'market_cap',op:'lt',value:500}]});
+latestCases.push({pool:'cached',filters:[{field:'ps_vs_avg_3y',op:'lt',value:1}]});
 latestCases.push(...latestCases.map(options=>({...options,selection_order:'rank_first'})));
 for(let i=0;i<latestCases.length;i++){
  const result=engine.latestScreen(dataset,latestCases[i]),expected=references.latest[i];

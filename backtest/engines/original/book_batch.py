@@ -118,6 +118,8 @@ def calculate_book(db,key,book_facts,symbols=None):
     Autocommit otherwise acquires a file read lock for every price lookup, which
     dominates native Windows runtime. Holding a transaction across several books
     would block the writer. A book is the smallest useful consistent read unit.
+    A book reads the cache's valuation sums too; the parent attaches research
+    read-only (daily.attach), so its writes lock only the cache file.
     """
     entry,pool=key[:2]
     owned=not db.in_transaction
@@ -166,8 +168,9 @@ def calculations(db,jobs,workers,on_wait,*,symbols=None):
 def repair(db,changes,emit,checkpoint):
     """Repair complete historical sheets against the parent's admitted research.
 
-    The old binding remains until daily.prepare publishes. Workers read facts
-    only; each repaired sheet commits independently and is safe to repeat.
+    The old binding remains until daily.prepare publishes. Workers only read
+    the facts and the valuation sums, which daily.prepare commits first; each
+    repaired sheet commits independently and is safe to repeat.
     """
     plans=[];total=0
     for code in market.MARKETS:

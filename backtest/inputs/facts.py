@@ -28,16 +28,17 @@ series with an isolated price spike keeps no close (stock()). Books
 (books.book) and admission (books.Screen) read the valid values through
 BookFacts. Every reader reads the facts through the 'research' schema that a
 daily connection attaches (daily.attach). The book store of the daily cache
-(backtest/inputs/book_store.py) holds the latest and dated books; the formula
-view (backtest/inputs/fact_view.py) reads the facts for formulas.
+(backtest/inputs/book_store.py) holds the latest and dated books and the
+valuation sums that books read; the formula view (backtest/inputs/fact_view.py)
+reads the facts for formulas.
 """
 from datetime import date, timedelta
 import hashlib
 import json
 import math
 
-from backtest.financial import books
-from backtest.inputs import cache_assets, financial_inputs, market
+from backtest.financial import books, rules
+from backtest.inputs import book_store, cache_assets, financial_inputs, market
 from backtest.variables import parameters
 
 MAX_HISTORY = 16384
@@ -66,6 +67,10 @@ COLUMNS = {(endpoint, field): column for column, endpoint, field in ANNUAL}
 # code, so the book identity names this list itself (research.code_identity).
 LEGACY = tuple((endpoint, tuple((field, COLUMNS[endpoint, field]) for field in fields))
                for endpoint, fields in financial_inputs.ENDPOINTS.items() if fields)
+_ENDPOINTS = {field: endpoint for endpoint, fields in LEGACY for field, _ in fields}
+# The local-session filter of foreign closes. Probe the session key; IN
+# rebuilds the full calendar for each price lookup.
+_SESSION = ' AND EXISTS (SELECT 1 FROM research.local_sessions s WHERE s.market=? AND s.day=stock_days.day)'
 
 SCHEMA = '''
 CREATE TABLE stock_days(symbol TEXT, day TEXT, adjusted, adjusted_reason TEXT, volume, volume_reason TEXT,
@@ -433,23 +438,53 @@ class BookFacts:
         day=date.fromisoformat(day) if isinstance(day,str) else day
         if self._reports is not None and self._report_day==day:
             return self._reports if symbol is None else tuple({symbol:pool[symbol]} if symbol in pool else {} for pool in self._reports)
-        if self._native_reports is None:
-            self._native_reports={}
-            for row in self.db.execute('SELECT r.symbol,r.fiscal,r.known,r.currency,r.ebitda,r.debt,r.cash,r.fiscal_cap,c.currency,r.basis FROM research.foreign_reports r JOIN research.company_markets c USING(symbol) WHERE c.market=? ORDER BY r.symbol,r.fiscal',(self.market,)):
-                self._native_reports.setdefault(row[0],[]).append(row)
-        broad={}
-        rows=self._native_reports.get(symbol,()) if symbol is not None else (row for group in self._native_reports.values() for row in group)
-        for company,fiscal,known,currency,ebitda,debt,cash,cap,quote,basis in rows:
-            if cap is None:continue
-            quote_fx,report_fx=self.fx(quote,day),self.fx(currency,day)
-            if quote_fx is None or report_fx is None:continue
-            market_cap=cap*quote_fx[1];earnings=ebitda*report_fx[1]
-            enterprise=market_cap+(debt-cash)*report_fx[1]
-            if not all(math.isfinite(v) and v>0 for v in (market_cap,earnings,enterprise)):continue
-            broad.setdefault(company,[]).append(dict(fiscal=date.fromisoformat(fiscal),known=date.fromisoformat(known),market_cap=market_cap,enterprise=enterprise,ebitda=earnings,**{'yield':earnings/enterprise},currency=currency,quote_currency=quote,fx_date=str(report_fx[0]),quote_fx_date=str(quote_fx[0]),availability_basis=basis))
+        native=self._native();broad={}
+        for company in ((symbol,) if symbol is not None else native):
+            for fiscal,known,row in native.get(company,()):
+                report=self._report(fiscal,known,row,day)
+                if report is not None:broad.setdefault(company,[]).append(report)
         result=(broad,{})
         if symbol is None:self._report_day=day;self._reports=result
         return result
+
+    def _native(self):
+        """{symbol: [(fiscal, known, row)]} of this market's saved native reports, in fiscal order."""
+        if self._native_reports is None:
+            self._native_reports={}
+            for row in self.db.execute('SELECT r.symbol,r.fiscal,r.known,r.currency,r.ebitda,r.debt,r.cash,r.fiscal_cap,c.currency,r.basis FROM research.foreign_reports r JOIN research.company_markets c USING(symbol) WHERE c.market=? ORDER BY r.symbol,r.fiscal',(self.market,)):
+                self._native_reports.setdefault(row[0],[]).append((date.fromisoformat(row[1]),date.fromisoformat(row[2]),row))
+        return self._native_reports
+
+    def _report(self,fiscal,known,row,day):
+        """One native report converted at the FX of day, as reports(day) admits it, or None."""
+        _,_,_,currency,ebitda,debt,cash,cap,quote,basis=row
+        if cap is None:return None
+        quote_fx,report_fx=self.fx(quote,day),self.fx(currency,day)
+        if quote_fx is None or report_fx is None:return None
+        market_cap=cap*quote_fx[1];earnings=ebitda*report_fx[1]
+        enterprise=market_cap+(debt-cash)*report_fx[1]
+        if not all(math.isfinite(v) and v>0 for v in (market_cap,earnings,enterprise)):return None
+        return dict(fiscal=fiscal,known=known,market_cap=market_cap,enterprise=enterprise,ebitda=earnings,**{'yield':earnings/enterprise},currency=currency,quote_currency=quote,fx_date=str(report_fx[0]),quote_fx_date=str(quote_fx[0]),availability_basis=basis)
+
+    def reported(self):
+        """The companies with a saved report in this market: the ones the valuation fold reads."""
+        return self.reports()[0].keys() if self.market=='us' else self._native().keys()
+
+    def report_at(self,symbol,day):
+        """(statement, legacy annual values of its fiscal date) of the cached-pool report a book on day selects, or None.
+
+        This equals rules.latest_statement over reports(day) and
+        legacy_annual(symbol, day) of the selected fiscal date. A foreign company
+        converts only the latest report that rules.selectable admits on day and
+        converts, and only that fiscal date's values, with the same conversions.
+        """
+        if self.market=='us':
+            statement=rules.latest_statement(self.reports()[0].get(symbol,()),day)
+            return None if statement is None else (statement,self.legacy_annual(symbol).get(str(statement['fiscal']),{}))
+        for fiscal,known,row in reversed(self._native().get(symbol,())):
+            if rules.selectable(fiscal,known,day) and (statement:=self._report(fiscal,known,row,day)) is not None:
+                return statement,self._converted(symbol,str(fiscal),self._saved_annual(symbol).get(str(fiscal),{}),day)
+        return None
 
     def cached(self):
         if self._cached is None:
@@ -464,13 +499,27 @@ class BookFacts:
     def price(self,symbol,day,forward=False,slack=None):
         """Native adjusted price and actual date, bounded by local sessions for foreign stocks."""
         operator,order=('>=','ASC') if forward else ('<=','DESC')
-        # Probe the session key; IN rebuilds the full calendar for each price lookup.
-        session='' if self.market=='us' else ' AND EXISTS (SELECT 1 FROM research.local_sessions s WHERE s.market=? AND s.day=stock_days.day)'
+        session='' if self.market=='us' else _SESSION
         args=(symbol,str(day),*((self.market,) if self.market!='us' else ()))
         row=self.db.execute(f'SELECT day,adjusted FROM research.stock_days WHERE symbol=? AND day{operator}? AND adjusted IS NOT NULL{session} ORDER BY day {order} LIMIT 1',args).fetchone()
         if row is None:return None
         result=(date.fromisoformat(row[0]),row[1])
         return result if slack is None or abs((result[0]-day).days)<=slack else None
+
+    def closes(self,symbol,start):
+        """[(day, native adjusted close)] on or after start (every day when None), in day order: the closes price() reads."""
+        session='' if self.market=='us' else _SESSION
+        args=(symbol,'' if start is None else str(start),*((self.market,) if self.market!='us' else ()))
+        return [(date.fromisoformat(day),close) for day,close in self.db.execute(
+            f'SELECT day,adjusted FROM research.stock_days WHERE symbol=? AND day>=? AND adjusted IS NOT NULL{session} ORDER BY day',args)]
+
+    def valuation(self,symbol,day):
+        """One company's running valuation sums at its last row on or before day, or zeros (book_store.valuation).
+
+        The daily cache is an input to books: daily.prepare keeps valuation_sums
+        current for the attached research before it builds any book.
+        """
+        return book_store.valuation(self.db,symbol,day)
 
     def usd_price(self,symbol,day,forward=False,slack=None):
         price=self.price(symbol,day,forward,slack)
@@ -543,18 +592,26 @@ class BookFacts:
         row=self.db.execute('SELECT year10 FROM research.market_days WHERE day<? AND year10 IS NOT NULL ORDER BY day DESC LIMIT 1',(str(day),)).fetchone()
         return None if row is None else row[0]
 
-    def legacy_annual(self,symbol,day=None):
+    def _saved_annual(self,symbol):
         if symbol not in self._annual:self._annual[symbol]=legacy_annual(self.db,symbol)
-        if self.market=='us':return self._annual[symbol]
+        return self._annual[symbol]
+
+    def _converted(self,symbol,fiscal,values,day):
+        """The legacy values of one fiscal date converted at day: only the fields known before day."""
+        converted={}
+        for field,value in values.items():
+            info=self.annual_metadata(symbol,_ENDPOINTS[field],fiscal)
+            if info is None or info['known']>=str(day):continue
+            number=self.convert(value,info['currency'],day)
+            if number is not None:converted[field]=number
+        return converted
+
+    def legacy_annual(self,symbol,day=None):
+        annual=self._saved_annual(symbol)
+        if self.market=='us':return annual
         if day is None:raise ValueError('Foreign annual values require a context date.')
         result={}
-        endpoint_fields={field:endpoint for endpoint,fields in LEGACY for field,_ in fields}
-        for fiscal,values in self._annual[symbol].items():
-            converted={}
-            for field,value in values.items():
-                info=self.annual_metadata(symbol,endpoint_fields[field],fiscal)
-                if info is None or info['known']>=str(day):continue
-                number=self.convert(value,info['currency'],day)
-                if number is not None:converted[field]=number
+        for fiscal,values in annual.items():
+            converted=self._converted(symbol,fiscal,values,day)
             if converted:result[fiscal]=converted
         return result

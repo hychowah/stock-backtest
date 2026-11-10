@@ -403,7 +403,8 @@ run("StrategyDraft.reset();switchMode('latest')");
 el('add-filter').handlers.click();
 assert(el('strategy-steps').innerHTML.includes('id="filter-search-new"'));assert.equal(run('StrategyDraft.flat().filters.length'),0);
 const builtinChoices=run("stepChoices('new').groups.find(group=>group.label==='Built-in values').options");
-for(const field of ['pe','pb','fcf','fcf_yield','profit_margin','operating_yield_spread_3y','peg','roe','current_ratio','interest_coverage','debt_equity']) {
+for(const field of ['pe','pb','ps','fcf','fcf_yield','profit_margin','operating_yield_spread_3y','peg','roe','current_ratio','interest_coverage','debt_equity',
+ ...['pe','ps','pb'].flatMap(key=>[3,5].flatMap(years=>[key+'_avg_'+years+'y',key+'_vs_avg_'+years+'y']))]) {
  const option=builtinChoices.find(item=>item.value.id==='filter:'+field);
  assert(option,'Missing financial filter '+field);assert.equal(!!option.disabled,!prepared.filter_catalog[field].available);
 }

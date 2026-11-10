@@ -68,7 +68,7 @@ class StrategyTests(unittest.TestCase):
 
     def test_builtin_descriptors_preserve_independent_pairs_and_filter_scales(self):
         items = {item['id']: item for item in s.builtin_catalog()}
-        self.assertEqual(len(items), 23)
+        self.assertEqual(len(items), 36)
         for name in ('ev_ebitda', 'ev_ebitda_3y'):
             for lane in ('yield', 'multiple'):
                 self.assertEqual(items['metric:' + name + ':' + lane]['storage'],

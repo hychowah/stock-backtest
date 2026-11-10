@@ -7,12 +7,14 @@ one pool of a book from prepared facts through the facts port
 (facts.BookFacts); daily preparation writes the latest book and
 schedules.prepare_period and the book workers write the dated books with it.
 owner_values() is the per-company owner-value composition of a book row and
-of a formula context without a stored book.
+of a formula context without a stored book. valuation_days() folds the
+running valuation sums that daily preparation stores and owner_values reads.
 Price lookups return (date, positive dividend-adjusted close) or None within
 the given tolerance. Storage, calendar planning and SQL
 insertion stay outside this module. A change to book policy must pass the development check
 (python3 scripts/check.py) on the real-data bench.
 """
+from bisect import bisect_right
 import math
 from datetime import timedelta
 
@@ -113,6 +115,11 @@ def ebitda_yield_and_multiple(ebitda, enterprise_value):
     return ebitda / enterprise_value, enterprise_value / ebitda
 
 
+def rescaled_cap(statement, fiscal_px, entry_px):
+    """The report's market cap rescaled from the fiscal price to the entry price: admit() and valuation_days()."""
+    return statement['market_cap']*(entry_px[1]/fiscal_px[1])
+
+
 def admit(statement, day, lookup, slack):
     """(reason, valuation) of the entry valuation, the one valuation gate.
 
@@ -127,7 +134,7 @@ def admit(statement, day, lookup, slack):
     entry_px=lookup(day,True,slack)
     if fiscal_px is None or entry_px is None:
         return 'MISSING_PRICE',None
-    cap=statement['market_cap']*(entry_px[1]/fiscal_px[1])
+    cap=rescaled_cap(statement,fiscal_px,entry_px)
     ev=cap+(statement['enterprise']-statement['market_cap'])
     if ev<=0 or cap<=0:
         return 'NONPOSITIVE_VALUATION',None
@@ -259,6 +266,9 @@ def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
     annual values and ten_year, the 10-year yield in percent on or before day
     (None omits its spread). book() and a formula context without a stored
     book (measure_observations.dated) call it; prices are read on or before day.
+    The daily cache is an input here: the valuation averages read the
+    valuation_sums table (facts.valuation), which daily.prepare keeps current
+    for the attached research before it builds any book.
     """
     yield_value,multiple=ebitda_yield_and_multiple(ebitda,ev)
     observation=dict(fiscal=fiscal,market_cap=cap,enterprise_value=ev,ev_ebitda=multiple,ebitda_yield=yield_value)
@@ -269,7 +279,41 @@ def owner_values(symbol, fiscal, day, cap, ev, ebitda, facts, ten_year):
     def lookup(when,forward,slack):
         return facts.price(symbol,when,forward,slack) if getattr(facts,'market','us')=='us' else facts.usd_price(symbol,when,forward,slack)
     annual=facts.legacy_annual(symbol) if getattr(facts,'market','us')=='us' else facts.legacy_annual(symbol,day)
-    return yield_value,multiple,pairs,metrics.filter_values(observation,pairs,day,lookup,annual,ten_year)
+    return yield_value,multiple,pairs,metrics.filter_values(observation,pairs,day,lookup,annual,ten_year,
+                                                            lambda when:facts.valuation(symbol,when))
+
+
+def valuation_days(symbol, facts, start, sums):
+    """[(day, earnings, sales, equity, earnings_days, sales_days, equity_days)]: one company's running valuation sums.
+
+    Each priced day on or after start (every day when None) adds the signed
+    daily yields (metrics.valuation_yields) of the cached-pool report that a
+    book selects that day (facts.report_at), at the cap that admit() gives
+    there, and counts them. A day without a report, a fiscal price within 7
+    days or a positive finite cap, or without any yield, adds no row. sums is
+    the state before start. The sums add in day order from +0.0, so a tail that
+    continues from the stored state equals a cold fold bit for bit; daily
+    repairs refold from the sheet cutoffs (affected_entries).
+    """
+    closes=facts.closes(symbol,None if start is None else start-run.MAX_AGE-timedelta(days=7))
+    days=[day for day,_ in closes]
+    total=list(sums);rows=[]
+    for day,close in closes:
+        if start is not None and day<start:continue
+        found=facts.report_at(symbol,day)
+        if found is None:continue
+        statement,values=found
+        i=bisect_right(days,statement['fiscal'])-1
+        if i<0 or (statement['fiscal']-days[i]).days>7:continue
+        cap=rescaled_cap(statement,closes[i],(day,close))
+        if not (cap>0 and math.isfinite(cap)):continue
+        yields=metrics.valuation_yields(cap,values)
+        if all(value is None for value in yields):continue
+        for k,value in enumerate(yields):
+            if value is not None:
+                total[k]+=value;total[3+k]+=1
+        rows.append((str(day),*total))
+    return rows
 
 
 def benchmark_return(entry_price, exit_price):

@@ -22,6 +22,9 @@ with report dates, actual entry/price, valuation and catalog-mapped metric/filte
 columns. NULL means unavailable. REAL owner values retain existing rounding and
 zero normalization. Typed research facts and formula outputs still preserve
 signed zero. There are no separate metric/filter tables or stored holding exits.
+`valuation_sums` holds each company's running sums of daily E/P, S/P and B/P
+and their day counts, one row per priced day with a yield. Books read them for
+the valuation averages, so preparation brings them up to date before any book.
 
 A daily connection attaches research read-only. Latest requires listed companies
 and an exact-session price. Historical sheets allow four days of entry slack;

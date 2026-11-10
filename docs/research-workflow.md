@@ -76,7 +76,7 @@ documents link here.
   raw-file signature (`inputs`), each price file's size and time (`prices`),
   and the identity (below).
 
-The daily cache, `data/schedules.sqlite` (version 13), holds compact entry
+The daily cache, `data/schedules.sqlite` (version 14), holds compact entry
 sheets in `books`, `book_pools` and `book_rows`. The header names an entry
 session, its latest/historical policy and its candidate count. Pools share
 one handle. `book_pools` marks complete pools, including empty ones. One row
@@ -86,6 +86,12 @@ EBITDA, spreads, metric pairs and filter values. Catalog mappings in
 NULL means unavailable. Stored owner lanes retain REAL rounding and zero
 normalization; typed research facts and formula outputs preserve signed zero.
 The version-11 metric/filter tables and stored exit/return/status fields are gone.
+
+The daily cache also holds `valuation_sums`: for each company and priced day
+with a yield, the running sums of daily E/P, S/P and B/P and their day counts
+(`books.valuation_days`). Books read them for the valuation averages, so the
+daily cache is a book input: preparation makes the sums current for the
+attached research before it builds or repairs any book.
 
 `book_store` owns the schema, writer and row/lane readers. SQL selection reads
 its compact columns directly. A daily connection (`daily.connect`) attaches
@@ -196,7 +202,8 @@ machine had other load. A cold build took 176 s (research 172 s, daily 3 s).
 trials, 2013–2026, 1,344 periods, ranks 1–30, the cached pool, three built-in
 conditions and one custom variable) took 326.6 s with its 1,326 books
 computed and 62.7 s with them saved. These are observed timings, not
-guarantees. See also `results/experiments/performance.json`
+guarantees. They predate daily cache version 14, which adds the valuation
+sums and their sheet lanes. See also `results/experiments/performance.json`
 for older measurements of a smaller January-only database.
 
 The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot supply a complete top-100 book. The wider pool also has incomplete price coverage of the universe. The engine reports insufficient matches instead of claiming 100 names in every period.
@@ -299,7 +306,10 @@ remain independent.
 Sheet repair. Research records each company's earliest changed price or report
 date, plus shared rate, FX and session changes. With matching book code and the
 saved research base, preparation recalculates only affected company rows in
-historical cached sheets. US statement changes refresh all US candidate counts
+historical cached sheets. First, in one transaction, it refolds each affected
+company's valuation sums from the same cutoff, the earliest over all markets,
+with the company's current market. The sums add in day order from zero, so a
+refold that continues from the stored sums equals a cold build bit for bit. US statement changes refresh all US candidate counts
 and ranks from statements alone. Affected legacy pools rebuild on demand.
 Removed sessions lose their sheets. Repairs commit per sheet; latest rebuilds
 and the new binding commits last. An interruption keeps the old binding, which
@@ -594,7 +604,7 @@ same metric. Missing values fail only conditions that require those values.
 
 The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
 market cap, enterprise value, and trailing 1-year and 3-year returns. Additional
-financial filters include P/E, P/B, free cash flow amount/yield, price/FCF, net
+financial filters include P/E, P/S, P/B, free cash flow amount/yield, price/FCF, net
 profit margin, historical PEG, ROE, current ratio, interest coverage and debt/equity.
 These use saved annual statement inputs. Choose **Manage backtest data →
 Update data** to get their inputs and prepare them automatically. Changing filters makes no
@@ -607,6 +617,16 @@ calendar anniversary, with a seven-calendar-day tolerance at each endpoint.
 A leap-day anniversary clamps to 28 February. Return values use percent units;
 market cap and EV use millions of dollars. Return filters never use the later
 holding-period return. The same calculations serve dated books.
+
+The valuation averages are **P/E, P/S and P/B 3-year and 5-year averages** and
+each current multiple **vs its average** (current ÷ average; below 1 is
+cheaper than usual). On each priced day, the daily yield is net income,
+revenue or equity of the report a book selects that day, divided by that day's
+rescaled market cap; a loss counts with its sign. The average multiple is
+1 ÷ the mean daily yield over the priced days after the calendar anniversary
+(leap day clamps to 28 February), through the screening date. It needs a
+yield on or before the anniversary and a positive mean. A legacy-pool row uses
+the same history with its own current multiples.
 
 Python screens and schedule APIs accept `filters`, for example:
 
@@ -964,7 +984,7 @@ The legacy annual values (`financial_inputs.ENDPOINTS`, read through
 `facts.legacy_annual`) are the eligible numerical inputs. The raw cache retains
 the other fields for future metric preparation. Selected annual
 inputs must match the report selected by the original eligibility rules. No newer
-report fills an older report's missing fields. P/E and P/B use screen-date market
+report fills an older report's missing fields. P/E, P/S and P/B use screen-date market
 cap. ROE uses average positive equity from the selected and prior fiscal years.
 PEG divides P/E by three-year diluted EPS CAGR in percentage points; it requires
 four consecutive positive annual EPS values and positive growth. Ratios require

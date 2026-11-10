@@ -1,4 +1,4 @@
-"""Compact entry sheets in the daily cache; one owner for their schema and reads.
+"""Compact entry sheets and valuation sums in the daily cache; one owner for their schema and reads.
 
 Historical sheets share an entry across every exit. Latest uses a separate
 header because its listed/exact-session admission differs. Pool completion
@@ -6,6 +6,13 @@ commits with the rows, including empty pools. A book id is an operation-local
 handle; saved owner_scope labels never look up a future cache generation.
 Stored owner numbers retain REAL rounding and zero normalization. Typed
 research facts and formula outputs keep their existing signed-zero semantics.
+
+valuation_sums holds each company's running sums of daily E/P, S/P and B/P
+and their day counts (books.valuation_days), one row per priced day with a
+yield. It is an input to books: daily.prepare keeps it current for the attached
+research before any book is built. The sums add in day order from +0.0, so a
+REAL column keeps them exactly and a tail that continues from the stored state
+equals a cold fold bit for bit.
 """
 from backtest.financial import metrics as catalog
 
@@ -21,7 +28,10 @@ CREATE TABLE book_rows(book INTEGER, pool TEXT, symbol TEXT, candidate_rank INTE
  entry TEXT, price REAL, market_cap REAL, enterprise_value REAL, ebitda REAL, ebitda_yield REAL,
  ev_ebitda REAL, spread REAL,""" + ','.join(column + ' REAL' for column in LANES) + """,
  PRIMARY KEY(book,pool,symbol)) WITHOUT ROWID;
+CREATE TABLE valuation_sums(symbol TEXT, day TEXT, earnings REAL, sales REAL, equity REAL,
+ earnings_days INTEGER, sales_days INTEGER, equity_days INTEGER, PRIMARY KEY(symbol,day)) WITHOUT ROWID;
 """
+# The sheet tables.
 TABLES = ('books', 'book_pools', 'book_rows')
 ROWS = TABLES[2]
 DATED = ('pool', 'symbol', 'candidate_rank', 'fiscal', 'entry', 'price', 'market_cap', 'enterprise_value', 'ebitda',
@@ -170,6 +180,20 @@ def lanes(db, book, pool, metrics=None, fields=None):
 def market_caps(db, book, pool):
     """Stored entry caps for owner contexts; no fallback."""
     return dict(db.execute('SELECT symbol,market_cap FROM book_rows WHERE book=? AND pool=?', (book, pool)))
+
+
+def valuation(db, symbol, day):
+    """(earnings, sales, equity, earnings_days, sales_days, equity_days) at the last row on or before day, or zeros."""
+    row = db.execute('SELECT earnings,sales,equity,earnings_days,sales_days,equity_days FROM valuation_sums '
+                     'WHERE symbol=? AND day<=? ORDER BY day DESC LIMIT 1', (symbol, str(day))).fetchone()
+    return (0., 0., 0., 0, 0, 0) if row is None else tuple(row)
+
+
+def store_valuations(db, symbol, start, rows):
+    """Replace one company's sums on or after start (all when None) with rows (books.valuation_days)."""
+    db.execute('DELETE FROM valuation_sums WHERE symbol=?' + ('' if start is None else ' AND day>=?'),
+               (symbol,) if start is None else (symbol, str(start)))
+    db.executemany('INSERT INTO valuation_sums VALUES(?,?,?,?,?,?,?,?)', ((symbol, *row) for row in rows))
 
 
 def counts(db):

@@ -161,6 +161,15 @@ class ProjectionTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path)) as db:
             return db.execute('SELECT COUNT(*) FROM book_pools JOIN books USING(book) WHERE latest=0').fetchone()[0]
 
+    def stale_sums(self):
+        """Write a valuation-sum row of a company that no fold writes."""
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute("INSERT OR REPLACE INTO valuation_sums VALUES('GONE','2015-01-02',1.,1.,1.,1,1,1)")
+
+    def has_stale_sums(self):
+        with closing(sqlite3.connect(self.path)) as db:
+            return db.execute("SELECT COUNT(*) FROM valuation_sums WHERE symbol='GONE'").fetchone()[0] > 0
+
     def copies(self, context, modules):
         """Point each module's source file at a private copy under the fixture root; return the copies."""
         copies = []
@@ -202,12 +211,15 @@ class ProjectionTests(unittest.TestCase):
             for module, path in zip(modules, copies):
                 with self.subTest(book_code=module.__name__):
                     self.assertEqual(self.dated(), 2)
+                    self.stale_sums()
                     rebuilds = path in research.code_sources('facts')
                     research_stamp = self.source.stat().st_mtime_ns
                     self.edit(path)
                     with self.assertRaisesRegex(ValueError, 'changed'): daily.connect(self.path, self.source)
                     self.prepare()
                     self.assertEqual(self.saved(), 0)
+                    # The valuation sums are book inputs: the reset empties and refolds them.
+                    self.assertFalse(self.has_stale_sums())
                     # Only fact-row code also rebuilds research.
                     self.assertEqual(self.source.stat().st_mtime_ns != research_stamp, rebuilds)
 

@@ -2,7 +2,7 @@
 import sys as _root_sys
 from pathlib import Path as _RootPath
 _root_sys.path.insert(0,str(_RootPath(__file__).resolve().parents[1]))
-from backtest.inputs import book_store, facts
+from backtest.inputs import book_store, daily, facts
 from backtest.financial import books, metrics
 from backtest.runtime import backtest_control
 from datetime import date
@@ -51,8 +51,8 @@ class BookBatchTests(unittest.TestCase):
         folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
         path=Path(folder.name)/'daily.sqlite'
         db=sqlite3.connect(path);self.db.backup(db);db.row_factory=sqlite3.Row
-        # Writable, so a test can hold an input change open; workers attach it read-only.
-        db.execute('ATTACH DATABASE ? AS research',(str(self.research),))
+        # Research is read-only, as in a daily connection: a trial write locks only the cache.
+        daily.attach(db,self.research)
         self.addCleanup(db.close)
         return db,path
 
@@ -179,7 +179,7 @@ class BookBatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):r.run(self.db,invalid,workers=1)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM books').fetchone()[0],0)
         db,path=self.file_copy()
-        db.execute("UPDATE research.companies SET name='Pending edit' WHERE symbol='A'")
+        db.execute("INSERT INTO metadata VALUES('pending','edit')")
         with self.assertRaisesRegex(ValueError,'Commit input'):r.run(db,config,workers=2)
         db.rollback()
         with self.assertRaisesRegex(ValueError,'changed'):b.open_reader(path,self.research,'different generation')
@@ -292,7 +292,9 @@ if __name__=='__main__':
             deadline=time.monotonic()+5
             while alive(worker) and time.monotonic()<deadline:time.sleep(.05)
             self.assertFalse(alive(worker),'Read-only worker outlived its launcher')
-            with db:db.execute("UPDATE research.companies SET name='Reusable after shutdown' WHERE symbol='A'")
+            # Both files the worker read are writable again.
+            self.db.research.execute("UPDATE companies SET name='Reusable after shutdown' WHERE symbol='A'")
+            with db:db.execute("INSERT INTO metadata VALUES('reusable','after shutdown')")
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
         finally:
             if parent.poll() is None:parent.kill();parent.wait(timeout=5)

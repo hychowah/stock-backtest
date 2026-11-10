@@ -11,9 +11,10 @@ from pathlib import Path as _TestPath
 import sys as _test_sys
 _test_sys.path.insert(0, str(_TestPath(__file__).resolve().parents[1]))
 
+from bisect import bisect_right
 from collections import Counter
 from contextlib import closing
-from datetime import date
+from datetime import date, timedelta
 import json
 import math
 import sqlite3
@@ -33,6 +34,13 @@ def exact(rows):
 def companies(db):
     """The saved companies with annual reports, in symbol order."""
     return [row[0] for row in db.execute('SELECT DISTINCT symbol FROM statements ORDER BY symbol')]
+
+
+def fold(db):
+    """Write every company's valuation sums into db's book store, as a cold daily preparation does."""
+    port = facts.BookFacts(db)
+    for symbol in port.reported():
+        book_store.store_valuations(db, symbol, None, books.valuation_days(symbol, port, None, (0., 0., 0., 0, 0, 0)))
 
 
 def configure(inputs):
@@ -77,9 +85,12 @@ class BookTests(unittest.TestCase):
         cls.inputs = PreparedInputs(configure=configure)
         cls.research = sqlite3.connect(cls.inputs.source)
         cls.research.row_factory = sqlite3.Row
-        # The facts readers read the research schema that a daily connection attaches.
+        # The facts readers read the research schema that a daily connection attaches;
+        # books also read the valuation sums of the book store.
         cls.attached = sqlite3.connect(':memory:', uri=True)
         daily.attach(cls.attached, cls.inputs.source)
+        cls.attached.executescript(book_store.SCHEMA)
+        fold(cls.attached)
         cls.daily = sqlite3.connect(cls.inputs.path)
         cls.daily.row_factory = sqlite3.Row
 
@@ -193,7 +204,7 @@ class BookTests(unittest.TestCase):
                              [('2015-01-02',0),('2015-01-02',1)])
             self.assertEqual(db.execute('SELECT COUNT(*) FROM book_pools').fetchone()[0],3)
             self.assertEqual({row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")},
-                             {'books','book_pools','book_rows'})
+                             {*book_store.TABLES,'valuation_sums'})
 
     def test_compact_lanes_keep_missing_values_and_real_zero_semantics(self):
         with closing(sqlite3.connect(':memory:')) as db:
@@ -210,6 +221,140 @@ class BookTests(unittest.TestCase):
             self.assertEqual(math.copysign(1.,values['profit_margin'][symbol]),1.)
             self.assertEqual(db.execute('SELECT f_pe FROM book_rows WHERE book=? AND symbol=?',
                                        (number,symbol)).fetchone()[0],None)
+
+
+# Company V, 2008-2016: weekday prices of 8, 16 or 32 and reports of powers of
+# two, so every daily yield and running sum is exact. Annual reports on 30 June
+# (a weekend in 2012 and 2013); 2009, 2010 and 2013 are loss years, 2012 has no
+# equity and the 2015 report is below the legacy cap floor.
+FIRST, LAST = date(2008, 1, 1), date(2016, 10, 20)
+DAYS = [FIRST + timedelta(days=n) for n in range((LAST - FIRST).days + 1) if (FIRST + timedelta(days=n)).weekday() < 5]
+YEARS = range(2008, 2016)
+INCOME = {2008: 4, 2009: -12, 2010: -12, 2011: 2, 2012: 6, 2013: -2, 2014: 4, 2015: 4}
+VALUATION_KEYS = [f'{key}_{kind}_{years}y' for key in ('pe', 'ps', 'pb') for kind in ('avg', 'vs_avg') for years in (3, 5)] + ['ps']
+
+
+def close(day):
+    return (8., 16., 32.)[day.toordinal() % 3]
+
+
+def report_cap(year):
+    return 2.**26 if year == 2015 else 2.**27
+
+
+def annual(year):
+    """Net income, revenue and equity (None: not reported) of one fiscal year."""
+    return 2.**22 * INCOME[year], 2.**24 * (year - 2005), None if year == 2012 else 2.**25 * (year - 2006)
+
+
+def valuation_history(inputs):
+    raw = research.RAW
+    (raw / 'universe.json').write_text(json.dumps([dict(symbol='V', name='Valuation V', exchange='NYSE', sector='Energy', listed=True)]))
+    for path in (raw / 'px').glob('*.json'):
+        path.unlink()
+    (raw / 'px' / 'V.json').write_text(json.dumps(dict(div=[dict(date=str(day), adjClose=close(day)) for day in DAYS])))
+    (raw / 'metrics.jsonl').write_text(json.dumps(dict(symbol='V', rows=[dict(
+        date=f'{year}-06-30', marketCap=report_cap(year), enterpriseValue=2.**28, evToEBITDA=8., reportedCurrency='USD')
+        for year in YEARS])) + '\n')
+    research.financial_inputs.publish(raw, 'V', 'income-statement', [dict(
+        date=f'{year}-06-30', reportedCurrency='USD', netIncome=annual(year)[0], revenue=annual(year)[1]) for year in YEARS],
+        {}, raw / 'coverage.json')
+    research.financial_inputs.publish(raw, 'V', 'balance-sheet-statement', [dict(
+        date=f'{year}-06-30', reportedCurrency='USD', totalStockholdersEquity=annual(year)[2]) for year in YEARS if year != 2012],
+        {}, raw / 'coverage.json')
+    (raw / 'spy-div.json').write_text(json.dumps([dict(date=str(day), adjClose=100.) for day in DAYS]))
+    (raw / 'treasury.json').write_text(json.dumps([dict(date=str(day), month3=2., year10=3.) for day in DAYS]))
+    research.signature.return_value = dict(fixture='valuation-averages')
+
+
+def fiscal_close(year):
+    """The last priced day on or before the fiscal date, within 7 days."""
+    fiscal = date(year, 6, 30)
+    day = DAYS[bisect_right(DAYS, fiscal) - 1]
+    return day if (fiscal - day).days <= 7 else None
+
+
+def selected(day, legacy=False):
+    """The fiscal year a book on day selects: known 90 days after the fiscal date, at most 800 days old."""
+    found = [year for year in YEARS if date(year, 6, 30) + timedelta(days=90) < day <= date(year, 6, 30) + timedelta(days=800)
+             and not (legacy and report_cap(year) < rules.MIN_MARKET_CAP)]
+    return found[-1] if found else None
+
+
+def expected(day, legacy=False):
+    """P/S and the averages and relatives of V at day, by brute force over every daily yield."""
+    yields = {}
+    for when in DAYS:
+        year = selected(when)
+        if year is not None:
+            cap = report_cap(year) * (close(when) / close(fiscal_close(year)))
+            yields[when] = [None if value is None else value / cap for value in annual(year)]
+    year = selected(day, legacy)
+    cap = report_cap(year) * (close(day) / close(fiscal_close(year)))
+    current = {key: cap / value for key, value in zip(('pe', 'ps', 'pb'), annual(year)) if value is not None and value > 0}
+    result = dict(ps=current['ps'])
+    for years in (3, 5):
+        start = date(day.year - years, day.month, 28) if (day.month, day.day) == (2, 29) else day.replace(year=day.year - years)
+        for k, key in enumerate(('pe', 'ps', 'pb')):
+            window = [found[k] for when, found in yields.items() if start < when <= day and found[k] is not None]
+            if window and any(found[k] is not None for when, found in yields.items() if when <= start):
+                mean = math.fsum(window) / len(window)
+                if mean > 0:
+                    result[f'{key}_avg_{years}y'] = 1 / mean
+                    if key in current:
+                        result[f'{key}_vs_avg_{years}y'] = current[key] / (1 / mean)
+    return result
+
+
+class ValuationTests(unittest.TestCase):
+    """The daily-average valuation multiples of a book row, through daily preparation and books.book."""
+    @classmethod
+    def setUpClass(cls):
+        cls.inputs = PreparedInputs(configure=valuation_history)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.inputs.close()
+
+    def values(self, day, pool, port):
+        book = books.book(day, pool, port)
+        return {key: value for symbol, key, value in book['filters'] if key in VALUATION_KEYS}, \
+            next(row[2] for row in book['rows'] if row[0] == 'V')
+
+    def test_averages_and_relatives_equal_a_brute_force_over_exact_daily_yields(self):
+        with closing(daily.connect()) as db:
+            port = facts.BookFacts(db)
+            found = {}
+            # A negative 3-year mean and a short 5-year history; a loss year; a leap day; the latest session.
+            for day in (date(2011, 10, 3), date(2014, 1, 2), date(2016, 2, 29), LAST):
+                with self.subTest(day=day):
+                    found[day], fiscal = self.values(day, 'cached', port)
+                    self.assertEqual(fiscal, f'{selected(day)}-06-30')
+                    self.assertEqual(found[day], expected(day))
+            self.assertEqual(set(found[date(2011, 10, 3)]), {'ps', 'ps_avg_3y', 'pb_avg_3y', 'ps_vs_avg_3y', 'pb_vs_avg_3y'})
+            self.assertIn('pe_avg_3y', found[date(2014, 1, 2)])
+            self.assertNotIn('pe_vs_avg_3y', found[date(2014, 1, 2)])
+            self.assertEqual(set(found[date(2016, 2, 29)]), set(VALUATION_KEYS))
+            leap = found[date(2016, 2, 29)]
+            # A legacy row reads the same cached-pool history with its own report and multiples.
+            legacy, fiscal = self.values(date(2016, 2, 29), 'legacy', port)
+            self.assertEqual(fiscal, '2014-06-30')
+            self.assertEqual(legacy, expected(date(2016, 2, 29), legacy=True))
+            self.assertEqual({key: legacy[key] for key in VALUATION_KEYS if '_avg_' in key and '_vs_' not in key},
+                             {key: leap[key] for key in VALUATION_KEYS if '_avg_' in key and '_vs_' not in key})
+            self.assertNotEqual(legacy['pe_vs_avg_3y'], leap['pe_vs_avg_3y'])
+            # The latest book that daily preparation stored has the same values.
+            _, lanes = book_store.lanes(db, book_store.open_book(db), 'cached', fields=VALUATION_KEYS)
+            self.assertEqual({key: values['V'] for key, values in lanes.items() if 'V' in values}, expected(LAST))
+
+    def test_the_relative_is_the_current_multiple_over_its_average(self):
+        with closing(daily.connect()) as db:
+            port = facts.BookFacts(db)
+            book = books.book(date(2016, 2, 29), 'cached', port)
+            values = {key: value for symbol, key, value in book['filters']}
+            for key in ('pe', 'ps', 'pb'):
+                for years in (3, 5):
+                    self.assertEqual(values[f'{key}_vs_avg_{years}y'], values[key] / values[f'{key}_avg_{years}y'])
 
 
 class Facts:

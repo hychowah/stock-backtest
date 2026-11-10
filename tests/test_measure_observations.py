@@ -9,9 +9,10 @@ import sqlite3
 import unittest
 from unittest.mock import Mock, patch
 from backtest import measure_observations as bridge
+from backtest.engines.original import schedules
 from backtest.financial import books, metrics, rules
 from backtest.inputs import book_store, daily, facts, research
-from prepared_inputs_fixture import PreparedInputs
+from prepared_inputs_fixture import PreparedInputs, history
 import test_annual_observations as annual
 from test_annual_observations import field, formulas, values, root
 
@@ -166,7 +167,7 @@ class OwnerExtractionTests(unittest.TestCase):
 
 
 class Port:
-    """A facts port (facts.BookFacts) of company A: reports, legacy annual values, prices and a 2% 10-year yield."""
+    """A facts port (facts.BookFacts) of company A: reports, legacy annual values, prices, a 2% 10-year yield and no valuation sums."""
     def __init__(self, reports, financials, price):
         self.rows, self.financials, self.quote, self.calls, self.years = reports, financials, price, [], []
 
@@ -183,6 +184,9 @@ class Port:
     def ten_year(self, day):
         self.years.append(day)
         return 2.
+
+    def valuation(self, symbol, day):
+        return 0., 0., 0., 0, 0, 0
 
 
 class DatedOwnerTests(unittest.TestCase):
@@ -247,6 +251,25 @@ class PreparedTransportTests(unittest.TestCase):
         with inputs.view() as view, patch.object(bridge, 'dated', side_effect=AssertionError('fallback')):
             self.assertEqual(view.admit(roots)[0]['admitted'], True)
             self.assertEqual(values(program, view, roots), [[(None, 'PREPARED_MEASURE_CONTEXT_UNAVAILABLE')]])
+
+    def test_dated_owner_values_equal_the_stored_lanes_of_a_dated_book(self):
+        inputs = self.prepared(history(3, 2010, 2015))
+        day = date(2015, 3, 2)
+        with closing(daily.connect()) as db, db:
+            ids = {pool: schedules.prepare_period(db, day, pool, facts.BookFacts(db)) for pool in ('legacy', 'cached')}
+        with inputs.view() as view, closing(daily.connect()) as db:
+            compared = set()
+            for pool, book in ids.items():
+                _, lanes = book_store.lanes(db, book, pool)
+                for symbol in sorted({symbol for values in lanes.values() for symbol in values}):
+                    [decision] = view.admit([root(symbol, pool, 'historical', str(day))])
+                    anchor = rules.latest_statement(view.reports(symbol, pool), day)
+                    owner = bridge.dated(view, decision, dict(date=str(day)), anchor, lambda: None)
+                    stored = {field: values[symbol] for field, values in lanes.items() if symbol in values}
+                    self.assertEqual(owner['evidence']['filters'], stored)
+                    compared |= set(stored)
+        # The fixture has revenue only: P/S and its averages and relatives.
+        self.assertLessEqual({'ps', 'ps_avg_3y', 'ps_avg_5y', 'ps_vs_avg_3y', 'ps_vs_avg_5y'}, compared)
 
     def test_delayed_stock_entry_and_selected_treasury_dates(self):
         def configure(inputs):

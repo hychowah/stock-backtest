@@ -90,7 +90,11 @@ class FrozenLegacyTests(unittest.TestCase):
                     self.assertEqual(row['return_value'], 0.1)
                     # The frozen fixture stored literal 0.1; returns now close from fixture prices 10 → 11.
                     row['return_value'] = 11 / 10 - 1
-        self.assertEqual(replay(), expected)
+        actual = replay()
+        # P/S and the valuation averages came later and have no frozen rows.
+        later = {'ps', *(f'{key}_{kind}_{years}y' for key in ('pe', 'ps', 'pb') for kind in ('avg', 'vs_avg') for years in (3, 5))}
+        actual['filters'] = [row for row in actual['filters'] if row[2] not in later]
+        self.assertEqual(actual, expected)
 
 
 if __name__ == '__main__': unittest.main()
