@@ -103,7 +103,7 @@ const rows=()=>JSON.parse(JSON.stringify(run('StrategyDraft.filterRows()')));
  fire('focusin',search('0'));type('0','revenue');press('0','Enter');await tick();await tick();
  assert(node('filter-message').textContent.includes('changed while Revenue was loading'));assert.equal(node('filter-message').className,'error');assert.equal(JSON.stringify(rows()),before);
  useFailure=null;
- fire('click',button({remove:'0'}));assert.equal(rows().length,1);assert.equal(node('filter-message').textContent,'');
+ fire('click',button({remove:'0'}));assert.equal(run('readOptions().filters.length'),1);assert.equal(node('filter-message').textContent,'');
  // The ranking list reuses the exact same source application and stale fences.
  await run("chooseRanking({kind:'library',variable_id:'variable:saved',revision:'sha256:'+ 'c'.repeat(64)})");
  assert.equal(chosen.at(-1).role,'ranking');assert.equal(chosen.at(-1).choice.kind,'library');

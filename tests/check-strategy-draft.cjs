@@ -139,7 +139,7 @@ if(process.argv[2]==='--builtins-parity'){
  run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
  assert.equal(node('variable-direction').value,'lowest');assert.equal(node('legacy-pool-note').hidden,false);
  run('StrategyDraft.patch({role:"ranking",source:{kind:"builtin",id:"metric:ev_ebitda:multiple"}},StrategyDraft.read().revision)');
- assert.equal(node('legacy-pool-note').hidden,true);assert.equal(node('max-multiple').disabled,true);
+ assert.equal(node('legacy-pool-note').hidden,false);assert.equal(node('max-multiple').disabled,true);
  run('StrategyDraft.patch({direction:"highest"},StrategyDraft.read().revision);StrategyDraft.patch({role:"ranking",source:{kind:"builtin",id:"metric:ev_ebitda:yield"}},StrategyDraft.read().revision)');
  assert.equal(node('legacy-yield-control').hidden,false);assert.equal(node('max-multiple').disabled,false);
  assert.deepEqual(copy(run('({scalar:StrategyDraft.isScalar(),metric:readOptions().metric,filters:readOptions().filters,autoRunDisabled:document.getElementById("auto-run").disabled})')),{scalar:false,metric:'ev_ebitda',filters:[{field:'pe',op:'lt',value:12}],autoRunDisabled:false});
@@ -182,6 +182,8 @@ if(process.argv[2]==='--builtins-parity'){
  const withFormulaFilter=await run('StrategyDraft.prepareSubmission()');
  assert.equal(withFormulaFilter.strategy.bounds.min_yield,.02);assert.equal(withFormulaFilter.strategy.bounds.max_multiple,50);
  assert.equal(withFormulaFilter.strategy.selection.conditions[1].source.revision,exact.revision);
+ run('StrategyDraft.remove(1)');
+ assert.deepEqual(copy(run('({scalar:StrategyDraft.isScalar(),metric:readOptions().metric,min_yield:readOptions().min_yield,max_multiple:readOptions().max_multiple,filters:readOptions().filters,autoRunDisabled:document.getElementById("auto-run").disabled})')),{scalar:false,metric:'ev_ebitda',min_yield:.02,max_multiple:50,filters:[{field:'pe',op:'lt',value:12}],autoRunDisabled:false});
  // The conversion owns its pre-await copy, including dates and engine.
  pause=true;context.convertInput={...context.builtinSettings,filters:[],engine:'experimental'};
  const converting=run('StrategyDraft.captureBuiltins(convertInput)');await tick();context.convertInput.min_yield=.9;context.convertInput.engine='original';
