@@ -9,7 +9,7 @@ const exact={variable_id:'variable:one',revision:'sha256:'+'1'.repeat(64)};
 const definition={format:'variable-definition',version:1,parameter_catalog:'financial-parameters/1',temporal_policy:'annual-lag90/1',expression:{op:'constant',value:'2',unit:'scalar'},output:{unit:'scalar',display:'number'}};
 const entry={...exact,name:'Saved source',version:1,favourite:false,deleted:false};
 const capture={program:{bundle:{definitions:[{...exact,definition}]},definitions:[{...exact,unit:'scalar',display:'number'}]},presentation:[{...exact,name:entry.name}]};
-let revision=3,draftSettings=null,draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,authoredFailure=false,captureWait=null,coverageWait=null,previewCount=0,conflict=false,patchFailure=null,useWire=false,lastWireValidation=null;
+let revision=3,draftSources={},draftDetached=[],emptyLibrary=false,validationWait=null,saveWait=null,authoredWait=null,authoredFailure=false,captureWait=null,coverageWait=null,previewCount=0,conflict=false,patchFailure=null,useWire=false,lastWireValidation=null;
 const wireOrigin=process.argv[2]==='--wire'?process.argv[3]:null,wire=wireOrigin?JSON.parse(fs.readFileSync(0,'utf8')):null;
 const timers=new Map();let timerId=0;
 const response=(value,status=200)=>({ok:status<400,status,json:async()=>structuredClone(value)});
@@ -41,10 +41,12 @@ const click=id=>{event(id,'click');return tick();};
 // Run the debounced automatic check, as a pause after typing would.
 const flush=()=>{for(const [id,callback] of [...timers]){timers.delete(id);callback();}};
 const check=async()=>{flush();await tick();await tick();};
-context.draft={read:()=>({revision,settings:draftSettings,detached:draftDetached}),patch:(change,expected)=>{if(patchFailure)throw Error(patchFailure);assert.equal(expected,revision,'Stale picker apply');applied.push(structuredClone(change));revision++;}};
+// Roles are browser step IDs, or the kind of a new step.
+const describe=role=>({s1:{title:'Step 1 · Rank',use:'Update step 1'},s2:{title:'Step 2 · Filter',use:'Update step 2'},filter:{title:'New filter',use:'Add as filter'}}[role]);
+context.draft={read:()=>({revision,detached:draftDetached}),source:role=>draftSources[role]??null,describe,patch:(change,expected)=>{if(patchFailure)throw Error(patchFailure);assert.equal(expected,revision,'Stale picker apply');applied.push(structuredClone(change));revision++;}};
 run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
 (async()=>{
- await run("VariableWorkspace.open('ranking')");
+ await run("VariableWorkspace.open('s1')");
  assert(node('variable-dialog').open);assert.equal(document.activeElement.id,'variable-search');
  assert(node('variable-tree').innerHTML.includes('market.enterprise_value'));
  const pickerParameterCount=()=>[...node('variable-picker').innerHTML.matchAll(/data-parameter=/g)].length;
@@ -109,8 +111,8 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  node('variable-name').value='Edited while saving';event('variable-name','input');release();saveWait=null;await tick();await tick();assert.equal(node('variable-name').value,'Edited while saving');assert(node('variable-message').textContent.includes('newer local edits'));
  await click('variable-favourite');assert.equal(node('variable-favourite').textContent,'★ Remove from favourites');
  await click('variable-apply');assert.equal(applied.length,1);assert.equal(applied[0].source.revision,exact.revision);assert(!node('variable-dialog').open);assert.equal(document.activeElement.id,'opener');
- await run("VariableWorkspace.open('condition')");event('variable-dialog','cancel');assert.equal(document.activeElement.id,'opener');
- await run("VariableWorkspace.open('ranking')");authoredWait=()=>new Promise(resolve=>release=resolve);event('variable-picker','click',pick);await tick();await click('variable-start-new');release();authoredWait=null;await tick();assert.equal(node('variable-selected').textContent,'New variable · not saved');
+ await run("VariableWorkspace.open('filter')");event('variable-dialog','cancel');assert.equal(document.activeElement.id,'opener');
+ await run("VariableWorkspace.open('s1')");authoredWait=()=>new Promise(resolve=>release=resolve);event('variable-picker','click',pick);await tick();await click('variable-start-new');release();authoredWait=null;await tick();assert.equal(node('variable-selected').textContent,'New variable · not saved');
  // Ordinary edits also fence a pending replacement read, without closing or
  // replacing the editor session. Validate reads the retained local model.
  for(const field of ['name','expression']){
@@ -125,13 +127,13 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  }
  revision++;const builtin={dataset:{builtin:'filter:pe'},closest(){return this;}};event('variable-picker','click',builtin);await tick();assert.equal(applied.length,1);assert(node('variable-dialog').open);assert(node('variable-errors').textContent.includes('Stale picker apply'));
  // A restored exact source opens from checked captured content, with no archive.
- emptyLibrary=true;draftSettings={strategy:{selection:{ranking:{source:{kind:'formula',...exact}},conditions:[]}}};draftDetached=[capture];
+ emptyLibrary=true;draftSources={s1:{kind:'formula',...exact}};draftDetached=[capture];
  const authoredBefore=calls.filter(call=>call.url.endsWith('/authored')).length;
- await run("VariableWorkspace.open('ranking')");assert.equal(node('variable-name').value,'Original detached name');assert.equal(node('variable-selected').textContent,'Used by this strategy · not in My variables');assert(node('variable-favourite').disabled);assert.equal(calls.filter(call=>call.url.endsWith('/authored')).length,authoredBefore);
+ await run("VariableWorkspace.open('s1')");assert.equal(node('variable-name').value,'Original detached name');assert.equal(node('variable-selected').textContent,'Used by this strategy · not in My variables');assert(node('variable-favourite').disabled);assert.equal(calls.filter(call=>call.url.endsWith('/authored')).length,authoredBefore);
  assert.deepEqual(JSON.parse(node('variable-json').value),definition.expression);assert(!node('variable-upgrade').hidden);await click('variable-upgrade');assert(calls.at(-1).body.upgrade);assert(node('variable-upgrade').hidden);assert(node('variable-message').textContent.includes('User-defined references'));await click('variable-apply');assert.equal(applied.length,2);assert.equal(applied.at(-1).source.revision,exact.revision);
  // Inspection must be fenced before validation or capture can yield.
- draftSettings=null;draftDetached=[];
- await run("VariableWorkspace.open('ranking')");await click('variable-coverage-scopes');
+ draftSources={};draftDetached=[];
+ await run("VariableWorkspace.open('s1')");await click('variable-coverage-scopes');
  const inspections=()=>calls.filter(call=>call.url==='/api/variable-coverage/inspect');
  for(const stage of ['validation','capture']){
   node('variable-coverage-scope').value='0';event('variable-coverage-scope','change');
@@ -158,26 +160,26 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  assert.equal(node('variable-coverage-result').textContent,'Select a recorded scope to inspect.');
  // Applying while the source picker is pending applies the whole formula.
  const beforePendingApply=applied.length,pendingExpression=current();operate('source');await click('variable-apply');
- assert.equal(applied.length,beforePendingApply+1);assert.equal(applied.at(-1).role,'ranking');
+ assert.equal(applied.length,beforePendingApply+1);assert.equal(applied.at(-1).role,'s1');
  assert.deepEqual(calls.at(-1).body.definition.expression,pendingExpression);
  // Insertion mode must not hide rejected Apply or change its destination.
- for(const destination of ['ranking','condition',0]){
+ for(const destination of ['s1','filter','s2']){
   await run('VariableWorkspace.open('+JSON.stringify(destination)+')');
   const before=current(),count=applied.length;operate('source');
-  assert.equal(node('variable-apply').textContent,{ranking:'Use for ranking',condition:'Add as filter',0:'Update filter 1'}[destination]);
-  if(destination==='ranking')revision++;else patchFailure='Finish editing the held draft first';
+  assert.equal(node('variable-apply').textContent,describe(destination).use);assert.equal(node('variable-dialog-title').textContent,describe(destination).title);
+  if(destination==='s1')revision++;else patchFailure='Finish editing the held draft first';
   await click('variable-apply');patchFailure=null;
   assert.equal(applied.length,count);assert(node('variable-dialog').open);
-  assert(node('variable-errors').textContent.includes(destination==='ranking'?'Stale picker apply':'Finish editing the held draft first'));
+  assert(node('variable-errors').textContent.includes(destination==='s1'?'Stale picker apply':'Finish editing the held draft first'));
   assert(!node('variable-message').textContent.includes('Formula validated'));
   assert.deepEqual(current(),before);
   await click('variable-start-new');operate('source');parameter('annual.operating_margin');await click('variable-apply');
-  if(destination==='ranking')assert.equal(applied.length,count,'A stale session still cannot apply');
+  if(destination==='s1')assert.equal(applied.length,count,'A stale session still cannot apply');
   else {assert.equal(applied.length,count+1);assert.equal(applied.at(-1).role,destination);}
  }
  // A cancelled source read cannot overwrite another selected term or report
  // its old failure into the current insertion. A current failure is visible.
- await run("VariableWorkspace.open('ranking')");
+ await run("VariableWorkspace.open('s1')");
  node('variable-json').value=JSON.stringify(expression);await click('variable-accept-json');
  for(const replacement of ['selection','insertion']){
   selectTerm('right');operate('source');const before=current();
@@ -190,9 +192,9 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  // Source selection during validation does not discard a valid Apply.
  let validationRelease;validationWait=()=>new Promise(resolve=>validationRelease=resolve);
  event('variable-apply','click');await tick();operate('source');validationRelease();validationWait=null;await tick();await tick();
- assert.equal(applied.at(-1).role,'ranking');assert(!node('variable-dialog').open);
+ assert.equal(applied.at(-1).role,'s1');assert(!node('variable-dialog').open);
  // An unfinished formula says what is missing and asks the service nothing.
- await run("VariableWorkspace.open('ranking')");await check();
+ await run("VariableWorkspace.open('s1')");await check();
  assert.equal(node('variable-check').dataset.state,'ready');assert.equal(node('variable-save').textContent,'Save to My variables');assert.equal(node('variable-save-new').hidden,true);assert.equal(node('variable-favourite').hidden,true);
  operate('div');assert.equal(node('variable-check').dataset.state,'incomplete');const beforeEmpty=calls.length;await check();assert.equal(calls.length,beforeEmpty);
  const emptyApply=applied.length;await click('variable-apply');assert.equal(applied.length,emptyApply);assert(node('variable-errors').textContent.includes('empty box'));
@@ -203,27 +205,27 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  if(!wire){
   emptyLibrary=false;const listed=await run('VariableWorkspace.sources()');
   assert.equal(listed.library.length,1);assert(listed.parameters.length>0);assert.equal(listed.parameters.length,77);assert.equal(listed.parameters.length,ownerCatalog.expanded_parameters.length);assert.equal(listed.measures.length,ownerCatalog.measures.length);
-  const choose=async choice=>{context.choice=choice;await run('VariableWorkspace.useSource(0,choice,draft.read().revision)');return applied.at(-1);};
+  const choose=async choice=>{context.choice=choice;await run("VariableWorkspace.useSource('s2',choice,draft.read().revision)");return applied.at(-1);};
   let chosen=await choose({kind:'parameter',id:'annual.revenue',label:'Revenue'});
   assert.equal(calls.at(-1).body.variable_id,'local:annual.revenue');assert.deepEqual(calls.at(-1).body.definition.output,{unit:'USD',display:'usd_million'});assert.deepEqual(calls.at(-1).body.definition.expression,{op:'parameter',id:'annual.revenue'});
-  assert.equal(chosen.role,0);assert.equal(chosen.source.kind,'formula');assert.equal(chosen.source.variable_id,'local:annual.revenue');
+  assert.equal(chosen.role,'s2');assert.equal(chosen.source.kind,'formula');assert.equal(chosen.source.variable_id,'local:annual.revenue');
   const measure=ownerCatalog.measures.find(item=>item.id==='gross_margin');
   chosen=await choose({kind:'measure',id:'gross_margin'});
   assert.equal(calls.at(-1).body.variable_id,measure.root.variable_id);assert.equal(calls.at(-1).body.name,measure.name);assert(!calls.at(-1).body.submitted.some(item=>item.variable_id===measure.root.variable_id));
   chosen=await choose({kind:'library',...exact});
   assert(calls.at(-2).url.endsWith('/authored'));assert.equal(calls.at(-1).body.variable_id,exact.variable_id);assert.equal(chosen.source.revision,exact.revision);
-  context.choice={kind:'library',...exact};await run("VariableWorkspace.useSource('ranking',choice,draft.read().revision)");
-  assert.equal(applied.at(-1).role,'ranking');assert.equal(applied.at(-1).source.revision,exact.revision);
+  context.choice={kind:'library',...exact};await run("VariableWorkspace.useSource('s1',choice,draft.read().revision)");
+  assert.equal(applied.at(-1).role,'s1');assert.equal(applied.at(-1).source.revision,exact.revision);
   for(const parameter of listed.parameters.filter(item=>item.kind==='adapter')){
-   context.choice={kind:'parameter',id:parameter.id};await run("VariableWorkspace.useSource('ranking',choice,draft.read().revision)");
-   assert.equal(applied.at(-1).role,'ranking');assert.equal(calls.at(-1).body.definition.expression.id,parameter.id);
+   context.choice={kind:'parameter',id:parameter.id};await run("VariableWorkspace.useSource('s1',choice,draft.read().revision)");
+   assert.equal(applied.at(-1).role,'s1');assert.equal(calls.at(-1).body.definition.expression.id,parameter.id);
   }
   context.stale=context.draft.read().revision-1;
   await assert.rejects(run("VariableWorkspace.useSource(0,{kind:'parameter',id:'annual.revenue'},stale)"),/Stale picker apply/);
  }
  if(wire){
-  useWire=true;draftSettings={strategy:{selection:{ranking:{source:wire.shared.editor_source},conditions:[]},variables:wire.shared.editor_expected.capture}};draftDetached=[];
-  await run("VariableWorkspace.open('ranking')");
+  useWire=true;draftSources={s1:wire.shared.editor_source};draftDetached=[wire.shared.editor_expected.capture];
+  await run("VariableWorkspace.open('s1')");
   // Insert all eight references through the real picker handlers. Authored
   // snapshots are fixture bytes produced by the real owner, without an archive.
   const paths=['left.left.left','left.left.right','left.right.left','left.right.right','right.left.left','right.left.right','right.right.left','right.right.right'];

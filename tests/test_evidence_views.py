@@ -260,7 +260,7 @@ process.stdin.on('data',d=>input+=d);process.stdin.on('end',()=>{
 const result=JSON.parse(input),nodes=new Map(),out=[];let csv='';
 const node=id=>{if(!nodes.has(id))nodes.set(id,{handlers:{},addEventListener(k,f){this.handlers[k]=f;}});return nodes.get(id);};
 const context=vm.createContext({ResultArtifacts:{forView:()=>({version:2,kind:'custom',settings:{},result})},CalendarSettings:{init(){}},EngineControls:{init(){}},RobustnessView:{init(){}},document:{getElementById:node,createElement:()=>({click(){out.push({name:this.download,csv});}})},Blob:class{constructor(parts){this.parts=parts;}},URL:{createObjectURL(blob){csv=blob.parts.join('');return 'blob:test';},revokeObjectURL(){}}});
-for(const name of ['result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(path.dirname(process.argv[1]),name),'utf8'),context);
+for(const name of ['backtest-comparison.js','result-explorer.js','evidence-results.js','schedule.js'])vm.runInContext(fs.readFileSync(path.join(path.dirname(process.argv[1]),name),'utf8'),context);
 vm.runInContext('ScheduleView.init()',context);
 for(const kind of ['holdings','returns'])node('schedule-download-'+kind).handlers.click();
 process.stdout.write(JSON.stringify(out));});"""

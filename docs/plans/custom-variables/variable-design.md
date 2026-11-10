@@ -298,7 +298,8 @@ their formats; old explanation blocks open unchanged.
 The shared workspace keeps the strategy form small. The picker has **Favourites**,
 **My variables** and **Built-ins**, with search and category labels.
 `backtest/application/variable_authoring.py` supplies the descriptors from the
-semantic owners. **Create variable** opens a side panel on desktop and a
+semantic owners. **＋ Create a new variable…** in a step's source list, or
+**Edit formula** on a step, opens a side panel on desktop and a
 full-screen editor on small screens. The user chooses a parameter, its time basis
 and statistic, adds terms, names the variable, previews it, then applies or saves.
 

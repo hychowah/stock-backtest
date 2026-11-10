@@ -65,8 +65,10 @@ Do not add pair requirements to general scalar ranks.
 Remove missing values only when the active step needs them.
 
 Reuse artifact 4, scalar codec 2, financial contract 2 and durable database schemas.
-For capture/2, extend existing detached evidence with indexed step references,
-values and rank/pass outcomes. P1 records these; P3 displays them.
+For capture/2, extend existing detached evidence with one entry per step: its
+rank, or null for a Filter. Values stay in the step lanes; a Universe field step
+reads the holding's own field. P1 records these;
+P3 displays them.
 Existing eager artifacts 1–2, artifact 3/codec 1 and artifact 4/codec 2 keep opening.
 Old results without step evidence show it as unavailable; never reconstruct it.
 Do not rewrite library records, queue requests, receipts, recorded plans or hashes.
@@ -113,6 +115,15 @@ running them. Verify source round trips and draft/result separation.
 Review a synthetic Windows preview through Tailscale before integration.
 
 **Main risk:** Reordering or delayed source loading silently changes captured intent.
+
+**P2 notes:** Stored EV/EBITDA pairs are both present or both absent (admission
+requires EBITDA > 0 and EV > 0; the 3-year metric returns neither component when
+its average is not positive), so copying an old strategy to a chain that ranks
+the yield lane alone is exact and needs no compatibility mechanism. For the same
+reason, and because admitted market cap and EV are positive, a zero minimum adds
+no step. A copy that needs more than 50 steps is refused; a held queue edit
+loads every step. Only an unchanged held
+queue edit keeps its original payload; other submissions capture a chain.
 
 ### P3 — Results and server latest screens
 

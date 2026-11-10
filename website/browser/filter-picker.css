@@ -1,11 +1,13 @@
-/* Additional filters: one row layout and one searchable source list. Rows
-   share the list's columns so built-in and variable rows line up. */
-#filter-conditions{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) minmax(0,1.4fr) auto;column-gap:12px}
+/* Strategy steps: one row layout and one searchable source list. Rows
+   share the list's columns so Rank and Filter rows line up. */
+#strategy-steps{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) minmax(0,1.4fr) auto;column-gap:12px;list-style:none;margin:0;padding:0}
 .condition-row{display:grid;grid-column:1/-1;grid-template-columns:subgrid;gap:12px;align-items:end;margin:12px 0}
 .condition-row label{font-size:12px;color:#536762;min-width:0}
 .condition-row label>select{display:block;width:100%;margin-top:7px}
 .condition-row select,.condition-row input,.condition-row button{min-height:44px}
 .condition-pending .filter-source{grid-column:1/4}
+.step-name{grid-column:1/-1;margin-bottom:-6px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#536762}
+.condition-row+.condition-row{border-top:1px solid #e2e7df;padding-top:12px}
 .filter-source{min-width:0;font-size:12px;color:#536762}
 .filter-source>label{display:block}
 .filter-combo{position:relative;margin-top:7px}
@@ -29,7 +31,7 @@
 #filter-message{min-height:0;margin:4px 0 0;font-size:13px}
 #filter-message.error{color:#a93830}
 @media(max-width:650px){
-  #filter-conditions{display:block}
+  #strategy-steps{display:block}
   .condition-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .condition-row .filter-source,.condition-row .condition-actions{grid-column:1/-1}
   .filter-options{width:100%}

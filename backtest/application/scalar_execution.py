@@ -169,9 +169,6 @@ class Executor:
         for symbol, _, _, _, market_cap, enterprise_value, _, sector, exchange in rows:
             item = {lane: found.get(symbol) for lane, found in usable.items()}
             item.update(market_cap=market_cap, enterprise_value=enterprise_value, sector=sector, exchange=exchange)
-            for role, source in enumerate(role_sources):
-                if source['kind'] == 'field':
-                    item[lane_of(role)] = item[source['field']]
             if pair is not None:
                 item.update(metric_multiple=pair[0].get(symbol), metric_yield=pair[1].get(symbol))
                 # Only legacy built-in form captures require a complete pair.
@@ -252,11 +249,6 @@ class Executor:
         def builtin(role, index):
             symbol = rows[index][0]
             source = role_sources[role]
-            if source['kind'] == 'field':
-                value = values[index][lane_of(role)]
-                return dict(scope=identity, symbol=symbol, source=source, stored=value, canonical=value,
-                            unit=strategy_requests.field_descriptor(source['field'])['unit'],
-                            valid=value is not None, reason=None if value is not None else 'MISSING_INPUT')
             descriptor = self.descriptors[source['id']]
             value = stored[role].get(symbol)
             canonical = _canonical(value, scales[role]); valid = canonical is not None
@@ -264,9 +256,10 @@ class Executor:
                         canonical=canonical, unit=descriptor['unit'], valid=valid,
                         reason=None if valid else 'MISSING_INPUT')
         # Each holding carries its stored lane values; no separate lanes record repeats them.
+        # A Universe field step has no lane: its value is the holding's own field.
         for index in chosen:
             for role, source in enumerate(role_sources):
-                if source['kind'] != 'formula':
+                if source['kind'] == 'builtin':
                     references[index][lane_of(role)] = builtin(role, index)
         # Full rows (book_store.rows) for the selected rows only.
         full = {row['symbol']: row for row in book_store.rows(db, book, self.pool, [rows[index][0] for index in chosen])}
@@ -285,20 +278,10 @@ class Executor:
             if ranking_source['kind']=='builtin':value=_canonical(value,descriptor['storage']['scale'])
             evidence = dict(scope=identity, lanes=references[index])
             if pipeline:
-                evidence['steps'] = []
-                for outcome in item.pop('steps'):
-                    step = chain[outcome['step']]
-                    role = role_of[step['lane']]
-                    link = references[index][step['lane']]
-                    source = role_sources[role]
-                    if source['kind'] == 'formula':
-                        key = source['variable_id'], source['revision']
-                        step_value = computed[index][key][0]
-                        unit = next(output['unit'] for output in self.formulas.outputs
-                                    if (output['variable_id'], output['revision']) == key)
-                    else:
-                        step_value, unit = link['canonical'], link['unit']
-                    evidence['steps'].append(dict(outcome, lane=step['lane'], value=step_value, unit=unit))
+                # One entry per step: its rank for a Rank, None for a passed Filter.
+                # Values stay in the step's lane ('s' + position) or, for a
+                # Universe field, in the holding's field.
+                evidence['steps'] = [outcome.get('rank') for outcome in item.pop('steps')]
             output.append(dict(original, rank=item['rank'], ranking_value=value, ranking_unit=descriptor['unit'],
                 ranking_display=descriptor['display'], ranking_direction=final_rank['direction'],
                 scalar_evidence=evidence))

@@ -171,9 +171,8 @@ const EvidenceResults=(()=>{
     explanationSequence++;node('scalar-evidence-view').hidden=artifact.version!==4;node('scalar-explanation').open=false;
     if(artifact.version===4){
       node('scalar-evidence-heading').textContent=artifact.kind==='latest'?'Latest variable screen':artifact.kind==='january'?'January variable backtest':'Variable backtest';
-      const strategy=artifact.settings.strategy,ranking=strategy.selection.ranking.source;
-      const name=ranking.kind==='builtin'?strategy.builtins.find(item=>item.id===ranking.id)?.label:strategy.variables.presentation.find(item=>item.variable_id===ranking.variable_id&&item.revision===ranking.revision)?.name;
-      node('scalar-evidence-summary').textContent=name+' · '+strategy.selection.ranking.direction+' first · ranks '+strategy.selection.rank_from+'–'+strategy.selection.rank_to+' · '+strategy.selection.selection_order+'. These values and downloads use original captured evidence.';
+      const strategy=artifact.settings.strategy,rank=BacktestComparison.finalRank(artifact.settings);
+      node('scalar-evidence-summary').textContent=BacktestComparison.sourceName(strategy,rank.source)+' · '+rank.direction+' first · ranks '+rank.rank_from+'–'+rank.rank_to+' · '+(strategy.version===2?strategy.steps.length+' steps':strategy.selection.selection_order)+'. These values and downloads use original captured evidence.';
     }
     node('scalar-screen-results').hidden=artifact.kind!=='latest';node('scalar-download-returns').hidden=artifact.kind==='latest';
     if(artifact.kind==='latest'){

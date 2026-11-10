@@ -17,9 +17,26 @@ const BacktestComparison=(()=>{
     // change meaning. Keep strict operators and exact recorded numeric values.
     return [...new Map((value||[]).map(condition=>[stable(condition),condition])).entries()].sort(([a],[b])=>a.localeCompare(b)).map(([,condition])=>condition);
   }
+  const symbols={lt:'<',gt:'>',le:'≤',ge:'≥',eq:'='};
+  // Recorded final Rank: a chain's last Rank, else the capture/1 or flat range.
+  function finalRank(options){
+    const capture=options?.strategy;
+    if(capture?.version===2)return capture.steps.findLast(step=>step.kind==='rank');
+    const rank=capture?{...capture.selection.ranking,rank_from:capture.selection.rank_from,rank_to:capture.selection.rank_to}:{rank_from:options?.rank_from,rank_to:options?.rank_to};
+    return {...rank,rank_from:rank.rank_from??1,rank_to:rank.rank_to??50};
+  }
+  // A recorded source name from the capture itself, never a current catalog.
+  function sourceName(capture,value){
+    if(value.kind==='field')return {market_cap:'Market cap (USD)',enterprise_value:'Enterprise value (USD)',sector:'Sector',exchange:'Exchange'}[value.field]||value.field;
+    if(value.kind==='builtin')return (capture.builtins.find(item=>item.id===value.id)?.label||value.id)+' ('+value.id+')';
+    return (capture.variables?.presentation.find(item=>item.variable_id===value.variable_id&&item.revision===value.revision)?.name||value.variable_id)+' @ '+value.revision;
+  }
   function scalarRows(capture){
-    const s=capture.selection,labels=new Map((capture.variables?.presentation||[]).map(item=>[item.variable_id+'@'+item.revision,item.name]));
-    const source=value=>value.kind==='builtin'?(capture.builtins.find(item=>item.id===value.id)?.label||value.id)+' ('+value.id+')':(labels.get(value.variable_id+'@'+value.revision)||value.variable_id)+' @ '+value.revision;
+    const source=value=>sourceName(capture,value);
+    if(capture.version===2)return [entry('pool','Stock pool',capture.universe.pool),...capture.steps.map((step,index)=>entry('step.'+index,'Step '+(index+1)+' · '+(step.kind==='rank'?'Rank':'Filter'),step,
+      source(step.source)+' '+(step.kind==='rank'?step.direction+' first · ranks '+step.rank_from+'–'+step.rank_to:typeof step.threshold==='string'?'= '+step.threshold
+        :symbols[step.op]+' '+step.submitted_threshold.value+' '+step.submitted_threshold.unit+' (canonical '+step.threshold.value+' '+step.threshold.unit+')')))];
+    const s=capture.selection;
     return [entry('strategy','Captured ranking',s.ranking,source(s.ranking.source)),entry('direction','Ranking direction',s.ranking.direction),entry('rank_from','First rank',s.rank_from),entry('rank_to','Last rank',s.rank_to),entry('selection_order','Selection order',s.selection_order),entry('pool','Stock pool',capture.pool),...Object.entries(capture.bounds).map(([key,value])=>entry('bound.'+key,names[key]||key,value)),...s.conditions.map((condition,index)=>entry('condition.'+index,'Variable condition '+(index+1),condition,source(condition.source)+' '+(condition.op==='lt'?'<':'>')+' '+condition.submitted_threshold.value+' '+condition.submitted_threshold.unit+' (canonical '+condition.threshold.value+' '+condition.threshold.unit+')'))];
   }
   function describe(artifact){
@@ -119,6 +136,6 @@ const BacktestComparison=(()=>{
     if(stable(left.observationWindow)!==stable(right.observationWindow))notices.push('These tests use different recorded observation windows.');
     return {parameters:align(left.parameters,right.parameters),performance:align(left.performance,right.performance),notices};
   }
-  return {describe,compare,scalarRows};
+  return {describe,compare,scalarRows,finalRank,sourceName};
 })();
 if(typeof module!=='undefined')module.exports=BacktestComparison;

@@ -162,9 +162,8 @@ recalculates that source. Existing stored bytes are never rewritten. Evidence pa
 
 ## Ordered strategy requests
 
-The service accepts `strategy-intent/2` and `strategy-capture/2`. The current
-browser form still submits the existing shapes. The block builder and visible
-step evidence belong to later work.
+The service accepts `strategy-intent/2` and `strategy-capture/2`. The website
+step builder submits them. Visible step evidence belongs to later work.
 
 A version-2 strategy has `universe: {pool}` and an ordered `steps` list. Market
 stays in `options.market`. Universe has no size or metadata bounds. A Rank step
@@ -187,7 +186,7 @@ stored lanes once for the scope. Consecutive Filters form one group. Stored
 checks run together first. The surviving rows then evaluate the needed formula
 roots together in one program, sharing dependencies. Each row's formula values
 are cached for later steps. Only Rank survivors retain rank outcomes; final
-holdings add Filter pass outcomes in captured step order. Cancellation checks
+holdings add a null for each Filter in captured step order. Cancellation checks
 run at step boundaries. Annual statistics are within one company; they do not
 depend on other survivors.
 Missing values fail only steps that use them. Ties use candidate rank, null
@@ -207,9 +206,12 @@ only evaluated rows with an unavailable final ranking value. For formula
 rankings, rows removed before evaluation are excluded from this count.
 The `step_count` run-log field replaces the former `conditions` field.
 
-Capture/2 holdings record `scalar_evidence.steps` with zero-based step indexes,
-source lane references, canonical values, units and rank/pass outcomes. Only
-selected holdings retain this evidence, including random-date holdings. Detailed
+Capture/2 holdings record `scalar_evidence.steps`: one entry per captured step,
+the integer rank for a Rank and null for a Filter. A built-in or formula step's
+value, unit and source stay in its lane reference `s<index>`. A Universe field
+step has no lane reference; its value is the holding's own field, as for
+capture/1 bounds. Only selected holdings retain this
+evidence, including random-date holdings. Detailed
 formula operation traces keep the existing fixed/latest policy. Old evidence
 stays unchanged; missing step evidence is never reconstructed. Artifact 4,
 codec 2 and financial contract 2 keep their versions and byte ceilings.
@@ -219,31 +221,40 @@ Legacy requests log their translated counts.
 
 ## Dated submissions and replay
 
-Every new dated browser submission uses a strategy capture and bounded evidence,
-including built-in-only forms. `StrategyDraft.captureBuiltins(options)` is the one
-browser conversion owner. Fresh fixed, custom-calendar and random forms call it
-before request identity allocation. Copies capture only when submitted. Built-in
-conditions keep prepared sheet values and display units. Inclusive minimum yield
-and maximum multiple remain explicit bounds; they do not become formulas.
-New built-in captures reopen in the ordinary controls. Latest built-in screening
-stays local; latest formulas use captured execution.
+Every new dated browser submission captures one chain and uses bounded evidence.
+`StrategyDraft` in `website/browser/range.js` owns the ordered draft. Step IDs
+exist only in the browser. Capture finishes before request identity allocation.
+One restore path reads flat settings, capture/1 and capture/2. Flat and capture/1
+settings become Filters → Rank (filter-first) or Rank → Filters (rank-first).
+Size, sector and exchange bounds become field Filters. Minimum yield and maximum
+multiple become Filters on the ranked metric's yield and multiple lanes. Recorded
+ranks, thresholds, units, labels and exact formula revisions are kept. A zero
+minimum adds no step: every prepared row has positive market cap and EV, and
+ranked yields are positive. Stored metric pairs are complete or absent, so a
+chain that ranks the yield lane alone selects the same rows. A copy that needs
+more than 50 steps is refused.
 
-Legacy SQL treats a null minimum cap, EV or yield as an empty selection. Captures
-use null to omit a bound. Conversion therefore refuses a legacy request with any
-of these null minimums: it cannot replay that selection exactly. Existing captures
-retain their null meaning and bytes.
+Legacy SQL treats a null minimum cap, EV or yield as an empty selection. The
+builder restores such a minimum as a Filter without a value, so submission asks
+for one. Captures use null to omit a bound; that meaning and their bytes stay.
 
-Replay and calculated trial inspection use the same conversion. A legacy replay
+`StrategyDraft.captureBuiltins(options)` applies the same conversion to a
+detached flat request for replay and calculated trial inspection. A legacy replay
 converts a detached copy of the recorded plan's selection only. Dates, nominal
 blocks, seed, samples and the shared window stay exact. A captured replay keeps
 its original capture and plan. Stored results and request records are never
 rewritten. Opening and stored trial inspection never calculate.
 
-Existing waiting and held legacy queue rows retain their request format and eager
-execution. Saving a held legacy edit reads its actual form mode, independently
-of a capture cached by Run backtest. An unchanged selection or name-only edit
-keeps the recorded seed and plan. Choosing formula mode explicitly submits a
-capture and changes the selection.
+Existing waiting and held queue rows retain their request format and execution.
+Saving an unchanged held edit keeps its original selection in any format, even
+after Run backtest captured the same draft. An unchanged selection or name-only
+edit keeps the recorded seed and plan. A changed edit, a copy and an immediate
+run capture a chain. An unchanged capture/2 is resubmitted as recorded.
+
+The offline latest screen runs only the shape that flat options express exactly:
+Filters it supports and one highest EV/EBITDA-yield Rank, first or last. Auto-run
+uses the same test. Other chains cannot screen latest until latest chains run on
+the service.
 
 The capture ceiling remains 192 KiB. Captured settings, request wrappers and
 display metadata together have a 256 KiB encoded limit. A recorded `planned`

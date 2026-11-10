@@ -36,7 +36,8 @@ const VariableEvidence=(()=>{
     const labels=new Map((strategy.variables?.presentation||[]).map(item=>[item.variable_id+'@'+item.revision,item.name])),samples=[],stored=[];
     if(row){
       for(const [lane,ref] of Object.entries(row.scalar_evidence?.lanes||{})){
-        const label=lane==='ranking'?'Ranking':'Filter '+(Number(lane.slice(1))+1);
+        // Capture/1 lanes are ranking and c0…; chain lanes s0… name their step.
+        const label=lane==='ranking'?'Ranking':(lane[0]==='s'?'Step ':'Filter ')+(Number(lane.slice(1))+1);
         if(ref.source){
           const descriptor=strategy.builtins.find(item=>item.id===ref.source.id);
           stored.push(label+' · '+(descriptor?.label||ref.source.id)+' · '+(ref.valid?value(ref.canonical,ref.unit,descriptor?.display):reason(ref.reason))+' · original stored value '+String(ref.stored)+' · '+ref.unit);

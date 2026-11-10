@@ -78,9 +78,11 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const first=records[0].id,second=records[1].id;context.first=first;context.second=second;
   await call('BacktestQueue.action("edit",first)');assert.equal(loaded.rank_to,50);assert.equal(call('BacktestQueue.isEditing()'),true);
   settings.rank_to=10;assert.equal(records[0].options.rank_to,50,'Form edits do not mutate submitted settings');
-  const prepareNew=context.config.prepareSubmission;context.config.prepareSubmission=()=>{throw Error('Held legacy edits must retain their request format');};
+  // The draft decides the saved format: a held save asks it to keep an
+  // unchanged original selection. Here the draft returns the flat settings.
+  const prepareNew=context.config.prepareSubmission;let heldRequest;context.config.prepareSubmission=async request=>{heldRequest=request;return copy(settings);};
   await call('BacktestQueue.add()');assert.equal(records.find(item=>item.id===first).options.rank_to,10);assert.equal(call('BacktestQueue.isEditing()'),false);
-  context.config.prepareSubmission=prepareNew;assert(!('strategy' in records.find(item=>item.id===first).options));
+  context.config.prepareSubmission=prepareNew;assert.deepEqual(JSON.parse(JSON.stringify(heldRequest)),{held:true});assert(!('strategy' in records.find(item=>item.id===first).options));
   assert.equal(endedEdits,1,'A confirmed save ends the form session');
   await call('BacktestQueue.action("edit",first)');settings.rank_to=99;
   await node('queue-cancel-edit').handlers.click();assert.equal(records.find(item=>item.id===first).options.rank_to,10);assert.equal(call('BacktestQueue.isEditing()'),false);
@@ -231,6 +233,15 @@ context.config={libraryChanged:()=>libraryChanges++,beginEdit:id=>({id,restore:v
   const abandoned=call('BacktestQueue.add()');await settle();
   scalarRecord.state='running';scalarRecord.edit.state='cancelled';await call('BacktestQueue.refresh()');assert.equal(endedEdits,endedBefore+1);
   releaseCapture();await abandoned;assert.equal(requests.filter(request=>request.url.endsWith('/update')).length,updatesBefore);assert.equal(settings.strategy.selection.rank_to,4);
+  // A chain capture names its last Rank in the default title and lists every step.
+  const chain={format:'strategy-capture',version:2,universe:{pool:'cached'},steps:[{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'lowest',rank_from:1,rank_to:200},
+    {kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'highest',rank_from:20,rank_to:40},
+    {kind:'filter',source:{kind:'field',field:'market_cap'},op:'ge',threshold:{value:'100000000',unit:'USD'},submitted_threshold:{value:'100',unit:'usd_million'},comparison_value:100e6,storage_comparison_value:100e6}],builtins:[{id:'filter:pe',label:'Chain P/E'}],variables:null};
+  settings={mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,strategy:chain};context.config.prepareSubmission=async()=>copy(settings);
+  node('queue-name').value='';await call('BacktestQueue.add()');
+  const chainRecord=records.at(-1);assert.equal(chainRecord.name,'Fixed dates · 2015-01-02 → 2015-01-05 · ranks 20–40');
+  for(const text of ['Step 1 · Rank: Chain P/E (filter:pe) lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy','Step 3 · Rank: Chain P/E (filter:pe) highest first · ranks 20–40','Step 4 · Filter: Market cap (USD) ≥ 100 usd_million (canonical 100000000 USD)'])
+    assert(node('queue-list').innerHTML.includes(text),'Missing '+text);
   // A waiting test that names an engine this server does not run explains how to continue.
   records.push({id:'f'.repeat(32),name:'Recorded experimental',mode:'custom',options:{start:'2015-01-01',end:'2016-12-30',months:3,engine:'experimental'},state:'queued',position:records.length+1,revision:1,cagr:null,edit:null});
   await call('BacktestQueue.refresh()');

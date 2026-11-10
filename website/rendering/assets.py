@@ -21,12 +21,8 @@ def queue_fragment():
     return read('queue.html')
 
 
-def variable_controls():
-    return read('variable-workspace.html').split('<dialog',1)[0]
-
-
 def variable_fragment():
-    return '<dialog'+read('variable-workspace.html').split('<dialog',1)[1]
+    return read('variable-workspace.html')
 
 
 def styles():

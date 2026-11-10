@@ -72,3 +72,12 @@ for(const kind of ['latest','january']){
  assert(!Artifacts.matches(numerical,{...prior.settings,engine:'original'}));
 }
 console.log('Passed: old scalar latest/January engine omission means Original without rewriting evidence or inferring a producer; version-4 January opens in the dated view.');
+// A chain capture opens unchanged; matching compares the complete captured steps.
+const chainSettings={mode:'random',start:'2015-01-01',end:'2016-12-30',months:3,trials:2,engine:'original',strategy:{format:'strategy-capture',version:2,universe:{pool:'cached'},builtins:[],variables:null,limits:{bytes:196608},
+ steps:[{kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:1,rank_to:200},{kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'lowest',rank_from:20,rank_to:40}]}};
+const chainArtifact={version:4,kind:'random',settings:chainSettings,result:{configuration:{seed:9}},catalog:{},presentation:{},evidence:{id:'e'.repeat(32),format_version:2,trials:2,periods:8,holdings:40}};
+const chainBytes=JSON.stringify(chainArtifact),chainDecoded=Artifacts.decode(chainArtifact);
+assert.equal(chainDecoded.settings.strategy.steps.length,3);assert(Artifacts.matches(chainDecoded,structuredClone(chainSettings)));
+const reordered=structuredClone(chainSettings);reordered.strategy.steps.reverse();assert(!Artifacts.matches(chainDecoded,reordered),'Step order is part of the strategy');
+assert.equal(JSON.stringify(chainArtifact),chainBytes);
+console.log('Passed: chain captures decode unchanged and match only the same ordered steps.');

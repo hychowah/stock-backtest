@@ -535,9 +535,12 @@ def pool(capture):
 
 
 def execution_steps(capture):
-    """Transient lanes and ordered steps; never normalize accepted record bytes."""
+    """Transient lanes and ordered steps; never normalize accepted record bytes.
+
+    A Universe field step reads the row's own field lane, as capture/1 bounds do.
+    """
     if capture['version'] == 2:
-        return [dict(step, lane='s' + str(index),
+        return [dict(step, lane=step['source']['field'] if step['source']['kind'] == 'field' else 's' + str(index),
                      **({'value': step['threshold'] if step['op'] == 'eq' else step['storage_comparison_value']}
                         if step['kind'] == 'filter' else {}))
                 for index, step in enumerate(capture['steps'])]

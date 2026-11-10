@@ -147,9 +147,12 @@ class AuthoringHttpTests(ExistingHttp):
             source=dict(kind='formula',**language.root(item))
             snapshot=dict(entry=dict(language.root(item),name='Captured '+item['variable_id'],version=1,favourite=False,deleted=False),selected=language.root(item),authored=authored,capture=capture.to_dict())
             references.append(dict(source=source,capture=capture.to_dict(),authored=authored,snapshot=snapshot))
-        shared_intent=strategy.intent(references[0]['source'])
-        shared_intent['selection']['conditions']=[dict(source=item['source'],op='gt',threshold=dict(value='0',unit='number')) for item in references[1:]]
-        combined=strategy_requests.capture_strategy(shared_intent,submitted=[dep,*roots],labels=labels).to_dict()
+        # The builder adds filters before the last Rank: eight filters, then the Rank.
+        shared_intent=strategy.pipeline(*[dict(kind='filter',source=item['source'],op='gt',threshold=dict(value='0',unit='number')) for item in references[1:]],
+                                        strategy.rank_step(references[0]['source']))
+        # Authored content travels in step order, so the Rank's root comes last.
+        ordered=[dep,*roots[1:],roots[0]]
+        combined=strategy_requests.capture_strategy(shared_intent,submitted=ordered,labels=[label for item in ordered for label in labels if label['variable_id']==item['variable_id']]).to_dict()
         duplicated=dict(intent=shared_intent,detached=[item['capture'] for item in references])
         self.assertGreater(len(json.dumps(duplicated,separators=(',',':')).encode()),256*1024)
         self.assertLess(len(json.dumps(combined,separators=(',',':')).encode()),192*1024)

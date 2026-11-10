@@ -55,7 +55,7 @@ const BacktestQueue=(()=>{
     }
     if(editing===session)endEdit(true);
   }
-  function title(settings){return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+(settings.strategy?.selection.rank_from??settings.rank_from)+'–'+(settings.strategy?.selection.rank_to??settings.rank_to);}
+  function title(settings){const rank=BacktestComparison.finalRank(settings);return (settings.mode==='random'?'Random dates':'Fixed dates')+' · '+CalendarSettings.decode(settings).start+' → '+CalendarSettings.decode(settings).end+' · ranks '+rank.rank_from+'–'+rank.rank_to;}
   function parameters(record){
     const o=record.options,market=({us:'US',hk:'Hong Kong',jp:'Japan · Tokyo'}[o.market??'us']||o.market)+' · USD · ';
     if(o.strategy)return market+`${record.mode==='random'?'Random dates':'Fixed dates'} · ${CalendarSettings.decode(o).start} → ${CalendarSettings.decode(o).end} · `+BacktestComparison.scalarRows(o.strategy).map(row=>row.label+': '+row.display).join(' · ');
@@ -166,12 +166,8 @@ const BacktestQueue=(()=>{
   async function specification(){
     if(node('strategy-form').reportValidity&&!node('strategy-form').reportValidity())throw Error('Complete the highlighted strategy settings before adding this test.');
     const submittedName=node('queue-name').value.trim();
-    const legacyRecord=!!editing&&!records.find(record=>record.id===editing.id)?.options.strategy;
-    // Only the held record and actual form mode decide its format. A capture
-    // made by Run backtest belongs to that run, not this queued edit.
-    const draft=callbacks.settings({preserveLegacy:legacyRecord});
-    const legacyEdit=legacyRecord&&!draft.strategy;
-    const settings=legacyEdit?draft:await callbacks.prepareSubmission();
+    // The draft keeps an unchanged held record's original selection.
+    const settings=await callbacks.prepareSubmission({held:!!editing});
     if(!['custom','random'].includes(settings.mode))throw Error('Choose Historical backtest to queue a fixed or random-date test.');
     const {mode,...options}=settings;
     return {mode,options,catalog:callbacks.catalog(),presentation:callbacks.presentation(settings),name:submittedName||title(settings).slice(0,120)};

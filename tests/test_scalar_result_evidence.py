@@ -193,12 +193,14 @@ class EvidenceTests(unittest.TestCase):
         stream, _ = self.produce()
         reader = result_evidence.open_reader(stream, max_bytes=16*1024**2)
         records = list(reader.verified_records())
+        holding = next(record['value'] for record in records if record['type'] == 'holding')
+        self.assertEqual(holding['scalar_evidence']['steps'], [holding['rank'], None])
         for change in (lambda evidence: evidence.pop('steps'),
-                       lambda evidence: evidence['steps'][0].update(step=1),
-                       lambda evidence: evidence['steps'][0].update(rank=99),
-                       lambda evidence: evidence['steps'][0].update(unit='USD'),
-                       lambda evidence: evidence['steps'][1].update(passed=False),
-                       lambda evidence: evidence['steps'][1].update(lane='absent')):
+                       lambda evidence: evidence['steps'].pop(),
+                       lambda evidence: evidence['steps'].__setitem__(0, 6),
+                       lambda evidence: evidence['steps'].__setitem__(0, None),
+                       lambda evidence: evidence['steps'].__setitem__(1, 1),
+                       lambda evidence: evidence['lanes'].pop('s1')):
             malformed = deepcopy(records)
             row = next(record['value'] for record in malformed if record['type'] == 'holding')
             change(row['scalar_evidence'])

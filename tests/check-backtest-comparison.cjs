@@ -39,3 +39,18 @@ explicitScalar.settings.engine='experimental';
 assert(compare(oldScalar,explicitScalar).parameters.find(row=>row.key==='engine').different);
 assert(describe(oldScalar).parameters.find(row=>row.key==='producer').display.includes('Unidentified'));
 console.log('Passed: scalar January requested-engine defaults remain distinct from recorded producer evidence.');
+// A chain capture describes its universe and every ordered step from the record.
+const chain={format:'strategy-capture',version:2,universe:{pool:'cached'},variables:{presentation:[{variable_id:'variable:a',revision:'sha256:'+'a'.repeat(64),name:'Recorded margin'}]},builtins:[{id:'metric:ev_ebitda:yield',label:'Recorded EBITDA yield'}],
+ steps:[{kind:'rank',source:{kind:'formula',variable_id:'variable:a',revision:'sha256:'+'a'.repeat(64)},direction:'lowest',rank_from:1,rank_to:200},{kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},
+  {kind:'filter',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},op:'ge',threshold:{value:'0.02',unit:'scalar'},submitted_threshold:{value:'2',unit:'percent'},comparison_value:.02,storage_comparison_value:.02},
+  {kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:20,rank_to:40}]};
+const chainRows=Comparison.scalarRows(chain).map(row=>row.label+': '+row.display);
+assert.deepEqual(chainRows,['Stock pool: cached','Step 1 · Rank: Recorded margin @ sha256:'+'a'.repeat(64)+' lowest first · ranks 1–200','Step 2 · Filter: Sector = Energy',
+ 'Step 3 · Filter: Recorded EBITDA yield (metric:ev_ebitda:yield) ≥ 2 percent (canonical 0.02 scalar)','Step 4 · Rank: Recorded EBITDA yield (metric:ev_ebitda:yield) highest first · ranks 20–40']);
+assert.deepEqual({...Comparison.finalRank({strategy:chain})},chain.steps[3]);
+assert.deepEqual({...Comparison.finalRank({strategy:captured})},{source:captured.selection.ranking.source,direction:'highest',rank_from:1,rank_to:50});
+assert.deepEqual({...Comparison.finalRank({rank_to:7})},{rank_from:1,rank_to:7});
+const left=artifact({strategy:chain}),right=artifact({strategy:{...structuredClone(chain),steps:chain.steps.map((step,i)=>i===3?{...step,rank_to:30}:step)}});
+const differences=compare(left,right).parameters.filter(row=>row.different).map(row=>row.key);
+assert.deepEqual(differences,['step.3']);
+console.log('Passed: chain captures list the universe and ordered steps, compare by step, and the last Rank sets the recorded range.');

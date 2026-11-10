@@ -1,5 +1,5 @@
-/* One searchable list for every filter source. The owner supplies grouped
-   choices and receives the chosen value. The picker keeps no strategy state:
+/* One searchable list for every step source. The owner supplies grouped
+   choices for a row key and receives the chosen value. The picker keeps no strategy state:
    rows can be re-rendered at any time and an open list follows its row key. */
 const FilterPicker=(()=>{
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,7 +10,7 @@ const FilterPicker=(()=>{
     return String(query||'').toLowerCase().split(/\s+/).filter(Boolean).every(word=>text.includes(word));
   }
   function view(){
-    const choices=owner.choices(),query=state.typed?state.query:'';
+    const choices=owner.choices(state.key),query=state.typed?state.query:'';
     const groups=choices.groups.map(group=>({label:group.label,options:group.options.filter(option=>matches(option,query))})).filter(group=>group.options.length);
     return {groups,actions:choices.actions||[],note:choices.note||''};
   }

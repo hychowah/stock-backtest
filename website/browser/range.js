@@ -6,9 +6,6 @@ function selectMarket(value){
   const control=document.getElementById('stock-market');if(control)control.value=value;
   screeningData=value==='us'?screeningMarkets:screeningMarkets.markets[value];
   document.getElementById('stock-pool').innerHTML='<option value="cached">All stocks with cached prices</option>';
-  for(const [id,key] of [['sector-filter','sector'],['exchange-filter','exchange']]){
-    document.getElementById(id).innerHTML='<option value="">All</option>'+screeningData.choices[key].map(v=>`<option value="${safe(v)}">${safe(v)}</option>`).join('');
-  }
   const asof=screeningData.latest.metadata.asof;
   const first=screeningData.bounds.first||'1996-01-01';
   for(const id of ['trade-start','trade-end']){document.getElementById(id).min=first;document.getElementById(id).max=asof||'';}
@@ -17,24 +14,17 @@ function selectMarket(value){
   if(!asof)document.getElementById('screen-error').textContent='Prepare '+marketLabels[value]+' data from Manage backtest data before running this market.';
 }
 
-const rankFrom=document.getElementById('rank-from'),rankTo=document.getElementById('rank-to');
-const fields={selection_order:'selection-order',metric:'ranking-metric',pool:'stock-pool',min_cap:'min-cap',max_cap:'max-cap',min_ev:'min-ev',min_yield:'min-yield',max_multiple:'max-multiple',sector:'sector-filter',exchange:'exchange-filter'};
 let screeningMode='latest';
-// Built-in strategies keep their filters here. Variable strategies keep them in
-// StrategyDraft. One row list shows whichever owner is active.
-let filterConditions=[];
-// A new row exists only in the form until its source is chosen.
-let pendingFilter=false,filterSources=null,filterSourcesState='idle';
+// A new step exists only in the form until its source is chosen.
+let pendingStep=null,stepSources=null,stepSourcesState='idle',latestBlocked=false;
 function viewKey(){return screeningMode==='latest'?'latest':'custom';}
 const currentArtifact=()=>ResultArtifacts.forView(viewKey());
 const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.filter_catalog});
-const displayCatalog=()=>currentArtifact()?.catalog||sourceCatalog();
 const metricLabel=(id,artifact=currentArtifact())=>artifact?.catalog?.metrics[id]?.label||(typeof artifact?.catalog?.metrics[id]==='string'?artifact.catalog.metrics[id]:screeningData.metrics[id]?.label)||id;
-function currentSettings({preserveLegacy=false}={}){
-  const options=StrategyDraft.selectionSettings(readOptions(),preserveLegacy),view=viewKey();
-  const engine=EngineControls.fields();
-  if(view==='latest')return {mode:'latest',market:selectedMarket(),...options,...(StrategyDraft.isScalar()?engine:{})};
-  const settings={mode:'custom',market:selectedMarket(),...options,...CalendarSettings.read(),...engine};
+function currentSettings(){
+  const selection=StrategyDraft.selection(),engine=EngineControls.fields();
+  if(viewKey()==='latest')return {mode:'latest',market:selectedMarket(),...selection,...(selection.strategy?engine:{})};
+  const settings={mode:'custom',market:selectedMarket(),...selection,...CalendarSettings.read(),...engine};
   if(document.getElementById('date-testing').value==='random'){
     settings.mode='random';settings.trials=+document.getElementById('random-trials').value;
     if(document.getElementById('repeat-random').checked)settings.seed=+document.getElementById('random-seed').value;
@@ -85,19 +75,16 @@ function updateResultsState(){
   for(const id of ['latest-view','custom-view'])document.getElementById(id).setAttribute('data-results-stale',String(stale));
   SavedBacktests.update();
 }
-function settingsChanged(changed,run=true){
-  if(+rankFrom.value>+rankTo.value && ['rank-from','rank-to'].includes(changed)){
-    if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
-  }
+// Auto-run covers the offline shape only; other chains wait for an explicit run.
+function settingsChanged(run=true){
   updateResultsState();
   StrategyDraft.touch();
   StrategyDraft.render();
-  if(run && !StrategyDraft.isScalar() && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
+  if(run && StrategyDraft.flat() && StrategyDraft.complete() && document.getElementById('auto-run').checked && !ScheduleView.isRunning() && !BacktestQueue.isManaging())applyRange();
 }
 const money=v=>v===null?'—':'$'+(v/1e6).toLocaleString('en-US',{maximumFractionDigits:1})+'m';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function initializeFilters(){
-  rankFrom.value='1';rankTo.value='50';
   document.getElementById('trade-start').value='2015-01-01';
   selectMarket('us');
   document.getElementById('rebalance-months').value='12';
@@ -105,102 +92,79 @@ function initializeFilters(){
   document.getElementById('date-testing').value='single';
   document.getElementById('random-trials').value='24';
   document.getElementById('random-seed').value='42';
-  resetFilters();
+  StrategyDraft.reset();
 }
-function builtinFilterLabel(field){
-  const item=StrategyDraft.catalog().filters[field];
-  return (item?.label||field)+(item?.available?'':screeningData.filter_catalog[field]?' — needs financial data':' — unavailable');
+const comparisons=[['gt','More than (>)'],['lt','Less than (<)'],['ge','At least (≥)'],['le','At most (≤)']];
+function sourceField(key,row,name){
+  return `<div class="filter-source"><label for="filter-search-${key}">${row.kind==='rank'?'Rank by':'Filter on'}</label><div class="filter-combo"><input id="filter-search-${key}" data-filter-search="${key}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="filter-options-${key}" autocomplete="off" spellcheck="false" placeholder="Type to search: P/E, revenue, margin…" value="${safe(row.label)}" data-label="${safe(row.label)}"${row.title?` title="${safe(row.title)}"`:''}><span class="filter-combo-arrow" aria-hidden="true">▾</span><div id="filter-options-${key}" class="filter-options" role="listbox" aria-label="${name} choices" hidden></div></div></div>`;
 }
-function conditionRow(key,row,scalar){
-  const name=key==='new'?'New filter':'Filter '+(+key+1);
-  const search=`<div class="filter-source"><label for="filter-search-${key}">Filter on</label><div class="filter-combo"><input id="filter-search-${key}" data-filter-search="${key}" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="filter-options-${key}" autocomplete="off" spellcheck="false" placeholder="Type to search: P/E, revenue, margin…" value="${safe(row.label)}" data-label="${safe(row.label)}"${row.title?` title="${safe(row.title)}"`:''}><span class="filter-combo-arrow" aria-hidden="true">▾</span><div id="filter-options-${key}" class="filter-options" role="listbox" aria-label="${name} choices" hidden></div></div></div>`;
-  if(key==='new')return `<div class="condition-row condition-pending">${search}<div class="condition-actions"><button type="button" data-filter-cancel>Cancel</button></div></div>`;
-  const value=scalar?`<input id="filter-value-${key}" data-index="${key}" data-key="value" aria-label="${name} value" inputmode="decimal" autocomplete="off" value="${safe(row.value)}" placeholder="Enter value">`
-    :`<input id="filter-value-${key}" data-index="${key}" data-key="value" aria-label="${name} value" type="number" step="any" required value="${safe(row.value)}" placeholder="Enter value">`;
-  const unit=!row.units?'':row.units.length>1?`<select data-index="${key}" data-key="unit" aria-label="${name} unit">${row.units.map(u=>`<option value="${safe(u)}" ${u===row.unit?'selected':''}>${safe(VariableWorkspace.displayName(u))}</option>`).join('')}</select>`:`<span class="condition-unit">${safe(VariableWorkspace.displayName(row.unit))}</span>`;
-  return `<div class="condition-row">${search}<label>Comparison<select data-index="${key}" data-key="op" aria-label="${name} comparison"><option value="gt" ${row.op==='gt'?'selected':''}>More than (&gt;)</option><option value="lt" ${row.op==='lt'?'selected':''}>Less than (&lt;)</option></select></label><label>Value<span class="condition-value">${value}${unit}</span></label><div class="condition-actions">${row.formula?`<button type="button" data-edit="${key}" aria-label="Edit ${name.toLowerCase()} formula">Edit formula</button>`:''}<button type="button" data-remove="${key}" aria-label="Remove ${name.toLowerCase()}">Remove</button></div></div>`;
+function stepRow(row){
+  const key=row.id,name='Step '+row.number+' · '+(row.kind==='rank'?'Rank':'Filter'),field=(id,extra)=>`id="step-${id}-${key}" data-step="${key}" data-key="${id}" ${extra}`;
+  let middle,value;
+  if(row.kind==='rank'){
+    middle=`<label>Order<select ${field('direction',`aria-label="${name} order"`)}>${[['highest','Highest first'],['lowest','Lowest first']].map(([v,l])=>`<option value="${v}" ${row.direction===v?'selected':''}>${l}</option>`).join('')}</select></label>`;
+    value=`<label>Ranks<span class="condition-value"><input ${field('rank_from',`aria-label="${name} first rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_from)}"`)}><span class="condition-unit">to</span><input ${field('rank_to',`aria-label="${name} last rank" type="number" min="1" max="5000" step="1" required value="${safe(row.rank_to)}"`)}></span></label>`;
+  }else if(row.text){
+    middle='<label>Comparison<span class="condition-unit">Equals</span></label>';
+    value=`<label>Value<select ${field('value',`aria-label="${name} value"`)}><option value="">Choose…</option>${[...new Set([...row.choices,...(row.value?[row.value]:[])])].map(v=>`<option value="${safe(v)}" ${v===row.value?'selected':''}>${safe(v)}</option>`).join('')}</select></label>`;
+  }else{
+    middle=`<label>Comparison<select ${field('op',`aria-label="${name} comparison"`)}>${comparisons.map(([v,l])=>`<option value="${v}" ${row.op===v?'selected':''}>${safe(l)}</option>`).join('')}</select></label>`;
+    const unit=row.units?.length>1?`<select ${field('unit',`aria-label="${name} unit"`)}>${row.units.map(u=>`<option value="${safe(u)}" ${u===row.unit?'selected':''}>${safe(VariableWorkspace.displayName(u))}</option>`).join('')}</select>`:row.unit?`<span class="condition-unit">${safe(VariableWorkspace.displayName(row.unit))}</span>`:'';
+    value=`<label>Value<span class="condition-value"><input ${field('value',`aria-label="${name} value" inputmode="decimal" autocomplete="off" value="${safe(row.value)}" placeholder="Enter value"`)}>${unit}</span></label>`;
+  }
+  const button=(action,label,disabled=false)=>`<button type="button" id="step-${action}-${key}" data-action="${action}" data-step="${key}" aria-label="${label} ${name.toLowerCase()}"${disabled?' disabled':''}>${label}</button>`;
+  return `<li class="condition-row step-${row.kind}"><span class="step-name">${name}</span>${sourceField(key,row,name)}${middle}${value}<div class="condition-actions">${row.formula?button('edit','Edit formula'):''}${button('up','Move up',row.number===1)}${button('down','Move down',row.last)}${button('remove','Remove')}</div></li>`;
 }
-function renderConditions(){
-  const scalar=StrategyDraft.isScalar();
-  const rows=scalar?StrategyDraft.filterRows():filterConditions.map(c=>({label:builtinFilterLabel(c.field),op:c.op,value:c.value}));
-  document.getElementById('filter-conditions').innerHTML=rows.map((row,i)=>conditionRow(String(i),row,scalar)).join('')+(pendingFilter?conditionRow('new',{label:''},scalar):'');
-  document.getElementById('add-filter').disabled=rows.length>=50;
+function renderSteps(){
+  const rows=StrategyDraft.view();
+  document.getElementById('strategy-steps').innerHTML=rows.map(stepRow).join('')+(pendingStep?`<li class="condition-row condition-pending"><span class="step-name">New ${pendingStep}</span>${sourceField('new',{kind:pendingStep,label:''},'New '+pendingStep)}<div class="condition-actions"><button type="button" data-action="cancel">Cancel</button></div></li>`:'');
+  for(const id of ['add-filter','add-rank'])document.getElementById(id).disabled=rows.length>=50;
   FilterPicker.refresh();
   // Variable rows list their units from the catalog; a restored strategy loads it once.
-  if(scalar&&filterSourcesState==='idle')loadFilterSources();
+  if(rows.some(row=>row.formula)&&stepSourcesState==='idle')loadStepSources();
 }
-function filterMessage(text,failed=false){const note=document.getElementById('filter-message');note.textContent=text;note.className=failed?'error':'hint';}
-// Every source a filter can use, in one searchable list. Built-in filters need
+function stepMessage(text,failed=false){const note=document.getElementById('filter-message');note.textContent=text;note.className=failed?'error':'hint';}
+// Every source a step can use, in one searchable list. Built-in sources need
 // no service; variables, measures and parameters come from the local service.
-function filterChoices(){
-  const groups=[{label:'Built-in filters',options:Object.entries(StrategyDraft.catalog().filters).map(([field,item])=>({value:{kind:'builtin',field,label:item.label},label:item.label,keywords:field,
-    detail:item.available?'':screeningData.filter_catalog[field]?'Needs annual financial data. Download it in Manage backtest data.':'Unavailable in this data',disabled:!item.available}))}];
-  if(filterSources){
-    const library=[...filterSources.library].sort((a,b)=>(b.favourite?1:0)-(a.favourite?1:0));
+function stepChoices(key){
+  const kind=key==='new'?pendingStep:StrategyDraft.view().find(row=>row.id===key)?.kind,catalog=StrategyDraft.catalog(),groups=[];
+  if(kind==='filter')groups.push({label:'Size and listing',options:Object.entries(StrategyDraft.fields).map(([field,label])=>({value:{kind:'field',field,label},label,keywords:field}))});
+  groups.push({label:'EV/EBITDA metrics',options:Object.entries(catalog.metrics).flatMap(([key,item])=>['yield','multiple'].map(component=>{const label=(typeof item==='string'?item:item.label)+' '+component;return {value:{kind:'builtin',id:'metric:'+key+':'+component,label},label,keywords:key,disabled:!screeningData.metrics[key]};}))});
+  groups.push({label:'Built-in values',options:Object.entries(catalog.filters).map(([field,item])=>({value:{kind:'builtin',id:'filter:'+field,label:item.label},label:item.label,keywords:field,
+    detail:item.available?'':screeningData.filter_catalog[field]?'Needs annual financial data. Download it in Manage backtest data.':'Unavailable in this data',disabled:!item.available}))});
+  if(stepSources){
+    const library=[...stepSources.library].sort((a,b)=>(b.favourite?1:0)-(a.favourite?1:0));
     groups.push({label:'My variables',options:library.map(entry=>({value:{kind:'library',variable_id:entry.variable_id,revision:entry.revision,label:entry.name},label:(entry.favourite?'★ ':'')+entry.name,detail:'Saved variable'}))});
-    groups.push({label:'Measures',options:filterSources.measures.map(item=>({value:{kind:'measure',id:item.id,label:item.name},label:item.name,detail:'Measure · '+VariableWorkspace.displayName(item.display),keywords:item.description}))});
-    groups.push({label:'Financial parameters',options:filterSources.parameters.filter(item=>item.kind!=='adapter').map(item=>({value:{kind:'parameter',id:item.id,label:item.name},label:item.name,keywords:item.id,
+    groups.push({label:'Measures',options:stepSources.measures.map(item=>({value:{kind:'measure',id:item.id,label:item.name},label:item.name,detail:'Measure · '+VariableWorkspace.displayName(item.display),keywords:item.description}))});
+    groups.push({label:'Financial parameters',options:stepSources.parameters.map(item=>({value:{kind:'parameter',id:item.id,label:item.name},label:item.name,keywords:item.id,
       detail:[item.source?.endpoint,item.unit==='scalar'?'ratio':item.unit,item.note].filter(Boolean).join(' · ')}))});
   }
-  const note=filterSourcesState==='loading'?'Loading saved variables, measures and parameters…':filterSourcesState==='failed'?'Saved variables, measures and parameters need the local service. Built-in filters work offline.':'';
-  return {groups,note,actions:filterSourcesState==='failed'?[]:[{value:{kind:'create'},label:'＋ Create a new variable…',detail:'Build a formula in the variable editor, then add it as this filter.'}]};
+  const note=stepSourcesState==='loading'?'Loading saved variables, measures and parameters…':stepSourcesState==='failed'?'Saved variables, measures and parameters need the local service. Built-in sources work offline.':'';
+  return {groups,note,actions:stepSourcesState==='failed'?[]:[{value:{kind:'create'},label:'＋ Create a new variable…',detail:'Build a formula in the variable editor, then use it in this step.'}]};
 }
-function loadFilterSources(){
-  if(filterSourcesState==='loading')return;
-  if(!filterSources)filterSourcesState='loading';
-  VariableWorkspace.sources().then(value=>{filterSources=value;filterSourcesState='ready';},()=>{filterSourcesState=filterSources?'ready':'failed';}).then(()=>{renderConditions();syncCatalogControls();});
+function loadStepSources(){
+  if(stepSourcesState==='loading')return;
+  if(!stepSources)stepSourcesState='loading';
+  VariableWorkspace.sources().then(value=>{stepSources=value;stepSourcesState='ready';},()=>{stepSourcesState=stepSources?'ready':'failed';}).then(()=>{renderSteps();StrategyDraft.render();});
 }
-function focusFilterValue(index){document.getElementById('filter-value-'+index).focus();}
-function chooseFilter(key,choice){
-  const index=key==='new'?null:+key,role=index===null?'condition':index;
-  filterMessage('');
+function focusStep(id,key){document.getElementById('step-'+key+'-'+id)?.focus();}
+const firstControl=id=>StrategyDraft.view().find(row=>row.id===id)?.kind==='rank'?'direction':'value';
+function chooseStep(key,choice){
+  const role=key==='new'?pendingStep:key;
+  stepMessage('');
   if(choice.kind==='create'){void VariableWorkspace.open(role);return;}
-  if(choice.kind==='builtin'&&!StrategyDraft.isScalar()){
-    if(index===null){filterConditions.push({field:choice.field,op:'gt',value:''});pendingFilter=false;}
-    else filterConditions[index].field=choice.field;
-    const row=index??filterConditions.length-1;
-    renderConditions();settingsChanged(undefined,String(filterConditions[row].value).trim()!=='');focusFilterValue(row);return;
-  }
-  // A variable source moves the whole strategy to the local service.
   const expected=StrategyDraft.read().revision;
-  filterMessage('Adding '+choice.label+'…');
-  const work=choice.kind==='builtin'?VariableWorkspace.sources().then(()=>StrategyDraft.patch({role,source:{kind:'builtin',id:'filter:'+choice.field}},expected)):VariableWorkspace.useSource(role,choice,expected);
-  work.then(()=>{filterMessage('');focusFilterValue(index??StrategyDraft.filterRows().length-1);},failure=>{
-    renderConditions();
-    filterMessage(failure.code==='STALE_DRAFT'?'The strategy changed while '+choice.label+' was loading. Choose it again.':failure.message,true);
-  });
-}
-function editFilter(index,key,value,run){
-  if(StrategyDraft.isScalar()){StrategyDraft.condition(index,key,value);return;}
-  filterConditions[index][key]=value;settingsChanged(undefined,run);
-}
-function resetFilters(){
-  filterConditions=[];pendingFilter=false;renderConditions();
-  document.getElementById('stock-pool').innerHTML='<option value="cached">Broad cached-price pool</option>';
-  for(const [key,id] of Object.entries(fields)){
-    const v=key==='pool'?'cached':StockScreener.defaults[key];
-    document.getElementById(id).value=v===null?'':String(key==='min_cap'||key==='min_ev'?v/1e6:key==='min_yield'?v*100:v);
+  if(choice.kind==='builtin'||choice.kind==='field'){
+    const id=StrategyDraft.patch({role,source:choice.kind==='field'?{kind:'field',field:choice.field}:{kind:'builtin',id:choice.id}},expected);
+    focusStep(id,firstControl(id));settingsChanged();return;
   }
-}
-function readOptions(){
-  const o=readBounds();
-  o.filters=filterConditions.map(c=>{
-    if(String(c.value).trim()==='')throw Error('Enter a value for each added filter.');
-    return {...c,value:Number(c.value)};
+  stepMessage('Adding '+choice.label+'…');
+  VariableWorkspace.useSource(role,choice,expected).then(()=>{
+    stepMessage('');const id=StrategyDraft.read().changed;focusStep(id,firstControl(id));
+  },failure=>{
+    renderSteps();
+    stepMessage(failure.code==='STALE_DRAFT'?'The strategy changed while '+choice.label+' was loading. Choose it again.':failure.message,true);
   });
-  return o;
-}
-function readBounds(){
-  const o={rank_from:+rankFrom.value,rank_to:+rankTo.value};
-  for(const [key,id] of Object.entries(fields)){
-    const text=document.getElementById(id).value.trim();
-    if(['selection_order','metric','pool','sector','exchange'].includes(key))o[key]=text||null;
-    else{
-      if(!text && ['min_cap','min_ev','min_yield'].includes(key)&&!document.getElementById(id).disabled&&!(StrategyDraft.isScalar()&&['min_cap','min_ev'].includes(key)))throw Error('Fill in each minimum, or enter 0.');
-      o[key]=text===''?null:Number(text)*(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1);
-    }
-  }
-  return o;
 }
 function updateMetricLabels(o){
   const label=metricLabel(o.metric);
@@ -215,18 +179,23 @@ function setModeVisibility(){
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
   if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
   const artifact=currentArtifact();
-  applyPresentation(artifact?.presentation);syncCatalogControls();renderConditions();
+  applyPresentation(artifact?.presentation);renderSteps();
   if(latest&&artifact?.version===4){EvidenceResults.show(artifact);Workspaces.published(artifact);}
   StrategyDraft.render();
 }
 // Only the offline latest screen recalculates on a mode switch; a dated
 // backtest starts from Run backtest or a changed setting.
 function switchMode(mode){
-  screeningMode=mode;setModeVisibility();settingsChanged(undefined,mode==='latest');
+  screeningMode=mode;setModeVisibility();settingsChanged(mode==='latest');
 }
 function applyLatest(){
   let settings,result;
-  try{settings=currentSettings();if(!screeningData.latest.metadata.asof)throw Error('Prepare '+marketLabels[selectedMarket()]+' data from Manage backtest data.');result=StockScreener.latestScreen(screeningData,readOptions());}
+  try{
+    settings=currentSettings();const options=StrategyDraft.flat();
+    if(!options)throw Error('Latest picks for this chain are not available yet. Select Historical backtest to run this chain.');
+    if(!screeningData.latest.metadata.asof)throw Error('Prepare '+marketLabels[selectedMarket()]+' data from Manage backtest data.');
+    StrategyDraft.requireValues();result=StockScreener.latestScreen(screeningData,options);
+  }
   catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
   completeResult(settings,result);
 }
@@ -252,13 +221,10 @@ function latestPresentation(r){
   const rangeNote=`Latest picks · ${r.asof} · ${StockScreener.selectionDescription(o)} No holding returns or future performance are used in this list.`;
   return {coverage,notice:{text,severity},rangeNote,periodLabel:r.asof};
 }
-function applyRange(changed){
+function applyRange(){
   if(document.getElementById('run-screen').disabled)return;
   updateResultsState();
-  if(+rankFrom.value>+rankTo.value && ['rank-from','rank-to'].includes(changed)){
-    if(changed==='rank-from')rankTo.value=rankFrom.value;else rankFrom.value=rankTo.value;
-  }
-  if(screeningMode==='latest'&&!StrategyDraft.isScalar()){applyLatest();return;}
+  if(screeningMode==='latest'){applyLatest();return;}
   document.getElementById('run-screen').disabled=true;
   void StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings)).catch(error=>{document.getElementById('screen-error').textContent=error.message;}).finally(()=>{if(!ScheduleView.isRunning())document.getElementById('run-screen').disabled=false;});
 }
@@ -271,49 +237,6 @@ function downloadLatest(){
   const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='latest-picks-'+currentLatest.asof+'.csv';a.click();URL.revokeObjectURL(url);
-}
-// One native ranking list. The hidden metric value only adapts legacy requests.
-function rankingChoices(){
-  const catalog=StrategyDraft.catalog();
-  return [
-    {label:'EV/EBITDA metrics',items:Object.entries(catalog.metrics).flatMap(([key,item])=>['yield','multiple'].map(component=>({kind:'builtin',id:'metric:'+key+':'+component,label:(typeof item==='string'?item:item.label)+' '+component})))},
-    {label:'Built-in parameters',items:Object.entries(catalog.filters).map(([key,item])=>({kind:'builtin',id:'filter:'+key,label:item.label}))},
-    {label:'Financial parameters',items:(filterSources?.parameters||[]).map(item=>({kind:'parameter',id:item.id,label:item.name}))},
-    {label:'Measures',items:(filterSources?.measures||[]).map(item=>({kind:'measure',id:item.id,label:item.name}))},
-    {label:'My variables',items:(filterSources?.library||[]).map(item=>({kind:'library',variable_id:item.variable_id,revision:item.revision,label:item.name}))}
-  ];
-}
-const rankingKey=choice=>JSON.stringify(choice.kind==='library'||choice.kind==='formula'?{kind:choice.kind,variable_id:choice.variable_id,revision:choice.revision}:{kind:choice.kind,id:choice.id});
-function syncCatalogControls(){
-  const ranking=StrategyDraft.ranking(),source=ranking.source,groups=rankingChoices();
-  let selected=rankingKey(source);
-  if(source.kind==='formula'){
-    const saved=groups[4].items.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);
-    if(saved){selected=rankingKey(saved);saved.label=StrategyDraft.sourceLabel(source);}
-    else groups[4].items.push({...source,label:StrategyDraft.sourceLabel(source)});
-  }else{
-    const group=groups[source.id.startsWith('metric:')?0:1],item=group.items.find(item=>item.id===source.id);
-    if(item)item.label=StrategyDraft.sourceLabel(source);
-    else group.items.push({...source,label:StrategyDraft.sourceLabel(source)});
-  }
-  document.getElementById('ranking-source').innerHTML=groups.map(group=>`<optgroup label="${safe(group.label)}">${group.items.map(item=>`<option value="${safe(rankingKey(item))}" ${item.kind==='builtin'&&!((item.id.startsWith('metric:')&&screeningData.metrics[item.id.split(':')[1]])||(item.id.startsWith('filter:')&&screeningData.filter_catalog[item.id.slice(7)]))?'disabled':''}>${safe(item.label)}</option>`).join('')}</optgroup>`).join('');
-  document.getElementById('ranking-source').value=selected;
-  document.getElementById('variable-direction').value=ranking.direction;
-  document.getElementById('ranking-source-note').textContent=filterSourcesState==='loading'?'Loading saved variables and parameters…':filterSourcesState==='failed'?'Saved variables and parameters need the local service. Open Rank by to retry.':'';
-}
-async function chooseRanking(choice){
-  const expected=StrategyDraft.read().revision;
-  try{
-    if(choice.direction){
-      if(!StrategyDraft.isScalar()&&filterConditions.some(item=>!VariableWorkspace.builtin('filter:'+item.field)))await VariableWorkspace.sources();
-      StrategyDraft.patch({direction:choice.direction},expected);
-    }else if(choice.kind==='builtin'){
-      if(!(choice.id.startsWith('metric:')&&choice.id.endsWith(':yield')&&!StrategyDraft.isScalar())&&!VariableWorkspace.builtin(choice.id))await VariableWorkspace.sources();
-      StrategyDraft.patch({role:'ranking',source:{kind:'builtin',id:choice.id}},expected);
-    }else await VariableWorkspace.useSource('ranking',choice,expected);
-    document.getElementById('screen-error').textContent='';
-  }catch(error){document.getElementById('screen-error').textContent=error.message;}
-  finally{StrategyDraft.render();}
 }
 
 function restoreSavedBacktest(snapshot,name){
@@ -333,11 +256,16 @@ function copySavedBacktestSettings(snapshot){
   document.getElementById('strategy-form').scrollIntoView?.({behavior:'smooth',block:'start'});
   document.getElementById('run-screen').focus?.({preventScroll:true});
 }
-// The form owns its draft. Restoration sources cannot replace a queued edit;
-// only its session may load settings until a confirmed save/cancel ends it.
+// The form owns one ordered draft: Universe (market and pool controls), then
+// Rank and Filter steps. Step IDs exist only in the browser. Restoration
+// sources cannot replace a queued edit; only its session may load settings
+// until a confirmed save/cancel ends it.
 const StrategyDraft=(()=>{
-  let active=null,revision=0,scalar=null,restoredCatalog=null,capturedBuiltins=null;
+  let active=null,revision=0,steps=[],detached=[],projections={},recorded=[],restoredCatalog=null,restored=null,captured=null,nextId=0,changed=null;
   const copy=value=>JSON.parse(JSON.stringify(value));
+  const fields={market_cap:'Market cap',enterprise_value:'Enterprise value',sector:'Sector',exchange:'Exchange'};
+  const textField=source=>source.kind==='field'&&(source.field==='sector'||source.field==='exchange');
+  const flatKeys=new Set([...Object.keys(StockScreener.defaults),'rank_from','rank_to','filters']);
   // Editable labels belong to the draft. Result labels stay with their artifact.
   // Availability comes from current support, even when a saved label is retained.
   function catalog(){
@@ -345,13 +273,10 @@ const StrategyDraft=(()=>{
     return {metrics:{...source.metrics,...restoredCatalog?.metrics},filters:Object.fromEntries(Object.entries({...source.filters,...restoredCatalog?.filters}).map(([id,item])=>[id,{...item,available:!!source.filters[id]?.available}]))};
   }
   const exactKey=value=>JSON.stringify([value.variable_id,value.revision]);
-  function sameContent(left,right){
-    const ordered=value=>Array.isArray(value)?value.map(ordered):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(key=>[key,ordered(value[key])])):value;
-    return JSON.stringify(ordered(left))===JSON.stringify(ordered(right));
-  }
-  function compactDetached(captures,selection){
-    const sources=[selection.ranking.source,...selection.conditions.map(item=>item.source)];
-    const needed=new Set(sources.filter(source=>source.kind==='formula').map(exactKey)),kept=[];
+  const bare=list=>list.map(({id,...step})=>step);
+  const content=()=>JSON.stringify({universe:{pool:document.getElementById('stock-pool').value},steps:bare(steps)});
+  function compactDetached(captures,chain){
+    const needed=new Set(chain.map(step=>step.source).filter(source=>source.kind==='formula').map(exactKey)),kept=[];
     // Every capture already contains its complete dependency closure. Choose
     // existing captures by exact identity; the server alone handles graph policy.
     for(const capture of [...captures].reverse()){
@@ -362,213 +287,267 @@ const StrategyDraft=(()=>{
     return kept.reverse();
   }
   function touch(){revision++;}
-  function selectionSettings(legacy,preserveLegacy=false){
-    if(!scalar){
-      if(preserveLegacy)return legacy;
-      return viewKey()!=='latest'&&capturedBuiltins&&sameContent(legacy,capturedBuiltins.options)?{strategy:copy(capturedBuiltins.strategy)}:legacy;
-    }
-    const intent=readIntent(legacy),capture=scalar.original?copy(scalar.original):{format:'strategy-draft',version:1};
-    Object.assign(capture,{selection:intent.selection,pool:intent.pool,bounds:intent.bounds});
-    return {strategy:capture};
-  }
-  function readIntent(legacy=readOptions()){
-    const intent=copy(scalar.intent);
-    intent.selection.rank_from=+rankFrom.value;intent.selection.rank_to=+rankTo.value;
-    intent.selection.selection_order=document.getElementById('selection-order').value;
-    intent.pool=document.getElementById('stock-pool').value;
-    intent.bounds=Object.fromEntries(['min_cap','max_cap','min_ev','sector','exchange',...['min_yield','max_multiple'].filter(key=>pairRanking(intent.selection.ranking)&&(Object.hasOwn(intent.bounds,key)||(key==='min_yield'?legacy[key]!==0:legacy[key]!==null)))].map(key=>[key,legacy[key]]));
-    return intent;
-  }
-  const builtinDescriptor=id=>scalar?.original?.builtins?.find(item=>item.id===id)||VariableWorkspace.builtin(id);
+  const builtinDescriptor=id=>recorded.find(item=>item.id===id)||VariableWorkspace.builtin(id);
   function sourceLabel(source){
+    if(source.kind==='field')return fields[source.field]||source.field;
     if(source.kind==='builtin'){
       const [,key,component]=source.id.split(':'),item=catalog().metrics[key];
       const label=source.id.startsWith('filter:')?catalog().filters[key]?.label:item&&(typeof item==='string'?item:item.label)+' '+component;
-      return (scalar&&builtinDescriptor(source.id)?.label)||label||source.id;
+      return recorded.find(item=>item.id===source.id)?.label||label||source.id;
     }
-    for(const capture of scalar?.detached||[]){const found=capture.presentation.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);if(found)return found.name;}
+    for(const capture of detached){const found=capture.presentation.find(item=>item.variable_id===source.variable_id&&item.revision===source.revision);if(found)return found.name;}
     return source.variable_id;
   }
-  // Canonical unit and default display of a selected source.
+  // Canonical unit and default display of a formula or built-in source.
   function sourceOutput(source){
     if(source.kind==='builtin')return builtinDescriptor(source.id);
-    for(const capture of [...(scalar?.detached||[])].reverse()){const found=capture.program.definitions.find(item=>exactKey(item)===exactKey(source));if(found)return found;}
+    for(const capture of [...detached].reverse()){const found=capture.program.definitions.find(item=>exactKey(item)===exactKey(source));if(found)return found;}
     return null;
   }
-  function filterRows(){
-    return scalar.intent.selection.conditions.map(item=>{
-      const threshold=item.submitted_threshold||item.threshold,formula=item.source.kind==='formula',output=sourceOutput(item.source);
-      return {label:sourceLabel(item.source),title:formula?item.source.variable_id+' @ '+item.source.revision:'',op:item.op,value:threshold.value,unit:threshold.unit,formula,
-        units:formula?[...new Set([...VariableWorkspace.displays(output?.unit),threshold.unit])]:null};
-    });
-  }
-  // Built-in conditions return to the offline form in their display units.
+  const shown=step=>step.submitted_threshold||step.threshold;
   // An edited threshold drops the values derived from its earlier submission.
-  function setThreshold(item,threshold){item.threshold=threshold;delete item.submitted_threshold;delete item.comparison_value;delete item.storage_comparison_value;}
-  function legacyFilters(){
-    return scalar.intent.selection.conditions.flatMap(item=>{
-      const threshold=item.submitted_threshold||item.threshold,field=item.source.kind==='builtin'&&item.source.id.startsWith('filter:')?item.source.id.slice(7):null;
-      return field&&threshold.unit===builtinDescriptor(item.source.id)?.display?[{field,op:item.op,value:threshold.value}]:[];
+  function setThreshold(step,threshold){step.threshold=threshold;delete step.submitted_threshold;delete step.comparison_value;delete step.storage_comparison_value;}
+  // A new source keeps the typed value. Built-in units are fixed (a built-in
+  // filter lane may wait for the catalog); a field or variable keeps the
+  // chosen unit only when it still fits.
+  function retarget(step){
+    if(textField(step.source)){step.op='eq';setThreshold(step,'');return;}
+    const previous=typeof step.threshold==='string'||!step.threshold?{value:''}:shown(step),source=step.source;
+    if(!step.op||step.op==='eq')step.op='gt';
+    const output=sourceOutput(source),unit=source.kind==='field'?(['usd','usd_million'].includes(previous.unit)?previous.unit:'usd_million')
+      :source.kind==='formula'?(VariableWorkspace.displays(output?.unit).includes(previous.unit)?previous.unit:output?.display||'number')
+      :source.id.startsWith('metric:')?(source.id.endsWith(':yield')?'percent':'multiple'):output?.display;
+    setThreshold(step,{value:previous.value,unit});
+  }
+  function view(){
+    return steps.map((step,index)=>{
+      const formula=step.source.kind==='formula';
+      const row={id:step.id,kind:step.kind,number:index+1,last:index===steps.length-1,label:sourceLabel(step.source),title:formula?step.source.variable_id+' @ '+step.source.revision:'',formula};
+      if(step.kind==='rank')return {...row,direction:step.direction,rank_from:step.rank_from,rank_to:step.rank_to};
+      if(typeof step.threshold==='string')return {...row,text:true,op:step.op,value:step.threshold,choices:screeningData.choices[step.source.field]||[]};
+      const threshold=shown(step),units=step.source.kind==='field'?['usd_million','usd']:formula?[...new Set([...VariableWorkspace.displays(sourceOutput(step.source)?.unit),threshold.unit])]:null;
+      return {...row,op:step.op,value:threshold.value,unit:threshold.unit,units};
     });
   }
-  const ranking=()=>scalar?copy(scalar.intent.selection.ranking):{source:{kind:'builtin',id:'metric:'+document.getElementById('ranking-metric').value+':yield'},direction:'highest'};
-  const pairRanking=value=>value.direction==='highest'&&value.source.kind==='builtin'&&/^metric:[^:]+:yield$/.test(value.source.id);
-  function renderScalar(){
-    EngineControls.sync();
-    const selected=ranking(),pair=pairRanking(selected);
-    document.getElementById('variable-strategy-summary').textContent=scalar?'Select Screen latest or Run backtest to calculate. Editing or checking a variable never runs a backtest.':'Built-in strategies work offline. Reusable variables use the local service.';
-    document.getElementById('strategy-ranking-help').textContent='Rank 1 has the '+selected.direction+' available selected value. Missing ranking values are excluded. Conditions apply at the chosen selection stage; survivors have equal weight.';
-    document.getElementById('strategy-heading').textContent=(selected.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(selected.source);
-    for(const id of ['legacy-yield-control','legacy-multiple-control'])document.getElementById(id).hidden=!pair;
-    document.getElementById('legacy-metric-help').hidden=!pair;
-    for(const id of ['min-yield','max-multiple'])document.getElementById(id).disabled=!pair;
-    document.getElementById('min-yield').required=pair;
-    for(const id of ['min-cap','min-ev'])document.getElementById(id).required=!scalar;
-    document.getElementById('auto-run').disabled=!!scalar;
-    document.getElementById('auto-run-note').textContent=scalar?'Auto-run is paused for captured strategies. Select Screen latest or Run backtest to calculate.':'Turn off to change several settings, then select Run backtest. You can edit settings during a run.';
-    document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||pair||(selected.direction==='highest'&&selected.source.kind==='builtin'&&selected.source.id==='filter:ebitda_yield');
-    syncCatalogControls();
-  }
-  function transition(){
-    const legacy=readBounds();
-    const unit=field=>{const descriptor=VariableWorkspace.builtin('filter:'+field);if(!descriptor)throw Error('Open Rank by to load the supported filter units. Your draft was kept.');return descriptor.display;};
-    // Rows without a value move too; submission asks for the value.
-    const conditions=filterConditions.map(item=>({source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value).trim(),unit:unit(item.field)}}));
-    scalar={intent:{format:'strategy-intent',version:1,pool:legacy.pool,bounds:{},selection:{ranking:{source:{kind:'builtin',id:'metric:'+legacy.metric+':yield'},direction:'highest'},rank_from:legacy.rank_from,rank_to:legacy.rank_to,selection_order:legacy.selection_order,conditions}},detached:[],projections:{},original:null};
-    filterConditions=[];
-  }
-  function patch(change,expected){
-    if(expected!==revision)throw Object.assign(Error('The strategy draft changed. Choose the source again.'),{code:'STALE_DRAFT'});
-    if(change.legacy){
-      const kept=scalar?legacyFilters():filterConditions,removed=scalar?scalar.intent.selection.conditions.length-kept.length:0;
-      filterConditions=kept;scalar=null;capturedBuiltins=null;touch();renderScalar();renderConditions();updateResultsState();
-      if(removed)filterMessage(removed+(removed===1?' variable filter was':' variable filters were')+' removed. Built-in filters were kept.');
-      return;
-    }
-    const next={...ranking(),...(change.direction?{direction:change.direction}:{}),...(change.role==='ranking'?{source:change.source}:{})};
-    const bounds=readBounds();
-    if(!pairRanking(next)&&(bounds.min_yield!==0||bounds.max_multiple!==null))throw Error('This ranking cannot use inclusive minimum yield or maximum multiple. Set minimum yield to 0 and clear maximum multiple explicitly before changing the ranking. Your draft was kept.');
-    if(scalar&&pairRanking(next)&&(change.role==='ranking'||change.direction)&&legacyFilters().length===scalar.intent.selection.conditions.length){
-      patch({legacy:true},expected);
-      document.getElementById('ranking-metric').value=next.source.id.split(':')[1];settingsChanged();return;
-    }
-    // Supported highest-yield metrics keep the existing offline latest path.
-    if(!scalar&&pairRanking(next)){
-      if(change.role==='ranking'){
-        document.getElementById('ranking-metric').value=next.source.id.split(':')[1];settingsChanged();return;
+  // Exact decimal scaling: one decimal-to-binary rounding, as the server does.
+  const scaled=(text,exponent)=>{const [mantissa,power='0']=String(text).trim().toLowerCase().split('e');return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(mantissa)&&/^[+-]?\d+$/.test(power)?Number(mantissa+'e'+(+power+exponent)):NaN;};
+  const exponents={usd:0,USD:0,usd_million:6,percent:-2,number:0,multiple:0,scalar:0};
+  // The offline latest screen runs exactly this shape: one highest EV/EBITDA
+  // yield Rank, first or last, and filters the flat options already express.
+  // Missing minimums become 0, which every prepared row passes.
+  function flat(){
+    const ranks=steps.filter(step=>step.kind==='rank'),rank=ranks[0],[kind,metric,component]=rank?.source.id?.split(':')||[];
+    if(ranks.length!==1||rank.source.kind!=='builtin'||kind!=='metric'||component!=='yield'||rank.direction!=='highest')return null;
+    const at=steps.indexOf(rank);if(at!==0&&at!==steps.length-1)return null;
+    const o={rank_from:rank.rank_from,rank_to:rank.rank_to,selection_order:at===steps.length-1?'filter_first':'rank_first',metric,pool:document.getElementById('stock-pool').value,
+      min_cap:0,max_cap:null,min_ev:0,min_yield:0,max_multiple:null,sector:null,exchange:null,filters:[]},seen=new Set();
+    for(const step of steps){
+      if(step===rank)continue;
+      const source=step.source,threshold=typeof step.threshold==='string'?null:shown(step);
+      const key=source.kind==='field'?{market_cap:{ge:'min_cap',le:'max_cap'},enterprise_value:{ge:'min_ev'},sector:{eq:'sector'},exchange:{eq:'exchange'}}[source.field][step.op]
+        :source.id===rank.source.id&&step.op==='ge'?'min_yield':source.id==='metric:'+metric+':multiple'&&step.op==='le'?'max_multiple':null;
+      if(key){
+        if(seen.has(key))return null;seen.add(key);
+        if(!threshold){o[key]=step.threshold;continue;}
+        if(!Object.hasOwn(exponents,threshold.unit))return null;
+        o[key]=scaled(threshold.value,exponents[threshold.unit]);continue;
       }
+      if(source.kind!=='builtin'||!source.id.startsWith('filter:')||!['lt','gt'].includes(step.op)||threshold.unit!==undefined&&threshold.unit!==builtinDescriptor(source.id)?.display)return null;
+      o.filters.push({field:source.id.slice(7),op:step.op,value:scaled(threshold.value,0)});
     }
-    if(!scalar){transition();capturedBuiltins=null;}
-    if(!pairRanking(next)){delete scalar.intent.bounds.min_yield;delete scalar.intent.bounds.max_multiple;}
-    if(change.direction)scalar.intent.selection.ranking.direction=change.direction;
-    if(change.role!==undefined){
-      if(change.capture)scalar.detached.push(copy(change.capture));
-      const conditions=scalar.intent.selection.conditions,formula=change.source.kind==='formula',output=sourceOutput(change.source);
-      if(change.role==='ranking')scalar.intent.selection.ranking.source=copy(change.source);
-      else if(typeof change.role==='number'){
-        // A new source keeps the typed value. Built-in units are fixed; a
-        // variable keeps the chosen unit only when it still fits.
-        const item=conditions[change.role],threshold=item.submitted_threshold||item.threshold;
-        const unit=formula&&VariableWorkspace.displays(output?.unit).includes(threshold.unit)?threshold.unit:output?.display||'number';
-        item.source=copy(change.source);setThreshold(item,{value:threshold.value,unit});
+    return o;
+  }
+  const empty=step=>step.kind==='filter'&&String(typeof step.threshold==='string'?step.threshold:shown(step).value).trim()==='';
+  function requireValues(list=steps){if(list.some(empty))throw Error('Enter a value for each filter.');}
+  const placeholder=()=>({format:'strategy-draft',version:2,...JSON.parse(content())});
+  const unchanged=()=>restored?.content===content();
+  function selection(){
+    if(viewKey()==='latest')return flat()||{strategy:placeholder()};
+    // A run captures a copied flat or capture/1 strategy as a chain; until
+    // then the copy shows its recorded selection.
+    if(captured?.content===content())return {strategy:copy(captured.strategy)};
+    if(unchanged())return copy(restored.selection);
+    return {strategy:placeholder()};
+  }
+  // Old size, metadata and pair bounds become ordinary filters. A zero minimum
+  // adds no step: every prepared row has a positive market cap and EV, and
+  // ranked yields are positive. An empty flat minimum matched nothing, so it
+  // returns as a filter that needs a value.
+  function boundSteps(bounds,metric,flatSettings){
+    return [['min_cap','market_cap','ge'],['max_cap','market_cap','le'],['min_ev','enterprise_value','ge'],['sector','sector','eq'],['exchange','exchange','eq'],['min_yield','yield','ge'],['max_multiple','multiple','le']].flatMap(([key,lane,op])=>{
+      const value=bounds[key],pair=lane==='yield'||lane==='multiple';
+      if(value===undefined||value===0&&op==='ge'||value===null&&!(flatSettings&&op==='ge'))return [];
+      const source=pair?{kind:'builtin',id:'metric:'+metric+':'+lane}:{kind:'field',field:lane};
+      if(op==='eq')return [{kind:'filter',source,op,threshold:value}];
+      const [unit,exponent,canonical]=lane==='yield'?['percent',-2,'number']:lane==='multiple'?['multiple',0,'multiple']:['usd_million',6,'usd'];
+      if(value===null)return [{kind:'filter',source,op,threshold:{value:'',unit}}];
+      // Keep a short display spelling only when it converts back to the same value.
+      const text=String(Number((exponent>0?value/10**exponent:value*10**-exponent).toPrecision(15)));
+      return [{kind:'filter',source,op,threshold:scaled(text,exponent)===value?{value:text,unit}:{value:String(value),unit:canonical}}];
+    });
+  }
+  // One boundary for every recorded format. filter_first means filters, then
+  // the Rank; rank_first means the Rank, then filters.
+  function fromSettings(settings){
+    const capture=settings.strategy;
+    if(capture?.version===2)return {pool:capture.universe.pool,steps:copy(capture.steps)};
+    const order=(selectionOrder,filters,rank)=>selectionOrder==='rank_first'?[rank,...filters]:[...filters,rank];
+    if(capture){
+      const s=capture.selection,metric=s.ranking.source.id?.split(':')[1];
+      return {pool:capture.pool,steps:order(s.selection_order,[...boundSteps(capture.bounds,metric,false),...s.conditions.map(item=>({kind:'filter',...copy(item)}))],
+        {kind:'rank',...copy(s.ranking),rank_from:s.rank_from,rank_to:s.rank_to})};
+    }
+    const o={...StockScreener.defaults,...settings};
+    return {pool:o.pool,steps:order(o.selection_order,[...boundSteps(o,o.metric,true),...(o.filters||[]).map(item=>({kind:'filter',source:{kind:'builtin',id:'filter:'+item.field},op:item.op,threshold:{value:String(item.value)}}))],
+      {kind:'rank',source:{kind:'builtin',id:'metric:'+o.metric+':yield'},direction:'highest',rank_from:o.rank_from,rank_to:o.rank_to})};
+  }
+  // Built-in lanes chosen before the catalog loaded take its display unit here.
+  async function intentFor(draft){
+    if(draft.steps.length>50)throw Error('A strategy has at most 50 steps.');
+    if(!draft.steps.some(step=>step.kind==='rank'))throw Error('Add a Rank step.');
+    requireValues(draft.steps);
+    let builtins=null;
+    const chain=[];
+    for(const step of draft.steps){
+      if(step.kind==='rank'){chain.push({...step,rank_from:+step.rank_from,rank_to:+step.rank_to});continue;}
+      if(typeof step.threshold==='string'||step.submitted_threshold){chain.push(step);continue;}
+      let unit=step.threshold.unit;
+      if(!unit){
+        builtins??=(await VariableWorkspace.request('/catalog')).builtins;
+        unit=builtins.find(item=>item.id===step.source.id)?.display;
+        if(!unit)throw Error('The selected built-in filter is unavailable. Your settings were kept.');
       }
-      else{conditions.push({source:copy(change.source),op:'gt',threshold:{value:'',unit:output?.display||'number'}});pendingFilter=false;}
-      if(change.authored)scalar.projections[exactKey(change.source)]={submitted:copy(change.authored),labels:copy(change.capture.presentation)};
-      scalar.detached=compactDetached(scalar.detached,scalar.intent.selection);
-      const selected=new Set([scalar.intent.selection.ranking.source,...scalar.intent.selection.conditions.map(item=>item.source)].filter(source=>source.kind==='formula').map(exactKey));
-      scalar.projections=Object.fromEntries(Object.entries(scalar.projections).filter(([key])=>selected.has(key)));
+      chain.push({...step,threshold:{value:String(step.threshold.value).trim(),unit}});
     }
-    touch();renderScalar();renderConditions();updateResultsState();
+    return {format:'strategy-intent',version:2,universe:draft.universe,steps:chain};
   }
   async function captureBuiltins(options){
-    // Convert a detached request, never the form or an accepted record. Capture
-    // finishes before the caller allocates a run or queue submission identity.
+    // Convert a detached flat request, never the form or an accepted record.
+    // Capture finishes before the caller allocates a run or queue identity.
     options=copy(options);
     if(options.strategy)return options;
-    const legacy={rank_from:1,rank_to:50,filters:[],...StockScreener.defaults,...options};
-    if(['min_cap','min_ev','min_yield'].some(key=>legacy[key]===null))throw Error('This recorded test has an empty minimum and cannot be replayed exactly; enter a value.');
-    const filters=legacy.filters||[];
-    const descriptors=filters.length?(await VariableWorkspace.request('/catalog')).builtins:[];
-    const conditions=filters.map(item=>{
-      const descriptor=descriptors.find(source=>source.id==='filter:'+item.field);
-      if(!descriptor)throw Error('The selected built-in filter is unavailable. Your settings were kept.');
-      return {source:{kind:'builtin',id:descriptor.id},op:item.op,threshold:{value:String(item.value),unit:descriptor.display}};
-    });
-    const bounds=Object.fromEntries(['min_cap','max_cap','min_ev','min_yield','max_multiple','sector','exchange'].map(key=>[key,legacy[key]]));
-    const intent={format:'strategy-intent',version:1,pool:legacy.pool,bounds,selection:{ranking:{source:{kind:'builtin',id:'metric:'+legacy.metric+':yield'},direction:'highest'},rank_from:legacy.rank_from,rank_to:legacy.rank_to,selection_order:legacy.selection_order,conditions}};
-    const prepared=await VariableWorkspace.request('/capture',{intent});
-    const selectionKeys=new Set([...Object.keys(StockScreener.defaults),'rank_from','rank_to','filters']);
-    return {...Object.fromEntries(Object.entries(options).filter(([key])=>!selectionKeys.has(key))),strategy:prepared.strategy};
+    const converted=fromSettings(options);
+    const prepared=await VariableWorkspace.request('/capture',{intent:await intentFor({universe:{pool:converted.pool},steps:converted.steps})});
+    return {...Object.fromEntries(Object.entries(options).filter(([key])=>!flatKeys.has(key))),strategy:prepared.strategy};
   }
-  async function prepareSubmission(){
-    const settings=copy(currentSettings());
-    if(!scalar){
-      if(settings.mode==='latest')return settings;
-      const submittedRevision=revision,options=copy(readOptions()),prepared=await captureBuiltins(settings);
-      if(submittedRevision===revision&&!scalar)capturedBuiltins={options,strategy:copy(prepared.strategy)};
-      return prepared;
+  // An unchanged chain capture is resubmitted as recorded. Saving an unchanged
+  // held queue edit keeps its original selection in any format; every other
+  // submission captures a chain.
+  async function prepareSubmission({held=false}={}){
+    let settings=copy(currentSettings());
+    if(held&&active&&unchanged()){const {strategy,...rest}=settings;return {...rest,...copy(restored.selection)};}
+    // A copied flat or capture/1 selection runs as a newly captured chain.
+    if(settings.strategy?.version!==2)settings={...Object.fromEntries(Object.entries(settings).filter(([key])=>!flatKeys.has(key))),strategy:placeholder()};
+    if(settings.strategy?.format!=='strategy-draft')return settings;
+    // Snapshot before the first await; later edits never change this submission.
+    const key=content(),available=copy(compactDetached(detached,settings.strategy.steps)),known=copy(projections);
+    const sources=settings.strategy.steps.map(step=>step.source).filter(source=>source.kind==='formula');
+    const intent=await intentFor(settings.strategy);
+    for(const source of sources){
+      const exact=exactKey(source);if(known[exact])continue;
+      const capture=[...available].reverse().find(item=>item.program.definitions.some(entry=>exactKey(entry)===exact));
+      if(!capture)throw Error('The exact selected variable content is unavailable. Open the picker again. Your draft was kept.');
+      const projected=await VariableWorkspace.request('/detached',{root:{variable_id:source.variable_id,revision:source.revision},capture});
+      known[exact]={submitted:projected.authored,labels:capture.presentation};
     }
-    if(scalar.intent.selection.conditions.some(item=>String((item.submitted_threshold||item.threshold).value).trim()===''))throw Error('Enter a value for each added filter.');
-    const submittedRevision=revision;
-    const intent=readIntent(),detached=copy(compactDetached(scalar.detached,intent.selection)),projections=copy(scalar.projections),original=scalar.original?copy(scalar.original):null,originalIntent=original?{format:'strategy-intent',version:1,selection:original.selection,pool:original.pool,bounds:original.bounds}:null;
-    const unchanged=sameContent(intent,originalIntent)&&sameContent(detached,scalar.original?.variables?[scalar.original.variables]:[]);
-    let snapshot;
-    if(unchanged)snapshot={intent,original};
-    else{
-      const sources=[intent.selection.ranking.source,...intent.selection.conditions.map(item=>item.source)].filter(source=>source.kind==='formula');
-      for(const source of sources){
-        const key=exactKey(source);if(projections[key])continue;
-        const capture=[...detached].reverse().find(item=>item.program.definitions.some(entry=>exactKey(entry)===key));
-        if(!capture)throw Error('The exact selected variable content is unavailable. Open the picker again. Your draft was kept.');
-        const projected=await VariableWorkspace.request('/detached',{root:{variable_id:source.variable_id,revision:source.revision},capture});
-        projections[key]={submitted:projected.authored,labels:capture.presentation};
-      }
-      snapshot={intent,...VariableWorkspace.content(...sources.map(source=>projections[exactKey(source)]),{labels:detached.flatMap(capture=>capture.presentation)})};
-    }
-    const prepared=await VariableWorkspace.request('/capture',snapshot);
-    if(submittedRevision===revision){
-      scalar.original=copy(prepared.strategy);
-      scalar.intent={format:'strategy-intent',version:1,selection:copy(prepared.strategy.selection),pool:prepared.strategy.pool,bounds:copy(prepared.strategy.bounds)};
-      scalar.detached=prepared.strategy.variables?[copy(prepared.strategy.variables)]:[];
-      scalar.projections=projections;
-    }
+    const prepared=await VariableWorkspace.request('/capture',{intent,...(sources.length?VariableWorkspace.content(...sources.map(source=>known[exactKey(source)]),{labels:available.flatMap(capture=>capture.presentation)}):{})});
+    captured={content:key,strategy:copy(prepared.strategy)};
+    for(const source of sources)if(steps.some(step=>step.source.kind==='formula'&&exactKey(step.source)===exactKey(source)))projections[exactKey(source)]??=known[exactKey(source)];
     return {...settings,strategy:prepared.strategy};
   }
-  const refusal=()=>Error('Save or cancel the queued edit before replacing the strategy settings.');
-  function apply(settings,catalog=sourceCatalog(),seed=settings.seed){
-    touch();
-    restoredCatalog=copy(catalog);
-    capturedBuiltins=null;
-    const capture=settings.strategy;
-    // New built-in captures reopen in the ordinary form. Keep their exact
-    // capture for unchanged submissions and displayed-result matching.
-    if(capture?.variables===null&&Object.hasOwn(capture.bounds,'min_yield')&&Object.hasOwn(capture.bounds,'max_multiple')&&capture.selection.conditions.every(item=>item.source.kind==='builtin'&&item.source.id.startsWith('filter:'))){
-      const {strategy,...rest}=settings;
-      settings={...rest,...capture.bounds,pool:capture.pool,metric:capture.builtins.find(item=>item.id===capture.selection.ranking.source.id).storage.metric,
-        ...Object.fromEntries(['rank_from','rank_to','selection_order'].map(key=>[key,capture.selection[key]])),
-        filters:capture.selection.conditions.map(item=>({field:item.source.id.slice(7),op:item.op,value:item.storage_comparison_value}))};
-      capturedBuiltins={strategy:copy(capture)};
+  const defaultSteps=()=>[{kind:'filter',source:{kind:'field',field:'market_cap'},op:'ge',threshold:{value:'100',unit:'usd_million'}},
+    {kind:'filter',source:{kind:'field',field:'enterprise_value'},op:'ge',threshold:{value:'50',unit:'usd_million'}},
+    {kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:1,rank_to:50}];
+  const identify=list=>list.map(step=>({id:'s'+(++nextId),...step}));
+  function load(next,catalogValue,builtins,variables){
+    steps=identify(next);restoredCatalog=catalogValue&&copy(catalogValue);recorded=copy(builtins||[]);
+    detached=variables?[copy(variables)]:[];projections={};captured=null;restored=null;pendingStep=null;
+  }
+  function reset(){
+    touch();load(defaultSteps());
+    document.getElementById('stock-pool').innerHTML='<option value="cached">All stocks with cached prices</option>';document.getElementById('stock-pool').value='cached';
+    renderSteps();render();
+  }
+  function render(){
+    EngineControls.sync();
+    const last=steps.findLast(step=>step.kind==='rank'),offline=flat();
+    document.getElementById('strategy-heading').textContent=last?(last.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(last.source):'Add a Rank step';
+    document.getElementById('auto-run').disabled=!offline;
+    document.getElementById('auto-run-note').textContent=offline?'Turn off to change several settings, then select Run backtest. You can edit settings during a run.':'Auto-run is paused for this chain. Select Run backtest to calculate.';
+    document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
+    const blocked=screeningMode==='latest'&&!offline;
+    document.getElementById('latest-chain-note').hidden=!blocked;
+    if(blocked!==latestBlocked){
+      latestBlocked=blocked;const button=document.getElementById('run-screen');
+      // The note describes the button only while it explains the block.
+      button.setAttribute('aria-describedby',blocked?'latest-chain-note':'');if(!ScheduleView.isRunning())button.disabled=blocked;
     }
-    scalar=settings.strategy?{intent:{format:'strategy-intent',version:1,selection:copy(settings.strategy.selection),pool:settings.strategy.pool,bounds:copy(settings.strategy.bounds)},detached:settings.strategy.variables?[copy(settings.strategy.variables)]:[],projections:{},original:copy(settings.strategy)}:null;
+  }
+  function after(id){changed=id;touch();renderSteps();render();updateResultsState();return id;}
+  function patch(change,expected){
+    if(expected!==revision)throw Object.assign(Error('The strategy draft changed. Choose the source again.'),{code:'STALE_DRAFT'});
+    const {role,source}=change;
+    let step=steps.find(item=>item.id===role);
+    if(!step){
+      if(role!=='filter'&&role!=='rank')throw Object.assign(Error('The strategy draft changed. Choose the source again.'),{code:'STALE_DRAFT'});
+      if(steps.length>=50)throw Error('A strategy has at most 50 steps.');
+      // A new filter goes before the last Rank, so it applies before final ranking.
+      [step]=identify([role==='rank'?{kind:'rank',direction:'highest',rank_from:1,rank_to:50}:{kind:'filter'}]);
+      const last=steps.findLastIndex(item=>item.kind==='rank');
+      steps.splice(role==='filter'&&last>=0?last:steps.length,0,step);pendingStep=null;
+    }
+    if(change.capture)detached.push(copy(change.capture));
+    step.source=copy(source);
+    if(step.kind==='filter')retarget(step);
+    if(change.authored)projections[exactKey(source)]={submitted:copy(change.authored),labels:copy(change.capture.presentation)};
+    detached=compactDetached(detached,steps);
+    const selected=new Set(steps.map(item=>item.source).filter(item=>item.kind==='formula').map(exactKey));
+    projections=Object.fromEntries(Object.entries(projections).filter(([key])=>selected.has(key)));
+    return after(step.id);
+  }
+  function edit(id,key,value){
+    const step=steps.find(item=>item.id===id);if(!step)return;
+    if(key==='direction'||key==='op')step[key]=value;
+    else if(key==='rank_from'||key==='rank_to')step[key]=value===''?'':Number(value);
+    else if(typeof step.threshold==='string')step.threshold=value;
+    else setThreshold(step,{...shown(step),[key]:value});
+  }
+  // A committed range keeps first ≤ last by moving the other end.
+  function commitRange(id,key){
+    const step=steps.find(item=>item.id===id);
+    if(step?.kind!=='rank'||!(+step.rank_from>+step.rank_to))return;
+    if(key==='rank_from')step.rank_to=step.rank_from;else step.rank_from=step.rank_to;
+    renderSteps();focusStep(id,key);
+  }
+  function move(id,offset){
+    const at=steps.findIndex(item=>item.id===id),to=at+offset;
+    if(at<0||to<0||to>=steps.length)return;
+    [steps[at],steps[to]]=[steps[to],steps[at]];
+    after(id);
+    focusStep(id,document.getElementById('step-'+(offset<0?'up':'down')+'-'+id)?.disabled?(offset<0?'down':'up'):(offset<0?'up':'down'));
+  }
+  function remove(id){
+    const at=steps.findIndex(item=>item.id===id);if(at<0)return;
+    steps.splice(at,1);detached=compactDetached(detached,steps);
+    after(null);
+    const next=steps[Math.min(at,steps.length-1)];
+    if(next)focusStep(next.id,'remove');else document.getElementById('add-filter').focus?.();
+  }
+  const refusal=()=>Error('Save or cancel the queued edit before replacing the strategy settings.');
+  function apply(settings,catalogValue=sourceCatalog(),seed=settings.seed){
+    const restoredSteps=fromSettings(settings);
+    touch();
+    load(restoredSteps.steps,catalogValue,settings.strategy?.builtins,settings.strategy?.variables);
     selectMarket(settings.market||'us');
     screeningMode=settings.mode==='latest'?'latest':'backtest';
-    setModeVisibility();
-
     const set=(id,value,label=value)=>{
       const control=document.getElementById(id),text=String(value??'');
       if(control.tagName==='SELECT' && ![...control.options].some(option=>option.value===text))control.add(new Option(label,text));
       control.value=text;
     };
-    for(const [key,id] of Object.entries(fields)){
-      const scalarValue=scalar?(key==='selection_order'?settings.strategy.selection.selection_order:key==='pool'?settings.strategy.pool:Object.hasOwn(settings.strategy.bounds,key)?settings.strategy.bounds[key]:StockScreener.defaults[key]):settings[key];
-      const value=key==='selection_order'?(scalarValue??StockScreener.defaults.selection_order):key==='pool'?(scalarValue??'legacy'):scalarValue;
-      set(id,value===null||value===undefined?'':typeof value==='number'?value/(key==='min_cap'||key==='max_cap'||key==='min_ev'?1e6:key==='min_yield'?.01:1):value,key==='metric'?(catalog.metrics[value]?.label||value):key==='pool'&&value==='legacy'?'Recorded US original candidate set':value);
-    }
-    set('rank-from',settings.strategy?.selection.rank_from??settings.rank_from??1);set('rank-to',settings.strategy?.selection.rank_to??settings.rank_to??50);
+    set('stock-pool',restoredSteps.pool,restoredSteps.pool==='legacy'?'Recorded US original candidate set':restoredSteps.pool);
     if(document.getElementById('backtest-engine'))set('backtest-engine',settings.engine??'original',
       EngineControls.label?.(settings.engine??'original')||settings.engine||'Original');
-    EngineControls.sync();
-    filterConditions=(settings.filters||[]).map(condition=>({...condition}));pendingFilter=false;
     // January settings restore the strategy only; their book years never
     // become a dated calendar.
     if(!['latest','january'].includes(settings.mode)){
@@ -579,74 +558,68 @@ const StrategyDraft=(()=>{
         document.getElementById('repeat-random').checked=seed!==undefined;document.getElementById('random-seed').disabled=seed===undefined;
       }
     }
-    syncCatalogControls();renderConditions();renderScalar();
-    if(capturedBuiltins)capturedBuiltins.options=copy(readOptions());
+    restored={content:content(),selection:settings.strategy?{strategy:copy(settings.strategy)}:Object.fromEntries(Object.entries(settings).filter(([key])=>flatKeys.has(key)))};
+    setModeVisibility();
   }
-  function restore(...args){
+  // A copy refuses more than 50 steps; a held queue edit loads every step.
+  function restore(settings,...args){
     if(active)throw refusal();
-    return apply(...args);
+    if(fromSettings(settings).steps.length>50)throw Error('This strategy has more than 50 steps as a chain, so it cannot be copied into the builder. Its record was kept.');
+    return apply(settings,...args);
   }
   function beginQueuedEdit(id){
     if(active)throw refusal();
+    restored=null;
     const session={id,
       restore(...args){if(active!==session)throw Error('This strategy edit is no longer active.');return apply(...args);},
       end(){if(active===session){active=null;touch();}}
     };
     active=session;touch();return session;
   }
-  function remove(index){
-    scalar.intent.selection.conditions.splice(index,1);
-    const selected=ranking();
-    if(pairRanking(selected)&&legacyFilters().length===scalar.intent.selection.conditions.length){
-      document.getElementById('ranking-metric').value=selected.source.id.split(':')[1];
-      patch({legacy:true},revision);settingsChanged();return;
-    }
-    touch();renderConditions();updateResultsState();
+  function describe(role){
+    const at=steps.findIndex(item=>item.id===role);
+    if(at<0)return {title:'New '+role,use:'Add as '+role};
+    return {title:'Step '+(at+1)+' · '+(steps[at].kind==='rank'?'Rank':'Filter'),use:'Update step '+(at+1)};
   }
-  return {restore,beginQueuedEdit,catalog,read:()=>({revision,settings:scalar?copy(currentSettings()):null,detached:scalar?copy(scalar.detached):[]}),patch,prepareSubmission,captureBuiltins,selectionSettings,touch,isScalar:()=>!!scalar,ranking,sourceLabel,render:renderScalar,filterRows,condition:(index,key,value)=>{const item=scalar.intent.selection.conditions[index];if(key==='op')item.op=value;else setThreshold(item,{...item.submitted_threshold||item.threshold,[key]:value});touch();updateResultsState();},remove};
+  return {restore,beginQueuedEdit,catalog,fields,read:()=>({revision,changed,detached:copy(detached)}),source:role=>copy(steps.find(item=>item.id===role)?.source??null),describe,
+    patch,edit,commitRange,move,remove,reset,view,flat,requireValues,complete:()=>!steps.some(empty),selection,prepareSubmission,captureBuiltins,touch,render};
 })();
 const restoreBacktestSettings=StrategyDraft.restore;
 
 initializeFilters();
-ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:StrategyDraft.isScalar()}),Workspaces.runStatus);
+ScheduleView.init(()=>({mode:viewKey()==='custom'&&document.getElementById('date-testing').value==='random'?'random':viewKey(),scalar:!StrategyDraft.flat()}),Workspaces.runStatus);
 VariableWorkspace.init({draft:StrategyDraft,asof:screeningData.latest.metadata.asof,pool:()=>document.getElementById('stock-pool').value,market:selectedMarket});
-StrategyDraft.render();
 setModeVisibility();
-document.getElementById('ranking-source').addEventListener('focus',loadFilterSources);
 document.getElementById('mode-latest').addEventListener('click',()=>switchMode('latest'));
 document.getElementById('mode-backtest').addEventListener('click',()=>switchMode('backtest'));
 document.getElementById('download-latest').addEventListener('click',e=>{e.preventDefault();downloadLatest();});
-rankFrom.addEventListener('change',()=>settingsChanged('rank-from'));
-rankTo.addEventListener('change',()=>settingsChanged('rank-to'));
 document.getElementById('strategy-form').addEventListener('submit',e=>{e.preventDefault();applyRange();});
-document.getElementById('reset-ranks').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='50';settingsChanged();});
-document.getElementById('top100').addEventListener('click',()=>{rankFrom.value='1';rankTo.value='100';settingsChanged();});
-document.getElementById('reset-strategy').addEventListener('click',()=>{if(StrategyDraft.isScalar())StrategyDraft.patch({legacy:true},StrategyDraft.read().revision);resetFilters();rankFrom.value='1';rankTo.value='50';settingsChanged();});
+document.getElementById('reset-strategy').addEventListener('click',()=>{StrategyDraft.reset();settingsChanged();});
 applyRange();
 
-// A new row asks for its source first; it joins the strategy once chosen.
-document.getElementById('add-filter').addEventListener('click',()=>{
-  if(!pendingFilter){pendingFilter=true;renderConditions();}
+// A new step asks for its source first; it joins the strategy once chosen.
+for(const kind of ['filter','rank'])document.getElementById('add-'+kind).addEventListener('click',()=>{
+  pendingStep=kind;renderSteps();
   document.getElementById('filter-search-new').focus();
 });
-FilterPicker.bind(document.getElementById('filter-conditions'),{choices:filterChoices,choose:chooseFilter,opened:loadFilterSources});
-document.getElementById('filter-conditions').addEventListener('input',event=>{
+const stepList=document.getElementById('strategy-steps');
+FilterPicker.bind(stepList,{choices:stepChoices,choose:chooseStep,opened:loadStepSources});
+stepList.addEventListener('input',event=>{
   const target=event.target;
-  if(target.dataset.key)editFilter(Number(target.dataset.index),target.dataset.key,target.value,false);
+  if(target.dataset.key)StrategyDraft.edit(target.dataset.step,target.dataset.key,target.value);
 });
-document.getElementById('filter-conditions').addEventListener('change',event=>{
-  const target=event.target;
-  if(target.dataset.key)editFilter(Number(target.dataset.index),target.dataset.key,target.value,true);
+stepList.addEventListener('change',event=>{
+  const target=event.target;if(!target.dataset.key)return;
+  StrategyDraft.edit(target.dataset.step,target.dataset.key,target.value);StrategyDraft.commitRange(target.dataset.step,target.dataset.key);settingsChanged();
 });
-document.getElementById('filter-conditions').addEventListener('click',event=>{
+stepList.addEventListener('click',event=>{
   const target=event.target.closest('button');if(!target)return;
-  const {remove,edit}=target.dataset;
-  if(target.dataset.filterCancel!==undefined){pendingFilter=false;renderConditions();return;}
-  if(edit!==undefined){void VariableWorkspace.open(Number(edit));return;}
-  if(remove===undefined)return;
-  filterMessage('');
-  if(StrategyDraft.isScalar()){StrategyDraft.remove(Number(remove));return;}
-  filterConditions.splice(Number(remove),1);renderConditions();settingsChanged();
+  const {action,step}=target.dataset;
+  stepMessage('');
+  if(action==='cancel'){pendingStep=null;renderSteps();document.getElementById('add-filter').focus?.();return;}
+  if(action==='edit'){void VariableWorkspace.open(step);return;}
+  if(action==='up'||action==='down'){StrategyDraft.move(step,action==='up'?-1:1);settingsChanged();}
+  if(action==='remove'){StrategyDraft.remove(step);settingsChanged();}
 });
 
 const autoRun=document.getElementById('auto-run');
@@ -657,14 +630,12 @@ autoRun.addEventListener('change',()=>{
   settingsChanged();
 });
 document.getElementById('strategy-form').addEventListener('input',event=>{
-  if(!['auto-run','ranking-source','variable-direction'].includes(event.target.id))settingsChanged(undefined,false);
+  if(event.target.id!=='auto-run')settingsChanged(false);
 });
 document.getElementById('strategy-form').addEventListener('change',event=>{
   const id=event.target.id;
-  if(id==='ranking-source'){void chooseRanking(JSON.parse(event.target.value));return;}
-  if(id==='variable-direction'){void chooseRanking({direction:event.target.value});return;}
-  if(['auto-run','rank-from','rank-to'].includes(id)||event.target.dataset.key)return;
-  if(id==='stock-market'){selectMarket(selectedMarket());document.getElementById('stock-pool').value='cached';}
+  if(id==='auto-run'||event.target.dataset.key)return;
+  if(id==='stock-market'){selectMarket(selectedMarket());document.getElementById('stock-pool').value='cached';renderSteps();}
   settingsChanged();
 });
 document.getElementById('stop-backtest').addEventListener('click',()=>ScheduleView.cancel());
@@ -674,7 +645,7 @@ BacktestQueue.init({changed:Workspaces.queueStatus,libraryChanged:SavedBacktests
   prepare:()=>{Workspaces.show('builder');autoRun.checked=false;try{localStorage.setItem('backtest-auto-run','false');}catch(_){}},
   configure:()=>{
     screeningMode='backtest';
-    setModeVisibility();settingsChanged(undefined,false);
+    setModeVisibility();settingsChanged(false);
     document.getElementById('schedule-controls').scrollIntoView?.({behavior:'smooth',block:'center'});
   },
   metricLabel:id=>sourceCatalog().metrics[id]?.label||id,filterLabel:id=>sourceCatalog().filters[id]?.label||id});

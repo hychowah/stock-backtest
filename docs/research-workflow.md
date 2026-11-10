@@ -126,7 +126,7 @@ binding's digest as `input` and the research identity as `projection`.
 python3 scripts/research.py status
 ```
 
-There is no January screen command. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filters apply before ranking; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). **Rank first, then filter** selects the requested ranks before applying user filters. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
+There is no January screen command. A January study is a 12-month dated schedule from 1 January: run it as a custom schedule on the website or in the queue. By default, filter steps come before the Rank; rank 1 has the lowest selected multiple within the matching pool (EV/EBITDA by default). A Rank step placed before the filters selects the requested ranks before applying them. Selected stocks are equally weighted. Selection uses entry information, never future return. Treasury subtraction does not change the ordering within a date.
 
 `legacy` pool means **original-screen-compatible candidate selection**, not the older exit rule: both pools retain early trading stops at their last price and apply the explicit `BANKRUPT` overrides (keyed by symbol and day of loss; a book whose window contains the day takes the loss). This pool preserves the original report-level $100m market cap/$50m EV filters and 250-name buffer, so lowering those filters in a query cannot recover companies already excluded by those rules. Use `cached` to vary those thresholds more broadly.
 
@@ -516,8 +516,13 @@ rejected variant, not the applied implementation. The production cache was uncha
 
 ### Selection order
 
-**Selection order** applies to latest, fixed and random-date views.
-The default is **Filter first, then rank**. All user conditions pass first.
+The website builds a strategy as ordered Filter and Rank steps (see
+[evidence views](evidence-views.md#ordered-strategy-requests)). There is no
+separate order control. Filters → Rank is filter-first. Rank → filters is
+rank-first. The builder copies older flat and capture/1 records into those
+chains. The rest of this section describes the recorded `selection_order` field.
+
+**Filter first, then rank** is the default. All user conditions pass first.
 Rank the matches and take the requested inclusive range.
 
 **Rank first, then filter** ranks the prepared pool and takes the requested
@@ -554,9 +559,10 @@ queue and saved-artifact tests, then browser/SQL parity and control checks.
 
 ### Multiple threshold conditions
 
-The website has an **Additional filters** list. Add one condition per metric,
-comparison and value. All conditions must pass at the chosen selection stage. Comparisons are
-strict: `lt` means less than; `gt` means more than. Two conditions can bound the
+On the website, each condition is a Filter step: one source, comparison and
+value. Flat requests and capture/1 conditions are strict: `lt` means less than;
+`gt` means more than. Chain Filters also accept inclusive `le` and `ge`, and
+equality for sector and exchange. Two conditions can bound the
 same metric. Missing values fail only conditions that require those values.
 
 The default catalog includes both EV/EBITDA multiples, EBITDA/EV yield,
@@ -589,8 +595,8 @@ and rebuild the website. Changing condition values reuses prepared books.
 
 ### Sales-based operating yield spread
 
-Add **Sales × 3-year avg operating margin / EV − US 10Y (pp)** under
-Additional filters. The formula is:
+Add **Sales × 3-year avg operating margin / EV − US 10Y (pp)** as a Filter
+step. The formula is:
 
 ```
 annual operating margin = operating income / revenue

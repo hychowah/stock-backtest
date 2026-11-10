@@ -29,7 +29,7 @@ const context=vm.createContext({AbortController,console,document:{getElementById
   if(deferred){const wait=deferred;deferred=null;await wait();}
   return response(value);
  }});
-for(const name of ['result-artifacts.js','robustness.js','result-explorer.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
+for(const name of ['result-artifacts.js','backtest-comparison.js','robustness.js','result-explorer.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../website/browser',name),'utf8'),context);
 const run=code=>vm.runInContext(code,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 const input=id=>node('explore-'+id),panel=()=>node('result-explorer');
 const applied=()=>requests.filter(row=>row.url==='/api/backtest-exploration'||row.url.includes('/reader/explore/'));
@@ -135,6 +135,16 @@ const artifact=()=>({version:2,kind:'custom',settings:{mode:'custom',rank_from:1
   run('ResultArtifacts.reader(ResultArtifacts.forView("custom")).download("holdings")');
   assert(downloads.at(-1).endsWith('/reader/export/holdings/1'));
  }
+ // A chain's explorer bounds come from its last Rank, here ranks 20–40.
+ const chain=artifact();chain.version=4;chain.evidence={id:'c'.repeat(32),format_version:2,trials:1,periods:70,holdings:2100};
+ const steps=[{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'lowest',rank_from:1,rank_to:200},{kind:'rank',source:{kind:'builtin',id:'filter:pe'},direction:'highest',rank_from:20,rank_to:40},{kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'}];
+ const chainOptions={strategy:{format:'strategy-capture',version:2,universe:{pool:'cached'},steps,builtins:[],variables:null}};
+ chain.settings={mode:'custom',...chainOptions};
+ await show(chain,1,{...info,summary:{...result,options:chainOptions}});
+ assert.equal(input('rank-from').min,'20');assert.equal(input('rank-to').max,'40');
+ change('period-from',12);change('period-to',19);change('rank-from',25);change('rank-to',40);input('apply').handlers.click();await tick();
+ assert(applied().at(-1).url.endsWith('/reader/explore/1/12/19/25/40'));
+ change('rank-to',41);const chainCount=applied().length;input('apply').handlers.click();await tick();assert.equal(applied().length,chainCount,'Ranks stay within the last Rank');
  // Replacing a result releases its reader, aborts work and prevents late publication.
  deferred=()=>new Promise(resolve=>resume=resolve);input('apply').handlers.click();await tick();
  await show(artifact());const fresh=input('window').textContent;resume();await tick();assert.equal(input('window').textContent,fresh);

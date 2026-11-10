@@ -80,7 +80,9 @@ class ScalarTests(unittest.TestCase):
         self.fixture=Fixture();self.addCleanup(self.fixture.close)
     def test_builtin_form_capture_matches_sql_across_pools_orders_bounds_and_scales(self):
         fixture=Fixture(8);self.addCleanup(fixture.close)
-        pairs=[(None,.9),(3.,None),(3.,.3),(4.,.3),(3.,.2),(3.,.1),(-0.,0.),(3.,-.1)]
+        # Stored pairs are complete or absent, and admitted EBITDA and EV are
+        # positive, so the browser's chain ranks the yield lane alone exactly.
+        pairs=[(None,None),(3.,None),(3.,.3),(4.,.3),(3.,.2),(3.,.1),(-0.,0.),(3.,.05)]
         low,high=13.501116090704034,13.501116090704036
         for i,(multiple,yield_value) in enumerate(pairs):
             assignments=dict(candidate_rank=None if i==2 else i+1)
@@ -108,7 +110,8 @@ class ScalarTests(unittest.TestCase):
                         options=dict(pool=pool,metric=metric,selection_order=order,rank_from=2,rank_to=5,
                             min_cap=100e6,max_cap=None,min_ev=50e6,min_yield=0.,max_multiple=None,sector=None,exchange=None,filters=[])
                         table.append(dict(options,**case))
-        # Exercise the actual browser converter once for the complete table.
+        # Exercise the actual browser converter (flat settings to one chain) once
+        # for the complete table.
         process=subprocess.run(['node',str(Path(__file__).with_name('check-strategy-draft.cjs')),'--builtins-parity'],
             input=json.dumps(dict(cases=table,builtins=s.builtin_catalog()),allow_nan=False),text=True,capture_output=True,check=True,timeout=15)
         converted=json.loads(process.stdout);self.assertEqual(len(converted),len(table))
@@ -117,7 +120,11 @@ class ScalarTests(unittest.TestCase):
                 expected=screening.select(fixture.db,book=fixture.dated,exit_day='2015-01-05',**options)
                 if any(options[field] is None for field in ('min_cap','min_ev','min_yield')):
                     self.assertEqual(expected,[])
-                    self.assertIn('empty minimum and cannot be replayed exactly',submitted['error'])
+                    self.assertIn('Enter a value for each filter',submitted['error'])
+                    continue
+                if len(options['filters'])==50:
+                    # Fifty filters plus the bounds exceed the 50-step chain ceiling.
+                    self.assertIn('at most 50 steps',submitted['error'])
                     continue
                 actual,_=fixture.select(s.capture_strategy(submitted['intent']))
                 self.assertEqual([(h['symbol'],h['rank'],h['ranking_value']) for h in actual],
@@ -356,7 +363,7 @@ class ScalarTests(unittest.TestCase):
         self.assertTrue(all(len(row['scalar_evidence']['steps']) == 4 for row in stocks))
         blocks = [record['value']['block'] for record in records if record['type'] == 'evaluation']
         self.assertEqual(sum(len(block['requests']) for block in blocks), 3)
-        self.assertEqual([step['value'] for step in stocks[0]['scalar_evidence']['steps']], [.3, 10., 10., 10.])
+        self.assertEqual(stocks[0]['scalar_evidence']['steps'][1:], [None, 1, None])
 
     def test_pipeline_builtin_equivalents_match_legacy_both_pools_orders_and_ranges(self):
         for pool in ('legacy', 'cached'):
@@ -394,7 +401,7 @@ class ScalarTests(unittest.TestCase):
             stocks, _ = self.fixture.select(capture)
         self.assertEqual(calls, [(50, 2)])
         self.assertEqual([row['symbol'] for row in stocks], ['A0049', 'A0048', 'A0047'])
-        self.assertEqual([outcome['step'] for outcome in stocks[0]['scalar_evidence']['steps']], list(range(5)))
+        self.assertEqual(stocks[0]['scalar_evidence']['steps'][1:], [None, None, None, 1])
         filters[1]['threshold']['value'] = '151'
         rejected = s.capture_strategy(requests.pipeline(*filters, requests.rank_step()), submitted=[shared, left, right])
         with patch.object(x.columns.Formulas, 'evaluate', side_effect=AssertionError('Stored filters must run first')):

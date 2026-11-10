@@ -22,7 +22,7 @@ const VariableWorkspace=(()=>{
   // Catalog descriptions can append caveats after a semicolon.
   const parameterName=item=>String(item.description).split(';')[0].trim();
   const opNames={parameter:'Parameter',constant:'Constant',add:'Add (+)',sub:'Subtract (−)',mul:'Multiply (×)',div:'Divide (÷)',positive_div:'Divide by a positive value',neg:'Negate (−)',annual:'Annual statistic',at:'Value at date',lookback:'Value months earlier',ref:'Exact saved reference'};
-  let callbacks={},catalog=null,entries=[],editor=null,role='ranking',draftRevision=0,generation=0,mutation=0,listRequest=0,validation=0,preview=0,editRevision=0,returnFocus=null,sourceSelection=null,authoredRequest=0,coverageAbort=null,coverageVersion=0,coverageScopes=null,checkTimer=null;
+  let callbacks={},catalog=null,entries=[],editor=null,role=null,draftRevision=0,generation=0,mutation=0,listRequest=0,validation=0,preview=0,editRevision=0,returnFocus=null,sourceSelection=null,authoredRequest=0,coverageAbort=null,coverageVersion=0,coverageScopes=null,checkTimer=null;
   // Edits are checked after a short pause; Use and Save always check first.
   const CHECK_DELAY=400;
   function message(text,error=false){node('variable-message').textContent=text;node('variable-message').className=error?'backtest-failed':'hint';}
@@ -162,11 +162,12 @@ const VariableWorkspace=(()=>{
     node('variable-explanation').textContent=editor.checked?editor.summary:describe(editor.definition.expression);
     renderIdentity();
     node('variable-upgrade').hidden=editor.definition.version===3&&editor.definition.parameter_catalog===(catalog?.current_parameter_catalog||'financial-parameters/4');
-    node('variable-dialog-title').textContent=role==='ranking'?'Ranking variable':role==='condition'?'New filter':'Filter '+(role+1);
+    node('variable-dialog-title').textContent=callbacks.draft.describe(role).title;
     node('variable-apply').textContent=useLabel();
   }
-  // role is fixed for one open dialog, so the main action names its destination.
-  const useLabel=()=>role==='ranking'?'Use for ranking':role==='condition'?'Add as filter':'Update filter '+(role+1);
+  // role is fixed for one open dialog: a step ID, or the kind of a new step.
+  // The main action names its destination.
+  const useLabel=()=>callbacks.draft.describe(role).use;
   // State in words. The exact identity stays available as a tooltip.
   function renderIdentity(){
     const entry=editor.entry,saved=!!entry&&!entry.deleted;
@@ -197,10 +198,9 @@ const VariableWorkspace=(()=>{
     const sources=[...categories].map(([name,values])=>group(esc(name),values.map(p=>`<button type="button" data-parameter="${esc(p.id)}" title="${esc((p.source?`${p.source.endpoint} / ${p.source.field}`:p.adapter||'Existing policy')+' · '+(p.contexts||[]).join(', '))}">${esc(p.description)}<small>${esc(p.unit==='scalar'?'ratio':p.unit)}</small></button>`))).join('');
     node('variable-picker').innerHTML=group('Favourites',entries.filter(e=>e.favourite&&matches(e)).map(item))+group('My variables',entries.filter(matches).map(item))+sources+group('Measures',(catalog?.measures||[]).filter(matches).map(e=>`<button type="button" data-measure="${esc(e.id)}" ${editor?.definition.version<3?'disabled title="Use expanded inputs first"':''}>${esc(e.name)}<small>${esc(displayName(e.display))} · ${esc(e.missing)}${e.history?' · annual history: '+esc(e.history):''}</small></button>`))+group('Built-ins',(sourceSelection?[]:catalog?.builtins||[]).filter(matches).map(e=>`<button type="button" data-builtin="${esc(e.id)}">${esc(e.label)}<small>Built-in · ${esc(displayName(e.display))}</small></button>`));
   }
-  async function open(selectedRole='ranking'){
-    const draft=callbacks.draft.read(),selection=draft.settings?.strategy?.selection;
-    const selected=selectedRole==='ranking'?selection?.ranking.source:typeof selectedRole==='number'?selection?.conditions[selectedRole]?.source:null;
-    const captured=selected?.kind==='formula'?[draft.settings?.strategy?.variables,...(draft.detached||[])].find(capture=>capture?.program.bundle.definitions.some(item=>item.variable_id===selected.variable_id&&item.revision===selected.revision)):null;
+  async function open(selectedRole){
+    const draft=callbacks.draft.read(),selected=callbacks.draft.source(selectedRole);
+    const captured=selected?.kind==='formula'?draft.detached.find(capture=>capture.program.bundle.definitions.some(item=>item.variable_id===selected.variable_id&&item.revision===selected.revision)):null;
     role=selectedRole;draftRevision=draft.revision;returnFocus=document.activeElement;generation++;const local=generation;
     node('variable-dialog').showModal?.();if(!node('variable-dialog').open)node('variable-dialog').setAttribute('open','');
     startNew(true);message('Loading saved variables and supported parameters…');
@@ -310,8 +310,7 @@ const VariableWorkspace=(()=>{
       node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
     }catch(failure){if(current())throw failure;}
   }
-  // Ranking and filters share the library and expanded source list.
-  // The filter list omits adapters that its built-in filters already provide.
+  // Every step shares the library and expanded source list.
   async function sources(){
     catalog??=await request('/catalog');
     const library=await request('');
@@ -349,9 +348,6 @@ const VariableWorkspace=(()=>{
   }
   function init(options){
     callbacks=options;node('variable-preview-date').value=options.asof;
-    const controls=document.querySelector('.variable-controls');
-    controls.addEventListener('input',event=>event.stopPropagation());controls.addEventListener('change',event=>event.stopPropagation());
-    node('variable-new').addEventListener('click',()=>attempt(()=>open('ranking')));
     node('variable-close').addEventListener('click',close);node('variable-dialog').addEventListener('cancel',()=>{cancelSource();generation++;invalidate();returnFocus?.focus?.();});
     node('variable-search').addEventListener('input',renderPicker);node('variable-refresh').addEventListener('click',()=>attempt(refresh));node('variable-start-new').addEventListener('click',()=>startNew());
     node('variable-edit-selected').addEventListener('click',()=>attempt(()=>loadExact(editor.variable_id,editor.selectedRevision)));

@@ -281,20 +281,22 @@ never show negative slices. Checks: `python3 tests/check_screener.py` after
 building, `node tests/check-range.cjs`, `node tests/check-contributions.cjs`
 and `node tests/check-result-artifacts.cjs`.
 
-**Selection order.** `filter_first` is the default. `rank_first` takes the
-inclusive rank range from the prepared pool before user filters, keeps original
-ranks and adds no replacements. Equal weights use the survivor count. Each
-dated period ranks independently. Preserve the order through jobs, the queue,
-saved results and replay. Older records omit it and mean filter-first; never
-rewrite or recalculate them. Check `python3 tests/test_selection_order.py`.
+**Selection order.** `filter_first` is the default. `rank_first` takes its
+inclusive ranks from the prepared pool before user filters, keeping original
+ranks without replacements. Chains express both orders. Equal weights use the
+survivor count. Each dated period ranks independently. Preserve the order
+through jobs, queue, saved results and replay. Records that omit it mean
+filter-first; never rewrite or recalculate them. Check
+`python3 tests/test_selection_order.py`.
 
 **Metrics and threshold filters.** `backtest/financial/metrics.py` owns the
-catalog, the calculators and every formula. Consumers read prepared pairs and
+catalog, calculators and every formula. Consumers read prepared pairs and
 filter values without interpreting formulas. Current EV/EBITDA is the default
 ranking. The three-year metric divides current EV by mean EBITDA from three
-consecutive annual reports. Conditions use `field`, strict `lt` or `gt` and a
-finite value in display units. A missing value fails only conditions that need
-it. Use the selected fiscal report only; never fill a field from a newer report.
+consecutive annual reports. Flat conditions use `field`, strict `lt`/`gt` and
+finite display-unit values; chain Filters add `ge`, `le`, `eq`. A missing value
+fails only conditions that need it. Use the selected fiscal report only; never
+fill a field from a newer report.
 Trailing returns use adjusted prices on or before the screen date and its
 anniversary, within seven days; leap days clamp to 28 February. Ratio
 denominators must be positive. A calculation change needs offline preparation,

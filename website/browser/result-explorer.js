@@ -72,9 +72,9 @@ const ResultExplorer=(()=>{
   function show(artifact,trial,info){
     clear();
     const options=trial==='all'?info.summary.configuration.options:info.summary.options;
-    const selection=options?.strategy?.selection??options??artifact.settings;
+    const rank=BacktestComparison.finalRank(options??artifact.settings);
     const state={artifact,trial,info,reader:ResultArtifacts.reader(artifact),generation:0,
-      firstRank:selection.rank_from??1,lastRank:selection.rank_to??50,loaded:false,loading:false};
+      firstRank:rank.rank_from,lastRank:rank.rank_to,loaded:false,loading:false};
     active=state;panel().hidden=false;
     node('title').textContent=trial==='all'?'Explore all '+info.summary.completed+' trials':'Explore this result';
     node('from-label').textContent=trial==='all'?'From entry block':'From entry';
