@@ -122,6 +122,8 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual((busy['admission'],busy['outcome'],busy['error']),('queue','failed','Busy'))
         self.assertEqual({key:custom[key] for key in ('mode','admission','strategy','pool','outcome')},
                          dict(mode='custom',admission='interactive',strategy=False,pool='legacy',outcome='completed'))
+        self.assertEqual({key:custom[key] for key in ('market','ranking_source_kind','step_count')},
+                         dict(market='us',ranking_source_kind='builtin',step_count=4))
         self.assertEqual(custom['periods'],8)
         self.assertLessEqual({'admission','books','selection'},custom['stages'].keys())
         self.assertEqual(custom['counts'],dict(books_calculated=8))

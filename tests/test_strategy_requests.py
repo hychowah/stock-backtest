@@ -37,6 +37,14 @@ def condition(source, value='8', unit='percent', op='gt'):
     return dict(source=source, op=op, threshold=dict(value=value, unit=unit))
 
 
+def rank_step(source=None, first=1, last=50, direction='highest'):
+    return dict(kind='rank', source=source or builtin(), direction=direction, rank_from=first, rank_to=last)
+
+
+def pipeline(*steps, pool='cached'):
+    return dict(format='strategy-intent', version=2, universe=dict(pool=pool), steps=list(steps))
+
+
 class StrategyTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -407,7 +415,7 @@ class StrategyTests(unittest.TestCase):
         for value in (None, {}, s.CapturedStrategy('bad'), s.CapturedStrategy('[]'),
                       s.CapturedStrategy(json.dumps(capture.to_dict()))):
             self.error('INVALID_STRATEGY', s.require_strategy, value)
-        self.error('UNKNOWN_VERSION', s.require_strategy, self.change(capture, lambda v: v.update(version=2)))
+        self.error('UNKNOWN_VERSION', s.require_strategy, self.change(capture, lambda v: v.update(version=3)))
         self.error('WORK_LIMIT', s.require_strategy, s.CapturedStrategy(' ' * (s.STRATEGY_BYTES + 1)))
         for change in (lambda v: v.update(version=True), lambda v: v.update(format='other')):
             bad = intent()
@@ -470,6 +478,46 @@ class StrategyTests(unittest.TestCase):
                 db.execute('BEGIN EXCLUSIVE')
                 db.rollback()
         self.path.unlink()
+
+
+    def test_pipeline_capture_is_detached_and_retains_order_sources_and_scales(self):
+        record = self.create()
+        request = pipeline(rank_step(formula(record), 20, 40),
+            dict(kind='filter', **condition(builtin('filter:profit_margin'), '8', op='ge')),
+            dict(kind='filter', source=dict(kind='field', field='sector'), op='eq', threshold='Technology'),
+            rank_step(formula(record), 1, 5, 'lowest'))
+        capture = s.capture_strategy(request, self.store)
+        value = capture.to_dict()
+        self.assertEqual(value['steps'][1]['storage_comparison_value'], 8.)
+        self.assertEqual(value['steps'][1]['comparison_value'], .08)
+        self.assertEqual(value['variables']['program']['bundle']['roots'], [root(record)] * 2)
+        self.assertEqual(value['universe'], dict(pool='cached'))
+        self.assertNotIn('bounds', value)
+        with patch.object(s, 'builtin_catalog', side_effect=AssertionError('No catalog')), \
+             patch.object(library.Store, '_transaction', side_effect=AssertionError('No library')):
+            self.assertEqual(s.require_strategy(capture), value)
+            self.assertEqual(s.from_wire(value).to_json(), capture.to_json())
+        from backtest.application import variable_authoring
+        self.assertEqual(variable_authoring.prepare(dict(intent=variable_authoring.intent(value), original=value), self.store)['strategy'], value)
+        self.assertEqual(s.log_fields(dict(strategy=value, market='us')),
+                         dict(market='us', ranking_source_kind='formula', step_count=4))
+
+    def test_pipeline_checks_steps_metadata_ranks_units_and_existing_limits(self):
+        self.error('INVALID_STRATEGY', s.capture_strategy, pipeline())
+        request = pipeline(rank_step())
+        self.assertEqual(s.capture_strategy(pipeline(*[rank_step()] * 50)).to_dict()['version'], 2)
+        self.error('WORK_LIMIT', s.capture_strategy, pipeline(*[rank_step()] * 51))
+        self.error('INVALID_STRATEGY', s.capture_strategy,
+                   pipeline(dict(kind='filter', **condition(builtin()))))
+        for step in (rank_step(first=0), rank_step(direction='unknown'),
+                     rank_step(dict(kind='field', field='sector')),
+                     dict(kind='filter', **condition(builtin(), op='eq')),
+                     dict(kind='filter', source=dict(kind='field', field='exchange'), op='ge', threshold='NYSE')):
+            self.error('INVALID_STRATEGY', s.capture_strategy, pipeline(rank_step(), step))
+        self.error('UNIT_MISMATCH', s.capture_strategy,
+                   pipeline(rank_step(), dict(kind='filter', **condition(builtin('filter:fcf'), unit='percent'))))
+        request['universe']['min_cap'] = 0
+        self.error('INVALID_STRATEGY', s.capture_strategy, request)
 
 
 if __name__ == '__main__':

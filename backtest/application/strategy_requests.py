@@ -6,7 +6,7 @@ library. Built-ins describe stored scalar lanes, never invented formulas.
 require_strategy() restores original meaning without a current catalog/library.
 check_options() is the separate current-capability admission operation.
 
-The namespaced strategy-capture/1 version allocates no application result version.
+The namespaced strategy-capture/1 and /2 formats allocate no application result version.
 A capture is at most 192 KiB. check_request() counts settings and display metadata
 against the existing 256 KiB queue ceiling. Recorded plans have their separate
 staged-plan ceiling. Neither operation changes old requests.
@@ -141,7 +141,7 @@ def _descriptor(value, path):
     return value
 
 
-def _source(value, path):
+def _source(value, path, *, fields=False):
     if type(value) is not dict:
         _fail('INVALID_STRATEGY', path, 'An explicit built-in or exact formula source is required.')
     if value.get('kind') == 'builtin':
@@ -153,6 +153,10 @@ def _source(value, path):
         # The existing resolver/checked program owns exact identity validation.
         if any(type(value[key]) is not str for key in ('variable_id', 'revision')):
             _fail('INVALID_STRATEGY', path, 'An exact formula identity is required.')
+    elif fields and value.get('kind') == 'field':
+        _shape(value, ('kind', 'field'), path=path)
+        if value['field'] not in ('market_cap', 'enterprise_value', 'sector', 'exchange'):
+            _fail('INVALID_STRATEGY', path, 'Unknown Universe field.')
     else:
         _fail('INVALID_STRATEGY', path, 'Unknown scalar source kind.')
     return dict(value)
@@ -195,8 +199,7 @@ def _bounds(value):
     return result
 
 
-def _compile(spec, variables, builtins, pool, bounds, bound, checkpoint):
-    sources = _sources(spec)
+def _captured_sources(sources, variables, builtins, pool, checkpoint):
     formula_roots = [_root(source) for source in sources if source['kind'] == 'formula']
     if formula_roots:
         captured = library.require_capture(library.VariableCapture(_encode(variables, library.CAPTURE_BYTES, checkpoint)),
@@ -222,6 +225,101 @@ def _compile(spec, variables, builtins, pool, bounds, bound, checkpoint):
         _fail('INVALID_STRATEGY', '/builtins', 'Captured scalar descriptors must match first-use source order.')
     if pool not in ('legacy', 'cached'):
         _fail('INVALID_STRATEGY', '/pool', 'Pool must be legacy or cached.')
+    return captured, outputs, descriptors
+
+
+def field_descriptor(field):
+    """Presentation and comparison scale of a checked Universe field."""
+    text = field in ('sector', 'exchange')
+    return dict(unit='text' if text else 'USD', display='text' if text else 'usd', storage=dict(scale=0))
+
+
+def _step_sources(steps):
+    if type(steps) is not list or not steps:
+        _fail('INVALID_STRATEGY', '/steps', 'A chain needs at least one Rank.')
+    if len(steps) > MAX_CONDITIONS:
+        _fail('WORK_LIMIT', '/steps', 'Choose at most 50 ordered steps, including a Rank.')
+    sources = []
+    for index, step in enumerate(steps):
+        path = '/steps/' + str(index)
+        if type(step) is not dict:
+            _fail('INVALID_STRATEGY', path, 'A Rank or Filter step is required.')
+        if step.get('kind') == 'rank':
+            _shape(step, ('kind', 'source', 'direction', 'rank_from', 'rank_to'), path=path)
+        elif step.get('kind') == 'filter':
+            _shape(step, ('kind', 'source', 'op', 'threshold'),
+                   ('submitted_threshold', 'comparison_value', 'storage_comparison_value'), path)
+            if step['op'] not in ('lt', 'gt', 'le', 'ge', 'eq'):
+                _fail('INVALID_STRATEGY', path + '/op', 'Unknown Filter comparison.')
+        else:
+            _fail('INVALID_STRATEGY', path, 'A Rank or Filter step is required.')
+        source = _source(step['source'], path + '/source', fields=True)
+        metadata = source['kind'] == 'field' and field_descriptor(source['field'])['unit'] == 'text'
+        if metadata != (step.get('op') == 'eq'):
+            _fail('INVALID_STRATEGY', path, 'Metadata fields require equality; numeric sources require numeric comparisons.')
+        sources.append(source)
+    if not any(step['kind'] == 'rank' for step in steps):
+        _fail('INVALID_STRATEGY', '/steps', 'A chain needs at least one Rank.')
+    return sources
+
+
+def sources(value):
+    """Source roles in captured order, including repeated exact formula revisions."""
+    if value['version'] == 2:
+        return [step['source'] for step in value['steps']]
+    return [value['selection']['ranking']['source']] + [item['source'] for item in value['selection'].get('conditions', [])]
+
+
+def _compile_steps(steps, variables, builtins, universe, bound, checkpoint):
+    _shape(universe, ('pool',), path='/universe')
+    roles = _step_sources(steps)
+    captured, outputs, descriptors = _captured_sources(roles, variables, builtins, universe['pool'], checkpoint)
+    normalized = []
+    for index, (step, source) in enumerate(zip(steps, roles)):
+        checkpoint()
+        path = '/steps/' + str(index)
+        if step['kind'] == 'rank':
+            try:
+                policy = selection.validate(dict(ranking=dict(lane='value', direction=step['direction']),
+                    rank_from=step['rank_from'], rank_to=step['rank_to']))
+            except selection.SelectionError as error:
+                _fail(error.code, path + error.path, str(error))
+            normalized.append(dict(step, rank_from=policy['rank_from'], rank_to=policy['rank_to']))
+            continue
+        if step['op'] == 'eq':
+            if type(step['threshold']) is not str or len(step['threshold']) > 256:
+                _fail('INVALID_STRATEGY', path, 'Metadata equality needs a bounded string.')
+            _shape(step, ('kind', 'source', 'op', 'threshold'), path=path)
+            normalized.append(dict(step))
+            continue
+        descriptor = (descriptors[source['id']] if source['kind'] == 'builtin' else
+                      outputs[source['variable_id'], source['revision']] if source['kind'] == 'formula' else
+                      field_descriptor(source['field']))
+        checked = _quantity(step, descriptor, path)
+        normalized.append(dict(kind='filter', source=source, op=step['op'], **checked))
+    return dict(format='strategy-capture', version=2, universe=dict(universe), steps=normalized,
+                variables=captured, builtins=builtins, limits=dict(bytes=bound))
+
+
+def _quantity(item, descriptor, path):
+    quantity = definitions.normalize_quantity(item.get('submitted_threshold', item['threshold']), descriptor['unit'])
+    with localcontext() as context:
+        context.prec = 2048
+        threshold = Decimal(quantity['threshold']['value'])
+        exponent = descriptor.get('storage', {}).get('scale', 0)
+        storage_value = float(threshold.scaleb(-exponent))
+    if not math.isfinite(storage_value) or storage_value == 0 and threshold != 0:
+        _fail('INVALID_LITERAL', path, 'Threshold must remain finite and non-underflowing in its stored comparison scale.')
+    checked = dict(**quantity, storage_comparison_value=storage_value)
+    for key in ('threshold', 'comparison_value', 'storage_comparison_value'):
+        if key in item and (key != 'threshold' or 'submitted_threshold' in item) and item[key] != checked[key]:
+            _fail('INVALID_STRATEGY', path + '/' + key, 'Submitted and captured threshold evidence disagree.')
+    return checked
+
+
+def _compile(spec, variables, builtins, pool, bounds, bound, checkpoint):
+    sources = _sources(spec)
+    captured, outputs, descriptors = _captured_sources(sources, variables, builtins, pool, checkpoint)
     normalized = dict(ranking=dict(source=sources[0], direction=spec['ranking']['direction']), conditions=[])
     def output(source):
         if source['kind'] == 'builtin':
@@ -230,24 +328,8 @@ def _compile(spec, variables, builtins, pool, bounds, bound, checkpoint):
     for index, item in enumerate(spec.get('conditions', [])):
         checkpoint()
         descriptor = output(sources[index + 1])
-        quantity = definitions.normalize_quantity(item.get('submitted_threshold', item['threshold']), descriptor['unit'])
-        # Built-in saved lanes retain their original arithmetic scale. Convert
-        # the canonical decimal threshold back to that scale once, without
-        # rescaling saved financial values or synthesizing pair reciprocals.
-        with localcontext() as context:
-            context.prec = 2048
-            threshold = Decimal(quantity['threshold']['value'])
-            exponent = descriptor['storage']['scale'] if sources[index + 1]['kind'] == 'builtin' else 0
-            storage_value = float(threshold.scaleb(-exponent))
-        if not math.isfinite(storage_value) or storage_value == 0 and threshold != 0:
-            _fail('INVALID_LITERAL', '/selection/conditions/' + str(index),
-                  'Threshold must remain finite and non-underflowing in its stored comparison scale.')
-        checked = dict(source=sources[index + 1], op=item['op'], **quantity,
-                       storage_comparison_value=storage_value)
-        for key in ('threshold', 'comparison_value', 'storage_comparison_value'):
-            if key in item and (key != 'threshold' or 'submitted_threshold' in item) and item[key] != checked[key]:
-                _fail('INVALID_STRATEGY', '/selection/conditions/' + str(index) + '/' + key,
-                      'Submitted and captured threshold evidence disagree.')
+        checked = dict(source=sources[index + 1], op=item['op'],
+                       **_quantity(item, descriptor, '/selection/conditions/' + str(index)))
         normalized['conditions'].append(checked)
     try:
         policy = selection.validate(dict(ranking=dict(lane='ranking', direction=spec['ranking']['direction']),
@@ -284,8 +366,8 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
                      limits=None, checkpoint=backtest_control.checkpoint):
     """Capture editable intent before assigning a job/queue retry identity.
 
-    Intent has format=strategy-intent/version=1 and selection, with optional
-    pool/bounds. Formula sources name exact revisions; built-ins name catalog IDs.
+    Intent /1 has selection and optional pool/bounds. Intent /2 has Universe
+    and ordered Rank/Filter steps. Formula sources name exact revisions; built-ins name catalog IDs.
     A provided Store captures one snapshot. Without it, all authored dependencies
     must be submitted; no durable file is opened or initialized.
     """
@@ -293,14 +375,17 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
         _fail('INVALID_STRATEGY', '/limits', 'Only a lower strategy byte bound is accepted.')
     bound = _bound((limits or {}).get('bytes', STRATEGY_BYTES))
     _encode(intent, STRATEGY_BYTES, checkpoint)
-    _shape(intent, ('format', 'version', 'selection'), ('pool', 'bounds'))
-    if intent['format'] != 'strategy-intent' or type(intent['version']) is not int or intent['version'] != 1:
+    if type(intent) is not dict or intent.get('format') != 'strategy-intent' or type(intent.get('version')) is not int or intent['version'] not in (1, 2):
         _fail('UNKNOWN_VERSION', '', 'Unsupported strategy intent version.')
-    sources = _sources(intent['selection'])
-    roots = [_root(source) for source in sources if source['kind'] == 'formula']
+    if intent['version'] == 1:
+        _shape(intent, ('format', 'version', 'selection'), ('pool', 'bounds'))
+    else:
+        _shape(intent, ('format', 'version', 'universe', 'steps'))
+    roles = _step_sources(intent['steps']) if intent['version'] == 2 else _sources(intent['selection'])
+    roots = [_root(source) for source in roles if source['kind'] == 'formula']
     current = {item['id']: item for item in builtin_catalog()}
     builtins = []
-    for key in dict.fromkeys(source['id'] for source in sources if source['kind'] == 'builtin'):
+    for key in dict.fromkeys(source['id'] for source in roles if source['kind'] == 'builtin'):
         if key not in current:
             _fail('UNSUPPORTED_CAPABILITY', '/selection', 'Unknown built-in scalar source.')
         builtins.append(current[key])
@@ -314,11 +399,29 @@ def capture_strategy(intent, variable_store=None, *, submitted=None, labels=None
         if submitted not in (None, []) or labels not in (None, []):
             _fail('INVALID_STRATEGY', '/variables', 'Submitted formulas need an explicit formula role.')
         variables = None
-    value = _compile(intent['selection'], variables, builtins, intent.get('pool', 'legacy'),
-                     intent.get('bounds', {}), bound, checkpoint)
+    value = (_compile_steps(intent['steps'], variables, builtins, intent['universe'], bound, checkpoint)
+             if intent['version'] == 2 else
+             _compile(intent['selection'], variables, builtins, intent.get('pool', 'legacy'),
+                      intent.get('bounds', {}), bound, checkpoint))
     capture = CapturedStrategy(_encode(value, bound, checkpoint))
     require_strategy(capture, checkpoint=checkpoint)
     return capture
+
+
+def _restore(value, checkpoint):
+    _shape(value, ('format', 'version', 'variables', 'builtins', 'limits'),
+           ('selection', 'pool', 'bounds', 'universe', 'steps'))
+    if (type(value) is not dict or value.get('format') != 'strategy-capture' or
+            type(value.get('version')) is not int or value['version'] not in (1, 2)):
+        _fail('UNKNOWN_VERSION', '', 'Unsupported strategy capture version.')
+    fields = ('universe', 'steps') if value['version'] == 2 else ('selection', 'pool', 'bounds')
+    _shape(value, ('format', 'version', 'variables', 'builtins', 'limits', *fields))
+    _shape(value['limits'], ('bytes',), path='/limits')
+    bound = _bound(value['limits']['bytes'])
+    rebuilt = (_compile_steps(value['steps'], value['variables'], value['builtins'], value['universe'], bound, checkpoint)
+               if value['version'] == 2 else
+               _compile(value['selection'], value['variables'], value['builtins'], value['pool'], value['bounds'], bound, checkpoint))
+    return rebuilt, bound
 
 
 def require_strategy(capture, *, checkpoint=backtest_control.checkpoint):
@@ -337,13 +440,7 @@ def require_strategy(capture, *, checkpoint=backtest_control.checkpoint):
         value = capture.to_dict()
     except (ValueError, TypeError, RecursionError):
         _fail('INVALID_STRATEGY', '', 'Captured strategy is malformed.')
-    _shape(value, ('format', 'version', 'selection', 'variables', 'builtins', 'pool', 'bounds', 'limits'))
-    if value['format'] != 'strategy-capture' or type(value['version']) is not int or value['version'] != 1:
-        _fail('UNKNOWN_VERSION', '', 'Unsupported strategy capture version.')
-    _shape(value['limits'], ('bytes',), path='/limits')
-    bound = _bound(value['limits']['bytes'])
-    rebuilt = _compile(value['selection'], value['variables'], value['builtins'], value['pool'],
-                       value['bounds'], bound, checkpoint)
+    rebuilt, bound = _restore(value, checkpoint)
     if _encode(rebuilt, bound, checkpoint) != capture.document:
         _fail('INVALID_STRATEGY', '', 'Strategy capture must use its complete canonical checked representation.')
     return rebuilt
@@ -360,13 +457,7 @@ def from_wire(value, *, checkpoint=backtest_control.checkpoint):
     require_strategy restores to the same meaning.
     """
     document = _encode(value, STRATEGY_BYTES, checkpoint)
-    _shape(value, ('format', 'version', 'selection', 'variables', 'builtins', 'pool', 'bounds', 'limits'))
-    if value['format'] != 'strategy-capture' or type(value['version']) is not int or value['version'] != 1:
-        _fail('UNKNOWN_VERSION', '', 'Unsupported strategy capture version.')
-    _shape(value['limits'], ('bytes',), path='/limits')
-    bound = _bound(value['limits']['bytes'])
-    rebuilt = _compile(value['selection'], value['variables'], value['builtins'], value['pool'],
-                       value['bounds'], bound, checkpoint)
+    rebuilt, bound = _restore(value, checkpoint)
     def equivalent(submitted, checked):
         checkpoint()
         if type(checked) is float:
@@ -420,7 +511,7 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
         _fail('INVALID_STRATEGY', '', 'Use one captured strategy without duplicate selection settings.')
     checked = from_wire(options['strategy'], checkpoint=checkpoint).to_dict()
     if market != 'us':
-        if checked['pool'] != 'cached':
+        if pool(checked) != 'cached':
             _fail('UNSUPPORTED_CAPABILITY', '/pool', 'Hong Kong and Japan use the broader cached-price pool.')
         if checked['variables'] is not None and any(
                 item['definition']['parameter_catalog'] != parameters.V4
@@ -437,6 +528,49 @@ def check_options(options, *, checkpoint=backtest_control.checkpoint):
     if checked['variables'] is not None and engine != 'original':
         _fail('UNSUPPORTED_CAPABILITY', '/engine', 'Unsupported calculation engine.')
     return checked
+
+
+def pool(capture):
+    return capture['universe']['pool'] if capture['version'] == 2 else capture['pool']
+
+
+def execution_steps(capture):
+    """Transient lanes and ordered steps; never normalize accepted record bytes."""
+    if capture['version'] == 2:
+        return [dict(step, lane='s' + str(index),
+                     **({'value': step['threshold'] if step['op'] == 'eq' else step['storage_comparison_value']}
+                        if step['kind'] == 'filter' else {}))
+                for index, step in enumerate(capture['steps'])]
+    spec = capture['selection']
+    rank = dict(kind='rank', lane='ranking', **spec['ranking'],
+                rank_from=spec['rank_from'], rank_to=spec['rank_to'])
+    filters = [dict(kind='filter', lane='c' + str(index), source=item['source'],
+                    op=item['op'], value=item['storage_comparison_value'])
+               for index, item in enumerate(spec['conditions'])]
+    for field, lane, op in [('min_cap', 'market_cap', 'ge'), ('max_cap', 'market_cap', 'le'),
+                           ('min_ev', 'enterprise_value', 'ge'), ('sector', 'sector', 'eq'),
+                           ('exchange', 'exchange', 'eq'), ('min_yield', 'metric_yield', 'ge'),
+                           ('max_multiple', 'metric_multiple', 'le')]:
+        if capture['bounds'].get(field) is not None:
+            filters.append(dict(kind='filter', lane=lane, op=op, value=capture['bounds'][field]))
+    return filters + [rank] if spec['selection_order'] == 'filter_first' else [rank] + filters
+
+
+def log_fields(options):
+    """Controlled fields only, after request admission; exclude Universe from counts."""
+    if 'strategy' in options:
+        chain = execution_steps(options['strategy'])
+        kind = next(step['source']['kind'] for step in reversed(chain) if step['kind'] == 'rank')
+        if kind == 'field':
+            kind = 'builtin'
+    else:
+        from backtest import screening
+        fields = {key: value for key, value in options.items() if key in {
+            'rank_from', 'rank_to', 'pool', 'metric', 'min_cap', 'max_cap', 'min_ev',
+            'min_yield', 'max_multiple', 'sector', 'exchange', 'filters', 'selection_order'}}
+        chain = selection.steps(screening.legacy_specification(**fields))
+        kind = 'builtin'
+    return dict(market=options.get('market', 'us'), ranking_source_kind=kind, step_count=len(chain))
 
 
 def preview_engine(engine='original'):
@@ -507,8 +641,8 @@ def calculation_projection(capture):
         value['variables'] = value['variables']['program']['bundle']
     for descriptor in value['builtins']:
         descriptor.pop('label')
-    for condition in value['selection']['conditions']:
-        condition.pop('submitted_threshold')
+    for condition in (value['steps'] if value['version'] == 2 else value['selection']['conditions']):
+        condition.pop('submitted_threshold', None)
     value.pop('limits')
     return value
 

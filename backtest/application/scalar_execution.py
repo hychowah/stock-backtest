@@ -11,7 +11,6 @@ stored only the companies that books.Screen.decide admitted, with their
 candidate rank and entry valuation. The caller owns the admitted connection
 and view, cancellation and the evidence sink.
 """
-from copy import deepcopy
 from decimal import Decimal
 import hashlib
 import math
@@ -75,7 +74,7 @@ def _scope(db, capture, book, entry, exit_day=None, *, latest, market='us'):
     valuation. A latest decision also names its report, as the open book's
     screen chose it.
     """
-    pool = capture['pool']
+    pool = strategy_requests.pool(capture)
     try:
         book_store.require_scope(db, book, pool, entry, latest, market=market)
     except ValueError:
@@ -115,11 +114,10 @@ def _canonical(value, scale):
 class Executor:
     """One immutable strategy, borrowed view and bounded output sink per run.
 
-    Formulas are evaluated values-only (variables/columns.py) for the rows that
-    can still be selected. With explain, the same evaluator then traces the
+    Formulas are evaluated lazily, once per source and surviving row. With explain, the same evaluator then traces the
     selected rows only: inputs, dates, reasons, source digests and operations.
     Without it (random-date runs), selected rows keep their formula values and
-    reasons but no step trace. Stored lanes build their evidence for the
+    reasons but no formula operation trace. Stored lanes build their evidence for the
     selected rows only.
     """
     contract = 2
@@ -127,7 +125,7 @@ class Executor:
                  checkpoint=backtest_control.checkpoint, explain=True):
         # The execution boundary of a queued row: restore it with the current code.
         self.capture = strategy_requests.require_strategy(capture, checkpoint=checkpoint)
-        self.pool = self.capture['pool']; self.view = view; self.sink = sink
+        self.pool = strategy_requests.pool(self.capture); self.view = view; self.sink = sink
         self.checkpoint = checkpoint; self.record_bytes = record_bytes
         self.number = 0; self.explain = explain
         # The restore checked the program; its projection is the evaluator's input.
@@ -140,91 +138,76 @@ class Executor:
         self.checkpoint()
         rows, admission = _scope(db, self.capture, book, entry, exit_day, latest=latest, market=self.view.market)
         self.number += 1; identity = 'scope:' + str(self.number)
-        specification = deepcopy(self.capture['selection'])
-        role_sources=[specification['ranking']['source']]+[item['source'] for item in specification['conditions']]
-        lane_of = lambda role: 'ranking' if role == 0 else 'c' + str(role - 1)
-        mode = 'latest' if latest else 'historical'
-        receipt = dict(policy=dict(executor=_LOADED,selection=selection.policy_fingerprint()),id=identity,
-            population='complete-prepared-scope', mode=mode, pool=self.pool, date=str(entry),
+        chain = strategy_requests.execution_steps(self.capture)
+        pipeline = self.capture['version'] == 2
+        specification = self.capture['steps'] if pipeline else self.capture['selection']
+        role_sources = strategy_requests.sources(self.capture)
+        lane_of = lambda role: 's' + str(role) if pipeline else 'ranking' if role == 0 else 'c' + str(role - 1)
+        role_of = {lane_of(role): role for role in range(len(role_sources))}
+        receipt = dict(policy=dict(executor=_LOADED, selection=selection.policy_fingerprint()), id=identity,
+            population='complete-prepared-scope', mode='latest' if latest else 'historical', pool=self.pool, date=str(entry),
             exit=str(exit_day) if exit_day is not None else None, prepared_period=None if latest else book,
             input=self.view.identity, rows=len(rows), source_population=self.view.bounds['population'],
-            # A recorded receipt field: a stored row is admitted, so it equals rows by construction.
             provider_admitted_in_prepared_scope=len(rows),
             selection_population='prepared rows with usable return evidence' if not latest else 'prepared exact-session latest rows')
-        # One read per stored table for the whole scope (book_store.lanes), one
-        # {symbol: value} map per lane; primary keys make each value unique.
-        stored = {}
+        # Stored tables are read once for the scope. Repeated sources share maps.
         metrics = {role: self.descriptors[source['id']]['storage'] for role, source in enumerate(role_sources)
                    if source['kind'] == 'builtin' and self.descriptors[source['id']]['storage']['kind'] == 'metric'}
         fields = {role: self.descriptors[source['id']]['storage'] for role, source in enumerate(role_sources)
-                  if source['kind'] == 'builtin' and self.descriptors[source['id']]['storage']['kind'] != 'metric'}
+                  if source['kind'] == 'builtin' and self.descriptors[source['id']]['storage']['kind'] == 'filter'}
         pairs, filters = book_store.lanes(db, book, self.pool, [storage['metric'] for storage in metrics.values()],
                                           [storage['field'] for storage in fields.values()])
-        for role, storage in metrics.items():
-            stored[role] = pairs[storage['metric']][1 if storage['component'] == 'yield' else 0]
-        for role, storage in fields.items():
-            stored[role] = filters[storage['field']]
+        stored = {role: pairs[storage['metric']][1 if storage['component'] == 'yield' else 0]
+                  for role, storage in metrics.items()}
+        stored.update({role: filters[storage['field']] for role, storage in fields.items()})
         scales = {role: self.descriptors[role_sources[role]['id']]['storage']['scale'] for role in stored}
-        # Selection compares stored values. A finite value cannot overflow at a
-        # scale of 0 or below, so the row check converts only at a positive scale.
         usable = {lane_of(role): {symbol: value if _canonical(value, max(scales[role], 0)) is not None else None
                                   for symbol, value in found.items()} for role, found in stored.items()}
-        def builtin(role, symbol):
-            """The evidence of one stored lane of a selected row."""
-            source = role_sources[role]; descriptor = self.descriptors[source['id']]
-            value = stored[role].get(symbol)
-            canonical = _canonical(value, scales[role]); valid = canonical is not None
-            return dict(scope=identity, symbol=symbol, source=source, stored=value if valid else None,
-                canonical=canonical, unit=descriptor['unit'], valid=valid,
-                reason=None if valid else 'MISSING_INPUT')
-        # Each row's lanes: its usable stored values and the bound fields.
         values = []
-        bounds = self.capture['bounds']
+        bounds = self.capture.get('bounds', {})
         pair = pairs[metrics[0]['metric']] if {'min_yield', 'max_multiple'}.intersection(bounds) else None
         for symbol, _, _, _, market_cap, enterprise_value, _, sector, exchange in rows:
             item = {lane: found.get(symbol) for lane, found in usable.items()}
             item.update(market_cap=market_cap, enterprise_value=enterprise_value, sector=sector, exchange=exchange)
+            for role, source in enumerate(role_sources):
+                if source['kind'] == 'field':
+                    item[lane_of(role)] = item[source['field']]
             if pair is not None:
                 item.update(metric_multiple=pair[0].get(symbol), metric_yield=pair[1].get(symbol))
-                # The built-in form ranks only complete stored pairs, before
-                # either selection order. Old captures keep lane-only admission.
+                # Only legacy built-in form captures require a complete pair.
                 if any(selection.finite(item[key]) is None for key in ('metric_multiple', 'metric_yield')):
                     item['ranking'] = None
             values.append(item)
-        conditions = [dict(lane='c'+str(i),op=item['op'],value=item['storage_comparison_value']) for i,item in enumerate(specification['conditions'])]
-        for field, op in [('min_cap','ge'),('max_cap','le'),('min_ev','ge'),('sector','eq'),('exchange','eq'),
-                          ('min_yield','ge'),('max_multiple','le')]:
-            if bounds.get(field) is not None:
-                lane = {'min_cap':'market_cap','max_cap':'market_cap','min_ev':'enterprise_value',
-                        'min_yield':'metric_yield','max_multiple':'metric_multiple'}.get(field,field)
-                conditions.append(dict(lane=lane,op=op,value=bounds[field]))
         formula_roles = [role for role, source in enumerate(role_sources) if source['kind'] == 'formula']
-        # With a stored ranking and filter-first order, a row that has no
-        # ranking value or fails a stored condition can never be selected.
-        # The stored conditions are checked here, once per row; formulas and
-        # the selection see only the remaining rows, with the formula conditions.
-        needed = list(range(len(rows)))
-        if role_sources[0]['kind'] == 'builtin' and specification['selection_order'] == 'filter_first':
-            formula_lanes = {lane_of(role) for role in formula_roles}
-            stored_conditions = [item for item in conditions if item['lane'] not in formula_lanes]
-            conditions = [item for item in conditions if item['lane'] in formula_lanes]
-            needed = []
-            for i, item in enumerate(values):
-                self.checkpoint()
-                if selection.finite(item.get('ranking')) is not None and selection.passes(item, stored_conditions):
-                    needed.append(i)
-        if formula_roles:
-            roots, decisions = zip(*map(admission, needed)) if needed else ((), ())
-            outputs = self.formulas.evaluate(list(roots), self.view, self.checkpoint, decisions=list(decisions))
-            computed = dict(zip(needed, outputs))
-            for i, output in computed.items():
-                for role in formula_roles:
-                    source = role_sources[role]
-                    value, valid, reason = output[(source['variable_id'], source['revision'])]
-                    values[i][lane_of(role)] = value if valid else None
+        computed = {}
+        def load(lanes, indices):
+            # Populations only shrink. A source cached for the first surviving
+            # row is therefore cached for every row still alive.
+            roles = [role_of[lane] for lane in lanes]
+            keys = list(dict.fromkeys((role_sources[role]['variable_id'], role_sources[role]['revision'])
+                                      for role in roles))
+            missing = [key for key in keys if key not in computed.get(indices[0], {})]
+            if missing:
+                roots, decisions = zip(*map(admission, indices))
+                outputs = self.formulas.evaluate(list(roots), self.view, self.checkpoint,
+                                                  decisions=list(decisions), outputs=missing)
+                for index, output in zip(indices, outputs):
+                    computed.setdefault(index, {}).update(output)
+            for lane, role in zip(lanes, roles):
+                source = role_sources[role]
+                key = source['variable_id'], source['revision']
+                for index in indices:
+                    value, valid, reason = computed[index][key]
+                    values[index][lane] = value if valid else None
+        # A missing legacy stored ranking can never survive; preserve the old
+        # survivor optimization before any formula filter is reached.
+        needed = [i for i in range(len(rows)) if pipeline or role_sources[0]['kind'] != 'builtin'
+                  or selection.finite(values[i].get('ranking')) is not None]
         candidates = [dict(symbol=rows[i][0], candidate_rank=rows[i][1], values=values[i]) for i in needed]
-        selected = selection.select(candidates, dict(ranking=dict(lane='ranking',direction=specification['ranking']['direction']),
-            conditions=conditions, **{key:specification[key] for key in ('rank_from','rank_to','selection_order')}), self.checkpoint)
+        selected = selection.execute(candidates, chain, self.checkpoint,
+            load=lambda lanes, indices: load(lanes, [needed[i] for i in indices]),
+            lazy_lanes={lane_of(role) for role in formula_roles}, evidence=pipeline,
+            count_selected=not pipeline and specification['selection_order'] == 'rank_first')
         # The recorded indexes address the scope's rows.
         for item in selected['selected']:
             item['index'] = needed[item['index']]
@@ -266,27 +249,61 @@ class Executor:
                             variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
                             valid=item['valid'], reason=item['reason'])
         records.append(dict(type='scope', value=receipt))
+        def builtin(role, index):
+            symbol = rows[index][0]
+            source = role_sources[role]
+            if source['kind'] == 'field':
+                value = values[index][lane_of(role)]
+                return dict(scope=identity, symbol=symbol, source=source, stored=value, canonical=value,
+                            unit=strategy_requests.field_descriptor(source['field'])['unit'],
+                            valid=value is not None, reason=None if value is not None else 'MISSING_INPUT')
+            descriptor = self.descriptors[source['id']]
+            value = stored[role].get(symbol)
+            canonical = _canonical(value, scales[role]); valid = canonical is not None
+            return dict(scope=identity, symbol=symbol, source=source, stored=value if valid else None,
+                        canonical=canonical, unit=descriptor['unit'], valid=valid,
+                        reason=None if valid else 'MISSING_INPUT')
         # Each holding carries its stored lane values; no separate lanes record repeats them.
         for index in chosen:
-            for role in stored:
-                references[index][lane_of(role)] = builtin(role, rows[index][0])
+            for role, source in enumerate(role_sources):
+                if source['kind'] != 'formula':
+                    references[index][lane_of(role)] = builtin(role, index)
         # Full rows (book_store.rows) for the selected rows only.
         full = {row['symbol']: row for row in book_store.rows(db, book, self.pool, [rows[index][0] for index in chosen])}
         output = []
-        ranking_source = specification['ranking']['source']
+        final_rank = next(step for step in reversed(chain) if step['kind'] == 'rank')
+        ranking_source = final_rank['source']
         if ranking_source['kind'] == 'builtin':
             descriptor = self.descriptors[ranking_source['id']]
+        elif ranking_source['kind'] == 'field':
+            descriptor = strategy_requests.field_descriptor(ranking_source['field'])
         else:
             descriptor = next(item for item in self.capture['variables']['program']['definitions'] if item['variable_id']==ranking_source['variable_id'] and item['revision']==ranking_source['revision'])
         for item in selected['selected']:
             index = item['index']; original = full[rows[index][0]]
             value = item['value']
             if ranking_source['kind']=='builtin':value=_canonical(value,descriptor['storage']['scale'])
+            evidence = dict(scope=identity, lanes=references[index])
+            if pipeline:
+                evidence['steps'] = []
+                for outcome in item.pop('steps'):
+                    step = chain[outcome['step']]
+                    role = role_of[step['lane']]
+                    link = references[index][step['lane']]
+                    source = role_sources[role]
+                    if source['kind'] == 'formula':
+                        key = source['variable_id'], source['revision']
+                        step_value = computed[index][key][0]
+                        unit = next(output['unit'] for output in self.formulas.outputs
+                                    if (output['variable_id'], output['revision']) == key)
+                    else:
+                        step_value, unit = link['canonical'], link['unit']
+                    evidence['steps'].append(dict(outcome, lane=step['lane'], value=step_value, unit=unit))
             output.append(dict(original, rank=item['rank'], ranking_value=value, ranking_unit=descriptor['unit'],
-                ranking_display=descriptor['display'], ranking_direction=specification['ranking']['direction'],
-                scalar_evidence=dict(scope=identity, lanes=references[index])))
+                ranking_display=descriptor['display'], ranking_direction=final_rank['direction'],
+                scalar_evidence=evidence))
         records.append(dict(type='selection',value=dict(scope=identity, selected=selected, requested=specification,
-            unavailable_ranking=sum(item.get('ranking') is None for item in values))))
+            unavailable_ranking=sum(item.get(final_rank['lane'], 0) is None for item in values))))
         for record in records:
             self.checkpoint()
             self.sink(record)

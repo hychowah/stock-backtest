@@ -371,4 +371,51 @@ class ExecutionTests(unittest.TestCase):
         self.assertFalse(self.opened);self.assertFalse(self.financial)
 
 
+    def test_pipeline_fixed_random_replay_and_detached_transfer_keep_step_evidence(self):
+        from backtest.application import result_exports
+        from backtest.runtime import diagnostics
+        formula = self.capture.to_dict()['selection']['ranking']['source']
+        authored = self.capture.to_dict()['variables']['program']['bundle']['definitions']
+        self.capture = s.capture_strategy(requests.pipeline(requests.rank_step(last=8),
+            dict(kind='filter', **requests.condition(formula, '2', 'usd', 'ge')),
+            requests.rank_step(formula, 2, 4, 'lowest'),
+            dict(kind='filter', source=dict(kind='field', field='sector'), op='eq', threshold='Technology')),
+            submitted=authored)
+        diagnostics.configure(Path(self.folder.name) / 'logs');self.addCleanup(diagnostics.close)
+        reader, _ = self.run_result()
+        rows = list(evidence_views.holdings(reader, 1, 1))
+        self.assertEqual([(row['symbol'], row['rank']) for row in rows], [('A0002', 2), ('A0003', 3), ('A0004', 4)])
+        self.assertTrue(all(len(row['scalar_evidence']['steps']) == 4 for row in rows))
+        random_options = self.options(trials=2, seed=42)
+        sampled, plans = self.run_result('random', random_options)
+        repeated, _ = self.run_result('random', random_options, planned=plans[0])
+        self.assertEqual(list(evidence_views.holdings(sampled, 1, 1)), list(evidence_views.holdings(repeated, 1, 1)))
+        self.assertEqual(evidence_views.trial(sampled, 1)['short'], 0)
+        runs = [row for row in diagnostics.records(Path(self.folder.name) / 'logs') if row['event'] == 'backtest.run']
+        self.assertTrue(all((row['market'], row['ranking_source_kind'], row['step_count']) == ('us', 'formula', 4) for row in runs))
+        self.assertTrue(all('conditions' not in row for row in runs))
+        store = queue.Store(Path(self.folder.name) / 'pipeline-queue.sqlite')
+        library = saved.Store(Path(self.folder.name) / 'pipeline-saved.sqlite')
+        request = dict(id='f'*32, name='Pipeline', mode='custom', options=self.options(), catalog=dict(metrics={}, filters={}), presentation={})
+        store.enqueue(request)
+        before = store.get(request['id'])['options']
+        held = store.change(request['id'], 'hold', dict(revision=store.get(request['id'])['revision']))
+        store.change(request['id'], 'update', dict(request, revision=held['revision'], name='Renamed'))
+        self.assertEqual(store.get(request['id'])['options'], before)
+        self.assertEqual(store.enqueue(request)['name'], 'Renamed')
+        consumer = queue.Queue(store, calculations=self.calc, library=library)
+        self.addCleanup(consumer.close)
+        consumer._run(store.claim());consumer.reconcile_completed()
+        records = library.list();self.assertEqual(len(records), 1)
+        with patch.object(s, 'builtin_catalog', side_effect=AssertionError('No catalog')), \
+             patch.object(daily, 'connect', side_effect=AssertionError('No financial inputs')):
+            with library.open_evidence(records[0]['id']) as opened:
+                reopened = list(evidence_views.holdings(opened.reader, 1, 1))
+                self.assertEqual(reopened, rows)
+                data = b''.join(result_exports.prepare(opened.reader, 'evidence').chunks())
+                detached = result_evidence.open_reader(io.BytesIO(data), max_bytes=256*1024**2)
+                self.assertEqual(list(evidence_views.holdings(detached, 1, 1)), rows)
+                self.assertIn(b'scalar_evidence', b''.join(result_exports.prepare(opened.reader, 'holdings').chunks()))
+
+
 if __name__=='__main__':unittest.main()

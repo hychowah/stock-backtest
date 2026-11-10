@@ -7,6 +7,7 @@ admission, never calculation. Optional numerical dependencies are not imported.
 
 from backtest.inputs import daily, facts
 from backtest import screening
+from backtest.application import strategy_requests
 
 from contextlib import contextmanager
 from backtest.runtime import backtest_control as backtest_control
@@ -62,6 +63,7 @@ class Original(Control):
         """
         diagnostics.note(mode=mode,admission=admission,strategy=False)
         self.preflight(options,planned=planned)
+        diagnostics.note(**strategy_requests.log_fields(options))
         if 'strategy' in options:
             raise ValueError('Captured scalar strategies require the bounded result reader.')
         options={key:value for key,value in options.items() if key!='engine'}
@@ -109,7 +111,6 @@ class Original(Control):
         UNSUPPORTED_CAPABILITY at /engine. Then captured strategies and a
         recorded plan are checked. Reading stored records never calls this.
         """
-        from backtest.application import strategy_requests
         engine=engine_id(options)
         if engine!=self.engine:
             from backtest.variables.definitions import FormulaError
@@ -129,7 +130,7 @@ class Original(Control):
 
     def preview(self, capture, roots, *, admission='interactive', engine='original', market='us'):
         """Explain explicit Original samples under ordinary input lifetime."""
-        from backtest.application import scalar_execution, strategy_requests
+        from backtest.application import scalar_execution
         from backtest.inputs import fact_view, operation_inputs
         strategy_requests.preview_engine(engine)
         # check_options restores the capture once (one compile); the preview reuses its checked program.
@@ -143,7 +144,7 @@ class Original(Control):
 
     def coverage(self, capture=None, scope=None, *, admission='interactive', market='us'):
         """Discover or inspect recorded scopes under ordinary financial ownership."""
-        from backtest.application import variable_coverage, strategy_requests
+        from backtest.application import variable_coverage
         from backtest.inputs import fact_view, operation_inputs
         # check_options restores the capture once (one compile); inspect reuses its checked program.
         options={'market':market}
@@ -165,8 +166,9 @@ class Original(Control):
         import hashlib
         from backtest import scalar_result_evidence
         from backtest.inputs import fact_view, operation_inputs
-        from backtest.application import strategy_requests, scalar_runs
+        from backtest.application import scalar_runs
         self.preflight(options,planned=planned)
+        diagnostics.note(**strategy_requests.log_fields(options))
         options=strategy_requests.execution_options(mode,options,planned=planned,checkpoint=self._checkpoint)
         if admission not in ('interactive','queue'):raise ValueError('Invalid calculation admission policy.')
         if not 0<max_bytes<=256*1024**2:raise ValueError('Invalid scalar evidence byte ceiling.')

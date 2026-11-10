@@ -5,7 +5,7 @@ and conditions. Numeric conditions use their supplied comparison scale. Source
 adapters own unit conversion and admission. Metadata equality is separate from
 numeric comparison. Missing lanes fail only active conditions that need them.
 
-select() returns input indexes and original ranks, never modified input rows.
+execute() returns input indexes and original ranks, never modified input rows.
 Null candidate ranks sort first. Equal binary64 values, including signed zero,
 tie by candidate rank then symbol. Rank-first never adds replacement survivors.
 """
@@ -111,42 +111,83 @@ def passes(values, conditions):
     return True
 
 
-def select(candidates, specification, checkpoint=lambda: None):
-    """Select one supplied scope; adapters establish its admitted population.
+def steps(spec):
+    """Translate a checked legacy specification without changing its comparison lanes."""
+    rank = dict(kind='rank', **spec['ranking'], rank_from=spec['rank_from'], rank_to=spec['rank_to'])
+    filters = [dict(kind='filter', **item) for item in spec['conditions']]
+    return filters + [rank] if spec['selection_order'] == 'filter_first' else [rank] + filters
 
-    Candidate objects need symbol, candidate_rank and values. Extra fields are
-    ignored. Output indexes address the original sequence. The count matches
-    legacy browser semantics: filtered candidates or rank-first survivors.
+
+def execute(candidates, chain, checkpoint=lambda: None, *, load=None, lazy_lanes=(),
+            evidence=False, count_selected=False):
+    """Run checked steps over admitted lanes, loading lazy lanes for survivors.
+
+    Consecutive filters commute: stored checks precede one lazy batch. load
+    receives the needed lane names and surviving indexes. Adapters own source
+    validation and population limits. count_selected retains legacy rank-first
+    counts, including a chain with no filters. Evidence follows captured order.
     """
-    spec = validate(specification)
-    if type(candidates) is not list or len(candidates) > MAX_CANDIDATES:
-        _fail('/candidates', 'The supplied candidate scope exceeds its bound.')
-    eligible, symbols = [], set()
-    for index, row in enumerate(candidates):
+    alive = list(range(len(candidates)))
+    selected = {}
+    matches = 0
+    number = 0
+    while number < len(chain):
         checkpoint()
-        if (type(row) is not dict or not {'symbol', 'candidate_rank', 'values'} <= set(row)
-                or type(row['symbol']) is not str or not 1 <= len(row['symbol']) <= 128
-                or type(row['values']) is not dict
-                or row['candidate_rank'] is not None and
-                    (type(row['candidate_rank']) is not int or row['candidate_rank'] < 1)):
-            _fail('/candidates/' + str(index), 'A candidate needs a symbol, original rank and value lanes.')
-        if row['symbol'] in symbols:
-            _fail('/candidates/' + str(index), 'A company can occur only once in a scope.')
-        symbols.add(row['symbol'])
-        value = finite(row['values'].get(spec['ranking']['lane']))
-        if value is not None and (spec['selection_order'] == 'rank_first' or passes(row['values'], spec['conditions'])):
-            eligible.append((index, value))
-    def ordering(item):
-        row = candidates[item[0]]
-        rank = row['candidate_rank']
-        return ((-item[1] if spec['ranking']['direction'] == 'highest' else item[1]),
-                rank is not None, rank if rank is not None else 0, row['symbol'])
-    eligible.sort(key=ordering)
-    selected = []
-    for rank, (index, value) in enumerate(eligible, 1):
-        checkpoint()
-        if spec['rank_from'] <= rank <= spec['rank_to']:
-            if spec['selection_order'] == 'filter_first' or passes(candidates[index]['values'], spec['conditions']):
-                selected.append(dict(index=index, rank=rank, value=value))
+        step = chain[number]
+        if step['kind'] == 'filter':
+            end = number + 1
+            while end < len(chain) and chain[end]['kind'] == 'filter':
+                checkpoint()
+                end += 1
+            group = chain[number:end]
+            stored = [item for item in group if item['lane'] not in lazy_lanes]
+            lazy = [item for item in group if item['lane'] in lazy_lanes]
+            if stored:
+                alive = [index for index in alive if passes(candidates[index]['values'], stored)]
+            if lazy and alive:
+                load([item['lane'] for item in lazy], alive)
+                alive = [index for index in alive if passes(candidates[index]['values'], lazy)]
+            matches = len(alive)
+            number = end
+            continue
+        if step['lane'] in lazy_lanes and alive:
+            load([step['lane']], alive)
+        eligible = [(index, value) for index in alive
+                    if (value := finite(candidates[index]['values'].get(step['lane']))) is not None]
+        highest = step['direction'] == 'highest'
+        def ordering(item):
+            row = candidates[item[0]]
+            rank = row['candidate_rank']
+            return ((-item[1] if highest else item[1]),
+                    rank is not None, rank if rank is not None else 0, row['symbol'])
+        eligible.sort(key=ordering)
+        matches = len(eligible)
+        ranked = {}
+        for rank, (index, value) in enumerate(eligible[step['rank_from'] - 1:step['rank_to']], step['rank_from']):
+            item = dict(index=index, rank=rank, value=value)
+            if evidence:
+                item['steps'] = selected.get(index, {}).get('steps', []) + [dict(step=number, rank=rank)]
+            ranked[index] = item
+        selected = ranked
+        alive = list(selected)
+        number += 1
     checkpoint()
-    return dict(selected=selected, matches=len(selected) if spec['selection_order'] == 'rank_first' else len(eligible))
+    result = [selected[index] for index in alive]
+    if evidence:
+        for item in result:
+            ranks = {outcome['step']: outcome for outcome in item['steps']}
+            item['steps'] = [ranks[index] if step['kind'] == 'rank' else dict(step=index, passed=True)
+                             for index, step in enumerate(chain)]
+    return dict(selected=result, matches=len(result) if count_selected else matches)
+
+
+def rank_range(options):
+    """Read recorded final ranks without catalog lookup, preparation or recapture."""
+    capture = options.get('strategy')
+    if capture is None:
+        rank = options
+    elif capture['version'] == 2:
+        rank = next(step for step in reversed(capture['steps']) if step['kind'] == 'rank')
+    else:
+        rank = capture['selection']
+    return rank.get('rank_from', 1), rank.get('rank_to', 50)

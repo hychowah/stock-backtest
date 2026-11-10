@@ -26,8 +26,19 @@ class Order(framing._Order):
                     or type(record['trials']) is not int
                     or (record['trials'] != 0 if record['metadata']['mode']=='latest' else not 1 <= record['trials'] <= 100)):
                 raise ValueError('Unsupported scalar evidence header.')
-            strategy_requests.require_strategy(strategy_requests.CapturedStrategy(
+            self.strategy = strategy_requests.require_strategy(strategy_requests.CapturedStrategy(
                 strategy_requests._encode(record['metadata'].get('options',{}).get('strategy'), strategy_requests.STRATEGY_BYTES)))
+            self.step_units = []
+            if self.strategy['version'] == 2:
+                builtins = {item['id']: item['unit'] for item in self.strategy['builtins']}
+                formulas = {(item['variable_id'], item['revision']): item['unit']
+                            for item in (self.strategy['variables'] or {}).get('program', {}).get('definitions', [])}
+                for step in self.strategy['steps']:
+                    source = step['source']
+                    unit = (builtins[source['id']] if source['kind'] == 'builtin' else
+                            formulas[source['variable_id'], source['revision']] if source['kind'] == 'formula' else
+                            strategy_requests.field_descriptor(source['field'])['unit'])
+                    self.step_units.append(unit)
             self.header = record; self.records += 1; self.screens = 0
             self.scope=None;self.receipt=None;self.chunks={};self.selected=None
             self.seen_scopes=set()
@@ -107,6 +118,30 @@ class Order(framing._Order):
             if type(link) is not dict or link.get('scope')!=self.scope:raise ValueError('Scalar evidence scope reference differs.')
             if 'chunk' in link and (link['chunk'] not in self.chunks or type(link.get('request')) is not int or not 0<=link['request']<self.chunks[link['chunk']]):
                 raise ValueError('Scalar evaluation reference is unresolved.')
+
+        if self.strategy['version'] == 2:
+            steps = evidence.get('steps')
+            if type(steps) is not list or len(steps) != len(self.strategy['steps']):
+                raise ValueError('Selected holding has incomplete step evidence.')
+            for index, (step, outcome) in enumerate(zip(self.strategy['steps'], steps)):
+                lane = 's' + str(index)
+                expected = {'step', 'lane', 'value', 'unit', 'rank' if step['kind'] == 'rank' else 'passed'}
+                if (type(outcome) is not dict or set(outcome) != expected or
+                        type(outcome['step']) is not int or outcome['step'] != index or
+                        outcome['lane'] != lane or lane not in evidence['lanes'] or
+                        outcome['unit'] != self.step_units[index]):
+                    raise ValueError('Selected step reference differs from the captured chain.')
+                if step['kind'] == 'rank':
+                    if type(outcome['rank']) is not int or not step['rank_from'] <= outcome['rank'] <= step['rank_to']:
+                        raise ValueError('Selected step rank is outside its captured range.')
+                elif outcome['passed'] is not True:
+                    raise ValueError('Selected holding failed a captured Filter.')
+                if outcome['unit'] == 'text':
+                    valid = type(outcome['value']) is str
+                else:
+                    valid = type(outcome['value']) in (int, float)
+                if not valid:
+                    raise ValueError('Selected step has no recorded source value.')
 
 
 class Writer(framing.Writer):

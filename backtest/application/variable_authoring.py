@@ -140,6 +140,8 @@ def validate(request, store, *, checkpoint=backtest_control.checkpoint):
 
 def intent(capture):
     checked = strategy_requests.require_strategy(strategy_requests.from_wire(capture))
+    if checked['version'] == 2:
+        return dict(format='strategy-intent', version=2, universe=checked['universe'], steps=checked['steps'])
     return dict(format='strategy-intent',version=1,selection=checked['selection'],pool=checked['pool'],bounds=checked['bounds'])
 
 
@@ -171,8 +173,7 @@ def prepare(request, store, *, checkpoint=backtest_control.checkpoint):
     # Only the reachable closure is retained. Old editor revisions can coexist
     # locally without changing the submitted calculation or exceeding limits.
     roots = []
-    selection = request['intent']['selection']
-    for source in [selection['ranking']['source']] + [item['source'] for item in selection.get('conditions',[])]:
+    for source in strategy_requests.sources(request['intent']):
         if source.get('kind') == 'formula':
             roots.append({key:source[key] for key in ('variable_id','revision')})
     entries, labels = _content(request, roots) if roots else ([], [])

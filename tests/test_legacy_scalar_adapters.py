@@ -178,7 +178,10 @@ process.stdout.write(JSON.stringify(answer));
                     conditions=[dict(lane='y',op='gt',value=0.)])
                 cases.append(dict(rows=rows,specification=specification))
         actual=self.browser(dict(scalar=cases))['scalar']
-        for case,result in zip(cases,actual):self.assertEqual(result,selection.select(case['rows'],case['specification']))
+        for case,result in zip(cases,actual):
+            checked=selection.validate(case['specification'])
+            self.assertEqual(result,selection.execute(case['rows'],selection.steps(checked),
+                count_selected=checked['selection_order']=='rank_first'))
         self.assertEqual([rows[item['index']]['symbol'] for item in actual[0]['selected']],['D','E','A'])
         self.assertEqual([rows[item['index']]['symbol'] for item in actual[2]['selected']],['C','A','E'])
 

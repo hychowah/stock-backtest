@@ -334,4 +334,91 @@ class ScalarTests(unittest.TestCase):
                 x.Executor(self.fixture.capture(),view,lambda row:None,checkpoint=stop).select(self.fixture.db,1,date(2015,1,2),date(2015,1,5))
 
 
+    def test_pipeline_lazily_caches_each_formula_over_survivors(self):
+        old = self.fixture.capture().to_dict()
+        authored = old['variables']['program']['bundle']['definitions']
+        source = old['selection']['ranking']['source']
+        capture = s.capture_strategy(requests.pipeline(
+            requests.rank_step(last=50),
+            dict(kind='filter', **requests.condition(source, '10', 'usd', 'ge')),
+            requests.rank_step(source, 1, 3, 'lowest'),
+            dict(kind='filter', **requests.condition(source, '13', 'usd', 'lt'))), submitted=authored)
+        evaluate = x.columns.Formulas.evaluate
+        calls = []
+        def counted(formulas, roots, view, checkpoint, **kwargs):
+            calls.append((len(roots), len(kwargs.get('outputs', formulas.outputs))))
+            return evaluate(formulas, roots, view, checkpoint, **kwargs)
+        with patch.object(x.columns.Formulas, 'evaluate', counted):
+            stocks, records = self.fixture.select(capture)
+        self.assertEqual(calls, [(50, 1)])
+        self.assertEqual([(row['symbol'], row['rank'], row['ranking_value']) for row in stocks],
+                         [('A0009', 1, 10.), ('A0010', 2, 11.), ('A0011', 3, 12.)])
+        self.assertTrue(all(len(row['scalar_evidence']['steps']) == 4 for row in stocks))
+        blocks = [record['value']['block'] for record in records if record['type'] == 'evaluation']
+        self.assertEqual(sum(len(block['requests']) for block in blocks), 3)
+        self.assertEqual([step['value'] for step in stocks[0]['scalar_evidence']['steps']], [.3, 10., 10., 10.])
+
+    def test_pipeline_builtin_equivalents_match_legacy_both_pools_orders_and_ranges(self):
+        for pool in ('legacy', 'cached'):
+            for order in ('filter_first', 'rank_first'):
+                for first, last in ((1, 5), (20, 40)):
+                    rank = requests.rank_step(first=first, last=last)
+                    filters = [dict(kind='filter', source=dict(kind='field', field='market_cap'), op='ge',
+                                    threshold=dict(value='150', unit='usd_million')),
+                               dict(kind='filter', source=dict(kind='field', field='exchange'), op='eq', threshold='NYSE'),
+                               dict(kind='filter', **requests.condition(requests.builtin('filter:profit_margin'), '-1.2', 'number', 'gt'))]
+                    chain = filters + [rank] if order == 'filter_first' else [rank] + filters
+                    stocks, _ = self.fixture.select(s.capture_strategy(requests.pipeline(*chain, pool=pool)))
+                    old = screening.select(self.fixture.db, book=self.fixture.dated, exit_day='2015-01-05', pool=pool,
+                        selection_order=order, rank_from=first, rank_to=last, min_cap=150e6,
+                        exchange='NYSE', filters=[dict(field='profit_margin', op='gt', value=-120.)])
+                    self.assertEqual([(row['symbol'], row['rank'], row['ranking_value']) for row in stocks],
+                                     [(row['symbol'], row['rank'], row['metric_yield']) for row in old])
+
+
+    def test_filter_group_batches_shared_formulas_after_all_stored_checks(self):
+        shared = language.entry(language.definition(dict(op='parameter', id='annual.revenue'), 'USD', 'usd'), 'draft:shared')
+        left = language.entry(language.definition(language.reference(shared), 'USD', 'usd'), 'draft:left')
+        right = language.entry(language.definition(language.reference(shared), 'USD', 'usd'), 'draft:right')
+        filters = [dict(kind='filter', **requests.condition(requests.formula(left), '0', 'usd', 'ge')),
+                   dict(kind='filter', source=dict(kind='field', field='market_cap'), op='ge',
+                        threshold=dict(value='150', unit='usd_million')),
+                   dict(kind='filter', **requests.condition(requests.formula(right), '0', 'usd', 'ge'))]
+        capture = s.capture_strategy(requests.pipeline(requests.rank_step(last=50), *filters,
+            requests.rank_step(requests.formula(left), 1, 3)), submitted=[shared, left, right])
+        evaluate = x.columns.Formulas.evaluate; calls = []
+        def counted(formulas, roots, view, checkpoint, **kwargs):
+            calls.append((len(roots), len(kwargs['outputs'])))
+            return evaluate(formulas, roots, view, checkpoint, **kwargs)
+        with patch.object(x.columns.Formulas, 'evaluate', counted):
+            stocks, _ = self.fixture.select(capture)
+        self.assertEqual(calls, [(50, 2)])
+        self.assertEqual([row['symbol'] for row in stocks], ['A0049', 'A0048', 'A0047'])
+        self.assertEqual([outcome['step'] for outcome in stocks[0]['scalar_evidence']['steps']], list(range(5)))
+        filters[1]['threshold']['value'] = '151'
+        rejected = s.capture_strategy(requests.pipeline(*filters, requests.rank_step()), submitted=[shared, left, right])
+        with patch.object(x.columns.Formulas, 'evaluate', side_effect=AssertionError('Stored filters must run first')):
+            stocks, _ = self.fixture.select(rejected)
+        self.assertEqual(stocks, [])
+
+    def test_rank_first_receipt_counts_selected_with_no_filters(self):
+        for order, expected in [('filter_first', 300), ('rank_first', 5)]:
+            value = requests.intent(requests.builtin(), rank_to=5, selection_order=order)
+            value['bounds'] = dict(min_cap=None, min_ev=None)
+            stocks, records = self.fixture.select(s.capture_strategy(value))
+            receipt = next(record['value'] for record in records if record['type'] == 'selection')
+            self.assertEqual(len(stocks), 5)
+            self.assertEqual(receipt['selected']['matches'], expected)
+
+    def test_unavailable_formula_ranking_counts_only_evaluated_survivors(self):
+        condition = requests.condition(requests.builtin('filter:profit_margin'), '0', 'number', 'gt')
+        for expression, expected in [(None, 0),
+                (dict(op='div', left=dict(op='constant', value='1', unit='scalar'),
+                      right=dict(op='constant', value='0', unit='scalar')), 149)]:
+            capture = self.fixture.capture(expression, conditions=[condition])
+            _, records = self.fixture.select(capture)
+            receipt = next(record['value'] for record in records if record['type'] == 'selection')
+            self.assertEqual(receipt['unavailable_ranking'], expected)
+
+
 if __name__=='__main__':unittest.main()

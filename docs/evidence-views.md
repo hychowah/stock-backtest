@@ -160,6 +160,63 @@ limit reason and does not retry that transfer automatically. It never deletes or
 recalculates that source. Existing stored bytes are never rewritten. Evidence pages retain their
 32 MiB response bound. Eager exploration retains its 512 MiB request ceiling.
 
+## Ordered strategy requests
+
+The service accepts `strategy-intent/2` and `strategy-capture/2`. The current
+browser form still submits the existing shapes. The block builder and visible
+step evidence belong to later work.
+
+A version-2 strategy has `universe: {pool}` and an ordered `steps` list. Market
+stays in `options.market`. Universe has no size or metadata bounds. A Rank step
+has `kind: "rank"`, `source`, `direction`, `rank_from` and `rank_to`. A Filter step
+has `kind: "filter"`, `source`, `op` and `threshold`. A chain needs at least one
+Rank and permits at most 50 steps. Each Rank keeps its inclusive range from the
+incoming survivors. The last Rank sets final order, ranks and ranking value.
+Later Filters keep these ranks and add no replacements.
+
+Sources name built-in IDs or exact formula revisions. Financial parameters and
+measures remain formula captures. Stored Universe fields use
+`{kind: "field", field: "market_cap"}` or `enterprise_value`, `sector`, `exchange`.
+Numeric Filters permit `lt`, `gt`, `le` and `ge`. They keep submitted units,
+canonical thresholds and exact stored comparison scales. Sector and exchange
+use `eq` and a string threshold. Built-in source descriptors and complete formula
+closures stay detached. Formula roots keep step order, including repeated roles.
+
+`selection.execute` owns the ordered loop. `scalar_execution.Executor` loads
+stored lanes once for the scope. Consecutive Filters form one group. Stored
+checks run together first. The surviving rows then evaluate the needed formula
+roots together in one program, sharing dependencies. Each row's formula values
+are cached for later steps. Only Rank survivors retain rank outcomes; final
+holdings add Filter pass outcomes in captured step order. Cancellation checks
+run at step boundaries. Annual statistics are within one company; they do not
+depend on other survivors.
+Missing values fail only steps that use them. Ties use candidate rank, null
+first, then symbol. Signed zero keeps its original value.
+
+Capture/1 translates only for execution. Filter-first becomes Filters then
+Rank; rank-first becomes Rank then Filters. Both capture versions use the loop
+and read stored lanes through `book_store.lanes`. Metric sources keep its
+complete-pair admission. Filter lanes keep their existing independent values.
+Legacy flat requests retain contract 1 and the unchanged `screening.select`
+SQL path for dated and latest runs, offline screens and parity checks.
+No prepared data or financial cache identity changes.
+
+The selection receipt's `matches` counts selected rows for legacy rank-first,
+including a request with no Filters. Its `unavailable_ranking` count includes
+only evaluated rows with an unavailable final ranking value. For formula
+rankings, rows removed before evaluation are excluded from this count.
+The `step_count` run-log field replaces the former `conditions` field.
+
+Capture/2 holdings record `scalar_evidence.steps` with zero-based step indexes,
+source lane references, canonical values, units and rank/pass outcomes. Only
+selected holdings retain this evidence, including random-date holdings. Detailed
+formula operation traces keep the existing fixed/latest policy. Old evidence
+stays unchanged; missing step evidence is never reconstructed. Artifact 4,
+codec 2 and financial contract 2 keep their versions and byte ceilings.
+Both `backtest.run` paths log controlled `market`, last-Rank
+`ranking_source_kind` (`builtin` or `formula`) and `step_count`, excluding Universe.
+Legacy requests log their translated counts.
+
 ## Dated submissions and replay
 
 Every new dated browser submission uses a strategy capture and bounded evidence,
@@ -293,17 +350,17 @@ source file and its digest. It drops raw row positions, per-row hashes and
 repeated report statements. A trace block larger than one evidence record is
 split in half. Older results keep their reference-evaluator explanations, which
 open unchanged in the same viewer. Random-date runs keep
-each selected row's formula value, unit and reason without a step trace. Each
+each selected row's formula value, unit and reason without a formula operation trace. Each
 holding carries its stored lane values; no separate `lanes` or `admission`
 record repeats them. The scope receipt still counts the complete prepared
 population. Older results keep their explanations and open unchanged.
 
-With a built-in ranking and filter-first order, formulas are evaluated only for
-rows that are admitted, have a ranking value and pass every built-in condition
-and bound. These conditions are checked once per row; the global selection
-then applies the formula conditions to the remaining rows, and its recorded
-indexes still address the scope's rows. No other row can be selected, so
-holdings do not change. Admission and built-in lanes still cover every row.
+For legacy filter-first captures, stored conditions and bounds run before
+formula conditions. Rows without a usable stored ranking are removed first.
+The ordered selector generalises this survivor optimisation to every chain.
+It evaluates each needed source for surviving rows and reuses cached values.
+The recorded indexes still address the complete scope's rows. Stored lane
+reads and admission still cover the prepared scope.
 
 The complete `evidence` attachment streams the original checksummed framed file,
 including its captured strategy and every explanation. Scalar `holdings`/`screen`

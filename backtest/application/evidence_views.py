@@ -5,6 +5,7 @@ cursors visits every matching row exactly once in original order. Summaries use
 the reader's trial directory; row pages never assemble complete periods or trials.
 """
 import json
+from backtest import selection
 
 PAGE_ROWS=64
 PAGE_BYTES=256*1024
@@ -44,8 +45,8 @@ def records(reader,trial):
 
 def trial(reader,number):
     summary,sizes=reader.trial_summary(number)
-    selected=summary['options'].get('strategy',{}).get('selection',summary['options'])
-    requested=selected.get('rank_to',50)-selected.get('rank_from',1)+1
+    first,last=selection.rank_range(summary['options'])
+    requested=last-first+1
     return dict(summary=summary,periods=sum(count for _,count in sizes),
         empty=sum(count for names,count in sizes if names==0),
         short=sum(count for names,count in sizes if names<requested))

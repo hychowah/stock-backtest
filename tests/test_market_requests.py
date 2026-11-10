@@ -15,7 +15,7 @@ from backtest import calendar_requests, result_evidence
 from backtest.application import original_calculations, queue, result_exports, strategy_requests as s, variable_authoring
 from backtest.inputs import daily, research
 from backtest.variables import definitions as d, measures, parameters
-from test_strategy_requests import formula, intent
+from test_strategy_requests import formula, intent, pipeline, rank_step
 from test_variable_definitions import constant, definition, entry
 from test_market_inputs import prepared_markets
 
@@ -199,6 +199,39 @@ class MarketRequests(unittest.TestCase):
                     rows = list(result_exports.rows(reader, kind, 1))
                     self.assertEqual(rows[0][:2], ['market', 'currency'])
                     self.assertEqual(rows[1][:2], ['jp', 'USD'])
+
+
+    def test_pipeline_fixed_and_seeded_random_match_capture1_in_each_market(self):
+        old = capture()
+        source = old['selection']['ranking']['source']
+        authored = old['variables']['program']['bundle']['definitions']
+        old = s.capture_strategy(dict(intent(source, rank_from=1, rank_to=2), pool='cached',
+                                      bounds=dict(min_cap=0, min_ev=0)), submitted=authored).to_dict()
+        new = s.capture_strategy(pipeline(
+            dict(kind='filter', source=dict(kind='field', field='market_cap'), op='ge', threshold=dict(value='0', unit='usd')),
+            dict(kind='filter', source=dict(kind='field', field='enterprise_value'), op='ge', threshold=dict(value='0', unit='usd')),
+            rank_step(source, 1, 2)), submitted=authored).to_dict()
+        def holdings(reader):
+            return [{key: (value.hex() if isinstance(value, float) else value) for key, value in row['value'].items()
+                     if key != 'scalar_evidence'} for row in reader.verified_records() if row['type'] == 'holding']
+        with prepared_markets() as (_, raw, research_path, daily_path):
+            connect = daily.connect
+            with patch.object(research, 'DATABASE', research_path), patch.object(daily, 'connect',
+                    side_effect=lambda: connect(daily_path, research_path)):
+                service = original_calculations.Original()
+                for market in ('us', 'hk', 'jp'):
+                    for mode in ('custom', 'random'):
+                        results = []
+                        for strategy in (old, new):
+                            options = dict(strategy=strategy, market=market, start='2015-07-01', end='2015-07-30', months=1)
+                            if mode == 'random':options.update(trials=2, seed=42)
+                            stream = io.BytesIO()
+                            service.calculate_into(mode, options, stream, None, None)
+                            results.append(result_evidence.open_reader(stream, max_bytes=16*1024**2))
+                        self.assertEqual(holdings(results[0]), holdings(results[1]), (market, mode))
+                        for left, right in zip(results[0].verified_records(), results[1].verified_records()):
+                            if left['type'] == right['type'] == 'period':
+                                self.assertEqual(left, right)
 
 
 if __name__ == '__main__':

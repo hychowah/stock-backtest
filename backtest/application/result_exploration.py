@@ -12,6 +12,7 @@ from backtest import portfolio_results
 from backtest.engines.original import robustness
 from backtest.runtime import backtest_control
 from . import evidence_views
+from backtest import selection as selection_policy
 
 
 def _number(value, nullable=False):
@@ -103,9 +104,7 @@ def _metadata(records, selection):
     options=summary.get('options',{})
     if type(options) is not dict or type(options.get('strategy',{})) is not dict:
         raise ValueError('Original selection settings are unavailable.')
-    requested=options.get('strategy',{}).get('selection',options)
-    if type(requested) is not dict:raise ValueError('Original selection settings are unavailable.')
-    lower,upper=requested.get('rank_from',1),requested.get('rank_to',50)
+    lower,upper=selection_policy.rank_range(options)
     if not lower<=selection['rank_from']<=selection['rank_to']<=upper:
         raise ValueError('Choose ranks within every original trial.')
     start=summary.get('start',entry) if first==1 else entry

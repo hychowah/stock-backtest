@@ -10,6 +10,7 @@ from datetime import date
 
 from backtest.application import scalar_execution
 from backtest.inputs import book_store
+from backtest.application import strategy_requests
 from backtest.runtime import backtest_control
 from backtest.variables import columns, definitions
 
@@ -50,7 +51,7 @@ def inspect(checked, scope, db, view, checkpoint=backtest_control.checkpoint):
     exact={k:scope[k] for k in ('mode','pool','context_date','book')}
     if scope['generation']!=discovery['generation'] or exact not in discovery['scopes']:
         raise definitions.FormulaError('STALE_INPUT_GENERATION','/scope','The recorded scope is absent or its generation changed.')
-    if checked['pool']!=scope['pool'] or checked['variables'] is None:
+    if strategy_requests.pool(checked)!=scope['pool'] or checked['variables'] is None:
         raise ValueError('A captured formula and matching pool are required.')
     projection=checked['variables']['program']
     rows,admission=scalar_execution._scope(db,checked,scope['book'],scope['context_date'],latest=True,market=view.market)

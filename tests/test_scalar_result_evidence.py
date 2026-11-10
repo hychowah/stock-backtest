@@ -15,6 +15,7 @@ from backtest import result_evidence, scalar_result_evidence, portfolio_results
 from backtest.application import scalar_execution, scalar_runs, durable_evidence, evidence_views, result_exports, result_exploration, library
 from backtest.application import strategy_requests as s
 from test_scalar_execution import Fixture
+from test_strategy_requests import pipeline, rank_step, builtin, condition
 
 
 class EvidenceTests(unittest.TestCase):
@@ -171,6 +172,40 @@ class EvidenceTests(unittest.TestCase):
         for h in holdings:h.update(metric_yield=.3,metric_multiple=3.)
         original=portfolio_results.evaluate([(date(2015,1,2),date(2015,1,5))],book)
         for key in ('growth','cagr','spy_growth','spy_cagr'):self.assertEqual(generic[key],original[key])
+
+
+    def test_pipeline_empty_cash_and_detached_rank_window_use_last_rank(self):
+        self.capture = s.capture_strategy(pipeline(rank_step(last=8), rank_step(first=20, last=40)))
+        for mode in ('custom', 'random'):
+            stream, manifest = self.produce(mode)
+            reader = result_evidence.open_reader(stream, max_bytes=16*1024**2)
+            summary = evidence_views.trial(reader, 1)
+            self.assertEqual((summary['empty'], summary['short']), (1, 1))
+            self.assertEqual(list(evidence_views.holdings(reader, 1, 1)), [])
+            selected = result_exploration.evidence(reader, dict(trial=1, period_from=1, period_to=1,
+                rank_from=20, rank_to=40))
+            self.assertEqual((selected['growth'], selected['cagr']), (1., 0.))
+            self.assertGreater(selected['spy_growth'], 1.)
+
+    def test_pipeline_step_references_and_outcomes_are_required_for_new_holdings(self):
+        self.capture = s.capture_strategy(pipeline(rank_step(last=5),
+            dict(kind='filter', **condition(builtin(), '0', 'number', 'ge'))))
+        stream, _ = self.produce()
+        reader = result_evidence.open_reader(stream, max_bytes=16*1024**2)
+        records = list(reader.verified_records())
+        for change in (lambda evidence: evidence.pop('steps'),
+                       lambda evidence: evidence['steps'][0].update(step=1),
+                       lambda evidence: evidence['steps'][0].update(rank=99),
+                       lambda evidence: evidence['steps'][0].update(unit='USD'),
+                       lambda evidence: evidence['steps'][1].update(passed=False),
+                       lambda evidence: evidence['steps'][1].update(lane='absent')):
+            malformed = deepcopy(records)
+            row = next(record['value'] for record in malformed if record['type'] == 'holding')
+            change(row['scalar_evidence'])
+            order = scalar_result_evidence.Order()
+            with self.assertRaises(ValueError):
+                for record in malformed:
+                    order.accept(record, record.get('sha256'))
 
 
 if __name__=='__main__':unittest.main()

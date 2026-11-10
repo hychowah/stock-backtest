@@ -274,6 +274,7 @@ class Formulas:
         self.projection = projection
         self.nodes = {node['id']: node for node in self.projection['nodes']}
         self.outputs = [self.projection['definitions'][index] for index in self.projection['roots']]
+        self.by_id = {(item['variable_id'], item['revision']): item for item in self.outputs}
         # Annual fields each company needs, unioned over the program.
         self.requirements = {}
         for node in self.projection['nodes']:
@@ -284,13 +285,17 @@ class Formulas:
                 elif node['parameter'] == 'annual.operating_margin':
                     self.requirements.setdefault('income-statement', set()).update(('operatingIncome', 'revenue'))
 
-    def evaluate(self, roots, view, checkpoint, *, decisions):
+    def evaluate(self, roots, view, checkpoint, *, decisions, outputs=None):
         """Return one {(variable_id, revision): (value, valid, reason)} per root.
 
         decisions are the roots' admission decisions in order (view.admit, or
-        the stored rows of a prepared scope).
+        the stored rows of a prepared scope). outputs optionally names the
+        needed exact formula identities; their shared dependencies run once
+        within each row. The checked program and its evidence stay complete.
         """
-        return [self._root(root, decision, view, checkpoint) for root, decision in zip(roots, decisions)]
+        selected = self.outputs if outputs is None else [self.by_id[key] for key in outputs]
+        return [self._root(root, decision, view, checkpoint, outputs=selected)
+                for root, decision in zip(roots, decisions)]
 
     def require_contexts(self, roots):
         """Resolve every dated context of the roots before any input is read.
@@ -348,14 +353,14 @@ class Formulas:
                         contexts=trace.contexts, results=trace.observations),
                     operations=trace.operations, results=trace.results)
 
-    def _root(self, root, decision, view, checkpoint, *, trace=None, identity=None):
+    def _root(self, root, decision, view, checkpoint, *, trace=None, identity=None, outputs=None):
         checkpoint()
         state = dict(tasks={}, observations={}, contexts={('root',): dict(id='root', root='root', date=root['date'])},
                      anchors={})
         if trace is not None:
             state.update(trace=trace, root=identity, ids={}, context_ids={('root',): identity}, observation_ids={})
         result = {}
-        for definition in self.outputs:
+        for definition in self.outputs if outputs is None else outputs:
             outcome = self._task(definition['root'], ('root',), 1, root, decision, view, state, checkpoint)
             result[(definition['variable_id'], definition['revision'])] = (outcome[0], outcome[1] is None, outcome[1])
         return (result, state) if trace is not None else result

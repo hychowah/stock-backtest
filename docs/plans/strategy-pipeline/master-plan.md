@@ -35,9 +35,10 @@ Use one selection path.
   Existing `rank_first` means Rank(a–b) → Filters. Each period ranks independently.
 - Preserve prepared-pool admission, calendars, returns, rounding, cash periods,
   missing-value rules and deterministic ties: candidate rank, null first, then symbol.
-- Read existing stored lanes. Evaluate distinct formula sources once over the
-  complete prepared pool before reducing candidates. Never evaluate formulas
-  over survivors only.
+- Read existing stored lanes once per scope. Formula values are per company
+  (annual statistics only, nothing cross-sectional), so evaluate each distinct
+  formula once per row, only for rows still alive at the first step that uses
+  it. This generalises today's filter-first survivor evaluation and is exact.
 - No data rebuild. Keep pipeline work outside `books.py`, `metrics.py`,
   `rules.py`, `book_store.py` and `facts.py`. Leave `research.code_sources`
   unchanged. Preserve freshness, cancellation, ownership and output ceilings.

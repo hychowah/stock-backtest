@@ -7,7 +7,7 @@ owners. This module never owns a library lookup.
 from datetime import date
 import time
 
-from backtest import calendar_requests
+from backtest import selection, calendar_requests
 from backtest.application import scalar_execution, strategy_requests
 from backtest.inputs import facts
 from backtest.variables import definitions
@@ -35,14 +35,15 @@ def check_size(writer, executor, periods):
     explained holding, 300 B plus 350 B per formula node and 600 B per observed
     member. The writer's bound still applies during the run.
     """
-    selection = executor.capture['selection']
-    ranks = selection['rank_to'] - selection['rank_from'] + 1
+    first, last = selection.rank_range(dict(strategy=executor.capture))
+    ranks = last - first + 1
     trace = 0
     if executor.formulas is not None and executor.explain:
         nodes = executor.formulas.projection['nodes']
         members = sum(node.get('count', 1) for node in nodes if node['op'] in ('parameter', 'annual'))
         trace = 300 + 350 * len(nodes) + 600 * members
-    estimate = periods * (8 * 1024 + ranks * (3200 + trace))
+    step_bytes = len(executor.capture['steps']) * 512 if executor.capture['version'] == 2 else 0
+    estimate = periods * (8 * 1024 + ranks * (3200 + trace + step_bytes))
     if estimate > writer.max_bytes:
         raise definitions.FormulaError('WORK_LIMIT', '/execution',
             f'This test would store about {estimate / 1e6:.0f} MB of results, above the '
@@ -52,14 +53,15 @@ def check_size(writer, executor, periods):
 def execute(db, mode, options, writer, view, configuration, *, planned=None, progress=None, checkpoint=lambda:None):
     checked = strategy_requests.check_options(options, checkpoint=checkpoint)
     capture = strategy_requests.CapturedStrategy(strategy_requests._encode(checked,strategy_requests.STRATEGY_BYTES,checkpoint))
-    # Random-date runs keep formula values and reasons, not step traces.
+    # Random-date runs keep formula values and reasons, not formula operation traces.
     executor = scalar_execution.Executor(capture, view, writer.evidence, record_bytes=writer.record_bytes,
                                          checkpoint=checkpoint, explain=mode != 'random')
-    requested = checked['selection']['rank_to']-checked['selection']['rank_from']+1
-    diagnostics.note(pool=checked['pool'],conditions=len(checked['selection']['conditions']))
+    first, last = selection.rank_range(options)
+    requested = last - first + 1
+    diagnostics.note(pool=strategy_requests.pool(checked))
     sink = TrialSink(writer, requested)
     started = time.perf_counter()
-    selection = {key:options[key] for key in ('strategy','market') if key in options}
+    result_options = {key:options[key] for key in ('strategy','market') if key in options}
     producer = dict(engine='original',label='Original')
     if mode == 'latest':
         # The stored open book of the book store; no dated-book reconstruction occurs.
@@ -82,7 +84,7 @@ def execute(db, mode, options, writer, view, configuration, *, planned=None, pro
         for number,result,stats in book_batch.evaluate_trials(db,planned,progress,book_selection=executor,trial_sink=sink):
             # The recorded plan retains its original labels; this trial retains
             # the new submission's exact capture after a presentation-only edit.
-            result['options'] = selection
+            result['options'] = result_options
             summaries.append(robustness.summarize(result,number,planned['samples'][number-1],period_counts=sink.counts))
             writer.end_trial(result)
             execution = dict(stats)
