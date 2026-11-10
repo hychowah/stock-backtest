@@ -20,7 +20,7 @@ const workspace={
   builtin:id=>builtins[id]?structuredClone(builtins[id]):null,displays:unit=>({USD:['usd','usd_million']}[unit]||[]),
   displayName:value=>({multiple:'Multiple (×)',usd:'US dollars',usd_million:'$ million'}[value]||value),
   open:async role=>{opened.push(role);},content:()=>({submitted:[],labels:[]}),
-  sources:async()=>{if(sourcesFailure)throw Error('offline');return {library:[{variable_id:'variable:saved',revision:'sha256:'+'c'.repeat(64),name:'Saved margin',favourite:true}],measures:[{id:'gross_margin',name:'Gross margin',display:'percent',description:'Gross margin'}],parameters:[{id:'annual.revenue',name:'Revenue',note:'',unit:'USD',source:{endpoint:'income-statement'}}]};},
+  sources:async()=>{if(sourcesFailure)throw Error('offline');return {library:[{variable_id:'variable:saved',revision:'sha256:'+'c'.repeat(64),name:'Saved margin',favourite:true}],measures:[{id:'gross_margin',name:'Gross margin',display:'percent',description:'Gross margin'}],parameters:[{id:'adapter.test',kind:'adapter',name:'Policy adapter',unit:'scalar'},{id:'annual.revenue',name:'Revenue',note:'',unit:'USD',source:{endpoint:'income-statement'}}]};},
   useSource:async(role,choice,expected)=>{chosen.push({role,choice});if(useFailure)throw useFailure;vm.runInContext('StrategyDraft',context).patch({role,source:{kind:'formula',...revenue},capture,authored:capture.program.bundle.definitions},expected);}
 };
 const context=vm.createContext({console,data:[],document,StockScreener:{defaults},
@@ -61,6 +61,11 @@ const rows=()=>JSON.parse(JSON.stringify(run('StrategyDraft.filterRows()')));
  fire('focusout',search('new'));run('renderConditions()');await later();assert.equal(node('filter-options-new').hidden,false);
  for(const text of ['My variables','★ Saved margin','Measures','Gross margin','Financial parameters','Revenue','income-statement','＋ Create a new variable…'])assert(options('new').includes(text),'Missing '+text);
  assert(/aria-disabled="true"><span>Return on average equity/.test(options('new')),'Unavailable built-ins stay visible but cannot be chosen');
+ // Rank by uses a native grouped list, including adapters hidden from filters.
+ run('syncCatalogControls()');
+ assert.deepEqual(Array.from(node('ranking-source').innerHTML.matchAll(/<optgroup label="([^"]+)"/g),item=>item[1]),['EV/EBITDA metrics','Built-in parameters','Financial parameters','Measures','My variables']);
+ for(const label of ['Policy adapter','Saved margin','Gross margin','Revenue','EV/EBITDA yield','P/E (×)'])assert(node('ranking-source').innerHTML.includes(label));
+ assert(!options('new').includes('Policy adapter'));
  // Typing filters by every word; Escape restores the row's label.
  type('new','reve');assert(options('new').includes('Revenue'));assert(!options('new').includes('P/E'));assert(options('new').includes('Create a new variable'));
  type('new','no such filter');assert(options('new').includes('Nothing matches'));
@@ -99,5 +104,16 @@ const rows=()=>JSON.parse(JSON.stringify(run('StrategyDraft.filterRows()')));
  assert(node('filter-message').textContent.includes('changed while Revenue was loading'));assert.equal(node('filter-message').className,'error');assert.equal(JSON.stringify(rows()),before);
  useFailure=null;
  fire('click',button({remove:'0'}));assert.equal(rows().length,1);assert.equal(node('filter-message').textContent,'');
+ // The ranking list reuses the exact same source application and stale fences.
+ await run("chooseRanking({kind:'library',variable_id:'variable:saved',revision:'sha256:'+ 'c'.repeat(64)})");
+ assert.equal(chosen.at(-1).role,'ranking');assert.equal(chosen.at(-1).choice.kind,'library');
+ assert.equal(run('StrategyDraft.read().settings.strategy.selection.ranking.source.variable_id'),revenue.variable_id);
+ assert.equal(node('legacy-pool-note').hidden,false);assert.equal(node('legacy-yield-control').hidden,true);
+ await run("chooseRanking({direction:'lowest'})");assert.equal(node('variable-direction').value,'lowest');assert.equal(run('StrategyDraft.ranking().direction'),'lowest');
+ useFailure=Object.assign(Error('The strategy draft changed.'),{code:'STALE_DRAFT'});
+ const rankingBefore=JSON.stringify(run('StrategyDraft.ranking()'));
+ await run("chooseRanking({kind:'parameter',id:'annual.revenue'})");
+ assert.equal(JSON.stringify(run('StrategyDraft.ranking()')),rankingBefore);assert(node('screen-error').textContent.includes('draft changed'));
+ useFailure=null;
  console.log('Passed: one filter list for built-in, saved, measure and parameter sources; word search, keyboard choice, disabled options, offline note and retry, variable switch, units, edit/create, failures and removal.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

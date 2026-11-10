@@ -48,11 +48,11 @@ if(process.argv[2]==='--builtins-parity'){
  assert.equal(run('StrategyDraft.isScalar()'),false);assert.equal(node('min-yield').value,'2');assert.equal(run('StrategyDraft.read().revision'),before);
  node('min-yield').value='0';run('filterConditions=[{field:"pe",op:"lt",value:12}];StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.isScalar()'),true);assert.equal(run('StrategyDraft.read().settings.strategy.selection.conditions[0].source.id'),'filter:pe');
- assert(node('strategy-heading').textContent.startsWith('Highest Original submitted label'));assert(node('legacy-yield-control').hidden);assert(node('legacy-multiple-control').hidden);assert(node('ranking-metric').disabled);assert(node('auto-run').disabled);assert(node('auto-run-note').textContent.includes('paused'));assert(!node('min-cap').required);
+ assert(node('strategy-heading').textContent.startsWith('Highest Original submitted label'));assert(node('legacy-yield-control').hidden);assert(node('legacy-multiple-control').hidden);assert(!node('ranking-source').disabled);assert(node('auto-run').disabled);assert(node('auto-run-note').textContent.includes('paused'));assert(!node('min-cap').required);
  // The moved built-in filter left the offline list, so one list stays current.
  assert.equal(run('filterConditions.length'),0);assert.equal(run('StrategyDraft.filterRows()[0].label'),'P/E');assert.equal(run('StrategyDraft.filterRows()[0].units'),null);
  const token=run('StrategyDraft.read().revision');run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
- assert(node('strategy-heading').textContent.startsWith('Lowest Original submitted label'));assert(node('strategy-ranking-help').textContent.includes('lowest available selected variable'));
+ assert(node('strategy-heading').textContent.startsWith('Lowest Original submitted label'));assert(node('strategy-ranking-help').textContent.includes('lowest available selected value'));
  assert.throws(()=>run(`StrategyDraft.patch({role:'ranking',source,capture:detached,authored},${token})`),/draft changed/);
  // Snapshot is taken before await; later draft changes do not alter submitted intent.
  node('backtest-engine').value='experimental';pause=true;const pending=run('StrategyDraft.prepareSubmission()');await tick();assert.equal(ids.length,0);
@@ -118,6 +118,45 @@ if(process.argv[2]==='--builtins-parity'){
  // Repeated selection retains one complete exact capture, not editing history.
  for(let i=0;i<30;i++)run('StrategyDraft.patch({role:"ranking",source,capture:detached,authored},StrategyDraft.read().revision)');
  assert.equal(run('StrategyDraft.read().detached.length'),1);
+ // Captured built-in labels remain visible even without the current descriptor.
+ const recordedBuiltin={mode:'latest',strategy:{format:'strategy-capture',version:1,selection:{ranking:{source:{kind:'builtin',id:'filter:retired'},direction:'lowest'},rank_from:1,rank_to:50,selection_order:'filter_first',conditions:[]},pool:'legacy',bounds:{min_cap:100e6,max_cap:null,min_ev:50e6,sector:null,exchange:null},variables:null,builtins:[{id:'filter:retired',label:'Recorded parameter label',storage:{kind:'filter',field:'retired'}}],limits:{bytes:196608}}};
+ context.recordedBuiltin=recordedBuiltin;const previous=copy(await run('StrategyDraft.prepareSubmission()'));
+ run('StrategyDraft.restore(recordedBuiltin)');
+ assert(node('ranking-source').innerHTML.includes('Recorded parameter label'));assert(node('ranking-source').innerHTML.includes('disabled'));
+ assert.deepEqual(copy((await run('StrategyDraft.prepareSubmission()')).strategy),recordedBuiltin.strategy);
+ context.previous=previous;run('StrategyDraft.restore(previous)');
+ // Generic ranking controls retain exact deleted revisions and saved labels.
+ assert.equal(node('ranking-source').value,JSON.stringify(exact));
+ assert(node('ranking-source').innerHTML.includes('Original submitted label'));
+ assert.equal(node('legacy-pool-note').hidden,false);
+ node('stock-pool').value='cached';run('StrategyDraft.render()');assert.equal(node('legacy-pool-note').hidden,true);
+ node('stock-pool').value='legacy';
+ // A parameter source and direction use the same patch path; no bound keys leak.
+ run('StrategyDraft.patch({role:"ranking",source:{kind:"builtin",id:"filter:pe"}},StrategyDraft.read().revision)');
+ assert.equal(run('StrategyDraft.read().settings.strategy.selection.ranking.source.id'),'filter:pe');
+ assert.equal(node('legacy-yield-control').hidden,true);assert.equal(node('min-yield').required,false);
+ assert(!('min_yield' in run('StrategyDraft.read().settings.strategy.bounds')));
+ run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
+ assert.equal(node('variable-direction').value,'lowest');assert.equal(node('legacy-pool-note').hidden,false);
+ run('StrategyDraft.patch({role:"ranking",source:{kind:"builtin",id:"metric:ev_ebitda:multiple"}},StrategyDraft.read().revision)');
+ assert.equal(node('legacy-pool-note').hidden,true);assert.equal(node('max-multiple').disabled,true);
+ run('StrategyDraft.patch({direction:"highest"},StrategyDraft.read().revision);StrategyDraft.patch({role:"ranking",source:{kind:"builtin",id:"metric:ev_ebitda:yield"}},StrategyDraft.read().revision)');
+ assert.equal(node('legacy-yield-control').hidden,false);assert.equal(node('max-multiple').disabled,false);
+ assert.deepEqual(copy(run('({scalar:StrategyDraft.isScalar(),metric:readOptions().metric,filters:readOptions().filters,autoRunDisabled:document.getElementById("auto-run").disabled})')),{scalar:false,metric:'ev_ebitda',filters:[{field:'pe',op:'lt',value:12}],autoRunDisabled:false});
+ node('min-yield').value='2';node('max-multiple').value='50';
+ const bounded=await run('StrategyDraft.prepareSubmission()');context.bounded=bounded;
+ assert.equal(bounded.strategy.bounds.min_yield,.02);assert.equal(bounded.strategy.bounds.max_multiple,50);
+ const boundedBytes=JSON.stringify(bounded);run('StrategyDraft.restore(bounded)');
+ assert.deepEqual(copy((await run('StrategyDraft.prepareSubmission()')).strategy),copy(bounded.strategy));
+ for(const change of [{direction:'lowest'},{role:'ranking',source:{kind:'builtin',id:'filter:pe'}}]){
+  context.change=change;const revision=run('StrategyDraft.read().revision');
+  assert.throws(()=>run('StrategyDraft.patch(change,StrategyDraft.read().revision)'),/inclusive/);
+  assert.equal(run('StrategyDraft.read().revision'),revision);assert.equal(node('min-yield').value,'2');
+ }
+ assert.equal(JSON.stringify(bounded),boundedBytes);
+ node('min-yield').value='0';node('max-multiple').value='';
+ run('StrategyDraft.patch({direction:"lowest"},StrategyDraft.read().revision)');
+ assert(!('min_yield' in run('StrategyDraft.read().settings.strategy.bounds')));assert(!('max_multiple' in run('StrategyDraft.read().settings.strategy.bounds')));
  // Built-in dated forms capture without switching their controls to formula mode.
  context.builtinSettings={...defaults,mode:'custom',start:'2015-01-02',end:'2015-01-05',months:12,rank_from:3,rank_to:12,min_yield:.02,max_multiple:50,filters:[{field:'pe',op:'lt',value:12}]};
  run('StrategyDraft.restore(builtinSettings)');
@@ -136,6 +175,13 @@ if(process.argv[2]==='--builtins-parity'){
  const beforeLatest=requests.length;run("screeningMode='latest'");const latest=await run('StrategyDraft.prepareSubmission()');
  assert(!('strategy' in latest));assert.equal(latest.min_yield,.02);assert.equal(requests.length,beforeLatest);
  assert.equal(JSON.stringify(context.builtinSettings),builtinBefore);
+ // Adding a formula filter keeps active bounds when the ranking still supports them.
+ run('StrategyDraft.restore(builtinSettings);StrategyDraft.patch({role:"condition",source,capture:detached,authored},StrategyDraft.read().revision)');
+ assert.equal(node('legacy-yield-control').hidden,false);assert.equal(node('max-multiple').value,'50');
+ run('StrategyDraft.condition(1,"value","0")');
+ const withFormulaFilter=await run('StrategyDraft.prepareSubmission()');
+ assert.equal(withFormulaFilter.strategy.bounds.min_yield,.02);assert.equal(withFormulaFilter.strategy.bounds.max_multiple,50);
+ assert.equal(withFormulaFilter.strategy.selection.conditions[1].source.revision,exact.revision);
  // The conversion owns its pre-await copy, including dates and engine.
  pause=true;context.convertInput={...context.builtinSettings,filters:[],engine:'experimental'};
  const converting=run('StrategyDraft.captureBuiltins(convertInput)');await tick();context.convertInput.min_yield=.9;context.convertInput.engine='original';

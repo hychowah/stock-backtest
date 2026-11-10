@@ -202,7 +202,7 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
  // List choices become exact checked sources for one filter row.
  if(!wire){
   emptyLibrary=false;const listed=await run('VariableWorkspace.sources()');
-  assert.equal(listed.library.length,1);assert(listed.parameters.length>0);assert(listed.parameters.every(item=>item.kind!=='adapter'));assert.equal(listed.measures.length,ownerCatalog.measures.length);
+  assert.equal(listed.library.length,1);assert(listed.parameters.length>0);assert.equal(listed.parameters.length,77);assert.equal(listed.parameters.length,ownerCatalog.expanded_parameters.length);assert.equal(listed.measures.length,ownerCatalog.measures.length);
   const choose=async choice=>{context.choice=choice;await run('VariableWorkspace.useSource(0,choice,draft.read().revision)');return applied.at(-1);};
   let chosen=await choose({kind:'parameter',id:'annual.revenue',label:'Revenue'});
   assert.equal(calls.at(-1).body.variable_id,'local:annual.revenue');assert.deepEqual(calls.at(-1).body.definition.output,{unit:'USD',display:'usd_million'});assert.deepEqual(calls.at(-1).body.definition.expression,{op:'parameter',id:'annual.revenue'});
@@ -212,6 +212,12 @@ run("VariableWorkspace.init({draft,asof:'2015-01-05',pool:()=> 'cached'})");
   assert.equal(calls.at(-1).body.variable_id,measure.root.variable_id);assert.equal(calls.at(-1).body.name,measure.name);assert(!calls.at(-1).body.submitted.some(item=>item.variable_id===measure.root.variable_id));
   chosen=await choose({kind:'library',...exact});
   assert(calls.at(-2).url.endsWith('/authored'));assert.equal(calls.at(-1).body.variable_id,exact.variable_id);assert.equal(chosen.source.revision,exact.revision);
+  context.choice={kind:'library',...exact};await run("VariableWorkspace.useSource('ranking',choice,draft.read().revision)");
+  assert.equal(applied.at(-1).role,'ranking');assert.equal(applied.at(-1).source.revision,exact.revision);
+  for(const parameter of listed.parameters.filter(item=>item.kind==='adapter')){
+   context.choice={kind:'parameter',id:parameter.id};await run("VariableWorkspace.useSource('ranking',choice,draft.read().revision)");
+   assert.equal(applied.at(-1).role,'ranking');assert.equal(calls.at(-1).body.definition.expression.id,parameter.id);
+  }
   context.stale=context.draft.read().revision-1;
   await assert.rejects(run("VariableWorkspace.useSource(0,{kind:'parameter',id:'annual.revenue'},stale)"),/Stale picker apply/);
  }

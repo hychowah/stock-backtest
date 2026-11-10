@@ -310,13 +310,13 @@ const VariableWorkspace=(()=>{
       node('variable-coverage-result').textContent=`Generation ${value.generation}; projection ${value.projection.content}; ${value.scope.mode}, ${value.scope.context_date}, ${value.scope.pool}. Snapshot denominator: ${value.population} rows before availability, ranking and filters. Formula results count the first unavailable reason for each row: `+value.outputs.map(o=>`${o.variable_id} @ ${o.revision}: ${o.valid} valid, ${o.unavailable} unavailable; ${JSON.stringify(o.reasons)}`).join(' · ');
     }catch(failure){if(current())throw failure;}
   }
-  // The page's filter list offers the same sources as the picker. Policy
-  // adapters are left out there: built-in filters already provide them.
+  // Ranking and filters share the library and expanded source list.
+  // The filter list omits adapters that its built-in filters already provide.
   async function sources(){
     catalog??=await request('/catalog');
     const library=await request('');
     return {library:library.entries.filter(entry=>!entry.deleted),measures:catalog.measures,
-      parameters:catalog.expanded_parameters.filter(item=>item.kind!=='adapter').map(item=>({...item,name:parameterName(item),note:String(item.description).split(';').slice(1).join(';').trim()}))};
+      parameters:catalog.expanded_parameters.map(item=>({...item,name:parameterName(item),note:String(item.description).split(';').slice(1).join(';').trim()}))};
   }
   // One list choice becomes an exact checked source, exactly as opening it in
   // the editor and selecting Use would. expected fences the draft revision.
@@ -351,9 +351,7 @@ const VariableWorkspace=(()=>{
     callbacks=options;node('variable-preview-date').value=options.asof;
     const controls=document.querySelector('.variable-controls');
     controls.addEventListener('input',event=>event.stopPropagation());controls.addEventListener('change',event=>event.stopPropagation());
-    node('variable-rank').addEventListener('click',()=>attempt(()=>open('ranking')));node('variable-new').addEventListener('click',()=>attempt(()=>open('ranking')));
-    node('variable-legacy').addEventListener('click',()=>callbacks.draft.patch({legacy:true},callbacks.draft.read().revision));
-    node('variable-direction').addEventListener('change',()=>callbacks.draft.patch({direction:node('variable-direction').value},callbacks.draft.read().revision));
+    node('variable-new').addEventListener('click',()=>attempt(()=>open('ranking')));
     node('variable-close').addEventListener('click',close);node('variable-dialog').addEventListener('cancel',()=>{cancelSource();generation++;invalidate();returnFocus?.focus?.();});
     node('variable-search').addEventListener('input',renderPicker);node('variable-refresh').addEventListener('click',()=>attempt(refresh));node('variable-start-new').addEventListener('click',()=>startNew());
     node('variable-edit-selected').addEventListener('click',()=>attempt(()=>loadExact(editor.variable_id,editor.selectedRevision)));
