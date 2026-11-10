@@ -23,12 +23,14 @@ const stepEvent=(type,step,key,value)=>el('strategy-steps').handlers[type]({targ
 const stepButton=(action,step)=>el('strategy-steps').handlers.click({target:{closest:()=>({dataset:{action,step}})}});
 const addStep=(kind,choice)=>{el('add-'+kind).handlers.click();run('chooseStep("new",'+JSON.stringify(choice)+')');return run('StrategyDraft.read().changed');};
 assert.deepEqual(steps().map(row=>[row.kind,row.label]),[['filter','Market cap'],['filter','Enterprise value'],['rank','EV / EBITDA yield']]);
-assert(el('strategy-steps').innerHTML.includes('Highest first'));assert.equal(el('latest-chain-note').hidden,true);
+assert(el('strategy-steps').innerHTML.includes('Highest first'));
 assert.equal(el('latest-view').hidden,false);assert.equal(el('custom-view').hidden,true);assert.equal(el('schedule-controls').hidden,true);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.asof'),latestDate);
 assert.equal(run('ResultArtifacts.forView(LATEST_VIEW).result.stocks.length'),latestCount(50));
-// Opening the dated view starts nothing; it shows the schedule controls.
-run("switchMode('backtest')");
+// Opening the dated view starts nothing; it shows the schedule controls. A
+// latest evidence panel in the builder hides with latest mode.
+el('workspace-builder').append(el('scalar-evidence-view'));el('scalar-evidence-view').hidden=false;
+run("switchMode('backtest')");assert.equal(el('scalar-evidence-view').hidden,true);
 assert.equal(el('workspace-builder').hidden,false);assert.equal(el('workspace-review').hidden,true);assert.equal(el('latest-view').hidden,true);assert.equal(el('schedule-controls').hidden,false);
 assert.equal(el('run-screen').textContent,'Run backtest');assert.equal(run('ScheduleView.isRunning()'),false);assert.equal(el('screen-error').textContent,'');
 assert.equal(run('ResultArtifacts.forView("custom")'),undefined);
@@ -414,11 +416,20 @@ run('applyRange()');
 assert(run("ResultArtifacts.forView(LATEST_VIEW).result.stocks.every(h=>screeningData.filter_values[ResultArtifacts.forView(LATEST_VIEW).result.options.pool][h.symbol].return_1y>0)"));
 stepButton('remove',returnStep);
 assert.equal(run('StrategyDraft.flat().filters.length'),0);
-// A chain outside the offline shape disables Screen latest until P3.
+// A chain outside the offline shape screens latest on the service with its
+// captured chain; auto-run stays offline-only. The offline result stays shown.
 const extraRank=addStep('rank',{kind:'builtin',id:'metric:ev_ebitda:multiple',label:'EV / EBITDA multiple'});
-assert.equal(el('run-screen').disabled,true);assert.equal(el('latest-chain-note').hidden,false);assert.equal(el('auto-run').disabled,true);assert.equal(el('run-screen').attributes['aria-describedby'],'latest-chain-note');
-stepButton('remove',extraRank);assert.equal(el('run-screen').disabled,false);assert.equal(el('latest-chain-note').hidden,true);assert.equal(el('run-screen').attributes['aria-describedby'],'');
-console.log('Passed: add/edit/remove filter steps, numeric thresholds and the latest limit for chains.');
+assert.equal(el('run-screen').disabled,false);assert.equal(el('auto-run').disabled,true);
+const offlineLatest=run('ResultArtifacts.forView(LATEST_VIEW)'),queueFetch=ctx.fetch;let latestRequest;
+ctx.fetch=async(url,options)=>{latestRequest={url,...JSON.parse(options.body)};return {ok:false,status:400,json:async()=>({error:'Fixture refusal'})};};
+await run('applyRange()');await tick();await tick();
+assert(latestRequest.url.startsWith('/api/backtest-runs/'));assert.equal(latestRequest.mode,'latest');assert(!('start' in latestRequest.options));
+assert.equal(latestRequest.options.strategy.format,'strategy-capture');assert.equal(latestRequest.options.strategy.steps.at(-1).source.id,'metric:ev_ebitda:multiple');
+assert.equal(run('ResultArtifacts.forView(LATEST_VIEW)'),offlineLatest);assert(el('screen-error').textContent.includes('Fixture refusal'));assert.equal(el('run-screen').disabled,false);
+ctx.fetch=queueFetch;
+stepButton('remove',extraRank);assert.equal(el('auto-run').disabled,false);
+run('applyRange()');assert.notEqual(run('ResultArtifacts.forView(LATEST_VIEW)'),offlineLatest,'A flat chain screens offline again');assert.equal(el('latest-view').hidden,false);
+console.log('Passed: add/edit/remove filter steps, numeric thresholds and latest chains on the service.');
 
 // Shared prepared views are independent of the selected dated executor.
 let sharedLatest;

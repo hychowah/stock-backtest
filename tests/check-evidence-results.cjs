@@ -9,7 +9,7 @@ const strategy={selection:{ranking:{source:{kind:'formula',...exact},direction:'
 const holding={rank:1,symbol:'A0000',name:'Company',exchange:'NYSE',sector:'Sector',ranking_value:.1,ranking_unit:'scalar',ranking_display:'percent',ranking_direction:'highest',market_cap:150e6,enterprise_value:180e6,fiscal:'2014-06-30',entry:'2015-01-02',exit:'2015-01-05',return_value:.1,contribution_pp:10,status:'Scheduled exit',metric_multiple:10,scalar_evidence:{scope:'s0',lanes:{}}};
 const period={entry:'2015-01-02',exit:'2015-01-05',names:1,portfolio:.1,spy:.02};
 const summary={start:period.entry,end:period.exit,cagr:.2,spy_cagr:.03,growth:1.1,seconds:0,coverage:'Complete',options:{strategy}};
-let screenWait=null,explanationWait=null,explanationFailure=false,release=null,currentId='1'.repeat(32),robust=0;
+let screenWait=null,explanationWait=null,explanationFailure=false,release=null,currentId='1'.repeat(32),robust=0,recorded={};
 const context=vm.createContext({console,document:{getElementById:node,createElement:()=>({click(){downloads.push({href:this.href,download:this.download});}})},
  Uint8Array,crypto:require('node:crypto').webcrypto,AbortController,money:v=>String(v),metricLabel:()=>{throw Error('Scalar presentation must use captured meaning');},
  CalendarSettings:{label:()=> 'Monthly',init(){}},EngineControls:{label:()=> 'Original',init(){}},
@@ -17,10 +17,10 @@ const context=vm.createContext({console,document:{getElementById:node,createElem
  fetch:async(url)=>{
   urls.push(url);assert(url.startsWith('/api/backtest-runs/'));
   const parts=url.split('/'),operation=parts[6],cursor=+parts.at(-1);let value;
-  if(operation==='screen'){if(screenWait){const pause=screenWait;screenWait=null;await pause();}value={rows:[{...holding,symbol:cursor?'A0064':'A0000'}],cursor,next:cursor?null:64,total:70};}
+  if(operation==='screen'){if(screenWait){const pause=screenWait;screenWait=null;await pause();}value={rows:[{...holding,...recorded,symbol:cursor?'A0064':'A0000'}],cursor,next:cursor?null:64,total:70};}
   else if(operation==='trial')value={summary,short:0,empty:0};
   else if(operation==='periods')value={rows:[{number:1,value:period},{number:2,value:{...period,entry:'2016-01-04',exit:'2016-01-05'}}],cursor:0,next:null,total:2};
-  else if(operation==='holdings')value={rows:[{...holding,symbol:parts[8]==='2'?'SECOND':'FIRST'}],cursor:0,next:null,total:1};
+  else if(operation==='holdings')value={rows:[{...holding,...recorded,symbol:parts[8]==='2'?'SECOND':'FIRST'}],cursor:0,next:null,total:1};
   else if(operation==='explanations'){if(explanationWait){const pause=explanationWait;explanationWait=null;await pause();}if(explanationFailure){explanationFailure=false;throw Error('Replaced explanation failure');}value={rows:[{scope:'s0',block:{results:[]}}],cursor,next:cursor?null:64,total:65};}
   else throw Error('Unexpected result route '+url);
   return {ok:true,headers:{get:()=>null},json:async()=>structuredClone({...value,identity:parts[3]})};
@@ -60,7 +60,9 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  run('ScheduleView.show(ResultArtifacts.publish(prior))');assert.equal(node('result-producer').textContent,'Producer not recorded in this result.');assert.equal(node('result-producer').hidden,false);
  context.metricLabel=()=>{throw Error('Scalar presentation must use captured meaning');};
  await show(artifact());
- assert(node('scalar-screen-rows').innerHTML.includes('10%'));assert(node('scalar-evidence-summary').textContent.includes('Submitted original'));assert(node('scalar-screen-page').textContent.includes('of 70'));
+ assert(node('scalar-screen-rows').innerHTML.includes('10%'));assert(node('scalar-evidence-summary').textContent.includes('Submitted original'));
+ // A capture/1 row has no step evidence; it is never reconstructed.
+ assert(node('scalar-screen-rows').innerHTML.includes('Step trail not recorded in this result.'));assert(node('scalar-screen-page').textContent.includes('of 70'));
  node('scalar-screen-next').handlers.click();await tick();assert(node('scalar-screen-rows').innerHTML.includes('A0064'));assert(node('scalar-screen-next').disabled);
  node('scalar-download-rows').handlers.click();node('scalar-download-evidence').handlers.click();assert(downloads[0].href.includes('/export/screen/'));assert(downloads[1].href.includes('/export/evidence/'));
  node('scalar-screen-rows').handlers.click({target:{dataset:{scalarExplain:'0'}}});await tick();assert(node('scalar-explanation-content').innerHTML.includes('Submitted original'));
@@ -103,11 +105,27 @@ async function show(value){context.artifact=value;run('{const completed=ResultAr
  context.metricLabel=()=> 'Retained EV/EBITDA';await show(artifact('custom',3,'6'.repeat(32)));assert.equal(node('schedule-explanation-head').hidden,true);assert(node('schedule-stock-body').innerHTML.includes('10.00'));assert(!node('schedule-stock-body').innerHTML.includes('data-stored-explain'));
  // A chain capture summarizes its last Rank and step count from the record itself.
  const chain=artifact('custom',4,'7'.repeat(32));
- chain.settings={mode:'custom',strategy:{format:'strategy-capture',version:2,universe:{pool:'cached'},builtins:[{id:'metric:ev_ebitda:yield',label:'Recorded EV/EBITDA yield'}],variables:{presentation:[{...exact,name:'Submitted original'}]},
-  steps:[{kind:'rank',source:{kind:'formula',...exact},direction:'lowest',rank_from:1,rank_to:200},{kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},{kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:20,rank_to:40}]}};
+ chain.settings={mode:'custom',strategy:{format:'strategy-capture',version:2,universe:{pool:'cached'},builtins:[{id:'metric:ev_ebitda:yield',label:'Recorded EV/EBITDA yield',unit:'scalar',display:'percent'}],
+  variables:{presentation:[{...exact,name:'Submitted original'}],program:{definitions:[{...exact,unit:'scalar',display:'percent'}]}},
+  steps:[{kind:'rank',source:{kind:'formula',...exact},direction:'lowest',rank_from:1,rank_to:200},{kind:'filter',source:{kind:'field',field:'sector'},op:'eq',threshold:'Energy'},
+   {kind:'filter',source:{kind:'formula',...exact},op:'ge',threshold:{value:'0',unit:'number'}},{kind:'rank',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},direction:'highest',rank_from:20,rank_to:40}]}};
  chain.result.options={strategy:chain.settings.strategy};
+ // Each step shows its recorded value and rank or pass; the repeated formula
+ // reads its own lane, and the sector Filter reads the holding's own field.
+ const formulaLane={scope:'s0',...exact,value:.05,valid:true};
+ recorded={sector:'Energy',scalar_evidence:{scope:'s0',steps:[7,null,null,25],lanes:{s0:formulaLane,s2:formulaLane,s3:{scope:'s0',source:{kind:'builtin',id:'metric:ev_ebitda:yield'},canonical:.3,unit:'scalar',valid:true}}}};
  await show(chain);
- assert.equal(node('scalar-evidence-summary').textContent,'Recorded EV/EBITDA yield (metric:ev_ebitda:yield) · highest first · ranks 20–40 · 3 steps. These values and downloads use original captured evidence.');
+ assert.equal(node('scalar-evidence-summary').textContent,'Recorded EV/EBITDA yield (metric:ev_ebitda:yield) · highest first · ranks 20–40 · 4 steps. These values and downloads use original captured evidence.');
+ // Plain recorded names; a scalar value's display already carries its unit.
+ for(const line of ['Step 1 · Rank · Submitted original · 5% · rank 7 (kept 1–200)','Step 2 · Filter · Sector · Energy · passed',
+   'Step 3 · Filter · Submitted original · 5% · passed','Step 4 · Rank · Recorded EV/EBITDA yield · 30% · rank 25 (kept 20–40)'])
+  assert(node('schedule-stock-body').innerHTML.includes('<li>'+line+'</li>'),line);
+ // A latest chain shows the same trail and its recorded market date.
+ const latestChain=artifact('latest',4,'6'.repeat(32));latestChain.settings={mode:'latest',strategy:chain.settings.strategy};latestChain.result.asof='2015-01-05';
+ await show(latestChain);
+ assert(node('scalar-evidence-summary').textContent.startsWith('Latest cached session 2015-01-05 · '));
+ assert(node('scalar-screen-rows').innerHTML.includes('<li>Step 2 · Filter · Sector · Energy · passed</li>'));assert(node('scalar-screen-rows').innerHTML.includes('data-scalar-explain="0"'));
+ recorded={};
  // A saved version-1 January result opens in the same dated view, from its
  // stored rows, without any request.
  const before=urls.length;

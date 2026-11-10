@@ -242,9 +242,12 @@ class Executor:
                         source = role_sources[role]
                         if (source['variable_id'], source['revision']) != (item['variable_id'], item['revision']):
                             continue
-                        references[position][lane_of(role)] = dict(scope=identity, chunk=chunk, request=item['request'],
-                            variable_id=item['variable_id'], revision=item['revision'], evidence=item['evidence'],
-                            valid=item['valid'], reason=item['reason'])
+                        reference = references[position][lane_of(role)] = dict(scope=identity, chunk=chunk,
+                            request=item['request'], variable_id=item['variable_id'], revision=item['revision'],
+                            evidence=item['evidence'], valid=item['valid'], reason=item['reason'])
+                        if pipeline:
+                            # A chain's step trail shows the value each step used.
+                            reference['value'] = computed[position][(source['variable_id'], source['revision'])][0]
         records.append(dict(type='scope', value=receipt))
         def builtin(role, index):
             symbol = rows[index][0]

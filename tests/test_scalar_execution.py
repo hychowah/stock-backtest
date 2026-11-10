@@ -364,8 +364,17 @@ class ScalarTests(unittest.TestCase):
         blocks = [record['value']['block'] for record in records if record['type'] == 'evaluation']
         self.assertEqual(sum(len(block['requests']) for block in blocks), 3)
         self.assertEqual(stocks[0]['scalar_evidence']['steps'][1:], [None, 1, None])
+        # Each formula step records the value it used, also when traced.
+        for row in stocks:
+            self.assertEqual([row['scalar_evidence']['lanes'][lane]['value'] for lane in ('s1', 's2', 's3')], [row['ranking_value']] * 3)
+        # Capture/1 references keep their original shape.
+        old_stocks, _ = self.fixture.select(self.fixture.capture())
+        self.assertNotIn('value', old_stocks[0]['scalar_evidence']['lanes']['ranking'])
 
     def test_pipeline_builtin_equivalents_match_legacy_both_pools_orders_and_ranges(self):
+        # The open book gets the dated book's profit margins: i - 150 for A<i>.
+        self.fixture.db.execute('UPDATE book_rows SET ' + book_store.FILTERS['profit_margin'] + '=CAST(substr(symbol, 2) AS REAL)-150 WHERE book=?',
+                                (self.fixture.latest,))
         for pool in ('legacy', 'cached'):
             for order in ('filter_first', 'rank_first'):
                 for first, last in ((1, 5), (20, 40)):
@@ -375,12 +384,14 @@ class ScalarTests(unittest.TestCase):
                                dict(kind='filter', source=dict(kind='field', field='exchange'), op='eq', threshold='NYSE'),
                                dict(kind='filter', **requests.condition(requests.builtin('filter:profit_margin'), '-1.2', 'number', 'gt'))]
                     chain = filters + [rank] if order == 'filter_first' else [rank] + filters
-                    stocks, _ = self.fixture.select(s.capture_strategy(requests.pipeline(*chain, pool=pool)))
-                    old = screening.select(self.fixture.db, book=self.fixture.dated, exit_day='2015-01-05', pool=pool,
-                        selection_order=order, rank_from=first, rank_to=last, min_cap=150e6,
-                        exchange='NYSE', filters=[dict(field='profit_margin', op='gt', value=-120.)])
-                    self.assertEqual([(row['symbol'], row['rank'], row['ranking_value']) for row in stocks],
-                                     [(row['symbol'], row['rank'], row['metric_yield']) for row in old])
+                    flat = dict(pool=pool, selection_order=order, rank_from=first, rank_to=last, min_cap=150e6,
+                                exchange='NYSE', filters=[dict(field='profit_margin', op='gt', value=-120.)])
+                    # Dated books, and the open book the server's latest chains read.
+                    for latest, old in ((False, screening.select(self.fixture.db, book=self.fixture.dated, exit_day='2015-01-05', **flat)),
+                                        (True, screening.latest(self.fixture.db, **flat))):
+                        stocks, _ = self.fixture.select(s.capture_strategy(requests.pipeline(*chain, pool=pool)), latest=latest)
+                        self.assertEqual([(row['symbol'], row['rank'], row['ranking_value'], row['price']) for row in stocks],
+                                         [(row['symbol'], row['rank'], row['metric_yield'], row['price']) for row in old])
 
 
     def test_filter_group_batches_shared_formulas_after_all_stored_checks(self):

@@ -33,11 +33,34 @@ const EvidenceResults=(()=>{
     node(id+'-pages').hidden=false;node(id+'-back').disabled=cursor===0;node(id+'-next').disabled=next===null;
     node(id+'-page').textContent=label+' · '+total+' total';
   }
+  // A chain's recorded step trail: each step's value and its rank or pass, read
+  // from the stored row and its captured strategy only. Older results have none.
+  function stepTrail(row,strategy){
+    const outcomes=row.scalar_evidence?.steps;
+    if(strategy?.version!==2||!Array.isArray(outcomes))return '<p class="hint">Step trail not recorded in this result.</p>';
+    return '<ol class="step-trail" aria-label="Step trail">'+strategy.steps.map((step,i)=>{
+      const source=step.source,lane=row.scalar_evidence.lanes['s'+i]||{};
+      let name=BacktestComparison.sourceName(strategy,source),value,unit='';
+      // A field step's value is the holding's own field; its label names the unit.
+      if(source.kind==='field')value=typeof row[source.field]==='number'?money(row[source.field]):row[source.field]||'Unknown';
+      else{
+        const same=item=>item.variable_id===source.variable_id&&item.revision===source.revision;
+        const output=source.kind==='builtin'?strategy.builtins.find(item=>item.id===source.id):strategy.variables.program.definitions.find(same);
+        // The recorded plain name, without its id or revision.
+        name=source.kind==='builtin'?output?.label||source.id:strategy.variables.presentation.find(same)?.name||source.variable_id;
+        value=ResultArtifacts.scalarValue({ranking_value:lane.canonical??lane.value,ranking_display:output?.display});
+        // A scalar value's display already carries its % or ×.
+        if(output?.unit!=='scalar')unit=output?.unit;
+      }
+      const outcome=step.kind==='rank'?'rank '+outcomes[i]+' (kept '+step.rank_from+'–'+step.rank_to+')':'passed';
+      return '<li>'+escape(['Step '+(i+1),step.kind==='rank'?'Rank':'Filter',name,value,unit,outcome].filter(Boolean).join(' · '))+'</li>';
+    }).join('')+'</ol>';
+  }
   function holdingRows(rows,artifact,count){
     return rows.map(h=>{
       const scalar=artifact.version===4,weight=h.weight??(count?1/count:0);
       const details=[['Exchange',h.exchange],['Market cap',money(h.market_cap)],['Enterprise value',money(h.enterprise_value)],['Fiscal date',h.fiscal],['Entry',h.entry],['Exit / mark',h.exit],['Exit basis',h.status]];
-      return '<tr><td>'+escape(h.rank)+'</td><td><strong>'+escape(h.symbol)+'</strong><small class="holding-company">'+escape(h.name)+'</small></td><td>'+escape(h.sector||'Unknown')+'</td><td>'+format(weight)+'</td><td>'+escape(scalar?ResultArtifacts.scalarValue(h):h.metric_multiple.toFixed(2))+'</td><td>'+format(h.return_value)+'</td><td>'+h.contribution_pp.toFixed(2)+' pp</td><td><details class="holding-details"><summary>Details</summary><dl>'+details.map(([key,value])=>'<div><dt>'+key+'</dt><dd>'+escape(value)+'</dd></div>').join('')+'</dl>'+(scalar?'<button type="button" data-stored-explain="'+escape(h.symbol)+'">Explain ranking</button>':'')+'</details></td></tr>';
+      return '<tr><td>'+escape(h.rank)+'</td><td><strong>'+escape(h.symbol)+'</strong><small class="holding-company">'+escape(h.name)+'</small></td><td>'+escape(h.sector||'Unknown')+'</td><td>'+format(weight)+'</td><td>'+escape(scalar?ResultArtifacts.scalarValue(h):h.metric_multiple.toFixed(2))+'</td><td>'+format(h.return_value)+'</td><td>'+h.contribution_pp.toFixed(2)+' pp</td><td><details class="holding-details"><summary>Details</summary><dl>'+details.map(([key,value])=>'<div><dt>'+key+'</dt><dd>'+escape(value)+'</dd></div>').join('')+'</dl>'+stepTrail(h,artifact.settings?.strategy)+(scalar?'<button type="button" data-stored-explain="'+escape(h.symbol)+'">Explain ranking</button>':'')+'</details></td></tr>';
     }).join('')||'<tr><td colspan="8">No matching stocks in this period.</td></tr>';
   }
   async function storedHoldings(state,cursor=0,firstPage=null){
@@ -127,7 +150,7 @@ const EvidenceResults=(()=>{
     try{
       const page=await state.reader.screen(cursor);if(!valid(state)||sequence!==state.stockSequence)return;
       state.holdingCursor=page.cursor;state.holdingNext=page.next;
-      node('scalar-screen-rows').innerHTML=page.rows.map((row,index)=>'<tr>'+[row.rank,row.symbol,row.name,ResultArtifacts.scalarValue(row),row.ranking_unit,row.ranking_direction].map(v=>'<td>'+escape(v)+'</td>').join('')+'<td><button type="button" data-scalar-explain="'+index+'">Explain '+escape(row.symbol)+'</button></td></tr>').join('')||'<tr><td colspan="7">No matching stocks. Missing ranking values cannot be selected.</td></tr>';
+      node('scalar-screen-rows').innerHTML=page.rows.map((row,index)=>'<tr>'+[row.rank,row.symbol,row.name,ResultArtifacts.scalarValue(row),row.ranking_unit,row.ranking_direction].map(v=>'<td>'+escape(v)+'</td>').join('')+'<td><details class="holding-details"><summary>Details</summary>'+stepTrail(row,state.artifact.settings.strategy)+'<button type="button" data-scalar-explain="'+index+'">Explain '+escape(row.symbol)+'</button></details></td></tr>').join('')||'<tr><td colspan="7">No matching stocks. Missing ranking values cannot be selected.</td></tr>';
       state.rows=page.rows;node('scalar-screen-page').textContent=(page.total?page.cursor+1:0)+'–'+(page.cursor+page.rows.length)+' of '+page.total;
       node('scalar-screen-back').disabled=page.cursor===0;node('scalar-screen-next').disabled=page.next===null;
     }catch(error){readError(state,error);}
@@ -170,9 +193,9 @@ const EvidenceResults=(()=>{
     showProducer(artifact);
     explanationSequence++;node('scalar-evidence-view').hidden=artifact.version!==4;node('scalar-explanation').open=false;
     if(artifact.version===4){
-      node('scalar-evidence-heading').textContent=artifact.kind==='latest'?'Latest variable screen':artifact.kind==='january'?'January variable backtest':'Variable backtest';
+      node('scalar-evidence-heading').textContent=artifact.kind==='latest'?'Latest screen':artifact.kind==='january'?'January variable backtest':'Variable backtest';
       const strategy=artifact.settings.strategy,rank=BacktestComparison.finalRank(artifact.settings);
-      node('scalar-evidence-summary').textContent=BacktestComparison.sourceName(strategy,rank.source)+' · '+rank.direction+' first · ranks '+rank.rank_from+'–'+rank.rank_to+' · '+(strategy.version===2?strategy.steps.length+' steps':strategy.selection.selection_order)+'. These values and downloads use original captured evidence.';
+      node('scalar-evidence-summary').textContent=(artifact.kind==='latest'?'Latest cached session '+artifact.result.asof+' · ':'')+BacktestComparison.sourceName(strategy,rank.source)+' · '+rank.direction+' first · ranks '+rank.rank_from+'–'+rank.rank_to+' · '+(strategy.version===2?strategy.steps.length+' steps':strategy.selection.selection_order)+'. These values and downloads use original captured evidence.';
     }
     node('scalar-screen-results').hidden=artifact.kind!=='latest';node('scalar-download-returns').hidden=artifact.kind==='latest';
     if(artifact.kind==='latest'){

@@ -125,7 +125,7 @@ const ScheduleView=(()=>{
     const number=++requestNumber,body=run.options,random=run.mode==='random',isCurrent=ResultArtifacts.opening();
     activeRun=run;
     node('screen-error').textContent='';
-    node('schedule-progress-detail').textContent=run.mode==='latest'?'Screening latest cached close with submitted variables.':CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
+    node('schedule-progress-detail').textContent=run.mode==='latest'?'Screening the latest cached close with the submitted strategy.':CalendarSettings.decode(body).start+' → '+CalendarSettings.decode(body).end+' · '+CalendarSettings.label(body)+'. '+(random?body.trials+' random-date trials; preparing new dates can take longer.':'New schedules can take a few minutes.');
     node('trial-progress').hidden=!random;node('trial-progress').value=0;node('trial-progress').max=random?body.trials:1;
     startBusy();
     startedAt=run.submitted;
@@ -162,7 +162,7 @@ const ScheduleView=(()=>{
       }else completeResult({mode:run.mode,...body},next);
       if(random){
         node('schedule-message').textContent='Random-date test complete · '+next.completed+' trials · '+elapsed()+' elapsed.';
-      }else if(run.mode==='latest'){node('schedule-message').textContent='Latest variable screen complete · '+next.names+' selected stocks.';}else{
+      }else if(run.mode==='latest'){node('schedule-message').textContent='Latest screen complete · '+next.names+' selected stocks.';}else{
         node('schedule-message').textContent='Backtest complete · '+(state.evidence?.manifest.periods??next.periods.length)+' holding periods · '+elapsed()+' elapsed.';
       }
       node('schedule-message').className='backtest-complete';

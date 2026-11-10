@@ -11,11 +11,13 @@ import unittest
 from unittest.mock import patch
 
 from backtest import screening
-from backtest.inputs import book_store, cache_assets, financial_inputs, fmp_download, market
+from backtest.application import scalar_execution, strategy_requests as s
+from backtest.inputs import book_store, cache_assets, fact_view, financial_inputs, fmp_download, market
 from backtest.runtime import cache_access
 from website.rendering.data import load_screening_data
 from website.server import data_manager as data, data_refresh
 import book_store_fixture as store
+from test_strategy_requests import pipeline, rank_step
 
 
 class MarketDataTests(unittest.TestCase):
@@ -153,25 +155,42 @@ class MarketDataTests(unittest.TestCase):
 
     def test_market_projection_scopes_choices_and_matches_sql_selection(self):
         with store.connection() as db:
-            for code,symbol,exchange,sector in [('us','A','NYSE','Energy'),('hk','0700.HK','HKSE','Finance'),('jp','7203.T','JPX','Industry')]:
-                store.company(db,symbol,exchange=exchange,sector=sector)
-                db.research.execute('INSERT INTO company_markets VALUES(?,?,?)',(symbol,code,market.MARKETS[code]['currency']))
+            # Two listed companies per market; yields order them differently in each.
+            for code,companies,exchange,sector in [('us',[('A',.2),('B',.3)],'NYSE','Energy'),('hk',[('0700.HK',.2),('0005.HK',.25)],'HKSE','Finance'),
+                                                   ('jp',[('7203.T',.2),('6758.T',.1)],'JPX','Industry')]:
+                for symbol,_ in companies:
+                    store.company(db,symbol,exchange=exchange,sector=sector)
+                    db.research.execute('INSERT INTO company_markets VALUES(?,?,?)',(symbol,code,market.MARKETS[code]['currency']))
                 if code=='us':store.session(db,'2020-01-03',100)
                 else:db.research.execute('INSERT INTO local_sessions VALUES(?,?)',(code,'2020-01-03'))
-                row=dict(candidate_rank=1,fiscal='2018-12-31',known='2019-04-30',entry='2020-01-03',price=10,
-                         market_cap=200e6,enterprise_value=100e6,ebitda=20e6,ebitda_yield=.2,ev_ebitda=5,spread=.18)
+                rows=[(symbol,*(dict(candidate_rank=rank,fiscal='2018-12-31',known='2019-04-30',entry='2020-01-03',price=10,market_cap=200e6,
+                        enterprise_value=100e6,ebitda=20e6,ebitda_yield=value,ev_ebitda=1/value,spread=value-.02)[column] for column in store.ROW))
+                      for rank,(symbol,value) in enumerate(companies,1)]
                 for pool in (('legacy','cached') if code=='us' else ('cached',)):
-                    book_store.store(db,dict(market=code,entry='2020-01-03',latest=True,pool=pool,candidates=1,
-                        rows=[(symbol,*(row[column] for column in store.ROW))],metrics=[(symbol,'ev_ebitda',5,.2)],filters=[]))
+                    book_store.store(db,dict(market=code,entry='2020-01-03',latest=True,pool=pool,candidates=len(rows),
+                        rows=rows,metrics=[(symbol,'ev_ebitda',1/value,value) for symbol,value in companies],filters=[]))
             store.record(db.research,db,'2020-01-03')
+            db.research.execute("UPDATE metadata SET value=json_set(value,'$.latest_dates',json(?)) WHERE key='identity'",
+                                (json.dumps(dict(hk='2020-01-03',jp='2020-01-03')),))
             cases=[]
+            # The default chain run by the service: size floors, then EV/EBITDA yield highest.
+            chain=s.capture_strategy(pipeline(*(dict(kind='filter',source=dict(kind='field',field=field),op='ge',threshold=dict(value=value,unit='usd_million'))
+                                                for field,value in (('market_cap','100'),('enterprise_value','50'))),rank_step(last=2)))
             for code,exchange in [('us','NYSE'),('hk','HKSE'),('jp','JPX')]:
                 prepared=load_screening_data(db,code)
                 self.assertEqual(prepared['choices']['exchange'],[exchange])
                 self.assertEqual(prepared['bounds'],dict(first='2020-01-03',last='2020-01-03'))
-                options=dict(pool='cached',rank_to=1)
-                expected=[[row['symbol'],row['rank']] for row in screening.latest(db,market=code,**options)]
+                options=dict(pool='cached',rank_to=2)
+                sql=screening.latest(db,market=code,**options)
+                expected=[[row['symbol'],row['rank']] for row in sql]
+                self.assertEqual(len(expected),2)
                 cases.append(dict(prepared=prepared,options=options,expected=expected))
+                # A server latest chain matches the equivalent built-in screen.
+                with fact_view.View(db,lambda:None,lambda:None,market=code) as view:
+                    served=scalar_execution.Executor(chain,view,lambda record:None).select(db,view.open_book,date(2020,1,3),latest=True)
+                fields=('symbol','rank','price','price_date','fiscal','known')
+                self.assertEqual([(*(row[key] for key in fields),row['ranking_value']) for row in served],
+                                 [(*(row[key] for key in fields),row['metric_yield']) for row in sql])
         code="const fs=require('fs'),assert=require('assert'),s=require(process.argv[1]);for(const c of JSON.parse(fs.readFileSync(0,'utf8')))assert.deepStrictEqual(s.latestScreen(c.prepared,c.options).stocks.map(h=>[h.symbol,h.rank]),c.expected);"
         subprocess.run(['node','-e',code,str(Path(__file__).resolve().parents[1]/'website/browser/screener.js')],
                        input=json.dumps(cases),text=True,check=True)

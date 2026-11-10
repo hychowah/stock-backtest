@@ -72,6 +72,10 @@ def _rows(reader,kind,trial,metric):
     if reader.format_version==2 and kind in ('holdings','screen'):
         keys=list(context)+['rank','symbol','name','exchange','sector','ranking_value','ranking_unit','ranking_display','ranking_direction','market_cap','enterprise_value','fiscal','scalar_evidence']
         if kind=='holdings':keys+=['period_start','period_end','entry','exit','return_value','weight','contribution_pp','status']
+        # A chain adds each step's value and its rank or pass; older results have no step trail.
+        strategy=options.get('strategy',{})
+        steps=strategy['steps'] if strategy.get('version')==2 else []
+        keys+=[f'step_{i}_{part}' for i in range(1,len(steps)+1) for part in ('value','outcome')]
         yield keys
         source=reader.verified_records() if kind=='screen' else evidence_views.records(reader,trial)
         for record in source:
@@ -79,7 +83,13 @@ def _rows(reader,kind,trial,metric):
             elif record['type']==('screen' if kind=='screen' else 'holding'):
                 row=dict(record['value'],**context)
                 if kind=='holdings':row.update(period_start=period['entry'],period_end=period['exit'])
-                row['scalar_evidence']=json.dumps(row['scalar_evidence'],sort_keys=True,separators=(',',':'))
+                evidence=row['scalar_evidence']
+                for i,step in enumerate(steps):
+                    # A field step's value is the holding's own field; others are in lane 's<i>'.
+                    lane=evidence['lanes'].get('s'+str(i),{})
+                    row[f'step_{i+1}_value']=row[step['source']['field']] if step['source']['kind']=='field' else lane.get('canonical',lane.get('value'))
+                    row[f'step_{i+1}_outcome']='pass' if step['kind']=='filter' else evidence['steps'][i]
+                row['scalar_evidence']=json.dumps(evidence,sort_keys=True,separators=(',',':'))
                 yield [row.get(k) for k in keys]
         return
     if kind=='random':

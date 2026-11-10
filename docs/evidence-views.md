@@ -163,7 +163,7 @@ recalculates that source. Existing stored bytes are never rewritten. Evidence pa
 ## Ordered strategy requests
 
 The service accepts `strategy-intent/2` and `strategy-capture/2`. The website
-step builder submits them. Visible step evidence belongs to later work.
+step builder submits them. Results show each selected holding's step trail.
 
 A version-2 strategy has `universe: {pool}` and an ordered `steps` list. Market
 stays in `options.market`. Universe has no size or metadata bounds. A Rank step
@@ -208,7 +208,9 @@ The `step_count` run-log field replaces the former `conditions` field.
 
 Capture/2 holdings record `scalar_evidence.steps`: one entry per captured step,
 the integer rank for a Rank and null for a Filter. A built-in or formula step's
-value, unit and source stay in its lane reference `s<index>`. A Universe field
+value, unit and source stay in its lane reference `s<index>`. A chain's traced
+formula reference also records the `value` that the step used; random-date
+references already carry it. A Universe field
 step has no lane reference; its value is the holding's own field, as for
 capture/1 bounds. Only selected holdings retain this
 evidence, including random-date holdings. Detailed
@@ -218,6 +220,12 @@ codec 2 and financial contract 2 keep their versions and byte ceilings.
 Both `backtest.run` paths log controlled `market`, last-Rank
 `ranking_source_kind` (`builtin` or `formula`) and `step_count`, excluding Universe.
 Legacy requests log their translated counts.
+
+The holding Details panel and the latest screen's Details show the step trail:
+for each step, its source label, recorded value and unit, then its rank and kept
+range for a Rank or "passed" for a Filter. `EvidenceResults` reads it from the
+stored row and the captured strategy only. A row without step evidence, such as
+capture/1 and every older result, says the trail is not recorded.
 
 ## Dated submissions and replay
 
@@ -253,8 +261,11 @@ run capture a chain. An unchanged capture/2 is resubmitted as recorded.
 
 The offline latest screen runs only the shape that flat options express exactly:
 Filters it supports and one highest EV/EBITDA-yield Rank, first or last. Auto-run
-uses the same test. Other chains cannot screen latest until latest chains run on
-the service.
+uses the same test. Screen latest sends every other chain to the service as a
+captured latest run. `scalar_runs` selects it from the open book: exact-session
+prices of listed companies on the market's latest cached session, with no returns.
+The result shows that session date. A chain that the offline screen can run gives
+the same stocks, ranks and values on the service.
 
 The capture ceiling remains 192 KiB. Captured settings, request wrappers and
 display metadata together have a 256 KiB encoded limit. A recorded `planned`
@@ -376,6 +387,8 @@ reads and admission still cover the prepared scope.
 The complete `evidence` attachment streams the original checksummed framed file,
 including its captured strategy and every explanation. Scalar `holdings`/`screen`
 CSV includes original values, units, direction and qualified links; retain its
-companion evidence file for full offline explanation. Counted attachment lengths
+companion evidence file for full offline explanation. A chain adds
+`step_<n>_value` and `step_<n>_outcome` (the rank, or `pass`) for each step;
+capture/1 CSV columns are unchanged. Counted attachment lengths
 and existing independent request pins remain unchanged. Old codec-1 exports
 retain their original bytes. See [custom-variable compatibility](plans/custom-variables/master-plan.md).

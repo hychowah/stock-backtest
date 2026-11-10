@@ -58,7 +58,7 @@ if(process.argv[2]==='--builtins-parity'){
  assert.deepEqual(shape(),[['filter','Market cap','ge','100','usd_million'],['filter','Enterprise value','ge','50','usd_million'],['rank','EV/EBITDA yield','highest',1,50]]);
  assert.deepEqual(copy(run('StrategyDraft.flat()')),flatDefaults);
  assert.deepEqual(copy(run('StockScreener.latestScreen')({...prepared,latest:{...prepared.latest,legacy:[],cached:[]},metric_values:{cached:{}}},run('StrategyDraft.flat()')).options),{...run('StockScreener.defaults'),...flatDefaults});
- assert.equal(node('strategy-heading').textContent,'Highest EV/EBITDA yield');assert.equal(node('auto-run').disabled,false);assert.equal(node('latest-chain-note').hidden,true);
+ assert.equal(node('strategy-heading').textContent,'Highest EV/EBITDA yield');assert.equal(node('auto-run').disabled,false);
  run("screeningMode='backtest'");
  const first=await submit();
  assert.deepEqual(requests.at(-1),{intent:{format:'strategy-intent',version:2,universe:{pool:'cached'},steps:[{kind:'filter',source:field('market_cap'),op:'ge',threshold:{value:'100',unit:'usd_million'}},{kind:'filter',source:field('enterprise_value'),op:'ge',threshold:{value:'50',unit:'usd_million'}},{kind:'rank',source:builtin('metric:ev_ebitda:yield'),direction:'highest',rank_from:1,rank_to:50}]}});
@@ -81,10 +81,14 @@ if(process.argv[2]==='--builtins-parity'){
  assert.equal(view()[3].title,exact.variable_id+' @ '+exact.revision);assert(view()[3].units.includes('number'));
  assert.equal(run('StrategyDraft.flat()'),null);assert.equal(node('auto-run').disabled,true);assert(node('auto-run-note').textContent.includes('paused'));
  assert.equal(node('strategy-heading').textContent,'Lowest EV/3y EBITDA multiple');
- // Latest picks for chains wait for P3; the dated view stays available.
- run("screeningMode='latest';StrategyDraft.render()");assert.equal(node('latest-chain-note').hidden,false);assert.equal(node('run-screen').disabled,true);
- run("applyLatest()");assert(node('screen-error').textContent.includes('not available yet'));
- run("screeningMode='backtest';StrategyDraft.render()");assert.equal(node('latest-chain-note').hidden,true);assert.equal(node('run-screen').disabled,false);
+ // Latest picks for a chain outside the offline shape run on the service
+ // with the captured chain; a finished result then matches the draft.
+ let latestRun=null;context.ScheduleView.runPrepared=settings=>{latestRun=copy(settings);};
+ run("screeningMode='latest';StrategyDraft.render()");assert.equal(node('run-screen').disabled,false);
+ run('applyRange()');await tick();
+ assert.equal(latestRun.mode,'latest');assert.equal(latestRun.strategy.version,2);assert.equal(latestRun.strategy.steps.length,4);assert(!('start' in latestRun));
+ assert.deepEqual(copy(run('currentSettings().strategy')),latestRun.strategy);
+ run("screeningMode='backtest';StrategyDraft.render()");
  const chainA=await submit();
  assert.deepEqual(requests.at(-1).intent.steps,[{kind:'rank',source:builtin('metric:ev_ebitda:yield'),direction:'highest',rank_from:20,rank_to:40},{kind:'filter',source:builtin('filter:pe'),op:'lt',threshold:{value:'12',unit:'multiple'}},
   {kind:'rank',source:builtin('metric:ev_ebitda_3y:multiple'),direction:'lowest',rank_from:1,rank_to:50},{kind:'filter',source:exact,op:'ge',threshold:{value:'5',unit:'percent'}}]);

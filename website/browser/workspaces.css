@@ -52,6 +52,7 @@ main>header .pill{font-size:10px}
 .holding-details dt{font-size:10px;color:#7e8b74}
 .holding-details dd{margin:3px 0 0;overflow-wrap:anywhere}
 .holding-details button{font-size:11px;min-height:33px}
+.holding-details .step-trail{min-width:180px;margin:8px 0;padding-left:18px;font-size:11px;overflow-wrap:anywhere}
 #workspace-statusbar{position:fixed;bottom:0;left:208px;right:0;z-index:8;border-top:1px solid #d5dfcd;background:#fbfcf7;box-shadow:0 -4px 20px #213c2806;min-height:64px;padding:9px 25px;display:flex;align-items:center;gap:18px}
 #workspace-statusbar button{font-size:12px;min-height:40px}
 #workspace-run-open{flex:1;border:0;background:none;text-align:left;padding:5px 0;min-width:0}

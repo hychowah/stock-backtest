@@ -16,7 +16,7 @@ function selectMarket(value){
 
 let screeningMode='latest';
 // A new step exists only in the form until its source is chosen.
-let pendingStep=null,stepSources=null,stepSourcesState='idle',latestBlocked=false;
+let pendingStep=null,stepSources=null,stepSourcesState='idle';
 function viewKey(){return screeningMode==='latest'?'latest':'custom';}
 const currentArtifact=()=>ResultArtifacts.forView(viewKey());
 const sourceCatalog=()=>({metrics:screeningData.metrics,filters:screeningData.filter_catalog});
@@ -178,8 +178,10 @@ function setModeVisibility(){
   document.getElementById('mode-latest').setAttribute('aria-pressed',latest);
   document.getElementById('mode-backtest').setAttribute('aria-pressed',!latest);
   if(!ScheduleView.isRunning())document.getElementById('run-screen').textContent=latest?'Screen latest':'Run backtest';
-  const artifact=currentArtifact();
+  const artifact=currentArtifact(),scalar=document.getElementById('scalar-evidence-view');
   applyPresentation(artifact?.presentation);renderSteps();
+  // A server latest panel in the builder belongs to latest mode only.
+  if(!latest&&scalar?.parentNode?.id==='workspace-builder')scalar.hidden=true;
   if(latest&&artifact?.version===4){EvidenceResults.show(artifact);Workspaces.published(artifact);}
   StrategyDraft.render();
 }
@@ -191,16 +193,16 @@ function switchMode(mode){
 function applyLatest(){
   let settings,result;
   try{
-    settings=currentSettings();const options=StrategyDraft.flat();
-    if(!options)throw Error('Latest picks for this chain are not available yet. Select Historical backtest to run this chain.');
+    settings=currentSettings();
     if(!screeningData.latest.metadata.asof)throw Error('Prepare '+marketLabels[selectedMarket()]+' data from Manage backtest data.');
-    StrategyDraft.requireValues();result=StockScreener.latestScreen(screeningData,options);
+    StrategyDraft.requireValues();result=StockScreener.latestScreen(screeningData,StrategyDraft.flat());
   }
   catch(error){document.getElementById('screen-error').textContent=error.message+' The previous result remains displayed.';return;}
   completeResult(settings,result);
 }
 function renderLatest(r){
-  document.getElementById('screen-error').textContent='';
+  // A server latest screen hides this offline table; an offline screen shows it again.
+  document.getElementById('screen-error').textContent='';document.getElementById('latest-view').hidden=false;
   const o=r.options;
   updateMetricLabels(o);
   document.getElementById('latest-date').textContent=r.asof;
@@ -224,7 +226,8 @@ function latestPresentation(r){
 function applyRange(){
   if(document.getElementById('run-screen').disabled)return;
   updateResultsState();
-  if(screeningMode==='latest'){applyLatest();return;}
+  // The offline screen runs the shape flat options express; every other latest chain runs on the service.
+  if(screeningMode==='latest'&&StrategyDraft.flat()){applyLatest();return;}
   document.getElementById('run-screen').disabled=true;
   void StrategyDraft.prepareSubmission().then(settings=>ScheduleView.runPrepared(settings)).catch(error=>{document.getElementById('screen-error').textContent=error.message;}).finally(()=>{if(!ScheduleView.isRunning())document.getElementById('run-screen').disabled=false;});
 }
@@ -362,7 +365,8 @@ const StrategyDraft=(()=>{
   const placeholder=()=>({format:'strategy-draft',version:2,...JSON.parse(content())});
   const unchanged=()=>restored?.content===content();
   function selection(){
-    if(viewKey()==='latest')return flat()||{strategy:placeholder()};
+    const offline=viewKey()==='latest'&&flat();
+    if(offline)return offline;
     // A run captures a copied flat or capture/1 strategy as a chain; until
     // then the copy shows its recorded selection.
     if(captured?.content===content())return {strategy:copy(captured.strategy)};
@@ -473,15 +477,8 @@ const StrategyDraft=(()=>{
     const last=steps.findLast(step=>step.kind==='rank'),offline=flat();
     document.getElementById('strategy-heading').textContent=last?(last.direction==='highest'?'Highest ':'Lowest ')+sourceLabel(last.source):'Add a Rank step';
     document.getElementById('auto-run').disabled=!offline;
-    document.getElementById('auto-run-note').textContent=offline?'Turn off to change several settings, then select Run backtest. You can edit settings during a run.':'Auto-run is paused for this chain. Select Run backtest to calculate.';
+    document.getElementById('auto-run-note').textContent=offline?'Turn off to change several settings, then select Run backtest. You can edit settings during a run.':'Auto-run is paused for this chain. Select '+(screeningMode==='latest'?'Screen latest':'Run backtest')+' to calculate.';
     document.getElementById('legacy-pool-note').hidden=document.getElementById('stock-pool').value!=='legacy'||!!offline;
-    const blocked=screeningMode==='latest'&&!offline;
-    document.getElementById('latest-chain-note').hidden=!blocked;
-    if(blocked!==latestBlocked){
-      latestBlocked=blocked;const button=document.getElementById('run-screen');
-      // The note describes the button only while it explains the block.
-      button.setAttribute('aria-describedby',blocked?'latest-chain-note':'');if(!ScheduleView.isRunning())button.disabled=blocked;
-    }
   }
   function after(id){changed=id;touch();renderSteps();render();updateResultsState();return id;}
   function patch(change,expected){

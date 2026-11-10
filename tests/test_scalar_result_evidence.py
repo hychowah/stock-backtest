@@ -110,6 +110,8 @@ class EvidenceTests(unittest.TestCase):
         csv=b''.join(result_exports.prepare(reader,'holdings').chunks()).decode()
         self.assertIn('ranking_value',csv);self.assertIn('scalar_evidence',csv)
         self.assertNotIn('metric_multiple',csv)
+        # A capture/1 result has no step trail, so its columns are unchanged.
+        self.assertNotIn('step_',csv.splitlines()[0])
     def test_screen_csv_is_complete_and_does_not_add_returns(self):
         stream,_=self.produce('latest');reader=result_evidence.open_reader(stream,max_bytes=16*1024**2)
         csv=b''.join(result_exports.prepare(reader,'screen').chunks()).decode()
@@ -208,6 +210,29 @@ class EvidenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 for record in malformed:
                     order.accept(record, record.get('sha256'))
+
+    def test_pipeline_csv_adds_each_step_value_and_rank_or_pass(self):
+        old = self.capture.to_dict()
+        source = old['selection']['ranking']['source']
+        self.capture = s.capture_strategy(pipeline(
+            dict(kind='filter', source=dict(kind='field', field='market_cap'), op='ge', threshold=dict(value='100', unit='usd_million')),
+            rank_step(last=5), dict(kind='filter', **condition(source, '0', 'usd', 'ge')), rank_step(source, 1, 3)),
+            submitted=old['variables']['program']['bundle']['definitions'])
+        for mode, kind in (('custom', 'holdings'), ('random', 'holdings'), ('latest', 'screen')):
+            stream, _ = self.produce(mode)
+            reader = result_evidence.open_reader(stream, max_bytes=16*1024**2)
+            # Exporting reads stored evidence only.
+            with patch.object(s, 'builtin_catalog', side_effect=AssertionError('No current catalog')), \
+                    patch.object(scalar_execution, 'Executor', side_effect=AssertionError('No calculation')):
+                header, *rows = result_exports.rows(reader, kind, 1)
+            self.assertEqual(header[-8:], [f'step_{i}_{part}' for i in range(1, 5) for part in ('value', 'outcome')])
+            self.assertEqual(len(rows), 3, mode)
+            for row in rows:
+                row = dict(zip(header, row))
+                self.assertEqual([row[f'step_{i}_outcome'] for i in range(1, 5)], ['pass', row['step_2_outcome'], 'pass', row['rank']])
+                self.assertIn(row['step_2_outcome'], range(1, 6))
+                self.assertEqual((row['step_1_value'], row['step_2_value']), (row['market_cap'], .3))
+                self.assertEqual((row['step_3_value'], row['step_4_value']), (row['ranking_value'], row['ranking_value']))
 
 
 if __name__=='__main__':unittest.main()
