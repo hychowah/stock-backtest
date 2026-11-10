@@ -170,7 +170,7 @@ The first checks controls and rendering using a simulated DOM, including a saved
 
 Each dated period shows gain/loss contribution pies, the top 10 contributors and the full stock table.
 
-Contribution equals stock holding return divided by the actual number of selected stocks, expressed in percentage points of portfolio return. Contributions sum to the period's strategy return. Top 10 means the ten stocks with the highest signed contributions, regardless of portfolio size. If fewer than ten stocks are selected, all of them are shown. In an all-loss book, these are the smallest losses. This is historical attribution, not a new picking rule.
+Contribution equals stock holding return divided by the actual number of selected stocks, expressed in percentage points of portfolio return. Contributions sum to the period's strategy return. Top 10 means the ten stocks with the highest signed contributions, regardless of portfolio size. If fewer than ten stocks are selected, all of them are shown. Equal contributions are ordered by symbol. In an all-loss book, these are the smallest losses. This is historical attribution, not a new picking rule.
 
 Gains and losses use separate pie charts so no negative slice is implied. Each pie is normalized to that side's total; it is not a percentage of the net portfolio return. Named slices are the top contributors; remaining gainers and losers are grouped separately. Zero-return stocks have no slice.
 
@@ -417,7 +417,9 @@ The experimental (Numba) engine was deleted from source. The server refuses a
 request that names it with `UNSUPPORTED_CAPABILITY` at `/engine`. A restored
 test that names it keeps that engine and shows the engine choice, so the user
 can choose Original. A waiting queued test that names it stays waiting until
-the user edits or deletes it. Replay keeps the recorded engine. Manage backtest
+the user edits or deletes it. `options.engine` is `original` or `experimental`.
+Jobs, queue receipts, held edits, recovery and replay keep the recorded value;
+it is never rewritten to Original. Manage backtest
 data has no experimental preparation action. New results and CSVs identify
 their recorded producer; older evidence stays unidentified. Opening stored
 evidence does not calculate.

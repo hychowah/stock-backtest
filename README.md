@@ -110,7 +110,7 @@ exit rules and its limits.
 | `tools/` | Deployment, operations and FMP API probes |
 | `tests/` | Python and Node.js tests and the test runner |
 | `docs/` | Methodology, design notes and the architecture guide ([index](docs/README.md)) |
-| `results/` | The frozen January study and experiment summaries |
+| `results/` | Frozen January study record and experiment summaries |
 | `raw/` | Local market-data cache (not tracked) |
 | `data/` | Local databases, saved backtests and the queue (not tracked) |
 
@@ -174,24 +174,6 @@ every push.
 To run one file, call it directly, for example `python3 tests/test_queue.py` or
 `node tests/check-queue.cjs`. After `python3 website/build.py`, also run
 `node tests/check-range.cjs` and `python3 tests/check_screener.py`.
-
-## Research results
-
-The original study bought the 50 US stocks with the highest EBITDA/EV yield at
-the start of each year, from January 1996. Its frozen result is
-[results/summary-exits.txt](results/summary-exits.txt):
-
-| 2 January 1996 to 2 January 2026 | Strategy | SPY |
-|---|---:|---:|
-| Growth of $1 | $143.88 | $18.51 |
-| Annual return (CAGR) | 18.01% | 10.22% |
-
-These are historical backtest results without trading costs. They do not
-predict future returns. The [methodology](docs/methodology.md) describes the
-universe, exits and known data limits. `results/stops/` reviews the 37 holdings
-that stopped trading early. `results/legacy/` is an earlier pass with an older
-exit rule, not the study result. To repeat the study, run a 12-month schedule
-from 1 January 1996.
 
 ---
 

@@ -221,6 +221,7 @@ example, the distinct display values `13.501116090704034` and
 Old requests and saved records are not rewritten.
 
 The one formula gate is the language check, `definitions.require_program`. It
+runs when a capture is restored, before readiness checks or financial input. It
 admits definition versions 1–3 with their catalog's temporal policy, including
 catalog `/4` and `market-annual/1`. Every captured definition is checked, including unused and
 constant-only entries. The column evaluator in `backtest/variables/columns.py`

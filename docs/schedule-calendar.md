@@ -36,7 +36,8 @@ Units are exactly `week` and `month`. Week counts are integers from 1 through
 104. Month counts are integers from 1 through 24. Booleans, floats, strings and
 null counts fail. Unknown fields, aliases, unsupported versions and combined
 `months`/`interval` forms fail. Dates must use `YYYY-MM-DD`. Start must be on or
-after 1996-01-01 and strictly before end. Invalid inputs raise `ValueError`.
+after `rules.FIRST_DAY` (1996-01-01) and strictly before end. That day is also
+the first usable day of a historical root. Invalid inputs raise `ValueError`.
 
 `legacy_configuration({"start": ..., "end": ..., "months": ...})` explicitly
 maps an existing request to version 1 with `unit="month"`. It accepts only

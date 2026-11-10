@@ -762,7 +762,10 @@ new dates must remain present and recently returned prices must still agree.
 An incomplete replacement keeps the old file. Unchanged assets keep their
 bytes and timestamps. Recent overlap checks do not audit every old correction.
 
-Stock and SPY windows cover up to ten years. Treasury windows are monthly. Up
+Stock and SPY windows cover up to ten years. Treasury windows are monthly. A
+30-year price or Treasury request returns only the latest rows, so requests use
+these short windows. Bulk statement files are refused when many run at once.
+Per-symbol `key-metrics` calls work at about 16 at a time. Up
 to 32 tasks are in flight, with a shared cap of 45 starts per second. Connections
 are reused and support gzip. HTTP status and Retry-After take precedence over
 response encoding. A 429 pauses workers and lowers the start rate. There are
@@ -827,8 +830,8 @@ never rewritten. The last successful update and actual latest SPY session stay
 separate.
 
 Source ownership precedes the existing process-local financial lock, project
-financial file lock, connections and worker pools. Keep ownership
-through worker completion and connection closure. Nested preparation reuses it.
+financial file lock, connections and worker pools. A thread lock alone is not
+ownership. Keep ownership through worker completion and connection closure. Nested preparation reuses it.
 The 07:00 Hong Kong maintenance cycle uses the same update operation. A missed
 schedule waits until the next day. The supervisor must be running. Its already
 authorized cycle can update independently of the manual Continue action.

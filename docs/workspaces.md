@@ -107,7 +107,7 @@ Source publication and native server execution share a lock. A deployment stops 
 | SQLite databases, process identities, locks and logs under `data/` | Windows runtime |
 | Runtime copy of `results/summary-exits.txt` and baseline history | Windows runtime |
 | Built local page under `website/local/` | Windows runtime |
-| Native environments and leftover experimental-engine caches | Windows runtime; create them for Windows |
+| Native environments and leftover experimental-engine caches (`data/numerical/`, `data/numerical-preparation.json`; no source reads them) | Windows runtime; create them for Windows |
 | Deployment hashes and commit identity | Windows `data/deployment.json` |
 
 Tracked README files inside data folders remain source-owned documentation. Other tracked analysis reports can be deployed from reviewed commits. `results/summary-exits.txt` is the exception: deployment never installs, replaces or removes it, even in a fresh runtime. Only the development check reads it, on the real-data bench, so a runtime without it works normally.

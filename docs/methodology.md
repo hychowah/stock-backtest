@@ -28,7 +28,7 @@ The universe is common stocks on the NYSE, Nasdaq, and NYSE American. It include
 
 A report is used only after 90 days from the fiscal year-end, and only if that year-end is less than 800 days before the buy date. Enterprise value is then updated to the buy-date share price. Debt and cash stay at the last report. The price series includes dividends, so a dividend between the fiscal year-end and the buy date moves the value a little.
 
-The buy is skipped unless market cap is at least $100 million and enterprise value is at least $50 million, in dollars of that date. The currency is USD.
+The buy is skipped unless market cap is at least $100 million and enterprise value is at least $50 million, in dollars of that date. The currency is USD. A stock with no entry price is left out.
 
 ## When trading stops
 
@@ -53,9 +53,9 @@ A stock that still trades on the January sale date keeps that price. Being delis
 | `results/stops/stops-class.json` | SEC form types for those 37 names. |
 | `raw/universe.json` | The US name list. |
 | `raw/metrics.jsonl` | Annual market cap, enterprise value, and EV/EBITDA. |
-| `raw/px/` | Price history used for the screen and the returns. |
-| `raw/spy-div.json` | SPY with dividends. |
-| `raw/treasury.json` | Treasury yields. `month3` is the 3-month yield, in percent. |
+| `raw/px/` | Dividend-adjusted price history used for the screen and the returns. |
+| `raw/spy-div.json` | SPY with dividends, from 1995. |
+| `raw/treasury.json` | Daily Treasury yields from 1995. `month3` is the 3-month yield, in percent. |
 
 `tools/probe.py`, `tools/fetch_bulk.py` and the CSV files under `raw/archive/` were steps used to learn the API. The backtest does not read those CSV files.
 
@@ -65,7 +65,7 @@ The screen can still pick a broken ratio. A few names show an EBITDA yield above
 
 About two-thirds of the names changed each year in the old holdings file. Trading costs are not charged.
 
-Delisted names are included, but the delisted list has no delisting date and no reason. A name on that list may have been bought years before it left the exchange.
+Delisted names are included: about 5,068 of the 11,054. The delisted list has no sector, no delisting date and no reason. A name on that list may have been bought years before it left the exchange.
 
 Financial companies are included. EBITDA/EV is a weak description of a bank or an insurer.
 
