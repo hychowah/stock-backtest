@@ -198,16 +198,26 @@ The research tests cover availability dates, rank selection before future return
 
 ## Measured performance
 
-Research and daily preparation of the real cache were measured on the private
-WSL bench copy of the runtime's raw cache, with typed-storage P5 source (50125bf), while the
-machine had other load. A cold build took 176 s (research 172 s, daily 3 s).
-`research.sqlite` is 1.26 GB; `schedules.sqlite` is 3.2 MB before books and
-4.47 GB with about 1,380 books. The user's random-date test (24 quarterly
-trials, 2013–2026, 1,344 periods, ranks 1–30, the cached pool, three built-in
-conditions and one custom variable) took 326.6 s with its 1,326 books
-computed and 62.7 s with them saved. These are observed timings, not
-guarantees. They predate the valuation sums and their sheet lanes. See also
-`results/experiments/performance.json` for older measurements of a smaller January-only database.
+Preparation of the real cache was measured on the private WSL bench copy of
+the runtime's raw cache (US and Hong Kong files of 2026-11-09), with the
+valuation-averages source, eight calculation workers and other load on the
+machine:
+
+- A cold research build took 551–597 s, of which the valuation-sum fold took
+  about 239 s. Peak memory was 0.5 GB. `research.sqlite` is 4.12 GB, of which
+  `valuation_sums` (25.5 million rows) is about 1.6 GB.
+- Precomputing all 15,396 historical sheets took 1,226 s. `schedules.sqlite`
+  is 10.8 GB.
+- An update from the 2026-10-21 files (US only) to those files took 584 s
+  for research and sheet repair, plus 483 s for the new sheets. The result
+  equals a cold build bit for bit.
+- The user's random-date test (24 quarterly trials, 2013–2026, 1,344
+  periods, ranks 1–30, the cached pool, three built-in conditions and one
+  custom variable) took 52 s with its sheets precomputed.
+
+These are observed timings, not guarantees. See also
+`results/experiments/performance.json` for older measurements of a smaller
+January-only database.
 
 The 1996 legacy pre-price buffer yields only 61 usable holdings, so it cannot supply a complete top-100 book. The wider pool also has incomplete price coverage of the universe. The engine reports insufficient matches instead of claiming 100 names in every period.
 
